@@ -462,35 +462,38 @@ class LiteralBase {
       return const_cast<char*>(const_cast<const Piece*>(this)->buffer());
     }
     void set_buffer(char* buffer) {
-      CHECK(subshape_->IsArray());
-      auto* array_rep = std::holds_alternative<Uninitialized>(rep_)
-                            ? &rep_.emplace<ArrayRep>()
-                            : GetArrayRep();
-      DCHECK(array_rep);
-      array_rep->data = buffer;
+      DCHECK(LayoutUtil::IsDenseArray(*subshape_));
+      auto* dense_rep = std::holds_alternative<Uninitialized>(rep_)
+                            ? &rep_.emplace<DenseRep>()
+                            : GetDenseRep();
+      DCHECK(dense_rep);
+      dense_rep->data = buffer;
     }
     void MoveDataFrom(Piece& from) {
-      DCHECK(!std::holds_alternative<ArrayRep>(rep_));
+      DCHECK(!std::holds_alternative<DenseRep>(rep_));
       DCHECK(!std::holds_alternative<TupleRep>(rep_));
-      if (auto* array_rep = from.GetArrayRep()) {
-        rep_.emplace<ArrayRep>().data = array_rep->data;
-      } else if (auto* inlined_rep = from.GetInlinedRep()) {
-        std::memcpy(rep_.emplace<InlinedRep>().data, inlined_rep->data,
-                    from.total_bytes());
+      if (auto* dense_rep = from.GetDenseRep()) {
+        rep_.emplace<DenseRep>().data = dense_rep->data;
+      } else if (auto* inlined_rep = from.GetDenseInlinedRep()) {
+        std::memcpy(rep_.emplace<DenseInlinedRep>().data, inlined_rep->data,
+                    from.total_bytes_dense());
       }
       from.rep_.emplace<Uninitialized>();
     }
 
     // Gets/sets the buffer holding dynamic sizes.
     const int32_t* dynamic_size_buffer() const {
-      return reinterpret_cast<const int32_t*>(buffer() + size_bytes());
+      DCHECK(LayoutUtil::IsDenseArray(*subshape_));
+      return reinterpret_cast<const int32_t*>(buffer() + size_bytes_dense());
     }
     int32_t* dynamic_size_buffer() {
+      DCHECK(LayoutUtil::IsDenseArray(*subshape_));
       return const_cast<int32_t*>(
           const_cast<const Piece*>(this)->dynamic_size_buffer());
     }
 
     int64_t dynamic_size_buffer_bytes() const {
+      DCHECK(LayoutUtil::IsDenseArray(*subshape_));
       return subshape().dimensions_size() * sizeof(int32_t);
     }
 
@@ -506,16 +509,19 @@ class LiteralBase {
       }
     }
 
-    // Returns the size in bytes of the buffer holding the array data.
-    int64_t size_bytes() const { return ShapeUtil::ByteSizeOf(subshape()); }
+    // Returns the size in bytes of the buffer holding the dense array data.
+    int64_t size_bytes_dense() const {
+      DCHECK(LayoutUtil::IsDenseArray(*subshape_));
+      return ShapeUtil::ByteSizeOf(subshape());
+    }
 
     // Total size in bytes, including the dynamic size addition.
     //
     // The shape can become dynamic after this literal is allocated, so we
     // over-allocate the margin for the dynamic shape description in case we
     // need it.
-    int64_t total_bytes() const {
-      return size_bytes() + dynamic_size_buffer_bytes();
+    int64_t total_bytes_dense() const {
+      return size_bytes_dense() + dynamic_size_buffer_bytes();
     }
 
     // Returns the number of elements in this piece's array.
@@ -526,21 +532,21 @@ class LiteralBase {
       return const_cast<Piece&>(const_cast<const Piece*>(this)->child(index));
     }
     const Piece& child(int64_t index) const {
-      auto* tuple_rep = GetTupelRep();
+      auto* tuple_rep = GetTupleRep();
       DCHECK(tuple_rep);
       return tuple_rep->children[index];
     }
 
     // Adds a child piece to this piece's children.
     void emplace_back(Piece child_piece) {
-      auto* tuple_rep = GetTupelRep();
+      auto* tuple_rep = GetTupleRep();
       DCHECK(tuple_rep);
       tuple_rep->children.emplace_back(std::move(child_piece));
     }
 
     // Returns the size of children pieces of this piece.
     int64_t children_size() {
-      if (auto* tuple_rep = GetTupelRep()) {
+      if (auto* tuple_rep = GetTupleRep()) {
         return tuple_rep->children.size();
       }
       return 0;
@@ -637,8 +643,8 @@ class LiteralBase {
    private:
     // Uninitialized state representation.
     struct Uninitialized {};
-    // Out of line array storage.
-    union ArrayRep {
+    // Out of line dense array storage.
+    union DenseRep {
       char* data;
     };
     struct TupleRep {
@@ -648,10 +654,10 @@ class LiteralBase {
 
     // Use just so many bytes that we don't increase the sizeof(Piece).
     static inline constexpr size_t kMaxInlinedBytes =
-        std::max(sizeof(ArrayRep), sizeof(TupleRep));
+        std::max(sizeof(DenseRep), sizeof(TupleRep));
 
-    // Inlined array storage.
-    struct InlinedRep {
+    // Inlined dense array storage.
+    struct DenseInlinedRep {
       char data[kMaxInlinedBytes];
     };
 
@@ -661,22 +667,26 @@ class LiteralBase {
       const char* operator()(const Uninitialized&) const { return nullptr; }
       char* operator()(TupleRep&) { return nullptr; }
       const char* operator()(const TupleRep&) const { return nullptr; }
-      char* operator()(InlinedRep& rep) { return rep.data; }
-      const char* operator()(const InlinedRep& rep) const { return rep.data; }
-      char* operator()(ArrayRep& rep) { return rep.data; }
-      const char* operator()(const ArrayRep& rep) const { return rep.data; }
+      char* operator()(DenseInlinedRep& rep) { return rep.data; }
+      const char* operator()(const DenseInlinedRep& rep) const {
+        return rep.data;
+      }
+      char* operator()(DenseRep& rep) { return rep.data; }
+      const char* operator()(const DenseRep& rep) const { return rep.data; }
     };
 
-    const InlinedRep* GetInlinedRep() const {
-      return std::get_if<InlinedRep>(&rep_);
+    const DenseInlinedRep* GetDenseInlinedRep() const {
+      return std::get_if<DenseInlinedRep>(&rep_);
     }
-    InlinedRep* GetInlinedRep() { return std::get_if<InlinedRep>(&rep_); }
+    DenseInlinedRep* GetDenseInlinedRep() {
+      return std::get_if<DenseInlinedRep>(&rep_);
+    }
 
-    const ArrayRep* GetArrayRep() const { return std::get_if<ArrayRep>(&rep_); }
-    ArrayRep* GetArrayRep() { return std::get_if<ArrayRep>(&rep_); }
+    const DenseRep* GetDenseRep() const { return std::get_if<DenseRep>(&rep_); }
+    DenseRep* GetDenseRep() { return std::get_if<DenseRep>(&rep_); }
 
-    const TupleRep* GetTupelRep() const { return std::get_if<TupleRep>(&rep_); }
-    TupleRep* GetTupelRep() { return std::get_if<TupleRep>(&rep_); }
+    const TupleRep* GetTupleRep() const { return std::get_if<TupleRep>(&rep_); }
+    TupleRep* GetTupleRep() { return std::get_if<TupleRep>(&rep_); }
     // Helpers for traversing the piece via ForEachSubpiece rooted at 'index'.
     // The first non-OK (or non-true) value is returned by the function.
     // The callable 'func' has the same signature as described above in
@@ -685,7 +695,7 @@ class LiteralBase {
     Status ForEachHelper(const Fn& func, const Piece& piece,
                          ShapeIndex* index) const {
       TF_RETURN_IF_ERROR(func(*index, piece));
-      if (auto* tuple_rep = piece.GetTupelRep()) {
+      if (auto* tuple_rep = piece.GetTupleRep()) {
         for (int64_t i = 0; i < tuple_rep->children.size(); ++i) {
           index->push_back(i);
           TF_RETURN_IF_ERROR(
@@ -701,7 +711,7 @@ class LiteralBase {
       if (!func(*index, piece)) {
         return false;
       }
-      if (auto* tuple_rep = piece.GetTupelRep()) {
+      if (auto* tuple_rep = piece.GetTupleRep()) {
         for (int64_t i = 0; i < tuple_rep->children.size(); ++i) {
           index->push_back(i);
           if (!ForEachHelperBool(func, tuple_rep->children[i], index)) {
@@ -716,7 +726,7 @@ class LiteralBase {
     Status ForEachMutableHelper(const Fn& func, Piece* piece,
                                 ShapeIndex* index) {
       TF_RETURN_IF_ERROR(func(*index, piece));
-      if (auto* tuple_rep = piece->GetTupelRep()) {
+      if (auto* tuple_rep = piece->GetTupleRep()) {
         for (int64_t i = 0; i < tuple_rep->children.size(); ++i) {
           index->push_back(i);
           TF_RETURN_IF_ERROR(
@@ -737,7 +747,7 @@ class LiteralBase {
     void CopyElementsWithDynamicBound(const LiteralBase::Piece& src);
 
     // Storage representation of this piece.
-    std::variant<Uninitialized, InlinedRep, ArrayRep, TupleRep> rep_;
+    std::variant<Uninitialized, DenseInlinedRep, DenseRep, TupleRep> rep_;
 
     // The shape of piece. This points into the shape of the containing Literal
     // (Literal::shape_).
@@ -1198,7 +1208,8 @@ class BorrowingLiteral : public LiteralBase {
 
 template <typename NativeT>
 absl::Span<const NativeT> LiteralBase::Piece::data() const {
-  DCHECK(subshape().IsArray()) << ShapeUtil::HumanString(subshape());
+  DCHECK(LayoutUtil::IsDenseArray(subshape()))
+      << __func__ << " is only supported for dense arrays: " << subshape();
   DCHECK_EQ(subshape().element_type(),
             primitive_util::NativeToPrimitiveType<NativeT>())
       << "Attempting to access "
@@ -1211,7 +1222,8 @@ absl::Span<const NativeT> LiteralBase::Piece::data() const {
 
 template <typename NativeT>
 absl::Span<NativeT> LiteralBase::Piece::data() {
-  DCHECK(subshape().IsArray()) << ShapeUtil::HumanString(subshape());
+  DCHECK(LayoutUtil::IsDenseArray(subshape()))
+      << __func__ << " is only supported for dense arrays: " << subshape();
   DCHECK_EQ(subshape().element_type(),
             primitive_util::NativeToPrimitiveType<NativeT>())
       << "Attempting to access "
@@ -1224,7 +1236,8 @@ absl::Span<NativeT> LiteralBase::Piece::data() {
 
 template <typename NativeT>
 NativeT LiteralBase::Piece::Get(absl::Span<const int64_t> multi_index) const {
-  CHECK(LayoutUtil::IsDenseArray(subshape())) << subshape();
+  DCHECK(LayoutUtil::IsDenseArray(subshape()))
+      << __func__ << " is only supported for dense arrays: " << subshape();
   return data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(
       subshape(), multi_index)];
 }
@@ -1232,7 +1245,8 @@ NativeT LiteralBase::Piece::Get(absl::Span<const int64_t> multi_index) const {
 template <typename NativeT>
 void LiteralBase::Piece::Set(absl::Span<const int64_t> multi_index,
                              NativeT value) {
-  CHECK(LayoutUtil::IsDenseArray(subshape()));
+  DCHECK(LayoutUtil::IsDenseArray(subshape()))
+      << __func__ << " is only supported for dense arrays: " << subshape();
   data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(
       subshape(), multi_index)] = value;
 }
@@ -1274,6 +1288,8 @@ inline void MutableLiteralBase::Set(absl::Span<const int64_t> multi_index,
 
 template <typename NativeT>
 NativeT LiteralBase::GetFirstElement() const {
+  CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
   return data<NativeT>().at(0);
 }
 
@@ -1281,6 +1297,8 @@ template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE void LiteralBase::EachCell(
     std::function<void(absl::Span<const int64_t> indices, NativeT value)>
         per_cell) const {
+  CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
   if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
@@ -1299,6 +1317,8 @@ template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::MutableEachCell(
     std::function<NativeT(absl::Span<const int64_t> indices, NativeT value)>
         per_cell) {
+  CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
   if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
@@ -1315,7 +1335,8 @@ TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::MutableEachCell(
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::PopulateR1(
     absl::Span<const NativeT> values) {
-  CHECK(shape().IsArray());
+  CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
   CHECK_EQ(shape().rank(), 1);
   if (shape().is_static()) {
     CHECK_EQ(ShapeUtil::ElementsIn(shape()), values.size());
@@ -1331,7 +1352,8 @@ TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::PopulateR1(
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::PopulateR2(
     std::initializer_list<std::initializer_list<NativeT>> values) {
-  CHECK(shape().IsArray());
+  CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
   CHECK_EQ(shape().rank(), 2);
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
@@ -1363,6 +1385,8 @@ TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::PopulateR2(
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::PopulateFromArray(
     const Array<NativeT>& values) {
+  CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
   CHECK(shape().IsArray());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
@@ -1449,6 +1473,8 @@ TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::PopulateInternal(
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::Populate(
     const std::function<NativeT(absl::Span<const int64_t>)>& generator) {
+  CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
   return PopulateInternal<NativeT>(
       [&](absl::Span<const int64_t> indexes, int /*thread_id*/) {
         return generator(indexes);
@@ -1458,6 +1484,8 @@ TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::Populate(
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::PopulateParallel(
     const std::function<NativeT(absl::Span<const int64_t>, int)>& generator) {
+  CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
   return PopulateInternal<NativeT>(
       [&](absl::Span<const int64_t> indexes, int thread_id) {
         return generator(indexes, thread_id);
@@ -1467,6 +1495,8 @@ TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::PopulateParallel(
 
 template <typename NativeT>
 void MutableLiteralBase::PopulateWithValue(NativeT value) {
+  CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
   CHECK(shape().IsArray());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
@@ -1477,6 +1507,8 @@ void MutableLiteralBase::PopulateWithValue(NativeT value) {
 
 template <typename NativeT>
 Literal LiteralBase::Replicate(int64_t times) const {
+  CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
   DimensionVector bounds = {times};
   bounds.reserve(shape().dimensions_size() + 1);
   for (int64_t bound : shape().dimensions()) {
