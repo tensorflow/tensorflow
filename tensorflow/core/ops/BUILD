@@ -534,7 +534,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime:type_inference",
         "//third_party/eigen3",
     ],
 )
