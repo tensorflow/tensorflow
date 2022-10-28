@@ -31,6 +31,14 @@ package(
 )
 
 filegroup(
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "byte_swap_array.cc",
+        "byte_swap_array.h",
+    ],
+)
+
+filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "command_line_flags.cc",
@@ -62,6 +70,7 @@ filegroup(
 filegroup(
     name = "framework_internal_private_hdrs",
     srcs = [
+        "byte_swap_array.h",
         "command_line_flags.h",
         "device_name_utils.h",
         "env_var.h",
@@ -112,6 +121,17 @@ filegroup(
         "ptr_util.h",
         "stat_summarizer_options.h",
         "use_cudnn.h",
+    ],
+)
+
+cc_library(
+    name = "byte_swap_array",
+    srcs = ["byte_swap_array.cc"],
+    hdrs = ["byte_swap_array.h"],
+    deps = [
+        "//tensorflow/tsl/platform:byte_order",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
     ],
 )
 

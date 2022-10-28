@@ -46,7 +46,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/mem.h"
-#include "tensorflow/tsl/util/tensor_bundle/byte_swap_array.h"
+#include "tensorflow/tsl/util/byte_swap_array.h"
 
 namespace xla {
 namespace {

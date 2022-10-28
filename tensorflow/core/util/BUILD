@@ -66,6 +66,7 @@ filegroup(
         "padding.h",
         "tensor_format.cc",
         "tensor_format.h",
+        "//tensorflow/tsl/util:mobile_srcs_no_runtime",
     ],
 )
 

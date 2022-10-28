@@ -518,7 +518,7 @@ cc_library(
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/util/tensor_bundle:byte_swap_array",
+        "//tensorflow/tsl/util:byte_swap_array",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
