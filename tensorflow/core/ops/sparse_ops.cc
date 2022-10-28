@@ -208,6 +208,19 @@ REGISTER_OP("SparseToDense")
       return OkStatus();
     });
 
+REGISTER_OP("SparseIndicesToRaggedRowSplits")
+    .Attr("IndexType: {int32, int64}")
+    .Attr("validate_ragged_right: bool = true")
+    .Input("indices: IndexType")
+    .Input("dense_shape: IndexType")
+    .Output("row_splits: IndexType")
+    .Output("invalid_flag: int32")
+    .SetShapeFn([](InferenceContext* c) {
+        c->set_output(0, c->UnknownShape());
+        c->set_output(1, c->Vector(1));
+        return OkStatus();
+    });
+
 REGISTER_OP("SparseConcat")
     .Input("indices: N * int64")
     .Input("values: N * T")

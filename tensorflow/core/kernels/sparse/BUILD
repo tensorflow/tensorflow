@@ -44,6 +44,7 @@ tf_kernel_library(
         "nnz_op.cc",
         "softmax_op.cc",
         "sparse_cholesky_op.cc",
+        "sparse_indices_to_ragged_row_splits_op.cc",
         "sparse_mat_mul_op.cc",
         "sparse_matrix_components_op.cc",
         "sparse_ordering_amd_op.cc",
@@ -53,6 +54,7 @@ tf_kernel_library(
     ],
     hdrs = [
         "kernels.h",
+        "sparse_indices_to_ragged_row_splits_op.h",
         "transpose_op.h",
         "zeros_op.h",
     ],
@@ -60,6 +62,8 @@ tf_kernel_library(
         "zeros_op.h",
         "kernels.h",
         "kernels_gpu.cu.cc",
+        "sparse_indices_to_ragged_row_splits_op.h",
+        "sparse_indices_to_ragged_row_splits_op.cu.cc",
     ],
     deps = [
         ":sparse_matrix",
