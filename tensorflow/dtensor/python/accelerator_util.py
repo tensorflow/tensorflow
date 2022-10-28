@@ -20,7 +20,6 @@ from absl import logging
 
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
-from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import tpu_util
 from tensorflow.python.eager import context
@@ -180,7 +179,7 @@ def initialize_accelerator_system(
                      "Allowed values are CPU, GPU, or TPU")
 
   if config.gpu_use_nccl_communication():
-    logical_gpu_count = api.num_local_devices("GPU")
+    logical_gpu_count = config.num_local_devices("GPU")
     physical_gpu_count = len(tf_config.list_physical_devices("GPU"))
     if logical_gpu_count != physical_gpu_count:
       raise ValueError(
@@ -191,8 +190,8 @@ def initialize_accelerator_system(
 
   # Configure logical host CPU devices for accelerators.
   if device_type in ("GPU", "TPU"):
-    num_local_devices = api.num_local_devices(device_type)
-    if api.num_local_devices("CPU") < num_local_devices:
+    num_local_devices = config.num_local_devices(device_type)
+    if config.num_local_devices("CPU") < num_local_devices:
       tf_config.set_logical_device_configuration(
           tf_config.list_physical_devices("CPU")[0],
           [context.LogicalDeviceConfiguration()] * num_local_devices)
