@@ -66,15 +66,6 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
     pm.addNestedPass<FuncOp>(gml_st::createTilingGPUWarpPass());
     pm.addNestedPass<FuncOp>(createScalarizationPass());
 
-    // Clean unit dims.
-    pm.addPass(mlir::createLinalgFoldUnitExtentDimsPass());
-
-    // GPU-specific tiling for cwise ops on the warp level.
-    // TODO(frgossen): This should be merged with the above tiling-reduction
-    // pass.
-    pm.addNestedPass<FuncOp>(gml_st::createTilingGPUWarpPass());
-    pm.addNestedPass<FuncOp>(createScalarizationPass());
-
     pm.addNestedPass<FuncOp>(gml_st::createVectorizeGmlStLoopsPass(
         /*vectorizeGmlStOps=*/true, /*distributionLabels=*/{"warp", "thread"}));
   } else {
