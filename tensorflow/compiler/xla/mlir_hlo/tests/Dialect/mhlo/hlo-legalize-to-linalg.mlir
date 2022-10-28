@@ -1044,7 +1044,9 @@ func.func @transpose_dynamic(%arg0: tensor<?x?x9x?xi32>) -> tensor<?x?x?x9xi32> 
 // CHECK-PRIMITIVE: %[[D3:.*]] = tensor.dim %arg0, %[[C3]]
 // CHECK-PRIMITIVE: %[[INIT:.*]] = tensor.empty(%[[D1]], %[[D0]], %[[D3]]) : tensor<?x?x?x9xi32>
 // CHECK-PRIMITIVE: linalg.transpose
-// CHECK-PRIMITIVE-SAME: ins(%arg0 : tensor<?x?x9x?xi32>) outs(%[[INIT]] : tensor<?x?x?x9xi32>) permutation = [1, 0, 3, 2]
+// CHECK-PRIMITIVE-NEXT: ins(%arg0 : tensor<?x?x9x?xi32>)
+// CHECK-PRIMITIVE-NEXT: outs(%[[INIT]] : tensor<?x?x?x9xi32>)
+// CHECK-PRIMITIVE-NEXT: permutation = [1, 0, 3, 2]
 // CHECK-PRIMITIVE-SAME: {someattr}
 
 // -----
