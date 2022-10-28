@@ -208,73 +208,6 @@ func.func @reduce_row(%lhs: tensor<?x?xf32>,
 // CHECK-FOR:         gml_st.set_yield %[[GENERIC_0]] into %[[OUT_0]][%[[TILE_4]]]
 // CHECK-FOR:       return %[[FOR_0]]
 
-
-// -----
-
-func.func @thlo_reduction(
-  %arg0: tensor<256x512xf32>, %arg1: tensor<256xf32>) -> tensor<256xf32> {
-  %result = thlo.reduction ins(%arg0 : tensor<256x512xf32>)
-      outs(%arg1 : tensor<256xf32>) dimensions = [1] { op_label = "tile-2d" }
-      (%arg2: f32, %arg3: f32) {
-    %add = arith.addf %arg3, %arg2 : f32
-    thlo.yield %add : f32
-  }
-  return %result : tensor<256xf32>
-}
-
-// CHECK-FOR-LABEL: @thlo_reduction
-// CHECK-FOR-SAME: %[[OPERAND:.*]]: tensor<256x512xf32>
-// CHECK-FOR-SAME: %[[INIT:.*]]: tensor<256xf32>
-// CHECK-FOR:      %[[RESULT:.*]] = gml_st.for (%[[I:.*]], %[[J:.*]]) =
-// CHECK-FOR:      outs (%[[OUT:.*]] = %[[INIT]]: tensor<256xf32>)
-// CHECK-FOR:      %[[TILE:.*]] = gml_st.tile [%[[I]], %[[J]]] [256, 512] [1, 1]
-// CHECK-FOR:      %[[OP_SLICE:.*]] = gml_st.materialize %[[OPERAND]][%[[TILE]]]
-// CHECK-FOR:      %[[TILE2:.*]] = gml_st.tile [%[[I]]] [256] [1]
-// CHECK-FOR:      %[[INIT_SLICE:.*]] = gml_st.materialize %[[OUT]][%[[TILE2]]]
-// CHECK-FOR:      %[[REDUCTION:.*]] = thlo.reduction ins(%[[OP_SLICE]] : tensor<256x512xf32>) outs(%[[INIT_SLICE]] : tensor<256xf32>)
-// CHECK-FOR:      gml_st.set_yield %[[REDUCTION]] into %[[OUT]][%[[TILE2]]]
-// CHECK-FOR:      return %[[RESULT:.*]] : tensor<256xf32>
-
-// CHECK-PARALLEL-LABEL: @thlo_reduction
-
-// -----
-
-func.func @thlo_variadic_reduction(
-    %inp0: tensor<256x512xf32>, %inp1: tensor<256x512xi64>,
-    %out0: tensor<256xf32>, %out1: tensor<256xi64>)
-    -> (tensor<256xf32>, tensor<256xi64>) {
-  %result0, %result1 = thlo.reduction
-      ins(%inp0: tensor<256x512xf32>, %inp1: tensor<256x512xi64>)
-      outs(%out0: tensor<256xf32>, %out1: tensor<256xi64>)
-      dimensions = [1] { op_label = "tile-2d" }
-      (%in0: f32, %in1: i64, %init0: f32, %init1: i64) {
-    %add = arith.addf %in0, %init0: f32
-    %add2 = arith.addi %in1, %init1: i64
-    thlo.yield %add, %add2: f32, i64
-  }
-  return %result0, %result1 : tensor<256xf32>, tensor<256xi64>
-}
-
-// CHECK-FOR-LABEL: @thlo_variadic_reduction
-// CHECK-FOR-SAME: %[[OPERAND:.*]]: tensor<256x512xf32>
-// CHECK-FOR-SAME: %[[OPERAND2:.*]]: tensor<256x512xi64>
-// CHECK-FOR-SAME: %[[INIT:.*]]: tensor<256xf32>
-// CHECK-FOR-SAME: %[[INIT2:.*]]: tensor<256xi64>
-// CHECK-FOR:      %[[RESULT:.*]] = gml_st.for (%[[I:.*]], %[[J:.*]]) =
-// CHECK-FOR:      outs (%[[OUT:.*]] = %[[INIT]]: tensor<256xf32>, %[[OUT2:.*]] = %[[INIT2]]: tensor<256xi64>)
-// CHECK-FOR:      %[[TILE:.*]] = gml_st.tile [%[[I]], %[[J]]] [256, 512] [1, 1]
-// CHECK-FOR:      %[[OP_SLICE:.*]] = gml_st.materialize %[[OPERAND]][%[[TILE]]]
-// CHECK-FOR:      %[[OP2_SLICE:.*]] = gml_st.materialize %[[OPERAND2]][%[[TILE]]]
-// CHECK-FOR:      %[[TILE2:.*]] = gml_st.tile [%[[I]]] [256] [1]
-// CHECK-FOR:      %[[INIT_SLICE:.*]] = gml_st.materialize %[[OUT]][%[[TILE2]]]
-// CHECK-FOR:      %[[INIT2_SLICE:.*]] = gml_st.materialize %[[OUT2]][%[[TILE2]]]
-// CHECK-FOR:      %[[REDUCTION:.*]]:2 = thlo.reduction ins(%[[OP_SLICE]] : tensor<256x512xf32>, %[[OP2_SLICE]] : tensor<256x512xi64>) outs(%[[INIT_SLICE]] : tensor<256xf32>, %[[INIT2_SLICE]] : tensor<256xi64>)
-// CHECK-FOR:      gml_st.set_yield %[[REDUCTION]]#0 into %[[OUT]][%[[TILE2]]]
-// CHECK-FOR:      %[[REDUCTION]]#1 into %[[OUT2]][%[[TILE2]]]
-// CHECK-FOR:      return %[[RESULT:.*]] : tensor<256xf32>, tensor<256xi64>
-
-// CHECK-PARALLEL-LABEL: @thlo_variadic_reduction
-
 // -----
 
 func.func @thlo_map(%lhs: tensor<256x512xf32>, %rhs: tensor<256x512xf32>,
@@ -308,37 +241,6 @@ func.func @thlo_map(%lhs: tensor<256x512xf32>, %rhs: tensor<256x512xf32>,
 
 // CHECK-PARALLEL-LABEL: @thlo_map
 // CHECK-PARALLEL: gml_st.parallel
-// -----
-
-func.func @thlo_transpose(%input: tensor<256x512x64xf32>,
-                          %init: tensor<512x64x256xf32>)
-                          -> tensor<512x64x256xf32> {
-  %transpose = thlo.transpose
-      ins(%input:tensor<256x512x64xf32>)
-      outs(%init:tensor<512x64x256xf32>)
-      permutation = [1, 2, 0]
-      { op_label = "tile-2d" }
-  func.return %transpose : tensor<512x64x256xf32>
-}
-// CHECK-FOR-LABEL: func @thlo_transpose
-// CHECK-FOR-SAME:    %[[INPUT:[a-zA-Z0-9]*]]: tensor<256x512x64xf32>
-// CHECK-FOR-SAME:    %[[INIT:.*]]: tensor<512x64x256xf32>
-// CHECK-FOR:       %[[ZERO:.*]] = arith.constant 0
-// CHECK-FOR:       %[[RESULT:.*]] = gml_st.for (%[[I:.*]], %[[J:.*]]) =
-// CHECK-FOR:         %[[INPUT_TILE:.*]] = gml_st.tile [%[[I]], %[[J]], 0]
-// CHECK-FOR:         %[[INPUT_SLICE:.*]] = gml_st.materialize
-// CHECK-FOR-SAME:       [%[[INPUT_TILE]]]
-// CHECK-FOR:         %[[INIT_TILE:.*]] = gml_st.tile [%[[J]], 0, %[[I]]]
-// CHECK-FOR:         %[[INIT_SLICE:.*]] = gml_st.materialize
-// CHECK-FOR-SAME:       [%[[INIT_TILE]]]
-// CHECK-FOR:         %[[RES_SLICE:.*]] = thlo.transpose
-// CHECK-FOR-SAME:       ins(%[[INPUT_SLICE]] :
-// CHECK-FOR-SAME:       outs(%[[INIT_SLICE]]
-// CHECK-FOR:         gml_st.set_yield %[[RES_SLICE]]
-
-// CHECK-PARALLEL-LABEL: func @thlo_transpose
-// CHECK-PARALLEL: gml_st.parallel
-
 // -----
 
 func.func @dynamic_broadcast_in_dim_at_tile(%init : tensor<?x?x?xf32>,
