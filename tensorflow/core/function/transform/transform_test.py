@@ -56,11 +56,13 @@ class Model(module_lib.Module):
 
 def apply_transform(f, transform_fn):
   """Wrapper to apply a transformation on every traced tf.function."""
+
   @def_function.function
   def wrapped(*args):
     updated_cf = transform.transform_function(
         f, inputs=args, transform_fn=transform_fn)
     return updated_cf(*args)
+
   return wrapped
 
 
@@ -79,6 +81,18 @@ class TransformTest(test.TestCase, parameterized.TestCase):
           testcase_name="transform_and_mlir_pipeline",
           transform_fn=add_to_multiply,
           mlir_pipeline="test-pass"),
+      dict(
+          testcase_name="transform_list",
+          transform_fn=[add_to_multiply],
+          mlir_pipeline=None),
+      dict(
+          testcase_name="mlir_pipeline_list",
+          transform_fn=None,
+          mlir_pipeline=["test-pass"]),
+      dict(
+          testcase_name="transform_list_and_mlir_pipeline_list",
+          transform_fn=[add_to_multiply],
+          mlir_pipeline=["test-pass"]),
   )
   @test_util.run_v2_only
   def test_concrete_function_with(self, transform_fn, mlir_pipeline):
@@ -114,6 +128,7 @@ class TransformTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def test_function_spec(self):
+
     @def_function.function
     def f(x, y):
       return math_ops.add(x, y, name="x_plus_y")
@@ -176,6 +191,7 @@ class TransformTest(test.TestCase, parameterized.TestCase):
         b = lambda i: (math_ops.add(i, z, name="x_plus_y"))
         i = control_flow_ops.while_loop_v2(c, b, [i])
         return i
+
       y = add()
       return math_ops.add(x, y, name="x_plus_y")
 
@@ -253,6 +269,7 @@ class TransformTest(test.TestCase, parameterized.TestCase):
             constant_op.constant(1.1, dtypes.float32),
             constant_op.constant(2.0, dtypes.float32),
             constant_op.constant(True, dtypes.bool)), (4.2))
+
 
 if __name__ == "__main__":
   test_pass.RegisterTestPass()
