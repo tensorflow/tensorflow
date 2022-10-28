@@ -1817,6 +1817,43 @@ ParseResult SetYieldOp::parse(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
+namespace {
+/// Folds UnrealizedConversionCast of TileType into SetYieldOp.
+struct FoldTileCastIntoSetYield : public OpRewritePattern<SetYieldOp> {
+  using OpRewritePattern<SetYieldOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(SetYieldOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!llvm::any_of(op.getSets(), [](auto set) {
+          return set.template getDefiningOp<UnrealizedConversionCastOp>() !=
+                 nullptr;
+        }))
+      return failure();
+    SmallVector<Value> newSrcs{op.getSrcs()};
+    SmallVector<Value> newSets{op.getSets()};
+    for (auto &&[src, set] : llvm::zip(newSrcs, newSets)) {
+      auto cast = set.getDefiningOp<UnrealizedConversionCastOp>();
+      if (!cast) continue;
+      set = cast.getOperand(0);
+      Type castResultType = src.getType();
+      if (auto shapedType = dyn_cast<ShapedType>(castResultType)) {
+        castResultType =
+            shapedType.clone(set.getType().cast<TileType>().getShape(),
+                             shapedType.getElementType());
+        src = rewriter.create<tensor::CastOp>(op.getLoc(), castResultType, src);
+      }
+    }
+    rewriter.replaceOpWithNewOp<SetYieldOp>(op, newSrcs, op.getDsts(), newSets);
+    return success();
+  }
+};
+}  // namespace
+
+void SetYieldOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                             MLIRContext *context) {
+  results.add<FoldTileCastIntoSetYield>(context);
+}
+
 }  // namespace gml_st
 }  // namespace mlir
 

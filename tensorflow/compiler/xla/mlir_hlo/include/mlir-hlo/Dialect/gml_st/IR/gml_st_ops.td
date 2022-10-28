@@ -371,6 +371,8 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [Pure, ReturnLike,
 
     unsigned getNumDstOperands() { return getNumOperands() - getNumUpdates(); }
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 // TODO(b/253560795): Figure out where this operation shoud live, and how to
