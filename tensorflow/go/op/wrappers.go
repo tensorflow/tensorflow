@@ -56267,11 +56267,7 @@ func XlaBroadcastHelper(scope *Scope, lhs tf.Output, rhs tf.Output, broadcast_di
 // experimental flag.
 //
 // This is an experimental op to allow a smooth evolution of jax2tf towards
-// emitting and serializing MHLO directly from JAX. At the moment this op
-// carries a serialized MHLO module, therefore there are no backward-compatibility
-// guarantees, and should not be used for serialization.
-// Eventually, the op will carry a MHLO object, which will have
-// backwards-compatibility guarantees.
+// emitting and serializing StableHLO directly from JAX.
 //
 // The serialized module must return a tuple if and only if the Sout is an empty
 // list or a list with more than 1 elements. The length of Tout and Sout must
@@ -56294,6 +56290,11 @@ func XlaBroadcastHelper(scope *Scope, lhs tf.Output, rhs tf.Output, broadcast_di
 //
 // to the HLO module.
 //
+//	version: Changes when we change the semantics of the op, to support backwards
+//
+// compatibility. Version 1 carries an MHLO text or bytecode `module`. From
+// version 2, the op carries a StableHLO text or bytecode `module`.
+//
 //	module: A serialized computation, a text or bytecode representation of
 //
 // an mlir.Module.
@@ -56303,11 +56304,11 @@ func XlaBroadcastHelper(scope *Scope, lhs tf.Output, rhs tf.Output, broadcast_di
 //	dim_args_spec: the specification for the dimension arguments, one for each
 //
 // dimension argument. In absence of dynamic shapes this list is empty.
-func XlaCallModule(scope *Scope, args []tf.Output, module string, Sout []tf.Shape, Tout []tf.DataType, dim_args_spec []string) (output []tf.Output) {
+func XlaCallModule(scope *Scope, args []tf.Output, version int64, module string, Sout []tf.Shape, Tout []tf.DataType, dim_args_spec []string) (output []tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
-	attrs := map[string]interface{}{"module": module, "Sout": Sout, "Tout": Tout, "dim_args_spec": dim_args_spec}
+	attrs := map[string]interface{}{"version": version, "module": module, "Sout": Sout, "Tout": Tout, "dim_args_spec": dim_args_spec}
 	opspec := tf.OpSpec{
 		Type: "XlaCallModule",
 		Input: []tf.Input{
