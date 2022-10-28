@@ -5770,7 +5770,7 @@ def TFL_AveragePool3DOp: TFL_Op<"average_pool_3d", [
     TFL_OperandHasRank<0, 5>,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect,
+    Pure,
     SameOperandsAndResultsScale,
     QuantizableResult,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
@@ -5803,7 +5803,7 @@ def TFL_MaxPool3DOp : TFL_Op<"max_pool_3d", [
     TFL_OperandHasRank<0, 5>,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect,
+    Pure,
     SameOperandsAndResultsScale,
     QuantizableResult,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
