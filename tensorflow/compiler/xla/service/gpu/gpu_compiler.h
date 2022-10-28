@@ -51,11 +51,11 @@ class GpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
                                     absl::Span<const uint8_t> gpu_binary) {
     XlaRuntimeExecutableProto xla_runtime_executable;
     *xla_runtime_executable.mutable_hlo_module_proto() = hlo;
-    *xla_runtime_executable.mutable_entry_func_attrs() = entry_func_attrs;
     xla_runtime_executable.set_obj_file(obj_file);
     xla_runtime_executable.set_mlir_module(mlir_module);
     *xla_runtime_gpu_executable_.mutable_xla_runtime_executable() =
         xla_runtime_executable;
+    *xla_runtime_gpu_executable_.mutable_entry_func_attrs() = entry_func_attrs;
     xla_runtime_gpu_executable_.set_gpu_asm_text(gpu_asm_text);
     xla_runtime_gpu_executable_.set_gpu_binary(gpu_binary.data(),
                                                gpu_binary.size());
