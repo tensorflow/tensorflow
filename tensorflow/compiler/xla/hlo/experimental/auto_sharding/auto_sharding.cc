@@ -1791,9 +1791,9 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
 }
 
 void PrintLargestInstructions(
-    const std::vector<int64_t>& s_val,
-    const std::vector<std::vector<double>>& m,
-    const std::vector<std::vector<int>>& L,
+    const std::vector<int64_t>& chosen_strategy,
+    const std::vector<std::vector<double>>& memory_cost,
+    const std::vector<std::vector<int>>& liveness,
     const std::vector<std::string>& instruction_names) {
   // This memory consumption computation is different from
   // that in PrintAutoShardingSolution() because how L and m are created to be
@@ -1801,12 +1801,10 @@ void PrintLargestInstructions(
 
   std::vector<int64_t> instruction_ids;
   std::vector<std::pair<size_t, double>> time_memory_usage;
-  for (size_t t = 0; t < L.size(); ++t) {
+  for (size_t t = 0; t < liveness.size(); ++t) {
     double mem = 0.0;
-    for (auto i : L[t]) {
-      double tmp = 0.0;
-      tmp += m[i][s_val[i]];
-      mem += tmp;
+    for (auto i : liveness[t]) {
+      mem += memory_cost[i][chosen_strategy[i]];
     }
     time_memory_usage.push_back(std::make_pair(t, mem));
   }
@@ -1827,8 +1825,8 @@ void PrintLargestInstructions(
   std::vector<std::pair<size_t, double>> instruction_mem;
   absl::flat_hash_set<size_t> instruction_set;
   for (size_t t = 0; t < k; t++) {
-    for (auto i : L[time_memory_usage.at(t).first]) {
-      double mem = m[i][s_val[i]];
+    for (auto i : liveness[time_memory_usage.at(t).first]) {
+      double mem = memory_cost[i][chosen_strategy[i]];
       if (mem > 100 * 1024 * 1024 &&
           instruction_set.find(i) == instruction_set.end()) {
         instruction_mem.push_back(std::make_pair(i, mem));
@@ -2031,7 +2029,7 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
   }
   // c.
   if (M > 0) {
-    for (size_t t = 0; t < N; ++t) {
+    for (size_t t = 0; t < L.size(); ++t) {
       std::string str = "[";
       for (auto i : L[t]) {
         absl::StrAppend(&str, i, ", ");
@@ -2051,8 +2049,10 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
   // d. specified via "BoolVarArray"
   // e.
   for (size_t i = 0; i < num_edges; ++i) {
+    std::pair<int, int> edge = E[i];
     MPConstraint* constraint = solver->MakeRowConstraint(
-        1.0, 1.0, absl::StrCat("sum(e[", i, "][*]) = 1"));
+        1.0, 1.0,
+        absl::StrCat("sum(e[", edge.first, "][", edge.second, "][*]) = 1"));
     for (size_t j = 0; j < e[i].size(); ++j) {
       constraint->SetCoefficient(e[i][j], 1.0);
     }
@@ -2154,12 +2154,12 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
   }
 
   // Return value
-  std::vector<int64_t> s_val(N, -1), e_val(num_edges, -1);
+  std::vector<int64_t> chosen_strategy(N, -1), e_val(num_edges, -1);
   for (int i = 0; i < N; ++i) {
     for (int j = 0; j < s[i].size(); ++j) {
       // if lhs == 1
       if (s[i][j]->solution_value() > 0.5) {
-        s_val[i] = j;
+        chosen_strategy[i] = j;
         break;
       }
     }
@@ -2180,8 +2180,8 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
   } else {
     LOG(INFO) << "memory budget: " << M / (1024 * 1024 * 1024) << " GB";
   }
-  PrintLargestInstructions(s_val, m, L, instruction_names);
-  return std::make_tuple(std::move(s_val), std::move(e_val),
+  PrintLargestInstructions(chosen_strategy, m, L, instruction_names);
+  return std::make_tuple(std::move(chosen_strategy), std::move(e_val),
                          solver->Objective().Value());
 }
 
@@ -2284,22 +2284,26 @@ CallSolver(const HloInstructionSequence& sequence,
   }
 
   // Serialize liveness_set
-  std::vector<std::vector<int>> L(N);
-  for (size_t i = 0; i < N; ++i) {
-    std::vector<int>& current_liveness_set_indices = L[i];
-    std::function<void(const StrategyVector*)> traverse_live_instructions;
-    traverse_live_instructions = [&](const StrategyVector* strategies) {
-      if (strategies->is_tuple) {
-        for (const auto& child : strategies->childs) {
-          traverse_live_instructions(child.get());
-        }
+  std::vector<std::vector<int>> L(liveness_set.size());
+  for (size_t t = 0; t < liveness_set.size(); ++t) {
+    std::vector<int>& current_liveness_set_indices = L[t];
+    std::function<void(const StrategyVector*, const ShapeIndex&)>
+        traverse_live_instructions;
+    traverse_live_instructions = [&](const StrategyVector* strategies,
+                                     const ShapeIndex& index) {
+      if (!index.empty()) {
+        current_liveness_set_indices.push_back(
+            strategies->childs.at(index.front())->id);
       } else {
         current_liveness_set_indices.push_back(strategies->id);
       }
     };
-    for (const HloValue* value :
-         liveness_set[leaf_strategies[i]->instruction_id]) {
-      traverse_live_instructions(strategy_map.at(value->instruction()).get());
+    for (const HloValue* value : liveness_set[t]) {
+      if (value->instruction()->shape().IsTuple() && value->index().empty()) {
+        continue;
+      }
+      traverse_live_instructions(strategy_map.at(value->instruction()).get(),
+                                 value->index());
     }
   }
   return CallORToolsSolver(N, M, s_len, s_follow, E, L, c, d, m, r, A, v,
@@ -2677,7 +2681,8 @@ std::string PrintSolutionMemoryUsage(const LivenessSet& liveness_set,
       const HloInstruction* ins = val->instruction();
       auto mem = calculate_memory_usage(strategy_map.at(ins).get());
       if (mem > 100 * 1024 * 1024) {
-        instruction_mem.push_back(std::make_pair(ins->name(), mem));
+        instruction_mem.push_back(std::make_pair(
+            absl::StrCat(ins->name(), val->index().ToString()), mem));
       }
     }
   }
@@ -2814,13 +2819,20 @@ int64_t MemoryBudgetLowerBound(const HloModule& module,
     int64_t memory_usage = 0;
     for (const HloValue* value : liveness_set[t]) {
       size_t tmp;
+      if (value->instruction()->shape().IsTuple() && value->index().empty()) {
+          continue;
+      }
+      Shape shape =
+          ShapeUtil::GetSubshape(value->instruction()->shape(), value->index());
       if (value->instruction()->has_sharding()) {
-        tmp = GetShardedInstructionSize(value->instruction()->shape(),
-                                        num_devices,
-                                        value->instruction()->sharding());
+          tmp = GetShardedInstructionSize(
+              shape, num_devices,
+              !value->index().empty()
+                  ? value->instruction()->sharding().GetSubSharding(
+                        value->instruction()->shape(), value->index())
+                  : value->instruction()->sharding());
       } else {
-        tmp = GetShardedInstructionSize(value->instruction()->shape(),
-                                        num_devices);
+          tmp = GetShardedInstructionSize(shape, num_devices);
       }
       memory_usage += tmp;
     }
@@ -2927,6 +2939,7 @@ StatusOr<bool> AutoSharding::Run(
   bool module_is_changed = false;
   VLOG(1) << "Start auto sharding pass";
 
+  bool set_to_memory_lower_bound = (option_.memory_budget_per_device == 0);
   TF_RETURN_IF_ERROR(option_.CheckAndSetup());
   VLOG(1) << "AutoShardingOptions:\n" << option_.ToString();
   // ----- Set options for this pass -----
@@ -3097,7 +3110,7 @@ StatusOr<bool> AutoSharding::Run(
         1 + memory_lower_bound / (1024 * 1024 * 1024);
     LOG(INFO) << "Memory consumption lower bound is " << memory_lower_bound_gb
               << " GB.";
-    if (option_.memory_budget_per_device == 0) {
+    if (set_to_memory_lower_bound) {
       LOG(INFO)
           << "--xla_tpu_auto_spmd_partitioning_memory_budget_gb is 0, setting "
              "option.memory_budget_per_device to be the estimated memory "
