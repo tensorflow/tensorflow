@@ -165,7 +165,7 @@ Status ReplaceSoftmaxWithCustomCall(HloInstruction* root,
     TF_RETURN_IF_ERROR(
         root->parent()->ReplaceInstruction(root, softmax_custom_call));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // anonymous namespace
