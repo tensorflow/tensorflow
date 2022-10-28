@@ -19,9 +19,7 @@ cc_library(
     name = "coordination_client",
     hdrs = ["coordination_client.h"],
     deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core/distributed_runtime:call_options",
-        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_client",
     ],
 )
 
@@ -87,6 +85,7 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:test_utils",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/protobuf:coordination_config_proto_cc",
@@ -126,6 +125,7 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/tsl/protobuf:coordination_config_proto_cc",
         "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/memory",

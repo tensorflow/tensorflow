@@ -39,6 +39,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:numpy_hdr",
         "//tensorflow/python/lib/core:safe_ptr_hdr",
         "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
+        "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
     ],
     deps = [
         "//third_party/eigen3",

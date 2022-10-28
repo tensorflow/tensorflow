@@ -31,3 +31,20 @@ tsl_cc_test(
         "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
     ],
 )
+
+cc_library(
+    name = "coordination_client",
+    hdrs = ["coordination_client.h"],
+    deps = [
+        "//tensorflow/tsl/distributed_runtime:call_options",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
+    ],
+)
+
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "coordination_client.h",
+    ],
+)

@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/time/time.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -35,7 +36,6 @@ class Env;
 namespace tensorflow {
 class CoordinationServiceConfig;
 class CoordinatedTask;
-class ServerDef;
 
 // CoordinationServiceAgent defines the interface for tasks to communicate with
 // the coordination service instance (which implements

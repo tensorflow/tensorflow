@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/distributed_runtime/coordination/test_device.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
