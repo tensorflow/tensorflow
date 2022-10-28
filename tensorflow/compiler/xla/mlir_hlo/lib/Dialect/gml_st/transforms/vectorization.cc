@@ -119,6 +119,36 @@ struct MaterializeFromSingleElementToExtractPattern
   }
 };
 
+// Prepend a set_yield of scalar into 1-element vector with a vector.insert.
+struct SetYieldOfScalarToVectorPattern : public OpRewritePattern<SetYieldOp> {
+  using OpRewritePattern<SetYieldOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(SetYieldOp op,
+                                PatternRewriter &rewriter) const override {
+    auto tryRewrite = [&](Value dst, Value set, OpOperand &src) {
+      if (!dst.getType().isa<VectorType>()) return failure();
+      if (src.get().getType().isa<VectorType>()) return failure();
+      auto tileOp = set.getDefiningOp<TileOp>();
+      if (!tileOp || !tileOp.getOffsets().empty()) return failure();
+
+      src.set(rewriter.create<vector::InsertOp>(op.getLoc(), src.get(), dst,
+                                                tileOp.getStaticOffsets()));
+      return success();
+    };
+
+    if (llvm::none_of(
+            llvm::zip_first(op.getDsts(), op.getSets(), op->getOpOperands()),
+            [&](auto &&tuple) {
+              return succeeded(std::apply(tryRewrite, tuple));
+            })) {
+      return rewriter.notifyMatchFailure(
+          op, "expected scalar srcs and static offsets");
+    }
+
+    return success();
+  }
+};
+
 template <typename OpTy>
 struct VectorizationPattern : public mlir::OpRewritePattern<OpTy> {
   VectorizationPattern(MLIRContext *context,
@@ -533,7 +563,8 @@ struct VectorizeGmlStLoopsPass
 
     RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
     patterns.add<TransferReadOfOneDimExpandShape,
-                 MaterializeFromSingleElementToExtractPattern>(ctx);
+                 MaterializeFromSingleElementToExtractPattern,
+                 SetYieldOfScalarToVectorPattern>(ctx);
     patterns.add<VectorizationPattern<FillOp>>(ctx, fillOpFilter);
     patterns.add<VectorizationPattern<GenericOp>>(ctx, genericOpFilter);
     patterns.add<VectorizationPattern<MatmulOp>>(ctx, matmulOpFilter);

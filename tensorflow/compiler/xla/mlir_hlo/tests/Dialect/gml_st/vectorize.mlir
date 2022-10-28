@@ -173,7 +173,6 @@ func.func @read_of_empty_int_to_constant(%pad : i8) -> vector<32xi8> {
 }
 // CHECK: %[[RESULT:.*]] = arith.constant dense<0> : vector<32xi8>
 // CHECK: return %[[RESULT]]
-
 // -----
 
 // CHECK-LABEL: @materialize_scalar_from_0D_vector(
@@ -198,3 +197,17 @@ func.func @materialize_scalar_from_single_element_vector(
 }
 // CHECK: %[[R:.*]] = vector.extract %[[V]][0, 0]
 // CHECK: return %[[R]]
+
+
+// -----
+
+// CHECK-LABEL: @set_yield_scalar_into_vector(
+// CHECK-SAME: %[[F:.*]]: f32, %[[V:.*]]: vector<1x1xf32>)
+func.func @set_yield_scalar_into_vector(
+  %f: f32, %v: vector<1x1xf32>) {
+  %tile = gml_st.tile [0, 0] [1, 1] [1, 1] : !gml_st.tile<1x1>
+  gml_st.set_yield %f into %v[%tile]
+    : f32 into vector<1x1xf32>[!gml_st.tile<1x1>]
+}
+// CHECK: %[[R:.*]] = vector.insert %[[F]], %[[V]] [0, 0]
+// CHECK: gml_st.set_yield %[[R]] into %[[V]]
