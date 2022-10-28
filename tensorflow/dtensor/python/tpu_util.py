@@ -28,7 +28,6 @@ from tensorflow.dtensor.python import heartbeat
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -148,7 +147,7 @@ def tpu_system_init_helper(task_id,
                            use_tfrt_host_runtime=True):
   """A helper function to initialize multi-client tpu system."""
 
-  @function.defun
+  @def_function.function
   def _tpu_init_fn():
     return gen_dtensor_ops.configure_and_initialize_global_tpu(
         use_tfrt_host_runtime=use_tfrt_host_runtime)
