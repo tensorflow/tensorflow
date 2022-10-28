@@ -8,6 +8,7 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/tsl:tsl.bzl",
+    "if_not_fuchsia",
     "tsl_copts",
 )
 load(
@@ -567,7 +568,9 @@ filegroup(
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.cc",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.h",
         "//tensorflow/tsl/platform/profile_utils:i_cpu_utils_helper.h",
-    ],
+    ] + if_not_fuchsia([
+        "subprocess.h",
+    ]),
     compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/core:__pkg__",

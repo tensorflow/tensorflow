@@ -31,6 +31,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_google",
     "if_not_android",
+    "if_not_fuchsia",
     "if_windows",
     "tf_cc_test",
     "tf_cc_tests",
@@ -1642,7 +1643,9 @@ filegroup(
         "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
         "//tensorflow/tsl/platform:mobile_srcs_only_runtime",
         "//tensorflow/tsl/platform/default:mobile_srcs_only_runtime",
-    ] + tf_google_mobile_srcs_only_runtime(),
+    ] + if_not_fuchsia([
+        "subprocess.h",
+    ]) + tf_google_mobile_srcs_only_runtime(),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
