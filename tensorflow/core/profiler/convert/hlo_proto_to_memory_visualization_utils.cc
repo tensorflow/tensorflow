@@ -36,6 +36,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/math/math_util.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/protobuf/memory_viewer_preprocess.pb.h"
 
 namespace tensorflow {
@@ -44,6 +47,7 @@ namespace {
 
 using absl::StrFormat;
 using ::xla::BufferAllocationProto;
+using ::xla::HeapSimulatorTrace;
 using ::xla::HloInstructionProto;
 using ::xla::HloProto;
 using ::xla::LayoutUtil;
@@ -343,54 +347,240 @@ void NoteSpecialAllocations(const HloProtoBufferWrapper& wrapper,
   result->set_maybe_live_out_mib(BytesToMiB(maybe_live_out_bytes));
 }
 
+// Memory usage statistics collected from heap simulator trace.
+struct HeapSimulatorStats {
+  explicit HeapSimulatorStats(const HloProtoBufferWrapper& wrapper)
+      : wrapper(wrapper) {}
+
+  void SetSimulatorTraceEventSize(int64_t size) {
+    simulator_trace_event_size = size;
+  }
+
+  // Update stats for general simulator event.
+  void UpdateOnSimulatorEvent(const HeapSimulatorTrace::Event& event) {
+    // Update memory timelines and seen buffers.
+    heap_size_bytes_timeline.push_back(heap_size_bytes);
+    unpadded_heap_size_bytes_timeline.push_back(unpadded_heap_size_bytes);
+    const auto& logical_buffer = wrapper.GetLogicalBuffer(event.buffer_id());
+    seen_logical_buffers.insert(&logical_buffer);
+    seen_buffer_allocations.insert(
+        &wrapper.GetBufferAllocation(logical_buffer));
+  }
+
+  // Update stats when memory usage increase.
+  void IncreaseMemoryUsage(const LogicalBufferProto& canonical_logical_buffer,
+                           bool init_buffer_span) {
+    logical_buffers.push_back(canonical_logical_buffer.id());
+    heap_size_bytes += canonical_logical_buffer.size();
+    const Shape& shape =
+        wrapper.GetLogicalBufferShape(canonical_logical_buffer);
+    unpadded_heap_size_bytes += ShapeUnpaddedSize(shape);
+
+    // Increase peak memory usage if needed.
+    int64_t prior_peak_heap_size_bytes = peak_heap_size_bytes;
+    peak_heap_size_bytes = std::max(peak_heap_size_bytes, heap_size_bytes);
+    if (prior_peak_heap_size_bytes != peak_heap_size_bytes) {
+      peak_heap_size_position = heap_size_bytes_timeline.size() - 1;
+      peak_unpadded_heap_size_bytes = unpadded_heap_size_bytes;
+      VLOG(1) << absl::StrFormat("New peak heap size on %d :: %d bytes",
+                                 peak_heap_size_position, peak_heap_size_bytes);
+      peak_logical_buffers = logical_buffers;
+    }
+    // Initialize the buffer lifespan if needed.
+    if (init_buffer_span) {
+      // Initialize the buffer span from the current event to the last event in
+      // heap simulator trace.
+      logical_buffer_spans[canonical_logical_buffer.id()] = {
+          heap_size_bytes_timeline.size() - 1, simulator_trace_event_size - 1};
+    }
+  }
+
+  // Update stats when memory usage decrease.
+  Status DecreaseMemoryUsage(
+      const LogicalBufferProto& canonical_logical_buffer) {
+    int64_t canonical_buffer_id = canonical_logical_buffer.id();
+    logical_buffers.erase(
+        std::remove(logical_buffers.begin(), logical_buffers.end(),
+                    canonical_buffer_id),
+        logical_buffers.end());
+    heap_size_bytes -= canonical_logical_buffer.size();
+    if (heap_size_bytes < 0) {
+      return errors::InvalidArgument(absl::StrCat(
+          "Heap size should be non-negative, but get: ", heap_size_bytes));
+    }
+    const Shape& shape =
+        wrapper.GetLogicalBufferShape(canonical_logical_buffer);
+    unpadded_heap_size_bytes -= ShapeUnpaddedSize(shape);
+    // Mark the end of this buffer.
+    logical_buffer_spans[canonical_buffer_id].second =
+        heap_size_bytes_timeline.size() - 1;
+    return OkStatus();
+  }
+
+  // Finalize the memory usage stats from heap simulator trace.
+  Status FinalizeMemoryUsage() {
+    // Add the final heap size after simulating the entire heap trace.
+    heap_size_bytes_timeline.push_back(heap_size_bytes);
+    unpadded_heap_size_bytes_timeline.push_back(unpadded_heap_size_bytes);
+
+    if (seen_buffer_allocations.size() != 1) {
+      return errors::InvalidArgument(
+          absl::StrCat("All heap simulation should work out of a single buffer "
+                       "allocation, actual seen_buffer_allocations.size():",
+                       seen_buffer_allocations.size()));
+    }
+
+    // Log stats.
+    VLOG(1) << "Found " << peak_logical_buffers.size()
+            << " logical buffers alive at point of peak heap usage.";
+
+    VLOG(1) << "Peak logical buffers: ["
+            << absl::StrJoin(peak_logical_buffers, ", ") << "]";
+
+    return OkStatus();
+  }
+
+  // Keep track of memory usage when iterating through heap simulator trace
+  // events.
+  int64_t heap_size_bytes = 0;
+  int64_t unpadded_heap_size_bytes = 0;
+  // Memory usage at peak.
+  int64_t peak_heap_size_bytes = 0;
+  int64_t peak_unpadded_heap_size_bytes = 0;
+
+  // Keep track of logical buffer IDs when iterating through heap simulator
+  // trace events.
+  std::vector<int64_t> logical_buffers;
+  // Logical buffer IDs at peak.
+  std::vector<int64_t> peak_logical_buffers;
+
+  // Heap size timeline.
+  std::vector<int64_t> heap_size_bytes_timeline;
+  std::vector<int64_t> unpadded_heap_size_bytes_timeline;
+
+  // Position of peak memory usage in the timeline.
+  int64_t peak_heap_size_position = 0;
+
+  // Logical buffers and buffer allocations that exists in heap simulator trace.
+  absl::flat_hash_set<const LogicalBufferProto*> seen_logical_buffers;
+  absl::flat_hash_set<const BufferAllocationProto*> seen_buffer_allocations;
+
+  // Lifetime span of logical buffer.
+  absl::flat_hash_map<int64_t, std::pair<int64_t, int64_t>>
+      logical_buffer_spans;
+
+  // Constants while iterating through heap simulator trace.
+  const HloProtoBufferWrapper& wrapper;
+  int64_t simulator_trace_event_size;
+};
+
+// Tracker for logical buffer sharing.
+class LogicalBufferShareTracker {
+ public:
+  // Canonical logical buffer ID and its ref count.
+  struct BufferRefCount {
+    int64_t canonical_buffer_id;
+    int32_t ref_count;
+    BufferRefCount(int64_t id, int32_t count)
+        : canonical_buffer_id(id), ref_count(count) {}
+  };
+
+  // Process ALLOC event.
+  void ProcessAllocEvent(const HeapSimulatorTrace::Event& event) {
+    // The first time a canonical buffer is allocated.
+    canonical_buffer_ref_count_[event.buffer_id()] = 1;
+  }
+
+  // Process FREE event, return canonical buffer and its ref count.
+  StatusOr<BufferRefCount> ProcessFreeEvent(
+      const HeapSimulatorTrace::Event& event) {
+    // Get the canonical buffer ID of this free event.
+    int64_t canonical_buffer_id = event.buffer_id();
+    if (const int64_t* canonical_id =
+            gtl::FindOrNull(share_with_to_canonical_, event.buffer_id())) {
+      canonical_buffer_id = *canonical_id;
+    }
+    // Decrease the ref count of canonical buffer.
+    int32_t& ref_count = canonical_buffer_ref_count_[canonical_buffer_id];
+    --ref_count;
+    if (ref_count < 0) {
+      return errors::InvalidArgument(absl::StrCat(
+          "Buffer ", canonical_buffer_id, "is freed multiple times."));
+    }
+    return BufferRefCount(canonical_buffer_id, ref_count);
+  }
+
+  // Process SHARE_WITH event, return canonical buffer and its ref count.
+  BufferRefCount ProcessShareWithEvent(const HeapSimulatorTrace::Event& event) {
+    int64_t canonical_buffer_id = event.share_with_canonical_id();
+    share_with_to_canonical_[event.buffer_id()] = canonical_buffer_id;
+    // Increase the ref count of canonical buffer.
+    int32_t& ref_count = canonical_buffer_ref_count_[canonical_buffer_id];
+    ++ref_count;
+    return BufferRefCount(canonical_buffer_id, ref_count);
+  }
+
+ private:
+  // Map from the logical buffer ID of the SHARE_WITH buffer to the logical
+  // buffer ID of the canonical buffer being shared.
+  absl::flat_hash_map<int64_t, int64_t> share_with_to_canonical_;
+  // Number of times a canonical buffer is referenced.
+  absl::flat_hash_map<int64_t, int32_t> canonical_buffer_ref_count_;
+};
+
+Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
+                                 const HeapSimulatorTrace& trace,
+                                 HeapSimulatorStats* stats) {
+  LogicalBufferShareTracker share_tracker;
+  stats->SetSimulatorTraceEventSize(trace.events_size());
+  for (const auto& event : trace.events()) {
+    stats->UpdateOnSimulatorEvent(event);
+    const LogicalBufferProto& logical_buffer =
+        wrapper.GetLogicalBuffer(event.buffer_id());
+    if (event.kind() == HeapSimulatorTrace::Event::ALLOC) {
+      share_tracker.ProcessAllocEvent(event);
+      // ALLOC event increases memory usage and initializes the buffer lifetime
+      // span.
+      stats->IncreaseMemoryUsage(logical_buffer,
+                                 /*init_buffer_span=*/true);
+    } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
+      TF_ASSIGN_OR_RETURN(auto buffer_ref_count,
+                          share_tracker.ProcessFreeEvent(event));
+      if (buffer_ref_count.ref_count == 0) {
+        // There is no more reference to the canonical buffer, the canonical
+        // buffer is finally freed. Update memory usage and memory timespan
+        // using the metadata of canonical buffer.
+        const LogicalBufferProto& canonical_buffer =
+            wrapper.GetLogicalBuffer(buffer_ref_count.canonical_buffer_id);
+        TF_RETURN_IF_ERROR(stats->DecreaseMemoryUsage(canonical_buffer));
+      }
+    } else if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
+      auto buffer_ref_count = share_tracker.ProcessShareWithEvent(event);
+      if (buffer_ref_count.ref_count == 1) {
+        // SHARE_WITH happens after the FREE of a canonical buffer.
+        const LogicalBufferProto& canonical_buffer =
+            wrapper.GetLogicalBuffer(buffer_ref_count.canonical_buffer_id);
+        // SHARE_WITH event does not initialize buffer lifetime span, it was
+        // initialized by ALLOC event using the canonical logical buffer.
+        stats->IncreaseMemoryUsage(canonical_buffer,
+                                   /*init_buffer_span=*/false);
+      }
+    } else {
+      return errors::InvalidArgument(
+          absl::StrCat("Unhandled event kind: ", event.kind()));
+    }
+  }
+  TF_RETURN_IF_ERROR(stats->FinalizeMemoryUsage());
+  return OkStatus();
+}
+
 }  // namespace
 
 absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
     const HloProto& hlo_proto, int64_t small_buffer_size,
     int64_t heap_simulator_trace_id, int64_t memory_color) {
   HloProtoBufferWrapper wrapper(hlo_proto);
-
-  std::vector<int64_t> logical_buffers;
-  std::vector<int64_t> peak_logical_buffers;
-
-  int64_t heap_size_bytes = 0;
-  int64_t unpadded_heap_size_bytes = 0;
-
-  int64_t peak_heap_size_bytes = 0;
-  int64_t unpadded_peak_heap_size_bytes = 0;  // Unpadded size at peak.
-  int64_t peak_heap_size_position = 0;
-  std::vector<double> heap_sizes;
-  std::vector<double> unpadded_heap_sizes;
-
-  // Map from the logical buffer ID of the SHARE_WITH buffer to the logical
-  // buffer ID of the canonical buffer being shared.
-  absl::flat_hash_map<int64_t, int64_t> share_with_to_canonical;
-  // Number of times a canonical buffer is referenced.
-  absl::flat_hash_map<int64_t, int32_t> canonical_buffer_ref_count;
-  absl::flat_hash_map<int64_t, std::pair<int64_t, std::optional<int64_t>>>
-      logical_buffer_spans;
-  absl::flat_hash_set<const LogicalBufferProto*> seen;
-  absl::flat_hash_set<const BufferAllocationProto*> seen_buffer_allocations;
-
-  // Increase memory usage using canonical logical buffer.
-  auto update_on_increase =
-      [&](const LogicalBufferProto& canonical_logical_buffer) {
-        logical_buffers.push_back(canonical_logical_buffer.id());
-        heap_size_bytes += canonical_logical_buffer.size();
-        const Shape& shape =
-            wrapper.GetLogicalBufferShape(canonical_logical_buffer);
-        unpadded_heap_size_bytes += ShapeUnpaddedSize(shape);
-        // Update max memory.
-        int64_t prior_peak_heap_size_bytes = peak_heap_size_bytes;
-        peak_heap_size_bytes = std::max(peak_heap_size_bytes, heap_size_bytes);
-        if (prior_peak_heap_size_bytes != peak_heap_size_bytes) {
-          peak_heap_size_position = heap_sizes.size() - 1;
-          unpadded_peak_heap_size_bytes = unpadded_heap_size_bytes;
-          VLOG(1) << StrFormat("New peak heap size on %d :: %d bytes",
-                               peak_heap_size_position, peak_heap_size_bytes);
-          peak_logical_buffers = logical_buffers;
-        }
-      };
+  HeapSimulatorStats simulator_stats(wrapper);
 
   // Run through all the simulator events in the given trace, and simulate the
   // heap in order to find the point of peak memory usage and record its
@@ -398,95 +588,18 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
   if (heap_simulator_trace_id >= 0 &&
       heap_simulator_trace_id <
           hlo_proto.buffer_assignment().heap_simulator_traces_size()) {
-    const auto& simulator_events =
-        hlo_proto.buffer_assignment()
-            .heap_simulator_traces(heap_simulator_trace_id)
-            .events();
-    for (const auto& event : simulator_events) {
-      heap_sizes.push_back(BytesToMiB(heap_size_bytes));
-      unpadded_heap_sizes.push_back(BytesToMiB(unpadded_heap_size_bytes));
-      const auto& logical_buffer = wrapper.GetLogicalBuffer(event.buffer_id());
-      seen.insert(&logical_buffer);
-      seen_buffer_allocations.insert(
-          &wrapper.GetBufferAllocation(logical_buffer));
-      if (event.kind() == xla::HeapSimulatorTrace_Event::ALLOC) {
-        // The first time a canonical buffer is allocated.
-        canonical_buffer_ref_count[event.buffer_id()] = 1;
-        update_on_increase(logical_buffer);
-        // Initialize the buffer span from the current event to the last event.
-        logical_buffer_spans[logical_buffer.id()] = {
-            heap_sizes.size() - 1, simulator_events.size() - 1};
-      } else if (event.kind() == xla::HeapSimulatorTrace_Event::FREE) {
-        // Get the canonical buffer ID of this free event.
-        int64_t canonical_buffer_id = event.buffer_id();
-        if (const int64_t* canonical_id =
-                gtl::FindOrNull(share_with_to_canonical, event.buffer_id())) {
-          canonical_buffer_id = *canonical_id;
-        }
-        // Decrease the ref count of canonical buffer.
-        int32_t& ref_count = canonical_buffer_ref_count[canonical_buffer_id];
-        --ref_count;
-        if (ref_count < 0) {
-          return absl::InvalidArgumentError(absl::StrCat(
-              "Buffer ", canonical_buffer_id, " is freed multiple times."));
-        }
-        if (ref_count == 0) {
-          // There is no more reference to the canonical buffer, the canonical
-          // buffer is finally freed. Update memory usage and memory timespan
-          // using the metadata of canonical buffer.
-          const auto& canonical_buffer =
-              wrapper.GetLogicalBuffer(canonical_buffer_id);
-          logical_buffers.erase(
-              std::remove(logical_buffers.begin(), logical_buffers.end(),
-                          canonical_buffer_id),
-              logical_buffers.end());
-          heap_size_bytes -= canonical_buffer.size();
-          if (heap_size_bytes < 0) {
-            return absl::InvalidArgumentError(absl::StrCat(
-                "heap_size_bytes should be non-negative: ", heap_size_bytes));
-          }
-          const Shape& shape = wrapper.GetLogicalBufferShape(canonical_buffer);
-          unpadded_heap_size_bytes -= ShapeUnpaddedSize(shape);
-          logical_buffer_spans[canonical_buffer_id].second =
-              heap_sizes.size() - 1;
-        }
-      } else if (event.kind() == xla::HeapSimulatorTrace_Event::SHARE_WITH) {
-        share_with_to_canonical[event.buffer_id()] =
-            event.share_with_canonical_id();
-        // Increase the ref count of canonical buffer.
-        int32_t& ref_count =
-            canonical_buffer_ref_count[event.share_with_canonical_id()];
-        ++ref_count;
-        if (ref_count == 1) {
-          // SHARE_WITH happens after the FREE of a canonical buffer.
-          const auto& canonical_buffer =
-              wrapper.GetLogicalBuffer(event.share_with_canonical_id());
-          update_on_increase(canonical_buffer);
-        }
-      } else {
-        return absl::InvalidArgumentError(
-            absl::StrCat("Unhandled event kind: ", event.kind()));
-      }
-    }
-
-    // Add the final heap size after simulating the entire heap trace.
-    heap_sizes.push_back(BytesToMiB(heap_size_bytes));
-    unpadded_heap_sizes.push_back(BytesToMiB(unpadded_heap_size_bytes));
-
-    if (seen_buffer_allocations.size() != 1) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("All heap simulation should work out of a single buffer "
-                       "allocation, actual seen_buffer_allocations.size():",
-                       seen_buffer_allocations.size()));
+    auto status = ProcessHeapSimulatorTrace(
+        wrapper,
+        hlo_proto.buffer_assignment().heap_simulator_traces(
+            heap_simulator_trace_id),
+        &simulator_stats);
+    if (!status.ok()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Failed to process heap simulator trace: ", status.error_message()));
     }
   }
 
-  VLOG(1) << "Found " << peak_logical_buffers.size()
-          << " logical buffers alive at point of peak heap usage.";
-
-  VLOG(1) << "Peak logical buffers: ["
-          << absl::StrJoin(peak_logical_buffers, ",") << "]";
-
+  // Process indefinite memory usage.
   int64_t indefinite_memory_usage_bytes = 0;
   std::vector<HeapObject> max_heap;
   int colorno = 0;
@@ -523,7 +636,7 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
   absl::flat_hash_set<const LogicalBufferProto*> unseen;
   for (const LogicalBufferProto& logical_buffer :
        wrapper.GetHloProto().buffer_assignment().logical_buffers()) {
-    if (!seen.contains(&logical_buffer)) {
+    if (!simulator_stats.seen_logical_buffers.contains(&logical_buffer)) {
       unseen.insert(&logical_buffer);
     }
   }
@@ -536,7 +649,8 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
     if (logical_buffer->color() != memory_color) {
       continue;
     }
-    if (seen_buffer_allocations.insert(&buffer_allocation).second) {
+    if (simulator_stats.seen_buffer_allocations.insert(&buffer_allocation)
+            .second) {
       indefinite_memory_usage_bytes += buffer_allocation.size();
       const auto& logical_buffers =
           wrapper.GetLogicalBuffersFromBufferAllocation(buffer_allocation);
@@ -559,12 +673,14 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
   // For the buffers that have indefinite lifetime (that is, lifetime not
   // reflected by the heap simulation) add it to the peak values and the vectors
   // of heap sizes.
-  peak_heap_size_bytes += indefinite_memory_usage_bytes;
-  unpadded_peak_heap_size_bytes += indefinite_memory_usage_bytes;
-  double addend = BytesToMiB(indefinite_memory_usage_bytes);
-  for (int i = 0; i < heap_sizes.size(); ++i) {
-    heap_sizes[i] += addend;
-    unpadded_heap_sizes[i] += addend;
+  simulator_stats.peak_heap_size_bytes += indefinite_memory_usage_bytes;
+  simulator_stats.peak_unpadded_heap_size_bytes +=
+      indefinite_memory_usage_bytes;
+  for (int i = 0; i < simulator_stats.heap_size_bytes_timeline.size(); ++i) {
+    simulator_stats.heap_size_bytes_timeline[i] +=
+        indefinite_memory_usage_bytes;
+    simulator_stats.unpadded_heap_size_bytes_timeline[i] +=
+        indefinite_memory_usage_bytes;
   }
 
   // Accumulate data for use in a stacked bar plot.
@@ -572,7 +688,7 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
   // We accumulate it in "program order" -- the order in which it was placed
   // into the logical_buffers sequence above was program order, and we iterate
   // that order to create data points.
-  for (int logical_buffer_id : peak_logical_buffers) {
+  for (int logical_buffer_id : simulator_stats.peak_logical_buffers) {
     const auto& logical_buffer = wrapper.GetLogicalBuffer(logical_buffer_id);
     const auto& buffer_allocation = wrapper.GetBufferAllocation(logical_buffer);
     add_heap_object(logical_buffer, buffer_allocation);
@@ -613,9 +729,15 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
   result.set_module_name(hlo_proto.hlo_module().name());
   result.set_entry_computation_name(
       hlo_proto.hlo_module().entry_computation_name());
-  *result.mutable_heap_sizes() = {heap_sizes.begin(), heap_sizes.end()};
-  *result.mutable_unpadded_heap_sizes() = {unpadded_heap_sizes.begin(),
-                                           unpadded_heap_sizes.end()};
+  size_t timeline_size = simulator_stats.heap_size_bytes_timeline.size();
+  result.mutable_heap_sizes()->Reserve(timeline_size);
+  result.mutable_unpadded_heap_sizes()->Reserve(timeline_size);
+  for (size_t i = 0; i < timeline_size; i++) {
+    result.add_heap_sizes(
+        BytesToMiB(simulator_stats.heap_size_bytes_timeline[i]));
+    result.add_unpadded_heap_sizes(
+        BytesToMiB(simulator_stats.unpadded_heap_size_bytes_timeline[i]));
+  }
   *result.mutable_max_heap() = {max_heap.begin(), max_heap.end()};
   for (const HeapObject* o : max_heap_by_size) {
     *result.add_max_heap_by_size() = *o;
@@ -624,13 +746,14 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
                                            max_heap_to_by_size.end()};
   *result.mutable_by_size_to_max_heap() = {by_size_to_max_heap.begin(),
                                            by_size_to_max_heap.end()};
-  result.set_peak_heap_mib(BytesToMiB(peak_heap_size_bytes));
-  result.set_peak_unpadded_heap_mib(BytesToMiB(unpadded_peak_heap_size_bytes));
-  result.set_peak_heap_size_position(peak_heap_size_position);
+  result.set_peak_heap_mib(BytesToMiB(simulator_stats.peak_heap_size_bytes));
+  result.set_peak_unpadded_heap_mib(
+      BytesToMiB(simulator_stats.peak_unpadded_heap_size_bytes));
+  result.set_peak_heap_size_position(simulator_stats.peak_heap_size_position);
 
-  for (const auto& item : logical_buffer_spans) {
+  for (const auto& item : simulator_stats.logical_buffer_spans) {
     (*result.mutable_logical_buffer_spans())[item.first] =
-        MakeBufferSpan(item.second.first, item.second.second.value());
+        MakeBufferSpan(item.second.first, item.second.second);
   }
 
   NoteSpecialAllocations(wrapper, small_buffer_size, &result);
