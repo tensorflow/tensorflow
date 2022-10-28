@@ -738,6 +738,6 @@ XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",
                                              &XlaPythonCpuCallback);
 
 XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_gpu_callback",
-                                         AssertionCustomCall,absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value()));
+                                         &XlaPythonCpuCallback,absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value()));
 
 }  // namespace xla
