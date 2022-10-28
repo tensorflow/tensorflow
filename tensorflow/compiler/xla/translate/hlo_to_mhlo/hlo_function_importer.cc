@@ -273,9 +273,17 @@ static mlir::Attribute GetLayoutAttribute(mlir::Builder& b,
     }
     return b.getArrayAttr(element_attrs);
   }
-  return b.getIndexTensorAttr(
-      llvm::SmallVector<int64_t>{shape.layout().minor_to_major().begin(),
-                                 shape.layout().minor_to_major().end()});
+
+  llvm::SmallVector<int64_t> layout;
+  if (shape.has_layout()) {
+    layout = {shape.layout().minor_to_major().begin(),
+              shape.layout().minor_to_major().end()};
+  } else {
+    Layout layout_for_shape = LayoutUtil::GetDefaultLayoutForShape(shape);
+    layout = {layout_for_shape.minor_to_major().begin(),
+              layout_for_shape.minor_to_major().end()};
+  }
+  return b.getIndexTensorAttr(layout);
 }
 
 void HloFunctionImporter::FlattenTupleType(
@@ -1860,16 +1868,13 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionWithLayout(
   //
   // Minor-to-major is a permutation of [0, rank), presenting tensor dimensions
   // in physical minor-to-major order.
-  if (instruction->shape().IsArray()) {
-    if (instruction->shape().has_layout() &&
-        !instruction->shape().layout().minor_to_major().empty() &&
-        instruction->shape().layout() !=
-            LayoutUtil::MakeDescendingLayout(
-                instruction->shape().dimensions().size())) {
-      SetXlaShape(op, instruction->shape());
-    }
-  } else {
-    SetXlaShape(op, instruction->shape());
+  const Shape& shape = instruction->shape();
+  bool custom_layout = HasCustomLayout(shape);
+  if (!shape.IsArray() || custom_layout) {
+    SetXlaShape(op, shape);
+  }
+  if (custom_layout) {
+    SetLayoutForMlir(op, shape, "result_layout");
   }
   return op;
 }
@@ -2022,12 +2027,8 @@ mlir::NamedAttribute HloFunctionImporter::ConvertUseGlobalDeviceIds() {
 void HloFunctionImporter::SetLayoutForMlir(mlir::Operation* op,
                                            const Shape& shape,
                                            llvm::StringRef attr_name) {
-  llvm::SmallVector<int64_t, 4> minor_to_major(
-      shape.layout().minor_to_major().begin(),
-      shape.layout().minor_to_major().end());
-  op->setAttr(
-      attr_name,
-      mlir::Builder(op->getContext()).getIndexTensorAttr(minor_to_major));
+  mlir::Builder b(op->getContext());
+  op->setAttr(attr_name, GetLayoutAttribute(b, shape));
 }
 
 Status HloFunctionImporter::ConvertShapeToMlirLayout(
