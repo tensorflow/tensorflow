@@ -47875,6 +47875,37 @@ func StatelessRandomGammaV2(scope *Scope, shape tf.Output, seed tf.Output, alpha
 	return op.Output(0)
 }
 
+// Outputs deterministic pseudorandom random numbers from a gamma distribution.
+//
+// Outputs random values from a gamma distribution.
+//
+// The outputs are a deterministic function of the inputs.
+//
+// Arguments:
+//
+//	shape: The shape of the output tensor.
+//	key: Key for the counter-based RNG algorithm (shape uint64[1]).
+//	counter: Initial counter for the counter-based RNG algorithm (shape uint64[2] or uint64[1] depending on the algorithm). If a larger vector is given, only the needed portion on the left (i.e. [:N]) will be used.
+//	alg: The RNG algorithm (shape int32[]).
+//	alpha: The concentration of the gamma distribution. Shape must match the rightmost
+//
+// dimensions of `shape`.
+//
+// Returns Random values with specified shape.
+func StatelessRandomGammaV3(scope *Scope, shape tf.Output, key tf.Output, counter tf.Output, alg tf.Output, alpha tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "StatelessRandomGammaV3",
+		Input: []tf.Input{
+			shape, key, counter, alg, alpha,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Picks the best counter-based RNG algorithm based on device.
 //
 // This op picks the best counter-based RNG algorithm based on device.
