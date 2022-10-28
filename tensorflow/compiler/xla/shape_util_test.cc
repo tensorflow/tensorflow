@@ -719,6 +719,38 @@ TEST(ShapeUtilTest, ReshapeIsBitcast_3x2x2_6x2_Dim1IsMostMinor) {
       ShapeUtil::MakeShapeWithDenseLayout(F32, {6, 2}, {0, 1})));
 }
 
+TEST(ShapeUtilTest, ReshapeIsBitcastIgnoreElementType) {
+  EXPECT_TRUE(ShapeUtil::ReshapeIsBitcast(
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {3, 2, 2}, {1, 0, 2}),
+      ShapeUtil::MakeShapeWithDenseLayout(F16, {6, 2}, {0, 1}),
+      /*ignore_element_type=*/true));
+  EXPECT_FALSE(ShapeUtil::ReshapeIsBitcast(
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {3, 2, 2}, {1, 0, 2}),
+      ShapeUtil::MakeShapeWithDenseLayout(F16, {6, 2}, {0, 1}),
+      /*ignore_element_type=*/false));
+}
+
+TEST(ShapeUtilTest, TransposeIsBitcastIgnoreElementType) {
+  EXPECT_TRUE(ShapeUtil::TransposeIsBitcast(
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 5}, {1, 0}),
+      ShapeUtil::MakeShapeWithDenseLayout(F16, {5, 10}, {0, 1}), {1, 0},
+      /*ignore_element_type=*/true));
+  EXPECT_FALSE(ShapeUtil::TransposeIsBitcast(
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 5}, {1, 0}),
+      ShapeUtil::MakeShapeWithDenseLayout(F16, {5, 10}, {0, 1}), {1, 0},
+      /*ignore_element_type=*/false));
+}
+
+TEST(ShapeUtilTest, IsReshapeOrTransposeBitcast) {
+  EXPECT_TRUE(ShapeUtil::IsReshapeOrTransposeBitcast(
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 5}, {1, 0}),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 10}, {0, 1})));
+  EXPECT_TRUE(ShapeUtil::ReshapeIsBitcast(
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {3, 2, 2}, {1, 0, 2}),
+      ShapeUtil::MakeShapeWithDenseLayout(F16, {6, 2}, {0, 1}),
+      /*ignore_element_type=*/true));
+}
+
 TEST(ShapeUtilTest, HasDegenerateDimensions) {
   EXPECT_TRUE(
       ShapeUtil::HasDegenerateDimensions(ShapeUtil::MakeShape(F32, {3, 1, 2})));

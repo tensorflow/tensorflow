@@ -577,14 +577,22 @@ class ShapeUtil {
   // Precondition: Both input_shape and output_shape have explicit layouts.
   static bool TransposeIsBitcast(const Shape& input_shape,
                                  const Shape& output_shape,
-                                 absl::Span<const int64_t> dimension_mapping);
+                                 absl::Span<const int64_t> dimension_mapping,
+                                 bool ignore_element_type = false);
 
   // Returns whether a reshape from `input_shape` to `output_shape` is a
   // bitcast, when minor_to_major in layout is considered.
   //
   // Precondition: Both input_shape and output_shape have explicit layouts.
   static bool ReshapeIsBitcast(const Shape& input_shape,
-                               const Shape& output_shape);
+                               const Shape& output_shape,
+                               bool ignore_element_type = false);
+
+  // Returns whether there is a bitcasting reshape or transpose from `a` to `b`.
+  //
+  // Precondition: Both input_shape and output_shape have explicit layouts.
+  static bool IsReshapeOrTransposeBitcast(const Shape& a, const Shape& b,
+                                          bool ignore_element_type = false);
 
   // If the given bitcast is a transpose, deduce and return `dimensions`
   // attribute of such a transpose. Otherwise, return nullptr.

@@ -1301,13 +1301,13 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
 
 /* static */ bool ShapeUtil::TransposeIsBitcast(
     const Shape& input_shape, const Shape& output_shape,
-    absl::Span<const int64_t> dimension_mapping) {
+    absl::Span<const int64_t> dimension_mapping, bool ignore_element_type) {
   CHECK(LayoutUtil::IsDenseArray(input_shape)) << input_shape.ToString(true);
   CHECK(LayoutUtil::IsDenseArray(output_shape)) << output_shape.ToString(true);
   CHECK(input_shape.has_layout()) << input_shape.ToString(true);
   CHECK(output_shape.has_layout()) << output_shape.ToString(true);
 
-  if (!SameElementType(input_shape, output_shape)) {
+  if (!ignore_element_type && !SameElementType(input_shape, output_shape)) {
     return false;
   }
 
@@ -1331,14 +1331,34 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
       input_shape.layout().minor_to_major());
 }
 
+/* static */ bool ShapeUtil::IsReshapeOrTransposeBitcast(
+    const Shape& a, const Shape& b, bool ignore_element_type) {
+  if (!ignore_element_type && !SameElementType(a, b)) {
+    return false;
+  }
+  if (ShapeUtil::EqualIgnoringElementType(a, b)) {
+    return true;
+  }
+  if (ReshapeIsBitcast(a, b, /*ignore_element_type=*/true)) {
+    return true;
+  }
+  if (std::optional<std::vector<int64_t>> dimensions =
+          ShapeUtil::DeduceTransposeDimensionsForBitcast(a, b)) {
+    return TransposeIsBitcast(b, a, *dimensions,
+                              /*ignore_element_type=*/true);
+  }
+  return false;
+}
+
 /* static */ bool ShapeUtil::ReshapeIsBitcast(const Shape& input_shape,
-                                              const Shape& output_shape) {
+                                              const Shape& output_shape,
+                                              bool ignore_element_type) {
   CHECK(LayoutUtil::IsDenseArray(input_shape)) << input_shape.ToString(true);
   CHECK(LayoutUtil::IsDenseArray(output_shape)) << output_shape.ToString(true);
   CHECK(input_shape.has_layout()) << input_shape.ToString(true);
   CHECK(output_shape.has_layout()) << output_shape.ToString(true);
 
-  if (!SameElementType(input_shape, output_shape)) {
+  if (!ignore_element_type && !SameElementType(input_shape, output_shape)) {
     return false;
   }
 
@@ -1514,7 +1534,9 @@ ShapeUtil::DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
   if (!absl::c_equal(output_shape.dimensions(), new_dims)) {
     return std::nullopt;
   }
-  CHECK(TransposeIsBitcast(input_shape, output_shape, transpose_perm));
+  CHECK(TransposeIsBitcast(
+      input_shape, ChangeElementType(output_shape, input_shape.element_type()),
+      transpose_perm));
   return transpose_perm;
 }
 
