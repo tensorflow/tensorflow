@@ -853,6 +853,7 @@ pybind_extension(
         ":mlir",
         ":numpy",
         ":ops",
+        ":util",
         ":pmap_lib",
         ":pjit",
         ":weakref_lru_cache",
