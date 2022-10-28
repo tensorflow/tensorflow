@@ -54,6 +54,7 @@ cc_library(
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/status",
         "@tf_runtime//:hostcontext",
+        "@tf_runtime//:support",
     ],
 )
 
