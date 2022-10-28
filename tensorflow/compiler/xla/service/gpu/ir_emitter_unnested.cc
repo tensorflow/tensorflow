@@ -1797,7 +1797,7 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
     const Shape& s = instr->shape();
     return ShapeUtil::EqualIgnoringElementType(reduction_operand_shape, s)
                ? index
-               : index.SourceIndexOfReshape(reduction_operand_shape, s, &b_);
+               : index.SourceIndexOfBitcast(reduction_operand_shape, s, &b_);
   };
 
   for (const auto& [instr, generator] : extra_output_gens) {
@@ -4123,9 +4123,11 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
     const LaunchDimensions& launch_dimensions) {
 
   std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fusion_hlo);
-  HloInstruction* first_transpose = *absl::c_find_if(
-      hlo_roots,
-      [](HloInstruction* instr) { return FindAnyTiledTranspose(*instr); });
+  const HloInstruction* first_transpose = &FindNonTrivialHero(
+      **absl::c_find_if(hlo_roots, [](HloInstruction* instr) {
+        return FindAnyTiledTranspose(FindNonTrivialHero(*instr));
+      }));
+
   const Shape& out_shape = first_transpose->shape();
   const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
 
@@ -4135,12 +4137,14 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
   //  -> OR it's an elementwise op of shape S{L}
   for (HloInstruction* root : hlo_roots) {
     if (FindAnyTiledTranspose(*root)) {
+      const HloInstruction& hero = FindNonTrivialHero(*root);
       CHECK(ShapeUtil::EqualIgnoringElementType(transpose_in_shape,
-                                                root->operand(0)->shape()));
-      CHECK(ShapeUtil::EqualIgnoringElementType(out_shape, root->shape()));
+                                                hero.operand(0)->shape()));
+      CHECK(ShapeUtil::EqualIgnoringElementType(out_shape, hero.shape()));
     } else {
-      CHECK(ShapeUtil::EqualIgnoringElementType(root->shape(),
-                                                transpose_in_shape));
+      CHECK(ShapeUtil::IsReshapeOrTransposeBitcast(
+          root->shape(), transpose_in_shape,
+          /*ignore_element_type=*/true));
     }
   }
 
@@ -4156,13 +4160,14 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
         });
   }
 
-  absl::flat_hash_map<HloInstruction*, llvm::GlobalVariable*> tiles;
+  absl::flat_hash_map<const HloInstruction*, llvm::GlobalVariable*> tiles;
   for (const auto& [tile_idx, root] : llvm::enumerate(hlo_roots)) {
     if (FindAnyTiledTranspose(*root)) {
-      tiles[root] =
+      const HloInstruction& hero = FindNonTrivialHero(*root);
+      tiles[&hero] =
           AllocateShared(tiling_scheme,
                          llvm_ir::PrimitiveTypeToIrType(
-                             root->operand(0)->shape().element_type(), module_),
+                             hero.operand(0)->shape().element_type(), module_),
                          {tiling_scheme.GetBlockTileSizeFor(kDimY),
                           tiling_scheme.GetBlockTileSizeFor(kDimX) + 1},
                          absl::StrCat("tr_tile_", tile_idx));
@@ -4190,18 +4195,26 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
             IrArray::Index input_index = GetUnnormalizedIndex(
                 index, transpose_in_shape, &b_, tiling_scheme.GetDimsInElems());
             if (FindAnyTiledTranspose(*root)) {
+              const HloInstruction& hero = FindNonTrivialHero(*root);
               llvm_ir::ElementGenerator input_gen =
-                  *fused_emitter.GetGenerator(*root->operand(0));
+                  *fused_emitter.GetGenerator(*hero.operand(0));
               llvm::Value* value = *input_gen(input_index);
               llvm::Value* addr = thread_id_info.GEPIntoSharedMemory(
-                  &b_, tiles[root], {y_loc, x_loc});
+                  &b_, tiles[&hero], {y_loc, x_loc});
+
               b_.CreateStore(value, addr);
             } else {
+              IrArray::Index used_index = input_index;
+              if (!ShapeUtil::EqualIgnoringElementType(root->shape(),
+                                                       transpose_in_shape)) {
+                used_index = used_index.SourceIndexOfBitcast(
+                    transpose_in_shape, root->shape(), &b_);
+              }
               llvm_ir::ElementGenerator output_gen =
                   *fused_emitter.GetGenerator(*root);
-              llvm::Value* output_value = *output_gen(input_index);
+              llvm::Value* output_value = *output_gen(used_index);
               scheduled_writes.emplace_back(output_arrays[output_idx],
-                                            input_index, output_value);
+                                            used_index, output_value);
             }
           }
 
@@ -4226,19 +4239,39 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
             llvm::Value* x_loc, llvm::Value* /*x_iter_num*/) {
           for (const auto& [output_idx, root] : llvm::enumerate(hlo_roots)) {
             if (FindAnyTiledTranspose(*root)) {
+              const HloInstruction& hero = FindNonTrivialHero(*root);
+
               IrArray::Index untiled_index = GetUnnormalizedIndex(
-                  index, root->shape(), &b_,
+                  index, hero.shape(), &b_,
                   Permute(tiling_scheme.GetDimsInElems(), permutation));
               std::vector<llvm::Value*> idx = {x_loc, y_loc};
               llvm::Value* gep =
-                  thread_id_info.GEPIntoSharedMemory(&b_, tiles[root], idx);
+                  thread_id_info.GEPIntoSharedMemory(&b_, tiles[&hero], idx);
               llvm::Type* type =
-                  thread_id_info.GEPIntoSharedMemoryType(tiles[root], idx);
+                  thread_id_info.GEPIntoSharedMemoryType(tiles[&hero], idx);
               llvm::Value* loaded = b_.CreateLoad(type, gep, "tiled_buffer");
-              output_arrays[output_idx].EmitWriteArrayElement(untiled_index,
-                                                              loaded, &b_);
+
+              FusedIrEmitter fused_emitter(elemental_emitter_);
+              fused_emitter.BindGenerator(
+                  hero, [&](const IrArray::Index& index) { return loaded; });
+
+              // Apply codegeneration for the code after the real hero.
+              TF_ASSIGN_OR_RETURN(llvm_ir::ElementGenerator gen,
+                                  fused_emitter.GetGenerator(*root));
+
+              // Both for emission and writing it should be index-as-transformed
+              // by the computation.
+              IrArray::Index output_index = untiled_index;
+              if (root->shape() != hero.shape()) {
+                output_index = output_index.SourceIndexOfBitcast(
+                    hero.shape(), root->shape(), &b_);
+              }
+              TF_ASSIGN_OR_RETURN(llvm::Value * generated, gen(output_index));
+              output_arrays[output_idx].EmitWriteArrayElement(output_index,
+                                                              generated, &b_);
             }
           }
+          return OkStatus();
         });
   };
 

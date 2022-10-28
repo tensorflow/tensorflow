@@ -238,6 +238,8 @@ std::vector<HloInstruction*> GetFusionRoots(HloComputation* computation);
 // reduction emitter.
 bool HasAnyUnnestedReductionRoot(HloComputation* computation);
 
+const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
+
 // Whether there is a fusion root triggering transposition emitter.
 bool HasAnyTiledTransposeRoot(HloComputation* computation);
 

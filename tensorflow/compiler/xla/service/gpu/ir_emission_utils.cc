@@ -698,13 +698,41 @@ std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr) {
 }
 
 std::optional<Vector3> FindAnyTiledTranspose(const HloInstruction& instr) {
-  if (std::optional<Vector3> d1 = FindTiledTranspose(instr)) {
+  const HloInstruction& hero = FindNonTrivialHero(instr);
+
+  if (std::optional<Vector3> d1 = FindTiledTranspose(hero)) {
     return d1;
   }
-  if (std::optional<Vector3> d2 = FindTiledLogicalTranspose(instr)) {
+  if (std::optional<Vector3> d2 = FindTiledLogicalTranspose(hero)) {
     return d2;
   }
   return std::nullopt;
+}
+
+static bool IsIntermediate(const HloInstruction* instr) {
+  return (
+      instr->operand_count() == 1 && instr->user_count() <= 1 &&
+      ((instr->IsElementwise() && instr->opcode() != HloOpcode::kCopy) ||
+       instr->opcode() == HloOpcode::kBitcast ||
+       (instr->opcode() == HloOpcode::kReshape &&
+        ShapeUtil::ReshapeIsBitcast(instr->operand(0)->shape(),
+                                    instr->shape())) ||
+       (instr->opcode() == HloOpcode::kTranspose &&
+        ShapeUtil::TransposeIsBitcast(instr->operand(0)->shape(),
+                                      instr->shape(), instr->dimensions()))));
+}
+
+const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
+  const HloInstruction* idx = &instr;
+
+  // Go up the chain of trivial elementwise(+bitcast, -copy) operations. Such
+  // chains are bound to be quite small, as we restrict the number of users as
+  // well. Note that no memoization is needed due to user number constraints: we
+  // never have to revisit same nodes.
+  while (IsIntermediate(idx)) {
+    idx = idx->operand(0);
+  }
+  return *idx;
 }
 
 bool HasAnyTiledTransposeRoot(HloComputation* computation) {

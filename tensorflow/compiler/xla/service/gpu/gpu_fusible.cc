@@ -124,7 +124,7 @@ const HloInstruction* GetRealHeroForMultiOutputFusion(
   for (const auto* inst : fused_expression_root->operands()) {
     if (IsReductionFromOrToContiguousDimensions(*inst) ||
         FindAnyTiledTranspose(*inst)) {
-      return inst;
+      return &FindNonTrivialHero(*inst);
     }
   }
   return fused_expression_root->operands()[0];
@@ -139,7 +139,7 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
     // by the shape of the first operand.
     if (IsReductionFromOrToContiguousDimensions(*element_instr) ||
         FindAnyTiledTranspose(*element_instr)) {
-      return element_instr->operand(0)->shape();
+      return FindNonTrivialHero(*element_instr).operand(0)->shape();
     }
     return element_instr->shape();
   };
@@ -151,36 +151,40 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
   const HloInstruction* hero1 = GetRealHeroForMultiOutputFusion(instr1);
   const HloInstruction* hero2 = GetRealHeroForMultiOutputFusion(instr2);
 
-  if (IsReductionFromOrToContiguousDimensions(*hero1) &&
-      IsReductionFromOrToContiguousDimensions(*hero2) &&
+  bool hero1_is_unnested_reduce =
+      IsReductionFromOrToContiguousDimensions(*hero1);
+  bool hero1_is_unnested_transpose = FindAnyTiledTranspose(*hero1).has_value();
+  bool hero2_is_unnested_reduce =
+      IsReductionFromOrToContiguousDimensions(*hero2);
+  bool hero2_is_unnested_transpose = FindAnyTiledTranspose(*hero2).has_value();
+
+  if (hero1_is_unnested_reduce && hero2_is_unnested_reduce &&
       !AreFusedReductionOutputsConsistent({hero1, hero2}, hero1)) {
     return "tiled reductions with different shapes";
-  } else if (FindAnyTiledTranspose(*hero1) && FindAnyTiledTranspose(*hero2) &&
+  } else if (hero1_is_unnested_transpose && hero2_is_unnested_transpose &&
              (!ShapeUtil::EqualIgnoringElementType(hero1->shape(),
                                                    hero2->shape()) ||
               !ShapeUtil::EqualIgnoringElementType(
                   hero1->operand(0)->shape(), hero2->operand(0)->shape()))) {
     return "tiled transposes with different shapes";
-  } else if ((FindAnyTiledTranspose(*hero1) &&
-              IsReductionFromOrToContiguousDimensions(*hero2)) ||
-             (FindAnyTiledTranspose(*hero2) &&
-              IsReductionFromOrToContiguousDimensions(*hero1))) {
+  } else if ((hero1_is_unnested_transpose && hero2_is_unnested_reduce) ||
+             (hero1_is_unnested_reduce && hero2_is_unnested_transpose)) {
     return "MOF-fusion of a transpose and a reduction";
   }
 
   const Shape& l1 = get_loop_shape(hero1);
   const Shape& l2 = get_loop_shape(hero2);
 
-  // We accept different shapes provided one element is reduction and the shapes
-  // are trivially reshapable.
+  // We accept different shapes provided shapes are trivially reshapable.
   bool accept_unequal_shape =
       !l1.IsTuple() && !l2.IsTuple() &&
-      (IsReductionFromOrToContiguousDimensions(*hero1) ||
-       IsReductionFromOrToContiguousDimensions(*hero2));
+      (hero1_is_unnested_reduce || hero2_is_unnested_reduce ||
+       hero1_is_unnested_transpose || hero2_is_unnested_transpose);
+
   if (!ShapeUtil::EqualIgnoringElementType(l1, l2) &&
       (!accept_unequal_shape ||
-       !ShapeUtil::ReshapeIsBitcast(
-           l1, ShapeUtil::ChangeElementType(l2, l1.element_type())))) {
+       !ShapeUtil::IsReshapeOrTransposeBitcast(l1, l2,
+                                               /*ignore_element_type=*/true))) {
     return "different loop shapes";
   }
   return {};
@@ -239,7 +243,9 @@ bool IsLoopFusible(const HloInstruction& instr) {
 
 FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
                                          const HloInstruction& consumer) {
-  if (!IsLoopFusible(producer)) {
+  if (!IsLoopFusible(producer) &&
+      !(FindAnyTiledTranspose(producer) &&
+        &FindNonTrivialHero(consumer) == &producer)) {
     return "the producer is not loop-fusible";
   }
 

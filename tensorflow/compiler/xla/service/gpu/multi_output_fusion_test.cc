@@ -1471,6 +1471,38 @@ ENTRY main {
 )");
 }
 
+TEST_F(TransposeMultiOutputFusionTest, MultipleCopiesAndInputEpilogueFusion) {
+  const char* hlo = R"(
+HloModule module
+
+fused_computation {
+  param_0.1 = f32[16,32]{1,0} parameter(0)
+  s.1 = f32[16,32]{1,0} sqrt(param_0.1)
+  c.1 = f32[16,32]{0,1} copy(s.1)
+  ROOT out = f32[16,32,1]{0,1,2} bitcast(c.1)
+}
+
+ENTRY main {
+  p = f32[16,32]{1,0} parameter(0)
+  fusion = f32[16,32,1]{0,1,2} fusion(p), kind=kInput, calls=fused_computation
+  c1 = exponential(p)
+  ROOT t = tuple(fusion, c1)
+}
+  )";
+
+  CheckGpuMultiOutputFusion(hlo, R"(
+// CHECK: %fused_computation (param_0.1: f32[16,32]) -> (f32[16,32,1], f32[16,32]) {
+// CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
+// CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0_1_0]])
+// CHECK-NEXT:   [[c_1_2:%[^ ]+]] = f32[16,32]{0,1} copy([[s_1_1]])
+// CHECK-NEXT:   [[out_3:%[^ ]+]] = f32[16,32,1]{0,1,2} bitcast([[c_1_2]])
+// CHECK-NEXT:   [[c1_1_4:%[^ ]+]] = f32[16,32]{1,0} exponential([[param_0_1_0]])
+// CHECK-NEXT:   ROOT [[tuple_5:%[^ ]+]] = (f32[16,32,1]{0,1,2}, f32[16,32]{1,0}) tuple([[out_3]], [[c1_1_4]])
+// CHECK-NEXT: }
+// CHECK: [[fusion_0:%[^ ]+]] = (f32[16,32,1]{0,1,2}, f32[16,32]{1,0}) fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
+)");
+}
+
 class ReduceMultiOutputFusionTest : public MultiOutputFusionTest {};
 
 TEST_F(ReduceMultiOutputFusionTest, ReduceAndLoop) {
@@ -1550,13 +1582,13 @@ ENTRY computation {
 
   CheckGpuMultiOutputFusion(hlo, R"(
 // CHECK: %fused_elementwise (p.1: f32[10,20]) -> (f32[10,20], f32[]) {
-// CHECK-NEXT:   %p.1 = f32[10,20]{1,0} parameter(0)
-// CHECK-NEXT:   %r.1 = f32[10,20]{1,0} sqrt(%p.1)
-// CHECK-NEXT:   %e.clone.1 = f32[10,20]{1,0} exponential(%p.1)
-// CHECK-NEXT:   %b.1.clone.1 = f32[200]{0} bitcast(%e.clone.1)
-// CHECK-NEXT:   %z.clone.1 = f32[] constant(0)
-// CHECK-NEXT:   %r.clone.1 = f32[] reduce(%b.1.clone.1, %z.clone.1), dimensions={0}, to_apply=%add
-// CHECK-NEXT:   ROOT %tuple = (f32[10,20]{1,0}, f32[]) tuple(%r.1, %r.clone.1)
+// CHECK-NEXT:   [[p_1_0:%[^ ]+]] = f32[10,20]{1,0} parameter(0)
+// CHECK-NEXT:   [[r_1_1:%[^ ]+]] = f32[10,20]{1,0} sqrt([[p_1_0]])
+// CHECK-NEXT:   [[e_2:%[^ ]+]].clone.1 = f32[10,20]{1,0} exponential([[p_1_0]])
+// CHECK-NEXT:   [[b_1_3:%[^ ]+]].clone.1 = f32[200]{0} bitcast([[e_2]].clone.1)
+// CHECK-NEXT:   [[z_4:%[^ ]+]].clone.1 = f32[] constant(0)
+// CHECK-NEXT:   [[r_5:%[^ ]+]].clone.1 = f32[] reduce([[b_1_3]].clone.1, [[z_4]].clone.1), dimensions={0}, to_apply=[[add_6:%[^ ]+]]
+// CHECK-NEXT:   ROOT [[tuple_7:%[^ ]+]] = (f32[10,20]{1,0}, f32[]) tuple([[r_1_1]], [[r_5]].clone.1)
 // CHECK-NEXT: }
   )");
 }
@@ -1612,28 +1644,28 @@ ENTRY computation {
 
   CheckGpuMultiOutputFusion(hlo, R"(
 // CHECK: %fused_computation.1 (param_0.8: f32[], param_1.10: f32[], param_2.7: f16[100,200]) -> (f16[100,200], f32[]) {
-// CHECK-NEXT:   %one_3 = f32[] constant(1)
-// CHECK-NEXT:   %one_b.3 = f32[100,200]{1,0} broadcast(%one_3), dimensions={}
-// CHECK-NEXT:   %param_2.7 = f16[100,200]{1,0} parameter(2)
-// CHECK-NEXT:   %c.4 = f32[100,200]{1,0} convert(%param_2.7)
-// CHECK-NEXT:   %param_1.10 = f32[] parameter(1)
-// CHECK-NEXT:   %b.4 = f32[100,200]{1,0} broadcast(%param_1.10), dimensions={}
-// CHECK-NEXT:   %d.3 = f32[100,200]{1,0} divide(%c.4, %b.4)
-// CHECK-NEXT:   %a.4 = f32[100,200]{1,0} add(%one_b.3, %d.3)
-// CHECK-NEXT:   %param_0.8 = f32[] parameter(0)
-// CHECK-NEXT:   %output_scale_broadcast.1 = f32[100,200]{1,0} broadcast(%param_0.8), dimensions={}
-// CHECK-NEXT:   %a_scaled.1 = f32[100,200]{1,0} multiply(%a.4, %output_scale_broadcast.1)
-// CHECK-NEXT:   %a_scaled_converted.1 = f16[100,200]{1,0} convert(%a_scaled.1)
-// CHECK-NEXT:   %one_5.clone.1 = f32[] constant(1)
-// CHECK-NEXT:   %one_b.5.clone.1 = f32[100,200]{1,0} broadcast(%one_5.clone.1), dimensions={}
-// CHECK-NEXT:   %c.6.clone.1 = f32[100,200]{1,0} convert(%param_2.7)
-// CHECK-NEXT:   %b.6.clone.1 = f32[100,200]{1,0} broadcast(%param_1.10), dimensions={}
-// CHECK-NEXT:   %d.5.clone.1 = f32[100,200]{1,0} divide(%c.6.clone.1, %b.6.clone.1)
-// CHECK-NEXT:   %a.6.clone.1 = f32[100,200]{1,0} add(%one_b.5.clone.1, %d.5.clone.1)
-// CHECK-NEXT:   %bitcast.1.clone.1 = f32[20000]{0} bitcast(%a.6.clone.1)
-// CHECK-NEXT:   %z_1.clone.1 = f32[] constant(0)
-// CHECK-NEXT:   %r.1.clone.1 = f32[] reduce(%bitcast.1.clone.1, %z_1.clone.1), dimensions={0}, to_apply=%max
-// CHECK-NEXT:   ROOT %tuple = (f16[100,200]{1,0}, f32[]) tuple(%a_scaled_converted.1, %r.1.clone.1)
+// CHECK-NEXT:   [[one_3_0:%[^ ]+]] = f32[] constant(1)
+// CHECK-NEXT:   [[one_b_3_1:%[^ ]+]] = f32[100,200]{1,0} broadcast([[one_3_0]]), dimensions={}
+// CHECK-NEXT:   [[param_2_7_2:%[^ ]+]] = f16[100,200]{1,0} parameter(2)
+// CHECK-NEXT:   [[c_4_3:%[^ ]+]] = f32[100,200]{1,0} convert([[param_2_7_2]])
+// CHECK-NEXT:   [[param_1_10_4:%[^ ]+]] = f32[] parameter(1)
+// CHECK-NEXT:   [[b_4_5:%[^ ]+]] = f32[100,200]{1,0} broadcast([[param_1_10_4]]), dimensions={}
+// CHECK-NEXT:   [[d_3_6:%[^ ]+]] = f32[100,200]{1,0} divide([[c_4_3]], [[b_4_5]])
+// CHECK-NEXT:   [[a_4_7:%[^ ]+]] = f32[100,200]{1,0} add([[one_b_3_1]], [[d_3_6]])
+// CHECK-NEXT:   [[param_0_8_8:%[^ ]+]] = f32[] parameter(0)
+// CHECK-NEXT:   [[output_scale_broadcast_1_9:%[^ ]+]] = f32[100,200]{1,0} broadcast([[param_0_8_8]]), dimensions={}
+// CHECK-NEXT:   [[a_scaled_1_10:%[^ ]+]] = f32[100,200]{1,0} multiply([[a_4_7]], [[output_scale_broadcast_1_9]])
+// CHECK-NEXT:   [[a_scaled_converted_1_11:%[^ ]+]] = f16[100,200]{1,0} convert([[a_scaled_1_10]])
+// CHECK-NEXT:   [[one_5_12:%[^ ]+]].clone.1 = f32[] constant(1)
+// CHECK-NEXT:   [[one_b_5_13:%[^ ]+]].clone.1 = f32[100,200]{1,0} broadcast([[one_5_12]].clone.1), dimensions={}
+// CHECK-NEXT:   [[c_6_14:%[^ ]+]].clone.1 = f32[100,200]{1,0} convert([[param_2_7_2]])
+// CHECK-NEXT:   [[b_6_15:%[^ ]+]].clone.1 = f32[100,200]{1,0} broadcast([[param_1_10_4]]), dimensions={}
+// CHECK-NEXT:   [[d_5_16:%[^ ]+]].clone.1 = f32[100,200]{1,0} divide([[c_6_14]].clone.1, [[b_6_15]].clone.1)
+// CHECK-NEXT:   [[a_6_17:%[^ ]+]].clone.1 = f32[100,200]{1,0} add([[one_b_5_13]].clone.1, [[d_5_16]].clone.1)
+// CHECK-NEXT:   [[bitcast_1_18:%[^ ]+]].clone.1 = f32[20000]{0} bitcast([[a_6_17]].clone.1)
+// CHECK-NEXT:   [[z_1_19:%[^ ]+]].clone.1 = f32[] constant(0)
+// CHECK-NEXT:   [[r_1_20:%[^ ]+]].clone.1 = f32[] reduce([[bitcast_1_18]].clone.1, [[z_1_19]].clone.1), dimensions={0}, to_apply=[[max_21:%[^ ]+]]
+// CHECK-NEXT:   ROOT [[tuple_22:%[^ ]+]] = (f16[100,200]{1,0}, f32[]) tuple([[a_scaled_converted_1_11]], [[r_1_20]].clone.1)
 // CHECK-NEXT: }
   )");
 }

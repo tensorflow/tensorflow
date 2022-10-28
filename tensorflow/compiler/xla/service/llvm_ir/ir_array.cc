@@ -381,7 +381,8 @@ IrArray::Index IrArray::Index::SourceIndexOfBitcast(
           ? *this
           : SourceIndexOfTranspose(shape, reshape_shape, transpose_perm);
 
-  CHECK(ShapeUtil::ReshapeIsBitcast(reshape_shape, normalized_operand_shape));
+  CHECK(ShapeUtil::ReshapeIsBitcast(reshape_shape, normalized_operand_shape,
+                                    /*ignore_element_type=*/true));
   Index out = transposed_index.SourceIndexOfReshape(
       reshape_shape, normalized_operand_shape, builder);
   return absl::c_is_sorted(transpose_dims_to_normalized_operand_shape)
