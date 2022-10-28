@@ -67,6 +67,20 @@ cc_library(
 )
 
 cc_library(
+    name = "io_feed",
+    srcs = ["io_feed.cc"],
+    hdrs = ["io_feed.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service/gpu:io_feed_manager",
+    ],
+)
+
+cc_library(
     name = "kernel_launch",
     srcs = ["kernel_launch.cc"],
     hdrs = ["kernel_launch.h"],
