@@ -86,6 +86,8 @@ def GMLST_TileOp : GMLST_Op<"tile", [
    OpBuilder<(ins "ArrayRef<OpFoldResult>":$offsets,
       "ArrayRef<OpFoldResult>":$sizes, "ArrayRef<OpFoldResult>":$strides,
       CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
+   OpBuilder<(ins "ArrayRef<OpFoldResult>":$offsets,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
   ];
   let extraClassDeclaration = [{
     /// Return the expected rank of each of the`static_offsets`, `static_sizes`

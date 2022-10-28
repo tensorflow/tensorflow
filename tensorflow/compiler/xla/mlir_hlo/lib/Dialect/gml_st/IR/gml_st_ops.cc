@@ -1464,6 +1464,15 @@ void TileOp::build(OpBuilder &b, OperationState &result,
   result.addAttributes(attrs);
 }
 
+void TileOp::build(OpBuilder &b, OperationState &result,
+                   ArrayRef<OpFoldResult> offsets,
+                   ArrayRef<NamedAttribute> attrs) {
+  SmallVector<OpFoldResult> unitSizesAndStrides(offsets.size(),
+                                                b.getIndexAttr(1));
+  return build(b, result, offsets, unitSizesAndStrides, unitSizesAndStrides,
+               attrs);
+}
+
 LogicalResult TileOp::inferReturnTypes(
     MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,

@@ -227,9 +227,8 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
     // Create warp-sized partial reduction result tensor.
     Value warpResult = rewriter.create<tensor::EmptyOp>(
         loc, SmallVector<OpFoldResult>{oneAttr, warpSizeAttr}, scalarTy);
-    Value initTile = rewriter.create<TileOp>(
-        loc, SmallVector<OpFoldResult>{zeroAttr},
-        SmallVector<OpFoldResult>{oneAttr}, SmallVector<OpFoldResult>{oneAttr});
+    Value initTile =
+        rewriter.create<TileOp>(loc, SmallVector<OpFoldResult>{zeroAttr});
     Value initMaterialized =
         rewriter.create<MaterializeOp>(loc, scalarTy, init, initTile);
     warpResult =
@@ -242,9 +241,7 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
                                        ValueRange ivs) {
       Value laneId = ivs.front();
       Value laneTile =
-          b.create<TileOp>(loc, SmallVector<OpFoldResult>{zeroAttr, laneId},
-                           SmallVector<OpFoldResult>{oneAttr, oneAttr},
-                           SmallVector<OpFoldResult>{oneAttr, oneAttr});
+          b.create<TileOp>(loc, SmallVector<OpFoldResult>{zeroAttr, laneId});
       Value laneResult = b.create<MaterializeOp>(loc, warpResult, laneTile);
 
       // Create gml_st.for sequentially reducing parts of the row.
@@ -255,22 +252,17 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
 
         // Materialize operand subset.
         Value operandTile = b.create<TileOp>(
-            loc, SmallVector<OpFoldResult>{zeroAttr, iterationId},
-            SmallVector<OpFoldResult>{oneAttr, oneAttr},
-            SmallVector<OpFoldResult>{oneAttr, oneAttr});
+            loc, ArrayRef<OpFoldResult>{zeroAttr, iterationId});
         Value operandMaterialized =
             b.create<MaterializeOp>(loc, scalarTy, operand, operandTile);
 
         // Materialize intermediate result.
         Value iterationTile = rewriter.create<TileOp>(
-            loc, SmallVector<OpFoldResult>{zeroAttr, zeroAttr},
-            SmallVector<OpFoldResult>{oneAttr, oneAttr},
-            SmallVector<OpFoldResult>{oneAttr, oneAttr});
+            loc, SmallVector<OpFoldResult>{zeroAttr, zeroAttr});
         Value iterationResult = rewriter.create<MaterializeOp>(
             loc, scalarTy, laneAcc, iterationTile);
 
-        // Create scalar computation based on
-        // `linalg.generic` body.
+        // Create scalar computation based on `linalg.generic` body.
         BlockAndValueMapping bvm;
         bvm.map(genericOp.getBlock()->getArguments()[0], operandMaterialized);
         bvm.map(genericOp.getBlock()->getArguments()[1], iterationResult);
