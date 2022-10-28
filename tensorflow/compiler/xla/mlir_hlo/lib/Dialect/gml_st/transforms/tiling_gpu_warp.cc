@@ -127,8 +127,8 @@ struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
                 // Create the iteration tile. This specifies the scalar subset
                 // in the warp-level operands.
                 Value i = ivs.front();
-                Value iterTileOffset =
-                    b.create<arith::MulIOp>(loc, i, cWarpSize);
+                Value iterTileOffset = b.create<arith::AddIOp>(
+                    loc, laneId, b.create<arith::MulIOp>(loc, i, cWarpSize));
                 Value iterTile = b.create<gml_st::TileOp>(
                     loc, SmallVector<OpFoldResult>{zeroAttr, iterTileOffset},
                     SmallVector<OpFoldResult>{oneAttr, oneAttr},
