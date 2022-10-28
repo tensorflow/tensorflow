@@ -611,7 +611,7 @@ void DoPlotCommand(const Options& opts, const HloModule& module,
     RenderAndDisplayGraph(opts, [&](RenderedGraphFormat format) {
       return RenderGraph(*comp, /*label=*/"",
                          comp->parent()->config().debug_options(), format,
-                         /*hlo_execution_profile=*/nullptr, hlo_render_options);
+                         hlo_render_options);
     });
   } else {
     RenderAndDisplayGraph(opts, [&](RenderedGraphFormat format) {

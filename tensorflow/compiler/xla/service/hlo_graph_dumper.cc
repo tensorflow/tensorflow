@@ -331,13 +331,11 @@ class HloDotDumper {
  public:
   HloDotDumper(const HloComputation* computation, absl::string_view label,
                const DebugOptions& debug_options,
-               HloRenderOptions hlo_render_options,
-               const HloExecutionProfile* profile, NodeFilter filter)
+               HloRenderOptions hlo_render_options, NodeFilter filter)
       : computation_(computation),
         label_(label),
         debug_options_(debug_options),
         hlo_render_options_(hlo_render_options),
-        profile_(profile),
         filter_(std::move(filter)) {}
 
   std::string Dump();
@@ -421,7 +419,6 @@ class HloDotDumper {
   const std::string label_;            // overall name for the graph
   const DebugOptions& debug_options_;
   const HloRenderOptions hlo_render_options_;
-  const HloExecutionProfile* profile_;  // may be null
   const NodeFilter filter_;
 
   // Each HloInstruction dumped gets a monotonically-increasing node ID.  This
@@ -501,11 +498,6 @@ stylesheet=<
   if (computation_->IsFusionComputation()) {
     StrAppend(&graph_label, " (in fusion instruction ",
               computation_->FusionInstruction()->name(), ")");
-  }
-  if (profile_ != nullptr) {
-    auto cycles = profile_->total_cycles_executed(*computation_);
-    absl::StrAppendFormat(&graph_label, "<br/>total cycles = %d (%s)", cycles,
-                          tsl::strings::HumanReadableNum(cycles));
   }
 
   // Create CSS rules that say, when you hover over the given node or cluster,
@@ -1360,16 +1352,6 @@ std::string HloDotDumper::GetInstructionNodeExtraInfo(
   if (debug_options_.xla_hlo_graph_addresses()) {
     lines.push_back(StrFormat("[%p]", instr));
   }
-  if (profile_ != nullptr) {
-    double hlo_cycles_executed = profile_->GetCyclesTakenBy(*instr);
-    double total_cycles_executed =
-        profile_->total_cycles_executed(*instr->parent());
-    if (hlo_cycles_executed > 0 && total_cycles_executed > 0) {
-      lines.push_back(
-          StrFormat("%% of cycles executed=%.2f",
-                    100 * hlo_cycles_executed / total_cycles_executed));
-    }
-  }
   return StrJoin(lines, "<br/>");
 }
 
@@ -2094,7 +2076,7 @@ void RegisterFusionState(const HloComputation& computation,
   HloDotDumper dumper(
       consumer.parent(),
       StrCat("Rendering of ", kRenderRadius, " nodes around fusion consumer"),
-      consumer.GetModule()->config().debug_options(), {}, /*profile=*/nullptr,
+      consumer.GetModule()->config().debug_options(), {},
       MakeNodeRadiusAroundFilter(&consumer, kRenderRadius, render_boundary));
   std::string dot_txt = dumper.Dump();
 
@@ -2109,17 +2091,15 @@ void RegisterFusionState(const HloComputation& computation,
 StatusOr<std::string> RenderGraph(
     const HloComputation& computation, absl::string_view label,
     const DebugOptions& debug_options, RenderedGraphFormat format,
-    const HloExecutionProfile* hlo_execution_profile,
     HloRenderOptions hlo_render_options) {
   absl::MutexLock lock(&url_renderer_mu);
   if (format == RenderedGraphFormat::kUrl && url_renderer == nullptr) {
     return Unavailable("Can't render as URL; no URL renderer was registered.");
   }
 
-  std::string rendered_dot =
-      HloDotDumper(&computation, label, debug_options, hlo_render_options,
-                   hlo_execution_profile, NodeFilter())
-          .Dump();
+  std::string rendered_dot = HloDotDumper(&computation, label, debug_options,
+                                          hlo_render_options, NodeFilter())
+                                 .Dump();
   return WrapDotInFormat(computation, rendered_dot, format);
 }
 
@@ -2138,7 +2118,7 @@ StatusOr<std::string> RenderNeighborhoodAround(
   std::string rendered_dot =
       HloDotDumper(node.parent(), label,
                    node.GetModule()->config().debug_options(),
-                   hlo_render_options, /*profile=*/nullptr,
+                   hlo_render_options,
                    MakeNodeRadiusAroundFilter(&node, radius, boundary))
           .Dump();
   return WrapDotInFormat(*node.parent(), rendered_dot, format);
@@ -2167,10 +2147,9 @@ StatusOr<std::string> RenderAllPathsFromTo(
                    "<br/><br/>***SHOWING ONLY A SUBSET OF ALL PATHS BETWEEN "
                    "NODES***<br/><br/>");
   }
-  std::string rendered_dot =
-      HloDotDumper(from.parent(), label, debug_options, hlo_render_options,
-                   /*profile=*/nullptr, filter)
-          .Dump();
+  std::string rendered_dot = HloDotDumper(from.parent(), label, debug_options,
+                                          hlo_render_options, filter)
+                                 .Dump();
   return WrapDotInFormat(*from.parent(), rendered_dot, format);
 }
 
