@@ -1233,6 +1233,49 @@ cc_library(
 )
 
 cc_library(
+    name = "latency_hiding_scheduler",
+    srcs = ["latency_hiding_scheduler.cc"],
+    hdrs = ["latency_hiding_scheduler.h"],
+    deps = [
+        ":hlo",
+        ":hlo_alias_analysis",
+        ":hlo_buffer",
+        ":hlo_cost_analysis",
+        ":hlo_dataflow_analysis",
+        ":hlo_pass",
+        ":hlo_reachability",
+        ":tuple_points_to_analysis",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:util",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "latency_hiding_scheduler_test",
+    srcs = ["latency_hiding_scheduler_test.cc"],
+    deps = [
+        ":async_collective_creator",
+        ":hlo",
+        ":hlo_memory_scheduler",
+        ":latency_hiding_scheduler",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+cc_library(
     name = "compile_only_service",
     srcs = ["compile_only_service.cc"],
     hdrs = ["compile_only_service.h"],
