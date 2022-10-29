@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 
 #include <memory>
+#include <ostream>
 #include <utility>
 
 #include "absl/strings/escaping.h"
@@ -737,6 +738,11 @@ void Tensor::CheckIsAlignedAndSingleElement() const {
 }
 
 Tensor::~Tensor() { UnrefIfNonNull(buf_); }
+
+std::ostream& operator<<(std::ostream& out, const Tensor& tensor) {
+  out << tensor.DebugString();
+  return out;
+}
 
 Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
                            const TensorShape& shape) {
