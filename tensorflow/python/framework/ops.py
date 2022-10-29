@@ -6238,6 +6238,18 @@ def get_collection(key, scope=None):
   """
   return get_default_graph().get_collection(key, scope)
 
+@tf_export(v1=["clear_collection"])
+def clear_collection(key):
+  """Wrapper for `Graph.clear_collection()` using the default graph.
+
+  See `tf.Graph.clear_collection`
+  for more details.
+
+  Args:
+    key: The key for the collection. For example, the `GraphKeys` class contains
+      many standard names for collections.
+  """
+  get_default_graph().clear_collection(key)
 
 def get_all_collection_keys():
   """Returns a list of collections used in the default graph."""

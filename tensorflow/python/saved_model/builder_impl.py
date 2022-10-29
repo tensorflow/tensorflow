@@ -484,9 +484,7 @@ class SavedModelBuilder(_SavedModelBuilder):
     # We check main_op and legacy_init_op for thoroughness and explicitness.
     for init_op_key in (constants.MAIN_OP_KEY, constants.LEGACY_INIT_OP_KEY):
       if ops.get_collection(init_op_key):
-        raise ValueError(
-            "Graph already contains one or more main ops under the "
-            "collection {}.".format(init_op_key))
+        ops.clear_collection(init_op_key)
 
     ops.add_to_collection(constants.MAIN_OP_KEY, main_op)
 
