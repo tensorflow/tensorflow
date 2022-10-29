@@ -348,8 +348,10 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime:device_factory",
+        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:str_util",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
