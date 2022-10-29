@@ -29,7 +29,7 @@ class ComputeEngineZoneProviderTest : public ::testing::Test {
 
 TEST_F(ComputeEngineZoneProviderTest, GetZone) {
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
-      "Uri: http://metadata/computeMetadata/v1/instance/zone\n"
+      "Uri: http://metadata.google.internal/computeMetadata/v1/instance/zone\n"
       "Header Metadata-Flavor: Google\n",
       "projects/123456789/zones/us-west1-b")});
 
@@ -50,7 +50,7 @@ TEST_F(ComputeEngineZoneProviderTest, GetZone) {
 
 TEST_F(ComputeEngineZoneProviderTest, InvalidZoneString) {
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
-      "Uri: http://metadata/computeMetadata/v1/instance/zone\n"
+      "Uri: http://metadata.google.internal/computeMetadata/v1/instance/zone\n"
       "Header Metadata-Flavor: Google\n",
       "invalidresponse")});
 
