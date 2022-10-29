@@ -230,11 +230,30 @@ struct FoldMaterializeUnrealizedConversionCast
     return success();
   }
 };
+
+/// Folds tensor::CastOp sources into MaterializeOp.
+struct FoldSrcCastIntoMaterialize : public OpRewritePattern<MaterializeOp> {
+  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(MaterializeOp op,
+                                PatternRewriter &rewriter) const override {
+    auto cast = op.getSource().getDefiningOp<tensor::CastOp>();
+    if (!cast) return failure();
+
+    auto src = cast.getSource();
+    auto set = op.getSet();
+    rewriter.replaceOpWithNewOp<MaterializeOp>(
+        op, inferReturnType(src.getType(), set.getType()), src, set);
+    return success();
+  }
+};
 }  // namespace
 
 void MaterializeOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                 MLIRContext *context) {
-  results.add<FoldMaterializeUnrealizedConversionCast>(context);
+  results
+      .add<FoldMaterializeUnrealizedConversionCast, FoldSrcCastIntoMaterialize>(
+          context);
 }
 
 //===----------------------------------------------------------------------===//
