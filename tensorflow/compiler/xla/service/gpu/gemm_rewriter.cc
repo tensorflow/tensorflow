@@ -474,14 +474,40 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     if (Match(instr,
               m::Convert(
-                  m::AddAnyOrder(m::Convert(GemmOrCublasLtMatmul(&existing_gemm)
-                                                .WithOneUser()
-                                                .WithElementType(BF16))
-                                     .WithOneUser(),
-                                 m::Convert(m::Op(&bias).WithElementType(BF16))
+                  m::MaximumAnyOrder(
+                      m::Convert(m::OptionalUnaryOp(
+                                     &optional_slice, {HloOpcode::kSlice},
+                                     m::CustomCall(&existing_gemm,
+                                                   kCublasLtMatmulCallTarget)
+                                         .WithOneUser()
+                                         .WithElementType(BF16))
                                      .WithOneUser())
+                          .WithOneUser(),
+                      m::Broadcast(
+                          &zeros,
+                          m::Convert(m::ConstantScalar(0).WithElementType(BF16))
+                              .WithOneUser())
+                          .WithOneUser())
                       .WithOneUser())
                   .WithElementType(BF16))) {
+      return FuseReluActivation(
+          instr, zeros, existing_gemm,
+          (optional_slice->opcode() == HloOpcode::kSlice ? optional_slice
+                                                         : nullptr));
+    }
+    if (Match(
+            instr,
+            m::Convert(m::AddAnyOrder(
+                           m::Convert(m::CustomCall(&existing_gemm,
+                                                    {kGemmCallTarget,
+                                                     kCublasLtMatmulCallTarget})
+                                          .WithOneUser()
+                                          .WithElementType(BF16))
+                               .WithOneUser(),
+                           m::Convert(m::Op(&bias).WithElementType(BF16))
+                               .WithOneUser())
+                           .WithOneUser())
+                .WithElementType(BF16))) {
       return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
     // Attempt to elide the scaling and conversion of the result of an FP8
@@ -760,6 +786,65 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  // Replaces binary(slice/bitcast(gemm), broadcast) with
+  // slice/bitcast(binary(gemm, broadcast)) and changes the shape of broadcast
+  // from that of slice/bitcast to that of the GEMM, i.e. the operand of
+  // slice/bitcast.
+  Status SinkSliceOrBitcastBelowBinaryOp(HloInstruction *slice_or_bitcast,
+                                         HloInstruction **binary,
+                                         HloInstruction **broadcast) {
+    TF_RET_CHECK(slice_or_bitcast->user_count() == 1);
+    TF_RET_CHECK((*broadcast)->user_count() == 1);
+
+    // Re-broadcast the operand of broadcast to the shape of the GEMM.
+    HloInstruction *gemm = slice_or_bitcast->mutable_operand(0);
+    HloInstruction *new_broadcast = (*binary)->AddInstruction(
+        (*broadcast)->CloneWithNewShape(gemm->shape()));
+
+    // Create a new binary instruction of the same type as binary and of the
+    // shape of the GEMM.
+    TF_ASSIGN_OR_RETURN(
+        HloInstruction * new_binary,
+        MakeBinaryHlo((*binary)->opcode(), gemm, new_broadcast));
+    TF_RETURN_IF_ERROR(slice_or_bitcast->ReplaceOperandWith(0, new_binary));
+    TF_RETURN_IF_ERROR(ReplaceInstruction(*binary, slice_or_bitcast));
+    *binary = slice_or_bitcast->mutable_operand(0);
+    *broadcast = new_broadcast;
+
+    return OkStatus();
+  }
+
+  // Replaces convert(binary(convert(slice(gemm)), broadcast(convert))) with
+  // slice(binary(gemm, broadcast)) and changes the shape of broadcast from
+  // that of slice to that of the GEMM, i.e. the operand of slice.
+  Status ElideConversionAndSinkSliceBelowBinaryOp(HloInstruction *slice,
+                                                  HloInstruction **convert,
+                                                  HloInstruction **broadcast) {
+    TF_RET_CHECK(slice->user_count() == 1);
+    TF_RET_CHECK((*broadcast)->user_count() == 1);
+    TF_RET_CHECK((*convert)->IsRoot() || (*convert)->user_count() == 1);
+
+    // Re-broadcast the unconverted operand of broadcast, i.e. the operand of
+    // the operand of broadcast, to the shape of the GEMM.
+    HloInstruction *gemm = slice->mutable_operand(0);
+    HloInstruction *new_broadcast =
+        MakeBroadcastHlo((*broadcast)->mutable_operand(0)->mutable_operand(0),
+                         (*broadcast)->dimensions(), gemm->shape());
+
+    // Create a new binary instruction of the same type as binary, i.e. the
+    // operand of convert, and of the shape of the GEMM.
+    HloInstruction *binary = (*convert)->mutable_operand(0);
+    TF_ASSIGN_OR_RETURN(HloInstruction * new_binary,
+                        MakeBinaryHlo(binary->opcode(), gemm, new_broadcast));
+
+    TF_RETURN_IF_ERROR(slice->ReplaceOperandWith(0, new_binary));
+    TF_RETURN_IF_ERROR(ReplaceInstruction(*convert, slice));
+    *convert = slice->mutable_operand(0);
+    *broadcast = new_broadcast;
+
+    return OkStatus();
+  }
+
   Status FuseMatrixBiasAdd(HloInstruction *instr, HloInstruction *bias,
                            const HloInstruction *gemm) {
     TF_RET_CHECK(bias->shape() == gemm->shape());
@@ -824,15 +909,18 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return ReplaceWithNewInstruction(instr, std::move(fused_op));
   }
 
-  StatusOr<bool> FuseVectorBiasAdd(HloInstruction *add,
-                                   HloInstruction *broadcast_bias,
-                                   const HloInstruction *gemm,
+  StatusOr<bool> FuseVectorBiasAdd(HloInstruction *instr,
+                                   HloInstruction *broadcast,
+                                   HloInstruction *gemm,
                                    HloInstruction *slice = nullptr) {
+    // For data types other than bfloat16, instr is an add instruction. When
+    // the data type of the GEMM is bfloat16, instr is a convert instruction
+    // which operates on add.
     TF_RET_CHECK(ShapeUtil::CompatibleIgnoringElementType(
-        broadcast_bias->shape(), (slice ? slice->shape() : gemm->shape())));
-
+        broadcast->shape(), (slice ? slice->shape() : gemm->shape())));
+    const auto out_type = gemm->shape().element_type();
     // Verify that the data type is supported by Epilogue Fusion.
-    if (!SupportsEpilogueFusion(gemm->shape().element_type())) {
+    if (!SupportsEpilogueFusion(out_type)) {
       return false;
     }
 
@@ -849,6 +937,14 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                           dot_dims.rhs_batch_dimensions_size() -
                           dot_dims.rhs_contracting_dimensions_size();
 
+    // For data types other than bfloat16, broadcast operates directly on the
+    // vector bias. When the data type of the GEMM is bfloat16, broadcast
+    // operates on the conversion of the vector bias, i.e. the vector bias is
+    // the operand of the operand of broadcast.
+    HloInstruction *bias =
+        out_type != BF16 ? broadcast->mutable_operand(0)
+                         : broadcast->mutable_operand(0)->mutable_operand(0);
+
     if ((gemm->user_count() != 1) ||
         (config.epilogue() != GemmBackendConfig::DEFAULT) ||
         (bias->shape().rank() != num_col_dims)) {
@@ -857,7 +953,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // We require the bias vector to have been broadcast in the most major
     // dimensions; i.e. its most minor physical dimensions align with most minor
     // physical dimensions of the gemm output.
-    absl::Span<const int64_t> broadcast_dims = broadcast_bias->dimensions();
+    absl::Span<const int64_t> broadcast_dims = broadcast->dimensions();
     for (size_t i = 0; i < num_col_dims; ++i) {
       int64_t dim = gemm->shape().layout().minor_to_major(i);
 
@@ -874,7 +970,25 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    // Replace add(gemm, broadcast_bias) with fused new_gemm.
+    // Handle possible slicing of the result of the GEMM, e.g. when the data
+    // type is float16 or bfloat16 and the sizes of the operands are not
+    // multiples of 8.
+    if (slice) {
+      if (out_type != BF16) {
+        // Replace add(slice(gemm), broadcast(bias)) with
+        // slice(add(gemm, broadcast(bias))) to enable fusing.
+        TF_RETURN_IF_ERROR(
+            SinkSliceOrBitcastBelowBinaryOp(slice, &instr, &broadcast));
+      } else {
+        // Replace convert(add(slice(convert(gemm)), broadcast(convert(bias)))
+        // with slice(add(gemm, broadcast(bias))) to enable fusing.
+        TF_RETURN_IF_ERROR(ElideConversionAndSinkSliceBelowBinaryOp(
+            slice, &instr, &broadcast));
+      }
+      bias = broadcast->mutable_operand(0);
+    }
+
+    // Replace add(gemm, broadcast) with fused new_gemm.
     config.set_epilogue(GemmBackendConfig::BIAS);
     std::vector<HloInstruction *> operands(gemm->operands().begin(),
                                            gemm->operands().end());
@@ -882,8 +996,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     std::unique_ptr<HloInstruction> result =
         gemm->CloneWithNewOperands(gemm->shape(), operands);
-    TF_RETURN_IF_ERROR(result->set_backend_config(config));
-    TF_RETURN_IF_ERROR(SetName(result->GetModule(), result.get()));
+    TF_RETURN_IF_ERROR(new_gemm->set_backend_config(config));
+    TF_RETURN_IF_ERROR(SetName(instr->GetModule(), new_gemm.get()));
+    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(new_gemm)));
 
     if (slice != nullptr) {
       result = slice->CloneWithNewOperands(
@@ -898,11 +1013,15 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                             HloInstruction *broadcast_zeros,
                             const HloInstruction *gemm,
                             HloInstruction *slice_or_bitcast = nullptr) {
-    TF_RET_CHECK(ShapeUtil::Compatible(
-        broadcast_zeros->shape(),
+    TF_RET_CHECK(ShapeUtil::CompatibleIgnoringElementType(
+        broadcast->shape(),
         (slice_or_bitcast ? slice_or_bitcast->shape() : gemm->shape())));
-
-    if (!SupportsEpilogueFusion(gemm->shape().element_type())) {
+    // For data types other than bfloat16, instr is a maximum instruction. When
+    // the data type of the GEMM is bfloat16, instr is a convert instruction
+    // which operates on maximum.
+    auto out_type = gemm->shape().element_type();
+    // Verify that the data type is supported by Epilogue Fusion.
+    if (!SupportsEpilogueFusion(out_type)) {
       return OkStatus();
     }
 
@@ -919,18 +1038,31 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return OkStatus();
     }
 
-    std::unique_ptr<HloInstruction> result = gemm->Clone();
-    TF_RETURN_IF_ERROR(result->set_backend_config(config));
-    TF_RETURN_IF_ERROR(SetName(maximum->GetModule(), result.get()));
-
-    if (slice_or_bitcast != nullptr) {
-      result = slice_or_bitcast->CloneWithNewOperands(
-          slice_or_bitcast->shape(),
-          {slice_or_bitcast->parent()->AddInstruction(std::move(result))});
+    // Handle possible slicing or bitcasting of the result of the GEMM, e.g.
+    // when the data type is float16 or bfloat16 and the sizes of the operands
+    // are not multiples of 8.
+    if (slice_or_bitcast) {
+      if (out_type != BF16) {
+        // Replace maximum(slice/bitcast(gemm), broadcast(zero)) with
+        // slice/bitcast(maximum(gemm, broadcast(zero))) to enable fusing.
+        TF_RETURN_IF_ERROR(SinkSliceOrBitcastBelowBinaryOp(slice_or_bitcast,
+                                                           &instr, &broadcast));
+      } else {
+        // Replace
+        // convert(maximum(slice/bitcast(convert(gemm)),
+        // broadcast(convert(zero))) with slice/bitcast(maximum(gemm,
+        // broadcast(zero))) to enable fusing.
+        TF_RETURN_IF_ERROR(ElideConversionAndSinkSliceBelowBinaryOp(
+            slice_or_bitcast, &instr, &broadcast));
+      }
     }
 
-    return ReplaceWithNewInstruction(maximum, std::move(result));
-  }
+    // Replace maximum(gemm, broadcast(zero)) with fused new_gemm.
+    std::unique_ptr<HloInstruction> new_gemm = HloInstruction::CreateCustomCall(
+        instr->shape(), gemm->operands(), kCublasLtMatmulCallTarget);
+    TF_RETURN_IF_ERROR(new_gemm->set_backend_config(config));
+    TF_RETURN_IF_ERROR(SetName(instr->GetModule(), new_gemm.get()));
+    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(new_gemm)));
 
   Status FuseGeluActivation(HloInstruction *multiply, HloInstruction *gemm) {
     if (!SupportsEpilogueFusion(gemm->shape().element_type())) {
