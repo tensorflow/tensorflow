@@ -204,7 +204,10 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
       "nullptr">:$bodyBuilderFn)>,
   ];
 
-  let extraClassDeclaration = extraBaseClassDeclaration;
+  let extraClassDeclaration = extraBaseClassDeclaration # [{
+    /// Return the destinations for a gml_st.parallel op.
+    ValueRange getLoopLikeOpInits();
+  }];
 }
 
 def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
@@ -303,6 +306,11 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
              "opResult does not belong to the gml_st::ForOp operation");
       return getOperation()->getOpOperand(
         getNumControlOperands() + opResult.getResultNumber());
+    }
+
+    /// Return the destinations for a gml_st.for op.
+    ValueRange getLoopLikeOpInits() {
+      return getOutputs();
     }
   }];
 

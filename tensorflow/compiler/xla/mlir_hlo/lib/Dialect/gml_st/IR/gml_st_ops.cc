@@ -697,6 +697,10 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseLoopLikeOp<ParallelOp>(parser, result);
 }
 
+ValueRange ParallelOp::getLoopLikeOpInits() {
+  return getTerminator().getDsts();
+}
+
 //===----------------------------------------------------------------------===//
 // ForOp
 //===----------------------------------------------------------------------===//

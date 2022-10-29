@@ -409,14 +409,6 @@ ForOp vectorizeLoopLikeOp(ForOp op, BlockAndValueMapping &bvm,
       });
 }
 
-// Returns the destinations for a gml_st.parallel op.
-ValueRange getLoopLikeOpInits(ParallelOp op) {
-  return op.getTerminator().getDsts();
-}
-
-// Returns the destinations for a gml_st.for op.
-ValueRange getLoopLikeOpInits(ForOp op) { return op.getOutputs(); }
-
 template <typename LoopLikeOp>
 struct LoopLikeOpVectorizationPattern : public OpRewritePattern<LoopLikeOp> {
   LoopLikeOpVectorizationPattern(MLIRContext *context,
@@ -465,7 +457,7 @@ struct LoopLikeOpVectorizationPattern : public OpRewritePattern<LoopLikeOp> {
     auto vectorLoopLikeOp = vectorizeLoopLikeOp(op, bvm, rewriter);
     bvm.map(op.getResults(), vectorLoopLikeOp.getResults());
 
-    convertVectorResultsToTensor(op->getResults(), getLoopLikeOpInits(op), bvm,
+    convertVectorResultsToTensor(op->getResults(), op.getLoopLikeOpInits(), bvm,
                                  rewriter);
     SmallVector<Value, 1> mappedResults = llvm::to_vector<1>(llvm::map_range(
         op.getResults(), [&](Value v) { return bvm.lookupOrDefault(v); }));

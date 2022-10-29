@@ -300,12 +300,16 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
       return "iterator_types";
     }
 
-
     /// Return whether the loop dimension is parallel or not.
     bool isParallelDimension(unsigned dim) {
       IteratorTypeAttr attr =
           this->getIteratorTypes()[dim].cast<IteratorTypeAttr>();
       return attr.getValue() == utils::IteratorType::parallel;
+    }
+
+    /// Return the destinations for a gml_st.loop op.
+    ValueRange getLoopLikeOpInits() {
+      return getOutputs();
     }
   }];
 
