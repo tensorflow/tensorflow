@@ -1574,12 +1574,25 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
                       GetOrCreateSubComputationFromRegion(&fusion.getRegion(),
                                                           /*is_fusion=*/true));
 
-  int unroll_factor;
-  if (!MayPreventVectorization(fusion)) {
-    unroll_factor = ComputeMaxUnrollFactor(fusion, hlo_module_config_);
-  } else {
-    unroll_factor = 1;
+  const GpuDeviceInfo gpu_device_info = ir_emitter_context_->gpu_device_info();
+
+  Shape element_shape = GetShape(fusion.getOutputBuffers()[0]);
+  int unroll_factor = 1;
+  {
+    // Unrolling is good to read large inputs with small elements
+    // due to vector loads, but increases the register pressure when one
+    // thread has to produce multiple output elements.
+    // Therefore for fusions with small outputs prefer to use one thread
+    // per output element = no unroll.
+    // Call 'small' fusions that use less threads than the GPU has.
+    int64_t num_elements = ShapeUtil::ElementsIn(element_shape);
+    int64_t n_threads_max =
+        gpu_device_info.threads_per_core_limit * gpu_device_info.core_count;
+    if (num_elements >= n_threads_max && !MayPreventVectorization(fusion)) {
+      unroll_factor = ComputeMaxUnrollFactor(fusion, hlo_module_config_);
+    }
   }
+  VLOG(2) << "Unroll factor: " << unroll_factor;
 
   bool row_vectorized;
   int num_big_inputs;
@@ -1608,23 +1621,20 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
     return true;
   }();
 
-  Shape element_shape = GetShape(fusion.getOutputBuffers()[0]);
   LaunchDimensionsConfig launch_config{unroll_factor, few_waves,
                                        row_vectorized};
   // Check that the shapes is supported.
   if (launch_config.row_vectorized &&
-      ThreadsPerBlockRowVectorized(element_shape,
-                                   ir_emitter_context_->gpu_device_info(),
+      ThreadsPerBlockRowVectorized(element_shape, gpu_device_info,
                                    launch_config) <= 0) {
     VLOG(2) << "Cancelling row_vectorization as the shape isn't supported.";
     launch_config.row_vectorized = false;
     launch_config.few_waves = false;
   }
 
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      CalculateLaunchDimensions(
-                          element_shape, ir_emitter_context_->gpu_device_info(),
-                          launch_config));
+  TF_ASSIGN_OR_RETURN(
+      LaunchDimensions launch_dimensions,
+      CalculateLaunchDimensions(element_shape, gpu_device_info, launch_config));
 
   TF_ASSIGN_OR_RETURN(
       std::vector<llvm_ir::IrArray> ir_arrays,
