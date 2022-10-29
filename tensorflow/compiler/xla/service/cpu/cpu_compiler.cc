@@ -51,31 +51,18 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"  // from @llvm-project
-#include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
-#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
-#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
-#include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/TensorToLinalg/TensorToLinalgPass.h"  // from @llvm-project
-#include "mlir/Conversion/VectorToSCF/VectorToSCF.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"  // from @llvm-project
-#include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Func/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Vector/IR/VectorOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -92,7 +79,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/mlir/transforms/cpu/passes.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/calling_convention.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_cpu.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
@@ -350,7 +336,11 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions() {
       runtime::ToSymbolsBinding(PopulateXlaCpuCustomCall);
   opts.compiler.create_compilation_pipeline =
       [copts](xla::runtime::PassManager& passes) {
-        CreateDefaultHloXlaRuntimePipeline(passes);
+        Status status = CreateDefaultHloXlaRuntimePipeline(passes);
+        if (!status.ok()) {
+          LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
+                     << status.error_message();
+        }
         runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(passes, copts);
       };
   opts.compiler.calling_convention = runtime::ResultsToOutsCallingConvention(
@@ -1014,112 +1004,13 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
     mlir_context.disableMultithreading();
     pm.enableIRPrinting();
   }
-  // Resolve all shape constraints (e.g. broadcast constraints that can be
-  // proved statically and changed to const witness) early to allow more
-  // efficient broadcast operations moving.
-  // Move up broadcasting operations to allow for more fusion opportunities.
-  pm.addPass(mlir::createInlinerPass());
-  pm.addPass(mlir::mhlo::createExpandHloTuplesPass("main"));
-  // TODO(b/233771980): Remove once custom_call doesn't use tuples.
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createFlattenTuplePass());
-  pm.addPass(createXlaAbiLegalizationPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createLegalizeGeneralDotPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createBroadcastPropagationPass());
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(mlir::createCanonicalizerPass());
 
-  // Transform HLO operations to Linalg.
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeSortPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createLegalizeControlFlowPass());
-  pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
-  // TODO(kramerb): Give THLO lowerings priority over linalg when it's ready for
-  // concat, reduce and friends.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createLegalizeHloToLinalgPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createLegalizeMHLOToTHLOPass());
+  xla::runtime::PassManager xla_pm(&pm);
+  HloXlaRuntimePipelineOptions options;
+  options.sparse_bufferization = false;
+  options.outline_with_xla_framework = true;
+  TF_RETURN_IF_ERROR(CreateHloXlaRuntimePipeline(xla_pm, options));
 
-  // Lower index cast on tensors to tensor.generate.
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createLowerIndexCastPass());
-
-  pm.addPass(mlir::mhlo::createConvertToSignlessPass());
-
-  // Transform scatter ops.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::gml_st::createTransformScatterForCpuPass());
-
-  // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
-  // use linalg inputs instead of outputs for memref.dim operations).
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createShapeSimplification());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createShapeToShapeLowering());
-  pm.addPass(mlir::createConvertShapeToStandardPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::createConvertShapeConstraintsPass());
-
-  // Fuse Linalg on tensors operations.
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::createLinalgElementwiseOpFusionPass());
-  pm.addPass(mlir::createReconcileUnrealizedCastsPass());
-  pm.addPass(mlir::createConvertTensorToLinalgPass());
-
-  // Detensorize SCF iter args.
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createDetensorizeScfOpsPass());
-  // mhlo ops on unit tensors generate trivial linalg.generics, which
-  // one-shot-bufferize generates unnecessary allocs for. The detensorize pass
-  // replaces these linalg.generics with scalar ops.
-  auto detensorize = mlir::createLinalgDetensorizePass();
-  if (detensorize->initializeOptions("aggressive-mode=true").failed()) {
-    return tsl::errors::Internal("Failed to set up detensorize pass.");
-  }
-  pm.addNestedPass<mlir::func::FuncOp>(std::move(detensorize));
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createScalarizationPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::bufferization::createEmptyTensorToAllocTensorPass());
-
-  // Always run canonicalizer (which does dead code removal) before
-  // bufferizing anything.
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::hlo::createOneShotBufferizePass());
-
-  // Handle framework specific requirements for buffers and then insert
-  // deallocations for temporary buffers.
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertLinalgToLoopsPass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::gml_st::createGmlStToScfPass());
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::bufferization::createBufferResultsToOutParamsPass());
-  pm.addPass(mlir::mhlo::CreateOutlineWithXLAFrameworkPass());
-  pm.addPass(mlir::createInlinerPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::bufferization::createBufferDeallocationPass());
-
-  pm.addPass(mlir::createBufferizationToMemRefPass());
-
-  // Specilize linalg.matmul to linalg.dot, linalg.matvec or linalg.vecmat,
-  // and immediately canonicalize to clean up not taken branches.
-  // pm.addNestedPass<mlir::func::FuncOp>(CreateLinalgMatmulSpecializationPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-
-  // Tile and vectorize linalg operation using Linalg Codegen Strategy.
-  // pm.addNestedPass<mlir::func::FuncOp>(CreateCodegenStrategyForMatMulPass());
-
-  // TODO(tpopp): Move hits to mlir::hlo::createGenericHostToLLVMPass?
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::createConvertComplexToStandardPass());
-
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-
-  mlir::VectorTransferToSCFOptions vec_to_scf_options;
-  vec_to_scf_options.unroll = true;
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::createConvertVectorToSCFPass(vec_to_scf_options));
   pm.addNestedPass<mlir::func::FuncOp>(mlir::arith::createArithExpandOpsPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::memref::createExpandOpsPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createLowerAffinePass());
