@@ -363,51 +363,54 @@ Status GpuCompiler::OptimizeHloModule(
     layout_insensitive_algsimp_opts.set_enable_conv_operand_swap(false);
   }
 
-  if (hlo_module->config().use_spmd_partitioning()) {
-    HloPassPipeline spmd_pipeline("spmd-partitioner");
-    AddHloVerifier(&spmd_pipeline);
-    const int64_t num_partitions = hlo_module->config().num_partitions();
-    if (num_partitions > 1) {
-      // Run some IR cleanup passes before running the SPMD partitioning
-      // passes.
-      spmd_pipeline.AddPass<CallInliner>();
-      spmd_pipeline.AddPass<ZeroSizedHloElimination>();
-      spmd_pipeline.AddPass<ConditionalCanonicalizer>();
-
-      HloPassPipeline& spmd_simplify =
-          spmd_pipeline.AddPass<HloPassFix<HloPassPipeline>>("spmd-simplify");
-
-      spmd_simplify.AddPass<AlgebraicSimplifier>(
-          layout_insensitive_algsimp_opts);
-
-      spmd_simplify.AddPass<SortSimplifier>();
-      spmd_simplify.AddPass<TupleSimplifier>();
-      spmd_simplify.AddPass<ScatterSimplifier>();
-      spmd_simplify.AddPass<ScatterExpander>(
-          ScatterExpander::kEliminateSimpleScatters);
-      spmd_simplify.AddPass<GatherSimplifier>();
-      spmd_simplify.AddPass<GatherExpander>(
-          GatherExpander::kEliminateSimpleGathers);
-      spmd_simplify.AddPass<WhileLoopConstantSinking>();
-      spmd_simplify.AddPass<WhileLoopSimplifier>();
-
-      spmd_simplify.AddPass<ReshapeMover>();
-      spmd_simplify.AddPass<HloConstantFolding>();
-      spmd_simplify.AddPass<ConditionalSimplifier>();
-      spmd_simplify.AddPass<HloDCE>();
-
-      spmd_pipeline.AddPass<HloConstantSplitter>();
-      spmd_pipeline.AddPass<ShardingPropagation>(
-          /*is_spmd=*/true, /*propagate_metadata=*/false,
-          hlo_module->config().allow_spmd_sharding_propagation_to_output());
-      spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
-          num_partitions, hlo_module->config().replica_count());
-    } else {
-      // Remove redundant sharding ops when partition_count == 1.
-      spmd_pipeline.AddPass<ShardingRemover>();
-      spmd_pipeline.AddPass<HloDCE>();
+  const int64_t num_partitions = hlo_module->config().num_partitions();
+  if (num_partitions > 1) {
+    if (!hlo_module->config().use_spmd_partitioning()) {
+      return InvalidArgument(
+          "num_partitions=%d but SPMD partitioning not enabled.",
+          num_partitions);
     }
+    HloPassPipeline spmd_pipeline("spmd-partitioner");
+    // Run some IR cleanup passes before running the SPMD partitioning
+    // passes.
+    spmd_pipeline.AddPass<CallInliner>();
+    spmd_pipeline.AddPass<ZeroSizedHloElimination>();
+    spmd_pipeline.AddPass<ConditionalCanonicalizer>();
+
+    HloPassPipeline& spmd_simplify =
+        spmd_pipeline.AddPass<HloPassFix<HloPassPipeline>>("spmd-simplify");
+
+    spmd_simplify.AddPass<AlgebraicSimplifier>(layout_insensitive_algsimp_opts);
+
+    spmd_simplify.AddPass<SortSimplifier>();
+    spmd_simplify.AddPass<TupleSimplifier>();
+    spmd_simplify.AddPass<ScatterSimplifier>();
+    spmd_simplify.AddPass<ScatterExpander>(
+        ScatterExpander::kEliminateSimpleScatters);
+    spmd_simplify.AddPass<GatherSimplifier>();
+    spmd_simplify.AddPass<GatherExpander>(
+        GatherExpander::kEliminateSimpleGathers);
+    spmd_simplify.AddPass<WhileLoopConstantSinking>();
+    spmd_simplify.AddPass<WhileLoopSimplifier>();
+
+    spmd_simplify.AddPass<ReshapeMover>();
+    spmd_simplify.AddPass<HloConstantFolding>();
+    spmd_simplify.AddPass<ConditionalSimplifier>();
+    spmd_simplify.AddPass<HloDCE>();
+
+    spmd_pipeline.AddPass<HloConstantSplitter>();
+    spmd_pipeline.AddPass<ShardingPropagation>(
+        /*is_spmd=*/true, /*propagate_metadata=*/false,
+        hlo_module->config().allow_spmd_sharding_propagation_to_output());
+    spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
+        num_partitions, hlo_module->config().replica_count());
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(hlo_module).status());
+  } else {
+    HloPassPipeline sharding_removal_pipeline("sharding-removal");
+    // Remove redundant sharding ops when partition_count == 1.
+    sharding_removal_pipeline.AddPass<ShardingRemover>();
+    sharding_removal_pipeline.AddPass<HloDCE>();
+    TF_RETURN_IF_ERROR(sharding_removal_pipeline.Run(hlo_module).status());
   }
 
   {
