@@ -253,5 +253,10 @@ static mlir::PassPipelineRegistration<> hlo_xla_runtime_pipeline(
       }
     });
 
+static mlir::PassPipelineRegistration<> sparsification_pipeline(
+    "hlo-xla-runtime-sparsification",
+    "Sparsification passes from HLO-XLA Runtime pipeline",
+    AddSparsificationPasses);
+
 }  // namespace cpu
 }  // namespace xla
