@@ -79,7 +79,7 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
 
   LogicalResult matchAndRewrite(GenericOp linalg_op,
                                 PatternRewriter &rewriter) const override {
-    if (linalg_op.getNumOutputs() != 1) return failure();
+    if (linalg_op.getNumDpsInits() != 1) return failure();
     if (linalg_op.getNumLoops() != 2) return failure();
 
     // Get immediate parent.
@@ -176,7 +176,7 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
     auto fused_fill =
         rewriter.create<FillOp>(loc, fill.value(), slice_of_output_tile);
     rewriter.updateRootInPlace(tiled_op, [&]() {
-      tiled_op.getOutputOperand(0)->set(fused_fill.result());
+      tiled_op.getDpsInitOperand(0)->set(fused_fill.result());
     });
 
     rewriter.setInsertionPointAfter(tiled_op);
@@ -295,7 +295,7 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
 
     // Find extract_slice/insert_slice pair used to RMW output.
     auto extract_output_slice =
-        tiled_op.getOutputOperand(0)->get().getDefiningOp<ExtractSliceOp>();
+        tiled_op.getDpsInitOperand(0)->get().getDefiningOp<ExtractSliceOp>();
     if (!extract_output_slice) return failure();
 
     Value tiled_op_result = tiled_op->getResult(0);

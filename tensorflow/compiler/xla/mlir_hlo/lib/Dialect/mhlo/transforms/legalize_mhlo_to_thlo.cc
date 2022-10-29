@@ -251,6 +251,91 @@ static SmallVector<Value, 8> getReduceOpEmptyTensorDynSizes(
   return dynShape;
 }
 
+struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
+  using OpConversionPattern<mhlo::ReduceOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ReduceOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    auto srcRank =
+        adaptor.getInputs()[0].getType().cast<RankedTensorType>().getRank();
+    auto reductionDims =
+        llvm::to_vector(op.getDimensions().getValues<int64_t>());
+    // mhlo.reduce doesn't specify the order of the reduction dimensions.
+    std::sort(reductionDims.begin(), reductionDims.end());
+
+    auto toRankedTensor = [](Value v) -> RankedTensorType {
+      return v.getType().dyn_cast<RankedTensorType>();
+    };
+
+    SmallVector<Value> outputs;
+    SmallVector<RankedTensorType> operandTypes, initTypes;
+    SmallVector<Type> resultTypes;
+    if (failed(typeConverter->convertTypes(op.getResultTypes(), resultTypes)))
+      return failure();
+
+    Location loc = op.getLoc();
+    for (auto [operand, initValue, resultType] :
+         llvm::zip(adaptor.getInputs(), adaptor.getInitValues(), resultTypes)) {
+      auto initType = toRankedTensor(initValue);
+      if (!initType)
+        return rewriter.notifyMatchFailure(op,
+                                           "expects known-rank init values");
+      initTypes.push_back(initType);
+      auto operandType = toRankedTensor(initValue);
+      if (!operandType)
+        return rewriter.notifyMatchFailure(op, "expects known-rank operands");
+      operandTypes.push_back(operandType);
+      initValue = rewriter.createOrFold<tensor::ExtractOp>(loc, initValue);
+      auto tensorResultType = resultType.cast<RankedTensorType>();
+
+      SmallVector<Value, 8> dynShape = getReduceOpEmptyTensorDynSizes(
+          rewriter, loc, operand, srcRank, tensorResultType, reductionDims);
+      Value emptyTensor = rewriter.create<tensor::EmptyOp>(
+          loc, tensorResultType.getShape(), tensorResultType.getElementType(),
+          dynShape);
+      Value filledTensor =
+          rewriter.create<linalg::FillOp>(loc, initValue, emptyTensor).result();
+      outputs.push_back(filledTensor);
+    }
+
+    auto thloReduction = rewriter.create<thlo::ReductionOp>(
+        loc, resultTypes, adaptor.getInputs(), outputs,
+        rewriter.getDenseI64ArrayAttr(reductionDims));
+    Region& region = thloReduction.getCombiner();
+    rewriter.inlineRegionBefore(op.getBody(), region, region.end());
+
+    // Convert the signature of the body. The reduce op 'computation' region
+    // apply function has a signature with tensor types, this is converted to a
+    // function with element types. E.g. the signature "(tensor<f32>,
+    // tensor<f32>) -> tensor<f32>" will be converted to "(f32, f32) -> f32".
+    // Also, we need to swap the operands of the function. The mhlo.reduce op
+    // expects the init values to be the first parameters of the apply function,
+    // while the thlo.reduction op expects the init values as the last
+    // parameters of the 'combiner' region apply function.
+    TypeConverter::SignatureConversion signatureConverter(
+        thloReduction.getNumDpsInputs() * 2);
+    assert(thloReduction.getNumDpsInputs() == thloReduction.getNumDpsInits());
+    for (const auto& [idx, val] : llvm::enumerate(operandTypes)) {
+      signatureConverter.addInputs(
+          /*origInputNo=*/idx + thloReduction.getNumDpsInputs(),
+          // type for new operand number 'idx'.
+          typeConverter->convertType(val.getElementType()));
+    }
+    for (const auto& [idx, val] : llvm::enumerate(initTypes)) {
+      signatureConverter.addInputs(
+          /*origInputNo=*/idx,
+          // type for new operand number 'idx' + thloReduction.getNumDpsInputs()
+          typeConverter->convertType(val.getElementType()));
+    }
+    rewriter.applySignatureConversion(&region, signatureConverter,
+                                      getTypeConverter());
+
+    rewriter.replaceOp(op, thloReduction.getResults());
+    return success();
+  }
+};
+
 bool isInBodyOfThloOp(Operation* op) {
   auto* parentOp = op->getParentRegion()->getParentOp();
   return isa<thlo::MapOp>(*parentOp) || isa<thlo::ScatterOp>(*parentOp) ||
@@ -338,7 +423,7 @@ struct MapPattern : public OpConversionPattern<mhlo::MapOp> {
     rewriter.inlineRegionBefore(op.getComputation(), region, region.end());
 
     TypeConverter::SignatureConversion signatureConverter(
-        thloMap.getNumInputs());
+        thloMap.getNumDpsInputs());
     for (const auto& [idx, val] : llvm::enumerate(thloMap.getInputs())) {
       signatureConverter.addInputs(
           idx,
@@ -459,11 +544,11 @@ struct SortPattern : public OpConversionPattern<mhlo::SortOp> {
     Region& region = thloSort.getComparator();
     rewriter.inlineRegionBefore(op.getComparator(), region, region.end());
 
-    assert(thloSort.getNumInputs() == thloSort.getNumOutputs());
+    assert(thloSort.getNumDpsInputs() == thloSort.getNumDpsInits());
 
     // Convert the signature of the comparator.
     TypeConverter::SignatureConversion signatureConverter(
-        thloSort.getNumInputs() * 2);
+        thloSort.getNumDpsInputs() * 2);
     for (const auto& [idx, val] : llvm::enumerate(operandTypes)) {
       signatureConverter.addInputs(
           /*origInputNo=*/2 * idx,

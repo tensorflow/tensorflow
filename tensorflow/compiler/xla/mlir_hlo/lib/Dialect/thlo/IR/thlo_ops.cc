@@ -64,16 +64,16 @@ void printDstStyleOp(
     DstOpTy op, OpAsmPrinter &p,
     function_ref<SmallVector<StringRef>(DstOpTy op, OpAsmPrinter &)>
         printAttrsFn = nullptr) {
-  if (op.getNumInputs() != 0) {
+  if (op.getNumDpsInputs() != 0) {
     p << " ins(";
     llvm::interleaveComma(
-        op.getOperands().take_front(op.getNumInputs()), p,
+        op.getOperands().take_front(op.getNumDpsInputs()), p,
         [&](Value input) { p << input << " : " << input.getType(); });
     p << ")";
   }
   p << " outs(";
   llvm::interleaveComma(
-      op.getOperands().take_back(op.getNumOutputs()), p,
+      op.getOperands().take_back(op.getNumDpsInits()), p,
       [&](Value output) { p << output << " : " << output.getType(); });
   p << ")";
 
@@ -464,12 +464,13 @@ void ConcatenateOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
 LogicalResult ConcatenateOp::verify() {
   int64_t concatDim = getDimension();
 
-  ShapedType inputType = getInputOperand(0)->get().getType().cast<ShapedType>();
+  ShapedType inputType =
+      getDpsInputOperand(0)->get().getType().cast<ShapedType>();
   int64_t rank = inputType.getRank();
   auto inputShape = inputType.getShape();
 
   Type outputElementType =
-      getOutputOperand(0)->get().getType().cast<ShapedType>().getElementType();
+      getDpsInitOperand(0)->get().getType().cast<ShapedType>().getElementType();
 
   for (const auto &en : llvm::enumerate(getInputs())) {
     ShapedType inputArgShapedType = en.value().getType().cast<ShapedType>();
@@ -732,7 +733,7 @@ LogicalResult ScatterOp::verify() {
   // The update computation should yield exactly 1 result.
   auto updateTerminator = cast<YieldOp>(getBody()->getTerminator());
   Type outputElementType =
-      getOutputOperand(0)->get().getType().cast<ShapedType>().getElementType();
+      getDpsInitOperand(0)->get().getType().cast<ShapedType>().getElementType();
   if (!succeeded(checkYieldOutputs(updateTerminator, outputElementType)))
     return failure();
 
@@ -896,6 +897,328 @@ FailureOr<Value> GatherOp::generateResultTileValue(
 }
 
 //===----------------------------------------------------------------------===//
+// TransposeOp
+//===----------------------------------------------------------------------===//
+
+std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
+                   mlir::ArrayRef<mlir::NamedAttribute>)>
+TransposeOp::getRegionBuilder() {
+  return [](mlir::ImplicitLocOpBuilder &b, mlir::Block &block,
+            mlir::ArrayRef<mlir::NamedAttribute>) {
+    b.create<mlir::thlo::YieldOp>(block.getArguments().back());
+  };
+}
+
+void TransposeOp::createRegion(::mlir::OpBuilder &opBuilder,
+                               ::mlir::OperationState &odsState) {
+  Region *region = odsState.addRegion();
+
+  SmallVector<Type> argTypes;
+  SmallVector<Location> argLocs;
+  for (auto t : odsState.operands) {
+    argTypes.push_back(getElementTypeOrSelf(t));
+    argLocs.push_back(opBuilder.getUnknownLoc());
+  }
+
+  // RAII.
+  OpBuilder::InsertionGuard guard(opBuilder);
+  Block *body =
+      opBuilder.createBlock(region, /*insertPt=*/{}, argTypes, argLocs);
+
+  ImplicitLocOpBuilder b(opBuilder.getUnknownLoc(), opBuilder);
+  getRegionBuilder()(b, *body, odsState.attributes.getAttrs());
+}
+
+void TransposeOp::build(::mlir::OpBuilder &odsBuilder,
+                        ::mlir::OperationState &odsState, Type resultType,
+                        Value input, Value init, DenseI64ArrayAttr permutation,
+                        ArrayRef<NamedAttribute> attributes) {
+  odsState.addOperands(input);
+  odsState.addOperands(init);
+  odsState.addAttribute(getPermutationAttrName(odsState.name), permutation);
+  odsState.addAttributes(attributes);
+  odsState.addTypes(resultType);
+
+  createRegion(odsBuilder, odsState);
+}
+
+void TransposeOp::build(::mlir::OpBuilder &odsBuilder,
+                        ::mlir::OperationState &odsState, Type resultType,
+                        Value input, Value init, ArrayRef<int64_t> permutation,
+                        ArrayRef<NamedAttribute> attributes) {
+  build(odsBuilder, odsState, resultType, input, init,
+        odsBuilder.getDenseI64ArrayAttr(permutation), attributes);
+}
+
+ParseResult TransposeOp::parse(OpAsmParser &parser, OperationState &result) {
+  if (failed(parseDstStyleOp(
+          parser, result, [&](OpAsmParser &parser, NamedAttrList &attributes) {
+            return parseDenseI64ArrayAttr(parser, attributes, "permutation");
+          })))
+    return failure();
+
+  OpBuilder opBuilder(parser.getContext());
+  createRegion(opBuilder, result);
+  return success();
+}
+
+void TransposeOp::print(OpAsmPrinter &p) {
+  printDstStyleOp<TransposeOp>(
+      *this, p, [](TransposeOp op, OpAsmPrinter &p) -> SmallVector<StringRef> {
+        printDenseI64ArrayAttr(p, op.getPermutationAttrName(),
+                               op.getPermutation());
+        return {op.getPermutationAttrName()};
+      });
+}
+
+bool isValidPermutation(ArrayRef<int64_t> permutation) {
+  SmallVector<bool> seen(permutation.size(), false);
+  for (auto p : permutation) {
+    // Verify that each element is in [0..n-1] range and is present only once.
+    if (p < 0 || p >= static_cast<int64_t>(permutation.size()) || seen[p])
+      return false;
+
+    seen[p] = true;
+  }
+  return true;
+}
+
+LogicalResult TransposeOp::verify() {
+  ArrayRef<int64_t> permutationRef = getPermutation();
+
+  if (!isValidPermutation(permutationRef))
+    return emitOpError("permutation is not valid");
+
+  auto inputType = getInput().getType();
+  auto initType = getInit().getType();
+
+  int64_t rank = inputType.getRank();
+
+  if (rank != initType.getRank())
+    return emitOpError() << "input rank " << rank
+                         << " does not match init rank " << initType.getRank();
+
+  if (rank != static_cast<int64_t>(permutationRef.size()))
+    return emitOpError() << "size of permutation " << permutationRef.size()
+                         << " does not match the argument rank " << rank;
+
+  auto inputDims = inputType.getShape();
+  auto initDims = initType.getShape();
+
+  for (int64_t i = 0; i < rank; ++i) {
+    int64_t inputDim = inputDims[permutationRef[i]];
+    int64_t initDim = initDims[i];
+
+    if (!dimensionsMatch(inputDim, initDim)) {
+      return emitOpError() << "dim(result, " << i << ") = " << initDim
+                           << " doesn't match dim(input, permutation[" << i
+                           << "]) = " << inputDim;
+    }
+  }
+
+  return verifyDestinationStyleOp(getOperation());
+}
+
+SmallVector<StringRef> TransposeOp::getIteratorTypesArray() {
+  int64_t rank = getInit().getType().getRank();
+  return SmallVector<StringRef>(rank, getParallelIteratorTypeName());
+}
+
+ArrayAttr TransposeOp::getIndexingMaps() {
+  Builder builder(getContext());
+  int64_t rank = getInit().getType().getRank();
+  return builder.getAffineMapArrayAttr(
+      {builder.getMultiDimIdentityMap(rank),
+       AffineMap::getPermutationMap(
+           llvm::to_vector_of<unsigned>(getPermutation()), getContext())});
+}
+
+bool TransposeOp::hasIndexSemantics() { return false; }
+
+//===----------------------------------------------------------------------===//
+// ReductionOp
+//===----------------------------------------------------------------------===//
+
+ParseResult ReductionOp::parse(OpAsmParser &parser, OperationState &result) {
+  if (parseDstStyleOp(
+          parser, result, [&](OpAsmParser &parser, NamedAttrList &attributes) {
+            return parseDenseI64ArrayAttr(parser, attributes, "dimensions");
+          }))
+    return failure();
+
+  SmallVector<OpAsmParser::Argument> regionArgs;
+  if (parser.parseArgumentList(regionArgs, OpAsmParser::Delimiter::Paren,
+                               /*allowType=*/true, /*allowAttrs=*/true)) {
+    return failure();
+  }
+
+  Region *body = result.addRegion();
+  if (parser.parseRegion(*body, regionArgs)) return failure();
+
+  return success();
+}
+
+void ReductionOp::print(OpAsmPrinter &p) {
+  printDstStyleOp<ReductionOp>(
+      *this, p, [](ReductionOp op, OpAsmPrinter &p) -> SmallVector<StringRef> {
+        printDenseI64ArrayAttr(p, op.getDimensionsAttrName(),
+                               op.getDimensions());
+        return {op.getDimensionsAttrName()};
+      });
+
+  p << "(";
+  llvm::interleaveComma(getCombiner().getArguments(), p,
+                        [&](auto arg) { p.printRegionArgument(arg); });
+  p << ") ";
+
+  p.printRegion(getCombiner(), /*printEntryBlockArgs=*/false);
+}
+
+LogicalResult ReductionOp::verify() {
+  ArrayRef<int64_t> dimensionsRef = getDimensions();
+
+  for (int64_t i = 1; i < getNumDpsInputs(); ++i) {
+    if (failed(mlir::verifyCompatibleShape(getInputs()[i].getType(),
+                                           getInputs()[0].getType()))) {
+      return emitOpError() << "expects all inputs to have compatible shapes. "
+                              "Shape at input-index "
+                           << i
+                           << " is not compatible with shape at input-index 0.";
+    }
+  }
+  for (int64_t i = 1; i < getNumDpsInits(); ++i) {
+    if (failed(mlir::verifyCompatibleShape(getInits()[i].getType(),
+                                           getInits()[0].getType()))) {
+      return emitOpError()
+             << "expects all outputs to have compatible shapes. "
+                "Shape at output-index "
+             << i << " is not compatible with shape at output-index 0.";
+    }
+  }
+  auto inputType = getInputs()[0].getType().cast<ShapedType>();
+  auto initType = getInits()[0].getType().cast<ShapedType>();
+
+  DenseSet<int64_t> dimensionsToReduce;
+  int64_t lastDimension = -1;
+  for (int64_t dimension : dimensionsRef) {
+    if (dimension < 0 || dimension >= inputType.getRank()) {
+      return emitOpError()
+             << "dimensions for reduction should be in the range [0, "
+             << inputType.getRank() - 1 << "].";
+    }
+    if (dimension <= lastDimension) {
+      return emitOpError()
+             << "reduction dimensions are not in increasing order: "
+             << dimensionsRef;
+    }
+
+    lastDimension = dimension;
+    dimensionsToReduce.insert(dimension);
+  }
+
+  auto inputDims = inputType.getShape();
+  auto initDims = initType.getShape();
+
+  // Input dimensions that will be left after the reduction.
+  SmallVector<int64_t> reducedInputDims;
+  for (const auto &en : llvm::enumerate(inputDims)) {
+    if (!dimensionsToReduce.count(en.index()))
+      reducedInputDims.push_back(en.value());
+  }
+
+  if (reducedInputDims.size() != initType.getRank()) {
+    return emitOpError() << "number of dimensions after reduction "
+                         << reducedInputDims.size()
+                         << " doesn't match the init rank "
+                         << initType.getRank();
+  }
+
+  if (!all_of_zip(reducedInputDims, initDims, &dimensionsMatch))
+    return emitOpError() << "init dimensions [" << initDims
+                         << "] doesn't match input dimensions after reduction ["
+                         << reducedInputDims << "]";
+
+  Block *block = getBody();
+  if (static_cast<int64_t>(block->getArguments().size()) !=
+      getNumDpsInputs() + getNumDpsInits()) {
+    return emitOpError()
+           << "number of block arguments " << block->getArguments().size()
+           << " doesn't match the number of inputs plus the number of outputs "
+           << getNumDpsInputs() + getNumDpsInits();
+  }
+
+  // Check that the first block arguments match the element type of the inputs.
+  auto inputElementTypes =
+      llvm::to_vector<8>(llvm::map_range(getInputs().getTypes(), [](Type type) {
+        return type.cast<ShapedType>().getElementType();
+      }));
+  auto blockArgumentInputTypes = llvm::to_vector<8>(
+      llvm::map_range(block->getArguments().take_front(getNumDpsInputs()),
+                      [](BlockArgument arg) { return arg.getType(); }));
+  if (blockArgumentInputTypes != inputElementTypes) {
+    return emitOpError() << "input element types " << inputElementTypes
+                         << " do not match block argument types "
+                         << blockArgumentInputTypes;
+  }
+
+  // Check that the last block arguments match the element type of the outputs.
+  auto outputElementTypes =
+      llvm::to_vector<8>(llvm::map_range(getInits().getTypes(), [](Type type) {
+        return type.cast<ShapedType>().getElementType();
+      }));
+  auto blockArgumentOutputTypes = llvm::to_vector<8>(
+      llvm::map_range(block->getArguments().take_back(getNumDpsInits()),
+                      [](BlockArgument arg) { return arg.getType(); }));
+  if (blockArgumentOutputTypes != outputElementTypes) {
+    return emitOpError() << "output element types " << outputElementTypes
+                         << " do not match block argument types "
+                         << blockArgumentOutputTypes;
+  }
+
+  // The reducer should yield exactly getNumDpsInits() outputs.
+  YieldOp blockTerminator = cast<YieldOp>(block->getTerminator());
+  if (!succeeded(checkYieldOutputs(blockTerminator, outputElementTypes)))
+    return failure();
+
+  return verifyDestinationStyleOp(getOperation());
+}
+
+SmallVector<StringRef> ReductionOp::getIteratorTypesArray() {
+  int64_t inputRank = getInputs()[0].getType().cast<ShapedType>().getRank();
+  SmallVector<StringRef> iteratorTypes(inputRank,
+                                       getParallelIteratorTypeName());
+  for (int64_t reductionDim : getDimensions())
+    iteratorTypes[reductionDim] = getReductionIteratorTypeName();
+  return iteratorTypes;
+}
+
+ArrayAttr ReductionOp::getIndexingMaps() {
+  SmallVector<AffineMap> affineMaps;
+  int64_t inputRank = getInputs()[0].getType().cast<ShapedType>().getRank();
+  for (int64_t i = 0, e = getNumDpsInputs(); i < e; ++i) {
+    affineMaps.push_back(
+        AffineMap::getMultiDimIdentityMap(inputRank, getContext()));
+  }
+  SmallVector<AffineExpr, 4> exprs;
+  ArrayRef<int64_t> dimensionsRef = getDimensions();
+  for (int64_t i = 0, j = 0; i < inputRank; ++i) {
+    bool isReductionDim = j < dimensionsRef.size() && dimensionsRef[j] == i;
+    if (isReductionDim) {
+      ++j;
+    } else {
+      exprs.push_back(getAffineDimExpr(i, getContext()));
+    }
+  }
+  for (int64_t i = 0, e = getNumDpsInits(); i < e; ++i) {
+    affineMaps.push_back(
+        AffineMap::get(inputRank, /*symbolCount=*/0, exprs, getContext()));
+  }
+  return Builder(getContext()).getAffineMapArrayAttr(affineMaps);
+}
+
+bool ReductionOp::hasIndexSemantics() { return false; }
+
+//===----------------------------------------------------------------------===//
 // MapOp
 //===----------------------------------------------------------------------===//
 
@@ -947,7 +1270,7 @@ LogicalResult MapOp::verify() {
 
   // The shape of each input must match the shape of the output.
   auto outputShape =
-      getOutputOperand(0)->get().getType().cast<ShapedType>().getShape();
+      getDpsInitOperand(0)->get().getType().cast<ShapedType>().getShape();
   for (Type inputArgType : TypeRange{getInputs()}) {
     auto inputElemShape = inputArgType.cast<ShapedType>().getShape();
     if (inputElemShape != outputShape) {
@@ -960,7 +1283,7 @@ LogicalResult MapOp::verify() {
   // The mapper should yield exactly one output.
   YieldOp mapperTerminator = cast<YieldOp>(bodyBlock->getTerminator());
   Type outputElementType =
-      getOutputOperand(0)->get().getType().cast<ShapedType>().getElementType();
+      getDpsInitOperand(0)->get().getType().cast<ShapedType>().getElementType();
   if (!succeeded(checkYieldOutputs(mapperTerminator, outputElementType)))
     return failure();
 
@@ -1018,9 +1341,9 @@ LogicalResult SortOp::verify() {
 
   // Checks that the arity of the comparator is equal to twice the number of
   // inputs.
-  int64_t numInputs = getNumInputs();
-  int64_t numOutputs = getNumOutputs();
-  if (getNumOutputs() != numInputs) {
+  int64_t numInputs = getNumDpsInputs();
+  int64_t numOutputs = getNumDpsInits();
+  if (getNumDpsInits() != numInputs) {
     return emitOpError() << "expected the number of inputs " << numInputs
                          << " to match the number of outputs " << numOutputs;
   }
@@ -1127,7 +1450,7 @@ mlir::gml_st::TilingInterface SortOp::getTiledImplementation(
   SmallVector<OpFoldResult> tileOffsets = llvm::to_vector(offsets);
   SmallVector<OpFoldResult> tileSizes = llvm::to_vector(sizes);
 
-  size_t numOutputs = getNumOutputs();
+  size_t numOutputs = getNumDpsInits();
   int64_t sortDimension = getDimension();
 
   Value oneInput = getInputs().front();

@@ -67,7 +67,7 @@ def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
 
   let extraClassDeclaration = [{
     // Implement method necessary for DestinationStyleOpInterface.
-    std::pair<int64_t, int64_t> getOutputsPositionRange() {
+    std::pair<int64_t, int64_t> getDpsInitsPositionRange() {
       int64_t getNumOperands = this->getNumOperands();
       return {getNumOperands - 1, getNumOperands};
     }
@@ -93,7 +93,7 @@ def THLO_DynamicBroadcastInDimOp : THLO_DstStyleOp<"dynamic_broadcast_in_dim", [
 
   let extraClassDeclaration = [{
     // Implement method necessary for DestinationStyleOpInterface.
-    std::pair<int64_t, int64_t> getOutputsPositionRange() {
+    std::pair<int64_t, int64_t> getDpsInitsPositionRange() {
       int64_t getNumOperands = this->getNumOperands();
       return {getNumOperands - 1, getNumOperands};
     }
@@ -123,7 +123,7 @@ def THLO_GatherOp : THLO_DstStyleOp<"gather", [
 
   let extraClassDeclaration = [{
     // Implement method necessary for DestinationStyleOpInterface.
-    std::pair<int64_t, int64_t> getOutputsPositionRange() {
+    std::pair<int64_t, int64_t> getDpsInitsPositionRange() {
       int64_t getNumOperands = this->getNumOperands();
       return {getNumOperands - 1, getNumOperands};
     }
@@ -166,9 +166,113 @@ def THLO_ScatterOp : THLO_DstStyleOp<"scatter", [
     int64_t getIndicesCount() { return getIndices().getType().getDimSize(0); }
 
     // Implement method necessary for DestinationStyleOpInterface.
-    std::pair<int64_t, int64_t> getOutputsPositionRange() {
+    std::pair<int64_t, int64_t> getDpsInitsPositionRange() {
       int64_t getNumOperands = this->getNumOperands();
       return {getNumOperands - 1, getNumOperands};
+    }
+  }];
+}
+
+def THLO_TransposeOp : THLO_DstStyleOp<"transpose", [
+    DeclareOpInterfaceMethods<LinalgStructuredInterface, ["getIteratorTypesArray"]>,
+    SingleBlockImplicitTerminator<"YieldOp">,
+]> {
+  let summary = "Destination-style twin for `mhlo.transpose`";
+  let description = [{
+    Permutes the dimensions of `operand` according to the given `permutation`.
+      `dim(result, i) = dim(operand, permutation[i])`
+
+    Example:
+    ```
+      %transpose = thlo.transpose
+          ins(%input:tensor<16x64xf32>)
+          outs(%init:tensor<64x16xf32>)
+          { permutation =  [:i64 1, 0] }
+    ```
+  }];
+
+  let arguments = (ins
+    // Input arg
+    TensorOrMemref:$input,
+    // Output arg
+    TensorOrMemref:$init,
+
+    DenseI64ArrayAttr:$permutation
+  );
+  let results = (outs Variadic<AnyTensor>:$result);
+
+  let regions = (region SizedRegion<1>:$region);
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<(ins "Type":$resultType, "Value":$input, "Value":$init,
+        "DenseI64ArrayAttr":$permutation,
+        CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes)>,
+    OpBuilder<(ins "Type":$resultType, "Value":$input, "Value":$init,
+        "ArrayRef<int64_t>":$permutation,
+        CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes)>,
+  ];
+
+  let extraClassDeclaration = [{
+    static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
+        mlir::ArrayRef<mlir::NamedAttribute>)>
+      getRegionBuilder();
+
+    static void createRegion(::mlir::OpBuilder &opBuilder,
+                             ::mlir::OperationState & odsState);
+
+    // Implement method necessary for DestinationStyleOpInterface.
+    std::pair<int64_t, int64_t> getDpsInitsPositionRange() {
+      int64_t getNumOperands = this->getNumOperands();
+      return {getNumOperands - 1, getNumOperands};
+    }
+  }];
+}
+
+def THLO_ReductionOp : THLO_DstStyleOp<"reduction", [
+      DeclareOpInterfaceMethods<LinalgStructuredInterface, ["getIteratorTypesArray"]>,
+      SameVariadicOperandSize, SingleBlockImplicitTerminator<"YieldOp">
+    ]> {
+  let summary = "Destination-style twin for `mhlo.reduce`";
+  let description = [{
+    Executes `combiner` on the `dimensions` of `inputs` and returns the
+    reduced result. The `dimensions` attribute needs to list the reduction
+    dimensions in increasing order.
+
+    Example:
+    ```
+      %reduction = thlo.reduction
+          ins(%input:tensor<16x32x64xf32>)
+          outs(%init:tensor<16x64xf32>)
+          dimensions = [1]
+          (%in: f32, %out: f32) {
+            %0 = arith.addf %in, %out: f32
+            thlo.yield %0: f32
+          }
+    ```
+  }];
+
+  let arguments = (ins
+    // Input arg
+    Variadic<TensorOrMemref>:$inputs,
+    // Output arg
+    Variadic<TensorOrMemref>:$inits,
+
+    DenseI64ArrayAttr:$dimensions
+  );
+  let results = (outs Variadic<AnyTensor>);
+  let regions = (region SizedRegion<1>:$combiner);
+
+  let extraClassDeclaration = [{
+    static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
+                              mlir::ArrayRef<mlir::NamedAttribute>)>
+    getRegionBuilder() {
+      return nullptr;
+    }
+
+    // Implement method necessary for DestinationStyleOpInterface.
+    std::pair<int64_t, int64_t> getDpsInitsPositionRange() {
+      return {getInits().size(), getNumOperands()};
     }
   }];
 }
@@ -207,7 +311,7 @@ def THLO_MapOp : THLO_DstStyleOp<"map", [
 
   let extraClassDeclaration = [{
     mlir::OpOperandVector getOpOperandsMatchingBBargs() {
-      return getInputOperands();
+      return getDpsInputOperands();
     }
 
     static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
@@ -217,7 +321,7 @@ def THLO_MapOp : THLO_DstStyleOp<"map", [
     }
 
     // Implement method necessary for DestinationStyleOpInterface.
-    std::pair<int64_t, int64_t> getOutputsPositionRange() {
+    std::pair<int64_t, int64_t> getDpsInitsPositionRange() {
       int64_t getNumOperands = this->getNumOperands();
       return {getNumOperands - 1, getNumOperands};
     }
@@ -261,7 +365,7 @@ def THLO_SortOp : THLO_DstStyleOp<"sort", [
 
   let extraClassDeclaration = [{
     // Implement method necessary for DestinationStyleOpInterface.
-    std::pair<int64_t, int64_t> getOutputsPositionRange() {
+    std::pair<int64_t, int64_t> getDpsInitsPositionRange() {
       int64_t getNumOperands = this->getNumOperands();
       return {getNumOperands - getInits().size(), getNumOperands};
     }

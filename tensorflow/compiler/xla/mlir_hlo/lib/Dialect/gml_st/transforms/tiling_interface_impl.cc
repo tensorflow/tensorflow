@@ -36,7 +36,7 @@ struct ExternalLinalgOpTilingInterface
           ExternalLinalgOpTilingInterface<LinalgOpTy>, LinalgOpTy> {
   /// Return the destination operands.
   SmallVector<Value> getDestinationOperands(Operation *op, OpBuilder &) const {
-    return cast<DestinationStyleOpInterface>(op).getOutputOperands();
+    return cast<DestinationStyleOpInterface>(op).getDpsInitOperands();
   }
 
   /// Return the loop iterator type.
@@ -106,7 +106,7 @@ struct ExternalLinalgOpTilingInterface
     }
 
     SmallVector<Type> resultTensorTypes = llvm::to_vector(llvm::map_range(
-        linalgOp.getOutputOperands(), [&](OpOperand *opOperand) {
+        linalgOp.getDpsInitOperands(), [&](OpOperand *opOperand) {
           return tiledOperands[opOperand->getOperandNumber()].getType();
         }));
 

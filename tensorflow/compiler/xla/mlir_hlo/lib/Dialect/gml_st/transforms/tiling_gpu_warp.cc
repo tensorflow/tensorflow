@@ -198,7 +198,7 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
       return rewriter.notifyMatchFailure(genericOp,
                                          "Expected ['parallel', 'reduction']");
     }
-    if (genericOp.getNumInputs() != 1 || genericOp.getNumOutputs() != 1) {
+    if (genericOp.getNumDpsInputs() != 1 || genericOp.getNumDpsInits() != 1) {
       return rewriter.notifyMatchFailure(genericOp,
                                          "Expected single input and output");
     }
