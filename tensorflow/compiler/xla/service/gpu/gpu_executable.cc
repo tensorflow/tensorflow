@@ -104,11 +104,7 @@ class GpuExecutable::XlaRuntimeGpuExecutable {
     runtime::JitExecutable::Options opts;
     opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
     opts.compiler.register_dialects =
-        [](xla::runtime::DialectRegistry& dialects) {
-          runtime::RegisterDefaultXlaGpuRuntimeDialects(dialects);
-          // For the encoding of attributes to custom calls.
-          runtime::RegisterLmhloGpuDialect(dialects);
-        };
+        runtime::RegisterDefaultXlaGpuRuntimeDialects;
 
     // Register XLA Gpu runtime custom calls with the linker.
     opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
