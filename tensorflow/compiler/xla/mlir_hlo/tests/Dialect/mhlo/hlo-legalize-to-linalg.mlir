@@ -2,9 +2,9 @@
 // RUN:   --canonicalize | \
 // RUN: FILECHECK_OPTS="" FileCheck %s
 
-// RUN: mlir-hlo-opt %s --hlo-legalize-to-linalg="enable-primitive-ops=true" \
-// RUN:   --split-input-file --canonicalize | \
-// RUN: FILECHECK_OPTS="" FileCheck %s --check-prefix=CHECK-PRIMITIVE
+// Disabled until LLVM's 2a37ec927e19 is merged: mlir-hlo-opt %s --hlo-legalize-to-linalg="enable-primitive-ops=true" \
+// Disabled until LLVM's 2a37ec927e19 is merged:   --split-input-file --canonicalize | \
+// Disabled until LLVM's 2a37ec927e19 is merged: FILECHECK_OPTS="" FileCheck %s --check-prefix=CHECK-PRIMITIVE
 
 // CHECK: #map = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @float_add
