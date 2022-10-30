@@ -34,7 +34,7 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.failure_handling import failure_handling
-from tensorflow.python.distribute.failure_handling import gce_util
+from tensorflow.python.distribute.failure_handling import failure_handling_util
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
@@ -137,7 +137,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
       def __call__(self):
         return self.v.read_value()
 
-    with mock.patch.object(gce_util, 'on_gcp', lambda: False):
+    with mock.patch.object(failure_handling_util, 'on_gcp', lambda: False):
 
       with strategy.scope():
         model = Model()

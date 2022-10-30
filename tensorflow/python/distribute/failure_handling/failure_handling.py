@@ -31,7 +31,7 @@ from tensorflow.core.distributed_runtime.preemption import gen_check_preemption_
 from tensorflow.python.checkpoint import checkpoint as checkpoint_lib
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.distribute import multi_worker_util
-from tensorflow.python.distribute.failure_handling import gce_util
+from tensorflow.python.distribute.failure_handling import failure_handling_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
@@ -172,11 +172,11 @@ class GcpGpuTerminationConfig(TerminationConfig):
       termination_watcher_fn=None,
       exit_fn=None,
       grace_period=None):
-    self.termination_watcher_fn = termination_watcher_fn or gce_util.termination_watcher_function_gce
-    self.exit_fn = exit_fn or gce_util.gce_exit_fn
+    self.termination_watcher_fn = termination_watcher_fn or failure_handling_util.termination_watcher_function_gce
+    self.exit_fn = exit_fn or failure_handling_util.gce_exit_fn
     self.grace_period = (
-        grace_period
-        if grace_period or grace_period == 0 else gce_util.GRACE_PERIOD_GCE)
+        grace_period if grace_period or grace_period == 0 else
+        failure_handling_util.GRACE_PERIOD_GCE)
 
 
 class GcpCpuTerminationConfig(TerminationConfig):
@@ -187,8 +187,8 @@ class GcpCpuTerminationConfig(TerminationConfig):
       termination_watcher_fn=None,
       exit_fn=None,
       grace_period=None):
-    self.termination_watcher_fn = termination_watcher_fn or gce_util.termination_watcher_function_gce
-    self.exit_fn = exit_fn or gce_util.gce_exit_fn
+    self.termination_watcher_fn = termination_watcher_fn or failure_handling_util.termination_watcher_function_gce
+    self.exit_fn = exit_fn or failure_handling_util.gce_exit_fn
     self.grace_period = grace_period or 0
 
 
@@ -211,12 +211,12 @@ def _complete_config_for_environment(platform_device, termination_config):
   if not termination_config:
     termination_config = TerminationConfig()
 
-  if platform_device is gce_util.PlatformDevice.GCE_GPU:
+  if platform_device is failure_handling_util.PlatformDevice.GCE_GPU:
     return GcpGpuTerminationConfig(termination_config.termination_watcher_fn,
                                    termination_config.exit_fn,
                                    termination_config.grace_period)
 
-  elif platform_device is gce_util.PlatformDevice.GCE_CPU:
+  elif platform_device is failure_handling_util.PlatformDevice.GCE_CPU:
     return GcpCpuTerminationConfig(termination_config.termination_watcher_fn,
                                    termination_config.exit_fn,
                                    termination_config.grace_period)
@@ -433,17 +433,16 @@ class PreemptionCheckpointHandler(object):
     self._checkpoint_or_checkpoint_manager = checkpoint_or_checkpoint_manager
     self._checkpoint_dir = checkpoint_dir
 
-    self._platform_device = gce_util.detect_platform()
-    if self._platform_device in (gce_util.PlatformDevice.GCE_TPU,
-                                 gce_util.PlatformDevice.GCE_CPU):
+    self._platform_device = failure_handling_util.detect_platform()
+    if self._platform_device in (failure_handling_util.PlatformDevice.GCE_TPU,
+                                 failure_handling_util.PlatformDevice.GCE_CPU):
       # While running MultiWorkerMirroredStrategy training with GPUs and CPUs
       # are the same on Borg, GCE CPU VM and GPU VM are different in terms
       # of live migration, grace period, etc. We can make it work upon request.
       raise NotImplementedError('PreemptionCheckpointHandler does not support '
                                 'usage with TPU or CPU device on GCP.')
 
-    # TODO(wxinyi): update name of gce_util.
-    elif self._platform_device == gce_util.PlatformDevice.INTERNAL_TPU:
+    elif self._platform_device == failure_handling_util.PlatformDevice.INTERNAL_TPU:
       if ENABLE_TESTING_FOR_TPU:
         self._initialize_for_tpu_strategy()
 
@@ -784,7 +783,7 @@ class PreemptionCheckpointHandler(object):
     # the dominant use case for TPU user. Besides, passing in a multi-step
     # `distributed_train_function` will require the user to track their own
     # training steps.
-    if self._platform_device == gce_util.PlatformDevice.INTERNAL_TPU:
+    if self._platform_device == failure_handling_util.PlatformDevice.INTERNAL_TPU:
       return self._run_for_tpu(distributed_train_function, *args, **kwargs)
     else:
       return self._run_for_multi_worker_mirrored(distributed_train_function,
@@ -845,7 +844,7 @@ class PreemptionCheckpointHandler(object):
         'PreemptionCheckpointHandler Saving Checkpoint').increase_by(1)
     logging.info('PreemptionCheckpointHandler: Starting saving a checkpoint.')
 
-    if self._platform_device != gce_util.PlatformDevice.INTERNAL_TPU:
+    if self._platform_device != failure_handling_util.PlatformDevice.INTERNAL_TPU:
       self._checkpointed_runs.assign(self.total_run_calls)
 
     start_time = time.monotonic()

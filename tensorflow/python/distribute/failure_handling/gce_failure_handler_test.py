@@ -33,7 +33,7 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.failure_handling import failure_handling
-from tensorflow.python.distribute.failure_handling import gce_util
+from tensorflow.python.distribute.failure_handling import failure_handling_util
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.module import module
@@ -129,10 +129,10 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
       return False
 
     with mock.patch.object(
-        gce_util, 'termination_watcher_function_gce',
+        failure_handling_util, 'termination_watcher_function_gce',
         mock_termination_watcher_function_gce), mock.patch.object(
-            gce_util, 'detect_platform',
-            lambda: gce_util.PlatformDevice.GCE_GPU):
+            failure_handling_util, 'detect_platform',
+            lambda: failure_handling_util.PlatformDevice.GCE_GPU):
 
       class Model(module.Module):
 
@@ -235,9 +235,9 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
         except urllib.error.URLError as e:
           if 'Temporary failure in name resolution' in e.message:
             # This is caused by a weird flakiness that mock.patch does not
-            # correctly patch gce_util.request_compute_metadata, a real request
-            # is attempted, and an error is hit in
-            # gce_util.request_compute_metadata
+            # correctly patch failure_handling_util.request_compute_metadata, a
+            # real request is attempted, and an error is hit in
+            # failure_handling_util.request_compute_metadata
             logging.warning('Hit a mock issue.')
             return
 
