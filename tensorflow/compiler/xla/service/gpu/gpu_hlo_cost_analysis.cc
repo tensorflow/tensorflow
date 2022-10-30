@@ -69,6 +69,8 @@ Status GpuHloCostAnalysis::FusionCalculateUtilizations(
     for (const HloInstruction* r : elementwise_use_roots[instr]) {
       VLOG(9) << "\t" << r->ToString();
       if (instr != r) {
+        // Sum up utilization of 'instr' by accesses from element-wise use
+        // roots.
         hlo_properties_[instr][kUtilizationKey] +=
             hlo_properties_[r][kUtilizationKey];
       }
@@ -102,7 +104,8 @@ Status GpuHloCostAnalysis::FusionCalculateUtilizations(
         int64_t operand_elements = ShapeUtil::ElementsIn(operand->shape());
         cur_operand_utilization =
             ceil(cur_operand_utilization * operand_elements) / operand_elements;
-        hlo_properties_[operand][kUtilizationKey] = cur_operand_utilization;
+        // Sum up utilizations of 'operand' by non-element-wise accesses.
+        hlo_properties_[operand][kUtilizationKey] += cur_operand_utilization;
       }
     }
   }
