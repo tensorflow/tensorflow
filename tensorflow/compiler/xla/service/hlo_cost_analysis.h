@@ -321,6 +321,9 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // function and per-second rates.
   Options options_;
 
+  // Determines which properties propagate from subcomputations to parents.
+  static bool KeyToCopyFromSubcomputation(absl::string_view key);
+
   HloCostAnalysis(const HloCostAnalysis&) = delete;
   HloCostAnalysis& operator=(const HloCostAnalysis&) = delete;
 };

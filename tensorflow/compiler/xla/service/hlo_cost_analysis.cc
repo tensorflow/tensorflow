@@ -402,8 +402,7 @@ Status HloCostAnalysis::HandleMap(const HloInstruction* map) {
   // Compute the cost of all elements for this Map operation.
   const int64_t element_count = ShapeUtil::ElementsIn(map->shape());
   for (const auto& property : sub_properties) {
-    if (!absl::StartsWith(property.first, kBytesAccessedKey) &&
-        !absl::StartsWith(property.first, kUtilizationKey)) {
+    if (KeyToCopyFromSubcomputation(property.first)) {
       current_properties_[property.first] = property.second * element_count;
     }
   }
@@ -427,8 +426,7 @@ Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
   int64_t reduction_count =
       ShapeUtil::ElementsIn(arg->shape()) - ShapeUtil::ElementsIn(output_shape);
   for (const auto& property : sub_properties) {
-    if (!absl::StartsWith(property.first, kBytesAccessedKey) &&
-        !absl::StartsWith(property.first, kUtilizationKey)) {
+    if (KeyToCopyFromSubcomputation(property.first)) {
       current_properties_[property.first] = property.second * reduction_count;
     }
   }
@@ -510,8 +508,7 @@ Status HloCostAnalysis::HandleReduceWindow(
   }
 
   for (const auto& property : sub_properties) {
-    if (!absl::StartsWith(property.first, kBytesAccessedKey) &&
-        !absl::StartsWith(property.first, kUtilizationKey)) {
+    if (KeyToCopyFromSubcomputation(property.first)) {
       current_properties_[property.first] = property.second * reduction_count;
     }
   }
@@ -539,14 +536,12 @@ Status HloCostAnalysis::HandleSelectAndScatter(
   const int64_t select_count =
       source_element_count * (window_element_count - 1);
   for (const auto& property : select_properties) {
-    if (!absl::StartsWith(property.first, kBytesAccessedKey) &&
-        !absl::StartsWith(property.first, kUtilizationKey)) {
+    if (KeyToCopyFromSubcomputation(property.first)) {
       current_properties_[property.first] += property.second * select_count;
     }
   }
   for (const auto& property : scatter_properties) {
-    if (!absl::StartsWith(property.first, kBytesAccessedKey) &&
-        !absl::StartsWith(property.first, kUtilizationKey)) {
+    if (KeyToCopyFromSubcomputation(property.first)) {
       current_properties_[property.first] +=
           property.second * source_element_count;
     }
@@ -1206,8 +1201,7 @@ Status HloCostAnalysis::HandleScatter(const HloInstruction* hlo) {
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
                       ProcessSubcomputation(scatter->to_apply()));
   for (const auto& property : sub_properties) {
-    if (!absl::StartsWith(property.first, kBytesAccessedKey) &&
-        !absl::StartsWith(property.first, kUtilizationKey)) {
+    if (KeyToCopyFromSubcomputation(property.first)) {
       current_properties_[property.first] = property.second * element_count;
     }
   }
@@ -1376,6 +1370,12 @@ void HloCostAnalysis::SetOutputBytesAccessed(ShapeIndex index, float value) {
 /*static*/ std::string HloCostAnalysis::GetOutputBytesAccessedKey(
     ShapeIndex index) {
   return absl::StrCat(kBytesAccessedKey, " output ", index.ToString());
+}
+
+/*static*/ bool HloCostAnalysis::KeyToCopyFromSubcomputation(
+    absl::string_view key) {
+  return !absl::StartsWith(key, kBytesAccessedKey) &&
+         !absl::StartsWith(key, kUtilizationKey);
 }
 
 }  // namespace xla
