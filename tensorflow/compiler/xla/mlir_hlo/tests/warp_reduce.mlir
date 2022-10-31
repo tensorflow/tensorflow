@@ -35,6 +35,32 @@ func.func @vector_reduce(%arg0 : memref<1xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @vector_reduce_small
+func.func @vector_reduce_small() -> vector<1xf32> {
+
+  %cst = arith.constant 1.0 : f32
+  %init = vector.broadcast %cst : f32 to vector<1xf32>
+  %lane = gpu.lane_id
+  %tile = gml_st.tile [%lane] [1] [1] : !gml_st.tile<1>
+  %dist = gml_st.distribute %init into[%tile]
+    : vector<1xf32> into vector<1x4xf32>[!gml_st.tile<1>]
+
+  // CHECK: %[[CST:.*]] = arith.constant 1.0
+  // CHECK: %[[Y0:.*]], %{{.*}} = gpu.shuffle xor %[[CST]], %c1
+  // CHECK: %[[X1:.*]] = arith.addf %[[Y0]], %[[CST]]
+  // CHECK: %[[Y1:.*]], %{{.*}} = gpu.shuffle xor %[[X1]], %c2
+  // CHECK: %[[X2:.*]] = arith.addf %[[X1]], %[[Y1]]
+  // CHECK: %[[Y2:.*]] = arith.addf %[[X2]], %[[CST]]
+  // CHECK: %[[SUM:.*]] = vector.broadcast %[[Y2]]
+  %sum = vector.multi_reduction <add>, %dist, %init [1]
+    : vector<1x4xf32> to vector<1xf32>
+
+  // CHECK: return %[[SUM]]
+  func.return %sum : vector<1xf32>
+}
+
+// -----
+
 #stride1 = strided<[1], offset: ?>
 
 // CHECK-LABEL: func @gpu_launch

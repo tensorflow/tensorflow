@@ -40,7 +40,15 @@ namespace {
 
 constexpr const char* kWarpDistributionLabel = "warp";
 constexpr const char* kThreadDistributionLabel = "thread";
-constexpr int64_t kWarpSize = 32;
+
+// Returns 'count' rounded up to power of two, up to warp size (32).
+static int64_t getGroupSize(int64_t count) {
+  constexpr int64_t kWarpSize = 32;
+  if (count < 0) return kWarpSize;
+  for (int64_t i = 1; i < kWarpSize; i *= 2)
+    if (i >= count) return i;
+  return kWarpSize;
+}
 
 bool isWarpLevelOp(Operation* op) {
   if (!op) return false;
@@ -73,16 +81,19 @@ struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
       return rewriter.notifyMatchFailure(genericOp, "not a warp level root op");
     }
 
+    // The number of threads per row (power of two, <= kWarpSize).
+    int64_t groupSize = getGroupSize(genericOpTy.getDimSize(1));
+
     // Constants and attributes.
     Location loc = genericOp.getLoc();
     Value c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     Value c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
-    Value cWarpSize = rewriter.create<arith::ConstantIndexOp>(loc, kWarpSize);
-    Value cWarpSizeMinusOne =
-        rewriter.create<arith::ConstantIndexOp>(loc, kWarpSize - 1);
+    Value cGroupSize = rewriter.create<arith::ConstantIndexOp>(loc, groupSize);
+    Value cGroupSizeMinusOne =
+        rewriter.create<arith::ConstantIndexOp>(loc, groupSize - 1);
     Attribute zeroAttr = rewriter.getIndexAttr(0);
     Attribute oneAttr = rewriter.getIndexAttr(1);
-    Attribute warpSizeAttr = rewriter.getIndexAttr(kWarpSize);
+    Attribute groupSizeAttr = rewriter.getIndexAttr(groupSize);
     StringAttr threadDistrLabel =
         rewriter.getStringAttr(kThreadDistributionLabel);
 
@@ -92,9 +103,9 @@ struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
     Value dimSize =
         rewriter.createOrFold<tensor::DimOp>(loc, genericOpResult, c1);
     Value dimSizePlusWarpSizeMinusOne =
-        rewriter.createOrFold<arith::AddIOp>(loc, dimSize, cWarpSizeMinusOne);
+        rewriter.createOrFold<arith::AddIOp>(loc, dimSize, cGroupSizeMinusOne);
     auto ploop = rewriter.create<gml_st::ParallelOp>(
-        loc, genericOpTy, c0, cWarpSize, c1, threadDistrLabel,
+        loc, genericOpTy, c0, cGroupSize, c1, threadDistrLabel,
         [&](OpBuilder& b, Location loc, ValueRange ivs) {
           // Compute the lane tile with a stride of `warpSize`. This tile
           // defines the subset of the result that is produced by the lane.
@@ -109,11 +120,11 @@ struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
           Value laneTileSize = b.create<arith::DivUIOp>(
               loc,
               b.create<arith::SubIOp>(loc, dimSizePlusWarpSizeMinusOne, laneId),
-              cWarpSize);
+              cGroupSize);
           Value laneTile = b.createOrFold<gml_st::TileOp>(
               loc, SmallVector<OpFoldResult>{zeroAttr, laneId},
               SmallVector<OpFoldResult>{oneAttr, laneTileSize},
-              SmallVector<OpFoldResult>{oneAttr, warpSizeAttr});
+              SmallVector<OpFoldResult>{oneAttr, groupSizeAttr});
 
           // Create `gml_st.for` loop to iterate over the lane's tile.
           Type elemTy = genericOpTy.getElementType();
@@ -127,7 +138,7 @@ struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
                 // in the warp-level operands.
                 Value i = ivs.front();
                 Value iterTileOffset = b.create<arith::AddIOp>(
-                    loc, laneId, b.create<arith::MulIOp>(loc, i, cWarpSize));
+                    loc, laneId, b.create<arith::MulIOp>(loc, i, cGroupSize));
                 Value iterTile = b.create<gml_st::TileOp>(
                     loc, SmallVector<OpFoldResult>{zeroAttr, iterTileOffset},
                     SmallVector<OpFoldResult>{oneAttr, oneAttr},
@@ -203,30 +214,33 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
                                          "Expected single input and output");
     }
 
+    auto inputTy =
+        genericOp.getInputs().front().getType().dyn_cast<RankedTensorType>();
+
+    // The number of threads per row (power of two, <= kWarpSize).
+    int64_t groupSize = getGroupSize(inputTy.getDimSize(1));
+
     // Attributes and constants.
     Location loc = genericOp->getLoc();
     Value c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     Value c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
-    Value cWarpSize = rewriter.create<arith::ConstantIndexOp>(loc, kWarpSize);
+    Value cGroupSize = rewriter.create<arith::ConstantIndexOp>(loc, groupSize);
     IntegerAttr zeroAttr = rewriter.getIndexAttr(0);
     IntegerAttr oneAttr = rewriter.getIndexAttr(1);
-    IntegerAttr warpSizeAttr = rewriter.getIndexAttr(kWarpSize);
+    IntegerAttr groupSizeAttr = rewriter.getIndexAttr(groupSize);
     StringAttr threadDistrLabel =
         rewriter.getStringAttr(kThreadDistributionLabel);
 
     Value operand = genericOp.getInputs().front();
     Value init = genericOp.getOutputs().front();
 
-    Type scalarTy = genericOp.getResultTypes()
-                        .front()
-                        .cast<RankedTensorType>()
-                        .getElementType();
+    Type scalarTy = inputTy.getElementType();
 
     Value reductionDimSize = rewriter.create<tensor::DimOp>(loc, operand, c1);
 
     // Create warp-sized partial reduction result tensor.
     Value warpResult = rewriter.create<tensor::EmptyOp>(
-        loc, SmallVector<OpFoldResult>{oneAttr, warpSizeAttr}, scalarTy);
+        loc, SmallVector<OpFoldResult>{oneAttr, groupSizeAttr}, scalarTy);
     Value initTile =
         rewriter.create<TileOp>(loc, SmallVector<OpFoldResult>{zeroAttr});
     Value initMaterialized =
@@ -276,7 +290,7 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
                                      iterationTile);
       };
       laneResult = b.create<gml_st::ForOp>(loc, laneResult.getType(), laneId,
-                                           reductionDimSize, cWarpSize,
+                                           reductionDimSize, cGroupSize,
                                            laneResult, forOpBodyBuilderFn)
                        .getResults()
                        .front();
@@ -285,7 +299,7 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
     };
     warpResult = rewriter
                      .create<gml_st::ParallelOp>(
-                         loc, warpResult.getType(), c0, cWarpSize, c1,
+                         loc, warpResult.getType(), c0, cGroupSize, c1,
                          threadDistrLabel, parallelOpBodyBuilderFn)
                      .getResults()
                      .front();

@@ -15,10 +15,12 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <initializer_list>
 #include <iterator>
 #include <memory>
 #include <utility>
 
+#include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/vector_utils.h"
@@ -395,14 +397,17 @@ static Value createCombineOp(Location loc, Value lhs, Value rhs,
 LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
     MultiDimReductionOp reductionOp, PatternRewriter& rewriter) const {
   auto inType = reductionOp.getSourceVectorType();
-  auto outType = reductionOp.getDestType().dyn_cast<VectorType>();
-  auto isNumElementsEqual = [](auto type, int64_t size) {
-    return type && type.getNumElements() == size;
-  };
-  if (!isNumElementsEqual(inType, 32)) {
-    return rewriter.notifyMatchFailure(reductionOp, "expected 32-vector input");
+  int64_t width = inType.getNumElements();
+  std::initializer_list<int64_t> supportedWidths = {1, 2, 4, 8, 16, 32};
+  if (!llvm::is_contained(supportedWidths, width)) {
+    return rewriter.notifyMatchFailure(
+        reductionOp, "expected input vector with size 2^N, <=32");
   }
-  if (!isNumElementsEqual(outType, 1)) {
+  auto hasOneElement = [](auto type) {
+    return type && type.getNumElements() == 1;
+  };
+  auto outType = reductionOp.getDestType().dyn_cast<VectorType>();
+  if (!hasOneElement(outType)) {
     return rewriter.notifyMatchFailure(reductionOp, "expected 1-vector output");
   }
   auto distribute = reductionOp.getSource().getDefiningOp<DistributeOp>();
@@ -414,7 +419,7 @@ LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
   // current thread's lane id, this is fine, since it doesn't matter which
   // thread processes which element within a reduction.
   TypedValue<VectorType> lhsVector = distribute.getSource();
-  if (!isNumElementsEqual(lhsVector.getType(), 1)) {
+  if (!hasOneElement(lhsVector.getType())) {
     return rewriter.notifyMatchFailure(distribute, "expected 1-vector input");
   }
 
@@ -427,12 +432,12 @@ LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
     return rewriter.create<arith::ConstantOp>(
         loc, rewriter.getI32IntegerAttr(value));
   };
-  Value width = createConstant(32);
+  Value cWidth = createConstant(width);
   // Create warp shuffles of increasing offset and interleave with a clone of
   // the accumulate block.
-  for (int i = 1; i < 32; i *= 2) {
+  for (int64_t i = 1; i < width; i *= 2) {
     auto shuffleOp = rewriter.create<gpu::ShuffleOp>(
-        loc, lhs, createConstant(i), width, gpu::ShuffleMode::XOR);
+        loc, lhs, createConstant(i), cWidth, gpu::ShuffleMode::XOR);
     lhs = createCombineOp(loc, lhs, shuffleOp.getShuffleResult(),
                           reductionOp.getKind(), rewriter);
   }
