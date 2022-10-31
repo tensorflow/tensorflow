@@ -179,9 +179,12 @@ static int64_t getThreadsPerBlock(TensorType type, int64_t elementsPerThread) {
 
 LogicalResult FusionRewritePattern::matchAndRewrite(
     lmhlo::FusionOp fusionOp, PatternRewriter& rewriter) const {
+  auto fusionType = fusionOp.getOperation()->getAttr("fusion_type");
+  bool isSoftmax = fusionType && fusionType.isa<StringAttr>() &&
+                   fusionType.cast<StringAttr>().str() == "softmax_fusion";
   // If fusion_op (including its region) is not legal by rewriteable_target,
   // we expect lowering to GPU to fail or produce incorrect results.
-  if (!isRewritable(fusionOp))
+  if (!isSoftmax && !isRewritable(fusionOp))
     return rewriter.notifyMatchFailure(fusionOp, "not rewritable");
 
   // Collect values in fusion region defined above.
@@ -193,12 +196,13 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
   // pass when e.g. broadcasts are involved.
   TypeConverter converter;
   converter.addConversion([](Type type) { return type; });
-  converter.addConversion([](ShapedType type) {
-    if (!type.hasStaticShape()) return type;
+  converter.addConversion([isSoftmax](ShapedType type) {
+    if (!type.hasStaticShape() || isSoftmax) return type;
     return type.clone(type.getNumElements());
   });
   converter.addConversion([&](MemRefType type) {
-    if (!type.hasStaticShape() || !type.getLayout().isIdentity()) return type;
+    if (!type.hasStaticShape() || !type.getLayout().isIdentity() || isSoftmax)
+      return type;
     return MemRefType::get(type.getNumElements(), type.getElementType(),
                            MemRefLayoutAttrInterface(), type.getMemorySpace());
   });
@@ -241,16 +245,19 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
       fusionOp.getFusionResults().front().getType().cast<TensorType>();
   int64_t elementsPerThread = getElementsPerThread(resultType);
   constexpr int64_t kThreadsPerWarp = 32;
-  int64_t elementsPerWarp = elementsPerThread * kThreadsPerWarp;
+  int64_t elementsPerWarp = isSoftmax ? 1 : elementsPerThread * kThreadsPerWarp;
   int64_t elementsPerBlock =
-      getThreadsPerBlock(resultType, elementsPerThread) * elementsPerThread;
+      isSoftmax ? 8
+                : getThreadsPerBlock(resultType, elementsPerThread) *
+                      elementsPerThread;
   // Note: passManager.enableIRPrinting() doesn't do anything on dynamic pass
   // pipelines. Printing needs to be enabled on the parent pass manager.
   PassManager passManager(getContext());
   HloToGpuPipelineOptions opts;
   opts.blockTileDim = {elementsPerBlock};
   opts.warpTileDim = {elementsPerWarp};
-  opts.threadTileDim = {elementsPerThread};
+  if (!isSoftmax) opts.threadTileDim = {elementsPerThread};
+  opts.experimentalSoftmax = isSoftmax;
   createHloToGpuPipeline(passManager, opts);
   if (failed(parentPass.runPipeline(passManager, moduleOp)))
     return rewriter.notifyMatchFailure(fusionOp, "failed to run pipeline");
