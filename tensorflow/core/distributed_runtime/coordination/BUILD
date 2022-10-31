@@ -2,11 +2,9 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_grpc_cc_dependencies")
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_oss",
     "tf_cc_test",
     "tf_cuda_library",
 )
-load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
     default_visibility = [
@@ -20,79 +18,6 @@ cc_library(
     hdrs = ["coordination_client.h"],
     deps = [
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_client",
-    ],
-)
-
-cc_library(
-    name = "coordination_service",
-    hdrs = ["coordination_service.h"],
-    deps = [
-        ":coordination_client",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:statusor",
-        "//tensorflow/tsl/protobuf:coordination_config_proto_cc",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
-    ],
-)
-
-# Keeping the implementation as a separate build target.
-# This is an alwayslink library for statically registering "standalone" implementation.
-# Other implementations of the service will be provided in the future.
-tf_cuda_library(
-    name = "coordination_service_impl",
-    srcs = ["coordination_service.cc"],
-    deps = [
-        ":coordination_client",
-        ":coordination_service",
-        ":coordination_service_error_util",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/distributed_runtime:call_options",
-        "//tensorflow/core/framework:device_attributes_proto_cc",
-        "//tensorflow/tsl/protobuf:coordination_config_proto_cc",
-        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-    ],
-    alwayslink = 1,
-)
-
-tf_proto_library(
-    name = "test_device_proto",
-    testonly = 1,
-    srcs = ["test_device.proto"],
-    cc_api_version = 2,
-)
-
-tf_cc_test(
-    name = "coordination_service_test",
-    srcs = ["coordination_service_test.cc"],
-    tags = if_oss([
-        "manual",
-        "no_oss",
-    ]),  # b/169705709, no protobuf matchers in OSS.
-    deps = [
-        ":coordination_client",
-        ":coordination_service",
-        ":coordination_service_impl",
-        ":test_device_proto_cc",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/distributed_runtime:call_options",
-        "//tensorflow/core/distributed_runtime:test_utils",
-        "//tensorflow/tsl/platform:mutex",
-        "//tensorflow/tsl/protobuf:coordination_config_proto_cc",
-        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
     ],
 )
 
@@ -140,12 +65,12 @@ cc_library(
         "coordination_service_rpc_handler.h",
     ],
     deps = [
-        ":coordination_service",
         ":coordination_service_error_util",
         ":coordination_service_agent",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/time",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
         "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
     ] + tf_grpc_cc_dependencies(),
 )
@@ -197,9 +122,7 @@ tf_cc_test(
     srcs = ["coordination_service_recoverable_job_test.cc"],
     deps = [
         ":coordination_client",
-        ":coordination_service",
         ":coordination_service_agent",
-        ":coordination_service_impl",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "//tensorflow/core:test",
@@ -209,6 +132,8 @@ tf_cc_test(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_impl",
         "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/protobuf:coordination_config_proto_cc",
@@ -219,7 +144,6 @@ filegroup(
     name = "pywrap_required_hdrs",
     srcs = [
         "coordination_client.h",
-        "coordination_service.h",
     ],
     visibility = [
         "//tensorflow/core/function:__pkg__",

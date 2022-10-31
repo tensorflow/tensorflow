@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
 
 #include <memory>
 #include <string>
@@ -24,26 +24,34 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/distributed_runtime/call_options.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
-#include "tensorflow/core/distributed_runtime/coordination/test_device.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/random.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/distributed_runtime/call_options.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/test_device.pb.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/random.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 #include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
 using ::testing::EqualsProto;
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
+
+using tensorflow::CoordinatedJob;
+using tensorflow::CoordinatedTask;
+using tensorflow::CoordinationServiceConfig;
+using tensorflow::DeviceInfo;
+using tensorflow::KeyValueEntry;
+using tensorflow::TestDevice;
+using tensorflow::TestDeviceList;
 
 constexpr absl::Duration kHeartbeatTimeout = absl::Seconds(2);
 constexpr absl::Duration kShutdownBarrierTimeout = absl::Milliseconds(500);
@@ -70,7 +78,7 @@ class TestCoordinationClient : public CoordinationClient {
   TestCoordinationClient() = default;
 
   Status GetStatus() {
-    tsl::mutex_lock l(mu_);
+    mutex_lock l(mu_);
     return status_;
   }
 
@@ -84,7 +92,7 @@ class TestCoordinationClient : public CoordinationClient {
                               const ReportErrorToTaskRequest* request,
                               ReportErrorToTaskResponse* response,
                               StatusCallback done) override {
-    tsl::mutex_lock l(mu_);
+    mutex_lock l(mu_);
     status_ = Status(static_cast<errors::Code>(request->error_code()),
                      request->error_message());
     done(OkStatus());
@@ -122,7 +130,7 @@ class TestCoordinationClient : public CoordinationClient {
 #undef UNIMPLEMENTED_WITH_CALL_OPTS
 
  private:
-  tsl::mutex mu_;
+  mutex mu_;
   Status status_ TF_GUARDED_BY(mu_);
 };
 
@@ -1393,4 +1401,4 @@ TEST_F(CoordinateTwoTasksTest,
   TF_EXPECT_OK(client_1_.GetStatus());
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

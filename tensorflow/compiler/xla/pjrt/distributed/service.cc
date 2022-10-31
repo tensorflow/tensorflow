@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -37,8 +37,7 @@ limitations under the License.
 namespace {
 constexpr int kBarrierTimedOut = -1000;
 
-std::unique_ptr<tensorflow::CoordinationServiceInterface>
-EnableCoordinationService(
+std::unique_ptr<tsl::CoordinationServiceInterface> EnableCoordinationService(
     const xla::DistributedRuntimeServiceImpl::Options& options) {
   const std::string job_name = "jax_worker";
   tensorflow::CoordinationServiceConfig config;
@@ -54,9 +53,8 @@ EnableCoordinationService(
       config.mutable_coordinated_job_list()->Add();
   job->set_name(job_name);
   job->set_num_tasks(options.num_nodes);
-  auto service =
-      tensorflow::CoordinationServiceInterface::EnableCoordinationService(
-          options.env, config, /*cache=*/nullptr);
+  auto service = tsl::CoordinationServiceInterface::EnableCoordinationService(
+      options.env, config, /*cache=*/nullptr);
   // Convert list of local devices to global device message as EnumerateDevies()
   // response.
   service->SetDeviceAggregationFunction(

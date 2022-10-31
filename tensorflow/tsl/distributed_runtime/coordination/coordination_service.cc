@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
 
 #include <algorithm>
 #include <functional>
@@ -31,23 +31,30 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/distributed_runtime/call_options.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/random.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/tsl/distributed_runtime/call_options.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/random.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/strcat.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"
 #include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 #include "tensorflow/tsl/protobuf/coordination_service.pb.h"
+#include "tensorflow/tsl/util/device_name_utils.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
+using tensorflow::CoordinatedTask;
+using tensorflow::CoordinatedTaskState;
+using tensorflow::CoordinatedTaskStateInfo;
+using tensorflow::CoordinationServiceConfig;
+using tensorflow::CoordinationServiceError;
+using tensorflow::DeviceInfo;
+using tensorflow::KeyValueEntry;
 
 constexpr absl::Duration kDevicePropagationTimeout = absl::Hours(1);
 constexpr int kDefaultHeartbeatTimeoutMs = 10 * 1000;  // 10 seconds
@@ -1183,4 +1190,4 @@ bool CoordinationServiceStandaloneImpl::isRecoverableJob(
 // Register standalone coordination service implementation.
 REGISTER_COORDINATION_SERVICE("standalone", EnableCoordinationService);
 
-}  // namespace tensorflow
+}  // namespace tsl

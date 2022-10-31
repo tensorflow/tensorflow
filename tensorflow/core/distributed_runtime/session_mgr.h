@@ -19,7 +19,6 @@ limitations under the License.
 #include <functional>
 #include <string>
 
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
 
 namespace tensorflow {
 
@@ -127,7 +127,7 @@ class SessionMgr {
 
   std::unique_ptr<WorkerCacheInterface> default_worker_cache_;
   std::shared_ptr<WorkerSession> legacy_session_;
-  std::unique_ptr<CoordinationServiceInterface> coordination_service_;
+  std::unique_ptr<tsl::CoordinationServiceInterface> coordination_service_;
   std::unique_ptr<CoordinationServiceAgent> coordination_service_agent_;
 
   bool is_logging_active_ = false;

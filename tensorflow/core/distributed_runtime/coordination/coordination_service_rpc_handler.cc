@@ -15,20 +15,24 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_rpc_handler.h"
 
+#include <iterator>
 #include <string>
 #include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
+namespace {
+using tsl::CoordinationServiceInterface;
+}
 
 void CoordinationServiceRpcHandler::SetAgentInstance(
     CoordinationServiceAgent* agent) {

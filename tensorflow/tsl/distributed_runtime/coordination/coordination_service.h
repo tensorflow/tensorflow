@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_H_
-#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_H_
+#ifndef TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_H_
+#define TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_H_
 
 #include <functional>
 #include <memory>
@@ -25,17 +25,17 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/protobuf/coordination_config.pb.h"
+
+namespace tensorflow {
+class CoordinationServiceRpcHandler;
+}
 
 namespace tsl {
 class Env;
-}  // namespace tsl
-namespace tensorflow {
-using tsl::Env;
-class DeviceInfo;
 
 // Static registration for coordination service implementations.
 #define REGISTER_COORDINATION_SERVICE(service_type_name, factory_fn)        \
@@ -45,9 +45,8 @@ class DeviceInfo;
                                                   factory_fn)                 \
   static bool static_coordination_service_##counter TF_ATTRIBUTE_UNUSED =     \
       []() {                                                                  \
-        ::tensorflow::CoordinationServiceInterface::                          \
-            RegisterCoordinationService(service_type_name,                    \
-                                        std::move(factory_fn));               \
+        ::tsl::CoordinationServiceInterface::RegisterCoordinationService(     \
+            service_type_name, std::move(factory_fn));                        \
         return true;                                                          \
       }()
 
@@ -71,13 +70,13 @@ class CoordinationServiceInterface {
  public:
   using CoordinationServiceFactory =
       std::function<std::unique_ptr<CoordinationServiceInterface>(
-          Env* env, const CoordinationServiceConfig& config,
+          Env* env, const tensorflow::CoordinationServiceConfig& config,
           std::unique_ptr<CoordinationClientCache> cache)>;
 
   using StatusOrValueCallback =
       std::function<void(const StatusOr<std::string>&)>;
 
-  virtual ~CoordinationServiceInterface() {}
+  virtual ~CoordinationServiceInterface() = default;
 
   static void RegisterCoordinationService(
       const std::string& service_type_name,
@@ -87,7 +86,8 @@ class CoordinationServiceInterface {
   }
 
   static std::unique_ptr<CoordinationServiceInterface>
-  EnableCoordinationService(Env* env, const CoordinationServiceConfig& config,
+  EnableCoordinationService(Env* env,
+                            const tensorflow::CoordinationServiceConfig& config,
                             std::unique_ptr<CoordinationClientCache> cache) {
     const auto* factories = GetCoordinationServiceFactories();
     auto factories_iter = factories->find(config.service_type());
@@ -111,11 +111,12 @@ class CoordinationServiceInterface {
   // deterministic order during WaitForAllTasks(). This is useful to convert the
   // result into another message, or set global device ids.
   virtual void SetDeviceAggregationFunction(
-      std::function<DeviceInfo(const DeviceInfo& devices)>
+      std::function<
+          tensorflow::DeviceInfo(const tensorflow::DeviceInfo& devices)>
           post_aggregate_device_fn) = 0;
 
   // Register a task to the service.
-  virtual Status RegisterTask(const CoordinatedTask& task,
+  virtual Status RegisterTask(const tensorflow::CoordinatedTask& task,
                               uint64_t incarnation) = 0;
 
   // Wait for all tasks to be up and running, and register local device
@@ -123,8 +124,8 @@ class CoordinationServiceInterface {
   // error occurs.
   // Each task's local devices will be appended in a deterministic order, and
   // post-processed by the callback in SetDeviceAggregationFunction() (if set).
-  virtual void WaitForAllTasks(const CoordinatedTask& task,
-                               const DeviceInfo& devices,
+  virtual void WaitForAllTasks(const tensorflow::CoordinatedTask& task,
+                               const tensorflow::DeviceInfo& devices,
                                StatusCallback done) = 0;
 
   // Disconnects task from the service. If `shutdown_barrier_timeout_in_ms` is
@@ -133,26 +134,27 @@ class CoordinationServiceInterface {
   // Possible service errors:
   //   - InvalidArgument: Unexpected task request.
   //   - FailedPrecondition: task has already disconnected.
-  virtual void ShutdownTaskAsync(const CoordinatedTask& task,
+  virtual void ShutdownTaskAsync(const tensorflow::CoordinatedTask& task,
                                  StatusCallback done) = 0;
 
   // Disconnects task from the service and cleans up its internal error state.
   // Possible service errors:
   //   - InvalidArgument: Unexpected task request.
   //   - FailedPrecondition: task has already disconnected.
-  virtual Status ResetTask(const CoordinatedTask& task) = 0;
+  virtual Status ResetTask(const tensorflow::CoordinatedTask& task) = 0;
 
   // Update the heartbeat timestamp of a task. This should only be invoked on
   // the leader of the cluster.
-  virtual Status RecordHeartbeat(const CoordinatedTask& task,
+  virtual Status RecordHeartbeat(const tensorflow::CoordinatedTask& task,
                                  uint64_t incarnation) = 0;
 
   // Set a task in error state permanently.
-  virtual Status ReportTaskError(const CoordinatedTask& task, Status error) = 0;
+  virtual Status ReportTaskError(const tensorflow::CoordinatedTask& task,
+                                 Status error) = 0;
 
   // Get the state and the error status of the tasks.
-  virtual std::vector<CoordinatedTaskStateInfo> GetTaskState(
-      const std::vector<CoordinatedTask>& task) = 0;
+  virtual std::vector<tensorflow::CoordinatedTaskStateInfo> GetTaskState(
+      const std::vector<tensorflow::CoordinatedTask>& task) = 0;
 
   // Insert a configuration key-value in the coordination service.
   // For now, a key-value can only be inserted once and cannot be updated.
@@ -173,7 +175,7 @@ class CoordinationServiceInterface {
   // A value is considered to be in the directory if its key is prefixed with
   // the directory. This is not a blocking call. Agent does not need to be
   // connected to utilize the distributed key-value store.
-  virtual std::vector<KeyValueEntry> GetKeyValueDir(
+  virtual std::vector<tensorflow::KeyValueEntry> GetKeyValueDir(
       absl::string_view directory_key) = 0;
 
   // Delete configuration key-value. If key is a directory, recursively clean
@@ -211,8 +213,8 @@ class CoordinationServiceInterface {
   //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state.
   virtual void BarrierAsync(
       const std::string& barrier_id, absl::Duration timeout,
-      const CoordinatedTask& task,
-      const std::vector<CoordinatedTask>& participating_tasks,
+      const tensorflow::CoordinatedTask& task,
+      const std::vector<tensorflow::CoordinatedTask>& participating_tasks,
       StatusCallback done) = 0;
 
   // Aborts the barrier if it is ongoing.
@@ -221,16 +223,16 @@ class CoordinationServiceInterface {
   // Possible service errors:
   //   - FailedPrecondition: Barrier has already been passed.
   virtual Status CancelBarrier(const std::string& barrier_id,
-                               const CoordinatedTask& task) = 0;
+                               const tensorflow::CoordinatedTask& task) = 0;
 
  private:
-  friend class CoordinationServiceRpcHandler;
+  friend class tensorflow::CoordinationServiceRpcHandler;
   friend class CoordinationServiceTest_ListClusterDevices_TfDevice_Test;
   friend class CoordinationServiceTest_ListClusterDevices_XlaDevice_Test;
   friend class
       CoordinationServiceTest_ListClusterDevices_DevicesAreNotAddedTwice_Test;
 
-  virtual const DeviceInfo& ListClusterDevices() = 0;
+  virtual const tensorflow::DeviceInfo& ListClusterDevices() = 0;
   virtual uint64_t GetServiceIncarnation() = 0;
 
   static std::unordered_map<std::string, CoordinationServiceFactory>*
@@ -246,6 +248,6 @@ class CoordinationServiceInterface {
   }
 };
 
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_H_
+#endif  // TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_H_
