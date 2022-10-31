@@ -54,6 +54,7 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
 /* static */ Layout LayoutUtil::MakeLayout(
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
+    absl::Span<const bool> dim_unique, absl::Span<const bool> dim_ordered,
     absl::Span<const Tile> tiles, PrimitiveType index_primitive_type,
     PrimitiveType pointer_primitive_type, int64_t memory_space,
     std::optional<Shape> physical_shape) {
@@ -63,6 +64,12 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
   }
   for (DimLevelType dim_level_type : dim_level_types) {
     layout.add_dim_level_type(dim_level_type);
+  }
+  for (bool unique : dim_unique) {
+    layout.add_dim_unique(unique);
+  }
+  for (bool ordered : dim_ordered) {
+    layout.add_dim_ordered(ordered);
   }
   for (const Tile& tile : tiles) {
     for (int64_t dim : tile.dimensions()) {

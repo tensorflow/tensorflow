@@ -90,6 +90,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
+    absl::Span<const bool> dim_unique, absl::Span<const bool> dim_ordered,
     absl::Span<const Tile> tiles, PrimitiveType index_primitive_type,
     PrimitiveType pointer_primitive_type, int64_t memory_space,
     std::optional<Shape> physical_shape) {
@@ -105,8 +106,9 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   TF_ASSIGN_OR_RETURN(Shape shape,
                       ShapeUtil::MakeValidatedShape(element_type, dimensions));
   *shape.mutable_layout() = LayoutUtil::MakeLayout(
-      minor_to_major, dim_level_types, tiles, index_primitive_type,
-      pointer_primitive_type, memory_space, std::move(physical_shape));
+      minor_to_major, dim_level_types, dim_unique, dim_ordered, tiles,
+      index_primitive_type, pointer_primitive_type, memory_space,
+      std::move(physical_shape));
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
   return shape;
 }
@@ -300,7 +302,8 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
     absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
     int64_t memory_space) {
   auto ret = MakeShapeWithLayoutInternal(
-      element_type, dimensions, minor_to_major, /*dim_level_types=*/{}, tiles,
+      element_type, dimensions, minor_to_major, /*dim_level_types=*/{},
+      /*dim_unique=*/{}, /*dim_ordered=*/{}, tiles,
       /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
       /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID, memory_space,
       /*physical_shape=*/std::nullopt);
@@ -312,12 +315,13 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
+    absl::Span<const bool> dim_ordered, absl::Span<const bool> dim_unique,
     PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
     int64_t memory_space, std::optional<Shape> physical_shape) {
   auto ret = MakeShapeWithLayoutInternal(
-      element_type, dimensions, minor_to_major, dim_level_types, /*tiles=*/{},
-      index_primitive_type, pointer_primitive_type, memory_space,
-      std::move(physical_shape));
+      element_type, dimensions, minor_to_major, dim_level_types, dim_unique,
+      dim_ordered, /*tiles=*/{}, index_primitive_type, pointer_primitive_type,
+      memory_space, std::move(physical_shape));
   if (!ret.ok()) LOG(ERROR) << ret.status();
   return ret.value();
 }
