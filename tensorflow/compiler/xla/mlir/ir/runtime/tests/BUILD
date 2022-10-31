@@ -21,7 +21,7 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "//tensorflow/compiler/xla/mlir/tools:xla-runtime-opt",
+        "//tensorflow/compiler/xla/mlir/runtime:xla-runtime-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//mlir:run_lit.sh",
     ],
