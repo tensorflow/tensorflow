@@ -716,6 +716,21 @@ LogicalResult ExportXlaOp(CstrReshapableOp, OpLoweringContext) {
   return failure();
 }
 
+mlir::LogicalResult ExportXlaOp(mlir::mhlo::CopyOp op, OpLoweringContext ctx) {
+  if (op.getIsCrossProgramPrefetch())
+    return op->emitOpError() << "synchronous CopyOp should not include "
+                                "is_cross_program_prefetch attribute.";
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp xla_arg_0;
+  if (failed(
+          GetXlaOp(*op.getODSOperands(0).begin(), value_map, &xla_arg_0, op)))
+    return mlir::failure();
+  auto xla_result = xla::Copy(Unwrap(xla_arg_0));
+  value_map[result] = xla_result;
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(AddDependencyOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp token;

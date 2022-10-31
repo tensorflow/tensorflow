@@ -2094,8 +2094,12 @@ def HLO_CopyOp: HLO_Op<"copy", [Pure, HLO_CompatibleOperandsAndResultType]> {
     %0 = mhlo.copy %arg0 : tensor<f32>
     ```
   }];
-  let arguments = (ins HLO_Tensor:$operand);
+  let arguments = (ins
+      HLO_Tensor:$operand,
+      UnitAttr:$is_cross_program_prefetch
+  );
   let results = (outs HLO_Tensor:$result);
+  let hasCustomHLOConverter = 1;
   let hasFolder = 1;
 
   let assemblyFormat = [{

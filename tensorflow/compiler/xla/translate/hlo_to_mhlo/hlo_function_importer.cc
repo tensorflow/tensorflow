@@ -1080,6 +1080,11 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           .getOperation();
     }
     case HloOpcode::kCopyStart: {
+      auto copy_start_instruction = Cast<HloCopyStartInstruction>(instruction);
+      if (copy_start_instruction->is_cross_program_prefetch()) {
+        attributes.push_back(builder_->getNamedAttr("is_cross_program_prefetch",
+                                                    builder_->getUnitAttr()));
+      }
       return ImportOldStyleAsyncStart<mlir::mhlo::CopyOp>(
           attributes, operands, loc, result_type, func_builder, "copy_",
           [](auto) { return ::tsl::OkStatus(); });
