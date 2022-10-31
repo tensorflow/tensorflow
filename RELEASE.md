@@ -21,16 +21,17 @@
 
 # Major Features and Improvements
 
-* `tf.lite`:
+*   `tf.lite`:
 
-  * Add 16-bit float type support for built-in op `fill`.
+    *   Add 16-bit float type support for built-in op `fill`.
+    *   Transpose now supports 6D tensors.
 
-* `tf.keras`:
+*   `tf.keras`:
 
-  * Added `tf.SparseTensor` input support to `tf.keras.layers.Embedding`
-    layer. The layer now accepts a new boolean argument `sparse`. If
-    `sparse` is set to True, the layer returns a SparseTensor instead of a
-    dense Tensor. Defaults to False.
+    *   Added `tf.SparseTensor` input support to `tf.keras.layers.Embedding`
+        layer. The layer now accepts a new boolean argument `sparse`. If
+        `sparse` is set to True, the layer returns a SparseTensor instead of a
+        dense Tensor. Defaults to False.
 
 # Bug Fixes and Other Changes
 

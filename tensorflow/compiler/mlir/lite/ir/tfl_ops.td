@@ -3439,7 +3439,7 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [
 def TFL_TransposeOp : TFL_Op<"transpose", [
     Pure,
     QuantizableResult,
-    TFL_OperandHasRankAtMost<0, 5>,
+    TFL_OperandHasRankAtMost<0, 6>,
     TFL_OperandHasRank<1, 1>,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
