@@ -107,6 +107,8 @@ llvm::StringRef InsertQuantizedFunctionsPass::GetFunctionLibrary(
         {OpSet::TF, kQuantizedFunctionLibraryInMLIR_TF_DRQ}};
   } else {
     function_library_map = {{OpSet::TF, kQuantizedFunctionLibraryInMLIR},
+                            {OpSet::UNIFORM_QUANTIZED,
+                             kQuantizedFunctionLibraryInMLIR_UNIFORM_QUANTIZED},
                             {OpSet::XLA, kQuantizedFunctionLibraryInMLIR}};
   }
 

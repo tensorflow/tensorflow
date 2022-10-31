@@ -44,6 +44,7 @@ py_binary(
 genrule(
     name = "quantized_function_library",
     srcs = [
+        "passes/quantized_function_library_uniform_quantized.mlir",
         "passes/quantized_function_library.mlir",
         "passes/quantized_function_library_uniform_quantized_drq.mlir",
         "passes/quantized_function_library_tf_drq.mlir",
