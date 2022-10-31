@@ -2548,7 +2548,7 @@ def LocalizeVarHandlesPass : Pass<"tf-localize-var-handles", "ModuleOp"> {
   let constructor = "TF::CreateLocalizeVarHandlesPass()";
 }
 
-def StripTfAttributesPass : Pass<"tf-strip-tf-attributes", "func::FuncOp"> {
+def StripTfAttributesPass : Pass<"tf-strip-tf-attributes", "ModuleOp"> {
   let summary = "Removes TF specific attributes";
   let description = [{
       Removes attributes that are TF specific (start with "tf.") or that

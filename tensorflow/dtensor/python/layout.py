@@ -21,8 +21,8 @@ from typing import List, Dict, Optional
 import numpy as np
 
 from tensorflow.dtensor.proto import layout_pb2
+from tensorflow.dtensor.python import config
 from tensorflow.python import _pywrap_dtensor_device
-from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 from tensorflow.python.util.tf_export import tf_export
@@ -358,7 +358,7 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     if self.device_type().upper() == 'CPU':
       return self
 
-    v_cpus_counts = len(tf_config.list_logical_devices('CPU'))
+    v_cpus_counts = config.num_local_devices('CPU')
     if v_cpus_counts < len(self._local_devices):
       raise ValueError(
           'Must have at least {0} virtual CPUs for mesh : {1}, '

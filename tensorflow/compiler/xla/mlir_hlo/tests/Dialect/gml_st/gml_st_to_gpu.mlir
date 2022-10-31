@@ -109,9 +109,9 @@ func.func @too_deep_nesting() {
   gml_st.parallel (%arg3) = (%c0) to (%c1) step (%c1) {
     gml_st.parallel (%arg4) = (%c0) to (%c1) step (%c1) {
       gml_st.parallel (%arg5) = (%c0) to (%c1) step (%c1) {
+        // expected-error@+1 {{failed to simtfy}}
         gml_st.parallel (%arg6) = (%c0) to (%c1) step (%c1) {
           memref.store %c0, %alloc[] : memref<index>
-          // expected-error@+1 {{failed to simtfy}}
           gml_st.set_yield
         }
         gml_st.set_yield
@@ -134,9 +134,9 @@ func.func @mismatched_bounds() {
   %alloc2 = memref.alloc() : memref<index>
   gml_st.parallel (%arg3) = (%c0) to (%c1) step (%c1) {
     gml_st.parallel (%arg4) = (%c0) to (%c1) step (%c1) {
+      // expected-error@+1 {{failed to simtfy}}
       gml_st.parallel (%arg5) = (%c0) to (%c1) step (%c1) {
         memref.store %c0, %alloc1[] : memref<index>
-        // expected-error@+1 {{failed to simtfy}}
         gml_st.set_yield
       }
       gml_st.parallel (%arg6) = (%c0) to (%c2) step (%c1) {
@@ -157,9 +157,9 @@ func.func @mmultple_induction_vars() {
   %c1 = arith.constant 1 : index
   %c2 = arith.constant 2 : index
   %alloc = memref.alloc() : memref<index>
+  // expected-error@+1 {{failed to simtfy}}
   gml_st.parallel (%arg1, %arg2) = (%c0, %c0) to (%c1, %c1) step (%c1, %c1) {
     memref.store %c0, %alloc[] : memref<index>
-    // expected-error@+1 {{failed to simtfy}}
     gml_st.set_yield
   }
   return
@@ -273,3 +273,23 @@ func.func @vectorized_tiling(%arg0: memref<2048xf32>) -> memref<2048xf32> {
 // CHECK-DAG:    %[[TVOUT:.*]] = math.absf %[[TVARG]]
 // CHECK-DAG:    %[[TOUT:.*]] = memref.subview %[[WOUT]][%[[OFS]]] [4] [1]
 // CHECK-DAG:    vector.transfer_write %[[TVOUT]], %[[TOUT]][%c0]
+
+// -----
+
+func.func @materialize_scalar_of_transfer_read(
+      %in: memref<32xf32>, %idx: index) -> f32 {
+  %pad = arith.constant 0.0 : f32
+  %c0 = arith.constant 0 : index
+  %vector = vector.transfer_read %in[%c0], %pad {in_bounds = [true]}
+    : memref<32xf32>, vector<32xf32>
+  %tile = gml_st.tile [%idx] [1] [1] : !gml_st.tile<1>
+  %value = gml_st.materialize %vector[%tile]
+    : vector<32xf32>[!gml_st.tile<1>] to f32
+  return %value : f32
+}
+// CHECK-LABEL: @materialize_scalar_of_transfer_read(
+// CHECK-SAME: %[[IN:.*]]: memref<32xf32>, %[[IDX:.*]]: index
+// CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:  %[[SUBVIEW:.*]] = memref.subview %[[IN]][%[[IDX]]]
+// CHECK:      %[[VALUE:.*]] = memref.load %[[SUBVIEW]][%[[C0]]]
+// CHECK:      return %[[VALUE]] : f32

@@ -23,18 +23,18 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
-#include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tensorflow/core/distributed_runtime/preemption/preemption_notifier.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/protobuf/coordination_service.pb.h"
-
+#include "tensorflow/tsl/distributed_runtime/preemption/preemption_notifier.h"
+#include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 namespace {
+using tsl::PreemptionNotifier;
+
 constexpr int64_t kPreemptionSyncUnsetCounter = -1;
 constexpr char kPreemptionNoticeKey[] = "RECEIVED_PREEMPTION_NOTICE";
 constexpr char kPreemptionCounterDirKey[] = "PREEMPTION_CURRENT_COUNTER/";
@@ -54,7 +54,6 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
     shutdown_.Notify();
   }
   Status Initialize(CoordinationServiceAgent* agent) override;
-  Status Initialize(xla::DistributedRuntimeClient* client) override;
   Status Initialize(CoordinationServiceAgent* agent,
                     const std::string& preemption_notifier_type) override;
   Status Initialize(CoordinationServiceAgent* agent,
@@ -83,13 +82,6 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
   std::unique_ptr<PreemptionNotifier> preemption_notifier_;
   std::shared_ptr<CallOptions> call_opts_;
 };
-
-Status PreemptionSyncManagerImpl::Initialize(
-    xla::DistributedRuntimeClient* client) {
-  TF_ASSIGN_OR_RETURN(CoordinationServiceAgent * coord_agent,
-                      client->GetCoordinationServiceAgent());
-  return Initialize(coord_agent);
-}
 
 Status PreemptionSyncManagerImpl::Initialize(CoordinationServiceAgent* agent) {
   return Initialize(agent, "sigterm");

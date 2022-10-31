@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This files implements a pass that partially bufferized IR.
+// This files implements a pass that changes a partially bufferized function
+// back to tensor arguments and return values.
 
 #include <cstdint>
 #include <memory>

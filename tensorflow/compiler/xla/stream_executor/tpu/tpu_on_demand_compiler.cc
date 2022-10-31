@@ -207,7 +207,10 @@ class TpuCompiler : public Compiler {
     ApiConverter::ToC(shape, &host_shape);
     ExecutorApiFn()->TpuCompiler_DefaultDeviceShapeRepresentationFn(
         compiler_, &host_shape, &device_shape);
-    return ApiConverter::FromC(&device_shape);
+    ApiConverter::Destroy(&host_shape);
+    Shape result = ApiConverter::FromC(&device_shape);
+    ApiConverter::Destroy(&device_shape);
+    return result;
   }
 
  private:

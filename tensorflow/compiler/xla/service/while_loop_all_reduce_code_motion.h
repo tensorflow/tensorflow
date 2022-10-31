@@ -44,13 +44,11 @@ namespace xla {
 // a += e
 class WhileLoopAllReduceCodeMotion : public HloModulePass {
  public:
-  explicit WhileLoopAllReduceCodeMotion() {}
+  WhileLoopAllReduceCodeMotion() = default;
   ~WhileLoopAllReduceCodeMotion() override = default;
 
   absl::string_view name() const override {
-    static constexpr absl::string_view kName =
-        "while-loop-all-reduce-code-motion";
-    return kName;
+    return "while-loop-all-reduce-code-motion";
   }
   using HloPassInterface::Run;
   StatusOr<bool> Run(

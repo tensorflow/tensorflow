@@ -17,12 +17,12 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/profiler/lib/profiler_interface.h"
-#include "tensorflow/core/profiler/profiler_options.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
 namespace profiler {
@@ -89,11 +89,10 @@ TEST(ProfilerFactoryTest, FactoryClassCapturedByLambda) {
   ClearRegisteredProfilersForTest();
   static int token = 42;
   FactoryClass factory(&token);
-  RegisterProfilerFactory(
-      [factory = std::move(factory)](
-        const tensorflow::ProfileOptions& options) {
-          return factory.CreateProfiler(options);
-      });
+  RegisterProfilerFactory([factory = std::move(factory)](
+                              const tensorflow::ProfileOptions& options) {
+    return factory.CreateProfiler(options);
+  });
   auto profilers = CreateProfilers(tensorflow::ProfileOptions());
   EXPECT_EQ(profilers.size(), 1);
 }

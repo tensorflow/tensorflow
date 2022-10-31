@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -103,11 +104,7 @@ class GpuExecutable::XlaRuntimeGpuExecutable {
     runtime::JitExecutable::Options opts;
     opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
     opts.compiler.register_dialects =
-        [](xla::runtime::DialectRegistry& dialects) {
-          runtime::RegisterDefaultXlaGpuRuntimeDialects(dialects);
-          // For the encoding of attributes to custom calls.
-          runtime::RegisterLmhloGpuDialect(dialects);
-        };
+        runtime::RegisterDefaultXlaGpuRuntimeDialects;
 
     // Register XLA Gpu runtime custom calls with the linker.
     opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
@@ -156,6 +153,7 @@ class GpuExecutable::XlaRuntimeGpuExecutable {
 
   GpuExecutableKernelsCache& kernels_cache() { return kernels_cache_; }
   JitRtGemmConfigCache& gemm_configs_cache() { return gemm_configs_cache_; }
+  ConvRunnerCache& conv_runners_cache() { return conv_runners_cache_; }
   JitRtCollectiveSupport& collectives() { return collectives_; }
 
   runtime::Executable& executable() {
@@ -240,6 +238,9 @@ class GpuExecutable::XlaRuntimeGpuExecutable {
 
   // Keep a cache of gemm configs for all gemm operation in the program.
   JitRtGemmConfigCache gemm_configs_cache_;
+
+  // Keep a cache for conv configs for all conv operations in the program.
+  ConvRunnerCache conv_runners_cache_;
 
   // Support for running collective operations.
   JitRtCollectiveSupport collectives_;
@@ -690,6 +691,7 @@ static Status ExecuteXlaRuntime(
       &executable, run_options, &xla_runtime_executable->debug_options(),
       &asm_text, &binary, &dm_buffer, &xla_runtime_executable->kernels_cache(),
       &xla_runtime_executable->gemm_configs_cache(),
+      &xla_runtime_executable->conv_runners_cache(),
       &xla_runtime_executable->collectives(),
       async_collectives.async_comm_stream() ? &async_collectives : nullptr);
   opts.custom_call_data = &user_data;
@@ -934,17 +936,12 @@ Status GpuExecutable::SetUpMlirAllocation(
     mlir::func::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
     std::vector<BufferAllocation>* allocations,
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>* output_info,
-    Shape* output_shape, int buffer_param_offset) {
+    Shape* output_shape) {
   for (int i = 0; i < buffer_sizes.size(); i++) {
     allocations->emplace_back(i, buffer_sizes[i], 0);
   }
 
   for (int i = 0; i < func.getNumArguments(); i++) {
-    if (i < buffer_param_offset) {
-      continue;
-    }
-    const int buffer_index = i - buffer_param_offset;
-
     if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
       xla::ShapeIndex shape_index;
       if (auto shape_index_attr =
@@ -954,18 +951,17 @@ Status GpuExecutable::SetUpMlirAllocation(
           shape_index.push_back(element.getSExtValue());
         }
       }
-      allocations->at(buffer_index)
-          .set_entry_computation_parameter(
-              param_attr.cast<mlir::IntegerAttr>().getInt(), shape_index,
-              static_cast<bool>(func.getArgAttr(i, "lmhlo.output_index")));
+      allocations->at(i).set_entry_computation_parameter(
+          param_attr.cast<mlir::IntegerAttr>().getInt(), shape_index,
+          static_cast<bool>(func.getArgAttr(i, "lmhlo.output_index")));
     }
     // TODO(timshen): this information is redundant. This is here only for
     // smooth migration to LMHLO. Remove it.
     if (func.getArgAttr(i, "lmhlo.constant_name")) {
-      allocations->at(buffer_index).set_constant(true);
+      allocations->at(i).set_constant(true);
     }
     if (auto output_index_attr = func.getArgAttr(i, "lmhlo.output_index")) {
-      allocations->at(buffer_index).set_maybe_live_out(true);
+      allocations->at(i).set_maybe_live_out(true);
 
       // Reconstruct a shape index from output_index.
       ShapeIndex shape_index;
@@ -974,7 +970,7 @@ Status GpuExecutable::SetUpMlirAllocation(
         shape_index.push_back(element.getSExtValue());
       }
       auto& o = (*output_info)[shape_index];
-      o.allocation_index = buffer_index;
+      o.allocation_index = i;
       if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
         HloInputOutputAliasConfig::AliasKind kind =
             HloInputOutputAliasConfig::kMayAlias;
@@ -1107,8 +1103,7 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
   Shape result_xla_shape;
   TF_RETURN_IF_ERROR(SetUpMlirAllocation(func, buffer_sizes, &allocations,
-                                         &output_info, &result_xla_shape,
-                                         /*buffer_param_offset=*/0));
+                                         &output_info, &result_xla_shape));
 
   // Create a named buffer from compiled object file.
   llvm::StringRef data(obj_file.data(), obj_file.size());

@@ -991,6 +991,7 @@ bzl_library(
     deps = [
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
+        "//tensorflow/tsl:tsl_bzl",
         "//tensorflow/tsl/platform/default:cuda_build_defs_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//third_party/llvm_openmp:openmp_bzl",
@@ -1011,6 +1012,7 @@ bzl_library(
     deps = [":tensorflow_bzl"],
 )
 
+# TODO(jakeharmon): Remove these in favor of tsl:grpc
 # copybara:comment_begin(oss-only)
 cc_library(
     name = "grpc",

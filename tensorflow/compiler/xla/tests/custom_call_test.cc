@@ -196,7 +196,7 @@ XLA_TEST_F(CustomCallTest, LayoutConstrained) {
       b.AddInstruction(HloInstruction::CreateParameter(0, r2f32_, "p"));
 
   const Shape& r2f32_dim0_major =
-      ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0});
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0});
   auto custom_call = b.AddInstruction(HloInstruction::CreateCustomCall(
       r2f32_dim0_major, {input}, "Add1ToValues", {r2f32_dim0_major}));
   b.AddInstruction(

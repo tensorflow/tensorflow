@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/fusion.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/linalg_utils.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h"
@@ -39,18 +40,10 @@ namespace {
 #define GEN_PASS_DEF_TILINGCWISEPASS
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
-bool isElementwiseLinalgGenericOp(Operation *op) {
-  auto linalgGenericOp = llvm::dyn_cast_or_null<linalg::GenericOp>(op);
-  return linalgGenericOp &&
-         llvm::all_of(linalgGenericOp.getIndexingMapsArray(),
-                      [](AffineMap map) { return map.isIdentity(); });
-}
-
 bool isRootOfCwiseExpr(Operation *op) {
-  return isElementwiseLinalgGenericOp(op) &&
+  return isCwiseGenericOp(op) &&
          llvm::none_of(op->getUsers(), [](Operation *user) {
-           return isElementwiseLinalgGenericOp(user) ||
-                  llvm::isa<MaterializeOp>(user);
+           return isCwiseGenericOp(user) || llvm::isa<MaterializeOp>(user);
          });
 }
 
@@ -102,7 +95,7 @@ struct TilingCwisePass : public impl::TilingCwisePassBase<TilingCwisePass> {
     auto fuseCwiseOperandsGreedilyFn = [](Operation *op) {
       Operation *producerOp =
           llvm::cast<MaterializeOp>(op).getSource().getDefiningOp();
-      if (!isElementwiseLinalgGenericOp(producerOp)) return failure();
+      if (!isCwiseGenericOp(producerOp)) return failure();
       return success();
     };
 

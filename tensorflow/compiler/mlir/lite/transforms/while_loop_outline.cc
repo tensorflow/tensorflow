@@ -74,7 +74,7 @@ bool IsAlreadyOutlined(WhileOp while_op) {
     if (!isa<YieldOp>(*it)) return false;
     return true;
   };
-  return just_call(while_op.body()) && just_call(while_op.cond());
+  return just_call(while_op.getBody()) && just_call(while_op.getCond());
 }
 
 bool IsCompatibleTypeWithTFLCastOp(Type type) {
@@ -195,14 +195,15 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
   // The basic block arguments correspond to values that are loop carried, while
   // all those post are loop independent. Initialize extern_values with while_op
   // not loop carried operands.
-  auto num_loop_carried = while_op.cond().getNumArguments();
+  auto num_loop_carried = while_op.getCond().getNumArguments();
   auto not_carried_operands =
       while_op.getOperands().drop_front(num_loop_carried);
   extern_values.insert(not_carried_operands.begin(),
                        not_carried_operands.end());
   auto old_extern_values_size = extern_values.size();
 
-  llvm::SmallVector<Region*, 2> regions{&while_op.cond(), &while_op.body()};
+  llvm::SmallVector<Region*, 2> regions{&while_op.getCond(),
+                                        &while_op.getBody()};
   for (const auto& it : llvm::enumerate(regions)) {
     llvm::SetVector<Value> region_extern_values;
     getUsedValuesDefinedAbove(*it.value(), region_extern_values);
@@ -239,17 +240,17 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
   // Collect new types.
   SmallVector<Type, 4> types;
   types.reserve(extra_operands.size() + while_op.getNumOperands());
-  for (Type type : while_op.cond().getArgumentTypes()) types.push_back(type);
+  for (Type type : while_op.getCond().getArgumentTypes()) types.push_back(type);
   for (Value operand : extern_values) types.push_back(operand.getType());
 
   // Create outline function from region. Optional pass extra arguments through
   // to yield.
   ReplaceRegionWithCall(GetName(while_op.getOperation(), "_cond"),
-                        while_op.cond(), false, num_loop_carried, extern_values,
-                        types, while_op.getLoc());
+                        while_op.getCond(), false, num_loop_carried,
+                        extern_values, types, while_op.getLoc());
   ReplaceRegionWithCall(GetName(while_op.getOperation(), "_body"),
-                        while_op.body(), true, num_loop_carried, extern_values,
-                        types, while_op.getLoc());
+                        while_op.getBody(), true, num_loop_carried,
+                        extern_values, types, while_op.getLoc());
 
   // If there are extern values used then the result type of the while has to
   // change, so replace with new while op.
@@ -269,8 +270,8 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
 
   auto new_while_op = OpBuilder(while_op).create<WhileOp>(
       while_op.getLoc(), new_types, operands, while_op->getAttrs());
-  new_while_op.cond().takeBody(while_op.cond());
-  new_while_op.body().takeBody(while_op.body());
+  new_while_op.getCond().takeBody(while_op.getCond());
+  new_while_op.getBody().takeBody(while_op.getBody());
   while_op.replaceAllUsesWith(
       new_while_op.getResults().take_front(while_op.getNumResults()));
   while_op.erase();

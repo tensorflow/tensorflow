@@ -118,5 +118,10 @@ std::string ThunkSequence::ToString(
   return result;
 }
 
+bool IsReductionCollective(Thunk::Kind kind) {
+  return kind == Thunk::kNcclAllReduce || kind == Thunk::kNcclAllReduceStart ||
+         kind == Thunk::kNcclReduceScatter;
+}
+
 }  // namespace gpu
 }  // namespace xla

@@ -649,16 +649,17 @@ static xla::StatusOr<xla::PjRtDevice*> GetJitArgumentStickyDevice(
 
   if (arg.get_type() == xla::PyArray::type()) {
     auto py_array = py::reinterpret_borrow<xla::PyArray>(arg);
+    if (py_array.fastpath_enabled()) {
+      if (py_array.num_shards() != 1) {
+        return xla::InvalidArgument(
+            "Only single-sharded Array is expected in C++ JIT.");
+      }
 
-    if (py_array.num_shards() != 1) {
-      return xla::InvalidArgument(
-          "Only single-sharded Array is expected in C++ JIT.");
+      if (!py_array.committed()) {
+        return nullptr;
+      }
+      return py_array.GetBuffer(0)->device();
     }
-
-    if (!py_array.committed()) {
-      return nullptr;
-    }
-    return py_array.GetBuffer(0)->device();
   }
 
   // We specically only deal with DeviceArray (not ShardedDeviceArray).

@@ -24,7 +24,6 @@ from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import layout
 from tensorflow.dtensor.python import tpu_util
 from tensorflow.python.eager import context
-from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -53,10 +52,7 @@ def _make_device_specs(
   if devices is None:
     if device_type is None:
       device_type = 'CPU'
-    devices = [
-        tf_device.DeviceSpec.from_string(d.name)
-        for d in tf_config.list_logical_devices(device_type)
-    ]
+    devices = config.local_devices(device_type)
   else:
     devices = [tf_device.DeviceSpec.from_string(d) for d in devices]
     if device_type is None:
@@ -211,7 +207,7 @@ def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
   if device_type.upper() == 'TPU':
     mesh = tpu_util.create_tpu_mesh(dim_names, shape, mesh_name)
     _print_context(
-        api.num_global_devices(device_type), config.num_clients(),
+        config.num_global_devices(device_type), config.num_clients(),
         config.client_id(), device_type, mesh)
     return mesh
 

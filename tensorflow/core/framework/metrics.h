@@ -27,6 +27,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace metrics {
+// Records when a data-fetching tf.data operation is executed.
+//
+// The `name` argument identifies the operation type (e.g. "ToSingleElementOp").
+void RecordTFDataFetchOp(const string& name);
 
 // Records that a tf.data.Dataset executed by the program used autotuning.
 //

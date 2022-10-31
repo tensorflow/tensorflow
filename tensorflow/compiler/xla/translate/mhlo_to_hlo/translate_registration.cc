@@ -53,6 +53,12 @@ llvm::cl::opt<bool> print_layouts(
     llvm::cl::init(false));
 
 // NOLINTNEXTLINE
+llvm::cl::opt<bool> print_large_constants(
+    "print-large-constants",
+    llvm::cl::desc("Print large constants in the generated HLO text"),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
 llvm::cl::opt<bool> via_builder(
     "via-builder", llvm::cl::desc("Translate MHLO->XLA HLO via XLA Builder"),
     llvm::cl::init(false));
@@ -68,7 +74,8 @@ static mlir::LogicalResult MlirHloToHloTextTranslate(
     mlir::ModuleOp module, llvm::raw_ostream& output) {
   return xla::MlirHloToHloTextTranslateFunction(
       module, output, emit_return_tuple, emit_use_tuple_arg,
-      legalize_node_names, print_layouts, via_builder, with_layouts);
+      legalize_node_names, print_layouts, print_large_constants, via_builder,
+      with_layouts);
 }
 
 static void RegisterInputDialects(mlir::DialectRegistry& registry) {

@@ -113,7 +113,7 @@ SmallVector<Value> ExtractValuesToPrint(Operation* op) {
     return {op->getResult(0)};
   }
   if (auto linalg = dyn_cast<linalg::LinalgOp>(op)) {
-    return linalg.getOutputOperands();
+    return linalg.getDpsInitOperands();
   }
   if (auto loop = dyn_cast<gml_st::LoopOp>(op)) {
     return loop.getOutputs();

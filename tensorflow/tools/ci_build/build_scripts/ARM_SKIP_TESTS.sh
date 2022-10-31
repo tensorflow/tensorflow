@@ -24,14 +24,4 @@ ARM_SKIP_TESTS="-//tensorflow/lite/... \
 -//tensorflow/python/kernel_tests/nn_ops:conv_ops_test \
 -//tensorflow/python/kernel_tests/nn_ops:conv2d_backprop_filter_grad_test \
 -//tensorflow/python/kernel_tests/nn_ops:atrous_conv2d_test \
--//tensorflow/python/training:server_lib_test \
--//tensorflow/python/kernel_tests/linalg:linalg_grad_test_gpu \
--//tensorflow/python/kernel_tests/linalg:linalg_grad_test_cpu \
--//tensorflow/python/kernel_tests/linalg:linear_operator_block_diag_test_gpu \
--//tensorflow/python/kernel_tests/linalg:linear_operator_block_diag_test_cpu \
--//tensorflow/python/kernel_tests/linalg:linear_operator_block_lower_triangular_test_gpu \
--//tensorflow/python/kernel_tests/linalg:linear_operator_block_lower_triangular_test_cpu \
--//tensorflow/python/kernel_tests/linalg:linalg_ops_test_gpu \
--//tensorflow/python/kernel_tests/linalg:linalg_ops_test_cpu \
--//tensorflow/python/kernel_tests/linalg:linear_operator_composition_test_gpu \
--//tensorflow/python/kernel_tests/linalg:linear_operator_composition_test_cpu"
+-//tensorflow/python/training:server_lib_test"

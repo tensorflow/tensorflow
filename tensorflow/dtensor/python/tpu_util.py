@@ -20,7 +20,6 @@ from typing import List, Optional, Dict
 
 import numpy as np
 
-from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import gen_dtensor_ops
@@ -28,7 +27,6 @@ from tensorflow.dtensor.python import heartbeat
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -86,9 +84,9 @@ class _CoreLocation:
 
 def _create_device_array(shape, device_type, host_id, local_device_ids=None):
   """Returns ID and device lists that can be used to create a mesh."""
-  num_global_devices = api.num_global_devices(device_type)
+  num_global_devices = config.num_global_devices(device_type)
   global_device_ids = np.arange(num_global_devices).reshape(shape)
-  local_device_list = api.local_devices(device_type)
+  local_device_list = config.local_devices(device_type)
 
   # User can specify local_device_ids or use default list for multi host.
   num_local_devices = len(local_device_list)
@@ -148,7 +146,7 @@ def tpu_system_init_helper(task_id,
                            use_tfrt_host_runtime=True):
   """A helper function to initialize multi-client tpu system."""
 
-  @function.defun
+  @def_function.function
   def _tpu_init_fn():
     return gen_dtensor_ops.configure_and_initialize_global_tpu(
         use_tfrt_host_runtime=use_tfrt_host_runtime)
@@ -253,7 +251,7 @@ def initialize_tpu_system():
   try:
     task_id = config.client_id()
     num_tasks = config.num_clients()
-    num_devices = api.num_global_devices(_TPU_DEVICE_TYPE)
+    num_devices = config.num_global_devices(_TPU_DEVICE_TYPE)
 
     tpu_topology, device = tpu_system_init_helper(
         task_id,

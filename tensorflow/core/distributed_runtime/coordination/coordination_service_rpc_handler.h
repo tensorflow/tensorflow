@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/protobuf/coordination_service.pb.h"
+#include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 class CoordinationServiceAgent;
@@ -84,7 +84,7 @@ class CoordinationServiceRpcHandler {
 
  private:
   mutex agent_mu_;
-  CoordinationServiceAgent* agent_ TF_GUARDED_BY(agent_mu_);
+  CoordinationServiceAgent* agent_ TF_GUARDED_BY(agent_mu_) = nullptr;
 };
 
 }  // namespace tensorflow

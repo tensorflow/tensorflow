@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/mla/mla_test_utils.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_concurrent_work_queue.h"
+#include "tensorflow/core/tfrt/saved_model/saved_model_mira_impl.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 
 namespace tensorflow {
@@ -590,6 +591,39 @@ TEST(SavedModelTest, RunOptionsWorkQueue) {
 
   // Run one more time to check per-request state is correct set up.
   outputs.clear();
+  TF_ASSERT_OK(saved_model->Run(run_options, "toy", inputs, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              ::testing::ElementsAreArray({6}));
+}
+
+TEST(SavedModelTest, UseMira) {
+  // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
+  // using the following python code:
+  //  x = tf.placeholder(tf.int32, shape=(3))
+  //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
+  //  r = tf.matmul(x, y)
+  std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  auto options = DefaultSavedModelOptions(runtime.get());
+
+  tensorflow::Status status;
+  auto saved_model =
+      SavedModelMiraImpl::LoadSavedModel(options, saved_model_dir,
+                                         /*tags=*/{"serve"}, &status);
+  TF_CHECK_OK(status);
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<tensorflow::Tensor> inputs;
+  inputs.push_back(
+      CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{1, 1, 1}));
+
+  tfrt::SavedModel::RunOptions run_options;
+
+  std::vector<tensorflow::Tensor> outputs;
   TF_ASSERT_OK(saved_model->Run(run_options, "toy", inputs, &outputs));
   ASSERT_EQ(outputs.size(), 1);
 

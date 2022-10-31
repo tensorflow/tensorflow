@@ -313,3 +313,115 @@ func.func @fold_constant_tile_through_materialize(%in: tensor<4xf32>) ->
   // CHECK: return %[[RET]]
   func.return %mat : tensor<?xf32>
 }
+
+// -----
+
+func.func @fold_constant_set_yield(%in: tensor<?x?xf32>,
+                                   %out: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  %c0 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  %c8 = arith.constant 8 : index
+  %cst = arith.constant 0.000000e+00 : f32
+  %1 = gml_st.for (%arg0) = (%c0) to (%c8) step (%c2)
+                  outs (%arg1 = %out: tensor<?x?xf32>) {
+    %tile = gml_st.tile [0, 0] [%c2, %c2] [1, 1] : !gml_st.tile<?x?>
+    %out_sub = gml_st.materialize %out[%tile] :
+                    tensor<?x?xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
+    %fill = linalg.fill ins(%cst : f32)
+                        outs(%out_sub : tensor<?x?xf32>) -> tensor<?x?xf32>
+    gml_st.set_yield %fill into %arg1[%tile] :
+                    tensor<?x?xf32> into tensor<?x?xf32>[!gml_st.tile<?x?>]
+  } : tensor<?x?xf32>
+  return %1 : tensor<?x?xf32>
+}
+
+// CHECK-LABEL: @fold_constant_set_yield
+// CHECK:         %[[FOR:.*]] = gml_st.for{{.*}}: tensor<?x?xf32>
+// CHECK:           %[[TILE:.*]] = gml_st.tile [0, 0] [2, 2] {{.*}} !gml_st.tile<2x2>
+// CHECK-NOT:       builtin.unrealized_conversion_cast
+// CHECK-NEXT:      %[[SLICE:.*]] = gml_st.materialize %{{.*}}[%[[TILE]]] {{.*}} to tensor<2x2xf32>
+// CHECK:           %[[FILL:.*]] = linalg.fill {{.*}} outs(%[[SLICE]] : tensor<2x2xf32>)
+// CHECK-NEXT:      gml_st.set_yield %[[FILL]] into %{{.*}}[%[[TILE]]] : tensor<2x2xf32> into tensor<?x?xf32>[!gml_st.tile<2x2>]
+
+// -----
+
+func.func @fold_constant_set_yield_scalar(%in: tensor<?xf32>,
+                                   %out: tensor<?xf32>) -> tensor<?xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %c8 = arith.constant 8 : index
+  %cst = arith.constant 0.000000e+00 : f32
+  %1 = gml_st.for (%arg0) = (%c0) to (%c8) step (%c2)
+                  outs (%arg1 = %out: tensor<?xf32>) {
+    %tile_1d = gml_st.tile [0] [%c1] [1] : !gml_st.tile<?>
+    %cast = builtin.unrealized_conversion_cast %tile_1d :
+                    !gml_st.tile<?> to !gml_st.tile<1>
+    gml_st.set_yield %cst into %arg1[%cast] :
+                    f32 into tensor<?xf32>[!gml_st.tile<1>]
+  } : tensor<?xf32>
+  return %1 : tensor<?xf32>
+}
+
+// CHECK-LABEL: @fold_constant_set_yield_scalar
+// CHECK:         %[[FOR:.*]] = gml_st.for{{.*}}: tensor<?xf32>
+// CHECK:           %[[TILE:.*]] = gml_st.tile [0] [1] {{.*}} !gml_st.tile<1>
+// CHECK-NOT:       builtin.unrealized_conversion_cast
+// CHECK-NEXT:      gml_st.set_yield %[[SCALAR:.*]] into %{{.*}}[%[[TILE]]] : f32 into tensor<?xf32>[!gml_st.tile<1>]
+
+// -----
+
+func.func @fold_constant_for(%in: tensor<?x?xf32>,
+                             %out: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  %c0 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  %c8 = arith.constant 8 : index
+  %cst = arith.constant 0.000000e+00 : f32
+  %1 = gml_st.tile [0, 0] [8, 2] [1, 1] : !gml_st.tile<8x2>
+  %3 = gml_st.materialize %out[%1] :
+                  tensor<?x?xf32>[!gml_st.tile<8x2>] to tensor<8x2xf32>
+  %cast_3 = tensor.cast %3 : tensor<8x2xf32> to tensor<?x?xf32>
+  %4 = gml_st.for (%arg0) = (%c0) to (%c8) step (%c2)
+                  outs (%arg1 = %cast_3: tensor<?x?xf32>) {
+    %tile = gml_st.tile [0, %arg0] [8, 2] [1, 1] : !gml_st.tile<8x2>
+    %2 = builtin.unrealized_conversion_cast %tile :
+                    !gml_st.tile<8x2> to !gml_st.tile<?x?>
+    %out_sub = gml_st.materialize %arg1[%tile] :
+                    tensor<?x?xf32>[!gml_st.tile<8x2>] to tensor<8x2xf32>
+    %fill = linalg.fill ins(%cst : f32)
+                        outs(%out_sub : tensor<8x2xf32>) -> tensor<8x2xf32>
+    %cast_fill = tensor.cast %fill : tensor<8x2xf32> to tensor<?x?xf32>
+    gml_st.set_yield %cast_fill into %arg1[%2] :
+                    tensor<?x?xf32> into tensor<?x?xf32>[!gml_st.tile<?x?>]
+  } : tensor<?x?xf32>
+  return %4 : tensor<?x?xf32>
+}
+
+// CHECK-LABEL: @fold_constant_for
+// CHECK:         %[[SLICE:.*]] = gml_st.materialize {{.*}} to tensor<8x2xf32>
+// CHECK-NOT:     tensor.cast
+// CHECK:         %[[FOR1:.*]] = gml_st.for (%{{.*}} = (%c0) to {{.*}} outs (%[[ARG1:.*]] = %[[SLICE]]: tensor<8x2xf32>
+// CHECK:           %[[FOR1_TILE:.*]] = gml_st.tile {{.*}} [8, 2] {{.*}} !gml_st.tile<8x2>
+// CHECK-NEXT:      %[[FOR1_SLICE:.*]] = gml_st.materialize %{{.*}}[%[[FOR1_TILE]]] {{.*}} to tensor<8x2xf32>
+// CHECK:           gml_st.set_yield %{{.*}} into %[[ARG1]][%[[FOR1_TILE]]] : tensor<8x2xf32> into tensor<8x2xf32>[!gml_st.tile<8x2>]
+// CHECK-NEXT:    } : tensor<8x2xf32>
+// CHECK:         %[[CAST:.*]] = tensor.cast %[[FOR1]] : tensor<8x2xf32> to tensor<?x?xf32>
+// CHECK-NEXT:    return %[[CAST]] : tensor<?x?xf32>
+
+// -----
+
+func.func @fold_cast_to_materialize_source(%in: tensor<4xf32>) ->
+    tensor<2xf32> {
+  %tile = gml_st.tile [2] [2] [1] : !gml_st.tile<2>
+  %cast = tensor.cast %in : tensor<4xf32> to tensor<?xf32>
+  %mat = gml_st.materialize %cast[%tile] : tensor<?xf32>[!gml_st.tile<2>]
+      to tensor<2xf32>
+  func.return %mat : tensor<2xf32>
+}
+
+// CHECK-LABEL: @fold_cast_to_materialize_source
+// CHECK-SAME:    %[[IN:.*]]: tensor<4xf32>
+// CHECK:         %[[TILE:.*]] = gml_st.tile [2] [2] [1] : !gml_st.tile<2>
+// CHECK-NOT:     tensor.cast
+// CHECK:         %[[MAT:.*]] = gml_st.materialize %[[IN]][%[[TILE]]] : tensor<4xf32>[!gml_st.tile<2>]
+// CHECK:         return %[[MAT]]

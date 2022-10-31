@@ -540,10 +540,12 @@ func.func @op_count_leading_zeros(%arg0: tensor<i32>) -> tensor<i32> {
 
 func.func @op_collective_permute(%arg0: tensor<16x8xf32>) -> tensor<16x8xf32> {
   //               CHECK: "stablehlo.collective_permute"(%arg0) {
+  //          CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>,
   // CHECK-SAME{LITERAL}:   source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>
   //          CHECK-SAME: } : (tensor<16x8xf32>) -> tensor<16x8xf32>
   %0 = "mhlo.collective_permute"(%arg0) {
-    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>
+    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>,
+    channel_handle = #mhlo.channel_handle<handle = 0, type = 0>
   } : (tensor<16x8xf32>) -> tensor<16x8xf32>
   func.return %0 : tensor<16x8xf32>
 }
@@ -1788,17 +1790,6 @@ func.func @type_tuple(%arg0: tuple<tensor<f32>>) -> tuple<!mhlo.token> {
 
 // -----
 
-func.func @op_collective_permute_channel(%arg0: tensor<16x8xf32>) -> tensor<16x8xf32> {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.collective_permute' that was explicitly marked illegal}}
-  %0 = "mhlo.collective_permute"(%arg0) {
-    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>,
-    channel_handle = #mhlo.channel_handle<handle = 0, type = 0>
-  } : (tensor<16x8xf32>) -> tensor<16x8xf32>
-  func.return %0 : tensor<16x8xf32>
-}
-
-// -----
-
 func.func @attr_precision_config_packed_nibble(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
   // expected-error@+1 {{failed to legalize operation 'mhlo.dot' that was explicitly marked illegal}}
   %0 = "mhlo.dot"(%arg0, %arg1) {
@@ -1936,6 +1927,14 @@ func.func @op_partition_id() -> tensor<ui32> {
   // expected-error@+1 {{failed to legalize operation 'mhlo.partition_id' that was explicitly marked illegal}}
   %0 = "mhlo.partition_id"() : () -> tensor<ui32>
   func.return %0 : tensor<ui32>
+}
+
+// -----
+
+func.func @op_stochastic_convert(%arg0: tensor<f32>, %arg1: tensor<ui32>) -> tensor<i8> {
+  // expected-error@+1 {{failed to legalize operation 'mhlo.stochastic_convert' that was explicitly marked illegal}}
+  %0 = "mhlo.stochastic_convert"(%arg0, %arg1) : (tensor<f32>, tensor<ui32>) -> tensor<i8>
+  return %0 : tensor<i8>
 }
 
 // -----

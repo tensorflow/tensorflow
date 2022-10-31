@@ -26,8 +26,9 @@ namespace {
 using mlir::bufferization::AnalysisState;
 using mlir::bufferization::BufferizableOpInterface;
 using mlir::bufferization::BufferizationOptions;
+using mlir::bufferization::BufferRelation;
 
-// We can reuse the upstream implementaiton when DestinationStyleOpInterface
+// We can reuse the upstream implementation when DestinationStyleOpInterface
 // is moved out of linalg.
 static LogicalResult bufferizeDestinationStyleOpInterface(
     RewriterBase &rewriter, DestinationStyleOpInterface op,
@@ -42,13 +43,13 @@ static LogicalResult bufferizeDestinationStyleOpInterface(
   if (!op.hasTensorSemantics())
     return op->emitError() << "expected either buffer or tensor semantics";
 
-  size_t numOutputs = op.getNumOutputs();
+  size_t numOutputs = op.getNumDpsInits();
 
   // New operands for the cloned op.
   SmallVector<Value> newOperands;
-  newOperands.reserve(op.getNumInputs() + numOutputs);
+  newOperands.reserve(op.getNumDpsInputs() + numOutputs);
 
-  for (OpOperand *opOperand : op.getInputOperands()) {
+  for (OpOperand *opOperand : op.getDpsInputOperands()) {
     if (op.isScalar(opOperand)) {
       newOperands.push_back(opOperand->get());
       continue;
@@ -63,7 +64,7 @@ static LogicalResult bufferizeDestinationStyleOpInterface(
   newOutputs.reserve(numOutputs);
 
   for (OpResult opResult : op->getOpResults()) {
-    OpOperand *opOperand = op.getOutputOperand(opResult.getResultNumber());
+    OpOperand *opOperand = op.getDpsInitOperand(opResult.getResultNumber());
     FailureOr<Value> resultBuffer =
         getBuffer(rewriter, opOperand->get(), options);
     if (failed(resultBuffer)) return failure();
@@ -103,7 +104,7 @@ struct ThloSortOpBufferizationModel
 
   bool bufferizesToMemoryWrite(Operation *op, OpOperand &opOperand,
                                const AnalysisState & /*state*/) const {
-    return cast<DestinationStyleOpInterface>(op).isOutput(&opOperand);
+    return cast<DestinationStyleOpInterface>(op).isDpsInit(&opOperand);
   }
 
   SmallVector<OpOperand *> getAliasingOpOperand(
@@ -111,7 +112,7 @@ struct ThloSortOpBufferizationModel
     auto dstStyleOp = cast<DestinationStyleOpInterface>(op);
 
     // The i-th OpResult may alias with the i-th "out" tensor.
-    return {dstStyleOp.getOutputOperand(opResult.getResultNumber())};
+    return {dstStyleOp.getDpsInitOperand(opResult.getResultNumber())};
   }
 
   SmallVector<OpResult> getAliasingOpResult(
@@ -120,7 +121,7 @@ struct ThloSortOpBufferizationModel
     auto dstStyleOp = cast<DestinationStyleOpInterface>(op);
 
     // The i-th "out" tensor may alias with the i-th OpResult.
-    if (dstStyleOp.isOutput(&opOperand))
+    if (dstStyleOp.isDpsInit(&opOperand))
       return {dstStyleOp.getTiedOpResult(&opOperand)};
     return {};
   }
@@ -129,6 +130,11 @@ struct ThloSortOpBufferizationModel
                           const BufferizationOptions &options) const {
     return bufferizeDestinationStyleOpInterface(
         rewriter, cast<DestinationStyleOpInterface>(op), options);
+  }
+
+  BufferRelation bufferRelation(Operation * /*op*/, OpResult /*opResult*/,
+                                const AnalysisState & /*state*/) const {
+    return BufferRelation::Equivalent;
   }
 };
 

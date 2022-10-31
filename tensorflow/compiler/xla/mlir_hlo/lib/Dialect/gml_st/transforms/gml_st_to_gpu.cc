@@ -15,12 +15,15 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <initializer_list>
 #include <iterator>
 #include <memory>
 #include <utility>
 
+#include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/vector_utils.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
@@ -114,13 +117,15 @@ struct GmlStToGpuPass : public ::impl::GmlStToGpuPassBase<GmlStToGpuPass> {
     func::FuncOp func = getOperation();
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
       signalPassFailure();
-    // Make sure there are no GmlSt ops left.
-    WalkResult walk = func.walk([](Operation* op) {
-      if (isa<GmlStDialect>(op->getDialect())) {
-        op->emitOpError("failed to simtfy");
-        return WalkResult::interrupt();
-      }
-      return WalkResult::advance();
+    // Make sure there are no gml_st.parallel ops left.
+    // TODO(b/254497967): Properly handle a full conversion from GmlSt to GPU
+    // once SIMTfication is split from conversion of other GmlSt operations.
+    // For now, only verify that we do not have a ParallelOp, since there
+    // might still be other gml_st operations that will be removed by a
+    // subsequent conversion from GmlSt to SCF.
+    WalkResult walk = func.walk([](ParallelOp op) {
+      op->emitOpError("failed to simtfy");
+      return WalkResult::interrupt();
     });
     if (walk.wasInterrupted()) signalPassFailure();
   }
@@ -392,14 +397,17 @@ static Value createCombineOp(Location loc, Value lhs, Value rhs,
 LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
     MultiDimReductionOp reductionOp, PatternRewriter& rewriter) const {
   auto inType = reductionOp.getSourceVectorType();
-  auto outType = reductionOp.getDestType().dyn_cast<VectorType>();
-  auto isNumElementsEqual = [](auto type, int64_t size) {
-    return type && type.getNumElements() == size;
-  };
-  if (!isNumElementsEqual(inType, 32)) {
-    return rewriter.notifyMatchFailure(reductionOp, "expected 32-vector input");
+  int64_t width = inType.getNumElements();
+  std::initializer_list<int64_t> supportedWidths = {1, 2, 4, 8, 16, 32};
+  if (!llvm::is_contained(supportedWidths, width)) {
+    return rewriter.notifyMatchFailure(
+        reductionOp, "expected input vector with size 2^N, <=32");
   }
-  if (!isNumElementsEqual(outType, 1)) {
+  auto hasOneElement = [](auto type) {
+    return type && type.getNumElements() == 1;
+  };
+  auto outType = reductionOp.getDestType().dyn_cast<VectorType>();
+  if (!hasOneElement(outType)) {
     return rewriter.notifyMatchFailure(reductionOp, "expected 1-vector output");
   }
   auto distribute = reductionOp.getSource().getDefiningOp<DistributeOp>();
@@ -411,7 +419,7 @@ LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
   // current thread's lane id, this is fine, since it doesn't matter which
   // thread processes which element within a reduction.
   TypedValue<VectorType> lhsVector = distribute.getSource();
-  if (!isNumElementsEqual(lhsVector.getType(), 1)) {
+  if (!hasOneElement(lhsVector.getType())) {
     return rewriter.notifyMatchFailure(distribute, "expected 1-vector input");
   }
 
@@ -424,12 +432,12 @@ LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
     return rewriter.create<arith::ConstantOp>(
         loc, rewriter.getI32IntegerAttr(value));
   };
-  Value width = createConstant(32);
+  Value cWidth = createConstant(width);
   // Create warp shuffles of increasing offset and interleave with a clone of
   // the accumulate block.
-  for (int i = 1; i < 32; i *= 2) {
+  for (int64_t i = 1; i < width; i *= 2) {
     auto shuffleOp = rewriter.create<gpu::ShuffleOp>(
-        loc, lhs, createConstant(i), width, gpu::ShuffleMode::XOR);
+        loc, lhs, createConstant(i), cWidth, gpu::ShuffleMode::XOR);
     lhs = createCombineOp(loc, lhs, shuffleOp.getShuffleResult(),
                           reductionOp.getKind(), rewriter);
   }
@@ -439,26 +447,6 @@ LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
   lhs = createCombineOp(loc, lhs, acc, reductionOp.getKind(), rewriter);
   rewriter.replaceOpWithNewOp<vector::BroadcastOp>(reductionOp, outType, lhs);
 
-  return success();
-}
-
-template <typename TransferOp>
-static LogicalResult matchCannonicalTransferOp(TransferOp op,
-                                               PatternRewriter& rewriter) {
-  auto isZeroIndex = [](Value value) {
-    auto constIndex = value.getDefiningOp<arith::ConstantIndexOp>();
-    return constIndex && constIndex.value() == 0;
-  };
-  if (!llvm::all_of(op.getIndices(), isZeroIndex)) {
-    return rewriter.notifyMatchFailure(op, "should have all indices set to 0");
-  }
-  if (!op.getPermutationMap().isMinorIdentity()) {
-    return rewriter.notifyMatchFailure(op,
-                                       "expected cannonical permutation map");
-  }
-  if (op.getMask()) {
-    return rewriter.notifyMatchFailure(op, "should have no mask");
-  }
   return success();
 }
 
@@ -494,8 +482,7 @@ LogicalResult EliminateMaterializeOfTransferReadPattern::matchAndRewrite(
     return rewriter.notifyMatchFailure(transferRead,
                                        "expected memref as source");
   }
-  if (failed(matchCannonicalTransferOp(transferRead, rewriter)))
-    return failure();
+  if (failed(matchSimpleTransferOp(transferRead, rewriter))) return failure();
 
   auto tile = materialize.getSet().getDefiningOp<TileOp>();
   if (!tile) {
@@ -512,10 +499,16 @@ LogicalResult EliminateMaterializeOfTransferReadPattern::matchAndRewrite(
   // for elementwise fusion and softmax, but might become a problem down the
   // line.
   auto subview = createSubView(materialize.getLoc(), source, tile, rewriter);
+  Type resultType = materialize.getResult().getType();
+  if (!resultType.isa<VectorType>()) {
+    // We have a transfer to a single element: just use memref.load directly.
+    rewriter.replaceOpWithNewOp<memref::LoadOp>(materialize, subview,
+                                                transferRead.getIndices());
+    return success();
+  }
   rewriter.replaceOpWithNewOp<TransferReadOp>(
-      materialize, materialize.getResult().getType().cast<VectorType>(),
-      subview, transferRead.getIndices(), transferRead.getPermutationMap(),
-      transferRead.getPadding(),
+      materialize, resultType, subview, transferRead.getIndices(),
+      transferRead.getPermutationMap(), transferRead.getPadding(),
       /*mask=*/nullptr, transferRead.getInBounds().value_or(nullptr));
   return success();
 }
@@ -532,8 +525,7 @@ LogicalResult EliminateDistributeIntoTransferWritePattern::matchAndRewrite(
     return rewriter.notifyMatchFailure(transferWrite,
                                        "expected memref as destination");
   }
-  if (failed(matchCannonicalTransferOp(transferWrite, rewriter)))
-    return failure();
+  if (failed(matchSimpleTransferOp(transferWrite, rewriter))) return failure();
 
   auto distribute = transferWrite.getVector().getDefiningOp<DistributeOp>();
   if (!distribute) {

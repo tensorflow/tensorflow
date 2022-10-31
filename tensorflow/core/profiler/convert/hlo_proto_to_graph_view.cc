@@ -111,7 +111,7 @@ StatusOr<std::string> Plot(std::unique_ptr<HloModule> module,
   if (comp) {
     graph_handle =
         xla::RenderGraph(*comp, "", comp->parent()->config().debug_options(),
-                         format, nullptr, render_options);
+                         format, render_options);
   } else {
     graph_handle = xla::RenderNeighborhoodAround(*instr, graph_width, format,
                                                  render_options);

@@ -27,18 +27,19 @@ limitations under the License.
 #include "absl/base/dynamic_annotations.h"
 #include "mlir/ExecutionEngine/AsyncRuntime.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
-#include "tfrt/host_context/async_value.h"  // from @tf_runtime
-#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/host_context/chain.h"  // from @tf_runtime
+#include "tensorflow/tsl/platform/mem.h"
+#include "tfrt/concurrency/async_value.h"  // from @tf_runtime
+#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/concurrency/chain.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
 
-using tfrt::AlignedAlloc;
-using tfrt::AlignedFree;
-using tfrt::AsyncValue;
-using tfrt::AsyncValueRef;
-using tfrt::Chain;
+using tsl::AsyncValue;
+using tsl::AsyncValueRef;
+using tsl::Chain;
+using tsl::port::AlignedFree;
+using tsl::port::AlignedMalloc;
 
 AsyncValueRef<Chain> ConvertAsyncTokenToChain(AsyncRuntime::Token *token) {
   auto *async_value = AsyncRuntime::GetAsyncValue(token);
@@ -147,7 +148,7 @@ llvm::orc::SymbolMap AsyncRuntimeApiSymbolMap(
 namespace {
 
 void *RuntimeAlignedAlloc(size_t alignment, size_t size) {
-  return AlignedAlloc(alignment, size);
+  return AlignedMalloc(size, alignment);
 }
 
 void *RuntimeMalloc(size_t size) {

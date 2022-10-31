@@ -379,8 +379,7 @@ static bool IsTrivial(const HloComputation& computation) {
 // Returns full file paths of all dumps of the module.
 static std::vector<std::string> DumpHloModuleImpl(
     const HloModule& module, const BufferAssignment* buffer_assn,
-    const HloExecutionProfile* profile, string_view prefix, string_view suffix,
-    const CanonicalDebugOptions& opts) {
+    string_view prefix, string_view suffix, const CanonicalDebugOptions& opts) {
   std::string filename = FilenameFor(module, prefix, suffix);
 
   std::vector<std::optional<std::string>> file_paths;
@@ -422,7 +421,7 @@ static std::vector<std::string> DumpHloModuleImpl(
   auto render_graph = [&](RenderedGraphFormat format) {
     StatusOr<std::string> rendered_graph = RenderGraph(
         *module.entry_computation(),
-        /*label=*/filename, module.config().debug_options(), format, profile);
+        /*label=*/filename, module.config().debug_options(), format);
     if (rendered_graph.ok()) {
       return std::move(rendered_graph).value();
     }
@@ -664,8 +663,8 @@ void DumpPerModuleProtobufToFile(const HloModule& module,
 void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {
   CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.should_dump_module(module.name())) {
-    DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, /*profile=*/nullptr,
-                      TimestampFor(module), name, opts);
+    DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, TimestampFor(module),
+                      name, opts);
   }
 }
 
@@ -674,18 +673,7 @@ void DumpHloModuleIfEnabled(const HloModule& module,
                             string_view name) {
   CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.should_dump_module(module.name())) {
-    DumpHloModuleImpl(module, &buffer_assn, /*profile=*/nullptr,
-                      TimestampFor(module), name, opts);
-  }
-}
-
-void DumpHloModuleIfEnabled(const HloModule& module,
-                            const HloExecutionProfile& profile,
-                            string_view name) {
-  CanonicalDebugOptions opts(module.config().debug_options());
-  if (opts.should_dump_module(module.name())) {
-    DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, &profile,
-                      TimestampFor(module), name, opts);
+    DumpHloModuleImpl(module, &buffer_assn, TimestampFor(module), name, opts);
   }
 }
 
@@ -721,8 +709,8 @@ std::vector<std::string> DumpHloModuleBetweenPassesIfEnabled(
   std::string filename_suffix =
       StrFormat("%04d.%s.after_%s.before_%s", step_number, pipeline_name,
                 after_pass_name, before_pass_name);
-  return DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, /*profile=*/nullptr,
-                           timestamp, filename_suffix, opts);
+  return DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, timestamp,
+                           filename_suffix, opts);
 }
 
 void DumpHloModuleDuringPassIfEnabled(string_view pass_name,
@@ -739,8 +727,8 @@ void DumpHloModuleDuringPassIfEnabled(string_view pass_name,
 
   std::string filename_suffix =
       StrFormat("%04d.%s.%s", step_number, pass_name, step_name);
-  DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, /*profile=*/nullptr,
-                    timestamp, filename_suffix, opts);
+  DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, timestamp, filename_suffix,
+                    opts);
 }
 
 void DumpHloSnapshotIfEnabled(const HloModule& module,

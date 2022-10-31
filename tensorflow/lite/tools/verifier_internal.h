@@ -18,6 +18,6 @@ limitations under the License.
 
 /// For documentation, see
 /// third_party/tensorflow/lite/core/tools/verifier_internal.h.
-#include "tensorflow/lite/core/tools/verifier_internal.h"
+#include "tensorflow/lite/core/tools/verifier_internal.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_LITE_TOOLS_VERIFIER_INTERNAL_H_

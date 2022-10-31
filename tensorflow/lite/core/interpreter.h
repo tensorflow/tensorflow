@@ -564,6 +564,7 @@ class Interpreter {
   /// 5. kTfLiteError: Unexpected/runtime failure.
   /// WARNING: This is an experimental API and subject to change.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteOpaqueDelegateStruct* delegate);
 
   // Owning handle to a TfLiteDelegate instance.
   using TfLiteDelegatePtr =
@@ -613,6 +614,9 @@ class Interpreter {
   TfLiteStatus SetBufferHandle(int tensor_index,
                                TfLiteBufferHandle buffer_handle,
                                TfLiteDelegate* delegate);
+  TfLiteStatus SetBufferHandle(int tensor_index,
+                               TfLiteBufferHandle buffer_handle,
+                               TfLiteOpaqueDelegateStruct* opaque_delegate);
 
   /// Get the delegate buffer handle, and the delegate which can process the
   /// buffer handle.
@@ -620,6 +624,9 @@ class Interpreter {
   TfLiteStatus GetBufferHandle(int tensor_index,
                                TfLiteBufferHandle* buffer_handle,
                                TfLiteDelegate** delegate);
+  TfLiteStatus GetBufferHandle(int tensor_index,
+                               TfLiteBufferHandle* buffer_handle,
+                               TfLiteOpaqueDelegateStruct** opaque_delegate);
 
   /// Sets the profiler to tracing execution. The caller retains ownership
   /// of the profiler and must ensure its validity.

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/distributed_runtime/coordination/test_device.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -33,9 +34,10 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
-#include "tensorflow/core/protobuf/coordination_service.pb.h"
 #include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
+#include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -68,7 +70,7 @@ class TestCoordinationClient : public CoordinationClient {
   TestCoordinationClient() = default;
 
   Status GetStatus() {
-    mutex_lock l(mu_);
+    tsl::mutex_lock l(mu_);
     return status_;
   }
 
@@ -82,7 +84,7 @@ class TestCoordinationClient : public CoordinationClient {
                               const ReportErrorToTaskRequest* request,
                               ReportErrorToTaskResponse* response,
                               StatusCallback done) override {
-    mutex_lock l(mu_);
+    tsl::mutex_lock l(mu_);
     status_ = Status(static_cast<errors::Code>(request->error_code()),
                      request->error_message());
     done(OkStatus());
@@ -120,7 +122,7 @@ class TestCoordinationClient : public CoordinationClient {
 #undef UNIMPLEMENTED_WITH_CALL_OPTS
 
  private:
-  mutex mu_;
+  tsl::mutex mu_;
   Status status_ TF_GUARDED_BY(mu_);
 };
 
@@ -1389,29 +1391,6 @@ TEST_F(CoordinateTwoTasksTest,
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_new_));
   TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_new_));
   TF_EXPECT_OK(client_1_.GetStatus());
-}
-
-TEST_F(CoordinateTwoTasksTest,
-       RecoverableTaskHeartbeatTimeoutAndRegisterAgain) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/true,
-                            /*enable_shutdown_barrier=*/false,
-                            /*set_worker_job_recoverable=*/true);
-
-  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
-  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
-
-  Env::Default()->SleepForMicroseconds(
-      absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
-
-  EXPECT_TRUE(errors::IsUnavailable(
-      coord_service_->RecordHeartbeat(task_0_, incarnation_0_)));
-  EXPECT_TRUE(errors::IsUnavailable(
-      coord_service_->RecordHeartbeat(task_1_, incarnation_1_)));
-
-  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_new_));
-  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_new_));
-  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_new_));
-  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_1_, incarnation_1_new_));
 }
 
 }  // namespace tensorflow

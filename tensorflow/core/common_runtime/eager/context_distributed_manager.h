@@ -27,7 +27,7 @@ limitations under the License.
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tensorflow/core/distributed_runtime/preemption/preemption_notifier.h"
+#include "tensorflow/tsl/distributed_runtime/preemption/preemption_notifier.h"
 #endif  // !IS_MOBILE_PLATFORM
 
 namespace tensorflow {
@@ -55,7 +55,8 @@ class EagerContextDistributedManager
   void SetCoordinationServiceAgent(CoordinationServiceAgent* agent) {
     coordination_service_agent_ = agent;
   }
-  void SetPreemptionNotifier(std::unique_ptr<PreemptionNotifier> notifier) {
+  void SetPreemptionNotifier(
+      std::unique_ptr<tsl::PreemptionNotifier> notifier) {
     preemption_notifier_ = std::move(notifier);
   }
 
@@ -63,7 +64,7 @@ class EagerContextDistributedManager
   EagerContext* context_;
   // Owned by context_->GetServer()->worker_env()->session_mgr.
   CoordinationServiceAgent* coordination_service_agent_ = nullptr;
-  std::unique_ptr<PreemptionNotifier> preemption_notifier_;
+  std::unique_ptr<tsl::PreemptionNotifier> preemption_notifier_;
 };
 #endif  // !IS_MOBILE_PLATFORM
 }  // namespace tensorflow

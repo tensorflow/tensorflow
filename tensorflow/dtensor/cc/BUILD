@@ -6,6 +6,7 @@ load(
     "tf_dtensor_tpu_dependencies",
 )
 load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.bzl", "if_google")
 
 default_visibility = [
     "//tensorflow/dtensor:dtensor-internal",
@@ -243,6 +244,29 @@ cc_library(
 )
 
 cc_library(
+    name = "default_parallel_executor",
+    srcs = if_google(
+        ["google/default_parallel_executor.cc"],
+        ["default_parallel_executor.cc"],
+    ),
+    hdrs = ["default_parallel_executor.h"],
+    deps = [
+        ":parallel_executor_interface",
+        "//tensorflow/c:tf_status_helper",
+    ] + if_google([
+        # All new dependencies go here as the OSS part has no valid implementation.
+        ":dtensor_device_util",
+        "//learning/infra/mira/distributed/pathways:pathways_parallel_executor",
+    ]),
+)
+
+cc_library(
+    name = "parallel_executor_interface",
+    hdrs = ["parallel_executor.h"],
+    deps = ["//tensorflow/tsl/platform:status"],
+)
+
+cc_library(
     name = "dtensor_device_cc",
     srcs = ["dtensor_device.cc"],
     hdrs = ["dtensor_device.h"],
@@ -257,6 +281,7 @@ cc_library(
         ":small_constant_optimization",
         ":tensor_layout",
         ":tpu_system_interface",
+        ":default_parallel_executor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

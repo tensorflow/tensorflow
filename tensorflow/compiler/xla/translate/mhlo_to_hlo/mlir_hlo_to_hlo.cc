@@ -20,6 +20,8 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
@@ -712,6 +714,21 @@ LogicalResult ExportXlaOp(ComputeReshapeShapeOp, OpLoweringContext) {
 LogicalResult ExportXlaOp(CstrReshapableOp, OpLoweringContext) {
   // This op has no expression in the legacy export format.
   return failure();
+}
+
+mlir::LogicalResult ExportXlaOp(mlir::mhlo::CopyOp op, OpLoweringContext ctx) {
+  if (op.getIsCrossProgramPrefetch())
+    return op->emitOpError() << "synchronous CopyOp should not include "
+                                "is_cross_program_prefetch attribute.";
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp xla_arg_0;
+  if (failed(
+          GetXlaOp(*op.getODSOperands(0).begin(), value_map, &xla_arg_0, op)))
+    return mlir::failure();
+  auto xla_result = xla::Copy(Unwrap(xla_arg_0));
+  value_map[result] = xla_result;
+  return mlir::success();
 }
 
 LogicalResult ExportXlaOp(AddDependencyOp op, OpLoweringContext ctx) {
@@ -1931,7 +1948,8 @@ LogicalResult ExportXlaOp(OptimizationBarrierOp op, OpLoweringContext ctx) {
 
   auto& value_map = *ctx.values;
   if (operands.size() == 1) {
-    value_map[op.getResult(0)] = xla::OptimizationBarrier(operands[0]);
+    value_map[op.getOperation()->getResult(0)] =
+        xla::OptimizationBarrier(operands[0]);
   } else {
     auto result = xla::OptimizationBarrier(Tuple(ctx.builder, operands));
 

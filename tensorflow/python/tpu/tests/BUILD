@@ -290,6 +290,20 @@ tpu_py_test(
     ],
 )
 
+tpu_py_test(
+    name = "tpu_embedding_v2_initialization_test",
+    srcs = [
+        "tpu_embedding_v2_initialization_test.py",
+    ],
+    disable_experimental = True,
+    disable_mlir_bridge = False,
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":tpu_embedding_v2_correctness_base_test",
+    ],
+)
+
 ### tpu embedding v1 tests
 
 tpu_py_test(

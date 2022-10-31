@@ -14,6 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -39,7 +40,14 @@ void WriteAllFuzzers(const std::string& file_name, bool include_internal,
       LoadOpsAndApiDefs(ops, include_internal, api_def_dirs);
 
   TF_CHECK_OK(api_def_map.status());
-  WriteFuzzers(ops, api_def_map.value(), file_name);
+  WriteFuzzers(ops, api_def_map.value());
+
+  Env* env = Env::Default();
+  std::unique_ptr<WritableFile> fuzz_file = nullptr;
+  auto status = env->NewWritableFile(file_name, &fuzz_file);
+  status.Update(fuzz_file->Append(WriteFuzzers(ops, api_def_map.value())));
+  status.Update(fuzz_file->Close());
+  TF_CHECK_OK(status);
 }
 
 }  // namespace

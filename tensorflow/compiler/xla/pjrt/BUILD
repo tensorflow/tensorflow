@@ -144,8 +144,8 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:event",
-        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/tsl/profiler/lib:traceme",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
     ],
@@ -221,6 +221,19 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "pjrt_executable_test",
+    srcs = ["pjrt_executable_test.cc"],
+    deps = [
+        ":compile_options_proto_cc",
+        ":pjrt_executable",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:executable_build_options",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -463,6 +476,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:chlo_ops",
     ],
@@ -543,6 +557,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/cpu:cpu_xfeed",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/tsl/platform:denormal",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:setround",
         "//tensorflow/tsl/profiler/lib:traceme",
         "//third_party/eigen3",  # TODO(zhangqiaorjc): Remove if use TFRT threadpool.
@@ -625,10 +640,10 @@ tf_cc_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "//third_party/eigen3",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/numeric:int128",

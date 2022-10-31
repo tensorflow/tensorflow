@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/types/optional.h"
-#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/libtftpu.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
@@ -624,6 +623,8 @@ TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_WriteParameters(
 
 TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_ReadParameters(
     TpuEmbeddingEngineParameters* params, TF_Status* status);
+
+typedef struct TF_Tensor TF_Tensor;
 
 typedef struct TpuEmbeddingEngine_EnqueueTensorBatch_Params {
   int32_t struct_size;

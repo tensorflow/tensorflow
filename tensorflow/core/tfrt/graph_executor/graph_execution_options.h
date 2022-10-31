@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTION_OPTIONS_H_
 #define TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTION_OPTIONS_H_
 
+#include <optional>
 #include <ostream>
 
 #include "absl/types/optional.h"
@@ -59,7 +60,7 @@ std::ostream& operator<<(std::ostream& os,
 
 // Per-request options for graph execution.
 struct GraphExecutionRunOptions {
-  absl::optional<std::chrono::system_clock::time_point> deadline;
+  std::optional<std::chrono::system_clock::time_point> deadline;
 
   // Priority of the request. Larger number means higher priority.
   int priority = 0;

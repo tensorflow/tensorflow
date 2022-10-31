@@ -272,6 +272,7 @@ Status LowerLoopsToGPU(mlir::ModuleOp module, bool embed_memref_prints,
   pm.addNestedPass<FuncOp>(
       ::mlir::bufferization::createBufferDeallocationPass());
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addNestedPass<FuncOp>(::mlir::createConvertLinalgToLoopsPass());
 
   // Apply the mapping and go to GPU. We cannot do this earlier as the GPU
   // dialect requires memrefs.

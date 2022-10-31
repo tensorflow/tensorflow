@@ -17,9 +17,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_XLA_COMPILE_UTIL_H_
 
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
+
+// Generates the ExecutableBuildOptions for compliation from HLO to executable.
+xla::ExecutableBuildOptions GetExecutableBuildOptions(
+    const XlaCompiler::Options& options,
+    const XlaCompiler::CompilationResult& result, int default_device_ordinal);
 
 XlaCompiler::SingleOpCompileArgument BuildSingleOpCompileArgument(
     OpKernelContext* ctx);

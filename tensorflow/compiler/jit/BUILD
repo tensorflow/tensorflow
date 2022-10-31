@@ -405,6 +405,7 @@ cc_library(
         # We reuse VariableInfo in TFRT's implementation of TpuExecuteOp.
         "//learning/brain/tfrt/tf_tpu:__pkg__",
         "//learning/brain/tfrt/tpu_common:__pkg__",
+        "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
     ],
     deps = [
         ":common",
@@ -437,9 +438,11 @@ cc_library(
     hdrs = ["xla_compile_util.h"],
     visibility = [
         ":internal",
+        "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
     ],
     deps = [
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/core:framework",
     ],
 )

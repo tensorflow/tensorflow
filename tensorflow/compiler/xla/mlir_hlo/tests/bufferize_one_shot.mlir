@@ -40,14 +40,13 @@ func.func @tensor.from_elements(%a : f32) -> f32 {
 // CHECK-LABEL: @tensor.generate
 // CHECK-SAME: (%[[ARG:.*]]: memref<*xf32>) -> index
 func.func @tensor.generate(%arg : tensor<*xf32>) -> index {
-  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-  // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
-  // CHECK-DAG: %[[SIZE:.*]] = memref.rank %[[ARG]] : memref<*xf32>
-  // CHECK: %[[MEM:.*]] = memref.alloc
-  // CHECK: scf.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[SIZE]]) step (%[[C1]]) {
-  // CHECK:   %[[ELEM:.*]] = memref.dim %[[ARG]], %[[I]] : memref<*xf32>
-  // CHECK:   memref.store %[[ELEM]], %[[MEM]][%[[I]]] : memref<?xindex>
-  // CHECK:   scf.yield
+  // CHECK: %[[SIZE:.*]] = memref.rank %[[ARG]] : memref<*xf32>
+  // CHECK: %[[MEM:.*]] = memref.alloc(%[[SIZE]]) {{.*}} : memref<?xindex>
+  // CHECK: linalg.map
+  // CHECK: outs(%[[MEM]] : memref<?xindex>)
+  // CHECK:   %[[INDEX:.*]] = linalg.index 0
+  // CHECK:   %[[ELEM:.*]] = memref.dim %[[ARG]], %[[INDEX]] : memref<*xf32>
+  // CHECK:   linalg.yield %[[ELEM]]
   // CHECK: }
   %size = tensor.rank %arg : tensor<*xf32>
   %tfe = tensor.generate %size {

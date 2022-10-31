@@ -152,6 +152,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt64:
       TF_LITE_FILL(int64_t);
       break;
+    case kTfLiteFloat16:
+      TF_LITE_FILL(Eigen::half);
+      break;
     case kTfLiteFloat32:
       TF_LITE_FILL(float);
       break;

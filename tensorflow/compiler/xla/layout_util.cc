@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/logging.h"
@@ -53,7 +54,8 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
 /* static */ Layout LayoutUtil::MakeLayout(
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
-    absl::Span<const Tile> tiles, int64_t memory_space,
+    absl::Span<const Tile> tiles, PrimitiveType index_primitive_type,
+    PrimitiveType pointer_primitive_type, int64_t memory_space,
     std::optional<Shape> physical_shape) {
   Layout layout;
   for (int64_t dimension_number : minor_to_major) {
@@ -73,6 +75,8 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
     }
     *layout.add_tiles() = tile;
   }
+  layout.set_index_primitive_type(index_primitive_type);
+  layout.set_pointer_primitive_type(pointer_primitive_type);
   layout.set_memory_space(memory_space);
   if (physical_shape != std::nullopt) {
     *layout.mutable_physical_shape() = *std::move(physical_shape);
@@ -280,11 +284,38 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
             }
             return OkStatus();
           }));
+      if (layout.index_primitive_type() != PRIMITIVE_TYPE_INVALID &&
+          !primitive_util::IsUnsignedIntegralType(
+              layout.index_primitive_type())) {
+        return InvalidArgument(
+            "index_primitive_type is not an unsigned integer type: %s",
+            shape.ShortDebugString());
+      }
+      if (layout.pointer_primitive_type() != PRIMITIVE_TYPE_INVALID &&
+          !primitive_util::IsUnsignedIntegralType(
+              layout.pointer_primitive_type())) {
+        return InvalidArgument(
+            "pointer_primitive_type is not an unsigned integer type: "
+            "%s",
+            shape.ShortDebugString());
+      }
     }
-  } else if (layout.has_physical_shape()) {
-    return InvalidArgument(
-        "layout has a physical_shape, but is not a sparse array: %s",
-        shape.ShortDebugString());
+  } else {
+    if (layout.index_primitive_type() != PRIMITIVE_TYPE_INVALID) {
+      return InvalidArgument(
+          "layout has a index_primitive_type, but is not a sparse array: %s",
+          shape.ShortDebugString());
+    }
+    if (layout.pointer_primitive_type() != PRIMITIVE_TYPE_INVALID) {
+      return InvalidArgument(
+          "layout has a pointer_primitive_type, but is not a sparse array: %s",
+          shape.ShortDebugString());
+    }
+    if (layout.has_physical_shape()) {
+      return InvalidArgument(
+          "layout has a physical_shape, but is not a sparse array: %s",
+          shape.ShortDebugString());
+    }
   }
 
   return OkStatus();

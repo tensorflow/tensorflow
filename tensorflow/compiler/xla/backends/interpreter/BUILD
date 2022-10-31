@@ -68,7 +68,7 @@ cc_library(
     name = "platform_id",
     srcs = ["platform_id.cc"],
     hdrs = ["platform_id.h"],
-    deps = ["//tensorflow/core:stream_executor_headers_lib"] + if_static(
+    deps = ["//tensorflow/compiler/xla/stream_executor"] + if_static(
         ["@com_google_protobuf//:protobuf"],
         ["@com_google_protobuf//:protobuf_headers"],
     ),
@@ -136,7 +136,9 @@ cc_library(
     deps = [
         ":executor",
         ":platform_id",
-        "//tensorflow/core:stream_executor_headers_lib",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor/lib",
+        "@com_google_absl//absl/strings:str_format",
     ],
     alwayslink = True,  # Registers itself with the MultiPlatformManager.
 )
@@ -149,9 +151,9 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor/host:host_stream",
         "//tensorflow/compiler/xla/stream_executor/host:host_timer",
-        "//tensorflow/core:stream_executor_headers_lib",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/types:span",
     ],

@@ -55,7 +55,7 @@ class TransposeOpModel : public SingleOpModel {
 // Tests case where perm is a const tensor.
 //
 // Example usage is as follows:
-//    SpaceToBatchNDOpConstModel m(input_shape, perm_shape, perm_data);
+//    TransposeModel m(input_shape, perm_shape, perm_data);
 //    m.SetInput(input_data);
 //    m.Invoke();
 class TransposeOpConstModel : public TransposeOpModel {

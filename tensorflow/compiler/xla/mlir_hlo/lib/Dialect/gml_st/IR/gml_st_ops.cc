@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Operation.h"
@@ -143,62 +144,6 @@ Operation *GmlStDialect::materializeConstant(OpBuilder &builder, Attribute attr,
   return {};
 }
 
-namespace {
-// Collapse loop dimensions that perform a single iteration.
-// This is a partial copy of the corresponding pattern from SCF.
-struct CollapseSingleIterationLoops : public OpRewritePattern<ForOp> {
-  using OpRewritePattern<ForOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(ForOp op,
-                                PatternRewriter &rewriter) const override {
-    BlockAndValueMapping mapping;
-    // Compute new loop bounds that omit all single-iteration loop dimensions.
-    SmallVector<Value> newLowerBounds, newUpperBounds, newSteps;
-    newLowerBounds.reserve(op.getLowerBound().size());
-    newUpperBounds.reserve(op.getUpperBound().size());
-    newSteps.reserve(op.getStep().size());
-    auto getConstant = [](Value v) -> Optional<int64_t> {
-      auto constant =
-          dyn_cast_or_null<arith::ConstantIndexOp>(v.getDefiningOp());
-      if (constant) return constant.value();
-      return None;
-    };
-    for (auto [lowerBound, upperBound, step, iv] :
-         llvm::zip(op.getLowerBound(), op.getUpperBound(), op.getStep(),
-                   op.getInductionVars())) {
-      // Collect the statically known loop bounds.
-      auto lowerBoundConstant = getConstant(lowerBound);
-      auto upperBoundConstant = getConstant(upperBound);
-      auto stepConstant = getConstant(step);
-      // Replace the loop induction variable by the lower bound if the loop
-      // performs a single iteration. Otherwise, copy the loop bounds.
-      if (lowerBoundConstant && upperBoundConstant && stepConstant &&
-          (*upperBoundConstant - *lowerBoundConstant) > 0 &&
-          (*upperBoundConstant - *lowerBoundConstant) <= *stepConstant) {
-        mapping.map(iv, lowerBound);
-      } else {
-        newLowerBounds.push_back(lowerBound);
-        newUpperBounds.push_back(upperBound);
-        newSteps.push_back(step);
-      }
-    }
-    // Exit if none of the loop dimensions perform a single iteration.
-    if (newLowerBounds.size() == op.getLowerBound().size()) return failure();
-
-    // Replace the parallel loop by lower-dimensional parallel loop.
-    auto newOp = rewriter.create<ForOp>(op.getLoc(), op.getResultTypes(),
-                                        newLowerBounds, newUpperBounds,
-                                        newSteps, op.getOutputs(), nullptr);
-    // Clone the loop body and remap the block arguments of the collapsed loops
-    // (inlining does not support a cancellable block argument mapping).
-    rewriter.cloneRegionBefore(op.getRegion(), newOp.getRegion(),
-                               newOp.getRegion().begin(), mapping);
-    rewriter.replaceOp(op, newOp.getResults());
-    return success();
-  }
-};
-}  // namespace
-
 //===----------------------------------------------------------------------===//
 // MaterializeOp
 //===----------------------------------------------------------------------===//
@@ -285,11 +230,30 @@ struct FoldMaterializeUnrealizedConversionCast
     return success();
   }
 };
+
+/// Folds tensor::CastOp sources into MaterializeOp.
+struct FoldSrcCastIntoMaterialize : public OpRewritePattern<MaterializeOp> {
+  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(MaterializeOp op,
+                                PatternRewriter &rewriter) const override {
+    auto cast = op.getSource().getDefiningOp<tensor::CastOp>();
+    if (!cast) return failure();
+
+    auto src = cast.getSource();
+    auto set = op.getSet();
+    rewriter.replaceOpWithNewOp<MaterializeOp>(
+        op, inferReturnType(src.getType(), set.getType()), src, set);
+    return success();
+  }
+};
 }  // namespace
 
 void MaterializeOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                 MLIRContext *context) {
-  results.add<FoldMaterializeUnrealizedConversionCast>(context);
+  results
+      .add<FoldMaterializeUnrealizedConversionCast, FoldSrcCastIntoMaterialize>(
+          context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -752,6 +716,10 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseLoopLikeOp<ParallelOp>(parser, result);
 }
 
+ValueRange ParallelOp::getLoopLikeOpInits() {
+  return getTerminator().getDsts();
+}
+
 //===----------------------------------------------------------------------===//
 // ForOp
 //===----------------------------------------------------------------------===//
@@ -860,9 +828,129 @@ ParseResult ForOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseLoopLikeOp<ForOp>(parser, result);
 }
 
+namespace {
+// Collapse loop dimensions that perform a single iteration.
+// This is a partial copy of the corresponding pattern from SCF.
+struct CollapseSingleIterationLoops : public OpRewritePattern<ForOp> {
+  using OpRewritePattern<ForOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ForOp op,
+                                PatternRewriter &rewriter) const override {
+    BlockAndValueMapping mapping;
+    // Compute new loop bounds that omit all single-iteration loop dimensions.
+    SmallVector<Value> newLowerBounds, newUpperBounds, newSteps;
+    newLowerBounds.reserve(op.getLowerBound().size());
+    newUpperBounds.reserve(op.getUpperBound().size());
+    newSteps.reserve(op.getStep().size());
+    auto getConstant = [](Value v) -> Optional<int64_t> {
+      auto constant =
+          dyn_cast_or_null<arith::ConstantIndexOp>(v.getDefiningOp());
+      if (constant) return constant.value();
+      return None;
+    };
+    for (auto [lowerBound, upperBound, step, iv] :
+         llvm::zip(op.getLowerBound(), op.getUpperBound(), op.getStep(),
+                   op.getInductionVars())) {
+      // Collect the statically known loop bounds.
+      auto lowerBoundConstant = getConstant(lowerBound);
+      auto upperBoundConstant = getConstant(upperBound);
+      auto stepConstant = getConstant(step);
+      // Replace the loop induction variable by the lower bound if the loop
+      // performs a single iteration. Otherwise, copy the loop bounds.
+      if (lowerBoundConstant && upperBoundConstant && stepConstant &&
+          (*upperBoundConstant - *lowerBoundConstant) > 0 &&
+          (*upperBoundConstant - *lowerBoundConstant) <= *stepConstant) {
+        mapping.map(iv, lowerBound);
+      } else {
+        newLowerBounds.push_back(lowerBound);
+        newUpperBounds.push_back(upperBound);
+        newSteps.push_back(step);
+      }
+    }
+    // Exit if none of the loop dimensions perform a single iteration.
+    if (newLowerBounds.size() == op.getLowerBound().size()) return failure();
+
+    // Replace the parallel loop by lower-dimensional parallel loop.
+    auto newOp = rewriter.create<ForOp>(op.getLoc(), op.getResultTypes(),
+                                        newLowerBounds, newUpperBounds,
+                                        newSteps, op.getOutputs(), nullptr);
+    // Clone the loop body and remap the block arguments of the collapsed loops
+    // (inlining does not support a cancellable block argument mapping).
+    rewriter.cloneRegionBefore(op.getRegion(), newOp.getRegion(),
+                               newOp.getRegion().begin(), mapping);
+    rewriter.replaceOp(op, newOp.getResults());
+    return success();
+  }
+};
+
+/// Folds CastOp of loop outputs into ForOp
+struct RefineForOpShape : public OpRewritePattern<ForOp> {
+  using OpRewritePattern<ForOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ForOp op,
+                                PatternRewriter &rewriter) const override {
+    if (llvm::all_of(op.getOutputs(), [](auto out) {
+          return out.template getDefiningOp<tensor::CastOp>() == nullptr;
+        }))
+      return failure();
+
+    Location loc = op.getLoc();
+    // Scans through output args to find what args are produced by `tensor.cast`
+    // ops. Also cache the info since we are gonna reuse it a lot.
+    SmallVector<Value> newOutputs{op.getOutputs()};
+    SmallVector<Type> newTypes{op.getResultTypes()};
+    SmallVector<tensor::CastOp> castOutputs;
+    for (auto &&[out, type] : llvm::zip(newOutputs, newTypes)) {
+      if (auto cast =
+              castOutputs.emplace_back(out.getDefiningOp<tensor::CastOp>())) {
+        out = cast.getSource();
+        type = out.getType();
+      }
+    }
+
+    auto newFor = rewriter.create<ForOp>(loc, newTypes, op.getLowerBound(),
+                                         op.getUpperBound(), op.getStep(),
+                                         newOutputs, nullptr);
+
+    // Map outputs, insert `tensor.cast` if necessary.
+    BlockAndValueMapping bvm;
+    bvm.map(op.getInductionVars(), newFor.getInductionVars());
+
+    auto innerBuilder = ImplicitLocOpBuilder::atBlockEnd(loc, newFor.getBody());
+    rewriter.setInsertionPointAfter(newFor);
+
+    for (const auto &[oldArg, newArg, cast] :
+         llvm::zip(op.getRegionOutputArgs(), newFor.getRegionOutputArgs(),
+                   castOutputs)) {
+      bvm.map(oldArg,
+              cast ? innerBuilder.create<tensor::CastOp>(cast.getType(), newArg)
+                   : Value(newArg));
+    }
+    // Cast the loop results for downstream uses of the loop if necessary.
+    SmallVector<Value> newResults{newFor.getResults()};
+    for (auto &&[res, cast] : llvm::zip(newResults, castOutputs)) {
+      if (cast) res = rewriter.create<tensor::CastOp>(loc, cast.getType(), res);
+    }
+
+    // Clone loop body.
+    for (auto &o : *(op.getBody())) innerBuilder.clone(o, bvm);
+
+    // Update set_yield destinations to the new type.
+    auto term = cast<SetYieldOp>(newFor.getTerminator());
+    rewriter.updateRootInPlace(term, [&]() {
+      term.getDstsMutable().assign(newFor.getRegionOutputArgs());
+    });
+
+    // Update the original loop by the new loop + CastOp.
+    rewriter.replaceOp(op, newResults);
+    return success();
+  }
+};
+}  // namespace
+
 void ForOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                         MLIRContext *context) {
-  results.add<CollapseSingleIterationLoops>(context);
+  results.add<CollapseSingleIterationLoops, RefineForOpShape>(context);
 }
 
 namespace {
@@ -1464,6 +1552,15 @@ void TileOp::build(OpBuilder &b, OperationState &result,
   result.addAttributes(attrs);
 }
 
+void TileOp::build(OpBuilder &b, OperationState &result,
+                   ArrayRef<OpFoldResult> offsets,
+                   ArrayRef<NamedAttribute> attrs) {
+  SmallVector<OpFoldResult> unitSizesAndStrides(offsets.size(),
+                                                b.getIndexAttr(1));
+  return build(b, result, offsets, unitSizesAndStrides, unitSizesAndStrides,
+               attrs);
+}
+
 LogicalResult TileOp::inferReturnTypes(
     MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
@@ -1761,7 +1858,7 @@ ParseResult SetYieldOp::parse(OpAsmParser &parser, OperationState &result) {
 
   auto parseElt = [&]() -> ParseResult {
     OpAsmParser::UnresolvedOperand src;
-    auto parseResult = parser.parseOptionalOperand(src, false);
+    auto parseResult = parser.parseOptionalOperand(src);
 
     if (!parseResult.has_value()) return success();
     srcs.push_back(src);
@@ -1815,6 +1912,43 @@ ParseResult SetYieldOp::parse(OpAsmParser &parser, OperationState &result) {
   result.addAttribute(SetYieldOp::getAccumulatorFlagsAttrName(result.name),
                       parser.getBuilder().getBoolArrayAttr(accumulatorFlags));
   return success();
+}
+
+namespace {
+/// Folds UnrealizedConversionCast of TileType into SetYieldOp.
+struct FoldTileCastIntoSetYield : public OpRewritePattern<SetYieldOp> {
+  using OpRewritePattern<SetYieldOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(SetYieldOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!llvm::any_of(op.getSets(), [](auto set) {
+          return set.template getDefiningOp<UnrealizedConversionCastOp>() !=
+                 nullptr;
+        }))
+      return failure();
+    SmallVector<Value> newSrcs{op.getSrcs()};
+    SmallVector<Value> newSets{op.getSets()};
+    for (auto &&[src, set] : llvm::zip(newSrcs, newSets)) {
+      auto cast = set.getDefiningOp<UnrealizedConversionCastOp>();
+      if (!cast) continue;
+      set = cast.getOperand(0);
+      Type castResultType = src.getType();
+      if (auto shapedType = dyn_cast<ShapedType>(castResultType)) {
+        castResultType =
+            shapedType.clone(set.getType().cast<TileType>().getShape(),
+                             shapedType.getElementType());
+        src = rewriter.create<tensor::CastOp>(op.getLoc(), castResultType, src);
+      }
+    }
+    rewriter.replaceOpWithNewOp<SetYieldOp>(op, newSrcs, op.getDsts(), newSets);
+    return success();
+  }
+};
+}  // namespace
+
+void SetYieldOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                             MLIRContext *context) {
+  results.add<FoldTileCastIntoSetYield>(context);
 }
 
 }  // namespace gml_st

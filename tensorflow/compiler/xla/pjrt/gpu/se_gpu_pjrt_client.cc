@@ -38,6 +38,7 @@ limitations under the License.
 
 #ifdef TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
+#include "tensorflow/compiler/xla/pjrt/gpu/nccl_id_store.h"  // NOLINT(build/include)
 #endif  // TENSORFLOW_USE_ROCM
 
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -251,10 +252,12 @@ Status BuildDistributedDevices(
     device_proto->set_name(desc->name());
     device_proto->set_vendor(desc->device_vendor());
   }
+  VLOG(3) << "GPU Local Topology:\n" << local_topology.DebugString();
 
   GlobalTopologyProto global_topology;
   TF_RETURN_IF_ERROR(
       distributed_client->EnumerateDevices(local_topology, &global_topology));
+  VLOG(3) << "GPU Global Topology:\n" << global_topology.DebugString();
 
   std::map<int, GlobalDeviceId> gpu_device_ids;
   absl::flat_hash_map<GlobalDeviceId, int> device_to_node;
@@ -282,7 +285,7 @@ Status BuildDistributedDevices(
   }
   gpu_executable_run_options->set_gpu_global_device_ids(
       std::move(gpu_device_ids));
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   auto nccl_id_store = std::make_shared<NcclIdStore>(
       node_id, distributed_client, device_to_node);
   gpu_executable_run_options->set_nccl_unique_id_callback(

@@ -143,7 +143,7 @@ class PrepareDynamicRangeQuantizableOp
   // provided map.
   bool hasInt8QuantizableOperandAt(Operation* op, int operand_index) const {
     if (auto custom_op = llvm::dyn_cast_or_null<CustomOp>(op)) {
-      std::string op_name = custom_op.custom_code().str();
+      std::string op_name = custom_op.getCustomCode().str();
       auto custom_map_iter = quant_specs_.custom_map.find(op_name);
       if (custom_map_iter != quant_specs_.custom_map.end())
         return isQuantizableIndex(

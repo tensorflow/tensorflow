@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
-#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -110,7 +109,7 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
     });
   };
 
-  return ShapeUtil::MakeShapeWithLayout(
+  return ShapeUtil::MakeShapeWithDenseLayout(
       shape.element_type(),
       {dim_size(batch_dims), dim_size(row_dims), dim_size(col_dims)},
       minor_to_major);
@@ -570,6 +569,25 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
   }
 }
 
+namespace cublas_lt {
+
+StatusOr<bool> EpilogueAddsVectorBias(GemmBackendConfig_Epilogue epilogue) {
+  switch (epilogue) {
+    case GemmBackendConfig::DEFAULT:
+    case GemmBackendConfig::RELU:
+    case GemmBackendConfig::GELU:
+      return false;
+    case GemmBackendConfig::BIAS:
+    case GemmBackendConfig::BIASRELU:
+    case GemmBackendConfig::BIASGELU:
+      return true;
+    default:
+      return InternalError("Unknown Epilogue.");
+  }
+}
+
+}  // namespace cublas_lt
+
 StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype) {
   switch (dtype) {
     case F16:
@@ -617,6 +635,10 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
       return se::cuda::BlasLt::Epilogue::kDefault;
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Bias:
       return se::cuda::BlasLt::Epilogue::kBias;
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Relu:
+      return se::cuda::BlasLt::Epilogue::kReLU;
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::BiasRelu:
+      return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
     default:
       return InternalError("unknown epilogue");
   }

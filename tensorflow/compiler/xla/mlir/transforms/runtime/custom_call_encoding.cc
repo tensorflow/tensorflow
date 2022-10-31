@@ -823,6 +823,28 @@ FailureOr<EncodedAttr> SymbolRefAttrEncoding::Encode(
 }
 
 //===----------------------------------------------------------------------===//
+
+LogicalResult UnitAttrEncoding::Match(mlir::SymbolTable &, std::string_view,
+                                      Attribute attr) const {
+  return success(attr.isa<UnitAttr>());
+}
+
+FailureOr<EncodedAttr> UnitAttrEncoding::Encode(mlir::SymbolTable &, Globals &g,
+                                                ImplicitLocOpBuilder &b,
+                                                std::string_view name,
+                                                Attribute attr) const {
+  // Unit attribute encodes empty optional as a null pointer.
+  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
+
+  Encoded encoded;
+  encoded.name = PackString(g, b, name, kAttrName);
+  encoded.type_id = PackTypeId(g, b, TypeID::get<Tagged<std::nullopt_t>>());
+  encoded.value = b.create<LLVM::NullOp>(ptr);
+
+  return encoded;
+}
+
+//===----------------------------------------------------------------------===//
 // Encoding for collection of attributes.
 //===----------------------------------------------------------------------===//
 
@@ -1201,7 +1223,7 @@ CustomCallAttrEncodingSet DefaultAttrEncodings() {
   encodings
       .Add<StringAttrEncoding, ScalarAttrEncoding, DenseElementsAttrEncoding,
            ArrayAttrEncoding, DenseArrayAttrEncoding, EmptyArrayAttrEncoding,
-           SymbolRefAttrEncoding>();
+           SymbolRefAttrEncoding, UnitAttrEncoding>();
 
   encodings.Add<AggregateAttrEncoding<HloTraceAttr, HloTrace>>(
       encodings, AggregateAttrDef<HloTraceAttr>()

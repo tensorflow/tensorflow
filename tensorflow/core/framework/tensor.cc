@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 
 #include <memory>
+#include <ostream>
 #include <utility>
 
 #include "absl/strings/escaping.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/framework/types.h"
@@ -59,6 +61,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/util/byte_swap_array.h"
 
 namespace tensorflow {
 
@@ -736,6 +739,11 @@ void Tensor::CheckIsAlignedAndSingleElement() const {
 
 Tensor::~Tensor() { UnrefIfNonNull(buf_); }
 
+std::ostream& operator<<(std::ostream& out, const Tensor& tensor) {
+  out << tensor.DebugString();
+  return out;
+}
+
 Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
                            const TensorShape& shape) {
   int in_size = DataTypeSize(other.dtype());
@@ -755,8 +763,20 @@ Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
   shape_.set_data_type(dtype);
   if (buf_ != other.buf_) {
     UnrefIfNonNull(buf_);
-    buf_ = other.buf_;
-    RefIfNonNull(buf_);
+    if (port::kLittleEndian || in_size == out_size) {
+      buf_ = other.buf_;
+      RefIfNonNull(buf_);
+    } else {
+      Tensor ts_ = tensor::DeepCopy(other);
+      buf_ = ts_.buf_;
+      TF_RETURN_IF_ERROR(
+          tsl::ByteSwapArray((char*)(buf_->root_buffer()->data()), in_size,
+                             other.shape().num_elements()));
+      TF_RETURN_IF_ERROR(
+          tsl::ByteSwapArray((char*)(buf_->root_buffer()->data()), out_size,
+                             shape.num_elements()));
+      RefIfNonNull(buf_);
+    }
   }
   return OkStatus();
 }

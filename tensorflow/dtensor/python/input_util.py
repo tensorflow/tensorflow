@@ -448,7 +448,7 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
             (per_replica_batch_size, expected_batch_size))
       self._batched_dataset = dataset
 
-    num_global_devices_per_replica = api.num_global_devices(
+    num_global_devices_per_replica = config.num_global_devices(
         mesh.device_type()) // num_global_replicas
     self._num_local_replicas = len(self._local_replica_ids)
     self._num_local_devices_per_replica = mesh.num_local_devices(

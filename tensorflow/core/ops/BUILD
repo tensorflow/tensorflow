@@ -92,7 +92,6 @@ tf_gen_op_libs(
         "stateless_random_ops_v2",
         "summary_ops",
         "training_ops",
-        "uniform_quant_ops",
     ],
     sub_directory = "",
     deps = [
@@ -241,6 +240,19 @@ tf_gen_op_libs(
     ],
     sub_directory = "",
     deps = ["//tensorflow/core/util:ragged_to_dense_util"],
+)
+
+tf_gen_op_libs(
+    is_external = False,
+    op_lib_names = [
+        "uniform_quant_ops",
+    ],
+    sub_directory = "",
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/util/quantization:uniform_quant_ops_params",
+    ],
 )
 
 cc_library(

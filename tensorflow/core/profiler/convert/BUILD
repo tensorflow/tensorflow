@@ -628,15 +628,13 @@ cc_library(
 
 cc_library(
     name = "post_process_single_host_xplane",
-    srcs = ["post_process_single_host_xplane.cc"],
     hdrs = ["post_process_single_host_xplane.h"],
     copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler/utils:xplane_schema",
-        "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/tsl/profiler/convert:post_process_single_host_xplane",
     ],
 )
 
@@ -845,7 +843,10 @@ cc_library(
 cc_library(
     name = "xla_op_utils",
     hdrs = ["xla_op_utils.h"],
-    deps = ["@com_google_absl//absl/strings"],
+    deps = [
+        "//tensorflow/tsl/profiler/convert:xla_op_utils",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
@@ -865,17 +866,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cc_test(
-    name = "xla_op_utils_test",
-    size = "small",
-    srcs = ["xla_op_utils_test.cc"],
-    deps = [
-        ":xla_op_utils",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 

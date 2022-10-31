@@ -195,6 +195,11 @@ TEST_P(PjRtClientTest, ExecuteWithDonation) {
 
 TEST_P(PjRtClientTest, ExecuteWithDonationAbort) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+  if (client->platform_id() == CpuId()) {
+    // The CPU platform currently copies donated buffers if there is an
+    // external reference.
+    return;
+  }
   auto executable =
       MakeIncrementProgram(client.get(), /*alias=*/true, /*device=*/0);
 
