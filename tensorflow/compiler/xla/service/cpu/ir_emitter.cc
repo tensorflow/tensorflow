@@ -1288,6 +1288,10 @@ Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
   return HandleAllReduceMultipleReplica(crs);
 }
 
+Status IrEmitter::HandleReduceScatter(HloInstruction* rs) {
+  return Unimplemented("ReduceScatter is not implemented on CPU.");
+}
+
 Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
   auto* instr = Cast<HloAllToAllInstruction>(instruction);
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(instruction));

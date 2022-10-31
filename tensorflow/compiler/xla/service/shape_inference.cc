@@ -2083,7 +2083,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   std::vector<Shape> output_shapes;
   output_shapes.reserve(operand_shapes.size());
+  // There can be one token in the input Tuple. The token is a scalar or `token`.
+  bool token_encountered = false;
   for (const Shape* operand_shape : operand_shapes) {
+    if (operand_shape->IsToken() || operand_shape->rank() == 0) {
+      TF_RET_CHECK(!token_encountered);
+      token_encountered = true;
+      output_shapes.push_back(*operand_shape);
+      continue;
+    }
     TF_RET_CHECK(all_gather_dimension < operand_shape->rank());
     TF_RETURN_IF_ERROR(ExpectArray(*operand_shape, "operand of all-gather"));
 
@@ -2139,7 +2147,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   std::vector<Shape> output_shapes;
   output_shapes.reserve(operand_shapes.size());
+  // There can be one token in the input Tuple. The token is a scalar or `token`.
+  bool token_encountered = false;
   for (const Shape* operand_shape : operand_shapes) {
+    if (operand_shape->IsToken() || operand_shape->rank() == 0) {
+      TF_RET_CHECK(!token_encountered);
+      token_encountered = true;
+      output_shapes.push_back(*operand_shape);
+      continue;
+    }
     TF_RET_CHECK(scatter_dimension < operand_shape->rank());
     TF_RETURN_IF_ERROR(
         ExpectArray(*operand_shape, "operand of reduce-scatter"));

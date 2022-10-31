@@ -406,10 +406,20 @@ static Status CheckCommonAllGatherInvariants(HloInstruction* hlo,
                                                ag->use_global_device_ids()));
   TF_RETURN_IF_ERROR(CheckReplicaGroups(ag, group_mode));
   TF_RET_CHECK(ag->all_gather_dimension() >= 0);
+  TF_RET_CHECK(ag->operand_count() >= 1);
 
   int64_t shard_count;
+  // There can be one token in the input Tuple. The token is a scalar or `token`.
+  bool token_encountered = false;
   for (int64_t i = 0; i < ag->operand_count(); ++i) {
-    TF_RET_CHECK(ag->all_gather_dimension() < ag->operand(i)->shape().rank());
+    const Shape& operand_shape = ag->operand(i)->shape();
+    if (operand_shape.IsToken() || operand_shape.rank() == 0) {
+      TF_RET_CHECK(!token_encountered) 
+          << "AllGather can have at most 1 token.";
+      token_encountered = true;
+      continue;
+    }
+    TF_RET_CHECK(ag->all_gather_dimension() < operand_shape.rank());
 
     Shape output_shape;
     if (hlo->opcode() == HloOpcode::kAllGather) {
@@ -425,7 +435,7 @@ static Status CheckCommonAllGatherInvariants(HloInstruction* hlo,
     if (i == 0) {
       shard_count = CeilOfRatio(
           output_shape.dimensions(ag->all_gather_dimension()),
-          ag->operand(i)->shape().dimensions(ag->all_gather_dimension()));
+          operand_shape.dimensions(ag->all_gather_dimension()));
     }
   }
 
@@ -493,9 +503,19 @@ Status ShapeVerifier::HandleReduceScatter(HloInstruction* hlo) {
                                                ars->use_global_device_ids()));
   TF_RETURN_IF_ERROR(CheckReplicaGroups(ars, group_mode));
   TF_RET_CHECK(ars->scatter_dimension() >= 0);
+  TF_RET_CHECK(ars->operand_count() >= 1);
 
+  // There can be one token in the inputs. The token is a scalar or `token`.
+  bool token_encountered = false;
   for (int64_t i = 0; i < ars->operand_count(); ++i) {
-    TF_RET_CHECK(ars->scatter_dimension() < ars->operand(i)->shape().rank());
+    const Shape& operand_shape = ars->operand(i)->shape();
+    if (operand_shape.IsToken() || operand_shape.rank() == 0) {
+      TF_RET_CHECK(!token_encountered) 
+          << "ReduceScatter can have at most 1 token.";
+      token_encountered = true;
+      continue;
+    }
+    TF_RET_CHECK(ars->scatter_dimension() < operand_shape.rank());
 
     const Shape& output_shape = (ars->operand_count() == 1)
                                     ? ars->shape()
