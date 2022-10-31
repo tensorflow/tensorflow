@@ -56,6 +56,12 @@ struct ContractionBiasAddAddActivation {
   Operation* activation;
 };
 
+struct FusedBatchNormEx {
+  Operation* fused_batch_norm;
+  Value side_input;
+  Operation* activation;
+};
+
 class OpPropertyHelper : public OpCatHelper {
  public:
   OpPropertyHelper() = default;
@@ -224,6 +230,8 @@ class OpPropertyHelper : public OpCatHelper {
     }
     return IsGpuCompatible(pattern) || IsCpuCompatible(pattern.contraction);
   }
+
+  bool isOneDNNEnabled() const { return is_onednn_enabled_; }
 
  private:
   bool is_onednn_enabled_;
