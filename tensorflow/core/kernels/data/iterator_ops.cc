@@ -557,6 +557,7 @@ class ToSingleElementOp : public AsyncOpKernel {
         profiler::kInfo);
     tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                    ctx->op_kernel().type_string());
+    metrics::RecordTFDataFetchOp("ToSingleElementOp");
     DatasetBase* dataset;
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
 
@@ -820,6 +821,7 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
       profiler::kInfo);
   tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                  ctx->op_kernel().type_string());
+  metrics::RecordTFDataFetchOp("IteratorGetNextOp");
   IteratorResource* iterator;
   TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
   core::ScopedUnref unref_iterator(iterator);
@@ -860,6 +862,7 @@ Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
       profiler::kInfo);
   tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                  ctx->op_kernel().type_string());
+  metrics::RecordTFDataFetchOp("IteratorGetNextAsOptionalOp");
   IteratorResource* iterator;
   TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
   core::ScopedUnref unref_iterator(iterator);

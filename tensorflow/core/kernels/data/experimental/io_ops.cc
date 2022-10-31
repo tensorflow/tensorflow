@@ -75,6 +75,7 @@ SaveDatasetOp::SaveDatasetOp(OpKernelConstruction* ctx)
 }
 
 Status SaveDatasetOp::DoCompute(OpKernelContext* ctx) {
+  metrics::RecordTFDataFetchOp("SaveDatasetOp");
   DatasetBase* dataset;
   TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
 
