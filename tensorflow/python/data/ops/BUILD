@@ -63,6 +63,7 @@ py_library(
         ":rebatch_op",
         ":save_ops",
         ":structured_function",
+        ":zip_op",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dataset_ops_gen",
@@ -173,6 +174,11 @@ py_library(
         "//tensorflow/python/platform",
         "//tensorflow/python/util",
     ],
+)
+
+py_library(
+    name = "zip_op",
+    srcs = ["zip_op.py"],
 )
 
 py_library(
