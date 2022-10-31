@@ -49,6 +49,7 @@ limitations under the License.
   DEFINE_DIM(int32, NDIM)       \
   DEFINE_DIM(int64, NDIM)       \
   DEFINE_DIM(Eigen::half, NDIM) \
+  DEFINE_DIM(Eigen::bfloat16, NDIM) \
   DEFINE_DIM(float, NDIM)       \
   DEFINE_DIM(double, NDIM)      \
   DEFINE_DIM(complex64, NDIM)   \

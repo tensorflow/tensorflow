@@ -69,6 +69,17 @@ class ReshapeTest(test.TestCase):
     x = np.arange(1., 7.).reshape([1, 6]).astype(np.float32)
     self._testBothReshape(x, [2, 3])
 
+  def testFloat16Basic(self):
+    x = np.arange(1., 7.).reshape([1, 6]).astype(np.float16)
+    self._testBothReshape(x, [2, 3])
+  
+  def testBfloat16Basic(self):
+    if not test_util.is_gpu_available(
+        cuda_only=True, min_cuda_compute_capability=(8, 0)):
+      self.skipTest("Bfloat16 requires compute capability 8.0")
+    x = np.arange(1., 7.).reshape([1, 6]).astype(dtypes.bfloat16.as_numpy_dtype)
+    self._testBothReshape(x, [2, 3])
+
   def testDoubleBasic(self):
     x = np.arange(1., 7.).reshape([1, 6]).astype(np.float64)
     self._testBothReshape(x, [2, 3])

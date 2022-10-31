@@ -26,8 +26,13 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
-_TEST_DTYPES = (dtypes.int8, dtypes.float32, dtypes.float64, dtypes.complex64,
-                dtypes.complex128)
+def get_test_dtypes():
+  test_types = [dtypes.int8, dtypes.float32, dtypes.float64, dtypes.complex64,
+                dtypes.complex128]
+  if test_util.is_gpu_available(
+      cuda_only=True, min_cuda_compute_capability=(8, 0)):
+    test_types += [dtypes.bfloat16] 
+  return test_types
 
 
 class SplitOpTest(test.TestCase):
@@ -170,7 +175,7 @@ class SplitOpTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testSpecialCasesVariable(self):
     self._testSpecialCasesVariable()
-    for dtype in _TEST_DTYPES:
+    for dtype in get_test_dtypes():
       self._testHugeNumberOfTensorsVariable(dtype)
 
   @test_util.run_in_graph_and_eager_modes
@@ -232,13 +237,13 @@ class SplitOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testSplitRows(self):
-    for dtype in _TEST_DTYPES:
+    for dtype in get_test_dtypes():
       inp = self._makeData((4, 4), dtype)
       self._compare(inp, 0, 4)
 
   @test_util.run_in_graph_and_eager_modes
   def testSplitCols(self):
-    for dtype in _TEST_DTYPES:
+    for dtype in get_test_dtypes():
       inp = self._makeData((4, 4), dtype)
       self._compare(inp, 1, 4)
 
@@ -256,7 +261,7 @@ class SplitOpTest(test.TestCase):
   def testEmpty(self):
     # Note: np.split returns a rank-0 empty ndarray
     # if the input ndarray is empty.
-    for dtype in _TEST_DTYPES:
+    for dtype in get_test_dtypes():
       inp = self._makeData((8, 0, 21), dtype)
       self._testEmpty(inp, 0, 2, (4, 0, 21))
       self._testEmpty(inp, 0, 4, (2, 0, 21))
@@ -266,7 +271,7 @@ class SplitOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testIdentity(self):
-    for dtype in _TEST_DTYPES:
+    for dtype in get_test_dtypes():
       inp = self._makeData((2, 2, 2), dtype)
       self._compare(inp, 0, 1)
       self._compare(inp, 1, 1)
@@ -274,7 +279,7 @@ class SplitOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testSplitDim0(self):
-    for dtype in _TEST_DTYPES:
+    for dtype in get_test_dtypes():
       self._compare(self._makeData((6, 10, 18), dtype), 0, 3)
       self._compare(self._makeData((6, 7, 18), dtype), 0, 3)
       self._compare(self._makeData((6, 7, 9), dtype), 0, 3)
@@ -303,7 +308,7 @@ class SplitOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testRandom(self):
-    for dtype in _TEST_DTYPES:
+    for dtype in get_test_dtypes():
       for _ in range(5):
         self._RunAndVerify(dtype)
         self._RunAndVerify(dtype, large_num_splits=True)
@@ -324,7 +329,7 @@ class SplitOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradientsAll(self):
-    for dtype in _TEST_DTYPES:
+    for dtype in get_test_dtypes():
       if not dtype.is_integer:
         self._testGradientsSimple(dtype)
         self._testGradientsSimpleVariable(dtype)
