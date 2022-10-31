@@ -115,13 +115,15 @@ struct GmlStToGpuPass : public ::impl::GmlStToGpuPassBase<GmlStToGpuPass> {
     func::FuncOp func = getOperation();
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
       signalPassFailure();
-    // Make sure there are no GmlSt ops left.
-    WalkResult walk = func.walk([](Operation* op) {
-      if (isa<GmlStDialect>(op->getDialect())) {
-        op->emitOpError("failed to simtfy");
-        return WalkResult::interrupt();
-      }
-      return WalkResult::advance();
+    // Make sure there are no gml_st.parallel ops left.
+    // TODO(b/254497967): Properly handle a full conversion from GmlSt to GPU
+    // once SIMTfication is split from conversion of other GmlSt operations.
+    // For now, only verify that we do not have a ParallelOp, since there
+    // might still be other gml_st operations that will be removed by a
+    // subsequent conversion from GmlSt to SCF.
+    WalkResult walk = func.walk([](ParallelOp op) {
+      op->emitOpError("failed to simtfy");
+      return WalkResult::interrupt();
     });
     if (walk.wasInterrupted()) signalPassFailure();
   }
