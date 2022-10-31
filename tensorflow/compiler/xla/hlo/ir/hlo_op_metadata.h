@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Casting utility functions for HLO instructions.
+#ifndef TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_OP_METADATA_H_
+#define TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_OP_METADATA_H_
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CASTING_UTILS_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CASTING_UTILS_H_
+#include <string>
 
-#include <type_traits>
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
-#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/tsl/platform/logging.h"
+namespace xla {
+std::string OpMetadataToString(const OpMetadata& metadata);
+}  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CASTING_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_OP_METADATA_H_

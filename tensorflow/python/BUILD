@@ -3533,7 +3533,7 @@ filegroup(
     ] + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
         "//tensorflow/compiler/xla:status_macros",  # tfcompile
-        "//tensorflow/compiler/xla/service:hlo",  # tfcompile
+        "//tensorflow/compiler/xla/hlo/ir:hlo",  # tfcompile
     ]),
     visibility = ["//visibility:private"],
 )

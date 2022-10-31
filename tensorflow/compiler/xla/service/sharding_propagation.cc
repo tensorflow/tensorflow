@@ -1439,7 +1439,7 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr) {
                 !sharding->IsTuple()) {
               // Expand sharding into tuple sharding per
               // CloneShardingForDomain() in
-              // third_party/tensorflow/compiler/xla/service/hlo_sharding_metadata.cc
+              // third_party/tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.cc
               // Create Tuple HloSharding.
               ShapeTree<HloSharding> output_tuple_sharding(operand->shape(),
                                                            *sharding);

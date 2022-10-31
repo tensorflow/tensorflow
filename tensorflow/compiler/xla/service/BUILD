@@ -512,21 +512,6 @@ tf_cc_test(
 
 cc_library(
     name = "hlo",
-    srcs = [
-        "dfs_hlo_visitor.cc",
-        "dynamic_parameter_binding.cc",
-        "hlo_computation.cc",
-        "hlo_input_output_alias_config.cc",
-        "hlo_instruction.cc",
-        "hlo_instructions.cc",
-        "hlo_module.cc",
-        "hlo_module_metadata.cc",
-        "hlo_op_metadata.cc",
-        "hlo_opcode.cc",
-        "hlo_schedule.cc",
-        "hlo_sharding.cc",
-        "hlo_sharding_metadata.cc",
-    ],
     hdrs = [
         "dfs_hlo_visitor.h",
         "dfs_hlo_visitor_with_default.h",
@@ -567,6 +552,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/tsl/lib/gtl:iterator_range",
         "//tensorflow/tsl/lib/gtl:map_util",
         "//tensorflow/tsl/platform:env",
