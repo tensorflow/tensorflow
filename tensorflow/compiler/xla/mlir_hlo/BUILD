@@ -1051,6 +1051,7 @@ cc_library(
         "lib/Transforms/copy_removal.cc",
         "lib/Transforms/detensorize_scf_ops.cc",
         "lib/Transforms/generic_host_to_llvm.cc",
+        "lib/Transforms/inline_fusion_pass.cc",
         "lib/Transforms/lower_index_cast_pass.cc",
         "lib/Transforms/propagate_static_shapes_to_kernel.cc",
         "lib/Transforms/scalarization.cc",
