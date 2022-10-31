@@ -22,7 +22,7 @@ from absl.testing import parameterized
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.trace_type import default_types
 from tensorflow.python.compat import v2_compat
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
@@ -371,7 +371,7 @@ class TraceTypeGenerationBenchmark(test.Benchmark):
 
   def benchmarkTraceTypeLookup(self):
 
-    @function.defun
+    @def_function.function
     def defined(t):
       return t
 
@@ -422,7 +422,7 @@ class TraceTypeGenerationBenchmark(test.Benchmark):
         'variable': variables.Variable(1.0)
     })
 
-    @function.defun
+    @def_function.function
     def defined(t):
       return t
 
