@@ -108,8 +108,13 @@ typedef struct TfLiteTensor TfLiteTensor;
 typedef struct TfLiteRegistrationExternal TfLiteRegistrationExternal;
 
 // --------------------------------------------------------------------------
-// TfLiteVersion returns a string describing version information of the
-// TensorFlow Lite library. TensorFlow Lite uses semantic versioning.
+/// The TensorFlow Lite Runtime version.
+///
+/// Returns a pointer to a statically allocated string that is the version
+/// number of the (potentially dynamically loaded) TF Lite Runtime library.
+/// TensorFlow Lite uses semantic versioning, and the return value should be
+/// in semver 2 format <http://semver.org>, starting with MAJOR.MINOR.PATCH,
+/// e.g. "2.12.0" or "2.13.0-rc2".
 TFL_CAPI_EXPORT extern const char* TfLiteVersion(void);
 
 // Returns a model from the provided buffer, or null on failure.

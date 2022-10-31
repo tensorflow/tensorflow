@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stdarg.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include <array>
 #include <cmath>
@@ -35,7 +36,22 @@ limitations under the License.
 
 namespace {
 
-TEST(CAPI, Version) { EXPECT_STRNE("", TfLiteVersion()); }
+TEST(CApiSimple, Version) {
+  const char* version = TfLiteVersion();
+  ASSERT_NE(version, nullptr);
+  EXPECT_STRNE(version, "");
+  int major = -1, minor = -1, patch = -1;
+  int ret = sscanf(version, "%d.%d.%d", &major, &minor, &patch);
+  // The version number should contain all three components.
+  EXPECT_GE(ret, 3);
+  // The following checks should work for all TF Lite 2.* versions,
+  // but will need updating for TF Lite version 3.0.0.
+  EXPECT_EQ(major, 2);
+  EXPECT_GE(minor, 12);
+  EXPECT_GE(patch, 0);
+  // Calling the function again should give the same result.
+  EXPECT_STREQ(TfLiteVersion(), version);
+}
 
 TEST(CApiSimple, Smoke) {
   TfLiteModel* model =
