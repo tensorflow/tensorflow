@@ -1142,7 +1142,7 @@ class TestOpaqueDelegateBuilderWithDynamicTensors
   }
 
  private:
-  TfLiteOpaqueDelegateBuilder delegate_external_;
+  TfLiteOpaqueDelegateBuilder delegate_external_{};
 };
 
 TEST_F(TestDelegateWithDynamicTensors, DisallowDynamicTensors) {
