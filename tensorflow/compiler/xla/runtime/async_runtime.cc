@@ -25,10 +25,9 @@ limitations under the License.
 
 #include "absl/base/dynamic_annotations.h"
 #include "tensorflow/tsl/platform/mem.h"
-#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
-#include "tfrt/host_context/async_value.h"  // from @tf_runtime
-#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/host_context/chain.h"  // from @tf_runtime
+#include "tfrt/concurrency/async_value.h"  // from @tf_runtime
+#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/concurrency/chain.h"  // from @tf_runtime
 
 // -------------------------------------------------------------------------- //
 // Define AsyncToken and AsyncGroup in the mlir::runtime namespace to implement
@@ -38,11 +37,11 @@ limitations under the License.
 namespace mlir {
 namespace runtime {
 
-using tfrt::AsyncValueOwningRef;
-using tfrt::Chain;
-using tfrt::MakeAvailableAsyncValueRef;
-using tfrt::MakeConstructedAsyncValueRef;
-using tfrt::internal::AsyncValueStorage;
+using tsl::AsyncValueOwningRef;
+using tsl::Chain;
+using tsl::MakeAvailableAsyncValueRef;
+using tsl::MakeConstructedAsyncValueRef;
+using tsl::internal::AsyncValueStorage;
 
 using xla::runtime::AsyncRuntimeObject;
 
@@ -55,7 +54,7 @@ class AsyncToken : public AsyncRuntimeObject {
       : AsyncRuntimeObject(ref_count),
         chain_(MakeConstructedAsyncValueRef<Chain>(storage_)) {}
 
-  tfrt::AsyncValue* GetAsyncValue() const { return chain_.AsPtr().value(); }
+  tsl::AsyncValue* GetAsyncValue() const { return chain_.AsPtr().value(); }
 
  private:
   AsyncValueStorage<Chain> storage_;
@@ -79,7 +78,7 @@ class AsyncValue : public AsyncRuntimeObject {
     return data_storage_.allocated_buffer;
   }
 
-  tfrt::AsyncValue* GetAsyncValue() const { return chain_.AsPtr().value(); }
+  tsl::AsyncValue* GetAsyncValue() const { return chain_.AsPtr().value(); }
 
  private:
   // If the requested async value storage is small, use the inlined storage.
@@ -152,7 +151,7 @@ class AsyncGroup : public AsyncRuntimeObject {
     return rank;
   }
 
-  tfrt::AsyncValue* GetCompletionAsyncValue() const {
+  tsl::AsyncValue* GetCompletionAsyncValue() const {
     return completed_.AsPtr().value();
   }
 
@@ -178,7 +177,7 @@ class AsyncGroup : public AsyncRuntimeObject {
 namespace xla {
 namespace runtime {
 
-using tfrt::AsyncValue;
+using tsl::AsyncValue;
 
 namespace {
 // Always keep the current active async runtime in a thread local variable.
@@ -229,7 +228,7 @@ static_assert(sizeof(AsyncRuntime) == 1 * sizeof(void*),
 /*static*/ void AsyncRuntime::Await(AsyncValue* awaitable) {
   // Short circuit the trivial case.
   if (awaitable->IsAvailable()) return;
-  tfrt::Await({awaitable});
+  tsl::BlockUntilReady(awaitable);
 }
 
 /*static*/ void AsyncRuntime::AddRef(AsyncRuntimeObject* obj, unsigned count) {

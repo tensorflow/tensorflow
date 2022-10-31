@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "tensorflow/compiler/xla/mlir/utils/runtime/constraints.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
+#include "tfrt/concurrency/async_value.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
@@ -38,8 +39,8 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
-using tfrt::MakeAvailableAsyncValueRef;
-using tfrt::MakeErrorAsyncValueRef;
+using tsl::MakeAvailableAsyncValueRef;
+using tsl::MakeErrorAsyncValueRef;
 
 using Specialization = JitExecutable::Specialization;
 

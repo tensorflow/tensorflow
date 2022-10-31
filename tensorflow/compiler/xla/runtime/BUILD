@@ -53,8 +53,8 @@ cc_library(
         "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/status",
-        "@tf_runtime//:hostcontext",
-        "@tf_runtime//:support",
+        "@tf_runtime//:async_value",
+        "@tf_runtime//:ref_count",
     ],
 )
 
@@ -257,7 +257,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
-        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:async_value",
     ],
 )
 

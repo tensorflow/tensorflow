@@ -19,31 +19,31 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
-#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/host_context/chain.h"  // from @tf_runtime
+#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/concurrency/chain.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
 
 // Converts MLIR Async Runtime token into the TFRT async chain, and drops the
 // reference count on the token.
-tfrt::AsyncValueRef<tfrt::Chain> ConvertAsyncTokenToChain(
+tsl::AsyncValueRef<tsl::Chain> ConvertAsyncTokenToChain(
     AsyncRuntime::Token* token);
 
 // Extracts a payload from the MLIR Async Runtime `value` and emplaces it into
 // the TFRT async value `dst` using a user provided emplace function. Drops the
 // reference on the runtime value after it is no longer needed.
 void ExtractAsyncValue(
-    AsyncRuntime::Value* value, tfrt::AsyncValue* dst,
-    llvm::function_ref<void(void*, tfrt::AsyncValue*)> emplace_fn);
+    AsyncRuntime::Value* value, tsl::AsyncValue* dst,
+    llvm::function_ref<void(void*, tsl::AsyncValue*)> emplace_fn);
 
 // A version of the `ExtractAsyncValue` function defined above that takes an
 // additional opaque pointer that will be passed to the emplace function when
 // async value will become ready. It is the caller responsibility to ensure that
 // the pointed object will stay alive.
 void ExtractAsyncValue(
-    AsyncRuntime::Value* value, tfrt::AsyncValue* dst, void* context,
-    llvm::function_ref<void(void*, tfrt::AsyncValue*, void*)> emplace_fn);
+    AsyncRuntime::Value* value, tsl::AsyncValue* dst, void* context,
+    llvm::function_ref<void(void*, tsl::AsyncValue*, void*)> emplace_fn);
 
 // Builds a symbol map from the Async Runtime API functions.
 llvm::orc::SymbolMap AsyncRuntimeApiSymbolMap(
