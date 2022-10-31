@@ -114,7 +114,7 @@ tf_cc_test(
         ":diagnostics",
         ":executable",
         ":jit_executable",
-        "//tensorflow/compiler/xla/mlir/ir/runtime/tests:testlib",
+        "//tensorflow/compiler/xla/mlir/runtime/ir/tests:testlib",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:compilation_pipeline_gpu",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:custom_call_encoding",
         "//tensorflow/tsl/platform:test",

@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace runtime {

@@ -18,7 +18,7 @@ limitations under the License.
 #include <iterator>
 #include <utility>
 
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"
 
 namespace xla {
 namespace runtime {

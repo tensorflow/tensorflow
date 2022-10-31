@@ -13,21 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.h"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
 
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project  // IWYU pragma: keep
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.h"
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_interfaces.h"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"
 #include "tensorflow/compiler/xla/runtime/constraints.h"
 
 //===----------------------------------------------------------------------===//
 // RT Dialect
 //===----------------------------------------------------------------------===//
 
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.cc.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.cc.inc"
 
 namespace xla {
 namespace runtime {
@@ -46,17 +46,17 @@ void RuntimeDialect::initialize() {
 
   addOperations<
 #define GET_OP_LIST
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.cc.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.cc.inc"
       >();
 
   addTypes<
 #define GET_TYPEDEF_LIST
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_types.cc.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_types.cc.inc"
       >();
 
   addAttributes<
 #define GET_ATTRDEF_LIST
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_attrs.cc.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_attrs.cc.inc"
       >();
 }
 
@@ -135,7 +135,7 @@ mlir::LogicalResult RuntimeDialect::verifyOperationAttribute(
 }  // namespace xla
 
 #define GET_TYPEDEF_CLASSES
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_types.cc.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_types.cc.inc"
 
 #define GET_ATTRDEF_CLASSES
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_attrs.cc.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_attrs.cc.inc"

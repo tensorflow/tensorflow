@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"  // IWYU pragma: keep
 
 #include <iterator>
 
@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.h"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_interfaces.h"
 
 namespace xla {
 namespace runtime {
@@ -130,4 +130,4 @@ MutableOperandRange YieldOp::getMutableSuccessorOperands(
 }  // namespace xla
 
 #define GET_OP_CLASSES
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.cc.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.cc.inc"

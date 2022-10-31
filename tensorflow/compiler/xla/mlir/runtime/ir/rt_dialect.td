@@ -26,7 +26,7 @@ limitations under the License.
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
 
-include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.td"
+include "tensorflow/compiler/xla/mlir/runtime/ir/rt_interfaces.td"
 
 def RuntimeDialect : Dialect {
   let name = "rt";

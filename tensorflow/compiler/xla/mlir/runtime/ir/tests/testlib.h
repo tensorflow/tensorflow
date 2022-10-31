@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_TESTS_TESTLIB_H_
-#define TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_TESTS_TESTLIB_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_IR_TESTS_TESTLIB_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_IR_TESTS_TESTLIB_H_
 
 #include <cstdint>
 
@@ -24,15 +24,15 @@ limitations under the License.
 
 // clang-format off
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib_dialect.h.inc"
-#include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib_enums.h.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/tests/testlib_dialect.h.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/tests/testlib_enums.h.inc"
 // clang-format on
 
 #define GET_ATTRDEF_CLASSES
-#include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib_attrs.h.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/tests/testlib_attrs.h.inc"
 
 #define GET_TYPEDEF_CLASSES
-#include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib_types.h.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/tests/testlib_types.h.inc"
 
 namespace xla {
 namespace runtime {
@@ -48,4 +48,4 @@ inline void AddTestlibTypeConversions(mlir::TypeConverter& converter) {
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_TESTS_TESTLIB_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_IR_TESTS_TESTLIB_H_

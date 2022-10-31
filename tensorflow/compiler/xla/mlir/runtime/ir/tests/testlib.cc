@@ -13,22 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib.h"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/tests/testlib.h"
 
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 
 // clang-format off
-#include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib_dialect.cc.inc"
-#include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib_enums.cc.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/tests/testlib_dialect.cc.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/tests/testlib_enums.cc.inc"
 // clang-format on
 
 #define GET_ATTRDEF_CLASSES
-#include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib_attrs.cc.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/tests/testlib_attrs.cc.inc"
 
 #define GET_TYPEDEF_CLASSES
-#include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib_types.cc.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/tests/testlib_types.cc.inc"
 
 namespace xla {
 namespace runtime {
@@ -36,11 +36,11 @@ namespace runtime {
 void TestlibDialect::initialize() {
   addAttributes<
 #define GET_ATTRDEF_LIST
-#include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib_attrs.cc.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/tests/testlib_attrs.cc.inc"
       >();
   addTypes<
 #define GET_TYPEDEF_LIST
-#include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib_types.cc.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/tests/testlib_types.cc.inc"
       >();
 }
 

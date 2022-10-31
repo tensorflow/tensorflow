@@ -29,8 +29,8 @@ include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 
-include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.td"
-include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.td"
+include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.td"
+include "tensorflow/compiler/xla/mlir/runtime/ir/rt_interfaces.td"
 
 //===----------------------------------------------------------------------===//
 // Op definitions.
