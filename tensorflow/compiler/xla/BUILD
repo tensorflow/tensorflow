@@ -88,6 +88,7 @@ tf_proto_library(
     srcs = ["xla.proto"],
     cc_api_version = 2,
     create_grpc_library = True,
+    make_default_target_header_only = True,
     protodeps = [
         ":xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
