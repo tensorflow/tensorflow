@@ -100,14 +100,20 @@ Status UncompressElement(const CompressedElement& compressed,
   out->clear();
   out->reserve(num_components);
 
+  // Determine the total amount of non`memcpy`able tensor data.
+  size_t total_nonmemcpyable_size = 0;
+  for (const auto& metadata : compressed.component_metadata()) {
+    if (!DataTypeCanUseMemcpy(metadata.dtype())) {
+      total_nonmemcpyable_size += metadata.tensor_size_bytes();
+    }
+  }
+
   // Step 1: Prepare the memory that we will uncompress into.
   std::vector<struct iovec> iov(num_components);
   // We use tstring for access to resize_uninitialized.
-  std::vector<tstring> tensor_proto_strs;
-  // num_components is a conservative estimate. It is important to reserve
-  // vector space so that the vector doesn't resize itself, which could
-  // invalidate pointers to its strings' data.
-  tensor_proto_strs.reserve(num_components);
+  tstring nonmemcpyable;
+  nonmemcpyable.resize_uninitialized(total_nonmemcpyable_size);
+  char* nonmemcpyable_pos = nonmemcpyable.mdata();
   int64_t total_size = 0;
   for (int i = 0; i < num_components; ++i) {
     const CompressedComponentMetadata& metadata =
@@ -126,11 +132,9 @@ Status UncompressElement(const CompressedElement& compressed,
       // Allocate an empty Tensor. We will fill it out later after
       // uncompressing into the tensor_proto_str.
       out->emplace_back();
-      tensor_proto_strs.emplace_back();
-      tstring& tensor_proto_str = tensor_proto_strs.back();
-      tensor_proto_str.resize_uninitialized(metadata.tensor_size_bytes());
-      iov[i].iov_base = tensor_proto_str.mdata();
-      iov[i].iov_len = tensor_proto_str.size();
+      iov[i].iov_base = nonmemcpyable_pos;
+      iov[i].iov_len = metadata.tensor_size_bytes();
+      nonmemcpyable_pos += metadata.tensor_size_bytes();
     }
     total_size += iov[i].iov_len;
   }
@@ -156,17 +160,21 @@ Status UncompressElement(const CompressedElement& compressed,
   }
 
   // Step 3: Deserialize tensor proto strings to tensors.
-  int tensor_proto_strs_index = 0;
+  nonmemcpyable_pos = nonmemcpyable.mdata();
   for (int i = 0; i < num_components; ++i) {
-    if (DataTypeCanUseMemcpy(compressed.component_metadata(i).dtype())) {
-      continue;
-    }
-    TensorProto tp;
-    if (!tp.ParseFromString(tensor_proto_strs[tensor_proto_strs_index++])) {
-      return errors::Internal("Could not parse TensorProto");
-    }
-    if (!out->at(i).FromProto(tp)) {
-      return errors::Internal("Could not parse Tensor");
+    const CompressedComponentMetadata& metadata =
+        compressed.component_metadata(i);
+    if (!DataTypeCanUseMemcpy(metadata.dtype())) {
+      TensorProto tp;
+      if (!tp.ParseFromString(
+              {nonmemcpyable_pos,
+               static_cast<size_t>(metadata.tensor_size_bytes())})) {
+        return errors::Internal("Could not parse TensorProto");
+      }
+      if (!out->at(i).FromProto(tp)) {
+        return errors::Internal("Could not parse Tensor");
+      }
+      nonmemcpyable_pos += metadata.tensor_size_bytes();
     }
   }
   return OkStatus();
