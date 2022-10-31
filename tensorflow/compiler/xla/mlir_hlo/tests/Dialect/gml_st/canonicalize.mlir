@@ -407,3 +407,21 @@ func.func @fold_constant_for(%in: tensor<?x?xf32>,
 // CHECK-NEXT:    } : tensor<8x2xf32>
 // CHECK:         %[[CAST:.*]] = tensor.cast %[[FOR1]] : tensor<8x2xf32> to tensor<?x?xf32>
 // CHECK-NEXT:    return %[[CAST]] : tensor<?x?xf32>
+
+// -----
+
+func.func @fold_cast_to_materialize_source(%in: tensor<4xf32>) ->
+    tensor<2xf32> {
+  %tile = gml_st.tile [2] [2] [1] : !gml_st.tile<2>
+  %cast = tensor.cast %in : tensor<4xf32> to tensor<?xf32>
+  %mat = gml_st.materialize %cast[%tile] : tensor<?xf32>[!gml_st.tile<2>]
+      to tensor<2xf32>
+  func.return %mat : tensor<2xf32>
+}
+
+// CHECK-LABEL: @fold_cast_to_materialize_source
+// CHECK-SAME:    %[[IN:.*]]: tensor<4xf32>
+// CHECK:         %[[TILE:.*]] = gml_st.tile [2] [2] [1] : !gml_st.tile<2>
+// CHECK-NOT:     tensor.cast
+// CHECK:         %[[MAT:.*]] = gml_st.materialize %[[IN]][%[[TILE]]] : tensor<4xf32>[!gml_st.tile<2>]
+// CHECK:         return %[[MAT]]
