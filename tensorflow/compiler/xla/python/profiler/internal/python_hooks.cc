@@ -12,20 +12,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/python/profiler/internal/python_hooks.h"
+#include "tensorflow/compiler/xla/python/profiler/internal/python_hooks.h"
 
 #include <atomic>
+#include <string>
 
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
-#include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/profiler/utils/time_utils.h"
+#include "tensorflow/tsl/profiler/utils/xplane_builder.h"
+#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
+#include "tensorflow/tsl/profiler/utils/xplane_utils.h"
 
-namespace tensorflow {
+namespace xla {
 namespace profiler {
 
 namespace py = ::pybind11;
@@ -44,22 +45,22 @@ void ThreadingSetProfile(const py::object& callback) {
 
 std::string GetEventName(PyObject* co_filename, PyObject* co_name,
                          int co_firstlineno) {
-  string filename(py::reinterpret_borrow<py::str>(co_filename));
-  string function;
+  std::string filename(py::reinterpret_borrow<py::str>(co_filename));
+  std::string function;
   if (co_name == nullptr) {
     function = "<unknown>";
   } else {
     function = py::reinterpret_borrow<py::str>(co_name);
   }
 
-  return absl::StrCat("$", io::Basename(filename), ":", co_firstlineno, " ",
-                      function);
+  return absl::StrCat("$", tsl::io::Basename(filename), ":", co_firstlineno,
+                      " ", function);
 }
 
-string GetEventName(PyMethodDef* method, PyObject* module) {
+std::string GetEventName(PyMethodDef* method, PyObject* module) {
   // Python stack does not have a filename/line_no for native calls.
   // Use module name and function/method name instead.
-  string filename;
+  std::string filename;
   bool filename_ok;
 #if PY_MAJOR_VERSION < 3
   filename_ok = (module != nullptr && PyString_Check(module));
@@ -75,8 +76,9 @@ string GetEventName(PyMethodDef* method, PyObject* module) {
   return absl::StrCat("$", filename, " ", method->ml_name);
 }
 
-void AddEventToXLine(const PythonTraceEntry& event, XLineBuilder* line,
-                     XPlaneBuilder* plane) {
+void AddEventToXLine(const PythonTraceEntry& event,
+                     tsl::profiler::XLineBuilder* line,
+                     tsl::profiler::XPlaneBuilder* plane) {
   // TODO(jiesun): maybe add full filename as event stats.
   auto xevent = line->AddEvent(*plane->GetOrCreateEventMetadata(event.Name()));
   xevent.SetTimestampNs(event.start_time_ns);
@@ -144,7 +146,7 @@ void PythonHookContext::Start(const PythonHooksOptions& options) {
 #endif
 
   options_ = options;
-  start_timestamp_ns_ = GetCurrentTimeNanos();
+  start_timestamp_ns_ = tsl::profiler::GetCurrentTimeNanos();
   if (options_.enable_python_traceme || options_.enable_trace_python_function) {
     PyGILState_STATE gil_state = PyGILState_Ensure();
     if (options_.enable_python_traceme) {
@@ -191,14 +193,14 @@ void PythonHookContext::Stop() {
   }
 }
 
-void PythonHookContext::CollectData(XPlane* raw_plane) {
+void PythonHookContext::CollectData(tensorflow::profiler::XPlane* raw_plane) {
   if (raw_plane == nullptr) {
     end_to_end_xplane_.emplace();
     raw_plane = &*end_to_end_xplane_;
   }
-  XPlaneBuilder plane(raw_plane);
+  tsl::profiler::XPlaneBuilder plane(raw_plane);
   for (auto& it : entries_) {
-    uint64 thread_id = it.first;
+    uint64_t thread_id = it.first;
     auto& thread_events = it.second;
     VLOG(1) << "Collecting " << thread_events.completed.size() << ":"
             << thread_events.active.size() << " events on thread " << thread_id;
@@ -208,7 +210,7 @@ void PythonHookContext::CollectData(XPlane* raw_plane) {
       AddEventToXLine(event, &line, &plane);
     }
     if (options_.include_incomplete_events) {
-      uint64 now = GetCurrentTimeNanos();
+      uint64_t now = tsl::profiler::GetCurrentTimeNanos();
       while (!thread_events.active.empty()) {
         auto& event = thread_events.active.top();
         event.end_time_ns = now;
@@ -222,10 +224,11 @@ void PythonHookContext::CollectData(XPlane* raw_plane) {
   PyGILState_Release(gil_state);
 }
 
-void PythonHookContext::Finalize(XSpace* space) {
+void PythonHookContext::Finalize(tensorflow::profiler::XSpace* space) {
   if (space && options_.enable_trace_python_function) {
-    XPlane* plane =
-        FindOrAddMutablePlaneWithName(space, kPythonTracerPlaneName);
+    tensorflow::profiler::XPlane* plane =
+        tsl::profiler::FindOrAddMutablePlaneWithName(
+            space, tsl::profiler::kPythonTracerPlaneName);
     if (options_.end_to_end_mode) {
       if (end_to_end_xplane_) {
         end_to_end_xplane_->set_name(plane->name());
@@ -246,7 +249,7 @@ void PythonHookContext::Finalize(XSpace* space) {
   return 0;
 }
 
-void PythonHooks::ProfileSlow(const py::object& frame, const string& event,
+void PythonHooks::ProfileSlow(const py::object& frame, const std::string& event,
                               const py::object& arg) {
   int what;
   absl::string_view event_name(event);
@@ -278,8 +281,8 @@ void PythonHooks::ProfileSlow(const py::object& frame, const string& event,
 
 void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
                                     PyObject* arg) {
-  const int64_t thread_id = Env::Default()->GetCurrentThreadId();
-  uint64 now = GetCurrentTimeNanos();
+  const int64_t thread_id = tsl::Env::Default()->GetCurrentThreadId();
+  uint64_t now = tsl::profiler::GetCurrentTimeNanos();
   auto& thread_traces = entries_[thread_id];
 
   switch (what) {
@@ -353,9 +356,9 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
   // `PyEval_SetProfile` to register a C profiler which has significantly less
   // overhead (>2x faster).
   PythonHooks* singleton = PythonHooks::GetSingleton();
-  py::cpp_function callback =
-      py::cpp_function([singleton](const py::object& frame, const string& event,
-                                   const py::object& arg) {
+  py::cpp_function callback = py::cpp_function(
+      [singleton](const py::object& frame, const std::string& event,
+                  const py::object& arg) {
         singleton->ProfileSlow(frame, event, arg);
         SysSetProfileNone();
         PyEval_SetProfile(&PythonHooks::ProfileFunction, nullptr);
@@ -397,4 +400,4 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace xla
