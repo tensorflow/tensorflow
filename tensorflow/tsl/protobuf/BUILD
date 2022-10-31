@@ -53,6 +53,15 @@ tf_proto_library(
     create_service = True,
 )
 
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "coordination_service_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":coordination_service_proto"],
+# )
+# copybara:uncomment_end
+
 tf_proto_library(
     name = "distributed_runtime_payloads_proto",
     srcs = ["distributed_runtime_payloads.proto"],
