@@ -42,8 +42,12 @@ using ::mlir::gpu::GPUModuleOp;
 // the unified kernel generator + autofusion + XLA Next pipeline once we have
 // it, and once this code stabilizes.
 void mlir::createHloToGpuPipeline(OpPassManager& pm,
-                                  const HloToGpuPipelineOptions& options) {
+                                  ArrayRef<int64_t> blockTileDim,
+                                  ArrayRef<int64_t> warpTileDim,
+                                  ArrayRef<int64_t> threadTileDim,
+                                  bool experimentalSoftmax) {
   pm.addNestedPass<FuncOp>(hlo::createUnbufferizePass());
+  pm.addPass(createCSEPass());  // Combine repeated subtract(broadcast).
 
   // HLO -> Linalg
   pm.addNestedPass<FuncOp>(mhlo::createChloLegalizeToHloPass());
@@ -51,16 +55,16 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(mhlo::createLegalizeHloToLinalgPass());
 
   // Perform tiling either for softmax or for element-wise.
-  if (options.experimentalSoftmax) {
+  if (experimentalSoftmax) {
     // Simplify unit dimension.
     pm.addPass(mlir::createLinalgFoldUnitExtentDimsPass());
 
     // Tile parallel dimensions of the softmax-like patterns and distribute them
     // across warps. Warps remain independant of each other.
     pm.addNestedPass<FuncOp>(gml_st::createTilingSoftmaxPass(
-        /*distribute=*/true, options.blockTileDim, "block"));
+        /*distribute=*/true, blockTileDim, "block"));
     pm.addNestedPass<FuncOp>(gml_st::createTilingSoftmaxPass(
-        /*distribute=*/true, options.warpTileDim, "warp"));
+        /*distribute=*/true, warpTileDim, "warp"));
 
     // GPU-specific tiling for ops on the warp level.
     pm.addNestedPass<FuncOp>(gml_st::createTilingGPUWarpPass());
@@ -77,11 +81,11 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
 
     // Tiling
     pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
-        /*distribute=*/true, options.blockTileDim, "block"));
+        /*distribute=*/true, blockTileDim, "block"));
     pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
-        /*distribute=*/true, options.warpTileDim, "warp"));
+        /*distribute=*/true, warpTileDim, "warp"));
     pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
-        /*distribute=*/true, options.threadTileDim, "thread"));
+        /*distribute=*/true, threadTileDim, "thread"));
     pm.addNestedPass<FuncOp>(createScalarizationPass());
   }
 

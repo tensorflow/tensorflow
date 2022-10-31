@@ -32,10 +32,6 @@ limitations under the License.
 
 using namespace mlir;
 
-namespace {
-
-}  // namespace
-
 int main(int argc, char **argv) {
   mlir::registerAllPasses();
   mlir::hlo::registerLMHLOTransformsPasses();
@@ -46,10 +42,31 @@ int main(int argc, char **argv) {
   mlir::gml_st::registerGmlStPasses();
   mlir::gml_st::registerGmlStTestPasses();
 
-  PassPipelineRegistration<HloToGpuPipelineOptions>(
+  struct HloToGpuPipelineOptions
+      : public PassPipelineOptions<HloToGpuPipelineOptions> {
+    ListOption<int64_t> blockTileDim{
+        *this, "block-tile",
+        llvm::cl::desc("dimensions of the subproblem processed by the block")};
+    ListOption<int64_t> warpTileDim{
+        *this, "warp-tile",
+        llvm::cl::desc("dimensions of the subproblem processed by the warp")};
+    ListOption<int64_t> threadTileDim{
+        *this, "thread-tile",
+        llvm::cl::desc("dimensions of the subproblem processed by the thread")};
+    Option<bool> experimentalSoftmax{
+        *this, "experimental-softmax",
+        llvm::cl::desc(
+            "enable the experimental variant of this pipeline for softmax"),
+        llvm::cl::init(false)};
+  };
+  mlir::PassPipelineRegistration<HloToGpuPipelineOptions>(
       "hlo-to-gpu-pipeline",
       "Pipeline to transform HLO to LLVM + NVVM dialects.",
-      createHloToGpuPipeline);
+      [](OpPassManager& pm, const HloToGpuPipelineOptions& opts) {
+        return createHloToGpuPipeline(pm, opts.blockTileDim, opts.warpTileDim,
+                                      opts.threadTileDim,
+                                      opts.experimentalSoftmax);
+      });
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
