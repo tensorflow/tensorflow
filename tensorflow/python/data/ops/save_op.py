@@ -33,11 +33,7 @@ nested_structure_coder = lazy_loader.LazyLoader(
     "tensorflow.python.saved_model.nested_structure_coder")
 
 
-def save(self,
-         path,
-         compression=None,
-         shard_func=None,
-         checkpoint_args=None):
+def _save(self, path, compression=None, shard_func=None, checkpoint_args=None):
   """Implements the save function and checkpoint functionality."""
   if context.executing_eagerly() and checkpoint_args:
     save_dataset = _SaveDataset(self, path, shard_func, compression)
@@ -87,7 +83,7 @@ class _SaveDataset(dataset_ops.UnaryDataset):
         output_types=structure.get_flat_tensor_types(dataset.element_spec),
         output_shapes=structure.get_flat_tensor_shapes(dataset.element_spec),
     )
-    super(_SaveDataset, self).__init__(dataset, variant_tensor)
+    super().__init__(dataset, variant_tensor)
 
   def _functions(self):
     return [self._shard_func]
