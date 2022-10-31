@@ -2773,10 +2773,9 @@ XlaOp XlaBuilder::AllGatherImpl(const XlaOp operand,
       operands.push_back(operand);
     }
 
-    TF_ASSIGN_OR_RETURN(
-        Shape inferred_shape,
-        ShapeInference::InferAllGatherShape(operand_shapes,
-                                            all_gather_dimension, shard_count));
+    TF_ASSIGN_OR_RETURN(Shape inferred_shape,
+                        ShapeInference::InferAllGatherShape(
+                            operand_shapes, all_gather_dimension, shard_count));
     if (layout) {
       *inferred_shape.mutable_layout() = *layout;
       instr.set_constrain_layout(true);

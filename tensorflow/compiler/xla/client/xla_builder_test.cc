@@ -412,18 +412,17 @@ TEST_F(XlaBuilderTest, AllGatherWithToken) {
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4}), "x");
   auto x2 = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {16, 4}), "x2");
   auto t = Parameter(&b, 2, ShapeUtil::MakeScalarShape(F32), "t");
-  AllGather(Tuple(&b, {x, x2, t}), /*all_gather_dimension=*/0, /*shard_count=*/4);
+  AllGather(Tuple(&b, {x, x2, t}), /*all_gather_dimension=*/0,
+            /*shard_count=*/4);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
 
   EXPECT_EQ(root->opcode(), HloOpcode::kAllGather);
-  EXPECT_TRUE(
-      ShapeUtil::Equal(root->shape(), 
-      ShapeUtil::MakeTupleShape({
-          ShapeUtil::MakeShape(F32, {16}),
-          ShapeUtil::MakeShape(F32, {64, 4}),
-          ShapeUtil::MakeScalarShape(F32)})
-      ));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      root->shape(),
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {16}),
+                                 ShapeUtil::MakeShape(F32, {64, 4}),
+                                 ShapeUtil::MakeScalarShape(F32)})));
 }
 
 TEST_F(XlaBuilderTest, ReduceScatter) {
@@ -470,19 +469,18 @@ TEST_F(XlaBuilderTest, ReduceScatterWithToken) {
   ReplicaGroup group;
   group.add_replica_ids(0);
   group.add_replica_ids(1);
-  ReduceScatter(Tuple(&b, {x, x2, t}), to_apply, /*scatter_dimension=*/1, /*shard_count=*/2,
+  ReduceScatter(Tuple(&b, {x, x2, t}), to_apply, /*scatter_dimension=*/1,
+                /*shard_count=*/2,
                 /*replica_groups=*/{group});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
 
   EXPECT_EQ(root->opcode(), HloOpcode::kReduceScatter);
-  EXPECT_TRUE(
-      ShapeUtil::Equal(root->shape(), 
-      ShapeUtil::MakeTupleShape({
-          ShapeUtil::MakeShape(F32, {4, 8}),
-          ShapeUtil::MakeShape(F32, {16, 2}),
-          ShapeUtil::MakeScalarShape(F32)})
-      ));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      root->shape(),
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4, 8}),
+                                 ShapeUtil::MakeShape(F32, {16, 2}),
+                                 ShapeUtil::MakeScalarShape(F32)})));
 }
 
 TEST_F(XlaBuilderTest, AllToAll) {

@@ -53,13 +53,13 @@ HloComputation* MakeBinaryAdd(PrimitiveType type, HloModule* module) {
 }
 
 HloInstruction* TranslateAllGatherToAllReducePerOperand(
-  CollectiveOpGroupMode group_mode,
-  const HloAllGatherInstruction& ag, const Shape& output_shape,
-  HloInstruction* operand, HloComputation* comp) {
+    CollectiveOpGroupMode group_mode, const HloAllGatherInstruction& ag,
+    const Shape& output_shape, HloInstruction* operand, HloComputation* comp) {
   std::vector<HloInstruction*> start_indices =
       CreateStartIndicesForCollectiveDecomposition(
           group_mode, ag.replica_groups(), operand->shape(),
-          ag.all_gather_dimension(), comp).value();
+          ag.all_gather_dimension(), comp)
+          .value();
 
   auto zero = comp->AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::Zero(output_shape.element_type())));

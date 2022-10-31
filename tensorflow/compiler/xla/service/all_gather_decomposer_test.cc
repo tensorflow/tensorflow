@@ -176,16 +176,14 @@ ENTRY entry {
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       op::Tuple(
-        op::AllReduce(op::DynamicUpdateSlice(
-            op::Broadcast(op::Constant()), op::Parameter(0), op::Constant(),
-            op::Multiply(op::ReplicaId(), op::Constant()))),
-        op::AllReduce(op::DynamicUpdateSlice(
-            op::Broadcast(op::Constant()), op::Parameter(1), op::Constant(),
-            op::Multiply(op::ReplicaId(), op::Constant()))),
-        op::Parameter(2)
-          ));
+          op::AllReduce(op::DynamicUpdateSlice(
+              op::Broadcast(op::Constant()), op::Parameter(0), op::Constant(),
+              op::Multiply(op::ReplicaId(), op::Constant()))),
+          op::AllReduce(op::DynamicUpdateSlice(
+              op::Broadcast(op::Constant()), op::Parameter(1), op::Constant(),
+              op::Multiply(op::ReplicaId(), op::Constant()))),
+          op::Parameter(2)));
 }
-
 
 }  // namespace
 }  // namespace xla

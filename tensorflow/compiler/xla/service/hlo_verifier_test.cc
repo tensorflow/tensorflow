@@ -2320,9 +2320,8 @@ TEST_F(HloVerifierTest, ReduceScatterInvalidScatterDim) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(
-      status.error_message(),
-      HasSubstr("ars->scatter_dimension() < operand_shape.rank()"));
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("ars->scatter_dimension() < operand_shape.rank()"));
 }
 
 TEST_F(HloVerifierTest, ReduceScatterNonUniformGroups) {

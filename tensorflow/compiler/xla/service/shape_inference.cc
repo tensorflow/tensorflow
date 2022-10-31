@@ -2083,7 +2083,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   std::vector<Shape> output_shapes;
   output_shapes.reserve(operand_shapes.size());
-  // There can be one token in the input Tuple. The token is a scalar or `token`.
+  // There can be one token in the input Tuple. The token is a scalar or
+  // `token`.
   bool token_encountered = false;
   for (const Shape* operand_shape : operand_shapes) {
     if (operand_shape->IsToken() || operand_shape->rank() == 0) {
@@ -2147,7 +2148,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   std::vector<Shape> output_shapes;
   output_shapes.reserve(operand_shapes.size());
-  // There can be one token in the input Tuple. The token is a scalar or `token`.
+  // There can be one token in the input Tuple. The token is a scalar or
+  // `token`.
   bool token_encountered = false;
   for (const Shape* operand_shape : operand_shapes) {
     if (operand_shape->IsToken() || operand_shape->rank() == 0) {
