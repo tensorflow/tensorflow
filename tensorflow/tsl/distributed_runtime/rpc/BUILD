@@ -7,7 +7,7 @@ load("//tensorflow/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 
 package(
     default_visibility = [
-        "//tensorflow:internal",
+        "//tensorflow/tsl:internal",
     ],
     licenses = ["notice"],
 )

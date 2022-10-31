@@ -4,7 +4,7 @@ load("//tensorflow/tsl:tsl.bzl", "if_oss", "tsl_gpu_library")
 
 package(
     default_visibility = [
-        "//tensorflow:internal",
+        "//tensorflow/tsl:internal",
     ],
     licenses = ["notice"],
 )

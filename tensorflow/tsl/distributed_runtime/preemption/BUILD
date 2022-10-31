@@ -3,7 +3,7 @@ load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
 
 package(
     default_visibility = [
-        "//tensorflow:internal",
+        "//tensorflow/tsl:internal",
     ],
     licenses = ["notice"],
 )
