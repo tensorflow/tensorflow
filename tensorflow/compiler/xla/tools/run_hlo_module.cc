@@ -135,11 +135,10 @@ Status RunAndCompare(
 
   const HloModuleProto test_module_proto = test_module->ToProto();
 
-  std::vector<Literal> args =
-      MakeFakeArguments(test_module.get(), engine,
-                        options.use_large_float_range,
-                        options.treat_gte_as_data_formatting)
-          .value();
+  TF_ASSIGN_OR_RETURN(auto args,
+                      MakeFakeArguments(test_module.get(), engine,
+                                        options.use_large_float_range,
+                                        options.treat_gte_as_data_formatting));
   // Use provided input literals as arguments, if any.
   if (iteration_literals_proto != nullptr &&
       iteration_literals_proto->arguments_size() != 0) {
@@ -181,10 +180,10 @@ Status RunAndCompare(
   if (reference_runner != nullptr) {
     // PrepareReferenceModule needs to know the *test* runner, in order to
     // properly match the test runner's numerics.
-    reference_module =
+    TF_ASSIGN_OR_RETURN(
+        reference_module,
         PrepareReferenceModule(*test_module, test_runner, config_modifier_hook,
-                               reference_module_modifier_hook)
-            .value();
+                               reference_module_modifier_hook));
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -237,10 +236,10 @@ Status RunAndCompare(
     std::function<Status(const HloModule&, HloRunnerInterface*, HloModule*)>
         reference_module_modifier_hook,
     std::function<void(HloModuleConfig*)> config_modifier_hook) {
-  std::unique_ptr<HloModule> test_module =
+  TF_ASSIGN_OR_RETURN(
+      auto test_module,
       LoadModuleFromFile(hlo_filename, hlo_module_loader_details::Config(),
-                         options.input_format, config_modifier_hook)
-          .value();
+                         options.input_format, config_modifier_hook));
   return RunAndCompare(std::move(test_module), test_runner, reference_runner,
                        engine, options, iteration_literals_proto,
                        reference_module_modifier_hook, config_modifier_hook);
