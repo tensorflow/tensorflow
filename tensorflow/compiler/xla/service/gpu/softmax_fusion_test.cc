@@ -47,14 +47,15 @@ max_computation {
 }
 
 ENTRY main {
-  param_0 = f32[32,8,128,128]{3,2,1,0} parameter(0)
+  param_0 = f32[128,128]{1,0} parameter(0)
   constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[32,8,128]{2,1,0} reduce(param_0, constant_neg_inf), dimensions={3}, to_apply=max_computation
-  broadcast = f32[32,8,128,128]{3,2,1,0} broadcast(reduce), dimensions={0,1,2}
-  ROOT subtract = f32[32,8,128,128]{3,2,1,0} subtract(param_0, broadcast)
+  reduce = f32[128]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[128,128]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[128,128]{1,0} subtract(param_0, broadcast)
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  auto initial_module = module->Clone();
   SoftmaxFusion fusion;
   EXPECT_TRUE(fusion.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
@@ -67,6 +68,8 @@ ENTRY main {
               GmockMatch(m::Subtract(
                   m::Parameter(0),
                   m::Broadcast(m::Reduce(m::Parameter(0), m::Constant())))));
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      std::move(initial_module), std::move(module), ErrorSpec(1e-6, 1e-6)));
 }
 
 TEST_F(SoftmaxFusionTest, SoftmaxPatternWithExtraStuff) {
@@ -128,19 +131,20 @@ add_computation {
 }
 
 ENTRY main {
-  param_0 = f32[32,8,128,128]{3,2,1,0} parameter(0)
+  param_0 = f32[127,125]{1,0} parameter(0)
   constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[32,8,128]{2,1,0} reduce(param_0, constant_neg_inf), dimensions={3}, to_apply=max_computation
-  broadcast = f32[32,8,128,128]{3,2,1,0} broadcast(reduce), dimensions={0,1,2}
-  subtract = f32[32,8,128,128]{3,2,1,0} subtract(param_0, broadcast)
-  exponential = f32[32,8,128,128]{3,2,1,0} exponential(subtract)
+  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
+  exponential = f32[127,125]{1,0} exponential(subtract)
   constant_zero = f32[] constant(0)
-  second_reduce = f32[32,8,128]{2,1,0} reduce(exponential, constant_zero), dimensions={3}, to_apply=add_computation
-  second_broadcast = f32[32,8,128,128]{3,2,1,0} broadcast(second_reduce), dimensions={0,1,2}
-  ROOT divide = f32[32,8,128,128]{3,2,1,0} divide(exponential, second_broadcast)
+  second_reduce = f32[127]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
+  second_broadcast = f32[127,125]{1,0} broadcast(second_reduce), dimensions={0}
+  ROOT divide = f32[127,125]{1,0} divide(exponential, second_broadcast)
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  auto initial_module = module->Clone();
   SoftmaxFusion fusion;
   EXPECT_TRUE(fusion.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
@@ -161,6 +165,8 @@ ENTRY main {
               GmockMatch(m::Exp(m::Subtract(
                   m::Parameter(0),
                   m::Broadcast(m::Reduce(m::Parameter(0), m::Constant()))))));
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      std::move(initial_module), std::move(module), ErrorSpec(1e-6, 1e-6)));
 }
 
 TEST_F(SoftmaxFusionTest, DoubleSoftmaxPatternWithExtraStuff) {

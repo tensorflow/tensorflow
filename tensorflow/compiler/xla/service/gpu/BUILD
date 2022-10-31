@@ -1249,10 +1249,12 @@ cc_library(
 tf_cc_test(
     name = "softmax_fusion_test",
     srcs = ["softmax_fusion_test.cc"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":softmax_fusion",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
