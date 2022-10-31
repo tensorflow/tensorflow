@@ -88,12 +88,14 @@ void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
   WriteLiteralToTempFile(mismatches, "mismatches");
 }
 
-Literal ExecuteWithRunner(std::unique_ptr<HloModule> module,
-                          absl::Span<const Literal> args,
-                          HloRunnerInterface* runner, bool run_hlo_passes) {
-  TF_QCHECK_OK(VerifyHloModule(module.get(), /*layout_sensitive=*/false,
-                               /*allow_mixed_precision=*/true))
-      << " (on " << runner->Name() << ")";
+StatusOr<Literal> ExecuteWithRunner(std::unique_ptr<HloModule> module,
+                                    absl::Span<const Literal> args,
+                                    HloRunnerInterface* runner,
+                                    bool run_hlo_passes) {
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      VerifyHloModule(module.get(), /*layout_sensitive=*/false,
+                      /*allow_mixed_precision=*/true),
+      absl::StrCat("(on ", runner->Name(), ")"));
 
   std::cerr << "Running HLO module with runner " << runner->Name() << "...\n";
   XLA_VLOG_LINES(1, module->ToString());
@@ -103,8 +105,9 @@ Literal ExecuteWithRunner(std::unique_ptr<HloModule> module,
   std::chrono::duration<double> diff = end - start;
   std::cerr << "... compiled and ran in " << diff.count() << "s.\n";
 
-  TF_QCHECK_OK(result_status.status())
-      << "Failed to execute on " << runner->Name() << "\n";
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      result_status.status(),
+      absl::StrCat("Failed to execute on ", runner->Name()));
 
   return std::move(result_status).value();
 }
@@ -184,8 +187,10 @@ Status RunAndCompare(
             .value();
   }
 
-  Literal test_result = ExecuteWithRunner(
-      std::move(test_module), args, test_runner, options.run_test_hlo_passes);
+  TF_ASSIGN_OR_RETURN(
+      auto test_result,
+      ExecuteWithRunner(std::move(test_module), args, test_runner,
+                        options.run_test_hlo_passes));
   if (options.print_literals) {
     std::cout << "\n** Result with test runner " << test_runner->Name()
               << " **\n"
@@ -201,9 +206,10 @@ Status RunAndCompare(
     return OkStatus();
   }
 
-  Literal reference_result =
+  TF_ASSIGN_OR_RETURN(
+      auto reference_result,
       ExecuteWithRunner(std::move(reference_module), args, reference_runner,
-                        options.run_reference_hlo_passes);
+                        options.run_reference_hlo_passes));
 
   if (options.print_literals) {
     std::cout << "\n** Result with reference runner "
