@@ -104,7 +104,7 @@ template_rule(
     substitutions = {
         "@DNNL_VERSION_MAJOR@": "2",
         "@DNNL_VERSION_MINOR@": "7",
-        "@DNNL_VERSION_PATCH@": "0",
+        "@DNNL_VERSION_PATCH@": "1",
         "@DNNL_VERSION_HASH@": "N/A",
     },
 )
@@ -116,7 +116,6 @@ _COPTS_LIST = select({
     "-UUSE_MKL",
     "-UUSE_CBLAS",
     "-DDNNL_ENABLE_MAX_CPU_ISA",
-    "-DDNNL_DISABLE_PRIMITIVE_CACHE",
 ] + tf_openmp_copts()
 
 _INCLUDES_LIST = [

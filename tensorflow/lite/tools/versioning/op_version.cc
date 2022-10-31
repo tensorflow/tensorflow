@@ -627,6 +627,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_FILL:
       if (op_sig.inputs.size() >= 2) {
+        if (op_sig.inputs.at(1).type == kTfLiteFloat16) return 4;
         if (op_sig.inputs.at(1).type == kTfLiteInt8 ||
             op_sig.inputs.at(1).type == kTfLiteInt16) {
           return 3;

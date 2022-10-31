@@ -956,8 +956,8 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 //         first dimension equal to `cond`.
 LogicalResult SelectOp::verify() {
   SelectOp op = *this;
-  auto then_tensor = op.t().getType().cast<TensorType>();
-  auto else_tensor = op.e().getType().cast<TensorType>();
+  auto then_tensor = op.then_value().getType().cast<TensorType>();
+  auto else_tensor = op.else_value().getType().cast<TensorType>();
   // Check (1).
   if (!AreCastCompatible({then_tensor, else_tensor}))
     return op.emitOpError() << "requires t and e have compatible shapes";

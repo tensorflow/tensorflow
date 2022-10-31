@@ -6,8 +6,6 @@ load(
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_additional_all_protos",
-    "tf_proto_library",
     "tf_protos_all",
 )
 
@@ -74,7 +72,6 @@ cc_library(
     srcs = ["compression_utils.cc"],
     hdrs = ["compression_utils.h"],
     deps = [
-        ":dataset_proto_cc",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -101,13 +98,6 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:status_matchers",
     ],
-)
-
-tf_proto_library(
-    name = "dataset_proto",
-    srcs = ["dataset.proto"],
-    cc_api_version = 2,
-    protodeps = tf_additional_all_protos(),
 )
 
 cc_library(
@@ -161,6 +151,7 @@ tf_cc_test(
     size = "small",
     srcs = ["dataset_utils_test.cc"],
     deps = [
+        ":compression_utils",
         ":dataset_test_base",
         ":dataset_utils",
         ":serialization_utils",
@@ -357,8 +348,10 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime:device_factory",
+        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:str_util",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )

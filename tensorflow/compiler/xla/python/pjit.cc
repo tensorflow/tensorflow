@@ -179,6 +179,9 @@ xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
       return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
     }
     xla::PyArray py_array = arg;
+    if (!py_array.fastpath_enabled()) {
+      return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
+    }
 
     // Only allow committed PyArray in cpp pjit for now as the logic on handling
     // sharding for uncommited PyArray is complicated and still under

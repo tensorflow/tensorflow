@@ -70,12 +70,12 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
 
   LogicalResult matchAndRewrite(TFL::CustomOp op,
                                 PatternRewriter& rewriter) const override {
-    if (!op.custom_code().startswith(kFlexOpNamePrefix)) {
+    if (!op.getCustomCode().startswith(kFlexOpNamePrefix)) {
       return failure();
     }
 
     llvm::StringRef tf_op_name =
-        op.custom_code().substr(kFlexOpNamePrefix.size());
+        op.getCustomCode().substr(kFlexOpNamePrefix.size());
     const std::string tf_op_full_name = llvm::Twine("tf.", tf_op_name).str();
 
     // Create the TF op
@@ -86,7 +86,7 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
     SmallVector<NamedAttribute, 2> attrs;
     std::string parsed_op_name;
     tensorflow::NodeDef node_def;
-    if (failed(ParseCustomOption(op.custom_option().getValue(), op.getLoc(),
+    if (failed(ParseCustomOption(op.getCustomOption().getValue(), op.getLoc(),
                                  parsed_op_name, attrs, node_def))) {
       return failure();
     }

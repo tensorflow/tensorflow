@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/call_once.h"
+#include "absl/strings/str_format.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
@@ -469,6 +470,39 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   CHECK(cache_value != nullptr);
   CHECK(cache_value->compilation_done);
   return cache_value->cubin_data;
+}
+
+StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
+    const HloModuleConfig& hlo_module_config) {
+  // TODO(phawkins): rather than comparing version numbers, it might be more
+  // robust if we simply tried to link something the first time we compile.
+  auto ptxas_config =
+      PtxOptsFromDebugOptions(hlo_module_config.debug_options());
+  TF_ASSIGN_OR_RETURN(
+      auto ptxas_version_tuple,
+      se::GetAsmCompilerVersion(ptxas_config.preferred_cuda_dir));
+  int ptxas_version = std::get<0>(ptxas_version_tuple) * 1000 +
+                      std::get<1>(ptxas_version_tuple) * 10;
+  int driver_version;
+  if (!se::gpu::GpuDriver::GetDriverVersion(&driver_version)) {
+    return FailedPrecondition("Unable to get CUDA driver version");
+  }
+  bool ok = driver_version >= ptxas_version;
+  if (!ok) {
+    LOG_FIRST_N(WARNING, 1)
+        << "The NVIDIA driver's CUDA version is "
+        << absl::StrFormat("%d.%d", driver_version / 1000,
+                           (driver_version % 1000) / 10)
+        << " which is older than the ptxas CUDA version "
+        << absl::StrFormat("(%d.%d.%d)", std::get<0>(ptxas_version_tuple),
+                           std::get<1>(ptxas_version_tuple),
+                           std::get<2>(ptxas_version_tuple))
+        << ". Because the driver is older than the ptxas version, XLA is "
+           "disabling parallel compilation, which may slow down compilation. "
+           "You should update your NVIDIA driver or use the NVIDIA-provided "
+           "CUDA forward compatibility packages.";
+  }
+  return ok;
 }
 
 StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(

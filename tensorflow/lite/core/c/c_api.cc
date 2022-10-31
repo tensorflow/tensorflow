@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <mutex>  // NOLINT
 #include <utility>
+#include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
@@ -25,9 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/create_op_resolver.h"
 #include "tensorflow/lite/delegates/interpreter_utils.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
-#include "tensorflow/lite/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/version.h"
 
 namespace {
@@ -67,78 +66,6 @@ TfLiteModel* TfLiteModelCreateFromFile(const char* model_path) {
 }
 
 void TfLiteModelDelete(TfLiteModel* model) { delete model; }
-
-TfLiteRegistrationExternal* TfLiteRegistrationExternalCreate(
-    TfLiteBuiltinOperator builtin_code, const char* custom_name, int version) {
-  return new TfLiteRegistrationExternal{
-      custom_name, version, nullptr, nullptr, nullptr, nullptr, builtin_code};
-}
-
-void TfLiteRegistrationExternalDelete(TfLiteRegistrationExternal* reg) {
-  delete reg;
-}
-
-void TfLiteRegistrationExternalSetInit(
-    TfLiteRegistrationExternal* registration,
-    void* (*init)(TfLiteOpaqueContext* context, const char* buffer,
-                  size_t length)) {
-  // Note, we expect the caller of 'registration->init' to supply as 'data' what
-  // we store in 'registration->init_data'.
-  registration->init = [](void* data, TfLiteOpaqueContext* context,
-                          const char* buffer, size_t length) -> void* {
-    auto local_init = reinterpret_cast<decltype(init)>(data);
-    return local_init(context, buffer, length);
-  };
-  registration->init_data = reinterpret_cast<void*>(init);
-}
-
-void TfLiteRegistrationExternalSetFree(
-    TfLiteRegistrationExternal* registration,
-    void (*free)(TfLiteOpaqueContext* context, void* data)) {
-  // Note, we expect the caller of 'registration->free' to supply as 'data' what
-  // we store in 'registration->free_data'.
-  registration->free = [](void* free_data, TfLiteOpaqueContext* context,
-                          void* data) {
-    auto local_free = reinterpret_cast<decltype(free)>(free_data);
-    return local_free(context, data);
-  };
-  registration->free_data = reinterpret_cast<void*>(free);
-}
-
-void TfLiteRegistrationExternalSetPrepare(
-    TfLiteRegistrationExternal* registration,
-    TfLiteStatus (*prepare)(TfLiteOpaqueContext* context,
-                            TfLiteOpaqueNode* node)) {
-  // Note, we expect the caller of 'registration->prepare' to supply as
-  // 'data' what we store in 'registration->prepare_data'.
-  registration->prepare = [](void* data, TfLiteOpaqueContext* context,
-                             TfLiteOpaqueNode* node) -> TfLiteStatus {
-    auto local_prepare = reinterpret_cast<decltype(prepare)>(data);
-    return local_prepare(context, node);
-  };
-
-  registration->prepare_data = reinterpret_cast<void*>(prepare);
-}
-
-void TfLiteRegistrationExternalSetInvoke(
-    TfLiteRegistrationExternal* registration,
-    TfLiteStatus (*invoke)(TfLiteOpaqueContext* context,
-                           TfLiteOpaqueNode* node)) {
-  // Note, we expect the caller of 'registration->invoke' to supply as
-  // 'data' what we store in 'registration->invoke_data'.
-  registration->invoke = [](void* data, TfLiteOpaqueContext* context,
-                            TfLiteOpaqueNode* node) -> TfLiteStatus {
-    auto local_invoke = reinterpret_cast<decltype(invoke)>(data);
-    return local_invoke(context, node);
-  };
-
-  registration->invoke_data = reinterpret_cast<void*>(invoke);
-}
-
-TfLiteBuiltinOperator TfLiteRegistrationExternalGetBuiltInCode(
-    const TfLiteRegistrationExternal* registration) {
-  return static_cast<TfLiteBuiltinOperator>(registration->builtin_code);
-}
 
 TfLiteInterpreterOptions* TfLiteInterpreterOptionsCreate() {
   return new TfLiteInterpreterOptions{};
@@ -214,6 +141,11 @@ int32_t TfLiteInterpreterGetInputTensorCount(
   return static_cast<int32_t>(interpreter->impl->inputs().size());
 }
 
+const int* TfLiteInterpreterInputTensorIndices(
+    const TfLiteInterpreter* interpreter) {
+  return interpreter->impl->inputs().data();
+}
+
 TfLiteTensor* TfLiteInterpreterGetInputTensor(
     const TfLiteInterpreter* interpreter, int32_t input_index) {
   return interpreter->impl->tensor(interpreter->impl->inputs()[input_index]);
@@ -244,6 +176,16 @@ TfLiteStatus TfLiteInterpreterInvoke(TfLiteInterpreter* interpreter) {
 int32_t TfLiteInterpreterGetOutputTensorCount(
     const TfLiteInterpreter* interpreter) {
   return static_cast<int32_t>(interpreter->impl->outputs().size());
+}
+
+TfLiteTensor* TfLiteInterpreterGetTensor(const TfLiteInterpreter* interpreter,
+                                         int index) {
+  return interpreter->impl->tensor(index);
+}
+
+const int* TfLiteInterpreterOutputTensorIndices(
+    const TfLiteInterpreter* interpreter) {
+  return interpreter->impl->outputs().data();
 }
 
 const TfLiteTensor* TfLiteInterpreterGetOutputTensor(
@@ -300,6 +242,77 @@ TfLiteStatus TfLiteTensorCopyToBuffer(const TfLiteTensor* tensor,
   return kTfLiteOk;
 }
 
+TfLiteRegistrationExternal* TfLiteRegistrationExternalCreate(
+    TfLiteBuiltinOperator builtin_code, const char* custom_name, int version) {
+  return new TfLiteRegistrationExternal{
+      custom_name, version, nullptr, nullptr, nullptr, nullptr, builtin_code};
+}
+
+void TfLiteRegistrationExternalDelete(TfLiteRegistrationExternal* reg) {
+  delete reg;
+}
+
+void TfLiteRegistrationExternalSetInit(
+    TfLiteRegistrationExternal* registration,
+    void* (*init)(TfLiteOpaqueContext* context, const char* buffer,
+                  size_t length)) {
+  // Note, we expect the caller of 'registration->init' to supply as 'data' what
+  // we store in 'registration->init_data'.
+  registration->init = [](void* data, TfLiteOpaqueContext* context,
+                          const char* buffer, size_t length) -> void* {
+    auto local_init = reinterpret_cast<decltype(init)>(data);
+    return local_init(context, buffer, length);
+  };
+  registration->init_data = reinterpret_cast<void*>(init);
+}
+
+void TfLiteRegistrationExternalSetFree(
+    TfLiteRegistrationExternal* registration,
+    void (*free)(TfLiteOpaqueContext* context, void* data)) {
+  // Note, we expect the caller of 'registration->free' to supply as 'data' what
+  // we store in 'registration->free_data'.
+  registration->free = [](void* free_data, TfLiteOpaqueContext* context,
+                          void* data) {
+    auto local_free = reinterpret_cast<decltype(free)>(free_data);
+    return local_free(context, data);
+  };
+  registration->free_data = reinterpret_cast<void*>(free);
+}
+
+void TfLiteRegistrationExternalSetPrepare(
+    TfLiteRegistrationExternal* registration,
+    TfLiteStatus (*prepare)(TfLiteOpaqueContext* context,
+                            TfLiteOpaqueNode* node)) {
+  // Note, we expect the caller of 'registration->prepare' to supply as
+  // 'data' what we store in 'registration->prepare_data'.
+  registration->prepare = [](void* data, TfLiteOpaqueContext* context,
+                             TfLiteOpaqueNode* node) -> TfLiteStatus {
+    auto local_prepare = reinterpret_cast<decltype(prepare)>(data);
+    return local_prepare(context, node);
+  };
+
+  registration->prepare_data = reinterpret_cast<void*>(prepare);
+}
+
+void TfLiteRegistrationExternalSetInvoke(
+    TfLiteRegistrationExternal* registration,
+    TfLiteStatus (*invoke)(TfLiteOpaqueContext* context,
+                           TfLiteOpaqueNode* node)) {
+  // Note, we expect the caller of 'registration->invoke' to supply as
+  // 'data' what we store in 'registration->invoke_data'.
+  registration->invoke = [](void* data, TfLiteOpaqueContext* context,
+                            TfLiteOpaqueNode* node) -> TfLiteStatus {
+    auto local_invoke = reinterpret_cast<decltype(invoke)>(data);
+    return local_invoke(context, node);
+  };
+
+  registration->invoke_data = reinterpret_cast<void*>(invoke);
+}
+
+TfLiteBuiltinOperator TfLiteRegistrationExternalGetBuiltInCode(
+    const TfLiteRegistrationExternal* registration) {
+  return static_cast<TfLiteBuiltinOperator>(registration->builtin_code);
+}
 // LINT.ThenChange(//tensorflow/lite/experimental/examples/unity/TensorFlowLitePlugin/Assets/TensorFlowLite/SDK/Scripts/Interpreter.cs)
 
 }  // extern "C"

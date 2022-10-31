@@ -29,7 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 namespace xla {
 namespace runtime {
@@ -37,7 +39,9 @@ namespace runtime {
 void RegisterDefaultXlaGpuRuntimeDialects(DialectRegistry& dialects) {
   // Register MLIR dialects supported by the compiled executables.
   dialects->insert<mlir::memref::MemRefDialect, mlir::scf::SCFDialect,
-                   mlir::func::FuncDialect, RuntimeDialect>();
+                   mlir::func::FuncDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
+                   mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
+                   RuntimeDialect>();
 
   // Register MLIR dialects that can be translated to LLVM IR.
   mlir::registerLLVMDialectTranslation(*dialects);
@@ -51,26 +55,31 @@ void RegisterTestlibDialect(DialectRegistry& dialects) {
   dialects->insert<TestlibDialect>();
 }
 
-void CreateDefaultXlaGpuRuntimeCompilationPipeline(
-    PassManager& passes, const CompilationPipelineOptions& opts) {
-  passes->addPass(mlir::createConvertSCFToCFPass());
+static void CreateDefaultXlaGpuRuntimeCompilationPipeline(
+    mlir::OpPassManager& pm, const CompilationPipelineOptions& opts) {
+  pm.addPass(mlir::createConvertSCFToCFPass());
 
   // Export functions to the XLA runtime.
-  passes->addPass(CreateExportRuntimeFunctionsPass());
-  passes->addPass(CreateConvertCustomCallsPass());
-  passes->addPass(CreateConvertAssertsPass());
+  pm.addPass(CreateExportRuntimeFunctionsPass());
+  pm.addPass(CreateConvertCustomCallsPass());
+  pm.addPass(CreateConvertAssertsPass());
 
   // Convert runtime operations and custom calls to LLVM dialect.
   ConvertRuntimeToLLvmOpts rt_to_llvm_opts = {
       opts.populate_type_id_names, opts.populate_type_conversions,
       opts.populate_arg_encodings, opts.populate_ret_encodings,
       opts.populate_attr_encodings};
-  passes->addPass(CreateConvertRuntimeToLLVMPass(std::move(rt_to_llvm_opts)));
+  pm.addPass(CreateConvertRuntimeToLLVMPass(std::move(rt_to_llvm_opts)));
 
   // Convert everythinG else to LLVM dialect.
-  passes->addPass(mlir::createMemRefToLLVMConversionPass());
-  passes->addPass(mlir::createConvertFuncToLLVMPass());
-  passes->addPass(mlir::createReconcileUnrealizedCastsPass());
+  pm.addPass(mlir::createMemRefToLLVMConversionPass());
+  pm.addPass(mlir::createConvertFuncToLLVMPass());
+  pm.addPass(mlir::createReconcileUnrealizedCastsPass());
+}
+
+void CreateDefaultXlaGpuRuntimeCompilationPipeline(
+    PassManager& passes, const CompilationPipelineOptions& opts) {
+  CreateDefaultXlaGpuRuntimeCompilationPipeline(*passes, opts);
 }
 
 void AppendXlaGpuDialectRegistry(mlir::MLIRContext& context) {
@@ -81,8 +90,7 @@ void AppendXlaGpuDialectRegistry(mlir::MLIRContext& context) {
 
 static void CreateDefaultGpuPipeline(mlir::OpPassManager& pm) {
   CompilationPipelineOptions copts;
-  PassManager passes(&pm);
-  CreateDefaultXlaGpuRuntimeCompilationPipeline(passes, copts);
+  CreateDefaultXlaGpuRuntimeCompilationPipeline(pm, copts);
 }
 
 static mlir::PassPipelineRegistration<> kXlaRuntimePipeline(

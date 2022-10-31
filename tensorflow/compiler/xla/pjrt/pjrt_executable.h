@@ -81,6 +81,9 @@ struct CompileOptions {
 
   // Serialize the CompileOptions into a CompileOptionsProto.
   StatusOr<CompileOptionsProto> ToProto() const;
+
+  // Deserialize the CompileOptionsProto into a CompileOptions.
+  static StatusOr<CompileOptions> FromProto(const CompileOptionsProto& proto);
 };
 
 // Static device memory usage for a compiled program.

@@ -38,43 +38,76 @@ struct XlaRewritePass : public impl::XlaRewritePassBase<XlaRewritePass> {
   void runOnOperation() override;
 };
 
+void MoveResourceArgsToEnd(mlir::func::FuncOp callee) {
+  llvm::DenseMap<mlir::BlockArgument, mlir::BlockArgument> mapping;
+  unsigned num_params = callee.getNumArguments();
+  llvm::BitVector removed_params(num_params);
+  // Copy the resource-type parameters to the end.
+  for (unsigned i = 0; i < num_params; ++i) {
+    BlockArgument param = callee.getArgument(i);
+    if (getElementTypeOrSelf(param.getType())
+            .template isa<TF::ResourceType>()) {
+      removed_params.set(i);
+      callee.getBody().addArgument(param.getType(), param.getLoc());
+      param.replaceAllUsesWith(callee.getArguments().back());
+      removed_params.push_back(false);
+    }
+  }
+  // Remove old reousrce-type parameters.
+  callee.getBody().front().eraseArguments(removed_params);
+  // Update function type.
+  callee.setFunctionType(FunctionType::get(callee.getContext(),
+                                           callee.getBody().getArgumentTypes(),
+                                           callee.getResultTypes()));
+}
+
 template <typename OpT,
           typename std::enable_if<llvm::is_one_of<
               OpT, TF::PartitionedCallOp,
               TF::StatefulPartitionedCallOp>::value>::type * = nullptr>
-void Rewrite(OpT pcall_op) {
-  OpBuilder builder(pcall_op->getContext());
-  builder.setInsertionPoint(pcall_op);
-
-  llvm::SmallVector<Value> args, resources;
-  for (auto arg : pcall_op.args()) {
-    if (getElementTypeOrSelf(arg.getType()).template isa<TF::ResourceType>()) {
-      resources.push_back(arg);
+void Rewrite(OpT pcall_op, SymbolTable &symtab) {
+  llvm::SmallVector<Value> non_resource_args, resource_args;
+  bool has_resources = false, in_order = true;
+  for (const mlir::Value &arg : pcall_op.args()) {
+    if (!getElementTypeOrSelf(arg.getType()).template isa<TF::ResourceType>()) {
+      non_resource_args.push_back(arg);
+      if (has_resources) in_order = false;
     } else {
-      args.push_back(arg);
+      resource_args.push_back(arg);
+      has_resources = true;
     }
   }
 
+  if (!in_order) {
+    // Functions do not get reused in practise, so skip the check for if the
+    // callee has been updated.
+    StringAttr callee_sym = cast<FlatSymbolRefAttr>(pcall_op.fAttr()).getAttr();
+    MoveResourceArgsToEnd(cast<mlir::func::FuncOp>(symtab.lookup(callee_sym)));
+  }
+  OpBuilder builder(pcall_op->getContext());
+  builder.setInsertionPoint(pcall_op);
   auto xla_launch_op = builder.create<TF::XlaLaunchOp>(
       pcall_op.getLoc(), pcall_op.getResultTypes(),
-      /*constants=*/ValueRange({}), ValueRange(args), ValueRange(resources),
-      pcall_op.fAttr());
+      /*constants=*/ValueRange({}), ValueRange(non_resource_args),
+      ValueRange(resource_args), pcall_op.fAttr());
+
   CopyDeviceAndUnderscoredAttributes(pcall_op, xla_launch_op);
   pcall_op.replaceAllUsesWith(xla_launch_op.getResults());
   pcall_op.erase();
 }
 
 void XlaRewritePass::runOnOperation() {
-  func::FuncOp func_op = getOperation();
+  mlir::ModuleOp module = getOperation();
+  SymbolTable symtab(module);
 
-  func_op.walk([&](mlir::Operation *op) {
+  module.walk([&](mlir::Operation *op) {
     if (!op->hasAttr(tensorflow::kCompileDeviceTypeAttr))
       return WalkResult::advance();
     if (auto pcall_op = dyn_cast<TF::PartitionedCallOp>(op)) {
-      Rewrite(pcall_op);
+      Rewrite(pcall_op, symtab);
     } else if (auto stateful_pcall_op =
                    dyn_cast<TF::StatefulPartitionedCallOp>(op)) {
-      Rewrite(stateful_pcall_op);
+      Rewrite(stateful_pcall_op, symtab);
     }
     return WalkResult::advance();
   });
@@ -82,7 +115,7 @@ void XlaRewritePass::runOnOperation() {
 }  // namespace
 
 namespace TFDevice {
-std::unique_ptr<OperationPass<func::FuncOp>> CreateXlaRewritePass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateXlaRewritePass() {
   return std::make_unique<XlaRewritePass>();
 }
 

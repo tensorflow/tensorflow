@@ -18,12 +18,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
-#include "tensorflow/compiler/xla/service/pattern_matcher.h"
-#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -38,11 +33,10 @@ bool ElementIsF32OrF16(const Shape& shape) {
 
 /*static*/ bool GpuInstructionFusion::IsExpensive(
     const HloInstruction& instruction) {
-  // We say that some floating-point math ops are cheap on the GPU. Unlike other
-  // intrinsics that can be expanded into many instructions, Div and Rsqrt are
-  // lowered into single hardware instructions.
+  // Some floating-point math ops are cheap on the GPU.
   switch (instruction.opcode()) {
     case HloOpcode::kDivide:
+    case HloOpcode::kSqrt:
     case HloOpcode::kRsqrt:
     case HloOpcode::kExp:
       if (ElementIsF32OrF16(instruction.shape())) {

@@ -288,32 +288,41 @@ def XlaInlineDeviceOpsPass : Pass<"tf-xla-inline-device-ops", "ModuleOp"> {
   let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
 }
 
-def XlaRewritePass : Pass<"tf-xla-rewrite", "mlir::func::FuncOp"> {
-  let summary = "Rewrites stateful parition calls into Xla launch ops to make the attached function run on XLA.";
+def XlaRewritePass : Pass<"tf-xla-rewrite", "mlir::ModuleOp"> {
+  let summary = "Rewrites partition calls into Xla launch ops to make the attached function run on XLA.";
 
   let description = [{
-    This pass rewrites `tf.StatefulPartitionedCall` operations with
-    `_xla_compile_device_type` attribute into `tf.XlaLaunch` operations. This
-    makes the attached function execute with XLA.
+    This pass rewrites `tf.PartitionedCall` and `tf.StatefulPartitionedCall`
+    operations with `_xla_compile_device_type` attribute into `tf.XlaLaunch`
+    operations. This makes the attached function execute with XLA.
+    `tf.XlaLaunch` requires resource-type arguments come at the end, so this
+    pass rewrites the called function if necessary.
 
-    For example, the `tf.StatefulPartitionedCall` operation in the following
-    code
+    For example, the `tf.PartitionedCall` operation in the following code
 
     ```mlir
-    func.func @convert_stateful_partitioned_call(%arg0: tensor<i32>) -> tensor<i32> {
-      %0 = "tf.StatefulPartitionedCall"(%arg0) {_xla_compile_device_type = "CPU", config = "", config_proto = "", device = "/device:CPU:0", executor_type = "", f = @stateful_pcall_func} : (tensor<i32>) -> (tensor<i32>)
+    func.func @convert_partitioned_call_with_resources(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> tensor<i32> {
+      %0 = "tf.PartitionedCall"(%arg0, %arg1) {_xla_compile_device_type = "CPU", config = "", config_proto = "", device = "/device:CPU:0", executor_type = "", f = @pcall_func_with_resources} : (tensor<!tf_type.resource>, tensor<i32>) -> (tensor<i32>)
       func.return %0 : tensor<i32>
+    }
+
+    func.func @pcall_func_with_resources(%arg0 : tensor<!tf_type.resource>, %arg1: tensor<i32>) -> tensor<i32> {
+      func.return %arg1 : tensor<i32>
     }
     ```
 
-    wll be replaced by a `tf.XlaLaunch` operation.
+    will be replaced by a `tf.XlaLaunch` operation.
 
     ```mlir
-    func.func @convert_stateful_partitioned_call(%arg0: tensor<i32>) -> tensor<i32> {
-      %0 = "tf.XlaLaunch"(%arg0) {_xla_compile_device_type = "CPU", config = "", config_proto = "", device = "/device:CPU:0", executor_type = "", function = @stateful_pcall_func, operand_segment_sizes = array<i32: 0, 1, 0>} : (tensor<i32>) -> tensor<i32>
-      func.return %0 : tensor<i32>
+    func.func @convert_partitioned_call_with_resources(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> tensor<i32> {
+      %0 = "tf.XlaLaunch"(%arg1, %arg0) {_xla_compile_device_type = "CPU", device = "/device:CPU:0", function = @pcall_func_with_resources_0, operand_segment_sizes = array<i32: 0, 1, 1>} : (tensor<i32>, tensor<!tf_type.resource>) -> tensor<i32>
+      return %0 : tensor<i32>
+    }
+    func.func @pcall_func_with_resources_0(%arg0: tensor<i32>, %arg1: tensor<!tf_type.resource>) -> tensor<i32> {
+      return %arg0 : tensor<i32>
     }
     ```
+    Notice that the called function is rewritten, with the order of its parameters changed.
   }];
 
   let constructor = "TFDevice::CreateXlaRewritePass()";

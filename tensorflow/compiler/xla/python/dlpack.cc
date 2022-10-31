@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "include/dlpack/dlpack.h"  // from @dlpack
 #include "pybind11/pytypes.h"
+#include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
@@ -226,9 +227,16 @@ StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
   if (device.client()->platform_id() == CpuId()) {
     return kDLCPU;
   } else if (device.client()->platform_id() == GpuId()) {
+<<<<<<< HEAD
     const StreamExecutorGpuDevice& gdevice = dynamic_cast<const StreamExecutorGpuDevice&>(device);
 
     if(absl::StrContains(gdevice.device_vendor(),"Advanced Micro Devices")){
+=======
+    const StreamExecutorGpuDevice& gdevice =
+        dynamic_cast<const StreamExecutorGpuDevice&>(device);
+
+    if (absl::StrContains(gdevice.device_vendor(), "Advanced Micro Devices")) {
+>>>>>>> google_upstream/master
       return kDLROCM;
     } else {
       return kDLCUDA;
@@ -397,8 +405,8 @@ StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
     minor_to_major.resize(dlmt->dl_tensor.ndim);
     std::iota(minor_to_major.rbegin(), minor_to_major.rend(), 0);
   }
-  Shape shape =
-      ShapeUtil::MakeShapeWithLayout(element_type, dimensions, minor_to_major);
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(element_type, dimensions,
+                                                    minor_to_major);
 
   std::function<void()> on_delete_callback;
   if (dlmt->deleter) {

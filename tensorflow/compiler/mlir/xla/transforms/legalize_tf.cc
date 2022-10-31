@@ -2942,16 +2942,16 @@ class ConvertSelectOp : public OpRewritePattern<TF::SelectOp> {
                                 PatternRewriter &rewriter) const override {
     // This lowering only works on ranked types.
     auto cond_type = op.condition().getType().dyn_cast<RankedTensorType>();
-    auto then_type = op.t().getType().dyn_cast<RankedTensorType>();
-    auto else_type = op.e().getType().dyn_cast<RankedTensorType>();
+    auto then_type = op.then_value().getType().dyn_cast<RankedTensorType>();
+    auto else_type = op.else_value().getType().dyn_cast<RankedTensorType>();
     if (!cond_type || !then_type || !else_type) {
       return failure();
     }
 
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     Value cond_shape = b.createOrFold<shape::ShapeOfOp>(op.condition());
-    Value then_shape = b.createOrFold<shape::ShapeOfOp>(op.t());
-    Value else_shape = b.createOrFold<shape::ShapeOfOp>(op.e());
+    Value then_shape = b.createOrFold<shape::ShapeOfOp>(op.then_value());
+    Value else_shape = b.createOrFold<shape::ShapeOfOp>(op.else_value());
 
     // First check that the `then` and `else` shapes are the equal.
     Value assumption =
@@ -2997,7 +2997,8 @@ class ConvertSelectOp : public OpRewritePattern<TF::SelectOp> {
           cond, result_extents,
           GetI64ElementsAttrForSeq(0, cond_type.getRank(), &b));
     }
-    Value select = b.create<mhlo::SelectOp>(result_type, cond, op.t(), op.e());
+    Value select = b.create<mhlo::SelectOp>(result_type, cond, op.then_value(),
+                                            op.else_value());
     b.create<shape::AssumingYieldOp>(select);
     rewriter.replaceOp(op, {assuming_op.getResult(0)});
     return success();
@@ -6199,7 +6200,7 @@ class ConvertClipByValueOp : public OpRewritePattern<TF::ClipByValueOp> {
 
   LogicalResult matchAndRewrite(TF::ClipByValueOp op,
                                 PatternRewriter &rewriter) const override {
-    Value input = op.t();
+    Value input = op.x();
     Value min = op.clip_value_min();
     Value max = op.clip_value_max();
 

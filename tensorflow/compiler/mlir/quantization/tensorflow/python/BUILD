@@ -1,10 +1,8 @@
 load("//tensorflow:pytype.default.bzl", "pytype_library", "pytype_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud", "tf_py_test", "tf_python_pybind_extension")
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
 package(
     default_visibility = [
-        "//tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
         "//tensorflow/python:__subpackages__",
     ],
@@ -37,9 +35,11 @@ cc_library(
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/quantization/tensorflow:constants",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op_and_kernels",
+        # Required for CustomAggregator op registration.
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
@@ -54,15 +54,7 @@ cc_library(
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/tsl/platform:path",
-    ] + if_static(
-        extra_deps = [
-            "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        ],
-        otherwise = [
-            "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc_headers_only",
-        ],
-    ),
-    alwayslink = True,
+    ],
 )
 
 cc_library(
@@ -85,7 +77,6 @@ cc_library(
     deps = [
         ":quantize_model_lib",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op_and_kernels",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
         "@com_google_absl//absl/status:statusor",
@@ -93,7 +84,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@pybind11",
     ],
-    alwayslink = True,
 )
 
 tf_python_pybind_extension(
@@ -105,18 +95,11 @@ tf_python_pybind_extension(
         "quantize_model_wrapper.h",
     ],
     deps = [
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
         "@pybind11",
-        "//third_party/python_runtime:headers",
-        "//tensorflow/python/lib/core:pybind11_lib",
-    ] + if_static(
-        extra_deps = [
-            "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        ],
-        otherwise = [
-            "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc_headers_only",
-        ],
-    ),
+    ],
 )
 
 pytype_strict_library(

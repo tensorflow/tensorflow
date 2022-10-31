@@ -345,13 +345,23 @@ class ShapeUtil {
                                 dimensions);
   }
 
-  // Constructs a new shape with the given minor_to_major order in its Layout.
-  // Returns a value shape such that shape.has_layout().
-  static Shape MakeShapeWithLayout(
+  // Constructs a new dense array shape with the given minor_to_major order in
+  // its Layout. Returns a value shape such that shape.has_layout().
+  static Shape MakeShapeWithDenseLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dimensions,
       absl::Span<const int64_t> minor_to_major,
-      absl::Span<const DimLevelType> dim_level_types = {},
-      absl::Span<const Tile> tiles = {}, int64_t memory_space = 0,
+      absl::Span<const Tile> tiles = {}, int64_t memory_space = 0);
+
+  // Constructs a new sparse array shape with the given minor_to_major order and
+  // dim_level_types in its Layout. Returns a value shape such that
+  // shape.has_layout().
+  static Shape MakeShapeWithSparseLayout(
+      PrimitiveType element_type, absl::Span<const int64_t> dimensions,
+      absl::Span<const int64_t> minor_to_major,
+      absl::Span<const DimLevelType> dim_level_types,
+      PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
+      PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID,
+      int64_t memory_space = 0,
       std::optional<Shape> physical_shape = std::nullopt);
 
   // Constructs a new shape with the given dimension `dim` as the most major
@@ -567,14 +577,28 @@ class ShapeUtil {
   // Precondition: Both input_shape and output_shape have explicit layouts.
   static bool TransposeIsBitcast(const Shape& input_shape,
                                  const Shape& output_shape,
-                                 absl::Span<const int64_t> dimension_mapping);
+                                 absl::Span<const int64_t> dimension_mapping,
+                                 bool ignore_element_type = false);
 
   // Returns whether a reshape from `input_shape` to `output_shape` is a
   // bitcast, when minor_to_major in layout is considered.
   //
   // Precondition: Both input_shape and output_shape have explicit layouts.
   static bool ReshapeIsBitcast(const Shape& input_shape,
-                               const Shape& output_shape);
+                               const Shape& output_shape,
+                               bool ignore_element_type = false);
+
+  // Returns whether there is a bitcasting reshape or transpose from `a` to `b`.
+  //
+  // Precondition: Both input_shape and output_shape have explicit layouts.
+  static bool IsReshapeOrTransposeBitcast(const Shape& a, const Shape& b,
+                                          bool ignore_element_type = false);
+
+  // If the given bitcast is a transpose, deduce and return `dimensions`
+  // attribute of such a transpose. Otherwise, return nullptr.
+  static std::optional<std::vector<int64_t>>
+  DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
+                                      const Shape& output_shape);
 
   // Find a physical layout for 'output_shape' such that
   // ShapeUtil::ReshapeIsBitcast(input_shape, output_shape_with_layout) returns

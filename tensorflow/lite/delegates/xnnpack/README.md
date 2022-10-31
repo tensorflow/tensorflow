@@ -404,6 +404,11 @@ Below is the list of currently supported floating-point operators:
 * Inputs and outputs must be in 32-bit floating-point format.
 * Only `beta = 1.0` is supported.
 
+#### `SPACE_TO_DEPTH`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Block size must be greater than 1.
+
 #### `SPLIT`
 
 * Inputs and outputs must be in 32-bit floating-point format.
@@ -635,6 +640,10 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
+#### `SPACE_TO_DEPTH`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
 #### `SPLIT`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
@@ -805,6 +814,11 @@ Below is the list of currently supported quantized operators:
 * The first input and the output must be in 8-bit quantized format.
 * The second and third inputs (the inputs with the slices' begin and size
   specification) must be static (use `kTfLiteMmapRo` allocation type).
+
+#### `SPACE_TO_DEPTH`
+
+* Inputs and outputs must be in 8-bit quantized format.
+* Block size must be greater than 1.
 
 #### `SPLIT`
 

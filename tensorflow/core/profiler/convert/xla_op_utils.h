@@ -20,20 +20,13 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/tsl/profiler/convert/xla_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 
-// Return if a category is fusion.
-inline bool IsFusion(absl::string_view category) {
-  return absl::EndsWith(category, " fusion");
-}
-
-// Return a concatenation of the program name with program id.
-inline std::string HloModuleNameWithProgramId(absl::string_view hlo_module_name,
-                                              uint64_t program_id) {
-  return absl::StrCat(hlo_module_name, "(", program_id, ")");
-}
+using tsl::profiler::HloModuleNameWithProgramId;  // NOLINT
+using tsl::profiler::IsFusion;                    // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -63,11 +63,11 @@ bool IsTransposeGenericOp(Operation *op) {
   if (!yield_op || (yield_op.getNumOperands() != 1)) return false;
 
   // Check input and output.
-  if ((generic_op.getNumInputs() != 1) || (generic_op.getNumOutputs() != 1))
+  if ((generic_op.getNumDpsInputs() != 1) || (generic_op.getNumDpsInits() != 1))
     return false;
 
   // Check that input is yielded.
-  if (generic_op.getMatchingBlockArgument(generic_op.getInputOperand(0)) !=
+  if (generic_op.getMatchingBlockArgument(generic_op.getDpsInputOperand(0)) !=
       yield_op.getOperand(0))
     return false;
 

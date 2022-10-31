@@ -20,6 +20,8 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
@@ -1931,7 +1933,8 @@ LogicalResult ExportXlaOp(OptimizationBarrierOp op, OpLoweringContext ctx) {
 
   auto& value_map = *ctx.values;
   if (operands.size() == 1) {
-    value_map[op.getResult(0)] = xla::OptimizationBarrier(operands[0]);
+    value_map[op.getOperation()->getResult(0)] =
+        xla::OptimizationBarrier(operands[0]);
   } else {
     auto result = xla::OptimizationBarrier(Tuple(ctx.builder, operands));
 

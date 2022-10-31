@@ -39,16 +39,6 @@ namespace stream_executor {
 
 port::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
     gpu::GpuContext* context, std::vector<CubinOrPTXImage> images) {
-  if (CUDA_VERSION >= 11030) {
-    int driver_cuda_version;
-    // Get the highest version of CUDA supported by this driver.
-    RETURN_IF_CUDA_ERROR(cuDriverGetVersion(&driver_cuda_version));
-    if (driver_cuda_version < CUDA_VERSION) {
-      return tsl::errors::Unimplemented(
-          "CUDA version unsupported by NVIDIA driver version.");
-    }
-  }
-
   gpu::ScopedActivateContext activation(context);
 
   CUlinkState link_state;

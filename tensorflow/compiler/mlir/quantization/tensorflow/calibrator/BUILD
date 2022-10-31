@@ -1,15 +1,12 @@
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud", "tf_custom_op_py_library", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud", "tf_kernel_library", "tf_py_test")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
-    "tf_custom_op_library",
     "tf_gen_op_wrapper_py",
-    "tf_kernel_library",
 )
 
 package(
     default_visibility = [
-        "//tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
     ],
     licenses = ["notice"],
@@ -40,20 +37,13 @@ tf_cc_test(
 )
 
 tf_kernel_library(
-    name = "custom_aggregator_op_and_kernels",
+    name = "custom_aggregator_op",
     srcs = ["custom_aggregator_op.cc"],
     compatible_with = get_compatible_with_cloud(),
+    visibility = ["//tensorflow/compiler/mlir/quantization/tensorflow/python:__pkg__"],
     deps = [
         ":calibrator_singleton",
         "//tensorflow/core:framework",
-    ],
-)
-
-tf_custom_op_library(
-    name = "_custom_aggregator_op.so",
-    srcs = ["custom_aggregator_op.cc"],
-    deps = [
-        ":calibrator_singleton",
     ],
 )
 
@@ -62,21 +52,8 @@ tf_gen_op_wrapper_py(
     out = "custom_aggregator_op_wrapper.py",
     # Prevent unintentionally generating Python wrappers for all TF ops.
     op_allowlist = ["CustomAggregator"],
-    deps = [":custom_aggregator_op_and_kernels"],
-)
-
-tf_custom_op_py_library(
-    name = "custom_aggregator_op",
-    srcs = ["custom_aggregator_op.py"],
-    dso = [":_custom_aggregator_op.so"],
-    kernels = [":custom_aggregator_op_and_kernels"],
-    srcs_version = "PY3",
-    deps = [
-        ":gen_custom_aggregator_op_wrapper",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/platform",
-    ],
+    visibility = ["//visibility:private"],
+    deps = [":custom_aggregator_op"],
 )
 
 tf_py_test(

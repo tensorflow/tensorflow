@@ -41,8 +41,8 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
-#include "tensorflow/core/protobuf/coordination_service.pb.h"
+#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
+#include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 
@@ -74,6 +74,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
                     std::unique_ptr<CoordinationClient> leader_client,
                     StatusCallback error_fn) override;
   bool IsInitialized() override;
+  bool IsConnected() override;
+  bool IsError() override;
 
   Status Connect() override;
   Status WaitForAllTasks(const DeviceInfo& local_devices) override;
@@ -198,6 +200,16 @@ Status CoordinationServiceAgentImpl::Initialize(
 bool CoordinationServiceAgentImpl::IsInitialized() {
   mutex_lock l(state_mu_);
   return state_ != CoordinatedTaskState::TASKSTATE_UNINITIALIZED;
+}
+
+bool CoordinationServiceAgentImpl::IsConnected() {
+  mutex_lock l(state_mu_);
+  return state_ == CoordinatedTaskState::TASKSTATE_CONNECTED;
+}
+
+bool CoordinationServiceAgentImpl::IsError() {
+  mutex_lock l(state_mu_);
+  return state_ == CoordinatedTaskState::TASKSTATE_ERROR;
 }
 
 void CoordinationServiceAgentImpl::StopHeartbeat() {
@@ -338,6 +350,7 @@ Status CoordinationServiceAgentImpl::WaitForAllTasks(
   WaitForAllTasksRequest request;
   *request.mutable_source_task() = task_;
   *request.mutable_device_info() = local_devices;
+  VLOG(3) << "WaitForAllTasksRequest: " << request.DebugString();
   WaitForAllTasksResponse response;
   Status status;
   absl::Notification n;
@@ -350,7 +363,8 @@ Status CoordinationServiceAgentImpl::WaitForAllTasks(
     SetError(status);
     return status;
   }
-  cluster_devices_.MergeFrom(response.device_info());
+  VLOG(3) << "WaitForAllTasksResponse: " << response.DebugString();
+  cluster_devices_ = response.device_info();
   return OkStatus();
 }
 

@@ -2923,7 +2923,7 @@ void ModelTiming::ComputeAsyncInterleaveManyTotalTime(const Node& node) {
     ++num_active_inputs;
   }
   auto parallelism_param = node.ParameterValue(kParallelism);
-  double parallelism = num_active_inputs;
+  double parallelism = 1.0;
   if (parallelism_param.ok()) {
     parallelism = parallelism_param.value();
   }

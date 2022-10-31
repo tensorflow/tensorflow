@@ -1894,9 +1894,9 @@ LogicalResult ConvertTFSelectV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_sel_op = cast<TF::SelectV2Op>(op);
 
-  llvm::Optional<Value> result =
-      convertSelectOp(rewriter, op, tf_sel_op.getResult(),
-                      tf_sel_op.condition(), tf_sel_op.t(), tf_sel_op.e());
+  llvm::Optional<Value> result = convertSelectOp(
+      rewriter, op, tf_sel_op.getResult(), tf_sel_op.condition(),
+      tf_sel_op.then_value(), tf_sel_op.else_value());
 
   if (!result) return failure();
 

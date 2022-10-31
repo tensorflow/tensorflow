@@ -600,9 +600,45 @@ TEST_F(InstructionFusionTest, GpuIsExpensiveF32) {
       HloInstruction::CreateBinary(r0f32, HloOpcode::kDivide, param0, one));
   HloInstruction* rem = builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32, HloOpcode::kRemainder, param0, one));
+  HloInstruction* sqrt = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32, HloOpcode::kSqrt, param0));
+  HloInstruction* rsqrt = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32, HloOpcode::kRsqrt, param0));
+  HloInstruction* exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32, HloOpcode::kExp, param0));
 
   EXPECT_FALSE(GpuInstructionFusion::IsExpensive(*div));
   EXPECT_TRUE(GpuInstructionFusion::IsExpensive(*rem));
+  EXPECT_FALSE(GpuInstructionFusion::IsExpensive(*sqrt));
+  EXPECT_FALSE(GpuInstructionFusion::IsExpensive(*rsqrt));
+  EXPECT_FALSE(GpuInstructionFusion::IsExpensive(*exp));
+}
+
+TEST_F(InstructionFusionTest, GpuIsExpensiveF64) {
+  auto m = CreateNewVerifiedModule();
+  Shape r0f64 = ShapeUtil::MakeShape(F64, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f64, "param0"));
+
+  HloInstruction* one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+  HloInstruction* div = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f64, HloOpcode::kDivide, param0, one));
+  HloInstruction* rem = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f64, HloOpcode::kRemainder, param0, one));
+  HloInstruction* sqrt = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f64, HloOpcode::kSqrt, param0));
+  HloInstruction* rsqrt = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f64, HloOpcode::kRsqrt, param0));
+  HloInstruction* exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f64, HloOpcode::kExp, param0));
+
+  EXPECT_TRUE(GpuInstructionFusion::IsExpensive(*div));
+  EXPECT_TRUE(GpuInstructionFusion::IsExpensive(*rem));
+  EXPECT_TRUE(GpuInstructionFusion::IsExpensive(*sqrt));
+  EXPECT_TRUE(GpuInstructionFusion::IsExpensive(*rsqrt));
+  EXPECT_TRUE(GpuInstructionFusion::IsExpensive(*exp));
 }
 
 TEST_F(InstructionFusionTest, GpuIsExpensiveS32) {

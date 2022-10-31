@@ -147,9 +147,9 @@ StatusOr<uint64_t> HashComputation(const XlaComputation& computation) {
                       GetHloModule(computation));
   return absl::HashOf(*hlo_module);
 }
-// Safe version of ShapeUtil::MakeShapeWithLayout that fails gracefully on
+// Safe version of ShapeUtil::MakeShapeWithDenseLayout that fails gracefully on
 // invalid input.
-StatusOr<Shape> MakeShapeWithLayout(
+StatusOr<Shape> MakeShapeWithDenseLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims,
     std::optional<absl::Span<const int64_t>> minor_to_major,
     std::optional<const std::vector<bool>> dynamic_dimensions) {
@@ -252,11 +252,11 @@ void BuildXlaCompilerSubmodule(py::module& m) {
             if (layout_seq) {
               std::vector<int64_t> layout =
                   SequenceToVector<int64_t>(*layout_seq);
-              return MakeShapeWithLayout(type, dims, layout,
-                                         dynamic_dimensions);
+              return MakeShapeWithDenseLayout(type, dims, layout,
+                                              dynamic_dimensions);
             } else {
-              return MakeShapeWithLayout(type, dims, std::nullopt,
-                                         dynamic_dimensions);
+              return MakeShapeWithDenseLayout(type, dims, std::nullopt,
+                                              dynamic_dimensions);
             }
           },
           "Constructs an array shape.", py::arg("type"), py::arg("dims"),
@@ -273,11 +273,11 @@ void BuildXlaCompilerSubmodule(py::module& m) {
             if (layout_seq) {
               std::vector<int64_t> layout =
                   SequenceToVector<int64_t>(*layout_seq);
-              return MakeShapeWithLayout(type, dims, layout,
-                                         dynamic_dimensions);
+              return MakeShapeWithDenseLayout(type, dims, layout,
+                                              dynamic_dimensions);
             } else {
-              return MakeShapeWithLayout(type, dims, std::nullopt,
-                                         dynamic_dimensions);
+              return MakeShapeWithDenseLayout(type, dims, std::nullopt,
+                                              dynamic_dimensions);
             }
           },
           "Constructs an array shape.", py::arg("type"), py::arg("dims"),

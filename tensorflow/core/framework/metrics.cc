@@ -65,6 +65,12 @@ auto* graph_unused_outputs = tsl::monitoring::Counter<1>::New(
     "/tensorflow/core/graph_unused_outputs",
     "The number of unused outputs for ops of a given type.", "name");
 
+auto* tf_data_fetch_op_counter = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/fetch_op",
+    "The number of times a tf.data operation that fetches output(s) of a "
+    "tf.data input pipeline (e.g. `IteratorGetNext`) was executed.",
+    "name");
+
 auto* tf_data_autotune_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/autotune", "tf.data autotuning", "name");
 
@@ -275,6 +281,10 @@ tsl::monitoring::Counter<2>* GetGraphOptimizationCounter() {
       "optimization pass in microseconds.",
       "kind", "name");
   return graph_optimization_counter;
+}
+
+void RecordTFDataFetchOp(const string& name) {
+  tf_data_fetch_op_counter->GetCell(name)->IncrementBy(1);
 }
 
 void RecordTFDataAutotune(const string& name) {

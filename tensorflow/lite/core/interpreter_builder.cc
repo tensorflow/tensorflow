@@ -847,4 +847,12 @@ void InterpreterBuilder::AddDelegate(TfLiteDelegate* delegate) {
   }
 }
 
+void InterpreterBuilder::AddDelegate(
+    TfLiteOpaqueDelegateStruct* opaque_delegate) {
+  // The following cast is safe only because this code is part of the TF Lite
+  // runtime code.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
+  AddDelegate(reinterpret_cast<TfLiteDelegate*>(opaque_delegate));
+}
+
 }  // namespace tflite

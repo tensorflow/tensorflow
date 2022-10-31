@@ -46,8 +46,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   GpuHloCostAnalysis analysis({ShapeSize});
-  ASSERT_IS_OK(
-      module->entry_computation()->root_instruction()->Accept(&analysis));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis));
 
   HloComputation* comp = module->entry_computation();
   const HloInstruction* conv1 = comp->GetInstructionWithName("conv1");
@@ -76,14 +75,14 @@ ENTRY entry {
   ROOT _ = f32[3,4] reduce-window(p0, c0), window={size=4x5 stride=2x1}, to_apply=add
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  HloInstruction* root = hlo_module->entry_computation()->root_instruction();
+  HloInstruction* root = module->entry_computation()->root_instruction();
   int n_output_elements = 3 * 4;
 
   GpuHloCostAnalysis analysis({ShapeSize});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis));
 
   // Each of the output elements are generated from reducing [4x5] elements.
   EXPECT_EQ(analysis.flop_count(), n_output_elements * (4 * 5 - 1));
@@ -124,7 +123,7 @@ ENTRY e {
   HloInstruction* root = module->entry_computation()->root_instruction();
 
   GpuHloCostAnalysis analysis({ShapeSize});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis));
 
   EXPECT_EQ(analysis.output_bytes_accessed(*root), 10000);
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 10000);
@@ -153,7 +152,7 @@ ENTRY e {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   GpuHloCostAnalysis analysis({ShapeSize});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis));
 
   auto n_elements = 1024 * 1024;
   EXPECT_EQ(analysis.output_bytes_accessed(*root), n_elements * 4);
@@ -182,12 +181,43 @@ ENTRY e {
                           ParseAndReturnVerifiedModule(hlo_string));
   const HloInstruction* root = module->entry_computation()->root_instruction();
   GpuHloCostAnalysis analysis({ShapeSize});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis));
 
   EXPECT_EQ(analysis.output_bytes_accessed(*root), 1);
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 1);
   EXPECT_EQ(analysis.bytes_accessed(*root), 2);
   EXPECT_EQ(analysis.bytes_accessed(), 2);
+}
+
+TEST_F(GpuHloCostAnalysisTest, TwoSlices) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f {
+  p1 = s8[100] parameter(0)
+  i1 = s8[100] iota(), iota_dimension=0
+  a1 = s8[100] add(p1, i1)
+  s1 = s8[1] slice(a1), slice={[0:1]}
+  s2 = s8[1] slice(a1), slice={[3:4]}
+  ROOT r = s8[1] add(s1, s2)
+}
+
+ENTRY e {
+  p0 = s8[100] parameter(0)
+  ROOT r0 = s8[1] fusion(p0), kind=kInput, calls=f
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  GpuHloCostAnalysis analysis({ShapeSize});
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis));
+
+  EXPECT_EQ(analysis.output_bytes_accessed(*root), 1);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 2);
+  EXPECT_EQ(analysis.bytes_accessed(*root), 3);
+  EXPECT_EQ(analysis.bytes_accessed(), 3);
 }
 
 TEST_F(GpuHloCostAnalysisTest, MultipleTrivialUsers) {
@@ -210,7 +240,7 @@ ENTRY e {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   GpuHloCostAnalysis analysis({ShapeSize});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis));
 
   // Expect that uses of p0 by different trivial users (m0, n0) can be
   // combined into a single memory access.
@@ -243,7 +273,7 @@ ENTRY e {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   GpuHloCostAnalysis analysis({ShapeSize});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis));
 
   // Expect that uses of p0 by different trivial users (m0, a0) can be
   // combined into a single memory access, but slices have to be counted
@@ -286,7 +316,7 @@ ENTRY e {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   GpuHloCostAnalysis analysis({ShapeSize});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis));
 
   EXPECT_EQ(analysis.output_bytes_accessed(*root), 2);
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 10);
@@ -314,7 +344,7 @@ ENTRY e {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   GpuHloCostAnalysis analysis({ShapeSize});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis));
 
   EXPECT_EQ(analysis.output_bytes_accessed(*root), 1000);
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 1000);
@@ -344,10 +374,10 @@ TEST_F(GpuHloCostAnalysisTest, DynUpdateSliceUsingOperandData) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_fusion_module_str));
   GpuHloCostAnalysis fusion_analysis({ShapeSize});
+  ASSERT_IS_OK(module->entry_computation()->Accept(&fusion_analysis));
 
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ASSERT_EQ(fusion->opcode(), HloOpcode::kFusion);
-  ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
 
   // Input size minus update size.
   EXPECT_EQ(fusion_analysis.operand_bytes_accessed(*fusion, 0), 3 - 1);
@@ -374,10 +404,10 @@ TEST_F(GpuHloCostAnalysisTest, DynUpdateSliceNotUsingOperandData) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_fusion_module_str));
   GpuHloCostAnalysis fusion_analysis({ShapeSize});
+  ASSERT_IS_OK(module->entry_computation()->Accept(&fusion_analysis));
 
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ASSERT_EQ(fusion->opcode(), HloOpcode::kFusion);
-  ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
 
   EXPECT_EQ(fusion_analysis.operand_bytes_accessed(*fusion, 0), 0);
   EXPECT_EQ(fusion_analysis.output_bytes_accessed(*fusion), 1);

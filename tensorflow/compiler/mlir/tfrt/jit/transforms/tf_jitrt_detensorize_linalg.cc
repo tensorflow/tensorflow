@@ -63,7 +63,7 @@ struct DetensorizeLinalgOp : public OpConversionPattern<GenericOp> {
 
     mlir::SmallVector<Value, 3> inputs;
     bool found_zero_dim_tensor = false;
-    for (auto& en : llvm::enumerate(op.getInputOperands())) {
+    for (auto& en : llvm::enumerate(op.getDpsInputOperands())) {
       auto tensor_type =
           en.value()->get().getType().dyn_cast<RankedTensorType>();
       if (IsNotZeroRankTensor(tensor_type)) {

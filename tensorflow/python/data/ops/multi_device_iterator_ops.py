@@ -18,6 +18,7 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
@@ -45,14 +46,14 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
             multi_device_iterator_resource))
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
-    @function.defun(autograph=False)  # Pure graph code.
+    @def_function.function(autograph=False)  # Pure graph code.
     def _init_func():
       return multi_device_iterator_string_handle
 
     init_func_concrete = _init_func.get_concrete_function()
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
-    @function.defun(autograph=False)  # Pure graph code.
+    @def_function.function(autograph=False)  # Pure graph code.
     def _remote_init_func():
       return functional_ops.remote_call(
           target=source_device,
@@ -64,7 +65,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     self._init_captured_args = self._init_func.captured_inputs
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
-    @function.defun(
+    @def_function.function(
         input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
         autograph=False)  # Pure graph code.
     def _next_func(string_handle):
@@ -121,7 +122,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
         self._incarnation_id_index = i
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
-    @function.defun(
+    @def_function.function(
         input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
         autograph=False)  # Pure graph code.
     def _finalize_func(unused_string_handle):
@@ -130,7 +131,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     finalize_func_concrete = _finalize_func.get_concrete_function()
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
-    @function.defun(
+    @def_function.function(
         input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
         autograph=False)  # Pure graph code.
     def _remote_finalize_func(string_handle):

@@ -65,8 +65,8 @@ void RunOnWhile(TF::WhileOp while_op) {
       op->getLoc(), op->getResultTypes(), op->getOperands(),
       while_op.is_stateless());
   Location loc = while_op->getLoc();
-  CreateRegionWithCall(while_op.cond_function(), new_op.cond(), loc);
-  CreateRegionWithCall(while_op.body_function(), new_op.body(), loc);
+  CreateRegionWithCall(while_op.cond_function(), new_op.getCond(), loc);
+  CreateRegionWithCall(while_op.body_function(), new_op.getBody(), loc);
 
   op->replaceAllUsesWith(new_op.getResults());
   op->erase();

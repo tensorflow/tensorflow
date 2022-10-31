@@ -19,6 +19,7 @@ func.func @conv_forward(%input: memref<1x4x4x1024xf16, #map1>,
   // CHECK: call @xla.gpu.conv.forward(
   // CHECK-SAME: %[[INPUT]], %[[FILTER]], %[[OUTPUT]], %[[SCRATCH]])
 
+  // CHECK-DAG: uid = 0 : i64
   // CHECK-DAG: conv_dims = #mhlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>
 
   // CHECK-DAG: window_strides = dense<1> : tensor<2xi64>
@@ -70,8 +71,8 @@ func.func @conv_forward(%input: memref<1x4x4x1024xf16, #map1>,
 }
 
 // CHECK: func private @xla.gpu.conv.forward(
-// CHECK-SAME:   memref<1x4x4x1024xf16, #map0>, memref<3x3x1x1024xf16, #map1>,
-// CHECK-SAME:   memref<1x2x2x1024xf16, #map2>, memref<0xui8>)
+// CHECK-SAME:   memref<1x4x4x1024xf16, #map{{[0-9]*}}>, memref<3x3x1x1024xf16, #map{{[0-9]*}}>,
+// CHECK-SAME:   memref<1x2x2x1024xf16, #map{{[0-9]*}}>, memref<0xui8>)
 // CHECK-SAME: attributes {rt.custom_call = "xla.gpu.conv.forward"}
 
 // -----
@@ -122,8 +123,8 @@ func.func @conv_backwardfilter(%input: memref<1x3x3x5xf16, #map0>,
 }
 
 // CHECK: func private @xla.gpu.conv.backward.filter(
-// CHECK-SAME:   memref<1x3x3x5xf16, #map0>, memref<3x3x5x3xf16, #map1>,
-// CHECK-SAME:   memref<1x1x1x3xf16, #map2>, memref<0xui8>
+// CHECK-SAME:   memref<1x3x3x5xf16, #map{{[0-9]*}}>, memref<3x3x5x3xf16, #map{{[0-9]*}}>,
+// CHECK-SAME:   memref<1x1x1x3xf16, #map{{[0-9]*}}>, memref<0xui8>
 // CHECK-SAME: ) attributes {rt.custom_call =
 // CHECK-SAME:              "xla.gpu.conv.backward.filter"}
 
@@ -233,8 +234,8 @@ func.func @conv_forward_fused(%input: memref<8x5x5x1xf32, #map1>,
 }
 
 // CHECK: func private @xla.gpu.conv.forward.fused(
-// CHECK-SAME:   memref<8x5x5x1xf32, #map0>, memref<3x3x1x32xf32, #map1>,
-// CHECK-SAME:   memref<32xf32>, memref<8x5x5x32xf32, #map2>, memref<0xui8>
+// CHECK-SAME:   memref<8x5x5x1xf32, #map{{[0-9]*}}>, memref<3x3x1x32xf32, #map{{[0-9]*}}>,
+// CHECK-SAME:   memref<32xf32>, memref<8x5x5x32xf32, #map{{[0-9]*}}>, memref<0xui8>
 // CHECK-SAME: ) attributes {rt.custom_call =
 // CHECK-SAME:               "xla.gpu.conv.forward.fused"}
 
@@ -301,8 +302,8 @@ func.func @conv_forward_fused_with_side_input(
 }
 
 // CHECK: func private @xla.gpu.conv.forward.fused.side_input(
-// CHECK-SAME:   memref<1x3x3x64xf64, #map0>, memref<3x3x64x64xf64, #map1>,
-// CHECK-SAME:   memref<64xf64>, memref<1x3x3x64xf64, #map0>,
-// CHECK-SAME:   memref<1x3x3x64xf64, #map0>, memref<0xui8>
+// CHECK-SAME:   memref<1x3x3x64xf64, #map{{[0-9]*}}>, memref<3x3x64x64xf64, #map{{[0-9]*}}>,
+// CHECK-SAME:   memref<64xf64>, memref<1x3x3x64xf64, #map{{[0-9]*}}>,
+// CHECK-SAME:   memref<1x3x3x64xf64, #map{{[0-9]*}}>, memref<0xui8>
 // CHECK-SAME: ) attributes {rt.custom_call =
 // CHECK-SAME:               "xla.gpu.conv.forward.fused.side_input"}

@@ -149,7 +149,7 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/core:headers",
-        "//tensorflow/lite/core/c:private_c_api_without_op_resolver",
+        "//tensorflow/lite/core/c:c_api_without_op_resolver",
         "//tensorflow/lite/kernels:kernel_util",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
@@ -195,7 +195,10 @@ cc_library(
     srcs = ["c_api_internal.cc"],
     hdrs = ["c_api_internal.h"],
     copts = tflite_copts(),
-    visibility = ["//tensorflow/lite/core/c:__subpackages__"],
+    visibility = [
+        "//tensorflow/lite/core/c:__subpackages__",
+        "//tensorflow/lite/delegates/utils:__pkg__",
+    ],
     deps = [
         ":common",
         ":common_internal",
@@ -288,6 +291,7 @@ tflite_cc_library_with_c_headers_test(
     copts = tflite_copts(),
     deps = [
         ":c_api_types",
+        "//tensorflow/lite:tflite_kernel_use_xnnpack_optional",
     ] + select({
         "//tensorflow/lite:tensorflow_profiler_config": [
             "//tensorflow/lite:macros",

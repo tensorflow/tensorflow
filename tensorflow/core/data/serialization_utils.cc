@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 
 namespace tensorflow {
@@ -36,6 +38,7 @@ constexpr char kComponent[] = "component";
 constexpr char kNumComponents[] = "num_components";
 constexpr char kNumElements[] = "num_elements";
 constexpr char kIsDataset[] = ".is_dataset";
+constexpr char kIteratorVariantTypeName[] = "tensorflow::Iterator";
 constexpr char kOutputNode[] = ".output_node";
 
 // We assume that all keys are of the form <iterator_prefix>:<name>. We extract
@@ -418,6 +421,52 @@ Status VariantTensorDataWriter::WriteDatasetInternal(
   TF_RETURN_IF_ERROR(WriteScalar(n, key, result));
   return OkStatus();
 }
+
+std::string IteratorStateVariant::TypeName() {
+  return kIteratorVariantTypeName;
+}
+
+IteratorStateVariant::IteratorStateVariant(const IteratorStateVariant& other) {
+  if (other.data_) {
+    Decode(*other.data_);
+  }
+}
+
+Status IteratorStateVariant::InitializeFromVariantData(
+    std::unique_ptr<VariantTensorData> data) {
+  data_ = std::move(data);
+  return OkStatus();
+}
+
+void IteratorStateVariant::Encode(VariantTensorData* data) const {
+  *data = *data_;
+}
+
+bool IteratorStateVariant::Decode(VariantTensorData data) {
+  if (data.type_name() != TypeName()) {
+    return false;
+  }
+  auto tensor_data = std::make_unique<VariantTensorData>();
+  std::swap(*tensor_data, data);
+  data_ = std::move(tensor_data);
+  return true;
+}
+
+std::string IteratorStateVariant::DebugString() const {
+  if (data_) {
+    return strings::StrCat("IteratorStateVariant<", data_->DebugString(), ">");
+  } else {
+    return strings::StrCat("IteratorStateVariant<empty>");
+  }
+}
+
+// Register the reader class in the global variant decode_fn registry
+// so that a Variant containing a serialized representation of iterator state
+// can be decoded using DecodeUnaryVariant. If we don't do this we will need
+// to manually decode the returned Variant using MaybeDecodeAndCopy in
+// DeserializeIteratorOp which is not recommended.
+REGISTER_UNARY_VARIANT_DECODE_FUNCTION(IteratorStateVariant,
+                                       kIteratorVariantTypeName);
 
 Status AsGraphDefForRewrite(OpKernelContext* ctx, const DatasetBase* input,
                             std::vector<std::pair<string, Tensor>>* input_list,

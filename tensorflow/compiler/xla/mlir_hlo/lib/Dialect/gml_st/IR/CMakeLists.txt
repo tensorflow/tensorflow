@@ -23,6 +23,7 @@ add_mlir_dialect_library(GmlStDialect
   MLIRgml_st_opsIncGen
 
   LINK_LIBS PUBLIC
+  MLIRArithUtils
   MLIRControlFlowInterfaces
   MLIRIR
   MLIRInferTypeOpInterface

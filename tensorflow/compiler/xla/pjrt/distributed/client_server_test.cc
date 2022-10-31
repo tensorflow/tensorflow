@@ -263,6 +263,51 @@ TEST_P(ClientServerTest, ConnectAndEnumerateDevices) {
   TF_EXPECT_OK(statuses[1]);
 }
 
+// Make sure device list is ordered by 0,1,...,10 instead of 0,1,10,2,...,9.
+TEST_P(ClientServerTest, EnumerateElevenDevices) {
+  int num_nodes = 11;
+  StartService(num_nodes, GetParam().use_coordination_service);
+  std::vector<LocalTopologyProto> locals(num_nodes);
+  for (int i = 0; i < num_nodes; ++i) {
+    locals[i].set_node_id(i);
+    auto device = locals[i].add_devices();
+    // Split local devices across two hosts.
+    int ordinal = i % (num_nodes / 2);
+    device->set_local_device_ordinal(ordinal);
+    device->set_name("test_device");
+    device->set_vendor("test_vendor");
+  }
+  GlobalTopologyProto expected_topology;
+  for (int i = 0; i < num_nodes; ++i) {
+    auto* node = expected_topology.add_nodes();
+    *node = locals[i];
+    node->mutable_devices(0)->set_global_device_id(i);
+  }
+
+  auto thread_fn = [&](int node_id) -> xla::Status {
+    auto client = GetClient(node_id, GetParam().use_coordination_service);
+    GlobalTopologyProto topology;
+    TF_RETURN_IF_ERROR(client->Connect());
+    TF_RETURN_IF_ERROR(client->EnumerateDevices(locals[node_id], &topology));
+    TF_RET_CHECK(
+        xla::protobuf_util::ProtobufEquals(topology, expected_topology))
+        << topology.DebugString();
+    return OkStatus();
+  };
+
+  std::vector<xla::Status> statuses(num_nodes);
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
+    }
+  }
+  for (int i = 0; i < num_nodes; ++i) {
+    TF_EXPECT_OK(statuses[i]);
+  }
+}
+
 // Setting `init_timeout` to 0 means that the client should attempt connection
 // only once, but the client should still wait a short while for other tasks.
 TEST_P(ClientServerTest, ZeroInitTimeoutShouldStillWaitForOtherTasks) {

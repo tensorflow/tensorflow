@@ -152,8 +152,8 @@ TEST(TypeToShapeTest, ConvertTensorTypeToTypes) {
 }
 
 TEST(TypeToShapeTest, ConvertMemRefToShape) {
-  Shape shape = ShapeUtil::MakeShapeWithLayout(PrimitiveType::F32, {10, 20, 30},
-                                               {2, 0, 1});
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(PrimitiveType::F32,
+                                                    {10, 20, 30}, {2, 0, 1});
   MLIRContext context;
   mlir::Builder builder(&context);
 
@@ -163,14 +163,14 @@ TEST(TypeToShapeTest, ConvertMemRefToShape) {
   mlir::Type type = std::move(mlir_type).value();
   Shape converted = TypeToShape(type);
   EXPECT_TRUE(ShapeUtil::Equal(
-      converted, ShapeUtil::MakeShapeWithLayout(PrimitiveType::F32,
-                                                {10, 20, 30}, {2, 0, 1})));
+      converted, ShapeUtil::MakeShapeWithDenseLayout(PrimitiveType::F32,
+                                                     {10, 20, 30}, {2, 0, 1})));
   EXPECT_TRUE(ShapeUtil::Equal(converted, shape));
 }
 
 TEST(TypeToShapeTest, ConvertMemRefToShape2) {
-  Shape shape = ShapeUtil::MakeShapeWithLayout(PrimitiveType::C64, {2, 4, 3, 3},
-                                               {2, 3, 1, 0});
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(PrimitiveType::C64,
+                                                    {2, 4, 3, 3}, {2, 3, 1, 0});
   MLIRContext context;
   mlir::Builder builder(&context);
 
@@ -180,8 +180,8 @@ TEST(TypeToShapeTest, ConvertMemRefToShape2) {
   mlir::Type type = std::move(mlir_type).value();
   Shape converted = TypeToShape(type);
   EXPECT_TRUE(ShapeUtil::Equal(
-      converted, ShapeUtil::MakeShapeWithLayout(PrimitiveType::C64,
-                                                {2, 4, 3, 3}, {2, 3, 1, 0})));
+      converted, ShapeUtil::MakeShapeWithDenseLayout(
+                     PrimitiveType::C64, {2, 4, 3, 3}, {2, 3, 1, 0})));
   EXPECT_TRUE(ShapeUtil::Equal(converted, shape));
 }
 

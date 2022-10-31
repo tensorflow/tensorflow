@@ -17,6 +17,6 @@ limitations under the License.
 
 /// For documentation, see
 /// third_party/tensorflow/lite/core/create_op_resolver.h.
-#include "tensorflow/lite/core/create_op_resolver.h"
+#include "tensorflow/lite/core/create_op_resolver.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_LITE_CREATE_OP_RESOLVER_H_

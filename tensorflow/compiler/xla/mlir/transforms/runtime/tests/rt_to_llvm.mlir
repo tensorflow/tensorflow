@@ -455,6 +455,20 @@ func.func @opaque_custom_call_res(%ctx: !rt.execution_context) {
 
 // -----
 
+// CHECK: llvm.mlir.global internal constant @__rt_custom_call_attrs
+// CHECK: llvm.mlir.addressof @__type_id_nullopt
+
+// CHECK: func @custom_call_unit_attr(
+// CHECK-SAME:   %[[ARG0:.*]]: !llvm.ptr
+// CHECK-SAME: )
+func.func @custom_call_unit_attr(%ctx: !rt.execution_context) {
+  // CHECK: llvm.mlir.addressof @__rt_custom_call_attrs
+  %status = rt.custom_call %ctx["target"] () { attr } : () -> ()
+  return
+}
+
+// -----
+
 // CHECK: %[[C1:.*]] = arith.constant 1 : i32
 // CHECK: %[[RETS_ALLOCA:.*]] = llvm.alloca %[[C1]] x !llvm.array<3 x ptr>
 

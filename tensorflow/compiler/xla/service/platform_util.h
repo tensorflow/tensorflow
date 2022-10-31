@@ -29,11 +29,21 @@ namespace xla {
 // Utilities for querying platforms and devices used by XLA.
 class PlatformUtil {
  public:
+<<<<<<< HEAD
   // Returns the canonical name of the underlying platform. 
   //
   // This is needed to differentiate if for given platform like GPU or CPU
   // there are multiple implementations. For example, GPU platform may be cuda(Nvidia) or rocm(AMD)
   static StatusOr<std::string> CanonicalPlatformName(const std::string& platform_name);
+=======
+  // Returns the canonical name of the underlying platform.
+  //
+  // This is needed to differentiate if for given platform like GPU or CPU
+  // there are multiple implementations. For example, GPU platform may be
+  // cuda(Nvidia) or rocm(AMD)
+  static StatusOr<std::string> CanonicalPlatformName(
+      const std::string& platform_name);
+>>>>>>> google_upstream/master
 
   // Returns the platforms present on the system and supported by XLA.
   //

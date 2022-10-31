@@ -22,7 +22,7 @@ namespace {
 
 bool hasUniqueInputAndOutputMaps(linalg::GenericOp genericOp,
                                  AffineMap &inputMap, AffineMap &outputMap) {
-  if (genericOp.getNumInputs() != 1 || genericOp.getNumOutputs() != 1) {
+  if (genericOp.getNumDpsInputs() != 1 || genericOp.getNumDpsInits() != 1) {
     return false;
   }
   inputMap = genericOp.getIndexingMapsArray().front();
@@ -59,7 +59,7 @@ bool isBcastOrReductionMap(AffineMap map, int64_t &dim) {
 
 bool isSimpleReduction(Operation *op, int64_t *dimension, Value *operand) {
   auto genericOp = llvm::dyn_cast_or_null<linalg::GenericOp>(op);
-  if (!genericOp || genericOp.getNumOutputs() != 1) return false;
+  if (!genericOp || genericOp.getNumDpsInits() != 1) return false;
 
   // Expect monadic op.
   AffineMap inputMap, outputMap;
@@ -94,7 +94,7 @@ bool isSimpleReduction(Operation *op, int64_t *dimension, Value *operand) {
 
 bool isCwiseGenericOp(Operation *op, int64_t *arity) {
   auto genericOp = llvm::dyn_cast_or_null<linalg::GenericOp>(op);
-  if (!genericOp || genericOp.getNumOutputs() != 1) return false;
+  if (!genericOp || genericOp.getNumDpsInits() != 1) return false;
 
   // Check all-parallel iterator types.
   if (!llvm::all_of(genericOp.getIteratorTypes(), [](Attribute it) {
@@ -111,7 +111,7 @@ bool isCwiseGenericOp(Operation *op, int64_t *arity) {
   }
 
   // Allow for pattern matching the arity.
-  if (arity != nullptr) *arity = genericOp.getNumInputs();
+  if (arity != nullptr) *arity = genericOp.getNumDpsInputs();
   return true;
 }
 

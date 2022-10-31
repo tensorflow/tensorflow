@@ -1523,20 +1523,6 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(3, root.f(constant_op.constant(2)).numpy())
     self.assertAllEqual(4, root.f(constant_op.constant(3)).numpy())
 
-  def test_partial(self, cycles):
-    def f(x, y):
-      return x + y
-
-    func = def_function.function(
-        functools.partial(f, x=array_ops.zeros([1]), y=array_ops.ones([1])))
-
-    root = autotrackable.AutoTrackable()
-    root.f = func
-    self.assertAllEqual(root.f(), [1.0])
-
-    root = cycle(root, cycles)
-    self.assertAllEqual(root.f(), [1.0])
-
   def test_partial_with_non_tensor_defaults(self, cycles):
 
     def f(x, y=3):

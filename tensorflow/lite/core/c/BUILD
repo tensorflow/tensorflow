@@ -28,7 +28,6 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:create_op_resolver_with_builtin_ops",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:kernel_util",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
@@ -41,6 +40,7 @@ cc_library(
         "c_api.h",
     ],
     copts = tflite_copts(),
+    tags = ["avoid_dep"],
     # This is a private target, its visibility is set to public only to be
     # used by "tflite_custom_c_library".
     # Do not use this target directly and don't consider it as a part of the public API.
@@ -53,7 +53,6 @@ cc_library(
         "//tensorflow/lite:create_op_resolver_with_builtin_ops",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:kernel_util",
     ],
 )
 # LINT.ThenChange(:c_api)
@@ -79,7 +78,6 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/delegates:interpreter_utils",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
@@ -89,7 +87,10 @@ tflite_cc_library_with_c_headers_test(
     name = "private_c_api_without_op_resolver",
     hdrs = ["c_api.h"],
     copts = tflite_copts(),
-    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
+    tags = [
+        "allow_undefined_symbols",  # For tflite::CreateOpResolver().
+        "avoid_dep",
+    ],
     visibility = [
         "//visibility:public",
     ],

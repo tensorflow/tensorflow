@@ -749,9 +749,6 @@ message EntryFunctionAttributes {
 message XlaRuntimeExecutableProto {
   HloModuleProto hlo_module_proto = 1;
 
-  // XLA-specific attributes of the executable's entry function.
-  EntryFunctionAttributes entry_func_attrs = 2;
-
   // TODO(b/232263665)): We need to know the TargetMachine this executable was
   // compiled for, otherwise we can accidentally use illegal instrauctions (e.g.
   // use AVX512 when it's not available).

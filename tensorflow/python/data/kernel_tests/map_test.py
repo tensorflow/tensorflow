@@ -1219,11 +1219,13 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.cached_session(config=config):
 
+      with ops.device("/device:CPU:0"):
+        a = variables.VariableV1(3.0)
+      with ops.device("/device:CPU:1"):
+        b = variables.VariableV1(5.0)
+
       def func(_):
-        with ops.device("/device:CPU:0"):
-          a = variables.VariableV1(3.0)
-        with ops.device("/device:CPU:1"):
-          b = variables.VariableV1(5.0)
+        nonlocal a, b
         return math_ops.add(a, b)
 
       # NOTE: Use the legacy function implementation as eager function will

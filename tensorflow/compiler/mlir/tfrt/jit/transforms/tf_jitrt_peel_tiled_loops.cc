@@ -34,19 +34,22 @@ namespace {
 
 constexpr llvm::StringRef kWasPeeledAttr = "PeelStLoopsPeeledAttr";
 
+using mlir::gml_st::ForOp;
 using mlir::gml_st::LoopOp;
+using mlir::gml_st::ParallelOp;
 
-struct PeelGmlStLoop : public mlir::OpRewritePattern<LoopOp> {
-  using mlir::OpRewritePattern<LoopOp>::OpRewritePattern;
+template <typename LoopTy>
+struct PeelGmlStLoop : public mlir::OpRewritePattern<LoopTy> {
+  using mlir::OpRewritePattern<LoopTy>::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
-      LoopOp loop, mlir::PatternRewriter &rewriter) const override {
+      LoopTy loop, mlir::PatternRewriter &rewriter) const override {
     if (loop->hasAttr(kWasPeeledAttr)) return mlir::failure();
     auto true_attr = mlir::BoolAttr::get(rewriter.getContext(), true);
     loop->setAttr(kWasPeeledAttr, true_attr);
     for (int peeled_idx = loop.getNumLoops() - 1; peeled_idx >= 0;
          peeled_idx--) {
-      LoopOp peel;
+      LoopTy peel;
       // Mark the new loop if one was created
       if (mlir::gml_st::peelAndCanonicalizeGmlStLoop(rewriter, loop, peeled_idx,
                                                      peel)
@@ -68,15 +71,23 @@ struct PeelTiledLoopsPass
     mlir::RewritePatternSet canonicalizations(func_op.getContext());
     LoopOp::getCanonicalizationPatterns(canonicalizations,
                                         func_op.getContext());
+    ForOp::getCanonicalizationPatterns(canonicalizations, func_op.getContext());
     mlir::linalg::populateLinalgTilingCanonicalizationPatterns(
         canonicalizations);
     (void)applyPatternsAndFoldGreedily(func_op, std::move(canonicalizations));
 
     mlir::RewritePatternSet loop_peeling(func_op.getContext());
-    loop_peeling.add<PeelGmlStLoop>(func_op.getContext());
+    loop_peeling.add<PeelGmlStLoop<LoopOp>, PeelGmlStLoop<ParallelOp>,
+                     PeelGmlStLoop<ForOp>>(func_op.getContext());
     (void)applyPatternsAndFoldGreedily(func_op, std::move(loop_peeling));
 
     func_op->walk([&](LoopOp op) {
+      if (op->hasAttr(kWasPeeledAttr)) op->removeAttr(kWasPeeledAttr);
+    });
+    func_op->walk([&](ParallelOp op) {
+      if (op->hasAttr(kWasPeeledAttr)) op->removeAttr(kWasPeeledAttr);
+    });
+    func_op->walk([&](ForOp op) {
       if (op->hasAttr(kWasPeeledAttr)) op->removeAttr(kWasPeeledAttr);
     });
   }

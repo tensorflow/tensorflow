@@ -240,8 +240,8 @@ XLA_TEST_F(CopyOpTest, CopyConstantR4Layout0312_MultipleTilesPerLayer) {
 using CopyOpClientTest = ClientLibraryTestBase;
 
 XLA_TEST_F(CopyOpClientTest, Copy0x0) {
-  Shape in_shape = ShapeUtil::MakeShapeWithLayout(F32, {0, 0}, {0, 1});
-  Shape out_shape = ShapeUtil::MakeShapeWithLayout(F32, {0, 0}, {1, 0});
+  Shape in_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {0, 0}, {0, 1});
+  Shape out_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {0, 0}, {1, 0});
   auto empty = Literal::CreateFromShape(in_shape);
 
   XlaBuilder builder(TestName());

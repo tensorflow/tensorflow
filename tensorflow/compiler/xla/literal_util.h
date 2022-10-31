@@ -305,7 +305,7 @@ template <typename NativeT>
 /* static */ Literal LiteralUtil::CreateR2WithLayout(
     std::initializer_list<std::initializer_list<NativeT>> values,
     const Layout& layout) {
-  Literal literal(ShapeUtil::MakeShapeWithLayout(
+  Literal literal(ShapeUtil::MakeShapeWithDenseLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(),
       {static_cast<int64_t>(values.size()),
        static_cast<int64_t>(values.begin()->size())},
@@ -394,7 +394,7 @@ template <typename NativeT>
 template <typename NativeT>
 /* static */ Literal LiteralUtil::CreateFromArrayWithLayout(
     const Array<NativeT>& values, const Layout& layout) {
-  Literal literal(ShapeUtil::MakeShapeWithLayout(
+  Literal literal(ShapeUtil::MakeShapeWithDenseLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(), values.dimensions(),
       layout.minor_to_major()));
   literal.PopulateFromArray(values);
