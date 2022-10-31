@@ -210,39 +210,6 @@ func.func @reduce_row(%lhs: tensor<?x?xf32>,
 
 // -----
 
-func.func @thlo_map(%lhs: tensor<256x512xf32>, %rhs: tensor<256x512xf32>,
-               %init: tensor<256x512xf32>) -> tensor<256x512xf32> {
-   %add = thlo.map
-          ins(%lhs:tensor<256x512xf32>, %rhs:tensor<256x512xf32>)
-          outs(%init:tensor<256x512xf32>)
-          { op_label = "tile-2d" }
-          (%lhs_elem: f32, %rhs_elem: f32) {
-            %0 = arith.addf %lhs_elem, %rhs_elem: f32
-            thlo.yield %0: f32
-          }
-  func.return %add : tensor<256x512xf32>
-}
-
-// CHECK-FOR-LABEL: @thlo_map
-// CHECK-FOR-SAME:    %[[ARG1:[a-zA-Z0-9]*]]: tensor<256x512xf32>
-// CHECK-FOR-SAME:    %[[ARG2:[a-zA-Z0-9]*]]: tensor<256x512xf32>
-// CHECK-FOR-SAME:    %[[INIT:.*]]: tensor<256x512xf32>
-// CHECK-FOR:       %[[ZERO:.*]] = arith.constant 0
-// CHECK-FOR:       %[[RESULT:.*]] = gml_st.for (%[[I:.*]], %[[J:.*]]) =
-// CHECK-FOR:         %[[TILE:.*]] = gml_st.tile [%[[I]], %[[J]]]
-// CHECK-FOR-DAG:     %[[ARG1_SUB:.*]] = gml_st.materialize %[[ARG1]][%[[TILE]]]
-// CHECK-FOR-DAG:     %[[ARG2_SUB:.*]] = gml_st.materialize %[[ARG2]][%[[TILE]]]
-// CHECK-FOR-DAG:     %[[INIT_SUB:.*]] = gml_st.materialize %{{.*}}[%[[TILE]]]
-// CHECK-FOR:         %[[MAP_SUB:.*]] = thlo.map
-// CHECK-FOR-SAME:       ins(%[[ARG1_SUB]] :
-// CHECK-FOR-SAME:         , %[[ARG2_SUB]] :
-// CHECK-FOR-SAME:       outs(%[[INIT_SUB]]
-// CHECK-FOR:         gml_st.set_yield %[[MAP_SUB]]
-
-// CHECK-PARALLEL-LABEL: @thlo_map
-// CHECK-PARALLEL: gml_st.parallel
-// -----
-
 func.func @dynamic_broadcast_in_dim_at_tile(%init : tensor<?x?x?xf32>,
     %arg : tensor<?x?xf32>) -> tensor<?x?x?xf32> {
   %bcast = thlo.dynamic_broadcast_in_dim ins(%arg: tensor<?x?xf32>)

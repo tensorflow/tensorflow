@@ -176,10 +176,6 @@ void registerGmlStTilingInterfaceExternalModels(DialectRegistry &registry) {
     linalg::TransposeOp::attachInterface<
         ExternalLinalgOpTilingInterface<linalg::TransposeOp>>(*ctx);
   });
-  registry.addExtension(+[](MLIRContext *ctx, thlo::THLODialect *) {
-    thlo::MapOp::attachInterface<ExternalLinalgOpTilingInterface<thlo::MapOp>>(
-        *ctx);
-  });
 }
 
 }  // namespace gml_st

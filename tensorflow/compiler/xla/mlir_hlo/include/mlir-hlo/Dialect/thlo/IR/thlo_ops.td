@@ -48,7 +48,7 @@ class THLO_DstStyleOp<string mnemonic, list<Trait> traits> : THLO_Op<mnemonic, [
 }
 
 def THLO_YieldOp : THLO_Op<"yield", [Pure, ReturnLike, Terminator,
-    ParentOneOf<["MapOp", "ScatterOp", "SortOp"]>]>,
+    ParentOneOf<["ScatterOp", "SortOp"]>]>,
     Arguments<(ins Variadic<AnyType>:$values)> {
   let summary = "Yield operation for tHLO ops with regions.";
   let assemblyFormat = "attr-dict $values `:` type($values)";
@@ -164,57 +164,6 @@ def THLO_ScatterOp : THLO_DstStyleOp<"scatter", [
 
     // Returns the number of indices, i.e. number of scalar/tensor updates.
     int64_t getIndicesCount() { return getIndices().getType().getDimSize(0); }
-
-    // Implement method necessary for DestinationStyleOpInterface.
-    std::pair<int64_t, int64_t> getDpsInitsPositionRange() {
-      int64_t getNumOperands = this->getNumOperands();
-      return {getNumOperands - 1, getNumOperands};
-    }
-  }];
-}
-
-def THLO_MapOp : THLO_DstStyleOp<"map", [
-    SingleBlockImplicitTerminator<"YieldOp">,
-    DeclareOpInterfaceMethods<LinalgStructuredInterface, ["getIteratorTypesArray"]>
-]> {
-  let summary = "Destination-style twin for elementwise operations";
-  let description = [{
-    Models elementwise operations on tensors in terms of arithmetic operations
-    on the corresponding elements.
-
-    Example:
-    ```
-      %add = thlo.map
-          ins(%lhs: tensor<64xf32>, %rhs: tensor<64xf32>)
-          outs(%init: tensor<64xf32>)
-          (%lhs_elem: f32, %rhs_elem: f32) {
-            %0 = arith.addf %lhs_elem, %rhs_elem: f32
-            thlo.yield %0: f32
-          }
-    ```
-  }];
-
-  let arguments = (ins
-    // Input args
-    Variadic<TensorOrMemref>:$inputs,
-
-    // Output arg
-    TensorOrMemref:$init
-  );
-  let results = (outs Variadic<AnyTensor>:$result);
-  let regions = (region SizedRegion<1>:$mapper);
-
-
-  let extraClassDeclaration = [{
-    mlir::OpOperandVector getOpOperandsMatchingBBargs() {
-      return getDpsInputOperands();
-    }
-
-    static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
-                              mlir::ArrayRef<mlir::NamedAttribute>)>
-    getRegionBuilder() {
-      return nullptr;
-    }
 
     // Implement method necessary for DestinationStyleOpInterface.
     std::pair<int64_t, int64_t> getDpsInitsPositionRange() {
