@@ -16,6 +16,7 @@
 
 import collections
 import pickle
+import platform
 
 from absl.testing import parameterized
 
