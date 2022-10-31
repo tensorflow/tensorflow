@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/call_once.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -99,7 +98,7 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
 /*static*/ bool NcclCollectivePermuteThunk::CanImplement(
     mlir::lmhlo::CollectivePermuteOp op) {
   const Shape shape = GetShape(op.getOperand());
-  return IsTypeSupportedByNccl(shape.element_type());
+  return IsTypeSupportedByNccl(shape.element_type(), Thunk::kCollectivePermute);
 }
 
 NcclCollectivePermuteThunk::NcclCollectivePermuteThunk(
@@ -184,7 +183,8 @@ Status RunCollectivePermute(
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
 
   TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                      ToNcclDataTypeAndCountMultiplier(buffer.element_type));
+                      ToNcclDataTypeAndCountMultiplier(
+                          buffer.element_type, Thunk::kCollectivePermute));
   ncclDataType_t dtype = dtype_and_multiplier.first;
   int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
 
