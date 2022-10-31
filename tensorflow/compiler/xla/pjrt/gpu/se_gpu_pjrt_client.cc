@@ -38,11 +38,7 @@ limitations under the License.
 
 #ifdef TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
-<<<<<<< HEAD
-#include "tensorflow/compiler/xla/pjrt/gpu/nccl_id_store.h"
-=======
 #include "tensorflow/compiler/xla/pjrt/gpu/nccl_id_store.h"  // NOLINT(build/include)
->>>>>>> google_upstream/master
 #endif  // TENSORFLOW_USE_ROCM
 
 #include "tensorflow/compiler/xla/client/client_library.h"

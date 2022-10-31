@@ -227,16 +227,10 @@ StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
   if (device.client()->platform_id() == CpuId()) {
     return kDLCPU;
   } else if (device.client()->platform_id() == GpuId()) {
-<<<<<<< HEAD
-    const StreamExecutorGpuDevice& gdevice = dynamic_cast<const StreamExecutorGpuDevice&>(device);
-
-    if(absl::StrContains(gdevice.device_vendor(),"Advanced Micro Devices")){
-=======
     const StreamExecutorGpuDevice& gdevice =
         dynamic_cast<const StreamExecutorGpuDevice&>(device);
 
     if (absl::StrContains(gdevice.device_vendor(), "Advanced Micro Devices")) {
->>>>>>> google_upstream/master
       return kDLROCM;
     } else {
       return kDLCUDA;

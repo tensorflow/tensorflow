@@ -79,13 +79,8 @@ StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms() {
 
 }  // namespace
 
-<<<<<<< HEAD
-/*static */ StatusOr<std::string> 
-PlatformUtil::CanonicalPlatformName(const std::string& platform_name) {
-=======
 /*static */ StatusOr<std::string> PlatformUtil::CanonicalPlatformName(
     const std::string& platform_name) {
->>>>>>> google_upstream/master
   return xla::CanonicalPlatformName(platform_name);
 }
 

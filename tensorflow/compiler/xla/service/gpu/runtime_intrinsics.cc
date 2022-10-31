@@ -37,17 +37,10 @@ extern const char* const kXlaGpuAssertCustomCallTag = "__xla_gpu_assert";
 
 static Status AssertOnGpu(void* stream_handle, void* buffer,
                           absl::string_view error_msg) {
-<<<<<<< HEAD
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      se::MultiPlatformManager::PlatformWithName(
-                            absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value())));
-
-=======
   TF_ASSIGN_OR_RETURN(
       se::Platform * platform,
       se::MultiPlatformManager::PlatformWithName(absl::AsciiStrToUpper(
           PlatformUtil::CanonicalPlatformName("gpu").value())));
->>>>>>> google_upstream/master
   se::StreamExecutorConfig config;
   config.gpu_stream = stream_handle;
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
@@ -83,13 +76,8 @@ static void AssertionCustomCall(void* stream_handle, void** buffers,
   }
 }
 
-<<<<<<< HEAD
-XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(kXlaGpuAssertCustomCallTag,
-                                        AssertionCustomCall, absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value()));
-=======
 XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(
     kXlaGpuAssertCustomCallTag, AssertionCustomCall,
     absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value()));
->>>>>>> google_upstream/master
 
 }  // namespace xla
