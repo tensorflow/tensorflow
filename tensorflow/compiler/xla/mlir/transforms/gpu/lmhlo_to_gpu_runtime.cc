@@ -149,23 +149,20 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
     // By default all operands passed to the custom call handler.
     llvm::SmallVector<Value> operands = op.getOperands();
 
-    // If custom call has target arguments mapping, then we need to pass empty
-    // memrefs in place of holes.
+    // If custom call has target arguments mapping, then we need to pass `i64`
+    // scalars in place of holes to detect them in custom call handler.
+    //
+    // TODO(ezhulenev): We need an `xla` dialect to model Xla framework
+    // semantics including holes for custom call. As a work around we pass `i64`
+    // values because xla custom call do not support scalar arguments, and we
+    // can disambiguate holes from buffers.
     if (op.getTargetArgMapping().has_value()) {
       auto mapping = *op.getTargetArgMapping();
       int64_t num_args = mapping.getNumArgs();
       int64_t num_results = mapping.getNumResults();
 
-      // Always create an `alloca` in the parent function entry block.
-      // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
-      Value hole = [&]() -> Value {
-        OpBuilder::InsertionGuard guard(b);
-        b.setInsertionPointToStart(
-            &op->getParentOfType<func::FuncOp>().front());
-        return b.create<memref::AllocaOp>(MemRefType::get({0}, b.getI8Type()));
-      }();
-
-      // We represent holes as empty i8 memrefs.
+      // We represent holes as an arbitrary `i64` constant.
+      Value hole = b.create<arith::ConstantOp>(b.getI64IntegerAttr(-1));
       operands = llvm::SmallVector<Value>(num_args + num_results, hole);
 
       // Update operands to mapped custom call arguments.

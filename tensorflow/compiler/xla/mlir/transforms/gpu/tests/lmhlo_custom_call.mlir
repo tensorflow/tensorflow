@@ -37,7 +37,7 @@ func.func @test_with_mapping(
     %arg2: memref<f32>,
     %arg3: memref<f32>,
     %arg4: memref<f32>) {
-  // CHECK: %[[HOLE:.*]] = memref.alloca() : memref<0xi8>
+  // CHECK: %[[HOLE:.*]] = arith.constant -1 : i64
 
   // CHECK: call @[[CUSTOM_CALL:.*]](%[[ARG0]], %[[HOLE]], %[[ARG1]], %[[HOLE]],
   // CHECK-SAME:  %[[ARG2]], %[[ARG3]], %[[HOLE]], %[[ARG4]])
@@ -59,7 +59,6 @@ func.func @test_with_mapping(
   return
 }
 
-// CHECK: func.func private @[[CUSTOM_CALL]](memref<f32>, memref<0xi8>,
-// CHECK-SAME: memref<f32>, memref<0xi8>, memref<f32>, memref<f32>,
-// CHECK-SAME: memref<0xi8>, memref<f32>)
+// CHECK: func.func private @[[CUSTOM_CALL]](memref<f32>, i64, memref<f32>, i64,
+// CHECK-SAME: memref<f32>, memref<f32>, i64, memref<f32>)
 // CHECK-SAME: attributes {rt.custom_call = "xla.gpu.custom_call"}
