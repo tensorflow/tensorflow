@@ -136,7 +136,7 @@ def dense_to_sparse_batch(batch_size, row_shape):
   """
 
   def _apply_fn(dataset):
-    return _DenseToSparseBatchDataset(dataset, batch_size, row_shape)
+    return dataset.sparse_batch(batch_size, row_shape)
 
   return _apply_fn
 

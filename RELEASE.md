@@ -164,6 +164,7 @@ This release contains contributions from many people at Google, as well as:
 *   `tf.data`:
     *   Graduated experimental APIs:
         * [`tf.data.Dataset.ragged_batch`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset/#ragged_batch), which batches elements of `tf.data.Dataset`s into `tf.RaggedTensor`s.
+        * [`tf.data.Dataset.sparse_batch`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset/#sparse_batch), which batches elements of `tf.data.Dataset`s into `tf.sparse.SparseTensor`s.
 
 ## Bug Fixes and Other Changes
 
