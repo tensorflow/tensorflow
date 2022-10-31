@@ -91,7 +91,7 @@ tf_cc_test(
     deps = [
         ":compression_utils",
         ":dataset_test_base",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -161,6 +161,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:str_util",
+        "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/util:determinism_test_util",
         "@com_google_absl//absl/container:flat_hash_set",
     ],

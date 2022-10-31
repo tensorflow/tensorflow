@@ -35,11 +35,15 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 #include "tensorflow/tsl/util/determinism_test_util.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
+
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 TEST(DatasetUtilsTest, MatchesAnyVersion) {
   EXPECT_TRUE(MatchesAnyVersion("BatchDataset", "BatchDataset"));
@@ -683,6 +687,26 @@ TEST(DatasetUtilsTest, CountBytes) {
   compressed.front().scalar<Variant>()() = compressed_element;
   EXPECT_EQ(GetAllocatedBytes(compressed), compressed_element.ByteSizeLong());
   EXPECT_EQ(GetTotalBytes(compressed), compressed_element.ByteSizeLong());
+}
+
+TEST_F(DatasetOpsTestBase, TestVariantEqualityChecking) {
+  Tensor scalar_0{DT_VARIANT, TensorShape({})};
+  scalar_0.scalar<Variant>()() = TestVariant({CreateTensor<int64_t>({}, {0})});
+  TF_EXPECT_OK(ExpectEqual(scalar_0, scalar_0));
+
+  Tensor scalar_1{DT_VARIANT, TensorShape({})};
+  scalar_1.scalar<Variant>()() = TestVariant({CreateTensor<int64_t>({}, {1})});
+  EXPECT_THAT(ExpectEqual(scalar_0, scalar_1),
+              StatusIs(tsl::error::INTERNAL, HasSubstr("aren't equal")));
+
+  Tensor nonscalar{DT_VARIANT, TensorShape({2})};
+  EXPECT_THAT(ExpectEqual(nonscalar, nonscalar),
+              StatusIs(tsl::error::INTERNAL, HasSubstr("must be scalars")));
+
+  Tensor unsupported{DT_VARIANT, TensorShape({})};
+  unsupported.scalar<Variant>()() = 0;
+  EXPECT_THAT(ExpectEqual(unsupported, unsupported),
+              StatusIs(tsl::error::INTERNAL, HasSubstr("types must be")));
 }
 
 }  // namespace

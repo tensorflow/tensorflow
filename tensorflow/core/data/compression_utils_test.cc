@@ -40,14 +40,29 @@ TEST(CompressionUtilsTest, Exceeds4GB) {
 
 std::vector<std::vector<Tensor>> TestCases() {
   return {
-      CreateTensors<int64_t>(TensorShape{1}, {{1}}),           // int64
-      CreateTensors<int64_t>(TensorShape{1}, {{1}, {2}}),      // multiple int64
-      CreateTensors<tstring>(TensorShape{1}, {{"a"}, {"b"}}),  // tstring
+      // Single int64.
+      CreateTensors<int64_t>(TensorShape{1}, {{1}}),
+      // Multiple int64s.
+      CreateTensors<int64_t>(TensorShape{1}, {{1}, {2}}),
+      // Single tstring.
+      CreateTensors<tstring>(TensorShape{1}, {{"a"}, {"b"}}),
+      // Mix of tstring and int64.
       {CreateTensor<tstring>(TensorShape{1}, {"a"}),
-       CreateTensor<int64_t>(TensorShape{1}, {1})},  // mixed tstring/int64
-      {},                                            // empty
+       CreateTensor<int64_t>(TensorShape{1}, {1})},
+      // Empty.
+      {},
+      // Larger int64.
       {CreateTensor<int64_t>(TensorShape{128, 128}),
-       CreateTensor<int64_t>(TensorShape{64, 2})},  // larger components
+       CreateTensor<int64_t>(TensorShape{64, 2})},
+      // Variants.
+      {
+          DatasetOpsTestBase::CreateTestVariantTensor(
+              {CreateTensor<int64_t>(TensorShape{3, 1}, {1, 2, 3}),
+               CreateTensor<tstring>(TensorShape{}, {"abc"})}),
+          DatasetOpsTestBase::CreateTestVariantTensor(
+              {CreateTensor<int64_t>(TensorShape{3, 1}, {10, 11, 12}),
+               CreateTensor<tstring>(TensorShape{}, {"xyz"})}),
+      },
   };
 }
 
