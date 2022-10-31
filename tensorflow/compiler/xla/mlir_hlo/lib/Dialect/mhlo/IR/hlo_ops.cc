@@ -49,6 +49,7 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
+#include "mlir-hlo/Dialect/mhlo/IR/mhlo_bytecode.h"
 #include "mlir-hlo/utils/convert_op_folder.h"
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -8049,6 +8050,7 @@ MhloDialect::MhloDialect(MLIRContext* context)
       >();
   addInterfaces<HLOBoundedDialectInterface>();
   addInterfaces<HLOInlinerInterface>();
+  addBytecodeInterface(this);
   addTypes<TokenType, AsyncBundleType>();
   addAttributes<
 #define GET_ATTRDEF_LIST

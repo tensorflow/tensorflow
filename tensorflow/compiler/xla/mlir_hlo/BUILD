@@ -438,10 +438,12 @@ cc_library(
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_typedefs.cc.inc",
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_typedefs.h.inc",
         "lib/Dialect/mhlo/IR/hlo_ops.cc",
+        "lib/Dialect/mhlo/IR/mhlo_bytecode.cc",
         "lib/utils/hlo_utils.cc",
     ],
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h",
+        "include/mlir-hlo/Dialect/mhlo/IR/mhlo_bytecode.h",
         "include/mlir-hlo/utils/hlo_utils.h",
     ],
     includes = ["include"],

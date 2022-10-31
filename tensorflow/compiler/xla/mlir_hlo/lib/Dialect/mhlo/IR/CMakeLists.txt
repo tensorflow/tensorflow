@@ -34,6 +34,7 @@ add_mlir_library(HloOpsCommon
 
 add_mlir_dialect_library(MhloDialect
   hlo_ops.cc
+  mhlo_bytecode.cc
 
   DEPENDS
   MLIRhlo_opsIncGen
