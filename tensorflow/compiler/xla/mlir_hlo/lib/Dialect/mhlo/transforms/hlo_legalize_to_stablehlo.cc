@@ -140,10 +140,6 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
     // have features that either haven't been proposed to StableHLO yet
     // or aren't planned to be proposed to StableHLO.
     // The check below makes sure we only proceed for supported ops.
-    if constexpr (std::is_same<HloOpTy, mhlo::CollectivePermuteOp>::value) {
-      // StableHLO does not support channel handles on CollectivePermute.
-      if (hloOp.getChannelHandle()) return failure();
-    }
     if constexpr (std::is_same<HloOpTy, mhlo::CustomCallOp>::value) {
       // Added to MHLO per feature request from JAX.
       // Hasn't been proposed to StableHLO yet.
