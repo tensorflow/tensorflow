@@ -92,6 +92,30 @@ Status HloCostAnalysis::Postprocess(const HloInstruction* hlo) {
   return OkStatus();
 }
 
+Status HloCostAnalysis::RemoveInstruction(HloInstruction* instruction) {
+  // Subtract the previously calculated properties of the instruction
+  // from HLO graph's total properties_sum_ if instruction was analyzed before.
+  auto it = hlo_properties_.find(instruction);
+  if (it != hlo_properties_.end()) {
+    current_properties_ = it->second;
+    for (const auto& property : current_properties_) {
+      properties_sum_[property.first] -= property.second;
+    }
+    hlo_properties_.erase(instruction);
+  }
+  return OkStatus();
+}
+
+Status HloCostAnalysis::RevisitInstruction(HloInstruction* instruction) {
+  TF_RETURN_IF_ERROR(RemoveInstruction(instruction));
+  // Now do Preprocess() -> Visit() -> Postprocess() for the instruction same
+  // way it is done during the complete analysis.
+  TF_RETURN_IF_ERROR(Preprocess(instruction));
+  TF_RETURN_IF_ERROR(instruction->Visit(this));
+  TF_RETURN_IF_ERROR(Postprocess(instruction));
+  return OkStatus();
+}
+
 Status HloCostAnalysis::HandleElementwiseOp(
     const HloInstruction* hlo_instruction) {
   const auto& shape = hlo_instruction->shape();

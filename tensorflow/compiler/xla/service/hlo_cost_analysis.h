@@ -171,6 +171,13 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status Preprocess(const HloInstruction* hlo) override;
   Status Postprocess(const HloInstruction* hlo) override;
 
+  // Enable efficient updates if a known small set of instructions within an
+  // HLO graph was modified.
+  // Updates the cost analysis by removing one instruction.
+  Status RemoveInstruction(HloInstruction* instruction);
+  // Updates the cost analysis by re-doing the analysis of one instruction.
+  Status RevisitInstruction(HloInstruction* instruction);
+
   // Decorates shape_size_ by returning 0 immediately if the shape does not have
   // a layout.
   int64_t GetShapeSize(const Shape& shape) const;
