@@ -94,7 +94,7 @@ class Calibrator:
       if isinstance(sample, tuple):
         if not isinstance(sample[1], dict):
           raise ValueError("You need to provide either a dictionary with input "
-                           "names and values in the second arugment in the "
+                           "names and values in the second argument in the "
                            "tuple")
         # Convert signature based inputs to the tensor index based data.
         if self._interpreter is None:
