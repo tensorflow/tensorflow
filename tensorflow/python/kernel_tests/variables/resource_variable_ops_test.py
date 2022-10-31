@@ -375,7 +375,6 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
         resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32))
     self.assertEqual(read, 2)
 
-  @test_util.run_in_graph_and_eager_modes
   def testScatterAdd(self):
     handle = _eager_safe_var_handle_op(dtype=dtypes.int32, shape=[1, 1])
     self.evaluate(
@@ -1063,6 +1062,22 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(assign_without_read)
     self.assertEqual(4.0, self.evaluate(v.value()))
 
+  def testAssignAddVariableDtypeMismatchEager(self):
+    with context.eager_mode():
+      handle = _eager_safe_var_handle_op(
+          dtype=dtypes.int32, shape=[1], name="foo")
+      resource_variable_ops.assign_variable_op(
+          handle, constant_op.constant([1]))
+      # The error message varies depending on whether it is being raised
+      # by the kernel or shape inference. The shape inference code path can
+      # be reached when running in eager op as function mode where each op
+      # is wrapped in a tf.function.
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, r"Trying to .* variable with wrong "
+          r"dtype. Expected int32 got float"):
+        resource_variable_ops.assign_add_variable_op(
+            handle, constant_op.constant([1.], dtype=dtypes.float32))
+            
   @test_util.run_in_graph_and_eager_modes
   def testAssignSubMethod(self):
     v = resource_variable_ops.ResourceVariable(3.0, name="var0")
