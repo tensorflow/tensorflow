@@ -34,22 +34,35 @@ namespace gml_st {
 bool isZero(Value v) { return matchPattern(v, m_Zero()); }
 namespace {
 
-/// Rewrite a LoopOp with bounds/step that potentially do not divide evenly
-/// into two LoopOps: One where the step divides the iteration space
-/// evenly, followed another one for the last (partial) iteration (if any). This
-/// function only rewrites the `idx`-th loop of the loop nest represented by
-/// the LoopOp. To peel the entire loop nest, this function must be called
-/// multiple times.
+bool isATensor(Type t) { return t.isa<TensorType>(); }
+
+/// Return true if the given op has only tensor-typed results or operands.
+bool hasTensorSemantics(Operation *op) {
+  return llvm::all_of(op->getResultTypes(), isATensor) ||
+         llvm::all_of(op->getOperandTypes(), isATensor);
+}
+
+/// Rewrite a LoopOp/ParallelOp/ForOp with bounds/step that potentially do not
+/// divide evenly into two LoopOp/ParallelOp/ForOps: One where the step divides
+/// the iteration space evenly, followed another one for the last (partial)
+/// iteration (if any). This function only rewrites the `idx`-th loop of the
+/// loop nest represented by the LoopOp/ParallelOp/ForOp. To peel the entire
+/// loop nest, this function must be called multiple times.
 ///
-/// This function rewrites the given LoopOp in-place and creates a new
-/// LoopOp for the last iteration. It replaces all uses of the original
-/// LoopOp with the results of the newly generated one.
+/// This function rewrites the given LoopOp/ParallelOp/ForOp in-place and
+/// creates a new LoopOp/ParallelOp/ForOp for the last iteration. It replaces
+/// all uses of the original LoopOp/ParallelOp/ForOp with the results of the
+/// newly generated one.
 ///
-/// The newly generated LoopOp is returned via `result`. The boundary
-/// at which the loop is split (new upper bound) is returned via `splitBound`.
-/// The return value indicates whether the LoopOp was rewritten or not.
-static LogicalResult peelLoop(RewriterBase &b, LoopOp loopOp, int64_t idx,
-                              LoopOp &result, Value &splitBound) {
+/// The newly generated LoopOp/ParallelOp/ForOp is returned via `result`. The
+/// boundary at which the loop is split (new upper bound) is returned via
+/// `splitBound`.  The return value indicates whether the
+/// LoopOp/ParallelOp/ForOp was rewritten or not.
+template <typename LoopTy>
+LogicalResult peelLoop(RewriterBase &b, LoopTy loopOp, int64_t idx,
+                       LoopTy &result, Value &splitBound) {
+  if (!hasTensorSemantics(loopOp)) return failure();
+
   Value lb = loopOp.getLowerBound()[idx], ub = loopOp.getUpperBound()[idx],
         step = loopOp.getStep()[idx];
   auto ubInt = getConstantIntValue(ub);
@@ -70,19 +83,25 @@ static LogicalResult peelLoop(RewriterBase &b, LoopOp loopOp, int64_t idx,
     return failure();
 
   // Create remainder loop.
-  b.setInsertionPointAfter(loopOp);
-  auto remainderLoop = cast<LoopOp>(b.clone(*loopOp.getOperation()));
-  loopOp.replaceAllUsesWith(remainderLoop->getResults());
-  // Outputs: Take tensors from main loop's results. Take memrefs from main
-  // loop's outputs.
-  SmallVector<Value> remainderOutputs;
-  for (unsigned o = 0, t = 0; o < loopOp.getNumOutputs(); ++o) {
-    remainderOutputs.push_back(
-        loopOp.getOutputs()[o].getType().isa<MemRefType>()
-            ? loopOp.getOutputs()[o]
-            : loopOp->getResult(t++));
+  BlockAndValueMapping bvm;
+  for (const auto &[res, termDst] :
+       llvm::zip(loopOp.getResults(), loopOp.getLoopLikeOpInits())) {
+    bvm.map(termDst, res);
   }
-  remainderLoop.getOutputsMutable().assign(remainderOutputs);
+  b.setInsertionPointAfter(loopOp);
+  auto remainderLoop = cast<LoopTy>(b.clone(*loopOp.getOperation(), bvm));
+
+  Operation *remainderLoopOp = remainderLoop.getOperation();
+
+  for (const auto &[oldRes, newRes] :
+       llvm::zip(loopOp.getResults(), remainderLoop.getResults())) {
+    SmallPtrSet<Operation *, 4> exceptions({remainderLoopOp});
+    for (OpOperand &use : oldRes.getUses()) {
+      Operation *user = use.getOwner();
+      if (user->getParentOp() == remainderLoopOp) exceptions.insert(user);
+    }
+    oldRes.replaceAllUsesExcept(newRes, exceptions);
+  }
 
   // Set new loop bounds.
   b.updateRootInPlace(loopOp, [&]() {
@@ -92,24 +111,25 @@ static LogicalResult peelLoop(RewriterBase &b, LoopOp loopOp, int64_t idx,
   });
   SmallVector<Value> lbs = remainderLoop.getLowerBound();
   lbs[idx] = splitBound;
-  remainderLoop.getLowerBoundMutable().assign(lbs);
+  b.updateRootInPlace(remainderLoop, [&]() {
+    remainderLoop.getLowerBoundMutable().assign(lbs);
+  });
 
   result = remainderLoop;
   return success();
 }
 
 template <typename OpTy, bool IsMin>
-static void rewriteAffineOpAfterPeeling(RewriterBase &rewriter, LoopOp mainLoop,
-                                        LoopOp remainderLoop, Value mainIv,
-                                        Value remainderIv, Value ub,
-                                        Value step) {
-  mainLoop.walk([&](OpTy affineOp) {
+void rewriteAffineOpAfterPeeling(RewriterBase &rewriter, Operation *mainLoop,
+                                 Operation *remainderLoop, Value mainIv,
+                                 Value remainderIv, Value ub, Value step) {
+  mainLoop->walk([&](OpTy affineOp) {
     AffineMap map = affineOp.getAffineMap();
     (void)scf::rewritePeeledMinMaxOp(rewriter, affineOp, map,
                                      affineOp.operands(), IsMin, mainIv, ub,
                                      step, /*insideLoop=*/true);
   });
-  remainderLoop.walk([&](OpTy affineOp) {
+  remainderLoop->walk([&](OpTy affineOp) {
     AffineMap map = affineOp.getAffineMap();
     (void)scf::rewritePeeledMinMaxOp(rewriter, affineOp, map,
                                      affineOp.operands(), IsMin, remainderIv,
@@ -277,18 +297,18 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
       res, loops, outermostLoop ? outermostLoop->getResults() : tensorResults};
 }
 
-}  // namespace
-
-LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
-                                           LoopOp loopOp, int64_t idx,
-                                           LoopOp &result) {
-  int64_t numLoops = loopOp.getIteratorTypes().size();
+template <typename LoopTy>
+LogicalResult peelAndCanonicalizeGmlStLoopImpl(RewriterBase &rewriter,
+                                               LoopTy loopOp, int64_t idx,
+                                               LoopTy &result) {
+  int64_t numLoops = loopOp.getNumLoops();
   if (idx < 0 || numLoops <= idx) return failure();
 
   Value ub = loopOp.getUpperBound()[idx];
-  LoopOp remainderLoop;
+  LoopTy remainderLoop;
   Value splitBound;
-  if (failed(peelLoop(rewriter, loopOp, idx, remainderLoop, splitBound)))
+  if (failed(
+          peelLoop<LoopTy>(rewriter, loopOp, idx, remainderLoop, splitBound)))
     return failure();
 
   // Rewrite affine.min and affine.max ops.
@@ -302,6 +322,26 @@ LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
 
   result = remainderLoop;
   return success();
+}
+}  // namespace
+
+LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
+                                           LoopOp loopOp, int64_t idx,
+                                           LoopOp &result) {
+  return peelAndCanonicalizeGmlStLoopImpl<LoopOp>(rewriter, loopOp, idx,
+                                                  result);
+}
+
+LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
+                                           ParallelOp loopOp, int64_t idx,
+                                           ParallelOp &result) {
+  return peelAndCanonicalizeGmlStLoopImpl<ParallelOp>(rewriter, loopOp, idx,
+                                                      result);
+}
+
+LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter, ForOp loopOp,
+                                           int64_t idx, ForOp &result) {
+  return peelAndCanonicalizeGmlStLoopImpl<ForOp>(rewriter, loopOp, idx, result);
 }
 
 FailureOr<linalg::TiledLinalgOp> tileLinalgOp(
