@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -477,7 +478,7 @@ class HloParserImpl : public HloParser {
   // 'parse_and_add_item' is an lambda to parse an element in the list and add
   // the parsed element to the result. It's supposed to capture the result.
   bool ParseList(const TokKind start, const TokKind end, const TokKind delim,
-                 const std::function<bool()>& parse_and_add_item);
+                 absl::FunctionRef<bool()> parse_and_add_item);
 
   bool ParseParamListToShape(Shape* shape, LocTy* shape_loc);
   bool ParseParamList();
@@ -1255,7 +1256,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     operands = *preset_operands;
   }
   const auto maybe_infer_shape =
-      [&](const std::function<StatusOr<Shape>()>& infer) {
+      [&](absl::FunctionRef<StatusOr<Shape>()> infer) {
         if (shape.has_value()) {
           return true;
         }
@@ -4927,7 +4928,7 @@ bool HloParserImpl::ParseInt64ListList(
 
 bool HloParserImpl::ParseList(const TokKind start, const TokKind end,
                               const TokKind delim,
-                              const std::function<bool()>& parse_and_add_item) {
+                              absl::FunctionRef<bool()> parse_and_add_item) {
   if (!ParseToken(start, StrCat("expects a list starting with ",
                                 TokKindToString(start)))) {
     return false;

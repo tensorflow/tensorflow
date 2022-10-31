@@ -1804,7 +1804,7 @@ struct ParallelState {
 }
 
 /* static */ Shape ShapeUtil::FilterDimensions(
-    const std::function<bool(int64_t)>& p, Shape shape) {
+    absl::FunctionRef<bool(int64_t)> p, Shape shape) {
   CHECK(shape.IsArray());
   std::vector<int64_t> dims_to_delete;
   for (int64_t i = shape.dimensions().size() - 1; i >= 0; --i) {

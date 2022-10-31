@@ -112,7 +112,7 @@ class HloModuleMetadata {
   StatusOr<HloPassMetadata*> GetCurrentHloPassMetadata();
 
   Status MutateCurrentHloPassMetadata(
-      const std::function<void(HloPassMetadata*)>& mutator);
+      absl::FunctionRef<void(HloPassMetadata*)> mutator);
 
   HloModuleMetadataProto module_metadata_;
   tsl::Env* env_;

@@ -1690,8 +1690,7 @@ HloInstruction::CreateSetDimensionSize(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateBroadcastSequence(
     const Shape& output_shape, HloInstruction* operand,
-    const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
-        adder) {
+    absl::FunctionRef<HloInstruction*(std::unique_ptr<HloInstruction>)> adder) {
   CHECK(ShapeUtil::IsScalar(operand->shape()) ||
         operand->shape().rank() == output_shape.rank());
   Shape broadcast_shape = ShapeUtil::ChangeElementType(
@@ -2373,9 +2372,9 @@ Status HloInstruction::CopyAllControlDepsFrom(const HloInstruction* inst) {
 
 bool HloInstruction::IdenticalInternal(
     const HloInstruction& other,
-    const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+    absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
         eq_operands,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations,
     bool layout_sensitive, bool ignore_channel_id_values,
     bool ignore_commutative_operand_order) const {
@@ -2488,7 +2487,7 @@ bool HloInstruction::HasConstantOperand() const {
 
 bool HloInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   // Perform opcode specific checks.
   switch (opcode()) {
@@ -3762,11 +3761,11 @@ inline bool PushDFSChild(Visitor* visitor, DFSStack* dfs_stack,
 }
 
 using InternalCompareFunction =
-    std::function<bool(std::pair<int, const HloInstruction*>,
-                       std::pair<int, const HloInstruction*>)>;
+    absl::FunctionRef<bool(std::pair<int, const HloInstruction*>,
+                           std::pair<int, const HloInstruction*>)>;
 template <typename Visitor>
 static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
-                           const InternalCompareFunction* operand_order,
+                           std::optional<InternalCompareFunction> operand_order,
                            bool ignore_control_predecessors) {
   visitor->ReserveVisitStates(root->parent()->instruction_count());
 
@@ -3829,7 +3828,7 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
       }
     }
 
-    if (operand_order != nullptr) {
+    if (operand_order != std::nullopt) {
       std::sort(dfs_stack.begin() + old_dfs_stack_size, dfs_stack.end(),
                 *operand_order);
     }
@@ -3848,7 +3847,7 @@ Status HloInstruction::Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
                               bool ignore_control_predecessors) {
   VLOG(3) << "HloInstruction::Accept(%" << name() << ")";
   TF_RETURN_IF_ERROR(
-      PostOrderDFS(this, visitor, nullptr, ignore_control_predecessors));
+      PostOrderDFS(this, visitor, std::nullopt, ignore_control_predecessors));
   if (call_finish_visit) {
     TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
   }
@@ -3859,18 +3858,17 @@ Status HloInstruction::Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
 template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool);
 template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool);
 
-Status HloInstruction::AcceptWithOperandOrder(
-    DfsHloVisitor* visitor, const CompareFunction& operand_order,
-    bool call_finish_visit) {
+Status HloInstruction::AcceptWithOperandOrder(DfsHloVisitor* visitor,
+                                              CompareFunction operand_order,
+                                              bool call_finish_visit) {
   VLOG(2) << "HloInstruction::AcceptWithOperandOrder(%" << name() << ")";
-  InternalCompareFunction func = [&operand_order](
-                                     std::pair<int, const HloInstruction*> a,
-                                     std::pair<int, const HloInstruction*> b) {
+  auto func = [operand_order](std::pair<int, const HloInstruction*> a,
+                              std::pair<int, const HloInstruction*> b) {
     // Call the client's comparison function on the actual HloInstruction*
     // objects (ignoring the internal ids we also have in our stack entries)
     return operand_order(a.second, b.second);
   };
-  TF_RETURN_IF_ERROR(PostOrderDFS(this, visitor, &func,
+  TF_RETURN_IF_ERROR(PostOrderDFS(this, visitor, func,
                                   /*ignore_control_predecessors=*/false));
   if (call_finish_visit) {
     VLOG(3) << "HloInstruction::AcceptWithOperandOrder BEFORE FINISH VISIT";

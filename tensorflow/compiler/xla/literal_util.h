@@ -29,6 +29,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
@@ -251,7 +252,7 @@ class LiteralUtil {
       typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
   static StatusOr<Literal> CreateLiteralWithGenerator(
       const Shape& shape,
-      const std::function<T(absl::Span<const int64_t>)>& generator);
+      absl::FunctionRef<T(absl::Span<const int64_t>)> generator);
 
   // Creates a literal with the supplied shape, and initializes the literal
   // values using a normal distribution with given mean and stddev standard
@@ -519,12 +520,12 @@ template <typename NativeT>
 template <PrimitiveType type, typename T>
 /* static */ StatusOr<Literal> LiteralUtil::CreateLiteralWithGenerator(
     const Shape& shape,
-    const std::function<T(absl::Span<const int64_t>)>& generator) {
+    absl::FunctionRef<T(absl::Span<const int64_t>)> generator) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
   TF_RET_CHECK(shape.element_type() == type);
   Literal literal(shape);
   TF_RETURN_IF_ERROR(literal.Populate<NativeT>(
-      [&](absl::Span<const int64_t> indexes) { return generator(indexes); }));
+      [=](absl::Span<const int64_t> indexes) { return generator(indexes); }));
   return std::move(literal);
 }
 

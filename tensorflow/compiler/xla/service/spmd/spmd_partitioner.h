@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/custom_call_sharding_helper.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -526,9 +527,10 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   // Implementation of dot partitioning given DotGeneralDimsMapping.
   Status HandleDotHelper(HloInstruction* hlo,
                          const DotConvDimsMapping& dims_mapping,
-                         const std::function<StatusOr<HloInstruction*>(
+                         absl::FunctionRef<StatusOr<HloInstruction*>(
                              HloInstruction*, HloInstruction*, SpmdBuilder*,
-                             const Window& conv_window)>& create_sharded_dot);
+                             const Window& conv_window)>
+                             create_sharded_dot);
 
   // Common handle for elementwise HLOs.
   Status HandleElementwise(HloInstruction* hlo);
@@ -558,7 +560,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   // Convenient wrapper that creates PartitionedHlo from the result of the func
   // and maps it to the given original hlo.
   void SetPartitionedHlo(const HloInstruction* hlo,
-                         const std::function<HloInstruction*()>& func) {
+                         absl::FunctionRef<HloInstruction*()> func) {
     HloInstruction* new_hlo = func();
     new_hlo->set_sharding(hlo->sharding());
     SetPartitionedHlo(

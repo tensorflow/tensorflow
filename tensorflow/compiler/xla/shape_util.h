@@ -31,6 +31,7 @@ limitations under the License.
 
 #include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -478,22 +479,22 @@ class ShapeUtil {
   // Calls the given visitor function for each subshape of the given shape.
   // Subshapes are visited in DFS pre-order starting with the entire shape
   // (index {}).
-  using VisitorFunction = std::function<void(const Shape& /*subshape*/,
-                                             const ShapeIndex& /*index*/)>;
+  using VisitorFunction = absl::FunctionRef<void(const Shape& /*subshape*/,
+                                                 const ShapeIndex& /*index*/)>;
   static void ForEachSubshape(const Shape& shape, const VisitorFunction& func);
   using MutatingVisitorFunction =
-      std::function<void(Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
+      absl::FunctionRef<void(Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
   static void ForEachMutableSubshape(Shape* shape,
                                      const MutatingVisitorFunction& func);
 
   // Variants of ForEach(Mutable)Subshape which propagate Status from the
   // visitor function.
-  using StatusVisitorFunction = std::function<Status(
+  using StatusVisitorFunction = absl::FunctionRef<Status(
       const Shape& /*subshape*/, const ShapeIndex& /*index*/)>;
   static Status ForEachSubshapeWithStatus(const Shape& shape,
                                           const StatusVisitorFunction& func);
-  using MutatingStatusVisitorFunction =
-      std::function<Status(Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
+  using MutatingStatusVisitorFunction = absl::FunctionRef<Status(
+      Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
   static Status ForEachMutableSubshapeWithStatus(
       Shape* shape, const MutatingStatusVisitorFunction& func);
 
@@ -625,7 +626,7 @@ class ShapeUtil {
   // For examples:
   // • `FilterDimensions((< 2), T[m, n, k]) = T[m, n]`
   // • `FilterDimensions(is_even_number, T[m, n, k]) = T[m, k]`
-  static Shape FilterDimensions(const std::function<bool(int64_t)>& p,
+  static Shape FilterDimensions(absl::FunctionRef<bool(int64_t)> p,
                                 Shape shape);
 
   // Returns true if `dynamic_shape` has dimensions that are less-equal to the
@@ -638,7 +639,7 @@ class ShapeUtil {
                                        const xla::Shape& bounded_shape);
 
   using ForEachVisitorFunction =
-      std::function<StatusOr<bool>(absl::Span<const int64_t>)>;
+      absl::FunctionRef<StatusOr<bool>(absl::Span<const int64_t>)>;
 
   // Iterates through all the shape indexes, in minor to major order,
   // starting from the base indexes, incrementing by the incr steps, up to
@@ -691,7 +692,7 @@ class ShapeUtil {
   }
 
   using ForEachParallelVisitorFunction =
-      std::function<StatusOr<bool>(absl::Span<const int64_t>, int)>;
+      absl::FunctionRef<StatusOr<bool>(absl::Span<const int64_t>, int)>;
 
   // A parallel version of ForEachIndex(WithStatus). This can only be used if
   // the visitor_function is thread-safe and the order of iteration does not

@@ -30,6 +30,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/padding.h"
@@ -404,7 +405,7 @@ class XlaBuilder {
 
   // A helper function that runs a function that returns a StatusOr<XlaOp> and
   // returns an XlaOp.
-  XlaOp ReportErrorOrReturn(const std::function<StatusOr<XlaOp>()>& op_creator);
+  XlaOp ReportErrorOrReturn(absl::FunctionRef<StatusOr<XlaOp>()> op_creator);
 
   // Returns true if 'operand' is a compile-time constant. A compile-time
   // constant does not depend on any parameters, or on stateful operators such

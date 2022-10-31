@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
@@ -896,7 +897,7 @@ StatusOr<bool> RewriteReverse(
 HloInstruction* RewriteInputWithDynamicPadding(
     HloInstruction* conv, HloInstruction* input, HloInstruction* padding_value,
     absl::Span<HloInstruction*> padding_before, Window* input_window,
-    std::function<int64_t(int64_t)> window_dim_to_shape_dim) {
+    absl::FunctionRef<int64_t(int64_t)> window_dim_to_shape_dim) {
   HloInstruction* zero_s32 = conv->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
   // Padded shape represents the bounded shape after dynamic padding.

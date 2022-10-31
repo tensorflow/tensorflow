@@ -120,7 +120,7 @@ HloBatchNormInstruction::HloBatchNormInstruction(
 
 bool HloBatchNormInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloBatchNormInstruction&>(other);
   return feature_index() == casted_other.feature_index() &&
@@ -225,7 +225,7 @@ std::vector<std::string> HloFftInstruction::ExtraAttributesToStringImpl(
 
 bool HloFftInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloFftInstruction&>(other);
   return fft_type() == casted_other.fft_type() &&
@@ -322,7 +322,7 @@ std::vector<std::string> HloAsyncInstruction::ExtraAttributesToStringImpl(
 
 bool HloAsyncInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   return opcode() == other.opcode() &&
          eq_computations(async_wrapped_computation(),
@@ -394,7 +394,7 @@ std::vector<std::string> HloCopyStartInstruction::ExtraAttributesToStringImpl(
 
 bool HloCopyStartInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloCopyStartInstruction&>(other);
   return is_cross_program_prefetch() ==
@@ -444,7 +444,7 @@ std::vector<std::string> HloCompareInstruction::ExtraAttributesToStringImpl(
 
 bool HloCompareInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloCompareInstruction&>(other);
   return direction() == casted_other.direction();
@@ -521,7 +521,7 @@ HloTriangularSolveInstruction::ExtraAttributesToStringImpl(
 
 bool HloTriangularSolveInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other =
       static_cast<const HloTriangularSolveInstruction&>(other);
@@ -563,7 +563,7 @@ std::vector<std::string> HloCholeskyInstruction::ExtraAttributesToStringImpl(
 
 bool HloCholeskyInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloCholeskyInstruction&>(other);
   const auto& options = cholesky_options();
@@ -612,7 +612,7 @@ std::vector<std::string> HloChannelInstruction::ExtraAttributesToStringImpl(
 
 bool HloChannelInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   if (!IdenticalSlowPathIgnoringChannelIdValues(other, eq_computations)) {
     return false;
@@ -646,7 +646,7 @@ std::vector<std::string> HloSendRecvInstruction::ExtraAttributesToStringImpl(
 
 bool HloSendRecvInstruction::IdenticalSlowPathIgnoringChannelIdValues(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   // Not yet supported.
   return false;
@@ -769,7 +769,7 @@ std::vector<std::string> HloCollectiveInstruction::ExtraAttributesToStringImpl(
 
 bool HloCollectiveInstruction::IdenticalSlowPathIgnoringChannelIdValues(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other =
       static_cast<const HloCollectiveInstruction&>(other);
@@ -821,7 +821,7 @@ HloInstructionProto HloAllGatherInstruction::ToProto() const {
 
 bool HloAllGatherInstruction::IdenticalSlowPathIgnoringChannelIdValues(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloAllGatherInstruction&>(other);
   return HloCollectiveInstruction::IdenticalSlowPathIgnoringChannelIdValues(
@@ -861,7 +861,7 @@ HloAllReduceInstructionBase::ExtraAttributesToStringImpl(
 
 bool HloAllReduceInstructionBase::IdenticalSlowPathIgnoringChannelIdValues(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   if (opcode() != other.opcode()) {
     return false;
@@ -921,7 +921,7 @@ HloInstructionProto HloReduceScatterInstruction::ToProto() const {
 
 bool HloReduceScatterInstruction::IdenticalSlowPathIgnoringChannelIdValues(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other =
       static_cast<const HloReduceScatterInstruction&>(other);
@@ -977,7 +977,7 @@ std::vector<std::string> HloAllToAllInstruction::ExtraAttributesToStringImpl(
 
 bool HloAllToAllInstruction::IdenticalSlowPathIgnoringChannelIdValues(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloAllToAllInstruction&>(other);
   return HloCollectiveInstruction::IdenticalSlowPathIgnoringChannelIdValues(
@@ -1054,7 +1054,7 @@ HloCollectivePermuteInstruction::ExtraAttributesToStringImpl(
 
 bool HloCollectivePermuteInstruction::IdenticalSlowPathIgnoringChannelIdValues(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   if (opcode() != other.opcode()) {
     return false;
@@ -1112,7 +1112,7 @@ std::vector<std::string> HloDimensionsInstruction::ExtraAttributesToStringImpl(
 
 bool HloDimensionsInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other =
       static_cast<const HloDimensionsInstruction&>(other);
@@ -1158,7 +1158,7 @@ HloReduceInstruction::HloReduceInstruction(
 
 bool HloReduceInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloReduceInstruction&>(other);
   // Reduction results are determined by the reduction dimension and the
@@ -1208,7 +1208,7 @@ std::vector<std::string> HloSortInstruction::ExtraAttributesToStringImpl(
 
 bool HloSortInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloSortInstruction&>(other);
   if (dimensions() != casted_other.dimensions()) {
@@ -1312,7 +1312,7 @@ std::vector<std::string> HloReshapeInstruction::ExtraAttributesToStringImpl(
 
 bool HloReshapeInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloReshapeInstruction&>(other);
   return inferred_dimension() == casted_other.inferred_dimension();
@@ -1371,7 +1371,7 @@ std::vector<std::string> HloMapInstruction::ExtraAttributesToStringImpl(
 
 bool HloMapInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloMapInstruction&>(other);
   return eq_computations(to_apply(), casted_other.to_apply()) &&
@@ -1428,7 +1428,7 @@ std::vector<std::string> HloSliceInstruction::ExtraAttributesToStringImpl(
 
 bool HloSliceInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& other_slice = static_cast<const HloSliceInstruction&>(other);
   return slice_starts_ == other_slice.slice_starts_ &&
@@ -1487,7 +1487,7 @@ void HloConstantInstruction::RelayoutConstant(const Layout& new_layout,
 
 bool HloConstantInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& other_slice = static_cast<const HloSliceInstruction&>(other);
   return literal() == other_slice.literal();
@@ -2105,7 +2105,7 @@ std::vector<std::string> HloFusionInstruction::ExtraAttributesToStringImpl(
 
 bool HloFusionInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   return fusion_kind() == other.fusion_kind() &&
          eq_computations(fused_instructions_computation(),
@@ -2189,7 +2189,7 @@ bool HloRngInstruction::IsElementwiseImpl(
 
 bool HloRngInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloRngInstruction&>(other);
   return distribution_ == casted_other.distribution_;
@@ -2249,7 +2249,7 @@ std::string HloParameterInstruction::OperandsToStringWithCanonicalNameMap(
 
 bool HloParameterInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloParameterInstruction&>(other);
   return parameter_number() == casted_other.parameter_number();
@@ -2289,7 +2289,7 @@ HloGetTupleElementInstruction::ExtraAttributesToStringImpl(
 
 bool HloGetTupleElementInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other =
       static_cast<const HloGetTupleElementInstruction&>(other);
@@ -2330,7 +2330,7 @@ HloReducePrecisionInstruction::ExtraAttributesToStringImpl(
 
 bool HloReducePrecisionInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other =
       static_cast<const HloReducePrecisionInstruction&>(other);
@@ -2374,7 +2374,7 @@ std::vector<std::string> HloInfeedInstruction::ExtraAttributesToStringImpl(
 
 bool HloInfeedInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   // Not yet supported.
   return false;
@@ -2420,7 +2420,7 @@ std::vector<std::string> HloOutfeedInstruction::ExtraAttributesToStringImpl(
 
 bool HloOutfeedInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   // Not yet supported.
   return false;
@@ -2503,7 +2503,7 @@ std::vector<std::string> HloConvolutionInstruction::ExtraAttributesToStringImpl(
 
 bool HloConvolutionInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other =
       static_cast<const HloConvolutionInstruction&>(other);
@@ -2571,7 +2571,7 @@ HloReduceWindowInstruction::ExtraAttributesToStringImpl(
 
 bool HloReduceWindowInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other =
       static_cast<const HloReduceWindowInstruction&>(other);
@@ -2623,7 +2623,7 @@ HloSelectAndScatterInstruction::ExtraAttributesToStringImpl(
 
 bool HloSelectAndScatterInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other =
       static_cast<const HloSelectAndScatterInstruction&>(other);
@@ -2824,7 +2824,7 @@ std::vector<std::string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
 
 bool HloCustomCallInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other =
       static_cast<const HloCustomCallInstruction&>(other);
@@ -2957,7 +2957,7 @@ std::vector<std::string> HloPadInstruction::ExtraAttributesToStringImpl(
 
 bool HloPadInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloPadInstruction&>(other);
   return protobuf_util::ProtobufEquals(padding_config(),
@@ -3030,7 +3030,7 @@ HloDynamicSliceInstruction::ExtraAttributesToStringImpl(
 
 bool HloDynamicSliceInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloMapInstruction&>(other);
   return dynamic_slice_sizes() == casted_other.dynamic_slice_sizes();
@@ -3124,7 +3124,7 @@ std::vector<std::string> HloGatherInstruction::ExtraAttributesToStringImpl(
 
 bool HloGatherInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloGatherInstruction&>(other);
   return protobuf_util::ProtobufEquals(
@@ -3225,7 +3225,7 @@ std::vector<std::string> HloScatterInstruction::ExtraAttributesToStringImpl(
 
 bool HloScatterInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloScatterInstruction&>(other);
   return protobuf_util::ProtobufEquals(
@@ -3262,7 +3262,7 @@ std::vector<std::string> HloIotaInstruction::ExtraAttributesToStringImpl(
 
 bool HloIotaInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloIotaInstruction&>(other);
   return iota_dimension() == casted_other.iota_dimension();
@@ -3307,7 +3307,7 @@ std::vector<std::string> HloDotInstruction::ExtraAttributesToStringImpl(
 
 bool HloDotInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloDotInstruction&>(other);
   return protobuf_util::ProtobufEquals(dot_dimension_numbers(),
@@ -3347,7 +3347,7 @@ std::vector<std::string> HloDomainInstruction::ExtraAttributesToStringImpl(
 
 bool HloDomainInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other = static_cast<const HloDomainInstruction&>(other);
   return operand_side_metadata().Matches(
@@ -3404,7 +3404,7 @@ HloGetDimensionSizeInstruction::ExtraAttributesToStringImpl(
 
 bool HloGetDimensionSizeInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
     /*eq_computations*/) const {
   const auto& casted_other =
       static_cast<const HloGetDimensionSizeInstruction&>(other);
@@ -3445,7 +3445,7 @@ HloInstructionProto HloSetDimensionSizeInstruction::ToProto() const {
 
 bool HloSetDimensionSizeInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
     /*eq_computations*/) const {
   const auto& casted_other =
       static_cast<const HloSetDimensionSizeInstruction&>(other);
@@ -3481,7 +3481,7 @@ HloRngGetAndUpdateStateInstruction::ExtraAttributesToStringImpl(
 
 bool HloRngGetAndUpdateStateInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
     /*eq_computations*/) const {
   const auto& casted_other =
       static_cast<const HloRngGetAndUpdateStateInstruction&>(other);
@@ -3519,7 +3519,7 @@ HloRngBitGeneratorInstruction::ExtraAttributesToStringImpl(
 
 bool HloRngBitGeneratorInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   const auto& casted_other =
       static_cast<const HloRngBitGeneratorInstruction&>(other);

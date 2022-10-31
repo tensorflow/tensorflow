@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -324,7 +325,7 @@ class InstructionList {
 
   // Scan the list and promote nodes to express lane if should_promote(Item)
   // returns true;
-  void PromoteNodesToSkip(std::function<bool(Item*)> should_promote) {
+  void PromoteNodesToSkip(absl::FunctionRef<bool(Item*)> should_promote) {
     int64_t count = 0;
     for (auto* item = first(); item != nullptr; item = next(item)) {
       if (should_promote(item)) {

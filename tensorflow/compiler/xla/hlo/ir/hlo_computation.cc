@@ -307,7 +307,8 @@ bool HloComputation::IsMarkedAsDead(const HloInstruction* inst) {
 }
 
 Status HloComputation::RemoveInstructionAndUnusedOperands(
-    HloInstruction* instruction, std::function<void(HloInstruction*)> cleanup) {
+    HloInstruction* instruction,
+    std::optional<absl::FunctionRef<void(HloInstruction*)>> cleanup) {
   TF_RET_CHECK(root_instruction() != instruction);
 
   TF_RET_CHECK(instruction->IsDead());
@@ -328,8 +329,8 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
       worklist.push(item->mutable_operand(i));
     }
 
-    if (cleanup) {
-      cleanup(item);
+    if (cleanup != std::nullopt) {
+      (*cleanup)(item);
     }
     TF_RETURN_IF_ERROR(RemoveInstruction(item));
     removed.insert(item);
@@ -784,9 +785,10 @@ StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
 
 StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
     HloInstruction* instruction, ShapeIndex* index,
-    const std::function<
-        HloInstruction*(HloInstruction* leaf, const ShapeIndex& leaf_index,
-                        HloComputation* computation)>& copy_leaf) {
+    absl::FunctionRef<HloInstruction*(HloInstruction* leaf,
+                                      const ShapeIndex& leaf_index,
+                                      HloComputation* computation)>
+        copy_leaf) {
   if (instruction->shape().IsTuple()) {
     std::vector<HloInstruction*> elements;
     for (int64_t i = 0; i < ShapeUtil::TupleElementCount(instruction->shape());
@@ -853,9 +855,10 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
 
 StatusOr<HloInstruction*> HloComputation::DeepCopyInstructionWithCustomCopier(
     HloInstruction* instruction,
-    const std::function<
-        HloInstruction*(HloInstruction* leaf, const ShapeIndex& leaf_index,
-                        HloComputation* computation)>& copy_leaf) {
+    absl::FunctionRef<HloInstruction*(HloInstruction* leaf,
+                                      const ShapeIndex& leaf_index,
+                                      HloComputation* computation)>
+        copy_leaf) {
   if (instruction->parent() != this) {
     return FailedPrecondition(
         "Can't deep copy instruction %s: instruction is not in computation %s",
@@ -880,7 +883,8 @@ ProgramShape HloComputation::ComputeProgramShape(bool include_ids) const {
 
 bool HloComputation::EqualInternal(
     const HloComputation& other, bool is_layout_sensitive,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    std::optional<
+        absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>>
         computations_comparator,
     bool ignore_channel_id_values, bool ignore_execution_thread) const {
   if (this == &other) {
@@ -916,11 +920,13 @@ bool HloComputation::EqualInternal(
         ignore_channel_id_values
             ? pair.first->IdenticalIgnoringChannelIdValues(
                   *pair.second, operands_eq,
-                  (computations_comparator ? computations_comparator : comp_eq),
+                  (computations_comparator ? *computations_comparator
+                                           : comp_eq),
                   is_layout_sensitive)
             : pair.first->Identical(
                   *pair.second, operands_eq,
-                  (computations_comparator ? computations_comparator : comp_eq),
+                  (computations_comparator ? *computations_comparator
+                                           : comp_eq),
                   is_layout_sensitive);
     if (!identical_ignoring_operands) {
       return false;
@@ -1118,15 +1124,14 @@ namespace {
 // other mapped instructions are placed at the end.
 void SortClonedInstructions(
     const HloCloneContext& context,
-    const std::function<const HloInstruction*(const HloInstruction*)>& replace,
+    absl::FunctionRef<const HloInstruction*(const HloInstruction*)> replace,
     const HloComputation& computation,
     const HloComputation::InstructionList& ordered_instructions,
     std::vector<std::unique_ptr<HloInstruction>>& unordered_instructions) {
   using InstructionSorter = MappedPtrContainerSorter<HloInstruction>;
-  InstructionSorter::MapPtrFn instruction_mapper =
-      [&context, &replace](const HloInstruction* i) {
-        return context.FindInstruction(replace(i));
-      };
+  auto instruction_mapper = [&context, replace](const HloInstruction* i) {
+    return context.FindInstruction(replace(i));
+  };
   size_t num_mapped_instructions = 0;
   size_t mapped_index_of_last_parameter_plus_one = 0;
   for (const auto& instruction : ordered_instructions) {
@@ -1139,7 +1144,7 @@ void SortClonedInstructions(
     }
     mapped_index_of_last_parameter_plus_one = num_mapped_instructions;
   }
-  InstructionSorter::UnmappedPtrIndexFn unmapped_ptr_index =
+  auto unmapped_ptr_index =
       [num_mapped_instructions,
        mapped_index_of_last_parameter_plus_one](const HloInstruction* i) {
         if (dynamic_cast<const HloParameterInstruction*>(i)) {
@@ -1167,13 +1172,12 @@ void SortClonedInstructions(
 // cloned instructions.
 void SortClonedInstructionUsersAndControlLists(
     const HloCloneContext& context,
-    const std::function<const HloInstruction*(const HloInstruction*)>& replace,
+    absl::FunctionRef<const HloInstruction*(const HloInstruction*)> replace,
     const HloComputation::InstructionList& sorted_instructions) {
   using InstructionSorter = MappedPtrContainerSorter<HloInstruction>;
-  InstructionSorter::MapPtrFn instruction_mapper =
-      [&context, &replace](const HloInstruction* i) {
-        return context.FindInstruction(replace(i));
-      };
+  auto instruction_mapper = [&context, replace](const HloInstruction* i) {
+    return context.FindInstruction(replace(i));
+  };
   for (const std::unique_ptr<HloInstruction>& instruction :
        sorted_instructions) {
     HloInstruction* cloned_instruction =

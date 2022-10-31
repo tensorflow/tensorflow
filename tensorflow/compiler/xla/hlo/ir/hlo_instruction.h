@@ -997,7 +997,7 @@ class HloInstruction {
   // the adder being passed by the caller would not be necessary.
   static std::unique_ptr<HloInstruction> CreateBroadcastSequence(
       const Shape& output_shape, HloInstruction* operand,
-      const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
+      absl::FunctionRef<HloInstruction*(std::unique_ptr<HloInstruction>)>
           adder);
 
   // Creates a pad instruction, where the operand is padded on the edges and
@@ -1281,9 +1281,9 @@ class HloInstruction {
   // Returns true if "other" performs the same computation as this instruction.
   bool Identical(
       const HloInstruction& other,
-      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+      absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
           eq_operands = std::equal_to<const HloInstruction*>(),
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations = std::equal_to<const HloComputation*>(),
       bool layout_sensitive = true) const {
     return IdenticalInternal(other, eq_operands, eq_computations,
@@ -1296,9 +1296,9 @@ class HloInstruction {
   // considers add(a,b) equal to add(b,a)).
   bool IdenticalIgnoringCommutativeOperandOrder(
       const HloInstruction& other,
-      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+      absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
           eq_operands = std::equal_to<const HloInstruction*>(),
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations = std::equal_to<const HloComputation*>(),
       bool layout_sensitive = true) const {
     return IdenticalInternal(other, eq_operands, eq_computations,
@@ -1311,9 +1311,9 @@ class HloInstruction {
   // both have channel IDs or neither has a channel ID.
   bool IdenticalIgnoringChannelIdValues(
       const HloInstruction& other,
-      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+      absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
           eq_operands = std::equal_to<const HloInstruction*>(),
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations = std::equal_to<const HloComputation*>(),
       bool layout_sensitive = true) const {
     return IdenticalInternal(other, eq_operands, eq_computations,
@@ -1422,9 +1422,9 @@ class HloInstruction {
   // visitation is determined by the given operand order; if compare(A, B) ==
   // true, A is visited before B.
   using CompareFunction =
-      std::function<bool(const HloInstruction*, const HloInstruction*)>;
+      absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>;
   Status AcceptWithOperandOrder(DfsHloVisitor* visitor,
-                                const CompareFunction& operand_order,
+                                CompareFunction operand_order,
                                 bool call_finish_visit = true);
 
   // Visit this instruction and only this instruction with the given visitor.
@@ -1633,7 +1633,7 @@ class HloInstruction {
   // when we clone hlo_computations and want to let the instructions to point
   // to the newly cloned nodes.
   void ReplaceCalledComputations(
-      std::function<HloComputation*(HloComputation*)> map_function) {
+      absl::FunctionRef<HloComputation*(HloComputation*)> map_function) {
     for (int64_t i = 0; i < called_computations_.size(); ++i) {
       called_computations_[i] = map_function(called_computations_[i]);
     }
@@ -2245,9 +2245,9 @@ class HloInstruction {
 
   bool IdenticalInternal(
       const HloInstruction& other,
-      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+      absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
           eq_operands,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations,
       bool layout_sensitive, bool ignore_channel_id_values,
       bool ignore_commutative_operand_order) const;
@@ -2282,7 +2282,7 @@ class HloInstruction {
   // See comments on Identical().
   virtual bool IdenticalSlowPath(
       const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const;
 
   // Creates an n-ary elementwise operation.

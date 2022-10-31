@@ -235,9 +235,9 @@ std::string HloModuleGroupUtil::CycleToString(
   return absl::StrJoin(names, " --> ");
 }
 
-Status HloModuleGroupUtil::VisitTopologicalOrder(
-    VisitStates* visit_state, const VisitFunction& visit_function,
-    HloInstruction* root) {
+Status HloModuleGroupUtil::VisitTopologicalOrder(VisitStates* visit_state,
+                                                 VisitFunction visit_function,
+                                                 HloInstruction* root) {
   // Stack of HLO instructions visited in DFS order.
   std::stack<HloInstruction*> stack;
   stack.push(root);

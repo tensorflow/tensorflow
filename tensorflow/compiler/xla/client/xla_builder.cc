@@ -419,7 +419,7 @@ XlaOp XlaBuilder::ReportErrorOrReturn(const StatusOr<XlaOp>& op) {
 }
 
 XlaOp XlaBuilder::ReportErrorOrReturn(
-    const std::function<StatusOr<XlaOp>()>& op_creator) {
+    absl::FunctionRef<StatusOr<XlaOp>()> op_creator) {
   return ReportErrorOrReturn(op_creator());
 }
 

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/any.h"
@@ -1704,7 +1705,7 @@ class CopyRemover {
   // If element is not head, traverse from element to tail, then wrap
   // around. The ordering is important for live range region analysis.
   void ForEachValueInRange(const ValueNode* element,
-                           std::function<void(const ValueNode*)> visitor) {
+                           absl::FunctionRef<void(const ValueNode*)> visitor) {
     const ValueNode* head = element;
     for (const ValueNode* p = head; p != nullptr; p = Next(*p)) {
       visitor(p);
