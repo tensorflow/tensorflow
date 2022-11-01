@@ -88,7 +88,7 @@ func.func @dedup_error_message(%arg0: !rt.execution_context) {
 // CHECK: )
 func.func @custom_call(%arg0: !rt.execution_context) {
   // CHECK: call @target
-  rt.custom_call %arg0["target"] () { arr = [1, 2, 3] } : () -> ()
+  rt.call %arg0["target"] () { arr = [1, 2, 3] } : () -> ()
   func.return
 }
 
@@ -121,7 +121,7 @@ func.func @custom_call(%arg0: !rt.execution_context) {
 // CHECK: )
 func.func @custom_call(%arg0: !rt.execution_context) {
   // CHECK: call @target
-  rt.custom_call %arg0["target"] ()
+  rt.call %arg0["target"] ()
     { attr_name = array<i64: 1, 2, 3> } : () -> ()
   func.return
 }
@@ -144,7 +144,7 @@ func.func @custom_call(%arg0: !rt.execution_context) {
 // CHECK: )
 func.func @custom_call(%arg0: !rt.execution_context) {
   // CHECK: call @target
-  rt.custom_call %arg0["target"] () { arr = [] } : () -> ()
+  rt.call %arg0["target"] () { arr = [] } : () -> ()
   func.return
 }
 
@@ -180,7 +180,7 @@ func.func @dynamic_custom_call(%arg0: !rt.execution_context) {
   // CHECK-SAME:                                     %[[ARGS]], %[[ATTRS]],
   // CHECK-SAME:                                     %[[RETS]])
   // CHECK: cf.assert %[[STATUS]], "oops"
-  %status = rt.custom_call dynamic %arg0["target"] () : () -> ()
+  %status = rt.call dynamic %arg0["target"] () : () -> ()
   %ok = rt.is_ok %status
   cf.assert %ok, "oops"
   func.return
@@ -210,7 +210,7 @@ func.func @dynamic_custom_call(%arg0: !rt.execution_context) {
 // CHECK: )
 func.func @custom_call(%arg0: !rt.execution_context) {
   // CHECK: call @target
-  rt.custom_call %arg0["target"] () { attr_name = 123.0 : f32 } : () -> ()
+  rt.call %arg0["target"] () { attr_name = 123.0 : f32 } : () -> ()
   func.return
 }
 
@@ -245,7 +245,7 @@ func.func @custom_call(%arg0: !rt.execution_context) {
 // CHECK: )
 func.func @custom_call(%arg0: !rt.execution_context) {
   // CHECK: call @target
-  rt.custom_call %arg0["target"] ()
+  rt.call %arg0["target"] ()
     { attr_name = dense<[1, 2, 3]> : tensor<3xi32> } : () -> ()
   func.return
 }
@@ -283,7 +283,7 @@ func.func @custom_call(%arg0: !rt.execution_context) {
 // CHECK: )
 func.func @custom_call(%arg0: !rt.execution_context) {
   // CHECK: call @target
-  rt.custom_call %arg0["target"] ()
+  rt.call %arg0["target"] ()
     { attr_name = dense<[[1], [2]]> : tensor<2x1xi32> } : () -> ()
   func.return
 }
@@ -304,7 +304,7 @@ func.func @custom_call(%arg0: !rt.execution_context) {
 // CHECK: )
 func.func @custom_call(%arg0: !rt.execution_context) {
   // CHECK: call @target
-  rt.custom_call %arg0["target"] () { attr_name = "attr_value" } : () -> ()
+  rt.call %arg0["target"] () { attr_name = "attr_value" } : () -> ()
   func.return
 }
 
@@ -325,7 +325,7 @@ func.func @custom_call(%arg0: !rt.execution_context, %arg1 : f32) {
   // CHECK-DAG: llvm.store {{.*}}, %[[ARGS]] : !llvm.array<3 x ptr>, !llvm.ptr
 
   // CHECK: call @target
-  rt.custom_call %arg0["target"] (%arg1) : (f32) -> ()
+  rt.call %arg0["target"] (%arg1) : (f32) -> ()
   func.return
 }
 
@@ -361,7 +361,7 @@ func.func @custom_call(%arg0: !rt.execution_context, %arg1 : memref<?x256xf32>) 
   // CHECK: %[[N_ARGS:.*]] = llvm.mlir.addressof @__rt_num_args
 
   // CHECK: call @target
-  rt.custom_call %arg0["target"] (%arg1) : (memref<?x256xf32>) -> ()
+  rt.call %arg0["target"] (%arg1) : (memref<?x256xf32>) -> ()
   func.return
 }
 
@@ -375,9 +375,9 @@ func.func @custom_call(%arg0: !rt.execution_context, %arg1 : memref<?x256xf32>) 
 // CHECK: )
 func.func @dedup_custom_call_attrs(%arg0: !rt.execution_context) {
   // CHECK: call @target
-  rt.custom_call %arg0["target"] () { arr = [1, 2, 3] } : () -> ()
+  rt.call %arg0["target"] () { arr = [1, 2, 3] } : () -> ()
   // CHECK: call @target
-  rt.custom_call %arg0["target"] () { arr = [1, 2, 3] } : () -> ()
+  rt.call %arg0["target"] () { arr = [1, 2, 3] } : () -> ()
   func.return
 }
 
@@ -392,8 +392,8 @@ func.func @dedup_custom_call_attrs(%arg0: !rt.execution_context) {
 func.func @dynamic_custom_call(%arg0: !rt.execution_context) {
   // CHECK: call @runtimeCustomCall
   // CHECK: call @runtimeCustomCall
-  rt.custom_call dynamic %arg0["target"] () : () -> ()
-  rt.custom_call dynamic %arg0["target"] () : () -> ()
+  rt.call dynamic %arg0["target"] () : () -> ()
+  rt.call dynamic %arg0["target"] () : () -> ()
   func.return
 }
 
@@ -410,7 +410,7 @@ func.func @dynamic_custom_call(%arg0: !rt.execution_context) {
 // CHECK: call @f32_reduce
 // CHECK: %[[LOAD2:.*]] = llvm.load %[[F32_ALLOCA]]
 func.func @custom_call(%ctx: !rt.execution_context) -> (f32) {
-  %status, %0 = rt.custom_call %ctx["f32_reduce"] () : () -> (f32)
+  %status, %0 = rt.call %ctx["f32_reduce"] () : () -> (f32)
   return %0 : f32
 }
 
@@ -436,7 +436,7 @@ func.func @opaque_custom_call_arg(%ctx: !rt.execution_context,
   // CHECK: llvm.mlir.addressof @__type_id_opaque : !llvm.ptr
   // CHECK: llvm.store %[[ARG1]], %[[ALLOCA]] : !llvm.ptr
   // CHECK: call @target
-  %status = rt.custom_call %ctx["target"] (%arg) : (!rt.opaque) -> ()
+  %status = rt.call %ctx["target"] (%arg) : (!rt.opaque) -> ()
   return
 }
 
@@ -448,7 +448,7 @@ func.func @opaque_custom_call_arg(%ctx: !rt.execution_context,
 func.func @opaque_custom_call_res(%ctx: !rt.execution_context) {
   // CHECK: %[[ALLOCA:.*]] = llvm.alloca {{.*}} x !llvm.ptr
   // CHECK: call @target
-  %status, %res = rt.custom_call %ctx["target"] () : () -> (!rt.opaque)
+  %status, %res = rt.call %ctx["target"] () : () -> (!rt.opaque)
   // CHECK: llvm.load %[[ALLOCA]] : !llvm.ptr -> !llvm.ptr
   return
 }
@@ -463,7 +463,7 @@ func.func @opaque_custom_call_res(%ctx: !rt.execution_context) {
 // CHECK-SAME: )
 func.func @custom_call_unit_attr(%ctx: !rt.execution_context) {
   // CHECK: llvm.mlir.addressof @__rt_custom_call_attrs
-  %status = rt.custom_call %ctx["target"] () { attr } : () -> ()
+  %status = rt.call %ctx["target"] () { attr } : () -> ()
   return
 }
 
@@ -498,7 +498,7 @@ func.func @custom_call_unit_attr(%ctx: !rt.execution_context) {
 // CHECK: %[[STRIDE1:.*]] = llvm.mlir.constant(1 : index)
 // CHECK: llvm.insertvalue %[[STRIDE1]], {{.*}}[4, 1]
 func.func @custom_call(%ctx: !rt.execution_context) -> (memref<2x2xf32>) {
-  %status, %0 = rt.custom_call %ctx["f32_reduce"] () : () -> (memref<2x2xf32>)
+  %status, %0 = rt.call %ctx["f32_reduce"] () : () -> (memref<2x2xf32>)
   return %0 : memref<2x2xf32>
 }
 
@@ -520,7 +520,7 @@ func.func @init(%ctx: !rt.execution_context)
 
 // CHECK: @custom_call_exported_function_ref
 func.func @custom_call_exported_function_ref(%ctx: !rt.execution_context) {
-  %status = rt.custom_call %ctx["call_init"] () { init = @init } : () -> ()
+  %status = rt.call %ctx["call_init"] () { init = @init } : () -> ()
   return
 }
 

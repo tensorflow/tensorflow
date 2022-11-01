@@ -16,7 +16,7 @@ func.func @function_call_to_custom_call(
   %arg0: !rt.execution_context,
   %arg1: memref<?xf32>
 ) -> memref<?xf32> attributes {rt.exported = 0 : i32} {
-  // CHECK: %[[STATUS:.*]], %[[RES:.*]] = rt.custom_call %[[CTX]]["target"]
+  // CHECK: %[[STATUS:.*]], %[[RES:.*]] = rt.call %[[CTX]]["target"]
   // CHECK-SAME: (%[[ARG]]) {attr0 = 2 : i32, attr1 = 1.000000e+00 : f32}
   // CHECK: %[[IS_OK:.*]] = rt.is_ok %[[STATUS]]
   // CHECK: assert %[[IS_OK]], "custom call 'target' failed"
@@ -33,7 +33,7 @@ func.func @function_call_to_dynamic_custom_call(
   %arg0: !rt.execution_context,
   %arg1: memref<?xf32>
 ) attributes {rt.exported = 0 : i32} {
-  // CHECK: rt.custom_call dynamic %[[CTX]]["target"]
+  // CHECK: rt.call dynamic %[[CTX]]["target"]
   call @dynamic_custom_call(%arg1) : (memref<?xf32>) -> ()
   return
 }
@@ -48,7 +48,7 @@ func.func @function_call_to_traced_custom_call(
 ) -> memref<?xf32> attributes {rt.exported = 0 : i32} {
   // CHECK: %[[RES:.*]]:2 = rt.trace #rt.hlo_trace<"fusion", "foo", 0>, %[[CTX]]
   // CHECK-SAME: -> !rt.status, memref<?xf32> {
-  // CHECK-NEXT:   %[[STATUS:.*]], %[[RET:.*]] = custom_call %[[CTX]]["target"]
+  // CHECK-NEXT:   %[[STATUS:.*]], %[[RET:.*]] = call %[[CTX]]["target"]
   // CHECK-NOT:    #rt.hlo_trace
   // CHECK-NEXT:   yield %[[STATUS]], %[[RET]] : !rt.status, memref<?xf32>
   // CHECK-NEXT: }

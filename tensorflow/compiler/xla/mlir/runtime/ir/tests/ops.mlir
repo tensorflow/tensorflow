@@ -35,10 +35,9 @@ func.func @set_error(%arg0: !rt.execution_context) {
 // CHECK:  %[[MEMREF:.*]]: memref<?xf32>
 func.func @custom_call(%ctx: !rt.execution_context,
                        %input: memref<?xf32>) -> f32 {
-  // CHECK: rt.custom_call %[[CTX]]["f32_reduce"] (%[[MEMREF]])
+  // CHECK: rt.call %[[CTX]]["f32_reduce"] (%[[MEMREF]])
   // CHECK-SAME: : (memref<?xf32>) -> f32
-  %status, %0 = rt.custom_call %ctx["f32_reduce"] (%input)
-                : (memref<?xf32>) -> f32
+  %status, %0 = rt.call %ctx["f32_reduce"] (%input) : (memref<?xf32>) -> f32
   %ok = rt.is_ok %status
   cf.assert %ok, "failed to call custom call"
   return %0 : f32
@@ -47,8 +46,8 @@ func.func @custom_call(%ctx: !rt.execution_context,
 // CHECK-LABEL: func @dynamic_custom_call(
 // CHECK:  %[[CTX:.*]]: !rt.execution_context
 func.func @dynamic_custom_call(%ctx: !rt.execution_context) {
-  // CHECK: rt.custom_call dynamic %[[CTX]]["f32_reduce"] () : () -> ()
-  %status = rt.custom_call dynamic %ctx["f32_reduce"] () : () -> ()
+  // CHECK: rt.call dynamic %[[CTX]]["f32_reduce"] () : () -> ()
+  %status = rt.call dynamic %ctx["f32_reduce"] () : () -> ()
   return
 }
 
@@ -58,10 +57,9 @@ func.func @dynamic_custom_call(%ctx: !rt.execution_context) {
 // CHECK: ) -> !rt.opaque
 func.func @opaque_arg(%ctx: !rt.execution_context,
                       %arg0: !rt.opaque) -> !rt.opaque {
-  // CHECK: rt.custom_call %[[CTX]]["test"]
+  // CHECK: rt.call %[[CTX]]["test"]
   // CHECK-SAME: (%[[ARG]]) : (!rt.opaque) -> !rt.opaque
-  %status, %result = rt.custom_call %ctx["test"] (%arg0)
-    : (!rt.opaque) -> (!rt.opaque)
+  %status, %result = rt.call %ctx["test"] (%arg0) : (!rt.opaque) -> (!rt.opaque)
   return %result : !rt.opaque
 }
 

@@ -194,14 +194,14 @@ def RT_IsOkOp : RT_Op<"is_ok"> {
 // CustomCallOp
 //===----------------------------------------------------------------------===//
 
-def RT_CustomCallOp : RT_Op<"custom_call"> {
+def RT_CustomCallOp : RT_Op<"call"> {
   let summary = "calls a custom function registered with the runtime";
 
   let description = [{
     This operation calls a custom function registered with the runtime. This
-    mechanism allows to call any C++ function from the compiled XLA program, for
-    example this can be used as an extension mechanism to register vendor
-    specific operation implementations (e.g. call oneDNN convolution).
+    mechanism allows to call any C++ function from the compiled XLA program. For
+    example, the XLA Gpu runtime is implemented as a set of function calls into
+    the Gpu abstraction layer.
 
     Returns `!rt.status` value which can be checked to see if the custom call
     was successful.
@@ -209,20 +209,20 @@ def RT_CustomCallOp : RT_Op<"custom_call"> {
     Example:
 
       ```mlir
-      func @compute(%ctx: !rt.execution_context, %arg0: memref<?xf32>,
-                                              %arg1: memref<?xf32>) {
-        %status = rt.custom_call %ctx["one_dnn.some_operation"] (%arg0, %arg1)
-          : (memref<?xf32>, memref<?xf32>) -> ()
+      func @compute(%ctx: !rt.execution_context,
+                    %arg0: memref<?xf32>, %arg1: memref<?xf32>) {
+        %status = rt.call %ctx["xla.gpu.kernel_launch"] (%arg0, %arg1)
+          { kernel = "fusion.0" } : (memref<?xf32>, memref<?xf32>) -> ()
         %0 = rt.is_ok %status
-        cf.assert %0, "failed to call one_dnn custom call"
+        cf.assert %0, "failed to call xla.gpu.kernel_launch custom call"
         return
       }
       ```
 
     To avoid collisions users should group custom calls into libraries and put
     them into namespaces (similar to MLIR dialects). In this example there is
-    an assumption that all OneDnn related custom calls will be registered with
-    a `one_dnn` prefix.
+    an assumption that all XLA Gpu related custom calls will be registered with
+    an `xla.gpu` prefix.
 
     Dynamic custom calls are resolved at runtime using the custom calls
     registry, which incurs additional overheads because the custom call handler
