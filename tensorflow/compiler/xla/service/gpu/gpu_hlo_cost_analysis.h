@@ -41,6 +41,10 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
 
   int64_t GetConvolutionFlops(const HloInstruction* convolution) override;
 
+  Status HandleElementwiseOp(const HloInstruction* hlo);
+  Status HandleElementwiseUnary(const HloInstruction* hlo) override;
+  Status HandleElementwiseBinary(const HloInstruction* hlo) override;
+
   // Estimate the total size of IR accounting for both duplication
   // of producer code by consumer and the total number of basic blocks.
   // Tell if merged IR size would be too slow to compile.

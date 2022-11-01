@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 
 namespace xla {
 namespace gpu {
@@ -244,6 +245,106 @@ int64_t GpuHloCostAnalysis::GetConvolutionFlops(
 
   return HloCostAnalysis::GetConvolutionFlops(convolution, lhs_shape, rhs_shape,
                                               result_shape);
+}
+
+Status GpuHloCostAnalysis::HandleElementwiseOp(const HloInstruction* hlo) {
+  const HloOpcode opcode = hlo->opcode();
+  const auto& shape = hlo->shape();
+  const PrimitiveType type = shape.element_type();
+
+  // These are clock cycle estimates of some of the most common expensive
+  // operations. They most likely vary a lot from GPU to GPU but should
+  // at least provide reasonable comparisons for the computation cost analysis.
+  // HLOs used to measure these can be found in gpu_performance_model_test.cc
+  // This list is far from complete yet.
+  // TODO(b/256570878): Make a tool to measure these numbers and store them
+  // separately from the code where possible.
+
+  // Typical elementwise instructions take about 3 clock cycles.
+  int64_t flop_per_element = 3;
+  switch (opcode) {
+    case HloOpcode::kTanh:
+      if (type == F32) {
+        flop_per_element = 30;
+      } else if (type == F64) {
+        flop_per_element = 2000;
+      }
+      break;
+    case HloOpcode::kDivide:
+      if (type == S32) {
+        flop_per_element = 80;
+      } else if (type == F64) {
+        flop_per_element = 3200;
+      } else if (type == C128) {
+        flop_per_element = 20000;
+      }
+      break;
+    // Expands to multiple instructions.
+    case HloOpcode::kExp:
+      if (type == F64) {
+        flop_per_element = 2200;
+      }
+      break;
+    case HloOpcode::kSqrt:
+      if (type == F64) {
+        flop_per_element = 1100;
+      } else if (type == C128) {
+        flop_per_element = 25000;
+      }
+      break;
+    case HloOpcode::kRsqrt:
+      if (type == F64) {
+        flop_per_element = 900;
+      }
+      break;
+    case HloOpcode::kAdd:
+      if (type == F64) {
+        flop_per_element = 120;
+      } else if (type == C128) {
+        flop_per_element = 240;
+      }
+      break;
+    case HloOpcode::kMultiply:
+      if (type == F64) {
+        flop_per_element = 120;
+      } else if (type == C128) {
+        flop_per_element = 650;
+      }
+      break;
+    case HloOpcode::kPower:
+      if (type == F64) {
+        flop_per_element = 11000;
+      } else if (type == C128) {
+        flop_per_element = 28000;
+      }
+      break;
+    case HloOpcode::kLog:
+      if (type == F32) {
+        flop_per_element = 45;
+      } else if (type == F64) {
+        flop_per_element = 1000;
+      }
+      break;
+    default:
+      // Raise default cost of all unlisted F64 and C128 ops.
+      if (type == F64) {
+        flop_per_element = 10;
+      } else if (type == C128) {
+        flop_per_element = 20;
+      }
+      break;
+  }
+  current_properties_[kFlopsKey] =
+      flop_per_element * ShapeUtil::ElementsInRecursive(shape);
+  return OkStatus();
+}
+
+Status GpuHloCostAnalysis::HandleElementwiseUnary(const HloInstruction* hlo) {
+  return HandleElementwiseOp(hlo);
+}
+
+Status GpuHloCostAnalysis::HandleElementwiseBinary(const HloInstruction* hlo) {
+  return HandleElementwiseOp(hlo);
 }
 
 std::unique_ptr<HloCostAnalysis>

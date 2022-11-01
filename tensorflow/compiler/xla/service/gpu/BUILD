@@ -2234,6 +2234,7 @@ cc_library(
         ":backend_configs_cc",
         ":cublas_cudnn",
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
+        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
     ],
 )
@@ -2243,6 +2244,27 @@ tf_cc_test(
     srcs = ["gpu_hlo_cost_analysis_test.cc"],
     deps = [
         ":gpu_hlo_cost_analysis",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
+    name = "gpu_performance_model",
+    srcs = ["gpu_performance_model.cc"],
+    hdrs = ["gpu_performance_model.h"],
+    deps = [
+        ":gpu_device_info",
+        ":gpu_hlo_cost_analysis",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_performance_model_test",
+    srcs = ["gpu_performance_model_test.cc"],
+    deps = [
+        ":gpu_performance_model",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],

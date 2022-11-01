@@ -84,8 +84,9 @@ ENTRY entry {
   GpuHloCostAnalysis analysis({ShapeSize});
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis));
 
-  // Each of the output elements are generated from reducing [4x5] elements.
-  EXPECT_EQ(analysis.flop_count(), n_output_elements * (4 * 5 - 1));
+  // Each of the output elements are generated from reducing [4x5] elements;
+  // each elementwise operation is counted as 3 flops.
+  EXPECT_EQ(analysis.flop_count(), 3 * n_output_elements * (4 * 5 - 1));
 
   EXPECT_EQ(analysis.bytes_accessed(),
             sizeof(float) * (8 * 8 + 1 + n_output_elements));
@@ -158,7 +159,7 @@ ENTRY e {
   EXPECT_EQ(analysis.output_bytes_accessed(*root), n_elements * 4);
   EXPECT_EQ(analysis.bytes_accessed(*root), n_elements * 4);
   EXPECT_EQ(analysis.bytes_accessed(), n_elements * 4);
-  EXPECT_EQ(analysis.flop_count(), n_elements * 3);
+  EXPECT_EQ(analysis.flop_count(), n_elements * 3 * 3);
 }
 
 TEST_F(GpuHloCostAnalysisTest, Slice) {
