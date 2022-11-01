@@ -349,3 +349,13 @@ tf_cc_test(
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
+
+cc_library(
+    name = "file_system_utils",
+    hdrs = ["file_system_utils.h"],
+    copts = tf_profiler_copts(),
+    deps = [
+        "//tensorflow/tsl/platform",
+        "@com_google_absl//absl/strings",
+    ],
+)

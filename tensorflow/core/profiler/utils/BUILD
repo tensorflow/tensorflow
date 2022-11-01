@@ -394,6 +394,7 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         "//tensorflow/core/platform",
+        "//tensorflow/tsl/profiler/utils:file_system_utils",
         "@com_google_absl//absl/strings",
     ],
 )
