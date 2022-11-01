@@ -89,7 +89,6 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 
   AlgebraicSimplifierOptions algsimp_options;
   algsimp_options.set_enable_conv_operand_swap(false);
-  algsimp_options.set_enable_pred_multiply_to_select(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
 
   // CudnnSimplifyPadding gets rid of some padding introduced by

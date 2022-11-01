@@ -829,19 +829,6 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "convert_pred_multiply_test",
-    srcs = ["convert_pred_multiply_test.cc"],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":gpu_codegen_test",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
-tf_cc_test(
     name = "in_place_op_test",
     srcs = ["in_place_op_test.cc"],
     tags = tf_cuda_tests_tags(),
