@@ -26,8 +26,8 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"
+#include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
 #include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h"
-#include "tensorflow/compiler/xla/mlir/utils/runtime/custom_calls.h"
 
 namespace xla {
 namespace gpu {

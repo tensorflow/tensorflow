@@ -44,7 +44,7 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
-        "//tensorflow/compiler/xla/mlir/utils/runtime:custom_calls",
+        "//tensorflow/compiler/xla/mlir/runtime/utils:custom_calls",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",

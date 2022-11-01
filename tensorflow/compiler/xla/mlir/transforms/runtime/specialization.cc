@@ -29,8 +29,8 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/runtime/utils/constraints.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/type_converter.h"
-#include "tensorflow/compiler/xla/mlir/utils/runtime/constraints.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/symbolic_shape.h"
 

@@ -261,7 +261,7 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":type_converter",
-        "//tensorflow/compiler/xla/mlir/utils/runtime:constraints",
+        "//tensorflow/compiler/xla/mlir/runtime/utils:constraints",
         "//tensorflow/compiler/xla/runtime:arguments",
         "//tensorflow/compiler/xla/runtime:constraints",
         "//tensorflow/compiler/xla/runtime:errors",

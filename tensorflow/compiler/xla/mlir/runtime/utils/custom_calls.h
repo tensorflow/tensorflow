@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_MLIR_UTILS_RUNTIME_CUSTOM_CALLS_H_
-#define TENSORFLOW_COMPILER_XLA_MLIR_UTILS_RUNTIME_CUSTOM_CALLS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_UTILS_CUSTOM_CALLS_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_UTILS_CUSTOM_CALLS_H_
 
 #include <string>
 #include <utility>
@@ -70,4 +70,4 @@ void AppendCustomCallAttrs(mlir::Operation* op,
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_MLIR_UTILS_RUNTIME_CUSTOM_CALLS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_UTILS_CUSTOM_CALLS_H_

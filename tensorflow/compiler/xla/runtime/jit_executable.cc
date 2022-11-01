@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/STLExtras.h"
-#include "tensorflow/compiler/xla/mlir/utils/runtime/constraints.h"
+#include "tensorflow/compiler/xla/mlir/runtime/utils/constraints.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
 #include "tfrt/concurrency/async_value.h"  // from @tf_runtime
 
