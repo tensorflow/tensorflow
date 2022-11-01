@@ -682,6 +682,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMul) {
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
 
+#if GOOGLE_CUDA
 template <typename T>
 class DotOperationTestWithCublasLt_F16F32F64CF64 : public DotOperationTest {
  public:
@@ -733,6 +734,7 @@ XLA_TYPED_TEST(DotOperationTestWithCublasLt_F16F32F64CF64,
   this->template ComputeAndCompareR3<T>(
       &builder, expected, {x_data.get(), y_data.get()}, this->error_spec_);
 }
+#endif
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR3LhsR2Rhs) {
   using T = TypeParam;
