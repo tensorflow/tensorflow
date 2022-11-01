@@ -834,14 +834,19 @@ bool ShardingIsComplete(const HloSharding& sharding, size_t total_num_devices) {
 
 // Two shardings shard the same dimension of a given tensor.
 bool ShardingIsConsistent(const HloSharding& partial_sharding,
-                          const HloSharding& complete_sharding) {
+                          const HloSharding& complete_sharding, bool strict) {
   if (partial_sharding.tile_assignment().num_dimensions() >
       complete_sharding.tile_assignment().num_dimensions()) {
     return false;
   }
   for (size_t i = 0; i < partial_sharding.tile_assignment().num_dimensions();
        ++i) {
-    if (partial_sharding.tile_assignment().dim(i) > 1 &&
+    if (strict && partial_sharding.tile_assignment().dim(i) > 1 &&
+        partial_sharding.tile_assignment().dim(i) ==
+            complete_sharding.tile_assignment().dim(i)) {
+      return true;
+    }
+    if (!strict && partial_sharding.tile_assignment().dim(i) > 1 &&
         complete_sharding.tile_assignment().dim(i) > 1) {
       return true;
     }
@@ -866,13 +871,13 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
     const std::vector<HloInstruction*> instructions,
     const HloSharding& existing_sharding, const ClusterEnvironment& cluster_env,
     StableHashMap<int64_t, std::vector<ShardingStrategy>>& trimmed_strategy_map,
-    const CallGraph& call_graph) {
+    const CallGraph& call_graph, bool strict) {
   if (strategies->is_tuple) {
     for (size_t i = 0; i < strategies->childs.size(); ++i) {
       TrimOrGenerateStrategiesBasedOnExistingSharding(
           output_shape.tuple_shapes(i), strategies->childs.at(i).get(),
           strategy_map, instructions, existing_sharding.tuple_elements().at(i),
-          cluster_env, trimmed_strategy_map, call_graph);
+          cluster_env, trimmed_strategy_map, call_graph, strict);
     }
   } else {
     if (ShardingIsComplete(existing_sharding,
@@ -934,7 +939,9 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
       // sharding.
       std::vector<ShardingStrategy> new_vector;
       for (const auto& strategy : strategies->leaf_vector) {
-        if (ShardingIsConsistent(existing_sharding, strategy.output_sharding) ||
+        if (strategy.output_sharding.IsReplicated() ||
+            ShardingIsConsistent(existing_sharding, strategy.output_sharding,
+                                 strict) ||
             (VectorGreaterThanOneElementCount(
                  strategy.output_sharding.tile_assignment().dimensions()) ==
                  1 &&
@@ -948,6 +955,7 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
       // not have to strictly keep those shardings and the only purpose is to
       // reduce problem size for the last iteration.
       if (!new_vector.empty()) {
+        strategies->following = nullptr;
         strategies->leaf_vector = std::move(new_vector);
       }
     }
@@ -1723,10 +1731,10 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       // Do not merge nodes if this one instruction has annotations.
       // TODO(b/208668853) If needed, we can make auto sharding faster by using
       // this sharding spec when merging node using strategies->following.
-      strategies->following = nullptr;
       TrimOrGenerateStrategiesBasedOnExistingSharding(
           ins->shape(), strategies.get(), strategy_map, instructions,
-          ins->sharding(), cluster_env, trimmed_strategy_map, call_graph);
+          ins->sharding(), cluster_env, trimmed_strategy_map, call_graph,
+          solver_option.nd_sharding_iteratively_strict_search_space);
     }
     if (!strategies->is_tuple && strategies->following) {
       if (!LeafVectorsAreConsistent(
@@ -1750,6 +1758,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         }
       }
     }
+    RemoveInvalidShardingsWithShapes(ins->shape(), strategies.get());
     XLA_VLOG_LINES(2, absl::StrCat("strategies:\n", strategies->ToString()));
 
     // Debug options: forcibly set the strategy of some instructions.
@@ -1777,7 +1786,6 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
     // Checks the shape of resharding_costs is valid. It will check fail if the
     // shape is not as expected.
     CheckReshardingCostsShape(strategies.get());
-    RemoveInvalidShardingsWithShapes(ins->shape(), strategies.get());
     CheckMemoryCosts(strategies.get(), ins->shape());
     strategy_map[ins] = std::move(strategies);
   }  // end of for loop
@@ -2358,10 +2366,9 @@ void CheckHloSharding(const HloInstructionSequence& sequence,
           size > 1) {
         LOG(INFO) << "Instruction is not fully sharded: (" << size << " GB) "
                   << ins->ToString();
+      } else if (!ins->has_sharding()) {
+        LOG(INFO) << "Instruction does not have sharding: " << ins->name();
       }
-    } else if (!ins->has_sharding()) {
-      LOG(INFO) << "Instruction does not have sharding: " << ins->name();
-    }
       for (const auto& op : ins->operands()) {
         if (op->has_sharding()) {
           if (op->sharding().IsReplicated() || ins->sharding().IsReplicated()) {
@@ -2403,6 +2410,7 @@ void CheckHloSharding(const HloInstructionSequence& sequence,
         }
       }
     }
+  }
   struct {
     bool operator()(const std::pair<size_t, std::string>& a,
                     const std::pair<size_t, std::string>& b) const {
@@ -3008,6 +3016,7 @@ StatusOr<bool> AutoSharding::Run(
       option_.force_strategy_inst_indices;
   solver_option.force_strategy_stra_names = option_.force_strategy_stra_names;
   solver_option.only_allow_divisible = false;
+  solver_option.nd_sharding_iteratively_strict_search_space = false;
 
   // Remove CustomCalls with custom_call_target="Sharding" and move their
   // shardings to their input ops.
@@ -3083,6 +3092,7 @@ StatusOr<bool> AutoSharding::Run(
   }
   VLOG(10) << hlo_live_range->ToString();
   VLOG(10) << spmd::PrintLivenessSet(liveness_set);
+  XLA_VLOG_LINES(10, spmd::PrintLivenessSet(liveness_set));
   const HloInstructionSequence& sequence =
       hlo_live_range->flattened_instruction_sequence();
 
