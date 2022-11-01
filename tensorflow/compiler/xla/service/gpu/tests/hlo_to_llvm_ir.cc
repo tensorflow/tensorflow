@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #elif TENSORFLOW_USE_ROCM
-#include "tensorflow/core/platform/rocm_rocdl_path.h"
+#include "tensorflow/tsl/platform/rocm_rocdl_path.h"
 #endif
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -102,7 +102,7 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
                             hlo_module->config(), libdevice_dir));
     std::cout << ptx << std::endl;
 #else
-    std::string libdevice_dir = tensorflow::RocdlRoot();
+    std::string libdevice_dir = tsl::RocdlRoot();
     xla::gpu::GpuVersion gpu_version{rocm_compute_capability};
     TF_ASSIGN_OR_RETURN(
       std::vector<uint8_t> ptx,

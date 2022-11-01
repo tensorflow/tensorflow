@@ -679,6 +679,7 @@ cc_library(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/lib/gtl:map_util",
+	"//tensorflow/tsl/platform:random",
     ] + if_gpu_is_configured([
         ":cholesky_thunk",
         ":precompiled_kernels",

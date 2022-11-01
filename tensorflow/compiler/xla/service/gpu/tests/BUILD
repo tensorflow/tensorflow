@@ -769,7 +769,7 @@ tf_cc_test(
 tf_cc_binary(
     name = "hlo_to_llvm_ir",
     srcs = ["hlo_to_llvm_ir.cc"],
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
         "@llvm-project//llvm:Target",
         "//tensorflow/compiler/xla:status",
@@ -788,6 +788,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service/gpu:nvptx_helper",
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler_impl",
+	"//tensorflow/tsl/platform:rocm_rocdl_path",
     ]),
 )
 

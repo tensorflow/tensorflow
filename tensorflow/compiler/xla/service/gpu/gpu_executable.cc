@@ -61,7 +61,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/casts.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/core/platform/random.h"
+#include "tensorflow/tsl/platform/random.h"
 #include "tensorflow/tsl/profiler/lib/scoped_annotation.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 
