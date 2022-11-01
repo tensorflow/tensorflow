@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/executable.h"
 
 #include <memory>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
@@ -30,6 +32,7 @@ namespace gpu {
 
 using ::xla::runtime::Executable;
 using ::xla::runtime::JitExecutable;
+using ::xla::runtime::success;
 
 GpuRuntimeExecutable::GpuRuntimeExecutable(
     std::vector<int64_t> buffer_sizes,
@@ -111,6 +114,126 @@ GpuRuntimeExecutable::Create(absl::Span<const int64_t> buffer_sizes,
       std::vector<int64_t>(buffer_sizes.begin(), buffer_sizes.end()),
       std::make_unique<Executable>(std::move(executable)),
       std::move(debug_options)));
+}
+
+//===---------------------------------------------------------------------===///
+// Executes with the given buffer arguments.
+//===---------------------------------------------------------------------===///
+
+static runtime::AsyncTaskRunner* NoAsyncTaskRunner() {
+  return reinterpret_cast<runtime::AsyncTaskRunner*>(0XDEADBEEF);
+}
+
+// TODO(ezhulenev): We rely on implementation details of passing memrefs to the
+// compiled kernel. We should have a nicer API to do this, without creating a
+// vector of temporary MemrefDesc for passing operands.
+static void InitializeCallFrame(runtime::Executable::CallFrame& call_frame,
+                                const BufferAllocations& buffer_allocations,
+                                absl::Span<const int64_t> buffer_sizes,
+                                llvm::SmallVectorImpl<void*>& ptrs) {
+  size_t num_allocations = buffer_allocations.size();
+  assert(ptrs.empty() && "pointers storage must be empty");
+  ptrs.resize_for_overwrite(num_allocations);
+
+  // Each buffer allocation pased as 1d memref to the compiled function:
+  //   {basePtr, dataPtr, offset, [sizes, ...], [strides, ...]}
+  size_t num_args_ptrs = 1 + num_allocations * 5;
+  call_frame.args.resize_for_overwrite(num_args_ptrs);
+
+  // Pass pointers to these constants as a memref offset and stride.
+  static int64_t zero = 0;
+  static int64_t one = 1;
+  void* offset = &zero;
+  void* stride = &one;
+
+  // Add a placeholder for the kernel context as the first argument.
+  call_frame.args[0] = nullptr;
+
+  // Initialize arguments for the buffer operands.
+  for (unsigned i = 0; i < num_allocations; ++i) {
+    void* data = &(ptrs[i] = buffer_allocations.GetDeviceAddress(i).opaque());
+    void* size = const_cast<int64_t*>(&buffer_sizes[i]);
+    unsigned idx = 1 + i * 5;
+    call_frame.args[idx + 0] = data;
+    call_frame.args[idx + 1] = data;
+    call_frame.args[idx + 2] = offset;
+    call_frame.args[idx + 3] = size;
+    call_frame.args[idx + 4] = stride;
+  }
+}
+
+Status GpuRuntimeExecutable::Execute(
+    const ServiceExecutableRunOptions* run_options, const std::string& asm_text,
+    const std::vector<uint8_t>& binary,
+    const BufferAllocations& buffer_allocations,
+    const BufferAllocation* temp_alloc) {
+  // Pack buffer allocations as executable arguments. It is guaranteed that
+  // the compiled function will make a copy of all arguments and will write all
+  // results after the call to `Execute` completes, so it is safe to keep them
+  // on the stack.
+  runtime::Executable::CallFrame call_frame;
+
+  llvm::SmallVector<void*, 16> ptrs;  // storage for device address pointers
+  InitializeCallFrame(call_frame, buffer_allocations, buffer_sizes_, ptrs);
+
+  // XLA Runtime executables do not return any values.
+  runtime::NoResultConverter converter;
+
+  // Get the async communications stream for async collectives.
+  int device_ordinal = run_options->stream()->parent()->device_ordinal();
+  StatusOr<StreamPool::Ptr> async_comms_stream =
+      run_options->BorrowStream(device_ordinal);
+
+  // Async collective support instantiated for each Gpu executable run, so that
+  // concurrent executions can run independenty using a separate set of events
+  // for communication.
+  JitRtAsyncCollectiveSupport async_collectives(
+      async_comms_stream.ok() ? async_comms_stream->get() : nullptr);
+
+  // Always pass in the temp buffer, even if it is null, to accommodate the
+  // 0-sized buffer corner case.
+  se::DeviceMemoryBase temp_buffer;
+  if (temp_alloc)
+    temp_buffer = buffer_allocations.GetDeviceAddress(temp_alloc->index());
+
+  // We pass a pointer to the executable through UserData, so that we can
+  // get access to other exported functions from custom call handlers.
+  runtime::Executable& executable = this->executable();
+
+  // Pass auxiliary data to the custom call handlers.
+  runtime::CustomCall::UserData user_data;
+  user_data.insert_all(
+      run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
+      &binary, &kernels_cache_, &gemm_configs_cache_, &conv_runners_cache_,
+      &collectives_,
+      // Null pointer will be interpreted as an absence of async collectives
+      // support and custom calls will safely return an error.
+      async_collectives.async_comm_stream() ? &async_collectives : nullptr);
+
+  // Collect all emitted diagnostic messages.
+  std::string diagnostic;
+  runtime::DiagnosticEngine diagnostic_engine;
+  diagnostic_engine.AddHandler([&](runtime::Diagnostic& d) {
+    absl::StrAppend(&diagnostic, d.status().message());
+    return success();
+  });
+
+  // Prepare options for executing XLA Runtime program.
+  runtime::Executable::ExecuteOpts opts;
+  opts.async_task_runner = NoAsyncTaskRunner();
+  opts.custom_call_data = &user_data;
+  opts.diagnostic_engine = &diagnostic_engine;
+
+  // Execute with the prepared call frame.
+  executable.Execute(call_frame, opts);
+
+  if (auto st = executable.ReturnResults(converter, &call_frame); !st.ok()) {
+    return InternalError("Failed to execute XLA Runtime executable: %s%s%s.",
+                         st.message(), diagnostic.empty() ? "" : ": ",
+                         diagnostic);
+  }
+
+  return OkStatus();
 }
 
 //===---------------------------------------------------------------------===///

@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
@@ -69,14 +70,21 @@ struct GpuRuntimeProgram {
 // details.
 class GpuRuntimeExecutable {
  public:
-  // Create GpuRuntimeExecutable from the Xla Gpu Program.
+  // Creates GpuRuntimeExecutable from the Xla Gpu Program.
   static StatusOr<std::unique_ptr<GpuRuntimeExecutable>> Create(
       std::unique_ptr<GpuRuntimeProgram> program);
 
-  // Create GpuRuntimeExecutable from the AOT compiled binary.
+  // Creates GpuRuntimeExecutable from the AOT compiled binary.
   static StatusOr<std::unique_ptr<GpuRuntimeExecutable>> Create(
       absl::Span<const int64_t> buffer_sizes, runtime::Executable executable,
       DebugOptions debug_options);
+
+  // Executes entry function with the given buffer arguments.
+  Status Execute(const ServiceExecutableRunOptions* run_options,
+                 const std::string& asm_text,
+                 const std::vector<uint8_t>& binary,
+                 const BufferAllocations& buffer_allocations,
+                 const BufferAllocation* temp_alloc = nullptr);
 
   // Returns object file behind the runtime executable. This object file can
   // be exported and loaded later to instantiate another executable.
@@ -84,22 +92,6 @@ class GpuRuntimeExecutable {
 
   // Returns MLIR module behind this executable if it is available.
   StatusOr<std::string_view> GetMlirModule() const;
-
-  const DebugOptions& debug_options() const { return debug_options_; }
-
-  // Returns Xla runtime executable compiled from an Xla Gpu program.
-  runtime::Executable& executable();
-
-  GpuExecutableKernelsCache& kernels_cache() { return kernels_cache_; }
-  JitRtGemmConfigCache& gemm_configs_cache() { return gemm_configs_cache_; }
-  ConvRunnerCache& conv_runners_cache() { return conv_runners_cache_; }
-  JitRtCollectiveSupport& collectives() { return collectives_; }
-
-  // We pass a pointer to the buffer size to the compiled function, so we return
-  // a reference to a stable memory location.
-  const int64_t& buffer_size(size_t offset) const {
-    return buffer_sizes_[offset];
-  }
 
  private:
   GpuRuntimeExecutable(std::vector<int64_t> buffer_sizes,
@@ -110,6 +102,10 @@ class GpuRuntimeExecutable {
                        std::unique_ptr<runtime::Executable> aot_executable,
                        DebugOptions debug_options);
 
+  // Depending on the state of `executable_` returns a reference to active
+  // Xla runtime executable.
+  runtime::Executable& executable();
+
   std::vector<int64_t> buffer_sizes_;
 
   // In JIT compilation mode `JitExecutable` is used. In AOT compilation mode
@@ -118,7 +114,7 @@ class GpuRuntimeExecutable {
                std::unique_ptr<runtime::Executable>>
       executable_;
 
-  DebugOptions debug_options_;
+  const DebugOptions debug_options_;
 
   // Keep a cache of kernels instantiated by this executable.
   GpuExecutableKernelsCache kernels_cache_;

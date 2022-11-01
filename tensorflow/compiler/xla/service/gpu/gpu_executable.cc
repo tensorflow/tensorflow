@@ -436,126 +436,25 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
   return out.ConsumeResult();
 }
 
-// TODO(ezhulenev): Move this to GpuRuntimeExecutable.
-static Status ExecuteXlaRuntime(
-    const std::string& module_name,
-    GpuRuntimeExecutable& gpu_runtime_executable,
-    const ServiceExecutableRunOptions* run_options, const std::string& asm_text,
-    const std::vector<uint8_t>& binary,
-    const BufferAllocations& buffer_allocations, size_t num_allocations,
-    std::optional<const BufferAllocation*> temp_buffer,
-    bool block_host_until_done) {
+static Status ExecuteXlaRuntime(const std::string& module_name,
+                                GpuRuntimeExecutable& gpu_runtime_executable,
+                                const ServiceExecutableRunOptions* run_options,
+                                const std::string& asm_text,
+                                const std::vector<uint8_t>& binary,
+                                const BufferAllocations& buffer_allocations,
+                                const BufferAllocation* temp_buffer,
+                                bool block_host_until_done) {
   uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tsl::profiler::TraceMeLevel::kInfo);
 
-  ScopedAnnotation annotation(
-      []() -> std::string { return "GpuRuntimeExecutable"; });
+  ScopedAnnotation annotation([] { return std::string("ExecuteXlaRuntime"); });
 
-  // TODO(ezhulenev): Here we rely on implementation details of passing memrefs
-  // to the compiled kernel. We should have a nicer API to do this, without
-  // creating a vector of temporary MemrefDesc for passing operands.
-
-  // Pack buffer allocations as executable arguments. It is guaranteed that
-  // compiled function will make a copy of all arguments and will write all
-  // results after the call to `Execute` completes, so it is safe to keep in on
-  // the stack.
-  runtime::Executable::CallFrame call_frame;
-
-  // Each buffer allocation pased as 1d memref to the compiled kernel:
-  //   {basePtr, dataPtr, offset, [sizes, ...], [strides, ...]}
-  size_t num_args_ptrs = 1 + num_allocations * 5;
-  call_frame.args.resize_for_overwrite(num_args_ptrs);
-
-  // Pass pointers to these constants as a memref offset and stride.
-  int64_t zero = 0;
-  int64_t one = 1;
-  void* offset = &zero;
-  void* stride = &one;
-
-  // Add a placeholder for the kernel context as the first argument.
-  call_frame.args[0] = nullptr;
-
-  // Storage for data pointers.
-  llvm::SmallVector<void*, 16> ptrs;
-  ptrs.resize_for_overwrite(num_allocations);
-
-  // Initialize arguments for the buffer operands.
-  for (unsigned i = 0; i < num_allocations; ++i) {
-    void* data = &(ptrs[i] = buffer_allocations.GetDeviceAddress(i).opaque());
-    void* size = const_cast<int64_t*>(&gpu_runtime_executable.buffer_size(i));
-    unsigned idx = 1 + i * 5;
-    call_frame.args[idx + 0] = data;
-    call_frame.args[idx + 1] = data;
-    call_frame.args[idx + 2] = offset;
-    call_frame.args[idx + 3] = size;
-    call_frame.args[idx + 4] = stride;
-  }
-
-  // XLA Runtime executables do not return any values.
-  runtime::NoResultConverter converter;
-
-  // Prepare options for executing XLA Runtime program.
-  runtime::Executable::ExecuteOpts opts;
-
-  // We don't expect to see any async tasks in the XLA Runtime executable.
-  opts.async_task_runner =
-      reinterpret_cast<runtime::AsyncTaskRunner*>(0XDEADBEEF);
-
-  // Get the async communications stream for async collectives.
-  int device_ordinal = run_options->stream()->parent()->device_ordinal();
-  StatusOr<StreamPool::Ptr> async_comms_stream =
-      run_options->BorrowStream(device_ordinal);
-
-  // Async collective support instantiated for each Gpu executable run, so that
-  // concurrent executions can run independenty using a separate set of events
-  // for communication.
-  JitRtAsyncCollectiveSupport async_collectives(
-      async_comms_stream.ok() ? async_comms_stream->get() : nullptr);
-
-  // Always pass in the temp buffer, even if it is null, to accommodate the
-  // 0-sized buffer corner case.
-  se::DeviceMemoryBase dm_buffer;
-  if (temp_buffer.has_value()) {
-    dm_buffer =
-        buffer_allocations.GetDeviceAddress(temp_buffer.value()->index());
-  }
-
-  // We pass a pointer to the executable through UserData, so that we can
-  // get access to other exported functions from custom call handlers.
-  runtime::Executable& executable = gpu_runtime_executable.executable();
-
-  // Pass auxiliary data to the custom call handlers.
-  runtime::CustomCall::UserData user_data;
-  user_data.insert_all(
-      &executable, run_options, &gpu_runtime_executable.debug_options(),
-      &asm_text, &binary, &dm_buffer, &gpu_runtime_executable.kernels_cache(),
-      &gpu_runtime_executable.gemm_configs_cache(),
-      &gpu_runtime_executable.conv_runners_cache(),
-      &gpu_runtime_executable.collectives(),
-      async_collectives.async_comm_stream() ? &async_collectives : nullptr);
-  opts.custom_call_data = &user_data;
-
-  // Collect all emitted diagnostic messages.
-  runtime::DiagnosticEngine diagnostic_engine;
-  std::string diagnostic;
-  diagnostic_engine.AddHandler([&](runtime::Diagnostic& d) {
-    llvm::raw_string_ostream(diagnostic) << d.status().message();
-    return mlir::success();
-  });
-
-  opts.diagnostic_engine = &diagnostic_engine;
-
-  // Execute with the prepared call frame.
-  executable.Execute(call_frame, opts);
-
-  if (auto st = executable.ReturnResults(converter, &call_frame); !st.ok()) {
-    return InternalError("Failed to execute XLA Runtime executable: %s%s%s.",
-                         st.message(), diagnostic.empty() ? "" : ": ",
-                         diagnostic);
-  }
+  auto executed = gpu_runtime_executable.Execute(
+      run_options, asm_text, binary, buffer_allocations, temp_buffer);
+  if (!executed.ok()) return executed;
 
   return MaybeSyncAndProfile(
       run_options, start_micros,
@@ -740,19 +639,16 @@ Status GpuExecutable::ExecuteThunksOrXlaRuntime(
   if (gpu_runtime_executable_) {
     // Match IrEmitter's temp buffer allocation for kernel launches. See
     // IrEmitterUnnested::BuildKernelThunkImpl().
-    std::optional<const BufferAllocation*> temp_buffer;
+    const BufferAllocation* temp_buffer = nullptr;
     for (const BufferAllocation& alloc : allocations_) {
       if (alloc.IsPreallocatedTempBuffer()) {
-        if (!temp_buffer.has_value()) {
-          // Retrieve the first seen temp buffer.
-          temp_buffer = &alloc;
-        }
+        // Retrieve the first seen temp buffer.
+        if (temp_buffer == nullptr) temp_buffer = &alloc;
       }
     }
     return ExecuteXlaRuntime(module_name_, *gpu_runtime_executable_,
                              run_options, text_, binary_, buffer_allocations,
-                             allocations_.size(), temp_buffer,
-                             block_host_until_done);
+                             temp_buffer, block_host_until_done);
   }
 
   return FailedPrecondition("Expected XLA gpu executable is not supplied.");

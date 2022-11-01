@@ -40,7 +40,9 @@ cc_library(
         "//tensorflow/compiler/xla/mlir/transforms/runtime:compilation_pipeline_gpu",
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/runtime:jit_executable",
+        "//tensorflow/compiler/xla/service/gpu:buffer_allocations",
         "//tensorflow/compiler/xla/service/gpu:jitrt_custom_calls",
+        "@com_google_absl//absl/strings",
     ],
 )
 
