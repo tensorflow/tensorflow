@@ -70,12 +70,12 @@ class CallOpLowering : public OpRewritePattern<func::CallOp> {
     llvm::SmallVector<Type> results = {StatusType::get(getContext())};
     results.append(op->getResultTypes().begin(), op->getResultTypes().end());
 
-    // Build a custom call operation, maybe inside the trace region.
-    auto build_custom_call = [&](ImplicitLocOpBuilder b) -> CustomCallOp {
-      // Rewrite function call with a custom call, and check the return status.
-      auto call = b.create<CustomCallOp>(results, exec_ctx, target,
-                                         callee->hasAttr("rt.dynamic"),
-                                         op.getOperands());
+    // Build a runtime call operation, maybe inside the trace region.
+    auto build_custom_call = [&](ImplicitLocOpBuilder b) -> CallOp {
+      // Rewrite function call with a runtime call, and check the return status.
+      bool dynamic = callee->hasAttr("rt.dynamic");
+      auto call = b.create<CallOp>(results, exec_ctx, target, dynamic,
+                                   op.getOperands());
 
       // Copy optional attributes from the custom call function declaration.
       llvm::ArrayRef<llvm::StringRef> callee_attrs = callee.getAttributeNames();

@@ -57,8 +57,6 @@ namespace {
 
 using namespace mlir;  // NOLINT
 using mlir::arith::ConstantOp;
-using mlir::func::CallOp;
-using mlir::func::FuncOp;
 
 using llvm::DenseMap;
 
@@ -112,7 +110,7 @@ static void AddDeclaration(ModuleOp module, std::string_view name,
   if (module.lookupSymbol(name)) return;
 
   MLIRContext *ctx = module.getContext();
-  FuncOp func = b.create<FuncOp>(name, type);
+  func::FuncOp func = b.create<func::FuncOp>(name, type);
   func.setPrivate();
 
   // TODO(ezhulenev): Add per-argument nocapture attributes?
@@ -175,7 +173,7 @@ class SetOutputOpLowering : public OpConversionPattern<SetOutputOp> {
 
     // Get a pointer to the result value storage from the runtime.
     auto result_ptr_ty = LLVM::LLVMPointerType::get(rewriter.getContext());
-    auto result_ptr = rewriter.create<CallOp>(
+    auto result_ptr = rewriter.create<func::CallOp>(
         loc, kGetResultStorage, TypeRange(result_ptr_ty),
         ValueRange({execution_ctx, index}));
 
@@ -218,7 +216,7 @@ class IsOkOpLowering : public OpConversionPattern<IsOkOp> {
 //===----------------------------------------------------------------------===//
 
 static FailureOr<Value> EncodeArguments(
-    CustomCallOp op, CustomCallArgEncodingSet &encodings, Globals &g,
+    CallOp op, CustomCallArgEncodingSet &encodings, Globals &g,
     DenseMap<Value, CustomCallArgEncoding::Encoded> &encoded_args,
     ImplicitLocOpBuilder &b, ValueRange operands, ValueRange converted) {
   llvm::SmallVector<CustomCallArgEncoding::Encoded> encoded;
@@ -273,7 +271,7 @@ static FailureOr<Value> EncodeArguments(
   // Always create an `alloca` in the parent function entry block.
   // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
   Value mem = [&]() -> Value {
-    Block &block = op->getParentOfType<FuncOp>().getBody().front();
+    Block &block = op->getParentOfType<func::FuncOp>().getBody().front();
     OpBuilder::InsertionGuard guard(b);
     b.setInsertionPointToStart(&block);
     Value c1 = b.create<ConstantOp>(b.getI32IntegerAttr(1));
@@ -317,14 +315,14 @@ struct EncodedResults {
 };
 
 static FailureOr<EncodedResults> EncodeResults(
-    CustomCallOp op, CustomCallRetEncodingSet &encodings, Globals &g,
+    CallOp op, CustomCallRetEncodingSet &encodings, Globals &g,
     ImplicitLocOpBuilder &b, TypeRange ret_types, TypeRange converted_types) {
   llvm::SmallVector<CustomCallRetEncoding::Encoded> encoded;
   EncodedResults results;
 
   // Encode all returns as a set of pointers (skip the status type).
   for (auto tuple : llvm::drop_begin(llvm::zip(ret_types, converted_types))) {
-    Block &block = op->getParentOfType<FuncOp>().getBody().front();
+    Block &block = op->getParentOfType<func::FuncOp>().getBody().front();
     OpBuilder::InsertionGuard guard(b);
     b.setInsertionPointToStart(&block);
     auto encoded_ret =
@@ -361,7 +359,7 @@ static FailureOr<EncodedResults> EncodeResults(
   // Always create an `alloca` in the parent function entry block.
   // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
   Value mem = [&]() -> Value {
-    Block &block = op->getParentOfType<FuncOp>().getBody().front();
+    Block &block = op->getParentOfType<func::FuncOp>().getBody().front();
     OpBuilder::InsertionGuard guard(b);
     b.setInsertionPointToStart(&block);
     Value c1 = b.create<ConstantOp>(b.getI32IntegerAttr(1));
@@ -377,9 +375,9 @@ static FailureOr<EncodedResults> EncodeResults(
 }
 
 static FailureOr<SmallVector<Value>> DecodeResults(
-    CallOp op, ImplicitLocOpBuilder b, CustomCallRetEncodingSet &encodings,
-    TypeRange ret_types, TypeRange converted_types,
-    SmallVector<LLVM::AllocaOp> &allocas) {
+    func::CallOp op, ImplicitLocOpBuilder b,
+    CustomCallRetEncodingSet &encodings, TypeRange ret_types,
+    TypeRange converted_types, SmallVector<LLVM::AllocaOp> &allocas) {
   SmallVector<Value> load_results;
   load_results.push_back(op.getResult(0));
 
@@ -394,16 +392,16 @@ static FailureOr<SmallVector<Value>> DecodeResults(
   return load_results;
 }
 
-class CustomCallOpLowering : public OpConversionPattern<CustomCallOp> {
+class CallOpLowering : public OpConversionPattern<CallOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
-  CustomCallOpLowering(
-      TypeConverter &converter, MLIRContext *ctx, SymbolTable &sym_table,
-      Globals &globals, CustomCallArgEncodingSet &arg_encoding,
-      CustomCallAttrEncodingSet &attr_encoding,
-      CustomCallRetEncodingSet &ret_encoding,
-      DenseMap<Value, CustomCallArgEncoding::Encoded> &encoded_args)
+  CallOpLowering(TypeConverter &converter, MLIRContext *ctx,
+                 SymbolTable &sym_table, Globals &globals,
+                 CustomCallArgEncodingSet &arg_encoding,
+                 CustomCallAttrEncodingSet &attr_encoding,
+                 CustomCallRetEncodingSet &ret_encoding,
+                 DenseMap<Value, CustomCallArgEncoding::Encoded> &encoded_args)
       : OpConversionPattern(converter, ctx),
         sym_table_(sym_table),
         globals_(globals),
@@ -413,7 +411,7 @@ class CustomCallOpLowering : public OpConversionPattern<CustomCallOp> {
         encoded_args_(encoded_args) {}
 
   LogicalResult matchAndRewrite(
-      CustomCallOp op, OpAdaptor adaptor,
+      CallOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
@@ -438,30 +436,32 @@ class CustomCallOpLowering : public OpConversionPattern<CustomCallOp> {
     if (failed(rets)) return op.emitOpError() << "failed to encode results";
 
     // Creates a dynamic custom call resolved by name at run time.
-    auto call_dynamic = [&]() -> CallOp {
+    auto call_dynamic = [&]() -> func::CallOp {
       auto callee = Globals::AddrOf(
           b, globals_.GetOrCreate(b, op.getCallee(), "__rt_custom_call_name"));
 
-      return b.create<CallOp>(kCustomCall, TypeRange(rewriter.getI1Type()),
-                              ValueRange({adaptor.getCtx(), callee, *args,
-                                          *attrs, rets->result_array_ptr}));
+      return b.create<func::CallOp>(
+          kCustomCall, TypeRange(rewriter.getI1Type()),
+          ValueRange({adaptor.getCtx(), callee, *args, *attrs,
+                      rets->result_array_ptr}));
     };
 
     // Creates a direct custom call resolved at link time.
-    auto call_direct = [&]() -> CallOp {
+    auto call_direct = [&]() -> func::CallOp {
       auto type = RuntimeAPI::DirectCustomCallFunctionType(op.getContext());
       AddDeclaration(op->getParentOfType<ModuleOp>(), op.getCallee(), type);
 
-      return b.create<CallOp>(op.getCallee(), TypeRange(rewriter.getI1Type()),
-                              ValueRange({adaptor.getCtx(), *args, *attrs,
-                                          rets->result_array_ptr}));
+      return b.create<func::CallOp>(op.getCallee(),
+                                    TypeRange(rewriter.getI1Type()),
+                                    ValueRange({adaptor.getCtx(), *args, *attrs,
+                                                rets->result_array_ptr}));
     };
 
     // Build a call operation and result decoding right after the original op.
     OpBuilder::InsertionGuard guard(b);
     b.setInsertionPointAfter(op);
 
-    CallOp call = op.getDynamic() ? call_dynamic() : call_direct();
+    func::CallOp call = op.getDynamic() ? call_dynamic() : call_direct();
 
     // Load results written by custom call into the allocated storage and decode
     // them back to the expected type (e.g. convert memref descriptor type).
@@ -504,8 +504,8 @@ class SetErrorOpLowering : public OpConversionPattern<SetErrorOp> {
 
     // Call runtime API to report the error.
     auto execution_ctx = adaptor.getCtx();
-    rewriter.replaceOpWithNewOp<CallOp>(op, kSetError, TypeRange(),
-                                        ValueRange({execution_ctx, err}));
+    rewriter.replaceOpWithNewOp<func::CallOp>(op, kSetError, TypeRange(),
+                                              ValueRange({execution_ctx, err}));
 
     return success();
   }
@@ -532,15 +532,15 @@ class TraceOpLowering : public OpConversionPattern<TraceOp> {
 
     // Start the trace activity with the given annotation.
     b.setInsertionPoint(op);
-    auto start = b.create<CustomCallOp>(TypeRange({status, activity_id}),
-                                        op.getCtx(), "xla.trace.activity_start",
-                                        /*dynamic=*/false, ValueRange());
+    auto start = b.create<CallOp>(TypeRange({status, activity_id}), op.getCtx(),
+                                  "xla.trace.activity_start",
+                                  /*dynamic=*/false, ValueRange());
     start->setAttr("annotation", op.getAnnotation());
 
     // End activity after executing the attached region.
     b.setInsertionPointAfter(op);
-    b.create<CustomCallOp>(status, op.getCtx(), "xla.trace.activity_end",
-                           /*dynamic=*/false, start.getResults());
+    b.create<CallOp>(status, op.getCtx(), "xla.trace.activity_end",
+                     /*dynamic=*/false, start.getResults());
 
     // Replace trace operation with inlined region.
     b.setInsertionPointAfter(op);
@@ -667,22 +667,22 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   if (opts_.populate_attr_encodings) opts_.populate_attr_encodings(attrs);
   if (opts_.populate_ret_encodings) opts_.populate_ret_encodings(rets);
 
-  patterns.add<CustomCallOpLowering>(llvm_converter, ctx, sym_table, globals,
-                                     args, attrs, rets, encoded_args);
+  patterns.add<CallOpLowering>(llvm_converter, ctx, sym_table, globals, args,
+                               attrs, rets, encoded_args);
 
   // Convert function signatures and call sites.
-  mlir::populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns,
-                                                                 converter);
+  mlir::populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(
+      patterns, converter);
   populateCallOpTypeConversionPattern(patterns, converter);
 
   // Set up conversion target to rewrite all runtime operations.
   ConversionTarget target(*ctx);
   target.addIllegalDialect<RuntimeDialect>();
   target.addLegalDialect<LLVM::LLVMDialect>();
-  target.addLegalOp<ConstantOp, UnrealizedConversionCastOp, CallOp>();
+  target.addLegalOp<ConstantOp, UnrealizedConversionCastOp, func::CallOp>();
 
   // Add dynamic legality constraints to apply conversions defined above.
-  target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
+  target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
     return converter.isSignatureLegal(op.getFunctionType());
   });
 

@@ -194,7 +194,7 @@ def RT_IsOkOp : RT_Op<"is_ok"> {
 // CustomCallOp
 //===----------------------------------------------------------------------===//
 
-def RT_CustomCallOp : RT_Op<"call"> {
+def RT_CallOp : RT_Op<"call"> {
   let summary = "calls a custom function registered with the runtime";
 
   let description = [{
