@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Ignore_errors dataset transformations."""
+from tensorflow.python.data.ops import ignore_errors_op
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -46,6 +47,6 @@ def ignore_errors(log_warning=False):
     `tf.data.Dataset.apply`.
   """
   def _apply_fn(dataset):
-    return dataset.ignore_errors(log_warning)
+    return ignore_errors_op.IgnoreErrorsDataset(dataset, log_warning)
 
   return _apply_fn

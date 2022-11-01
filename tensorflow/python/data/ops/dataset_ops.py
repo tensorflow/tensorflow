@@ -813,10 +813,8 @@ class DatasetV2(
     """
     # Loaded lazily due to a circular dependency (dataset_ops ->
     # from_tensor_slices_op -> dataset_ops).
-    # pylint: disable=g-import-not-at-top,protected-access
-    from tensorflow.python.data.ops import from_tensor_slices_op
-    return from_tensor_slices_op._from_tensor_slices(tensors, name)
-    # pylint: enable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import from_tensor_slices_op  # pylint: disable=g-import-not-at-top
+    return from_tensor_slices_op.from_tensor_slices(tensors, name)
 
   class _GeneratorState:
     """Stores outstanding iterators created from a Python generator.
@@ -1259,10 +1257,8 @@ class DatasetV2(
     """
     # Loaded lazily due to a circular dependency (dataset_ops -> zip_op ->
     # dataset_ops).
-    # pylint: disable=g-import-not-at-top,protected-access
-    from tensorflow.python.data.ops import zip_op
-    return zip_op._zip(datasets, name)
-    # pylint: enable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import zip_op  # pylint: disable=g-import-not-at-top
+    return zip_op.zip(datasets, name)
 
   def concatenate(self, dataset, name=None):
     """Creates a `Dataset` by concatenating the given dataset with this dataset.
@@ -1331,10 +1327,8 @@ class DatasetV2(
     """
     # Loaded lazily due to a circular dependency (dataset_ops -> counter_op
     # -> dataset_ops).
-    # pylint: disable=g-import-not-at-top,protected-access
-    from tensorflow.python.data.ops import counter_op
-    return counter_op._counter(start, step, dtype, name=name)
-    # pylint: enable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import counter_op  # pylint: disable=g-import-not-at-top
+    return counter_op.counter(start, step, dtype, name=name)
 
   def rebatch(self, batch_size, drop_remainder=False, name=None):
     """Creates a `Dataset` that rebatches the elements from this dataset.
@@ -1383,12 +1377,10 @@ class DatasetV2(
     Returns:
       A `Dataset` of scalar `dtype` elements.
     """
-    # Loaded lazily due to a circular dependency (dataset_ops -> rebatch_op ->
+    # Loaded lazily due to a circular dependency (dataset_ops ->
     # rebatch_op -> dataset_ops).
-    # pylint: disable=g-import-not-at-top,protected-access
-    from tensorflow.python.data.ops import rebatch_op
-    return rebatch_op._rebatch(self, batch_size, drop_remainder, name=name)
-    # pylint: enable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import rebatch_op  # pylint: disable=g-import-not-at-top
+    return rebatch_op.rebatch(self, batch_size, drop_remainder, name=name)
 
   def prefetch(self, buffer_size, name=None):
     """Creates a `Dataset` that prefetches elements from this dataset.
@@ -1486,11 +1478,9 @@ class DatasetV2(
       # TODO(b/240947712): Remove lazy import after this method is factored out.
       # Loaded lazily due to a circular dependency (dataset_ops ->
       # from_tensor_slices_op -> dataset_ops).
-      # pylint: disable=g-import-not-at-top,protected-access
-      from tensorflow.python.data.ops import from_tensor_slices_op
-      dataset = from_tensor_slices_op._TensorSliceDataset(
+      from tensorflow.python.data.ops import from_tensor_slices_op  # pylint: disable=g-import-not-at-top
+      dataset = from_tensor_slices_op.TensorSliceDataset(
           matching_files, is_files=True, name=name)
-      # pylint: enable=g-import-not-at-top,protected-access
       if issubclass(Dataset, DatasetV1):
         dataset = DatasetV1Adapter(dataset)
       if shuffle:
@@ -1870,12 +1860,10 @@ class DatasetV2(
     Raises:
       ValueError if `checkpoint` is passed into `checkpoint_args`.
     """
-    # Loaded lazily due to a circular dependency (dataset_ops -> save_op ->
-    # dataset_ops).
-    # pylint: disable=g-import-not-at-top,protected-access
-    from tensorflow.python.data.ops import save_op
-    save_op._save(self, path, compression, shard_func, checkpoint_args)
-    # pylint: enable=g-import-not-at-top,protected-access
+    # Loaded lazily due to a circular dependency
+    # dataset_ops->save_ops->dataset_ops
+    from tensorflow.python.data.ops import save_op  # pylint: disable=g-import-not-at-top
+    save_op.save(self, path, compression, shard_func, checkpoint_args)
 
   @staticmethod
   def load(path, element_spec=None, compression=None, reader_func=None):
@@ -1935,16 +1923,14 @@ class DatasetV2(
       ValueError: If `element_spec` is not specified and the method is executed
         in graph mode.
     """
-    # Loaded lazily due to a circular dependency (dataset_ops -> load_op ->
-    # dataset_ops).
-    # pylint: disable=g-import-not-at-top,protected-access
-    from tensorflow.python.data.ops import load_op
-    return load_op._load(
+    # Loaded lazily due to a circular dependency
+    # dataset_ops->load_ops->dataset_ops
+    from tensorflow.python.data.ops import load_op  # pylint: disable=g-import-not-at-top
+    return load_op.load(
         path=path,
         element_spec=element_spec,
         compression=compression,
         reader_func=reader_func)
-    # pylint: enable=g-import-not-at-top,protected-access
 
   def batch(self,
             batch_size,
@@ -2003,11 +1989,9 @@ class DatasetV2(
     """
     # Loaded lazily due to a circular dependency (dataset_ops -> batch_op ->
     # dataset_ops).
-    # pylint: disable=g-import-not-at-top,protected-access,redefined-outer-name
-    from tensorflow.python.data.ops import batch_op
-    return batch_op._batch(self, batch_size, drop_remainder, num_parallel_calls,
-                           deterministic, name)
-    # pylint: enable=g-import-not-at-top,protected-access,redefined-outer-name
+    from tensorflow.python.data.ops import batch_op  # pylint: disable=g-import-not-at-top,redefined-outer-name
+    return batch_op.batch(self, batch_size, drop_remainder, num_parallel_calls,
+                          deterministic, name)
 
   def padded_batch(self,
                    batch_size,
@@ -2131,11 +2115,9 @@ class DatasetV2(
     """
     # Loaded lazily due to a circular dependency (dataset_ops ->
     # padded_batch_op -> dataset_ops).
-    # pylint: disable=g-import-not-at-top,protected-access
-    from tensorflow.python.data.ops import padded_batch_op
-    return padded_batch_op._padded_batch(self, batch_size, padded_shapes,
-                                         padding_values, drop_remainder, name)
-    # pylint: enable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import padded_batch_op  # pylint: disable=g-import-not-at-top
+    return padded_batch_op.padded_batch(self, batch_size, padded_shapes,
+                                        padding_values, drop_remainder, name)
 
   def ragged_batch(self,
                    batch_size,
@@ -2194,11 +2176,9 @@ class DatasetV2(
     """
     # Loaded lazily due to a circular dependency (dataset_ops ->
     # ragged_batch_op -> dataset_ops).
-    # pylint: disable=g-import-not-at-top,protected-access
-    from tensorflow.python.data.ops import ragged_batch_op
-    return ragged_batch_op._ragged_batch(self, batch_size, drop_remainder,
-                                         row_splits_dtype, name)
-    # pylint: enable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import ragged_batch_op  # pylint: disable=g-import-not-at-top
+    return ragged_batch_op.ragged_batch(self, batch_size, drop_remainder,
+                                        row_splits_dtype, name)
 
   def sparse_batch(self, batch_size, row_shape, name=None):
     """Combines consecutive elements into `tf.sparse.SparseTensor`s.
@@ -2244,10 +2224,8 @@ class DatasetV2(
     """
     # Loaded lazily due to a circular dependency (dataset_ops ->
     # sparse_batch_op -> dataset_ops).
-    # pylint: disable=g-import-not-at-top,protected-access
-    from tensorflow.python.data.ops import sparse_batch_op
-    return sparse_batch_op._sparse_batch(self, batch_size, row_shape, name)
-    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import sparse_batch_op  # pylint: disable=g-import-not-at-top
+    return sparse_batch_op.sparse_batch(self, batch_size, row_shape, name)
 
   def map(self,
           map_func,
@@ -2474,10 +2452,8 @@ name=None))
     """
     # Loaded lazily due to a circular dependency (dataset_ops ->
     # ignore_errors_op -> dataset_ops).
-    # pylint: disable=g-import-not-at-top,protected-access
-    from tensorflow.python.data.ops import ignore_errors_op
-    return ignore_errors_op._ignore_errors(self, log_warning, name)
-    # pylint: enable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import ignore_errors_op  # pylint: disable=g-import-not-at-top
+    return ignore_errors_op.ignore_errors(self, log_warning, name)
 
   def interleave(self,
                  map_func,
@@ -2632,10 +2608,8 @@ name=None))
     """
     # Loaded lazily due to a circular dependency (dataset_ops -> filter_op ->
     # dataset_ops).
-    # pylint: disable=g-import-not-at-top,protected-access
-    from tensorflow.python.data.ops import filter_op
-    return filter_op._filter(self, predicate, name)
-    # pylint: enable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import filter_op  # pylint: disable=g-import-not-at-top
+    return filter_op.filter(self, predicate, name)
 
   def apply(self, transformation_func):
     """Applies a transformation function to this dataset.
@@ -4355,10 +4329,8 @@ class DatasetV1(DatasetV2):
     """
     # Loaded lazily due to a circular dependency (dataset_ops -> filter_op ->
     # dataset_ops).
-    # pylint: disable=g-import-not-at-top,protected-access
-    from tensorflow.python.data.ops import filter_op
-    return filter_op._FilterDataset(self, predicate, use_legacy_function=True)
-    # pylint: enable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import filter_op  # pylint: disable=g-import-not-at-top
+    return filter_op.FilterDataset(self, predicate, use_legacy_function=True)
 
   @functools.wraps(DatasetV2.apply)
   def apply(self, transformation_func):
@@ -4942,7 +4914,7 @@ class _VariantTracker(resource_lib.CapturableResource):
 batch_op = lazy_loader.LazyLoader(
     "batch_op", globals(),
     "tensorflow.python.data.ops.batch_op")
-BatchDataset = batch_op._BatchDataset  # pylint: disable=protected-access
+BatchDataset = batch_op.BatchDataset
 
 
 class TensorDataset(DatasetSource):
