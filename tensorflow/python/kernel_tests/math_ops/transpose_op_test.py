@@ -25,7 +25,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.platform import test
@@ -155,10 +154,8 @@ class TransposeTest(test.TestCase):
         4, 1, 2, 3, 0
     ]] * 6 + [[1, 2, 3, 4, 0]] * 6
 
-    datatypes = [np.int8, np.float16, np.float32, np.float64, np.complex128]
-    if test_util.is_gpu_available(
-        cuda_only=True, min_cuda_compute_capability=(8, 0)):
-      datatypes += [dtypes.bfloat16.as_numpy_dtype]
+    datatypes = [np.int8, np.float16, np.float32, np.float64, np.complex128,
+                 dtypes.bfloat16.as_numpy_dtype]
     for datatype in datatypes:
       for input_shape, perm in zip(large_shapes, perms):
         with self.subTest(

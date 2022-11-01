@@ -503,22 +503,17 @@ class TileTest(test.TestCase, parameterized.TestCase):
         bytes: (dtypes.string, bytes)
     }
     for dtype_np, (dtype_tf, cast) in types_to_test.items():
-      for use_gpu in [False, True]:
-        if use_gpu and not test_util.is_gpu_available(
-            cuda_only=True, min_cuda_compute_capability=(8, 0)):
-          # Bfloat16 requires compute capability 8.0.
-          continue
-        with self.cached_session(use_gpu=use_gpu):
-          inp = np.random.rand(4, 1).astype(dtype_np)
-          a = constant_op.constant(
-              [cast(x) for x in inp.ravel(order="C")],
-              shape=[4, 1],
-              dtype=dtype_tf)
-          tiled = array_ops.tile(a, [1, 4])
-          result = self.evaluate(tiled)
-        self.assertEqual(result.shape, (4, 4))
-        self.assertEqual([4, 4], tiled.get_shape())
-        self.assertAllEqual(result, np.tile(inp, (1, 4)))
+      with self.cached_session():
+        inp = np.random.rand(4, 1).astype(dtype_np)
+        a = constant_op.constant(
+            [cast(x) for x in inp.ravel(order="C")],
+            shape=[4, 1],
+            dtype=dtype_tf)
+        tiled = array_ops.tile(a, [1, 4])
+        result = self.evaluate(tiled)
+      self.assertEqual(result.shape, (4, 4))
+      self.assertEqual([4, 4], tiled.get_shape())
+      self.assertAllEqual(result, np.tile(inp, (1, 4)))
 
   @test_util.run_deprecated_v1
   def testInvalidDim(self):

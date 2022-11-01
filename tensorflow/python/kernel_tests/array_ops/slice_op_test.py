@@ -248,8 +248,8 @@ class SliceTest(test.TestCase):
           np.float64,
           np.complex64,
           np.complex128,
-      ] + [dtypes.bfloat16.as_numpy_dtype] if test_util.is_gpu_available(
-              cuda_only=True, min_cuda_compute_capability=(8, 0)) else []:
+          dtypes.bfloat16.as_numpy_dtype,
+      ]:
         inp = np.random.rand(4, 4).astype(dtype)
         a = constant_op.constant(
             [float(x) for x in inp.ravel(order="C")],

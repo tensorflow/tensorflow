@@ -94,9 +94,6 @@ class ConcatOpTest(test.TestCase):
     self.assertAllEqual(result[2:, :], p2)
 
   def testBfloat16GPU(self):
-    if not test_util.is_gpu_available(
-          cuda_only=True, min_cuda_compute_capability=(8, 0)):
-      self.skipTest("Bfloat16 requires compute capability 8.0")
     with test_util.use_gpu():
       p1 = np.random.rand(2, 3).astype(dtypes.bfloat16.as_numpy_dtype)
       p2 = np.random.rand(2, 3).astype(dtypes.bfloat16.as_numpy_dtype)
