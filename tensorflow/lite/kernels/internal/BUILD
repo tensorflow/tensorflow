@@ -1043,7 +1043,6 @@ cc_test(
     srcs = [
         "strided_slice_logic_test.cc",
     ],
-    shard_count = 4,
     deps = [
         ":strided_slice_logic",
         "@com_google_googletest//:gtest_main",
