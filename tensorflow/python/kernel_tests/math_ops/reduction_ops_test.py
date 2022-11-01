@@ -51,12 +51,6 @@ def _powerset(iterable):
   return itertools.chain.from_iterable(
       itertools.combinations(s, r) for r in range(len(s) + 1))
 
-def get_float_types():
-  float_types = [dtypes.float16, dtypes.float32, dtypes.float64]
-  if test_util.is_gpu_available(
-        cuda_only=True, min_cuda_compute_capability=(8, 0)):
-    float_types += [dtypes.bfloat16]
-  return float_types
 
 class ReducedShapeTest(test.TestCase):
 
@@ -255,9 +249,6 @@ class SumReductionTest(BaseReductionTest):
 
   @test_util.run_deprecated_v1
   def testBfloat16(self):
-    if test_util.is_gpu_available() and not test_util.is_gpu_available(
-          cuda_only=True, min_cuda_compute_capability=(8, 0)):
-      self.skipTest("Bfloat16 requires compute capability 8.0")
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.bfloat16)
       self._compareAllAxes(np_arr, rtol=1e-3, atol=5.)
@@ -427,7 +418,8 @@ class SumReductionTest(BaseReductionTest):
   @test_util.run_deprecated_v1
   def testDegenerate(self):
     with self.session():
-      for dtype in get_float_types() + [dtypes.complex64, dtypes.complex128]:
+      for dtype in (dtypes.bfloat16, dtypes.float16, dtypes.float32,
+                    dtypes.float64, dtypes.complex64, dtypes.complex128):
         # A large number is needed to get Eigen to die
         x = array_ops.zeros((0, 9938), dtype=dtype)
         y = math_ops.reduce_sum(x, [0])
@@ -514,9 +506,6 @@ class MeanReductionTest(BaseReductionTest):
   
   @test_util.run_deprecated_v1
   def testBfloat16(self):
-    if test_util.is_gpu_available() and not test_util.is_gpu_available(
-          cuda_only=True, min_cuda_compute_capability=(8, 0)):
-      self.skipTest("Bfloat16 requires compute capability 8.0")
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.bfloat16)
       self._compareAllAxes(np_arr, rtol=1e-3, atol=1.)
@@ -557,7 +546,8 @@ class MeanReductionTest(BaseReductionTest):
   @test_util.run_deprecated_v1
   def testDegenerate(self):
     with self.session():
-      for dtype in get_float_types():
+      for dtype in (dtypes.bfloat16, dtypes.float16, dtypes.float32,
+                    dtypes.float64):
         # A large number is needed to get Eigen to die
         x = array_ops.zeros((0, 9938), dtype=dtype)
         y = math_ops.reduce_mean(x, [0]).eval()
@@ -633,7 +623,8 @@ class EuclideanNormReductionTest(BaseReductionTest):
       self._compareAllAxes(np_arr)
 
     with self.session():
-      for dtype in get_float_types():
+      for dtype in (dtypes.bfloat16, dtypes.float16, dtypes.float32,
+                    dtypes.float64):
         # A large number is needed to get Eigen to die
         x = array_ops.zeros((0, 9938), dtype=dtype)
         y = math_ops.reduce_euclidean_norm(x, [0]).eval()
@@ -700,9 +691,6 @@ class ProdReductionTest(BaseReductionTest):
 
   @test_util.run_deprecated_v1
   def testBfloat16(self):
-    if test_util.is_gpu_available() and not test_util.is_gpu_available(
-          cuda_only=True, min_cuda_compute_capability=(8, 0)):
-      self.skipTest("Bfloat16 requires compute capability 8.0")
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.bfloat16) * \
                np.array([0.01]).astype(dtypes.bfloat16.as_numpy_dtype)
@@ -760,7 +748,8 @@ class ProdReductionTest(BaseReductionTest):
   @test_util.run_deprecated_v1
   def testDegenerate(self):
     with self.session():
-      for dtype in get_float_types():
+      for dtype in (dtypes.bfloat16, dtypes.float16, dtypes.float32,
+                    dtypes.float64):
         # A large number is needed to get Eigen to die
         x = array_ops.zeros((0, 9938), dtype=dtype)
         y = math_ops.reduce_prod(x, [0])
@@ -963,9 +952,6 @@ class MaxReductionTest(test.TestCase):
     self._compareAll(np_arr, [0, 1, 2])
 
   def testBfloat16Reduce3D(self):
-    if test_util.is_gpu_available() and not test_util.is_gpu_available(
-          cuda_only=True, min_cuda_compute_capability=(8, 0)):
-      self.skipTest("Bfloat16 requires compute capability 8.0")
     # Create a 3D array of floats and reduce across all possible
     # dimensions
     np_arr = np.arange(-31, -1).reshape([2, 3, 5]).astype(
