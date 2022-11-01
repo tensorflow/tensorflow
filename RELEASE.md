@@ -33,6 +33,11 @@
         `sparse` is set to True, the layer returns a SparseTensor instead of a
         dense Tensor. Defaults to False.
 
+*   `tf.keras`:
+
+    *   Updated `tf.keras.layers.BatchNormalization` to support masking of the
+        inputs when computing the mean and variance.
+
 # Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
