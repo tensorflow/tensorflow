@@ -410,15 +410,9 @@ void EnumerateAll1DPartition(const HloInstruction* ins, const Shape& shape,
                              const CallGraph& call_graph) {
   for (int64_t i = 0; i < shape.rank(); ++i) {
     for (int64_t j = 0; j < device_mesh.num_dimensions(); ++j) {
-      // Split one dim only when the tensor shape is divisable by device mesh.
-      // TODO(b/220942808) Shard non-divisible dimensions.
-      if (device_mesh.dim(j) == 1 ||
-          !IsDivisible(shape.dimensions(i), device_mesh.dim(j))) {
-        continue;
-      }
-
-      if (only_allow_divisible &&
-          shape.dimensions(i) % device_mesh.dim(j) != 0) {
+      if (device_mesh.dim(j) == 1 || shape.dimensions(i) < device_mesh.dim(j) ||
+          (only_allow_divisible &&
+           !IsDivisible(shape.dimensions(i), device_mesh.dim(j)))) {
         continue;
       }
 
@@ -479,9 +473,10 @@ void EnumerateAll2DPartition(const HloInstruction* ins, const Shape& shape,
       }
 
       if (only_allow_divisible &&
-          (shape.dimensions(i) % device_mesh.dim(shardable_mesh_dims[0]) != 0 ||
-           shape.dimensions(j) % device_mesh.dim(shardable_mesh_dims[1]) !=
-               0)) {
+          (!IsDivisible(shape.dimensions(i),
+                        device_mesh.dim(shardable_mesh_dims[0])) ||
+           !IsDivisible(shape.dimensions(j),
+                        device_mesh.dim(shardable_mesh_dims[1])))) {
         continue;
       }
 
@@ -522,14 +517,15 @@ void EnumerateAll1DPartitionReshape(const HloInstruction* ins,
                                     const ClusterEnvironment& cluster_env,
                                     const StrategyMap& strategy_map,
                                     std::unique_ptr<StrategyVector>& strategies,
+                                    bool only_allow_divisible,
                                     const std::string& suffix) {
   const HloInstruction* operand = ins->operand(0);
 
   for (int64_t i = 0; i < ins->shape().rank(); ++i) {
     for (int64_t j = 0; j < device_mesh.num_dimensions(); ++j) {
-      // TODO(b/220942808) Shard non-divisible dimensions.
       if (device_mesh.dim(j) == 1 ||
-          !IsDivisible(ins->shape().dimensions(i), device_mesh.dim(j))) {
+          (only_allow_divisible &&
+           !IsDivisible(ins->shape().dimensions(i), device_mesh.dim(j)))) {
         continue;
       }
       HloSharding output_spec = Tile(ins->shape(), {i}, {j}, device_mesh);
@@ -572,7 +568,8 @@ void Enumerate2DPartitionReshape(const HloInstruction* ins,
                                  const ClusterEnvironment& cluster_env,
                                  const StrategyMap& strategy_map,
                                  const InstructionBatchDimMap& batch_dim_map,
-                                 std::unique_ptr<StrategyVector>& strategies) {
+                                 std::unique_ptr<StrategyVector>& strategies,
+                                 bool only_allow_divisible) {
   std::vector<int64_t> shardable_mesh_dims =
       VectorGreaterThanOneElementIndices(device_mesh.dimensions());
   auto iter = batch_dim_map.find(GetBatchDimMapKey(ins));
@@ -593,6 +590,13 @@ void Enumerate2DPartitionReshape(const HloInstruction* ins,
               device_mesh.dim(shardable_mesh_dims[0]) ||
           ins->shape().dimensions(j) <
               device_mesh.dim(shardable_mesh_dims[1])) {
+        continue;
+      }
+      if (only_allow_divisible &&
+          (!IsDivisible(ins->shape().dimensions(i),
+                        device_mesh.dim(shardable_mesh_dims[0])) ||
+           !IsDivisible(ins->shape().dimensions(j),
+                        device_mesh.dim(shardable_mesh_dims[1])))) {
         continue;
       }
 
@@ -742,7 +746,7 @@ void DisableIncompatibleMixedMeshShapeAndForceBatchDim(
                                           .dimensions(iter.second));
   }
 
-  if (batch_size % num_devices != 0) {
+  if (IsDivisible(batch_size, num_devices)) {
     if (solver_option.allow_mixed_mesh_shape) {
       solver_option.allow_mixed_mesh_shape = false;
       LOG(WARNING)
@@ -777,7 +781,8 @@ StatusOr<std::unique_ptr<StrategyVector>> CreateParameterStrategyVector(
     strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
                                           leaf_strategies);
     EnumerateAll1DPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
-                            strategy_map, strategies, true, "", call_graph);
+                            strategy_map, strategies,
+                            solver_option.only_allow_divisible, "", call_graph);
     // Split 2 dims
     if (cluster_env.IsDeviceMesh2D()) {
       // NOTE(zhuohan): In full alpa, we only include 2D partition strategy
@@ -785,8 +790,8 @@ StatusOr<std::unique_ptr<StrategyVector>> CreateParameterStrategyVector(
       //                this logic here since this pass might be used for
       //                more general cases.
       EnumerateAll2DPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
-                              strategy_map, strategies, batch_dim_map, true,
-                              call_graph);
+                              strategy_map, strategies, batch_dim_map,
+                              solver_option.only_allow_divisible, call_graph);
     }
 
     if (solver_option.allow_mixed_mesh_shape && cluster_env.IsDeviceMesh2D()) {
@@ -796,9 +801,9 @@ StatusOr<std::unique_ptr<StrategyVector>> CreateParameterStrategyVector(
       }
 
       // Split 1 dim, but for 1d mesh
-      EnumerateAll1DPartition(ins, shape, cluster_env.device_mesh_1d_,
-                              cluster_env, strategy_map, strategies, true,
-                              " 1d", call_graph);
+      EnumerateAll1DPartition(
+          ins, shape, cluster_env.device_mesh_1d_, cluster_env, strategy_map,
+          strategies, solver_option.only_allow_divisible, " 1d", call_graph);
     }
     if (solver_option.allow_replicated_parameters ||
         strategies->leaf_vector.empty()) {
@@ -1157,7 +1162,9 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
             // mesh.
             // TODO(b/220942808) Shard non-divisible dimensions.
             if (device_mesh.dim(j) == 1 ||
-                !IsDivisible(shape.dimensions(index_dim), device_mesh.dim(j))) {
+                (solver_option.only_allow_divisible &&
+                 !IsDivisible(shape.dimensions(index_dim),
+                              device_mesh.dim(j)))) {
               continue;
             }
             std::string name = absl::StrCat("S", std::to_string(index_dim),
@@ -1206,16 +1213,19 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         CHECK(!operand_strategies->is_tuple);
         if (ins->shape().rank() == 1 || cluster_env.IsDeviceMesh1D()) {
           EnumerateAll1DPartition(ins, ins->shape(), cluster_env.device_mesh_,
-                                  cluster_env, strategy_map, strategies, true,
-                                  "", call_graph);
-        } else {
-          EnumerateAll2DPartition(ins, ins->shape(), cluster_env.device_mesh_,
                                   cluster_env, strategy_map, strategies,
-                                  batch_dim_map, true, call_graph);
+                                  solver_option.only_allow_divisible, "",
+                                  call_graph);
+        } else {
+          EnumerateAll2DPartition(
+              ins, ins->shape(), cluster_env.device_mesh_, cluster_env,
+              strategy_map, strategies, batch_dim_map,
+              solver_option.only_allow_divisible, call_graph);
           if (solver_option.allow_mixed_mesh_shape) {
             EnumerateAll1DPartition(
                 ins, ins->shape(), cluster_env.device_mesh_1d_, cluster_env,
-                strategy_map, strategies, true, "1d", call_graph);
+                strategy_map, strategies, solver_option.only_allow_divisible,
+                "1d", call_graph);
           }
         }
         AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
@@ -1277,20 +1287,22 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
 
           // Split 1 dim
           if (cluster_env.IsDeviceMesh1D()) {
-            EnumerateAll1DPartitionReshape(ins, device_mesh, cluster_env,
-                                           strategy_map, strategies, "");
+            EnumerateAll1DPartitionReshape(
+                ins, device_mesh, cluster_env, strategy_map, strategies,
+                solver_option.only_allow_divisible, "");
           }
           if (solver_option.allow_mixed_mesh_shape &&
               cluster_env.IsDeviceMesh2D()) {
             // Split 1 dim, but for 1d mesh
-            EnumerateAll1DPartitionReshape(ins, device_mesh_1d, cluster_env,
-                                           strategy_map, strategies, " 1d");
+            EnumerateAll1DPartitionReshape(
+                ins, device_mesh_1d, cluster_env, strategy_map, strategies,
+                solver_option.only_allow_divisible, " 1d");
           }
           if (cluster_env.IsDeviceMesh2D()) {
             // Split 2 dim, one is always the batch dim
             Enumerate2DPartitionReshape(ins, device_mesh, cluster_env,
-                                        strategy_map, batch_dim_map,
-                                        strategies);
+                                        strategy_map, batch_dim_map, strategies,
+                                        solver_option.only_allow_divisible);
           }
 
           // Replicate
@@ -1599,15 +1611,16 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         strategies = CreateLeafStrategyVectorWithoutInNodes(instruction_id,
                                                             leaf_strategies);
         if (cluster_env.IsDeviceMesh1D()) {
-          EnumerateAll1DPartition(ins, ins->shape(), device_mesh, cluster_env,
-                                  strategy_map, strategies, false, "",
-                                  call_graph);
+          EnumerateAll1DPartition(
+              ins, ins->shape(), device_mesh, cluster_env, strategy_map,
+              strategies, solver_option.only_allow_divisible, "", call_graph);
         }
         if (cluster_env.IsDeviceMesh2D()) {
           // Split 2 dims
           EnumerateAll2DPartition(ins, ins->shape(), device_mesh, cluster_env,
                                   strategy_map, strategies, batch_dim_map,
-                                  false, call_graph);
+                                  solver_option.only_allow_divisible,
+                                  call_graph);
         }
         if (cluster_env.IsDeviceMesh2D() &&
             solver_option.allow_mixed_mesh_shape) {
@@ -1615,8 +1628,9 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           // For example, when the mesh shape is (2, 4), we add strategies for
           // mesh shape (1, 8) here in addition.
           EnumerateAll1DPartition(ins, ins->shape(), device_mesh_1d,
-                                  cluster_env, strategy_map, strategies, false,
-                                  " 1d", call_graph);
+                                  cluster_env, strategy_map, strategies,
+                                  solver_option.only_allow_divisible, " 1d",
+                                  call_graph);
         }
 
         if (strategies->leaf_vector.empty() || IsFollowedByBroadcast(ins)) {
@@ -2993,6 +3007,7 @@ StatusOr<bool> AutoSharding::Run(
   solver_option.force_strategy_inst_indices =
       option_.force_strategy_inst_indices;
   solver_option.force_strategy_stra_names = option_.force_strategy_stra_names;
+  solver_option.only_allow_divisible = false;
 
   // Remove CustomCalls with custom_call_target="Sharding" and move their
   // shardings to their input ops.

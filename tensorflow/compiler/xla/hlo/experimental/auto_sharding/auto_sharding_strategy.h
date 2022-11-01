@@ -106,6 +106,8 @@ struct AutoShardingSolverOption {
   bool force_strategy;
   std::vector<int64_t> force_strategy_inst_indices;
   std::vector<std::string> force_strategy_stra_names;
+
+  bool only_allow_divisible;
 };
 
 // One sharding strategy
