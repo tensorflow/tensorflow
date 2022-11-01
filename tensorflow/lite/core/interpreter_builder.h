@@ -44,19 +44,19 @@ namespace tflite {
 
 /// Build an interpreter capable of interpreting `model`.
 ///
-/// `model`: A model whose lifetime must be at least as long as any
+/// * `model`: A model whose lifetime must be at least as long as any
 ///   interpreter(s) created by the builder. In principle multiple interpreters
 ///   can be made from a single model.
-/// `op_resolver`: An instance that implements the `OpResolver` interface, which
-///   maps custom op names and builtin op codes to op registrations. The
+/// * `op_resolver`: An instance that implements the `OpResolver` interface,
+///   which maps custom op names and builtin op codes to op registrations. The
 ///   lifetime of the provided `op_resolver` object must be at least as long as
 ///   the `InterpreterBuilder`; unlike `model` and `error_reporter`, the
 ///   `op_resolver` does not need to exist for the duration of any created
 ///   `Interpreter` objects.
-/// `error_reporter`: a functor that is called to report errors that handles
+/// * `error_reporter`: a functor that is called to report errors that handles
 ///   printf var arg semantics. The lifetime of the `error_reporter` object must
 ///   be greater than or equal to the `Interpreter` created by `operator()`.
-/// `options_experimental`: Options that can change behavior of interpreter.
+/// * `options_experimental`: Options that can change behavior of interpreter.
 ///   WARNING: this parameter is an experimental API and is subject to change.
 ///
 /// Returns a kTfLiteOk when successful and sets interpreter to a valid
