@@ -1249,9 +1249,7 @@ tf_cc_test(
     deps = [
         ":async_collective_creator",
         ":hlo",
-        ":hlo_memory_scheduler",
         ":latency_hiding_scheduler",
-        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
