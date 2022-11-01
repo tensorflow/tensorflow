@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/notification.h"
@@ -180,9 +181,13 @@ TEST_P(ClientServerTest, ConnectAndShutdownAreBarriers) {
 TEST_P(ClientServerTest, ConnectAndEnumerateDevices) {
   StartService(/*num_nodes=*/2, GetParam().use_coordination_service);
 
+  std::string host_0_boot_id = "foo";
+  std::string host_1_boot_id = "bar";
   std::vector<LocalTopologyProto> locals(2);
   locals[0].set_node_id(0);
   locals[1].set_node_id(1);
+  locals[0].set_boot_id(host_0_boot_id);
+  locals[1].set_boot_id(host_1_boot_id);
   DeviceProto* d0 = locals[0].add_devices();
   d0->set_local_device_ordinal(0);
   DeviceProto* d1 = locals[0].add_devices();
@@ -196,11 +201,17 @@ TEST_P(ClientServerTest, ConnectAndEnumerateDevices) {
   auto* node0 = expected_topology.add_nodes();
   auto* node1 = expected_topology.add_nodes();
   *node0 = locals[0];
+  node0->set_boot_id(host_0_boot_id);
   node0->mutable_devices(0)->set_global_device_id(0);
   node0->mutable_devices(1)->set_global_device_id(1);
   node0->mutable_devices(2)->set_global_device_id(2);
+  node0->mutable_devices(0)->set_slice_index(0);
+  node0->mutable_devices(1)->set_slice_index(0);
+  node0->mutable_devices(2)->set_slice_index(0);
   *node1 = locals[1];
+  node1->set_boot_id(host_1_boot_id);
   node1->mutable_devices(0)->set_global_device_id(3);
+  node1->mutable_devices(0)->set_slice_index(1);
 
   // Used to ensure that thread0's client sends their device after thread1's
   // client. This ensures that devices are sent out of turn (compared to their
@@ -270,6 +281,8 @@ TEST_P(ClientServerTest, EnumerateElevenDevices) {
   std::vector<LocalTopologyProto> locals(num_nodes);
   for (int i = 0; i < num_nodes; ++i) {
     locals[i].set_node_id(i);
+    // Two unique boot_id, one per host.
+    locals[i].set_boot_id(absl::StrCat("test_boot_id_", i % 2));
     auto device = locals[i].add_devices();
     // Split local devices across two hosts.
     int ordinal = i % (num_nodes / 2);
@@ -282,6 +295,7 @@ TEST_P(ClientServerTest, EnumerateElevenDevices) {
     auto* node = expected_topology.add_nodes();
     *node = locals[i];
     node->mutable_devices(0)->set_global_device_id(i);
+    node->mutable_devices(0)->set_slice_index(i % 2);
   }
 
   auto thread_fn = [&](int node_id) -> xla::Status {

@@ -323,6 +323,10 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<StreamExecutorGpuDevice, PjRtDevice,
              ClientAndPtr<StreamExecutorGpuDevice>>
       gpu_device(m, "GpuDevice");
+  gpu_device.def_property_readonly(
+      "slice_index", &StreamExecutorGpuDevice::slice_index,
+      "Integer ID of a set of devices connected by "
+      "fast network, e.g., NVLink.");
   m.def(
       "get_gpu_client",
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,

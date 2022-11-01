@@ -43,6 +43,7 @@ cc_library(
         ":protocol_cc_grpc_proto",
         ":util",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/memory",
