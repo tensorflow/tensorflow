@@ -184,9 +184,11 @@ class MatOpsDotAddTest
     bool row_major = std::get<0>(GetParam());
     bool add_lhs = std::get<1>(GetParam());
     bool transpose = std::get<2>(GetParam());
+#if GOOGLE_CUDA
     bool use_cublaslt = std::get<3>(GetParam());
     execution_options_.mutable_debug_options()->set_xla_gpu_enable_cublaslt(
         use_cublaslt);
+#endif
     Array2D<T> lhs({{1.0f, 2.0f}, {3.0f, 4.0f}});
     Array2D<T> rhs({{10.0f, 11.0f}, {12.0f, 13.0f}});
 
@@ -280,9 +282,11 @@ class MatOpsDotAddTest
   void TestImplBiasAddEpilogueFusion() {
     bool row_major = std::get<0>(GetParam());
     bool transpose = std::get<2>(GetParam());
+#if GOOGLE_CUDA
     bool use_cublaslt = std::get<3>(GetParam());
     execution_options_.mutable_debug_options()->set_xla_gpu_enable_cublaslt(
         use_cublaslt);
+#endif
     Array2D<T> lhs({{1.0f, 2.0f}, {3.0f, 4.0f}});
     Array2D<T> rhs({{10.0f, 11.0f}, {12.0f, 13.0f}});
     auto minor_to_major = [](bool row_major) -> std::vector<int64_t> {
@@ -326,9 +330,11 @@ class MatOpsDotAddTest
   void TestImplReluActivationEpilogueFusion() {
     bool row_major = std::get<0>(GetParam());
     bool transpose = std::get<2>(GetParam());
+#if GOOGLE_CUDA
     bool use_cublaslt = std::get<3>(GetParam());
     execution_options_.mutable_debug_options()->set_xla_gpu_enable_cublaslt(
         use_cublaslt);
+#endif
     Array2D<T> lhs({{-1.0f, 2.0f}, {3.0f, 4.0f}});
     Array2D<T> rhs({{10.0f, 11.0f}, {-12.0f, 13.0f}});
     auto minor_to_major = [](bool row_major) -> std::vector<int64_t> {
@@ -367,9 +373,11 @@ class MatOpsDotAddTest
   void TestImplBiasAddReluActivationEpilogueFusion() {
     bool row_major = std::get<0>(GetParam());
     bool transpose = std::get<2>(GetParam());
+#if GOOGLE_CUDA
     bool use_cublaslt = std::get<3>(GetParam());
     execution_options_.mutable_debug_options()->set_xla_gpu_enable_cublaslt(
         use_cublaslt);
+#endif
     Array2D<T> lhs({{-1.0f, 2.0f}, {3.0f, 4.0f}});
     Array2D<T> rhs({{10.0f, 11.0f}, {-12.0f, 13.0f}});
     auto minor_to_major = [](bool row_major) -> std::vector<int64_t> {
