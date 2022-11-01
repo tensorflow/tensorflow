@@ -1250,7 +1250,7 @@ cc_library(
 tf_cc_test(
     name = "softmax_fusion_test",
     srcs = ["softmax_fusion_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
     deps = [
         ":softmax_fusion",
         "//tensorflow/compiler/xla:status_macros",
