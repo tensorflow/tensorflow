@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/util/guarded_philox_random.h"
 #include "tensorflow/core/util/overflow.h"
 
-namespace tensorflow {
+namespace tensF {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 template <typename T>
