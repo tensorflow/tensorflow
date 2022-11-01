@@ -14,6 +14,19 @@ def if_mkldnn_openmp(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
+def if_onednn_v3(if_true, if_false = []):
+    """Returns `if_true` if oneDNN v3.x is used.
+
+    Returns a select statement which evaluates to if_true if we're building
+    with oneDNN v3.x open source library only. Otherwise, the select statement
+    evaluates to if_false.
+
+    """
+    return select({
+        "@org_tensorflow//third_party/mkl_dnn:build_with_onednn_v3": if_true,
+        "//conditions:default": if_false,
+    })
+
 def if_mkldnn_aarch64_acl(if_true, if_false = []):
     return select({
         "@org_tensorflow//third_party/mkl:build_with_mkl_aarch64": if_true,

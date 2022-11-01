@@ -29,6 +29,26 @@ config_setting(
 )
 
 config_setting(
+    name = "build_with_onednn_v3",
+    define_values = {
+        "build_with_mkl": "true",
+        "build_with_onednn_v3": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
+# The following config is needed since oneDNN v2.x and v3.x are API incompatible.
+config_setting(
+    name = "build_with_onednn_v2",
+    define_values = {
+        # We are not defining 'build_with_mkl' since this config can be invoked
+        # on x86_64 platforms without --config=mkl
+        "build_with_onednn_v2": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "build_with_mkl_aarch64_openmp",
     define_values = {
         "build_with_mkl_aarch64": "true",
