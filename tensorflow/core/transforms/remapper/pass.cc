@@ -173,6 +173,12 @@ static std::unique_ptr<OperationState> GetContractionBiasAddOpState(
   state->attributes = contraction_op->getAttrs();
   state->attributes.set("fused_ops", builder.getStrArrayAttr({"BiasAdd"}));
   state->attributes.set("num_args", builder.getI32IntegerAttr(1));
+  // Setting FusedConv2D specific attrs
+  if (helper.getDialect()->IsConv2D(contraction_op)) {
+    TypeAttr dtype_attr = contraction_op->getAttrOfType<TypeAttr>("T");
+    state->attributes.set("TArgs", builder.getArrayAttr({dtype_attr}));
+    state->attributes.set("num_host_args", builder.getI32IntegerAttr(0));
+  }
   // Default values for epsilon and leakyrelu_alpha
   state->attributes.set("epsilon", builder.getF32FloatAttr(0.0001));
   state->attributes.set("leakyrelu_alpha", builder.getF32FloatAttr(0.2));
