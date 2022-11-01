@@ -1907,30 +1907,32 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
                   const std::vector<std::string>& instruction_names) {
   size_t num_edges = E.size();
 
-  std::unique_ptr<MPSolver> solver(
-      std::make_unique<MPSolver>("", MPSolver::GLPK_MIXED_INTEGER_PROGRAMMING));
+  int32_t num_workers = 32;
+  // SAT or SCIP
+  std::unique_ptr<MPSolver> solver(std::make_unique<MPSolver>("", MPSolver::GLPK_MIXED_INTEGER_PROGRAMMING));
   CHECK(solver);
   solver->MutableObjective()->SetMinimization();
+  if (solver->ProblemType() ==
+      operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
+    // Set random_seed and interleave_search for determinism,
+    // num_workers for parallelism.
+    solver->SetSolverSpecificParametersAsString(absl::StrCat(
+        "random_seed:1,interleave_search:true,num_workers:", num_workers));
+  }
 
   // Create variables
   std::vector<std::vector<MPVariable*>> s(N);
   std::vector<std::vector<MPVariable*>> e(num_edges);
 
   size_t var_vector_cnt = 0;
-  size_t var_cnt = 0;
   for (size_t i = 0; i < N; ++i) {
     if (s_follow[i] < 0) {
       var_vector_cnt += 1;
-      var_cnt += s_len[i];
       // Creates variables for instructions that do not follow others.
       solver->MakeBoolVarArray(
           s_len[i], absl::StrCat("s[", std::to_string(i), "]"), &s[i]);
     }
   }
-
-  VLOG(1) << "Total variables for ILP: " << var_cnt
-          << ", total vector of variables: " << var_vector_cnt
-          << ", total instructions: " << N;
 
   for (size_t i = 0; i < N; ++i) {
     if (s_follow[i] >= 0) {
@@ -2046,6 +2048,7 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
       }
     }
   }
+
   // d. specified via "BoolVarArray"
   // e.
   for (size_t i = 0; i < num_edges; ++i) {
@@ -2098,8 +2101,17 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
       }
     }
   }
-  // Solve
-  VLOG(1) << "Total number of ILP constraints: " << solver->NumConstraints();
+
+  solver->set_time_limit(3600 * 1000);  // in ms
+  VLOG(0) << "Starting solver " << solver->ProblemType() << "\n"
+          << "Number of workers: " << num_workers << "\n"
+          << "Number of threads: " << solver->GetNumThreads() << "\n"
+          << "Time limit: " << solver->time_limit() << "\n"
+          << "Number variables for ILP: " << solver->NumVariables() << "\n"
+          << "Total vector of variables: " << var_vector_cnt << "\n"
+          << "Total instructions: " << N << "\n"
+          << "Memory budget: " << M / (1024 * 1024 * 1024) << "GB\n"
+          << "Number of ILP constraints: " << solver->NumConstraints();
   auto status = solver->Solve();
   if (status == operations_research::MPSolver::INFEASIBLE) {
     LOG(ERROR) << "MPSolver could not find any feasible solution.";
@@ -2108,11 +2120,15 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
     //   Need to include "util/task/status.pb.h"
     operations_research::MPModelRequest model_request;
     solver->ExportModelToProto(model_request.mutable_model());
-    model_request.set_solver_type(
-        operations_research::MPModelRequest::SCIP_MIXED_INTEGER_PROGRAMMING);
+    if (solver_type == "SAT") {
+      model_request.set_solver_type(
+          operations_research::MPModelRequest::SAT_INTEGER_PROGRAMMING);
+    } else if (solver_type == "SCIP") {
+      model_request.set_solver_type(
+          operations_research::MPModelRequest::SCIP_MIXED_INTEGER_PROGRAMMING);
+    }
     model_request.set_solver_time_limit_seconds(100);
     auto iis = MPSolver::ComputeIrreducibleInfeasibleSubset(model_request);
-
     LOG(INFO) << iis.status().DebugString();
     LOG(INFO) << "Infeasible constraints: ";
     for (int index : iis.constraint_index()) {
