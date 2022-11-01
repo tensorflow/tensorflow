@@ -1396,8 +1396,7 @@ void HloCostAnalysis::SetOutputBytesAccessed(ShapeIndex index, float value) {
   return absl::StrCat(kBytesAccessedKey, " output ", index.ToString());
 }
 
-/*static*/ bool HloCostAnalysis::KeyToCopyFromSubcomputation(
-    absl::string_view key) {
+bool HloCostAnalysis::KeyToCopyFromSubcomputation(absl::string_view key) const {
   return !absl::StartsWith(key, kBytesAccessedKey) &&
          !absl::StartsWith(key, kUtilizationKey);
 }

@@ -1188,6 +1188,7 @@ cc_library(
     hdrs = ["multi_output_fusion.h"],
     deps = [
         ":gpu_fusible",
+        ":gpu_hlo_cost_analysis",
         ":instruction_fusion",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -1311,6 +1312,7 @@ cc_library(
     hdrs = ["fusion_merger.h"],
     deps = [
         ":gpu_fusible",
+        ":gpu_hlo_cost_analysis",
         ":instruction_fusion",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
@@ -2231,6 +2233,7 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
+        "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
     ],
 )

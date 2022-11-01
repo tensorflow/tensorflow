@@ -2034,6 +2034,7 @@ cc_library(
     srcs = ["fusion_node_indexing_evaluation.cc"],
     hdrs = ["fusion_node_indexing_evaluation.h"],
     deps = [
+        ":elemental_ir_emitter",
         ":hlo",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/tsl/platform:logging",

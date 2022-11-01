@@ -33,14 +33,21 @@ namespace gpu {
 namespace {
 
 class GpuFusionPipelineTest : public GpuCodegenTest {
+  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
+    return [&](const Shape& shape) {
+      constexpr int64_t kPointerSize = 8;
+      return ShapeUtil::ByteSizeOf(shape, kPointerSize);
+    };
+  }
+
  public:
   void CheckGpuFusionPipeline(absl::string_view hlo,
                               std::optional<absl::string_view> expected) {
     HloPassPipeline pipeline("gpu-fusion");
     pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
-    pipeline.AddPass<FusionMerger>();
-    pipeline.AddPass<GpuMultiOutputFusion>();
+    pipeline.AddPass<FusionMerger>(ShapeSizeBytesFunction());
+    pipeline.AddPass<GpuMultiOutputFusion>(ShapeSizeBytesFunction());
 
     RunAndFilecheckHloRewrite(hlo, std::move(pipeline), expected);
   }

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FUSION_MERGER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FUSION_MERGER_H_
 
+#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
@@ -58,7 +59,11 @@ namespace gpu {
 // the latter two could be beneficial.
 
 class FusionMerger : public HloModulePass {
+  HloCostAnalysis::ShapeSizeFunction shape_size_function_;
+
  public:
+  explicit FusionMerger(HloCostAnalysis::ShapeSizeFunction f)
+      : shape_size_function_(f) {}
   absl::string_view name() const override { return "fusion_merger"; }
 
   using HloPassInterface::Run;

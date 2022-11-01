@@ -329,7 +329,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Options options_;
 
   // Determines which properties propagate from subcomputations to parents.
-  static bool KeyToCopyFromSubcomputation(absl::string_view key);
+  virtual bool KeyToCopyFromSubcomputation(absl::string_view key) const;
 
   HloCostAnalysis(const HloCostAnalysis&) = delete;
   HloCostAnalysis& operator=(const HloCostAnalysis&) = delete;

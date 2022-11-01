@@ -32,8 +32,16 @@ namespace {
 namespace op = xla::testing::opcode_matchers;
 
 class FusionMergerTest : public HloTestBase {
+  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
+    return [&](const Shape& shape) {
+      constexpr int64_t kPointerSize = 8;
+      return ShapeUtil::ByteSizeOf(shape, kPointerSize);
+    };
+  }
+
  public:
-  FusionMerger fusion_merger_;
+  FusionMerger fusion_merger_{ShapeSizeBytesFunction()};
+  FusionMergerTest() : HloTestBase() {}
 };
 
 // Tests that we can merge a fusion instruction that is below threshold.
@@ -403,55 +411,57 @@ TEST_F(FusionMergerTest, AvoidsLargeFusion) {
 // TODO(b/119692968): Remove this test once fusion emitter is fixed.
 TEST_F(FusionMergerTest, WillNotMergeIfFusionEmitterIsInefficient) {
   auto module = ParseAndReturnVerifiedModule(R"(
-    HloModule m
+HloModule m
 
-    %fused_computation (param_0.10: f32[6]) -> f32[1] {
-      %param_0.10 = f32[6]{0} parameter(0)
-      %add.7 = f32[6]{0} add(%param_0.10, %param_0.10)
-      %slice.21 = f32[5]{0} slice(%add.7), slice={[0:5]}
-      %slice.18 = f32[5]{0} slice(%add.7), slice={[1:6]}
-      %add.5 = f32[5]{0} add(%slice.21, %slice.18)
-      %slice.15 = f32[4]{0} slice(%add.5), slice={[0:4]}
-      %slice.12 = f32[4]{0} slice(%add.5), slice={[1:5]}
-      %add.4 = f32[4]{0} add(%slice.15, %slice.12)
-      %slice.9 = f32[3]{0} slice(%add.4), slice={[0:3]}
-      %slice.6 = f32[3]{0} slice(%add.4), slice={[1:4]}
-      %add.2 = f32[3]{0} add(%slice.9, %slice.6)
-      %slice.3 = f32[2]{0} slice(%add.2), slice={[0:2]}
-      %slice.2 = f32[2]{0} slice(%add.2), slice={[1:3]}
-      %add.1 = f32[2]{0} add(%slice.3, %slice.2)
-      %slice.1 = f32[1]{0} slice(%add.1), slice={[0:1]}
-      %slice.0 = f32[1]{0} slice(%add.1), slice={[1:2]}
-      ROOT %add.0 = f32[1]{0} add(%slice.1, %slice.0)
-    }
+f1 {
+  Arg_0.5 = f32[200000] parameter(0)
+  slice.7 = f32[100000] slice(Arg_0.5), slice={[0:199999:2]}
+  slice.8 = f32[100000] slice(Arg_0.5), slice={[1:200000:2]}
+  add.9 = f32[100000] add(slice.7, slice.8)
+  slice.10 = f32[50000] slice(add.9), slice={[0:99999:2]}
+  slice.11 = f32[50000] slice(add.9), slice={[1:100000:2]}
+  add.12 = f32[50000] add(slice.10, slice.11)
+  slice.13 = f32[25000] slice(add.12), slice={[0:49999:2]}
+  slice.14 = f32[25000] slice(add.12), slice={[1:50000:2]}
+  add.15 = f32[25000] add(slice.13, slice.14)
+  slice.16 = f32[12500] slice(add.15), slice={[0:24999:2]}
+  slice.17 = f32[12500] slice(add.15), slice={[1:25000:2]}
+  add.18 = f32[12500] add(slice.16, slice.17)
+  slice.19 = f32[6250] slice(add.18), slice={[0:12499:2]}
+  slice.20 = f32[6250] slice(add.18), slice={[1:12500:2]}
+  add.21 = f32[6250] add(slice.19, slice.20)
+  slice.22 = f32[3125] slice(add.21), slice={[0:6249:2]}
+  slice.23 = f32[3125] slice(add.21), slice={[1:6250:2]}
+  ROOT add.24 = f32[3125] add(slice.22, slice.23)
+}
 
-    %fused_computation.1 (param_0.21: f32[11], param_1.21: f32[11]) -> f32[6] {
-      %param_0.21 = f32[11]{0} parameter(0)
-      %param_1.21 = f32[11]{0} parameter(1)
-      %add.16 = f32[11]{0} add(%param_0.21, %param_1.21)
-      %slice.51 = f32[10]{0} slice(%add.16), slice={[0:10]}
-      %slice.48 = f32[10]{0} slice(%add.16), slice={[1:11]}
-      %add.14 = f32[10]{0} add(%slice.51, %slice.48)
-      %slice.45 = f32[9]{0} slice(%add.14), slice={[0:9]}
-      %slice.42 = f32[9]{0} slice(%add.14), slice={[1:10]}
-      %add.13 = f32[9]{0} add(%slice.45, %slice.42)
-      %slice.39 = f32[8]{0} slice(%add.13), slice={[0:8]}
-      %slice.36 = f32[8]{0} slice(%add.13), slice={[1:9]}
-      %add.11 = f32[8]{0} add(%slice.39, %slice.36)
-      %slice.33 = f32[7]{0} slice(%add.11), slice={[0:7]}
-      %slice.30 = f32[7]{0} slice(%add.11), slice={[1:8]}
-      %add.10 = f32[7]{0} add(%slice.33, %slice.30)
-      %slice.27 = f32[6]{0} slice(%add.10), slice={[0:6]}
-      %slice.24 = f32[6]{0} slice(%add.10), slice={[1:7]}
-      ROOT %add.8 = f32[6]{0} add(%slice.27, %slice.24)
-    }
+f2 {
+  Arg_0 = f32[3125] parameter(0)
+  slice.25 = f32[1562] slice(Arg_0), slice={[0:3124:2]}
+  slice.26 = f32[1562] slice(Arg_0), slice={[1:3125:2]}
+  add.27 = f32[1562] add(slice.25, slice.26)
+  slice.28 = f32[781] slice(add.27), slice={[0:1561:2]}
+  slice.29 = f32[781] slice(add.27), slice={[1:1562:2]}
+  add.30 = f32[781] add(slice.28, slice.29)
+  slice.31 = f32[390] slice(add.30), slice={[0:780:2]}
+  slice.32 = f32[390] slice(add.30), slice={[1:781:2]}
+  add.33 = f32[390] add(slice.31, slice.32)
+  slice.34 = f32[195] slice(add.33), slice={[0:389:2]}
+  slice.35 = f32[195] slice(add.33), slice={[1:390:2]}
+  add.36 = f32[195] add(slice.34, slice.35)
+  slice.37 = f32[97] slice(add.36), slice={[0:194:2]}
+  slice.38 = f32[97] slice(add.36), slice={[1:195:2]}
+  add.39 = f32[97] add(slice.37, slice.38)
+  slice.40 = f32[48] slice(add.39), slice={[0:96:2]}
+  slice.41 = f32[48] slice(add.39), slice={[1:97:2]}
+  ROOT add.42 = f32[48] add(slice.40, slice.41)
+}
 
-    ENTRY entry {
-      p0 = f32[11]{0} parameter(0)
-      p1 = f32[11]{0} parameter(1)
-      f1 = f32[6]{0} fusion(p0, p1), kind=kLoop, calls=%fused_computation.1
-      ROOT f2 = f32[1] fusion(f1), kind=kLoop, calls=%fused_computation
-    })")
+ENTRY e {
+  p0 = f32[200000] parameter(0)
+  f1 = f32[3125] fusion(p0), kind=kLoop, calls=f1
+  ROOT r = f32[48] fusion(f1), kind=kLoop, calls=f2
+})")
                     .value();
   EXPECT_FALSE(fusion_merger_.Run(module.get()).value());
 }
@@ -686,6 +696,157 @@ ENTRY main {
   fusion.1 = f32[2,20,256]{2,0,1} fusion(param_0.0, param_1.0, param_2.0, param_3.0, param_4.0, param_5.0, param_6.0, param_7.0, param_8.0, param_9.0), kind=kLoop, calls=fused_computation.1
   param_10 = pred[] parameter(10)
   ROOT fusion.2 = f32[2,20,256]{2,0,1} fusion(param_0.0, param_1.0, param_2.0, param_3.0, fusion.1, param_5.0, param_10, param_7.0, param_8.0, param_9.0), kind=kLoop, calls=fused_computation.2
+}
+  )")
+                    .value();
+  EXPECT_FALSE(fusion_merger_.Run(module.get()).value());
+}
+
+TEST_F(FusionMergerTest, NoMergeBecauseTooManyBasicBlockSplits) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+region_6.97 {
+  Arg_0.98 = pred[] parameter(0)
+  Arg_1.99 = pred[] parameter(1)
+  ROOT or.100 = pred[] or(Arg_0.98, Arg_1.99)
+}
+
+region_4.50 {
+  Arg_0.51 = f64[] parameter(0)
+  Arg_1.52 = f64[] parameter(1)
+  ROOT add.53 = f64[] add(Arg_0.51, Arg_1.52)
+}
+
+f2 {
+  param_0 = s64[1]{0} parameter(0)
+  constant_70 = f64[] constant(0)
+  convert.41.clone.1 = f64[1]{0} convert(param_0)
+  ROOT pad.99.clone.1 = f64[3]{0} pad(convert.41.clone.1, constant_70), padding=0_2
+}
+
+f1 {
+  param_0.361 = pred[5]{0} parameter(0)
+  broadcast.107 = pred[10,5]{1,0} broadcast(param_0.361), dimensions={1}
+  param_6.244 = pred[5]{0} parameter(6)
+  broadcast.111.clone.1 = pred[10,5]{1,0} broadcast(param_6.244), dimensions={1}
+  param_1.450 = f64[10,5]{1,0} parameter(1)
+  constant_294_clone_1 = f64[] constant(1)
+  broadcast.153.clone.1 = f64[10,5]{1,0} broadcast(constant_294_clone_1), dimensions={}
+  compare.22.clone.1 = pred[10,5]{1,0} compare(param_1.450, broadcast.153.clone.1), direction=GE
+  constant_75_clone_1 = f64[] constant(-1)
+  broadcast.109.clone.1 = f64[10,5]{1,0} broadcast(constant_75_clone_1), dimensions={}
+  add.34.clone.1 = f64[10,5]{1,0} add(param_1.450, broadcast.109.clone.1)
+  param_5.322 = f64[10,5,4]{1,0,2} parameter(5)
+  slice.45.clone.1 = f64[10,5,1]{1,0,2} slice(param_5.322), slice={[0:10], [0:5], [3:4]}
+  bitcast.94.clone.1 = f64[10,5]{1,0} bitcast(slice.45.clone.1)
+  divide.7.clone.1 = f64[10,5]{1,0} divide(add.34.clone.1, bitcast.94.clone.1)
+  add.33.clone.1 = f64[10,5]{1,0} add(divide.7.clone.1, broadcast.153.clone.1)
+  constant_70 = f64[] constant(0)
+  broadcast.157.clone.1 = f64[10,5]{1,0} broadcast(constant_70), dimensions={}
+  compare.26.clone.1 = pred[10,5]{1,0} compare(param_1.450, broadcast.157.clone.1), direction=LE
+  slice.46.clone.1 = f64[10,5,1]{1,0,2} slice(param_5.322), slice={[0:10], [0:5], [0:1]}
+  bitcast.93.clone.1 = f64[10,5]{1,0} bitcast(slice.46.clone.1)
+  divide.6.clone.1 = f64[10,5]{1,0} divide(param_1.450, bitcast.93.clone.1)
+  broadcast.295.clone.1 = f64[10,5,3]{1,0,2} broadcast(param_1.450), dimensions={0,1}
+  param_4.368 = f64[10,5,2]{1,0,2} parameter(4)
+  pad.103.clone.1 = f64[10,5,3]{1,0,2} pad(param_4.368, constant_70), padding=0_0x0_0x1_0
+  compare.121.clone.1 = pred[10,5,3]{1,0,2} compare(broadcast.295.clone.1, pad.103.clone.1), direction=GE
+  pad.102.clone.1 = f64[10,5,3]{1,0,2} pad(param_4.368, constant_294_clone_1), padding=0_0x0_0x0_1
+  compare.120.clone.1 = pred[10,5,3]{1,0,2} compare(broadcast.295.clone.1, pad.102.clone.1), direction=LT
+  and.39.clone.1 = pred[10,5,3]{1,0,2} and(compare.121.clone.1, compare.120.clone.1)
+  transpose.9 = pred[3,10,5]{2,1,0} transpose(and.39.clone.1), dimensions={2,0,1}
+  constant_296_clone_1 = pred[] constant(false)
+  reduce.91.clone.1 = pred[10,5]{1,0} reduce(transpose.9, constant_296_clone_1), dimensions={0}, to_apply=region_6.97
+  broadcast.294.clone.1 = pred[10,5,3]{1,0,2} broadcast(reduce.91.clone.1), dimensions={0,1}
+  pad.99.clone.1 = f64[3]{0} parameter(3)
+  broadcast.292.clone.1 = f64[3]{0} broadcast(constant_70), dimensions={}
+  compare.117.clone.1 = pred[3]{0} compare(pad.99.clone.1, broadcast.292.clone.1), direction=NE
+  broadcast.290.clone.1 = pred[10,5,3]{1,0,2} broadcast(compare.117.clone.1), dimensions={2}
+  select.67.clone.1 = pred[10,5,3]{1,0,2} select(broadcast.294.clone.1, and.39.clone.1, broadcast.290.clone.1)
+  convert.40.clone.1 = f64[10,5,3]{1,0,2} convert(select.67.clone.1)
+  broadcast.288.clone.1 = f64[10,5,3,3]{1,0,2,3} broadcast(convert.40.clone.1), dimensions={0,1,2}
+  param_2.361 = f64[10,5,4,3]{1,0,2,3} parameter(2)
+  slice.114.clone.1 = f64[10,5,3,3]{1,0,2,3} slice(param_2.361), slice={[0:10], [0:5], [1:4], [0:3]}
+  multiply.53.clone.1 = f64[10,5,3,3]{1,0,2,3} multiply(broadcast.288.clone.1, slice.114.clone.1)
+  transpose.10 = f64[3,3,10,5]{3,2,1,0} transpose(multiply.53.clone.1), dimensions={3,2,0,1}
+  reduce.90.clone.1 = f64[3,10,5]{2,1,0} reduce(transpose.10, constant_70), dimensions={1}, to_apply=region_4.50
+  transpose.11 = f64[10,5,3]{1,0,2} transpose(reduce.90.clone.1), dimensions={1,2,0}
+  slice.28.clone.1 = f64[10,5,1]{1,0,2} slice(transpose.11), slice={[0:10], [0:5], [0:1]}
+  bitcast.99.clone.1 = f64[10,5]{1,0} bitcast(slice.28.clone.1)
+  slice.108.clone.1 = f64[10,5,3,3]{1,0,2,3} slice(param_2.361), slice={[0:10], [0:5], [0:3], [0:3]}
+  multiply.49.clone.1 = f64[10,5,3,3]{1,0,2,3} multiply(broadcast.288.clone.1, slice.108.clone.1)
+  transpose.12 = f64[3,3,10,5]{3,2,1,0} transpose(multiply.49.clone.1), dimensions={3,2,0,1}
+  reduce.82.clone.1 = f64[3,10,5]{2,1,0} reduce(transpose.12, constant_70), dimensions={1}, to_apply=region_4.50
+  transpose.13 = f64[10,5,3]{1,0,2} transpose(reduce.82.clone.1), dimensions={1,2,0}
+  slice.107.clone.1 = f64[10,5,1]{1,0,2} slice(transpose.13), slice={[0:10], [0:5], [0:1]}
+  bitcast.240.clone.1 = f64[10,5]{1,0} bitcast(slice.107.clone.1)
+  subtract.27.clone.1 = f64[10,5]{1,0} subtract(bitcast.99.clone.1, bitcast.240.clone.1)
+  slice.27.clone.1 = f64[10,5,1]{1,0,2} slice(transpose.13), slice={[0:10], [0:5], [2:3]}
+  bitcast.98.clone.1 = f64[10,5]{1,0} bitcast(slice.27.clone.1)
+  slice.26.clone.1 = f64[10,5,1]{1,0,2} slice(transpose.11), slice={[0:10], [0:5], [2:3]}
+  bitcast.97.clone.1 = f64[10,5]{1,0} bitcast(slice.26.clone.1)
+  add.36.clone.1 = f64[10,5]{1,0} add(bitcast.97.clone.1, bitcast.98.clone.1)
+  slice.24.clone.1 = f64[10,5,1]{1,0,2} slice(transpose.11), slice={[0:10], [0:5], [1:2]}
+  bitcast.95.clone.1 = f64[10,5]{1,0} bitcast(slice.24.clone.1)
+  slice.121.clone.1 = f64[10,5,1]{1,0,2} slice(transpose.13), slice={[0:10], [0:5], [1:2]}
+  bitcast.274.clone.1 = f64[10,5]{1,0} bitcast(slice.121.clone.1)
+  subtract.26.clone.1 = f64[10,5]{1,0} subtract(bitcast.95.clone.1, bitcast.274.clone.1)
+  divide.21 = f64[10,5]{1,0} divide(subtract.26.clone.1, subtract.27.clone.1)
+  constant_77_clone_1 = f64[] constant(2)
+  broadcast.117.clone.1 = f64[10,5]{1,0} broadcast(constant_77_clone_1), dimensions={}
+  multiply.37.clone.1 = f64[10,5]{1,0} multiply(divide.21, broadcast.117.clone.1)
+  subtract.25.clone.1 = f64[10,5]{1,0} subtract(add.36.clone.1, multiply.37.clone.1)
+  subtract.24.clone.1 = f64[10,5]{1,0} subtract(param_1.450, bitcast.274.clone.1)
+  divide.9.clone.1 = f64[10,5]{1,0} divide(subtract.24.clone.1, subtract.26.clone.1)
+  clamp.7.clone.1 = f64[10,5]{1,0} clamp(broadcast.157.clone.1, divide.9.clone.1, broadcast.153.clone.1)
+  multiply.36.clone.1 = f64[10,5]{1,0} multiply(subtract.25.clone.1, clamp.7.clone.1)
+  subtract.23.clone.1 = f64[10,5]{1,0} subtract(bitcast.98.clone.1, multiply.36.clone.1)
+  compare.13.clone.1 = pred[10,5]{1,0} compare(subtract.23.clone.1, broadcast.157.clone.1), direction=GE
+  negate.19.clone.1 = f64[10,5]{1,0} negate(divide.21)
+  multiply.35.clone.1 = f64[10,5]{1,0} multiply(negate.19.clone.1, clamp.7.clone.1)
+  multiply.34.clone.1 = f64[10,5]{1,0} multiply(multiply.35.clone.1, broadcast.117.clone.1)
+  negate.18.clone.1 = f64[10,5]{1,0} negate(subtract.23.clone.1)
+  multiply.33.clone.1 = f64[10,5]{1,0} multiply(subtract.23.clone.1, subtract.23.clone.1)
+  subtract.22.clone.1 = f64[10,5]{1,0} subtract(divide.21, subtract.23.clone.1)
+  constant_78_clone_1 = f64[] constant(4)
+  broadcast.113.clone.1 = f64[10,5]{1,0} broadcast(constant_78_clone_1), dimensions={}
+  multiply.32.clone.1 = f64[10,5]{1,0} multiply(subtract.22.clone.1, broadcast.113.clone.1)
+  multiply.31.clone.1 = f64[10,5]{1,0} multiply(multiply.32.clone.1, multiply.35.clone.1)
+  subtract.21.clone.1 = f64[10,5]{1,0} subtract(multiply.33.clone.1, multiply.31.clone.1)
+  compare.12.clone.1 = pred[10,5]{1,0} compare(subtract.21.clone.1, broadcast.157.clone.1), direction=GT
+  constant_79_clone_1 = f64[] constant(2.2250738585072014e-308)
+  broadcast.112.clone.1 = f64[10,5]{1,0} broadcast(constant_79_clone_1), dimensions={}
+  maximum.18.clone.1 = f64[10,5]{1,0} maximum(broadcast.112.clone.1, subtract.21.clone.1)
+  sqrt.1.clone.1 = f64[10,5]{1,0} sqrt(maximum.18.clone.1)
+  select.47.clone.1 = f64[10,5]{1,0} select(compare.12.clone.1, sqrt.1.clone.1, broadcast.157.clone.1)
+  add.35.clone.1 = f64[10,5]{1,0} add(negate.18.clone.1, select.47.clone.1)
+  select.46.clone.1 = f64[10,5]{1,0} select(compare.13.clone.1, multiply.34.clone.1, add.35.clone.1)
+  subtract.20.clone.1 = f64[10,5]{1,0} subtract(negate.18.clone.1, select.47.clone.1)
+  multiply.30.clone.1 = f64[10,5]{1,0} multiply(subtract.22.clone.1, broadcast.117.clone.1)
+  select.45.clone.1 = f64[10,5]{1,0} select(compare.13.clone.1, subtract.20.clone.1, multiply.30.clone.1)
+  divide.8.clone.1 = f64[10,5]{1,0} divide(select.46.clone.1, select.45.clone.1)
+  clamp.6.clone.1 = f64[10,5]{1,0} clamp(broadcast.157.clone.1, divide.8.clone.1, broadcast.153.clone.1)
+  multiply.29.clone.1 = f64[10,5]{1,0} multiply(subtract.27.clone.1, clamp.6.clone.1)
+  add.32.clone.1 = f64[10,5]{1,0} add(multiply.29.clone.1, bitcast.240.clone.1)
+  select.44.clone.1 = f64[10,5]{1,0} select(compare.26.clone.1, divide.6.clone.1, add.32.clone.1)
+  select.43.clone.1 = f64[10,5]{1,0} select(compare.22.clone.1, add.33.clone.1, select.44.clone.1)
+  select.42.clone.1 = f64[10,5]{1,0} select(broadcast.111.clone.1, param_1.450, select.43.clone.1)
+  select.41 = f64[10,5]{1,0} select(broadcast.107, select.42.clone.1, broadcast.157.clone.1)
+  ROOT tuple.14 = (f64[10,5]{1,0}, f64[10,5]{1,0}, f64[10,5]{1,0}, f64[10,5]{1,0}, f64[10,5]{1,0}, f64[10,5]{1,0}, f64[10,5]{1,0}, f64[10,5]{1,0}) tuple(select.41, select.42.clone.1, clamp.6.clone.1, subtract.25.clone.1, bitcast.97.clone.1, multiply.37.clone.1, bitcast.98.clone.1, divide.21)
+}
+
+ENTRY e {
+  p3 = s64[1]{0} parameter(3)
+  f2 = f64[3]{0} fusion(p3), kind=kLoop, calls=f2
+
+  p0 = pred[5]{0} parameter(0)
+  p1 = f64[10,5]{1,0} parameter(1)
+  p2 = f64[10,5,4,3]{1,0,2,3} parameter(2)
+  p4 = f64[10,5,2]{1,0,2} parameter(4)
+  p5 = f64[10,5,4]{1,0,2} parameter(5)
+  p6 = pred[5]{0} parameter(6)
+  ROOT ret = (f64[10,5]{1,0}, f64[10,5]{1,0}, f64[10,5]{1,0}, f64[10,5]{1,0}, f64[10,5]{1,0}, f64[10,5]{1,0}, f64[10,5]{1,0}, f64[10,5]{1,0}) fusion(p0, p1, p2, f2, p4, p5, p6), kind=kLoop, calls=f1
 }
   )")
                     .value();

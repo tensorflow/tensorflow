@@ -30,12 +30,20 @@ namespace gpu {
 namespace op = xla::testing::opcode_matchers;
 
 class MultiOutputFusionTest : public HloTestBase {
+  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
+    return [&](const Shape& shape) {
+      constexpr int64_t kPointerSize = 8;
+      return ShapeUtil::ByteSizeOf(shape, kPointerSize);
+    };
+  }
+
  public:
-  GpuMultiOutputFusion mof_;
+  GpuMultiOutputFusion mof_{ShapeSizeBytesFunction()};
 
   void CheckGpuMultiOutputFusion(absl::string_view hlo,
                                  std::optional<absl::string_view> expected) {
-    RunAndFilecheckHloRewrite(hlo, GpuMultiOutputFusion{}, expected);
+    RunAndFilecheckHloRewrite(
+        hlo, GpuMultiOutputFusion{ShapeSizeBytesFunction()}, expected);
   }
 };
 

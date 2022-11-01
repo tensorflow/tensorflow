@@ -144,22 +144,6 @@ StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::HandleTuple(
       });
 }
 
-bool FusedIrEmitter::IsFusedIrEmitterInefficient(
-    const HloInstruction& consumer, const HloInstruction& producer) {
-  if (consumer.opcode() != HloOpcode::kFusion) {
-    return false;
-  }
-  FusionNodeIndexingEvaluation eval_consumer(&consumer);
-  if (producer.opcode() != HloOpcode::kFusion) {
-    return eval_consumer.CodeDuplicationTooHigh(&producer);
-  }
-  // If 'producer' is a fusion node as well, also evaluate it. Pass the
-  // evaluated duplication of the fusion node if it is merged into consumer.
-  FusionNodeIndexingEvaluation eval_producer(
-      &producer, eval_consumer.EvaluateEmittedInstructions(&producer));
-  return eval_producer.MaxCodeDuplicationTooHigh();
-}
-
 StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::CreateGenerator(
     const HloInstruction& instruction) {
   switch (instruction.opcode()) {

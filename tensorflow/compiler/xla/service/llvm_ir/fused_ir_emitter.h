@@ -58,14 +58,6 @@ class FusedIrEmitter {
   // Returns the generator function for the given instruction.
   StatusOr<IndexedGenerator> GetGenerator(const HloInstruction& instruction);
 
-  // Evaluates whether fusing 'producer' into 'consumer' might cause exponential
-  // behavior in FusedIrEmitter. We currently can have exponential time/memory
-  // requirements for emitting certain fusion kernels, in which case we don't
-  // want to fuse.
-  // TODO(b/119692968): Remove this once we have fixed our fusion emitter.
-  static bool IsFusedIrEmitterInefficient(const HloInstruction& consumer,
-                                          const HloInstruction& producer);
-
  private:
   StatusOr<IndexedGenerator> CreateGenerator(const HloInstruction& instruction);
   StatusOr<IndexedGenerator> DefaultAction(const HloInstruction& instruction);

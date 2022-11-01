@@ -56,6 +56,12 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
 
   llvm::Module* module() { return module_; }
 
+  // Returns which ops invalidate the cache of emitted instructions by creating
+  // a new BasicBlock and setting the insertion point to the newly created
+  // BasicBlock. We can only reuse cached values if they were emitted in the
+  // same BasicBlock as the current BasicBlock.
+  static bool OpInvalidatesCache(const HloInstruction* hlo);
+
  protected:
   virtual llvm_ir::IrArray::Index GetSourceIndexOfBitcast(
       const llvm_ir::IrArray::Index& index, const HloInstruction* hlo) {

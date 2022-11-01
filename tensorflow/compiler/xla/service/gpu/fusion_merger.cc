@@ -16,16 +16,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -130,8 +131,10 @@ double GetMergedBytesTransferred(HloInstruction* fusion) {
 // if can't fuse into at least one).
 class FusionInstructionMerger {
  public:
-  explicit FusionInstructionMerger(HloComputation* computation)
+  explicit FusionInstructionMerger(HloComputation* computation,
+                                   HloCostAnalysis::ShapeSizeFunction f)
       : computation_(computation),
+        shape_size_function_(f),
         dump_fusion_visualization_(computation->parent()
                                        ->config()
                                        .debug_options()
@@ -146,6 +149,10 @@ class FusionInstructionMerger {
   Status FuseIntoAllUsers(HloInstruction* instruction);
 
   HloComputation* computation_;
+  HloCostAnalysis::ShapeSizeFunction shape_size_function_;
+  // Many cheap checks can prevent fusion merging - postpone execution of full
+  // HLO cost analysis of the computation so that it may be not needed at all.
+  std::optional<GpuHloCostAnalysis> cost_analysis_;
 
   bool changed_ = false;
   bool dump_fusion_visualization_ = false;
@@ -179,6 +186,8 @@ Status FusionInstructionMerger::FuseIntoAllUsers(HloInstruction* instruction) {
           /*producer=*/instruction);
     }
 
+    TF_RETURN_IF_ERROR(cost_analysis_->RemoveInstruction(user));
+
     // Wrap consumers which are not fusions first.
     HloInstruction* consumer = user;
     if (consumer->opcode() != HloOpcode::kFusion) {
@@ -186,7 +195,10 @@ Status FusionInstructionMerger::FuseIntoAllUsers(HloInstruction* instruction) {
           user->shape(), ChooseFusionKind(*instruction, *user), user));
       TF_CHECK_OK(computation_->ReplaceInstruction(user, consumer));
     }
+
     consumer->MergeFusionInstruction(instruction);
+    TF_RETURN_IF_ERROR(cost_analysis_->RevisitInstruction(consumer));
+
     if (dump_fusion_visualization_) {
       RegisterFusionState(
           *computation_,
@@ -199,6 +211,7 @@ Status FusionInstructionMerger::FuseIntoAllUsers(HloInstruction* instruction) {
 
   CHECK_EQ(0, instruction->user_count()) << instruction->ToString();
   TF_RETURN_IF_ERROR(computation_->RemoveInstruction(instruction));
+  TF_RETURN_IF_ERROR(cost_analysis_->RemoveInstruction(instruction));
   VLOG(2) << "Merged fusion instruction: " << instruction->name()
           << " into users { "
           << absl::StrJoin(users, ", ",
@@ -352,26 +365,28 @@ FusionDecision FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
     }
   }
 
-  // Skip 'fusion' instruction if merging it into at least one of the users
-  // would cause too much code duplication because of inefficiencies in the
-  // fusion emitter.
-  // TODO(b/119692968): Remove this once the fusion emitter can handle arbitrary
-  // fusion nodes.
   for (const HloInstruction* user : fusion->users()) {
-    if (FusedIrEmitter::IsFusedIrEmitterInefficient(/*consumer=*/*user,
-                                                    /*producer=*/*fusion)) {
-      ++num_fail_inefficient_fusion_emitter_;
-      return FusionDecision{}
-             << "fusion contains user |" << user->ToShortString()
-             << "| which would cause inefficiency in fusion emitter";
-    }
-
     // Skip 'fusion' instruction if merging it into at least one of the users
-    // would make the fusion too big.
-    FusionDecision fits = FusionFitsInBudget(*fusion, *user);
+    // would make the fusion use too much shared memory or registers.
+    FusionDecision fits = FusionFitsInBudget(
+        *user, *fusion, /*is_consumer_producer_fusion=*/true);
     if (!fits) {
       ++num_fail_fusion_too_large_;
       return fits;
+    }
+  }
+
+  if (!cost_analysis_) {
+    VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
+    cost_analysis_.emplace(GpuHloCostAnalysis::Options{shape_size_function_});
+    TF_CHECK_OK(computation_->Accept(&cost_analysis_.value()));
+  }
+
+  for (HloInstruction* user : fusion->users()) {
+    if (cost_analysis_->ProducerConsumerMergedTooLarge(*fusion, *user)) {
+      ++num_fail_inefficient_fusion_emitter_;
+      return FusionDecision{} << "if merged with " << user->name()
+                              << " will generate huge IR";
     }
   }
 
@@ -390,7 +405,7 @@ StatusOr<bool> FusionMerger::Run(
             << computation->name();
     XLA_VLOG_LINES(3, computation->ToString());
 
-    FusionInstructionMerger fusion_merger(computation);
+    FusionInstructionMerger fusion_merger(computation, shape_size_function_);
     TF_RETURN_IF_ERROR(fusion_merger.Run());
     changed |= fusion_merger.changed();
 

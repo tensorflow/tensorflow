@@ -241,6 +241,23 @@ llvm::Value* EmitIntegralToFloating(llvm::Value* integer_value,
 
 }  // namespace
 
+/*static*/ bool ElementalIrEmitter::OpInvalidatesCache(
+    const HloInstruction* hlo) {
+  switch (hlo->opcode()) {
+    // This list of ops was created by inspecting the code. There is no
+    // guarantee that it is complete.
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kDot:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kPad:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow:
+      return true;
+    default:
+      return false;
+  }
+}
+
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitUnaryOp(
     const HloInstruction* op, llvm::Value* operand_value) {
   if (ShapeUtil::ElementIsIntegral(op->operand(0)->shape()) ||
