@@ -1311,8 +1311,10 @@ cc_library(
     srcs = ["fusion_merger.cc"],
     hdrs = ["fusion_merger.h"],
     deps = [
+        ":gpu_device_info",
         ":gpu_fusible",
         ":gpu_hlo_cost_analysis",
+        ":gpu_performance_model",
         ":instruction_fusion",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
@@ -1332,6 +1334,7 @@ tf_cc_test(
     tags = ["no_pip"],
     deps = [
         ":fusion_merger",
+        ":gpu_device_info",
         ":gpu_fusible",
         ":instruction_fusion",
         "//tensorflow/compiler/xla:test_helpers",
