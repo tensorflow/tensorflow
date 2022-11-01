@@ -33,17 +33,6 @@ namespace gpu {
 namespace {
 
 class GpuFusionPipelineTest : public GpuCodegenTest {
-  GpuDeviceInfo A6000DeviceInfo() {
-    GpuDeviceInfo d;
-    d.shared_memory_per_core = 100 * 1024;
-    d.core_count = 84;
-    d.fpus_per_core = 128;
-    d.memory_bandwidth = (1 << 30) * 768L;
-    d.l2_cache_size = 6 * 1024 * 1024;
-    d.clock_rate_ghz = 1.410;
-    return d;
-  }
-
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
     return [&](const Shape& shape) {
       constexpr int64_t kPointerSize = 8;
@@ -57,7 +46,7 @@ class GpuFusionPipelineTest : public GpuCodegenTest {
     HloPassPipeline pipeline("gpu-fusion");
     pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
-    pipeline.AddPass<FusionMerger>(A6000DeviceInfo(), ShapeSizeBytesFunction());
+    pipeline.AddPass<FusionMerger>(ShapeSizeBytesFunction());
     pipeline.AddPass<GpuMultiOutputFusion>(ShapeSizeBytesFunction());
 
     RunAndFilecheckHloRewrite(hlo, std::move(pipeline), expected);

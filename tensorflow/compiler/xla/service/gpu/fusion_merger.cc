@@ -16,16 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 
 #include <algorithm>
-#include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_performance_model.h"
+#include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -35,16 +34,107 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+namespace {
+
+// Traverses users of tuple shape, adding leaf instructions to 'instructions'.
+void MaybeResolveTupleElements(HloInstruction* instruction,
+                               std::vector<HloInstruction*>* instructions) {
+  if (instruction->shape().IsTuple()) {
+    for (auto tuple_user : instruction->users()) {
+      MaybeResolveTupleElements(tuple_user, instructions);
+    }
+  } else {
+    instructions->push_back(instruction);
+  }
+}
+
+// Returns the bytes read by fusion parameter 'param', by returning the byte
+// size of 'param' shape (or the cumulative byte sizes of all leaf tuple
+// elements if 'param' is tuple-shaped).
+//
+// In the special case where all users of 'param' (or all users of a leaf
+// tuple element if 'param' is tuple-shaped) are Slice instructions, the size
+// of each slice instruction is accumulated instead, to give a more accurate
+// value for bytes read.
+double CalculateBytesReadByFusionParameter(HloInstruction* param) {
+  CHECK_EQ(HloOpcode::kParameter, param->opcode());
+
+  // Adds all leaf tuple elements to 'instructions' if 'param' is tuple-shaped.
+  // Adds 'param' to 'instructions' otherwise.
+  std::vector<HloInstruction*> instructions;
+  MaybeResolveTupleElements(param, &instructions);
+
+  // Iterate through 'instructions' accumulating byte sizes of each instruction
+  // shape. For each 'instruction' in 'instructions', if all users of
+  // 'instruction' are Slice instructions, accumulates the byte sizes of each
+  // Slice for a more accurate estimate of bytes read.
+  double bytes = 0.0;
+  for (auto& instruction : instructions) {
+    if (absl::c_all_of(
+            instruction->users(), [](const HloInstruction* instruction) {
+              return instruction->opcode() == HloOpcode::kSlice ||
+                     instruction->opcode() == HloOpcode::kDynamicSlice;
+            })) {
+      // All users are slice: accumulate bytes of all user slice instructions.
+      for (auto& user : instruction->users()) {
+        bytes += ShapeUtil::ByteSizeOf(user->shape());
+      }
+    } else {
+      // Some users are not slice: accumulate full size of 'instruction'.
+      bytes += ShapeUtil::ByteSizeOf(instruction->shape());
+    }
+  }
+  return bytes;
+}
+
+// Returns the bytes read by all fusion parameters of instruction 'fusion'.
+double CalculateBytesReadByFusionInstruction(HloInstruction* fusion) {
+  double bytes = 0.0;
+  for (auto* fused_instruction : fusion->fused_instructions()) {
+    if (fused_instruction->opcode() != HloOpcode::kParameter) {
+      continue;
+    }
+    bytes += CalculateBytesReadByFusionParameter(fused_instruction);
+  }
+  return bytes;
+}
+
+// Returns bytes transferred by instruction 'fusion', including the bytes
+// that would be read by all users.
+double GetCurrentBytesTransferred(HloInstruction* fusion) {
+  CHECK_EQ(HloOpcode::kFusion, fusion->opcode());
+  const double bytes_read = CalculateBytesReadByFusionInstruction(fusion);
+  double bytes_written = 0;
+  if (fusion->IsMultiOutputFusion()) {
+    for (auto& operand : fusion->fused_expression_root()->operands()) {
+      bytes_written += ShapeUtil::ByteSizeOf(operand->shape());
+    }
+  } else {
+    bytes_written =
+        ShapeUtil::ByteSizeOf(fusion->fused_expression_root()->shape());
+  }
+  // Current bytes transferred (ignoring non 'fusion' user operands) is bytes
+  // read and written by 'fusion', plus reads of size 'bytes_written' for each
+  // user.
+  return bytes_read + bytes_written * (fusion->user_count() + 1);
+}
+
+// Returns bytes transferred if 'fusion' were to be merged into its users.
+double GetMergedBytesTransferred(HloInstruction* fusion) {
+  CHECK_EQ(HloOpcode::kFusion, fusion->opcode());
+  return CalculateBytesReadByFusionInstruction(fusion) * fusion->user_count();
+}
+
+}  // anonymous namespace
+
 // For each fusion F, attempts to fuse F into *all* of F's users (does not fuse
 // if can't fuse into at least one).
 class FusionInstructionMerger {
  public:
   explicit FusionInstructionMerger(HloComputation* computation,
-                                   const GpuDeviceInfo& d,
                                    HloCostAnalysis::ShapeSizeFunction f)
       : computation_(computation),
         shape_size_function_(f),
-        gpu_device_info_(d),
         dump_fusion_visualization_(computation->parent()
                                        ->config()
                                        .debug_options()
@@ -64,7 +154,7 @@ class FusionInstructionMerger {
   // HLO cost analysis of the computation so that it may be not needed at all.
   std::optional<GpuHloCostAnalysis> cost_analysis_;
   FusionInfoCache fusion_info_cache_;
-  const GpuDeviceInfo& gpu_device_info_;
+
   bool changed_ = false;
   bool dump_fusion_visualization_ = false;
 
@@ -74,10 +164,11 @@ class FusionInstructionMerger {
   int num_fail_no_users_ = 0;
   int num_fail_not_loop_fusion_ = 0;
   int num_fail_merge_all_users_ = 0;
+  int num_fail_expensive_fused_instruction_ = 0;
+  int num_fail_net_bytes_transferred_ratio_ = 0;
   int num_fail_inefficient_fusion_emitter_ = 0;
   int num_fail_fusion_too_large_ = 0;
   int num_fail_uncoalesced_read_ = 0;
-  int num_fail_slower_if_fused_ = 0;
 
   FusionInstructionMerger(const FusionInstructionMerger&) = delete;
   FusionInstructionMerger& operator=(const FusionInstructionMerger&) = delete;
@@ -134,26 +225,24 @@ Status FusionInstructionMerger::FuseIntoAllUsers(HloInstruction* producer) {
 }
 
 Status FusionInstructionMerger::Run() {
-  for (HloInstruction* producer : computation_->MakeInstructionPostOrder()) {
-    if (producer->opcode() != HloOpcode::kFusion) {
-      continue;
-    }
-    FusionDecision should_fuse = ShouldFuse(producer);
-    if (should_fuse) {
-      TF_RETURN_IF_ERROR(FuseIntoAllUsers(producer));
-      ++total_merged_;
-    } else {
-      VLOG(3) << "Not fusing fusion |" << producer->name()
-              << "| with all of it's users due to: " << should_fuse.Explain();
-      if (dump_fusion_visualization_ && !producer->users().empty()) {
-        RegisterFusionState(
-            *computation_,
-            absl::StrCat(
-                "Not fusing fusion |", producer->name(),
-                "| into all of its users due to: ", should_fuse.Explain()),
-            // Just pick any consumer, since we are trying to merge into all.
-            /*consumer=*/*producer->users()[0],
-            /*producer=*/producer);
+  for (HloInstruction* instruction : computation_->MakeInstructionPostOrder()) {
+    if (instruction->opcode() == HloOpcode::kFusion) {
+      FusionDecision should_fuse = ShouldFuse(instruction);
+      if (!should_fuse) {
+        VLOG(2) << "Not fusing fusion |" << instruction->name()
+                << "| with all of it's users due to: " << should_fuse.Explain();
+        if (dump_fusion_visualization_ && !instruction->users().empty()) {
+          RegisterFusionState(
+              *computation_,
+              absl::StrCat(
+                  "Not fusing fusion |", instruction->name(),
+                  "| into all of its users due to: ", should_fuse.Explain()),
+              // Just pick any consumer, since we are trying to merge into all.
+              /*consumer=*/*instruction->users()[0],
+              /*producer=*/instruction);
+        }
+      } else {
+        TF_RETURN_IF_ERROR(FuseIntoAllUsers(instruction));
       }
     }
   }
@@ -165,10 +254,11 @@ Status FusionInstructionMerger::Run() {
           << " no_users: " << num_fail_no_users_
           << " not_loop_fusion: " << num_fail_not_loop_fusion_
           << " merge_all_users: " << num_fail_merge_all_users_
+          << " expensive_instruction: " << num_fail_expensive_fused_instruction_
           << " uncoalesced_read: " << num_fail_uncoalesced_read_
+          << " net_bytes_transferred: " << num_fail_net_bytes_transferred_ratio_
           << " inefficient_fusion_emitter: "
           << num_fail_inefficient_fusion_emitter_
-          << " slower_if_fused: " << num_fail_slower_if_fused_
           << " fusion_too_large: " << num_fail_fusion_too_large_ << " }";
   return OkStatus();
 }
@@ -178,8 +268,8 @@ bool TransposesMostData(const HloInstruction& fusion) {
 
   for (const HloInstruction* instr : fusion.fused_instructions()) {
     if (IsPhysicallyTransposing(*instr)) {
-      score += 1.0 * ShapeUtil::ElementsInRecursive(instr->shape()) /
-               ShapeUtil::ElementsInRecursive(fusion.shape());
+      score += 1.0 * ShapeUtil::ElementsIn(instr->shape()) /
+               ShapeUtil::ElementsIn(fusion.shape());
       if (score >= 0.5) {
         VLOG(3) << fusion.ToString() << " transpose ratio exceeds " << score;
         return true;
@@ -193,16 +283,13 @@ bool TransposesMostData(const HloInstruction& fusion) {
 FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
   ++total_visited_;
 
-  VLOG(4) << "Considering producer " << producer->name();
-
-  // Skip 'producer' instruction if there are no users into which we can
-  // merge.
+  // Skip 'fusion' instruction if there are no users into which we can merge.
   if (producer->users().empty()) {
     ++num_fail_no_users_;
     return "fusion has no users";
   }
 
-  // Skip 'producer' instruction if it is not a loop fusion. Library fusion
+  // Skip 'fusion' instruction if it is not a loop fusion. Library fusion
   // instructions match specific patterns, so they shouldn't be further fused.
   // Input fusion instructions need to be rooted at a particular HLO (e.g.
   // kReduce), so they shouldn't be further fused either.
@@ -220,7 +307,6 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
     FusionDecision fusible = IsProducerConsumerFusible(*producer, *user);
     if (!fusible) {
       ++num_fail_merge_all_users_;
-      VLOG(9) << user->ToString();
       return fusible;
     }
     if (IsInputFusibleReduction(*user)) {
@@ -233,6 +319,53 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
   if (has_reduction_user && TransposesMostData(*producer)) {
     ++num_fail_uncoalesced_read_;
     return "would read mostly uncoalesced";
+  }
+
+  // Skip 'fusion' instruction if merging it into all users would result in a
+  // net increase in bytes transferred (currently allowing the net bytes
+  // transferred to be exceeded up to ~10% in exchange for eliminating the
+  // overhead from a GPU kernel launch).
+  const double current_bytes_transferred = GetCurrentBytesTransferred(producer);
+  const double merged_bytes_transferred = GetMergedBytesTransferred(producer);
+  const double merged_to_current_bytes_ratio =
+      merged_bytes_transferred / std::max(1.0, current_bytes_transferred);
+  if (merged_to_current_bytes_ratio > 1.10) {
+    ++num_fail_net_bytes_transferred_ratio_;
+    return FusionDecision{} << "merged-to-current-bytes-ratio of "
+                            << merged_to_current_bytes_ratio
+                            << " is not favorable";
+  }
+
+  // Skip 'fusion' instruction if any of its fused instructions are expensive.
+  // This is done to avoid the duplication of expensive instructions, which
+  // would occur if 'fusion' were merged into multiple users.
+  //
+  // Also, we don't want to fuse expensive instructions with instructions which
+  // reuse its operand values (e.g. Broadcast instructions).
+  //
+  // However, if we are going to save a "lot" in memory bandwidth then we
+  // ignore how expensive the fusion instructions are.  The heuristic used to
+  // determine "a lot" is the following: merging must reduce memory traffic by a
+  // factor of 0.3, and the amount of memory accessed must not be entirely
+  // trivial (above 1K).  This likely has room for improvement in the future.
+
+  bool allow_expensive_ops =
+      (producer->user_count() == 1 || (merged_to_current_bytes_ratio < 0.3 &&
+                                       current_bytes_transferred > 1024)) &&
+      !absl::c_any_of(producer->users(),
+                      [producer](const HloInstruction* user) {
+                        int64_t operand_index = user->operand_index(producer);
+                        return user->ReusesOperandElements(operand_index);
+                      });
+  if (!allow_expensive_ops) {
+    for (const HloInstruction* instruction : producer->fused_instructions()) {
+      if (instruction->opcode() != HloOpcode::kParameter &&
+          GpuInstructionFusion::IsExpensive(*instruction)) {
+        ++num_fail_expensive_fused_instruction_;
+        return FusionDecision{} << "fusion contains an expensive instruction |"
+                                << instruction->name() << "|";
+      }
+    }
   }
 
   for (const HloInstruction* user : producer->users()) {
@@ -261,13 +394,7 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
     }
   }
 
-  GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-      producer, &*cost_analysis_, gpu_device_info_);
-  if (t.time_fused > t.time_unfused) {
-    ++num_fail_slower_if_fused_;
-    return "will execute slower if fused";
-  }
-
+  ++total_merged_;
   return {};
 }
 
@@ -275,21 +402,20 @@ StatusOr<bool> FusionMerger::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  VLOG(1) << "FusionMerger for module: " << module->name();
+  VLOG(2) << "FusionMerger for module: " << module->name();
   for (auto* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    VLOG(9) << "Before running FusionInstructionMerger for computation: "
+    VLOG(1) << "Before running FusionInstructionMerger for computation: "
             << computation->name();
-    XLA_VLOG_LINES(9, computation->ToString());
+    XLA_VLOG_LINES(3, computation->ToString());
 
-    FusionInstructionMerger fusion_merger(computation, gpu_device_info_,
-                                          shape_size_function_);
+    FusionInstructionMerger fusion_merger(computation, shape_size_function_);
     TF_RETURN_IF_ERROR(fusion_merger.Run());
     changed |= fusion_merger.changed();
 
-    VLOG(9) << "After running FusionInstructionMerger for computation: "
+    VLOG(1) << "After running FusionInstructionMerger for computation: "
             << computation->name() << " changed: " << changed;
-    XLA_VLOG_LINES(9, computation->ToString());
+    XLA_VLOG_LINES(3, computation->ToString());
   }
   return changed;
 }
