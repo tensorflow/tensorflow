@@ -2,14 +2,6 @@ load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 
-package(
-    default_visibility = [
-        "//tensorflow:internal",
-        "@tf_runtime//:friends",
-    ],
-    licenses = ["notice"],
-)
-
 glob_lit_tests(
     data = [":test_utilities"],
     driver = "//tensorflow/compiler/mlir:run_lit.sh",
@@ -87,6 +79,7 @@ cc_library(
     srcs = ["testlib.cc"],
     hdrs = ["testlib.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//tensorflow/compiler/xla/mlir/runtime:friends"],
     deps = [
         ":testlib_inc_gen",
         "@llvm-project//llvm:Support",

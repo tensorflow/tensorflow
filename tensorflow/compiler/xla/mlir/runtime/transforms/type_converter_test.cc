@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/type_converter.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/type_converter.h"
 
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project

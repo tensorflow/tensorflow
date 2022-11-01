@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/calling_convention.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/calling_convention.h"
 
 #include <iterator>
 #include <utility>

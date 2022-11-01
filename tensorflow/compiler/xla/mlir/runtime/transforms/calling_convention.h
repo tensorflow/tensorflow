@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_CALLING_CONVENTION_H_
-#define TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_CALLING_CONVENTION_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_TRANSFORMS_CALLING_CONVENTION_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_TRANSFORMS_CALLING_CONVENTION_H_
 
 #include <functional>
 
@@ -88,4 +88,4 @@ CallingConvention ResultsToOutsCallingConvention(mlir::TypeConverter);
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_CALLING_CONVENTION_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_TRANSFORMS_CALLING_CONVENTION_H_

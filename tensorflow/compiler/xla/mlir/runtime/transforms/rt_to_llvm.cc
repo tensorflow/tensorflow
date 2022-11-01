@@ -45,8 +45,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/custom_call_encoding.h"
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/passes.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/tracing.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
@@ -61,7 +61,7 @@ using mlir::arith::ConstantOp;
 using llvm::DenseMap;
 
 #define GEN_PASS_DEF_CONVERTRUNTIMETOLLVMPASS
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/passes.h.inc"
 
 //===----------------------------------------------------------------------===//
 // Runtime C API declaration (see runtime.h header file).

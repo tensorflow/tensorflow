@@ -3,10 +3,7 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 
 package(
-    default_visibility = [
-        "//tensorflow/compiler/xla/mlir/transforms/runtime:friends",
-        "@tf_runtime//:friends",
-    ],
+    default_visibility = ["//tensorflow/compiler/xla/mlir/runtime:friends"],
     licenses = ["notice"],
 )
 

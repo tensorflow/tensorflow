@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_CUSTOM_CALL_ENCODING_H_
-#define TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_CUSTOM_CALL_ENCODING_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_TRANSFORMS_CUSTOM_CALL_ENCODING_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_TRANSFORMS_CUSTOM_CALL_ENCODING_H_
 
 #include <functional>
 #include <memory>
@@ -680,4 +680,4 @@ CustomCallRetEncodingSet DefaultRetEncodings();
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_CUSTOM_CALL_ENCODING_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_TRANSFORMS_CUSTOM_CALL_ENCODING_H_

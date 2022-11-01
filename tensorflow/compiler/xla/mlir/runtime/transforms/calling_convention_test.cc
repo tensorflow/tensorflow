@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/calling_convention.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/calling_convention.h"
 
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project

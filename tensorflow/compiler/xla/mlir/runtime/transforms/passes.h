@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_PASSES_H_
-#define TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_PASSES_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_TRANSFORMS_PASSES_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_TRANSFORMS_PASSES_H_
 
 #include <functional>
 #include <memory>
@@ -33,7 +33,7 @@ namespace runtime {
 #define GEN_PASS_DECL_CONVERTASSERTS
 #define GEN_PASS_DECL_CONVERTRUNTIMETOLLVMPASS
 
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/passes.h.inc"
 
 //===-----------------------------------------------------------------------===/
 // Transformations targeting `rt` dialect.
@@ -97,9 +97,9 @@ CreateConvertRuntimeToLLVMPass(ConvertRuntimeToLLvmOpts opts = {});
 //===-----------------------------------------------------------------------===/
 
 #define GEN_PASS_REGISTRATION
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/passes.h.inc"
 
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_TRANSFORMS_PASSES_H_

@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_COMPILATION_PIPELINE_OPTIONS_H_
-#define TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_COMPILATION_PIPELINE_OPTIONS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_TRANSFORMS_COMPILATION_PIPELINE_OPTIONS_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_TRANSFORMS_COMPILATION_PIPELINE_OPTIONS_H_
 
 #include <functional>
 
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/custom_call_encoding.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
 
 namespace xla {
@@ -49,4 +49,4 @@ struct CompilationPipelineOptions {
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_COMPILATION_PIPELINE_OPTIONS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_TRANSFORMS_COMPILATION_PIPELINE_OPTIONS_H_

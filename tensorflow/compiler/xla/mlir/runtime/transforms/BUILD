@@ -1,38 +1,11 @@
-load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
-    default_visibility = [
-        "//tensorflow:internal",
-        "@tf_runtime//:friends",
-    ],
+    default_visibility = ["//tensorflow/compiler/xla/mlir/runtime:friends"],
     licenses = ["notice"],
-)
-
-package_group(
-    name = "friends",
-    packages = if_google(
-        [
-            "//learning/brain/experimental/tfrt/autofusion/...",
-            "//platforms/xla/service/cpu/...",
-            "//tensorflow/compiler/mlir/tensorflow/...",
-            "//tensorflow/compiler/mlir/tfrt/...",
-            "//tensorflow/compiler/xla/mlir/transforms/google/...",
-            "//tensorflow/compiler/xla/mlir/transforms/runtime/tests/...",
-            "//tensorflow/compiler/xla/service/cpu/...",
-            "@tf_runtime//...",
-        ],
-        [
-            "//platforms/xla/service/cpu/...",
-            "//tensorflow/compiler/mlir/tensorflow/...",
-            "//tensorflow/compiler/mlir/tfrt/...",
-            "//tensorflow/compiler/xla/mlir/transforms/google/...",
-            "//tensorflow/compiler/xla/mlir/transforms/runtime/tests/...",
-            "//tensorflow/compiler/xla/service/cpu/...",
-        ],
-    ),
 )
 
 gentbl_cc_library(
@@ -121,6 +94,7 @@ cc_library(
     srcs = ["compilation_pipeline_cpu.cc"],
     hdrs = ["compilation_pipeline_cpu.h"],
     compatible_with = get_compatible_with_cloud(),
+    visibility = ["//visibility:public"],
     deps = [
         ":compilation_pipeline_options",
         ":compiler",
@@ -169,6 +143,7 @@ cc_library(
     srcs = ["compilation_pipeline_gpu.cc"],
     hdrs = ["compilation_pipeline_gpu.h"],
     compatible_with = get_compatible_with_cloud(),
+    visibility = ["//visibility:public"],
     deps = [
         ":compilation_pipeline_options",
         ":compiler",
@@ -315,7 +290,6 @@ cc_library(
     name = "compiler",
     hdrs = ["compiler.h"],
     compatible_with = get_compatible_with_cloud(),
-    visibility = [":friends"],
     deps = [
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

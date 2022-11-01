@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_COMPILATION_PIPELINE_CPU_H_
-#define TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_COMPILATION_PIPELINE_CPU_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_TRANSFORMS_COMPILATION_PIPELINE_CPU_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_TRANSFORMS_COMPILATION_PIPELINE_CPU_H_
 
 #include <functional>
 
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_options.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_options.h"
 #include "tensorflow/compiler/xla/runtime/compiler.h"
 
 namespace xla {
@@ -54,4 +54,4 @@ void CreateDefaultXlaCpuRuntimeCompilationPipeline(
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_COMPILATION_PIPELINE_CPU_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_TRANSFORMS_COMPILATION_PIPELINE_CPU_H_

@@ -37,7 +37,7 @@ cc_library(
         ":conv",
         ":kernel_launch",
         "//tensorflow/compiler/xla:xla_proto_cc",
-        "//tensorflow/compiler/xla/mlir/transforms/runtime:compilation_pipeline_gpu",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/runtime:jit_executable",
         "//tensorflow/compiler/xla/service/gpu:buffer_allocations",

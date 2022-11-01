@@ -27,8 +27,8 @@ cc_library(
     hdrs = ["testlib_pipeline.h"],
     visibility = ["//tensorflow/compiler/xla:runtime"],
     deps = [
-        "//tensorflow/compiler/xla/mlir/transforms/runtime:compiler",
-        "//tensorflow/compiler/xla/mlir/transforms/runtime:passes",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:compiler",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:passes",
         "//tensorflow/compiler/xla/runtime:compiler",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:AsyncDialect",

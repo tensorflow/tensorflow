@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/passes.h"
 
 namespace xla {
 namespace runtime {
@@ -30,7 +30,7 @@ namespace runtime {
 using namespace mlir;  // NOLINT
 
 #define GEN_PASS_DEF_CONVERTASSERTS
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h.inc"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/passes.h.inc"
 
 class ConvertAssertsPass : public impl::ConvertAssertsBase<ConvertAssertsPass> {
   void runOnOperation() override;

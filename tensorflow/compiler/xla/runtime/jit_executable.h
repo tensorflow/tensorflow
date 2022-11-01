@@ -25,7 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/jit_compiler.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/jit_compiler.h"
 #include "tensorflow/compiler/xla/runtime/async_values_cache.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/xla/runtime/constraints.h"
 #include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
