@@ -871,6 +871,7 @@ StatusOr<bool> CudnnFusedConvRewriter::Run(
     // Relu might appear before or after convert-to-f16/s8, so we check in both
     // cases.
     TF_ASSIGN_OR_RETURN(changed, FuseRelu(comp));
+    any_changed |= changed;
     TF_ASSIGN_OR_RETURN(changed, FuseElu(comp, compute_capability_));
     any_changed |= changed;
 
@@ -889,6 +890,7 @@ StatusOr<bool> CudnnFusedConvRewriter::Run(
     any_changed |= changed;
 
     TF_ASSIGN_OR_RETURN(changed, FuseRelu(comp));
+    any_changed |= changed;
     TF_ASSIGN_OR_RETURN(changed, FuseElu(comp, compute_capability_));
     any_changed |= changed;
 
