@@ -209,6 +209,9 @@ list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*tflite_with_xnnpack\\.cc$")
 # Exclude Flex related files.
 list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*with_selected_ops\\.cc$")
 
+# Exclude tensorflow_profiler_logger files.
+list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*tensorflow_profiler_logger\\.cc$")
+
 if(_TFLITE_ENABLE_MMAP)
   list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*mmap_allocation_disabled\\.cc$")
 else()
@@ -222,6 +225,7 @@ if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "iOS")
 endif()
 populate_tflite_source_vars("core" TFLITE_CORE_SRCS)
 populate_tflite_source_vars("core/api" TFLITE_CORE_API_SRCS)
+populate_tflite_source_vars("core/c" TFLITE_CORE_C_SRCS)
 populate_tflite_source_vars("core/experimental/acceleration/configuration" TFLITE_CORE_EXPERIMENTAL_SRCS)
 populate_tflite_source_vars("core/kernels" TFLITE_CORE_KERNELS_SRCS)
 populate_tflite_source_vars("core/tools" TFLITE_CORE_TOOLS_SRCS)
@@ -483,6 +487,7 @@ endif()
 # TFLite library
 set(_ALL_TFLITE_SRCS
   ${TFLITE_CORE_API_SRCS}
+  ${TFLITE_CORE_C_SRCS}
   ${TFLITE_CORE_EXPERIMENTAL_SRCS}
   ${TFLITE_CORE_KERNELS_SRCS}
   ${TFLITE_CORE_SRCS}
