@@ -521,7 +521,6 @@ cc_library(
     hdrs = ["jitrt_custom_calls.h"],
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     tags = ["manual"],
-    visibility = ["//visibility:private"],
     deps = [
         ":fft_thunk",
         ":gpu_asm_opts_util",
@@ -662,6 +661,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu/runtime:kernel_launch",
         "//tensorflow/compiler/xla/service/gpu/runtime:cublas_lt_matmul",
         "//tensorflow/compiler/xla/service/gpu/runtime:support",
+        "//tensorflow/compiler/xla/service/gpu/runtime:executable",
         "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:blas",

@@ -296,7 +296,7 @@ bool ConvIsLowerable(HloInstruction* conv) {
 }  // end anonymous namespace
 
 using OwnedThunkSequence = GpuExecutable::OwnedThunkSequence;
-using OwnedJitRtProgram = GpuExecutable::OwnedXlaRuntimeProgram;
+using OwnedGpuRuntimeProgram = GpuExecutable::OwnedGpuRuntimeProgram;
 
 StatusOr<std::unique_ptr<Executable>>
 GpuXlaRuntimeAotCompilationResult::LoadExecutable(
@@ -935,7 +935,7 @@ static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
   return OkStatus();
 }
 
-static StatusOr<OwnedJitRtProgram> LowerToJitRt(
+static StatusOr<OwnedGpuRuntimeProgram> LowerToJitRt(
     mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes, HloModule* hlo_module,
     std::unique_ptr<ThunkSequence> thunk_sequence) {
@@ -959,9 +959,9 @@ static StatusOr<OwnedJitRtProgram> LowerToJitRt(
   llvm::raw_string_ostream os(serialized_module);
   mlir_module.print(os);
 
-  // TODO(b/232033540): Pass MLIR module directly to JitRt to instantiate an
-  // executable, without forcing serialization.
-  return std::make_unique<GpuExecutable::XlaRuntimeProgram>(
+  // TODO(b/232033540): Pass MLIR module directly to Gpu runtime executable
+  // without forcing serialization.
+  return std::make_unique<GpuRuntimeProgram>(
       entry_function_name.str(), os.str(), buffer_sizes.vec(),
       hlo_module->config().debug_options());
 }
@@ -999,7 +999,7 @@ struct CompileModuleResults {
   std::unique_ptr<llvm::Module> llvm_module;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::vector<BufferAllocation> allocations;
-  std::variant<OwnedThunkSequence, OwnedJitRtProgram> executable;
+  std::variant<OwnedThunkSequence, OwnedGpuRuntimeProgram> executable;
   EntryFunctionAttributes entry_func_attrs;
   std::vector<GpuExecutable::ConstantInfo> constants;
   OutputInfoMap output_info;
@@ -1543,11 +1543,11 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
     auto& compiled_executable = compile_module_results.executable;
 
-    if (!std::holds_alternative<OwnedJitRtProgram>(compiled_executable)) {
-      return InternalError("JitRtProgram not provided");
+    if (!std::holds_alternative<OwnedGpuRuntimeProgram>(compiled_executable)) {
+      return InternalError("Gpu runtime program was not provided");
     }
 
-    const auto& program = std::get<OwnedJitRtProgram>(compiled_executable);
+    const auto& program = std::get<OwnedGpuRuntimeProgram>(compiled_executable);
 
     // Options for the default JitRt compilation pipeline.
     runtime::CompilationPipelineOptions copts;
@@ -1605,8 +1605,8 @@ StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
   auto* gpu_executable = tensorflow::down_cast<GpuExecutable*>(executable);
   if (!gpu_executable) return Internal("GpuExecutable is null");
   HloModuleProto module_proto = gpu_executable->module().ToProto();
-  TF_ASSIGN_OR_RETURN(std::string obj_file, gpu_executable->GetObjFile());
-  TF_ASSIGN_OR_RETURN(std::string mlir_module, gpu_executable->GetMlirModule());
+  TF_ASSIGN_OR_RETURN(auto obj_file, gpu_executable->GetObjFile());
+  TF_ASSIGN_OR_RETURN(auto mlir_module, gpu_executable->GetMlirModule());
   xla::EntryFunctionAttributes entry_func_attrs =
       gpu_executable->entry_func_attrs();
   auto text = gpu_executable->text();

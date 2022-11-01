@@ -30,6 +30,21 @@ cc_library(
 )
 
 cc_library(
+    name = "executable",
+    srcs = ["executable.cc"],
+    hdrs = ["executable.h"],
+    deps = [
+        ":conv",
+        ":kernel_launch",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/mlir/transforms/runtime:compilation_pipeline_gpu",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/runtime:jit_executable",
+        "//tensorflow/compiler/xla/service/gpu:jitrt_custom_calls",
+    ],
+)
+
+cc_library(
     name = "fft",
     srcs = ["fft.cc"],
     hdrs = ["fft.h"],

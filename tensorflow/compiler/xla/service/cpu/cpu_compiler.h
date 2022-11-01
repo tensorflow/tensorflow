@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_COMPILER_H_
 
 #include <memory>
+#include <string_view>
 
 #include "absl/types/span.h"
 #include "llvm/Target/TargetMachine.h"
@@ -88,8 +89,8 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
 class CpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
  public:
   CpuXlaRuntimeAotCompilationResult(HloModuleProto hlo,
-                                    const std::string& obj_file,
-                                    const std::string& mlir_module,
+                                    std::string_view obj_file,
+                                    std::string_view mlir_module,
                                     XlaFrameworkMapping xla_framework_mapping);
 
   explicit CpuXlaRuntimeAotCompilationResult(

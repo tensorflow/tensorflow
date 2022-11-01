@@ -23,6 +23,7 @@ limitations under the License.
 #include <memory>
 #include <stack>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -284,12 +285,12 @@ se::Platform::Id CpuAotCompilationOptions::PlatformId() const {
 }
 
 CpuXlaRuntimeAotCompilationResult::CpuXlaRuntimeAotCompilationResult(
-    HloModuleProto hlo, const std::string& obj_file,
-    const std::string& mlir_module, XlaFrameworkMapping xla_framework_mapping) {
+    HloModuleProto hlo, std::string_view obj_file, std::string_view mlir_module,
+    XlaFrameworkMapping xla_framework_mapping) {
   XlaRuntimeExecutableProto xla_runtime_executable;
   *xla_runtime_executable.mutable_hlo_module_proto() = hlo;
-  xla_runtime_executable.set_obj_file(obj_file);
-  xla_runtime_executable.set_mlir_module(mlir_module);
+  xla_runtime_executable.set_obj_file(std::string(obj_file));
+  xla_runtime_executable.set_mlir_module(std::string(mlir_module));
 
   *xla_runtime_cpu_executable_.mutable_xla_runtime_executable() =
       xla_runtime_executable;
@@ -1717,8 +1718,8 @@ StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
     return Internal("Could not downcast Executable to CpuExecutable");
 
   HloModuleProto module_proto = cpu_executable->module().ToProto();
-  TF_ASSIGN_OR_RETURN(std::string obj_file, cpu_executable->GetObjFile());
-  TF_ASSIGN_OR_RETURN(std::string mlir_module, cpu_executable->GetMlirModule());
+  TF_ASSIGN_OR_RETURN(auto obj_file, cpu_executable->GetObjFile());
+  TF_ASSIGN_OR_RETURN(auto mlir_module, cpu_executable->GetMlirModule());
   TF_ASSIGN_OR_RETURN(XlaFrameworkMapping xla_framework_mapping,
                       cpu_executable->GetXlaFrameworkMapping());
 

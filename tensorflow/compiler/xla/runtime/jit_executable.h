@@ -152,7 +152,7 @@ class JitExecutable {
   JitExecutable(const JitExecutable&) = delete;
   JitExecutable(JitExecutable&&) = default;
 
-  std::string mlir_module() { return mlir_module_; }
+  std::string_view mlir_module() { return mlir_module_; }
 
   unsigned num_functions() const { return functions_.size(); }
 
