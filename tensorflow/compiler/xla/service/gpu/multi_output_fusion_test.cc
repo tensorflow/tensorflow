@@ -31,6 +31,8 @@ namespace op = xla::testing::opcode_matchers;
 
 class MultiOutputFusionTest : public HloTestBase {
  public:
+  GpuMultiOutputFusion mof_;
+
   void CheckGpuMultiOutputFusion(absl::string_view hlo,
                                  std::optional<absl::string_view> expected) {
     RunAndFilecheckHloRewrite(hlo, GpuMultiOutputFusion{}, expected);
@@ -83,7 +85,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceAndReduceFusion) {
       ROOT root = (f32[512]{0}, f32[512]{0}) tuple(fusion, reduce.2)
     })"))
                     .value();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_TRUE(mof_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* fusion =
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
@@ -116,7 +118,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionDifferentReduceInputShapes) {
       ROOT root = (f32[], f32[]) tuple(fusion.1, fusion.2)
     })"))
                     .value();
-  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_FALSE(mof_.Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest, ReduceMofDifferentTypes) {
@@ -190,7 +192,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionDifferentReduceOutputShapes) {
       ROOT root = (f32[], f32[10]{0}) tuple(fusion.1, fusion.2)
     })"))
                     .value();
-  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_FALSE(mof_.Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceFusions) {
@@ -218,7 +220,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceFusions) {
       ROOT root = (f32[512]{0}, f32[512]{0}) tuple(fusion.1, fusion.2)
     })"))
                     .value();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_TRUE(mof_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* fusion =
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
@@ -251,7 +253,7 @@ TEST_F(MultiOutputFusionTest,
       ROOT root = (f32[512]{0}, f32[512]{0}, f32[512]{0}) tuple(f32[512]{0} get-tuple-element, f32[512]{0} get-tuple-element.1, f32[512]{0} reduce.3)
     })"))
                     .value();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_TRUE(mof_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* fusion =
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
@@ -290,7 +292,7 @@ TEST_F(MultiOutputFusionTest,
       ROOT root = (f32[10,10], f32[], f32[10]) tuple(get-tuple-element.1, get-tuple-element.2, fusion.2)
     })"))
                     .value();
-  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_FALSE(mof_.Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionTwoLoops) {
@@ -314,7 +316,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionTwoLoops) {
       ROOT root = (f32[6400]{0}, f32[6400]{0}) tuple(fusion.1, fusion.2)
     })"))
                     .value();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_TRUE(mof_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* fusion =
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
@@ -339,7 +341,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopElementwise) {
       ROOT root = (f32[6400]{0}, f32[6400]{0}) tuple(fusion.1, div)
     })"))
                     .value();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_TRUE(mof_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* fusion =
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
@@ -368,7 +370,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopsDifferentShapes) {
       ROOT root = (f32[8,1,5,16,1,2]{5,4,3,2,1,0}, f32[1,5,1,2]{3,2,1,0}) tuple(fusion.1, fusion.2)
     })"))
                     .value();
-  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_FALSE(mof_.Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopAndMultiOutputLoop) {
@@ -403,7 +405,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopAndMultiOutputLoop) {
         tuple(gte0, gte1, fusion.2)
     })"))
                     .value();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_TRUE(mof_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* fusion =
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
@@ -444,7 +446,7 @@ TEST_F(MultiOutputFusionTest,
         tuple(gte0, gte1, fusion.2)
     })"))
                     .value();
-  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_FALSE(mof_.Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest, ProducerConsumerFusionElementwiseAndReduce) {
@@ -458,7 +460,7 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionElementwiseAndReduce) {
       ROOT root = (f32[32,32]{1,0}, f32[32,32,32]{2,1,0}) tuple(reduce, exp)
     })"))
                     .value();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_TRUE(mof_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement()));
@@ -486,7 +488,7 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduce) {
       ROOT root = (f32[32,32]{1,0}, f32[32,32,32]{2,1,0}) tuple(reduce, add)
     })"))
                     .value();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_TRUE(mof_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement()));
@@ -532,7 +534,7 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
         tuple(gte1, gte1, select)
     })"))
                     .value();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_TRUE(mof_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement(),
@@ -569,7 +571,7 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
       ROOT root = (f32[2,2]{1,0}, f32[2,2,2]{2,1,0}) tuple(fusion, element_wise)
     })"))
                     .value();
-  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_FALSE(mof_.Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest,
@@ -608,7 +610,7 @@ TEST_F(MultiOutputFusionTest,
         tuple(gte1, gte1, select)
     })"))
                     .value();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_TRUE(mof_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement(),
@@ -645,7 +647,7 @@ TEST_F(MultiOutputFusionTest,
       ROOT root = (f32[1024]{0}, f16[128,1024,32,32]{1,3,2,0}) tuple(reduce_fusion, loop_fusion)
     })"))
                     .value();
-  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_FALSE(mof_.Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest, ProducerConsumerFusionAvoidsCycles) {
@@ -700,7 +702,7 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionAvoidsCycles) {
                    f32[64,64,64]{2,1,0}) tuple(add, reduce1, reduce2, mul)
     })"))
                     .value();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_TRUE(mof_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   EXPECT_EQ(1, CountMultiOutputFusions(module.get()));
 }
@@ -733,7 +735,7 @@ TEST_F(MultiOutputFusionTest, PreferFuseProducerIntoFusionConsumer) {
                   tuple(add, reduce, reduce2)
     })"))
                     .value();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_TRUE(mof_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   int multi_output_fusion_count = 0;
   for (auto* computation : module->MakeNonfusionComputations()) {
@@ -790,7 +792,7 @@ TEST_F(MultiOutputFusionTest, AvoidsLargeFusion) {
         b.AddInstruction(make_fusion(params[i - 1], params[i]))));
   }
   auto computation = module->AddEntryComputation(b.Build());
-  EXPECT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
+  EXPECT_TRUE(mof_.Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   for (const HloInstruction* instr : computation->instructions()) {
     EXPECT_LE(instr->operand_count() + ShapeUtil::SubshapeCount(instr->shape()),
@@ -825,7 +827,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionDUS) {
       ROOT tuple = (f16[50,96,1024],f16[50,96,1024]) tuple(f1, f2)
     })")
                     .value();
-  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_FALSE(mof_.Run(module.get()).value());
 }
 
 // Check that we don't fuse too many reductions together.
@@ -937,7 +939,7 @@ TEST_F(MultiOutputFusionTest, SharedMemoryBudget) {
     }
   )"))
                     .value();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_TRUE(mof_.Run(module.get()).value());
 
   EXPECT_EQ(2, CountMultiOutputFusions(module.get()));
 }
@@ -1050,7 +1052,7 @@ TEST_F(MultiOutputFusionTest, DoNotGroupTooManyReductions) {
     }
   )"))
                     .value();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
+  ASSERT_TRUE(mof_.Run(module.get()).value());
 
   EXPECT_EQ(2, CountMultiOutputFusions(module.get()));
 }
@@ -1108,7 +1110,7 @@ ENTRY %reproducer (param_0.1090: f64[64,64], param_1.1377: f64[64,64], param_2.1
 }
   )")
                     .value();
-  EXPECT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
+  EXPECT_FALSE(mof_.Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest, NoFusionToAvoidCodeDuplication) {
@@ -1268,7 +1270,7 @@ ENTRY main {
 }
   )")
                     .value();
-  EXPECT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
+  EXPECT_FALSE(mof_.Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest, DoNotFuseRoot) {
@@ -1295,7 +1297,7 @@ ENTRY main {
 }
   )")
                     .value();
-  EXPECT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
+  EXPECT_FALSE(mof_.Run(module.get()).value());
 }
 
 class TransposeMultiOutputFusionTest : public MultiOutputFusionTest {
