@@ -1930,7 +1930,7 @@ class QuantizeAndDequantizeV2Test(test_util.TensorFlowTestCase):
                                 r".*should be scalar.*"):
       q, _, _ = array_ops.quantize_and_dequantize_v2(
           input=np.ones((10)),
-          input_min=-1,
+          input_min=[-1, 1],
           input_max=[-1, 1],
           range_given=True)
       self.evaluate(q)
