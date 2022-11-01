@@ -153,6 +153,7 @@ class FusionInstructionMerger {
   // Many cheap checks can prevent fusion merging - postpone execution of full
   // HLO cost analysis of the computation so that it may be not needed at all.
   std::optional<GpuHloCostAnalysis> cost_analysis_;
+  FusionInfoCache fusion_info_cache_;
 
   bool changed_ = false;
   bool dump_fusion_visualization_ = false;
@@ -198,6 +199,7 @@ Status FusionInstructionMerger::FuseIntoAllUsers(HloInstruction* instruction) {
 
     consumer->MergeFusionInstruction(instruction);
     TF_RETURN_IF_ERROR(cost_analysis_->RevisitInstruction(consumer));
+    fusion_info_cache_.Invalidate(consumer);
 
     if (dump_fusion_visualization_) {
       RegisterFusionState(
@@ -212,6 +214,7 @@ Status FusionInstructionMerger::FuseIntoAllUsers(HloInstruction* instruction) {
   CHECK_EQ(0, instruction->user_count()) << instruction->ToString();
   TF_RETURN_IF_ERROR(computation_->RemoveInstruction(instruction));
   TF_RETURN_IF_ERROR(cost_analysis_->RemoveInstruction(instruction));
+  fusion_info_cache_.Invalidate(instruction);
   VLOG(2) << "Merged fusion instruction: " << instruction->name()
           << " into users { "
           << absl::StrJoin(users, ", ",
@@ -368,8 +371,9 @@ FusionDecision FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   for (const HloInstruction* user : fusion->users()) {
     // Skip 'fusion' instruction if merging it into at least one of the users
     // would make the fusion use too much shared memory or registers.
-    FusionDecision fits = FusionFitsInBudget(
-        *user, *fusion, /*is_consumer_producer_fusion=*/true);
+    FusionDecision fits =
+        FusionFitsInBudget(*user, *fusion, /*is_consumer_producer_fusion=*/true,
+                           &fusion_info_cache_);
     if (!fits) {
       ++num_fail_fusion_too_large_;
       return fits;
