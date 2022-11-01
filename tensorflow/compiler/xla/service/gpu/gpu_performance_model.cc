@@ -53,8 +53,12 @@ GpuPerformanceModel::EstimateRunTimes(const HloInstruction* producer,
   for (int i = 0; i < producer->fused_parameters().size(); ++i) {
     int64_t p_size_accessed =
         cost_analysis->operand_bytes_accessed(*producer, i);
-    int64_t p_size_net =
-        p_size_accessed / cost_analysis->operand_utilization(*producer, i);
+    float operand_utilization =
+        cost_analysis->operand_utilization(*producer, i);
+    int64_t p_size_net = 0;
+    if (operand_utilization != 0) {
+      p_size_net = static_cast<float>(p_size_accessed) / operand_utilization;
+    }
     producer_input_access_time += read_time(p_size_net, p_size_accessed);
   }
   float producer_bytes_out = cost_analysis->output_bytes_accessed(*producer);
