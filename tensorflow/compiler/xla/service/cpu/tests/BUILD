@@ -322,3 +322,17 @@ tf_cc_test(
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ],
 )
+
+tf_cc_test(
+    name = "cpu_convert_pred_multiply_test",
+    srcs = ["cpu_convert_pred_multiply_test.cc"],
+    deps = [
+        ":cpu_codegen_test",
+        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)

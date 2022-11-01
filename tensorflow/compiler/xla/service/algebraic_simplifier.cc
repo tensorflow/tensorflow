@@ -3154,7 +3154,7 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
     }
   }
 
-  {
+  if (options_.enable_pred_multiply_to_select()) {
     HloInstruction *convert_operand, *operand;
     // Mul(Convert(Pred), operand) => select(pred, operand, 0)
     if (Match(multiply,

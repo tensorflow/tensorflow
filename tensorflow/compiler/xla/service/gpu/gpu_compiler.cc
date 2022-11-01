@@ -353,6 +353,7 @@ Status GpuCompiler::OptimizeHloModule(
 
   AlgebraicSimplifierOptions layout_insensitive_algsimp_opts({},
                                                              ConvIsLowerable);
+  layout_insensitive_algsimp_opts.set_enable_pred_multiply_to_select(false);
   // "slow" minmax means we propagate nan.
   layout_insensitive_algsimp_opts.set_minmax_propagate_nan(
       !debug_options.xla_gpu_enable_fast_min_max());
@@ -786,6 +787,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
   options.set_enable_conv_operand_swap(false);
+  options.set_enable_pred_multiply_to_select(false);
   // "slow" minmax means we propagate nan.
   options.set_minmax_propagate_nan(
       !hlo_module->config().debug_options().xla_gpu_enable_fast_min_max());
@@ -850,6 +852,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     options.set_enable_conv_operand_swap(false);
+    options.set_enable_pred_multiply_to_select(false);
     // "slow" minmax means we propagate nan.
     options.set_minmax_propagate_nan(
         !hlo_module->config().debug_options().xla_gpu_enable_fast_min_max());

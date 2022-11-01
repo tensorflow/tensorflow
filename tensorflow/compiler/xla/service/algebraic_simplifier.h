@@ -179,6 +179,13 @@ class AlgebraicSimplifierOptions {
   bool minmax_propagate_nan() const { return minmax_propagate_nan_; }
   void set_minmax_propagate_nan(bool val) { minmax_propagate_nan_ = val; }
 
+  bool enable_pred_multiply_to_select() const {
+    return enable_pred_multiply_to_select_;
+  }
+  void set_enable_pred_multiply_to_select(bool val) {
+    enable_pred_multiply_to_select_ = val;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplierOptions that can be later used in an
@@ -207,6 +214,7 @@ class AlgebraicSimplifierOptions {
   bool enable_sink_broadcast_{true};
   int64_t very_small_gather_size_{4};
   bool minmax_propagate_nan_{true};
+  bool enable_pred_multiply_to_select_{true};
   Metadata metadata_;
 };
 
