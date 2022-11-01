@@ -53,6 +53,13 @@ TEST(CApiSimple, Version) {
   EXPECT_STREQ(TfLiteVersion(), version);
 }
 
+TEST(CApiSimple, SchemaVersion) {
+  // The following checks will need updating if we change the schema version.
+  EXPECT_EQ(TfLiteSchemaVersion(), 3);
+  // Calling the function again should give the same result.
+  EXPECT_EQ(TfLiteSchemaVersion(), 3);
+}
+
 TEST(CApiSimple, Smoke) {
   TfLiteModel* model =
       TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
