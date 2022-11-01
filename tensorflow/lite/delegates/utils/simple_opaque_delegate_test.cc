@@ -15,206 +15,21 @@ limitations under the License.
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
 
 #include <array>
-#include <map>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
-#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/delegates/utils/experimental/sample_vendor_delegate/sample_vendor_delegate.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
 
 namespace tflite {
-
-static const char kDelegateName[] = "My opaque delegate";
-
-int CalculateNumElements(const TfLiteOpaqueTensor* opaque_tensor) {
-  int total_num_elements = 1;
-  for (int i = 0; i < TfLiteOpaqueTensorNumDims(opaque_tensor); ++i) {
-    total_num_elements *= TfLiteOpaqueTensorDim(opaque_tensor, i);
-  }
-  return total_num_elements;
-}
-
-class MySimpleOpaqueDelegateKernel
-    : public SimpleOpaqueDelegateKernelInterface {
-  bool IsExternalTensor(const TfLiteOpaqueTensor* opaque_tensor) const {
-    return external_tensors_.count(opaque_tensor) != 0;
-  }
-
-  void DeriveExternalTensors() {
-    for (const TfLiteOpaqueTensor* tensor : node_input_tensors_set_) {
-      if (node_output_tensors_set_.count(tensor) == 0) {
-        external_tensors_.insert(tensor);
-      }
-    }
-
-    for (const TfLiteOpaqueTensor* tensor : node_output_tensors_set_) {
-      if (node_input_tensors_set_.count(tensor) == 0) {
-        external_tensors_.insert(tensor);
-      }
-    }
-  }
-
- public:
-  TfLiteStatus Init(TfLiteOpaqueContext* context,
-                    const TfLiteOpaqueDelegateParams* params) override {
-    if (params->delegate == nullptr) return kTfLiteDelegateError;
-
-    context_ = context;
-    builtin_code_.resize(params->nodes_to_replace->size);
-
-    node_input_tensors_.resize(params->nodes_to_replace->size);
-    node_output_tensors_.resize(params->nodes_to_replace->size);
-
-    for (int i = 0; i < params->nodes_to_replace->size; ++i) {
-      const int node_index = params->nodes_to_replace->data[i];
-
-      TfLiteOpaqueNode* delegated_node = nullptr;
-      TfLiteRegistrationExternal* delegated_node_registration = nullptr;
-      TfLiteOpaqueContextGetNodeAndRegistration(
-          context, node_index, &delegated_node, &delegated_node_registration);
-
-      auto input_tensor1 = TfLiteOpaqueNodeGetInput(context, delegated_node, 0);
-      node_input_tensors_[i].push_back(input_tensor1);
-      node_input_tensors_set_.insert(input_tensor1);
-
-      auto input_tensor2 = TfLiteOpaqueNodeGetInput(context, delegated_node, 1);
-      node_input_tensors_[i].push_back(input_tensor2);
-      node_input_tensors_set_.insert(input_tensor2);
-
-      auto output_tensor =
-          TfLiteOpaqueNodeGetOutput(context, delegated_node, 0);
-      node_output_tensors_[i] = output_tensor;
-      node_output_tensors_set_.insert(output_tensor);
-
-      builtin_code_[i] =
-          TfLiteRegistrationExternalGetBuiltInCode(delegated_node_registration);
-    }
-
-    // Determine which tensors are external (the TFLite runtime takes care
-    // of them) so that we know which tensors are 'internal' to this delegate.
-    // For the internal tensors we need to ensure they have memory allocated to
-    // store their data, and take care of re-sizing etc.
-    DeriveExternalTensors();
-
-    return kTfLiteOk;
-  }
-
-  TfLiteStatus Prepare(TfLiteOpaqueContext* context,
-                       TfLiteOpaqueNode* delegated_node) override {
-    if (external_tensors_.empty()) return kTfLiteOk;
-
-    const int kTheInputTensorSize =
-        CalculateNumElements((*external_tensors_.begin()));
-    for (std::vector<const TfLiteOpaqueTensor*>& vecs : node_input_tensors_) {
-      for (const TfLiteOpaqueTensor* tensor : vecs) {
-        if (IsExternalTensor(tensor)) continue;
-
-        std::vector<float>& vec_memory = internal_tensors_memory_[tensor];
-        vec_memory.resize(kTheInputTensorSize);
-      }
-    }
-    for (const TfLiteOpaqueTensor* tensor : node_output_tensors_) {
-      if (IsExternalTensor(tensor)) continue;
-
-      std::vector<float>& vec_memory = internal_tensors_memory_[tensor];
-      vec_memory.resize(kTheInputTensorSize);
-    }
-
-    return kTfLiteOk;
-  }
-
-  void ComputeImpl(float* input_1, float* input_2, float* output,
-                   int builtin_code, int number_of_elements) {
-    for (int i = 0; i < number_of_elements; ++i) {
-      if (builtin_code == kTfLiteBuiltinAdd) {
-        output[i] = input_1[i] + input_2[i];
-      } else {
-        output[i] = input_1[i] - input_2[i];
-      }
-    }
-  }
-
-  float* GetRawDataSource(TfLiteOpaqueContext* context,
-                          const TfLiteOpaqueTensor* tensor) {
-    if (IsExternalTensor(tensor)) {
-      return reinterpret_cast<float*>(TfLiteOpaqueTensorData(tensor));
-    } else {
-      return internal_tensors_memory_[tensor].data();
-    }
-  }
-
-  TfLiteStatus Eval(TfLiteOpaqueContext* context,
-                    TfLiteOpaqueNode* delegated_node) override {
-    for (int i = 0; i < node_input_tensors_.size(); ++i) {
-      float* input1 = GetRawDataSource(context, node_input_tensors_[i][0]);
-      float* input2 = GetRawDataSource(context, node_input_tensors_[i][1]);
-      float* output = GetRawDataSource(context, node_output_tensors_[i]);
-      // We assume that all input, output and intermediate tensors of the
-      // delegated subgraph have the same size.
-      ComputeImpl(input1, input2, output, builtin_code_[i],
-                  CalculateNumElements(node_output_tensors_[i]));
-    }
-    return kTfLiteOk;
-  }
-
- private:
-  std::vector<std::vector<const TfLiteOpaqueTensor*>> node_input_tensors_;
-  absl::flat_hash_set<const TfLiteOpaqueTensor*> node_input_tensors_set_;
-  std::vector<const TfLiteOpaqueTensor*> node_output_tensors_;
-  absl::flat_hash_set<const TfLiteOpaqueTensor*> node_output_tensors_set_;
-  absl::flat_hash_set<const TfLiteOpaqueTensor*> external_tensors_;
-  absl::flat_hash_map<const TfLiteOpaqueTensor*, std::vector<float>>
-      internal_tensors_memory_;
-  TfLiteOpaqueContext* context_;
-  // Holds the builtin code of the ops.
-  // builtin_code_[i] is the type of node at index 'i'
-  std::vector<int> builtin_code_;
-};
-
-class MySimpleOpaqueDelegate : public SimpleOpaqueDelegateInterface {
- public:
-  bool IsNodeSupportedByDelegate(
-      const TfLiteRegistrationExternal* registration_external,
-      const TfLiteOpaqueNode* node,
-      TfLiteOpaqueContext* context) const override {
-    if (kTfLiteBuiltinAdd !=
-            TfLiteRegistrationExternalGetBuiltInCode(registration_external) &&
-        kTfLiteBuiltinSub !=
-            TfLiteRegistrationExternalGetBuiltInCode(registration_external))
-      return false;
-
-    // This delegate only supports float32 types.
-    for (int i = 0; i < TfLiteOpaqueNodeNumberOfInputs(node); ++i) {
-      const TfLiteOpaqueTensor* tensor =
-          TfLiteOpaqueNodeGetInput(context, node, i);
-      if (TfLiteOpaqueTensorType(tensor) != kTfLiteFloat32) return false;
-    }
-
-    return true;
-  }
-
-  TfLiteStatus Initialize(TfLiteOpaqueContext* context) override {
-    return kTfLiteOk;
-  }
-
-  const char* Name() const override { return kDelegateName; }
-
-  std::unique_ptr<SimpleOpaqueDelegateKernelInterface>
-  CreateDelegateKernelInterface() override {
-    return std::make_unique<MySimpleOpaqueDelegateKernel>();
-  }
-};
 
 class TestDelegate : public ::testing::Test {};
 
@@ -224,7 +39,7 @@ TEST_F(TestDelegate, TestDataAddBin_SingleInputSingleOutput_FullyDelegated) {
   //
   TfLiteOpaqueDelegateUniquePtr my_opaque_delegate =
       TfLiteOpaqueDelegateFactory::Create(
-          std::make_unique<MySimpleOpaqueDelegate>());
+          std::make_unique<example::SampleVendorDelegate>());
 
   //
   // Create the model and the interpreter
@@ -304,7 +119,7 @@ TEST(DelegateTest,
      TestDataAddBin_SingleInputSingleOutput_FullyDelegated_ResizeInputTensors) {
   TfLiteOpaqueDelegateUniquePtr my_opaque_delegate =
       TfLiteOpaqueDelegateFactory::Create(
-          std::make_unique<MySimpleOpaqueDelegate>());
+          std::make_unique<example::SampleVendorDelegate>());
 
   TfLiteModel* model =
       TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
@@ -381,7 +196,7 @@ TEST(DelegateTest,
 TEST(DelegateTest, TestDataMultiAddBin_MultiInputMultiOutput_FullyDelegated) {
   TfLiteOpaqueDelegateUniquePtr my_opaque_delegate =
       TfLiteOpaqueDelegateFactory::Create(
-          std::make_unique<MySimpleOpaqueDelegate>());
+          std::make_unique<example::SampleVendorDelegate>());
 
   TfLiteModel* model = TfLiteModelCreateFromFile(
       "third_party/tensorflow/lite/testdata/multi_add.bin");
@@ -504,7 +319,7 @@ TfLiteRegistrationExternal* GetDelegateKernelRegistrationImpl(
 using ::tflite::delegates::test_utils::TestFP16Delegation;
 
 TEST_F(TestFP16Delegation, MultipleDelegateKernels) {
-  auto my_simple_delegate = std::make_unique<MySimpleOpaqueDelegate>();
+  auto my_simple_delegate = std::make_unique<example::SampleVendorDelegate>();
   TfLiteOpaqueDelegateStruct* opaque_delegate =
       TfLiteOpaqueDelegateFactory::CreateSimpleDelegate(
           std::move(my_simple_delegate));
@@ -520,18 +335,18 @@ TEST_F(TestFP16Delegation, MultipleDelegateKernels) {
   TfLiteOpaqueDelegateFactory::DeleteSimpleDelegate(opaque_delegate);
 }
 
-// A test facilty used in the 'SetBufferHandle' unit test.  See the tests
+// A test facility used in the 'SetBufferHandle' unit test.  See the tests
 // comments for further context on the implementation of this class.
 class MySimpleOpaqueDelegateWithBufferHandleSupport
-    : public MySimpleOpaqueDelegate {
+    : public example::SampleVendorDelegate {
  public:
   static constexpr int kDelegateOutputValue = 42;
   TfLiteStatus CopyFromBufferHandle(TfLiteOpaqueContext* context,
                                     TfLiteBufferHandle buffer_handle,
                                     TfLiteOpaqueTensor* tensor) {
     auto* output = reinterpret_cast<float*>(TfLiteOpaqueTensorData(tensor));
-    std::vector<float> test_output(CalculateNumElements(tensor),
-                                   kDelegateOutputValue);
+    std::vector<float> test_output(
+        example::helpers::CalculateNumElements(tensor), kDelegateOutputValue);
     memcpy(output, test_output.data(), test_output.size() * sizeof(float));
 
     return kTfLiteOk;
@@ -675,7 +490,7 @@ TEST(DelegateTest,
      TestDataConvHugeIm2ColBin_MultiInputSingleOutput_PartiallyDelegated) {
   TfLiteOpaqueDelegateUniquePtr my_opaque_delegate =
       TfLiteOpaqueDelegateFactory::Create(
-          std::make_unique<MySimpleOpaqueDelegate>());
+          std::make_unique<example::SampleVendorDelegate>());
   TfLiteModel* model = TfLiteModelCreateFromFile(
       "third_party/tensorflow/lite/testdata/conv_huge_im2col.bin");
   ASSERT_NE(model, nullptr);
