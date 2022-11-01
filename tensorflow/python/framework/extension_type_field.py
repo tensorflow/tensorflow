@@ -148,8 +148,8 @@ def validate_field_value_type(value_type,
         (isinstance(value_type, type) and
          issubclass(value_type, composite_tensor.CompositeTensor))):
     if in_mapping_key:
-      raise TypeError(f"Mapping had a key '{value_type.__name__}' with type "
-                      f"'{type(value_type).__name__}'")
+      raise TypeError(f'Mapping had a key {value_type.__name__!r} with type '
+                      f'{type(value_type).__name__!r}')
   elif (type_annotations.is_generic_tuple(value_type) or
         type_annotations.is_generic_union(value_type)):
     type_args = type_annotations.get_generic_type_args(value_type)
@@ -166,7 +166,7 @@ def validate_field_value_type(value_type,
     validate_field_value_type(value_type, in_mapping_key,
                               allow_forward_references)
   elif isinstance(value_type, type):
-    raise TypeError(f'Unsupported type annotation `{value_type.__name__}`')
+    raise TypeError(f'Unsupported type annotation {value_type.__name__!r}')
   else:
     raise TypeError(f'Unsupported type annotation {value_type!r}')
 
@@ -286,18 +286,18 @@ def _convert_value(value, expected_type, path,
     try:
       return tensor_shape.as_shape(value)
     except TypeError as e:
-      raise TypeError(
-          f'{"".join(path)}: expected tf.TensorShape, got {value!r}') from e
+      raise TypeError(f"{''.join(path)}: expected 'tf.TensorShape', got "
+                      f'{type(value).__name__!r}') from e
   elif expected_type is dtypes.DType:
     try:
       return dtypes.as_dtype(value)
     except TypeError as e:
-      raise TypeError(
-          f'{"".join(path)}: expected tf.DType, got {value!r}') from e
+      raise TypeError(f"{''.join(path)}: expected 'tf.DType', got "
+                      f'{type(value).__name__!r}') from e
   elif expected_type in (int, float, bool, str, bytes, _NoneType):
     if not isinstance(value, expected_type):
-      raise TypeError(f'{"".join(path)}: expected '
-                      f'{expected_type.__name__}, got {value!r}')
+      raise TypeError(f'{"".join(path)}: expected {expected_type.__name__!r}, '
+                      f'got {type(value).__name__!r}')
     return value
   elif type_annotations.is_generic_tuple(expected_type):
     return _convert_tuple(value, expected_type, path, context)
@@ -315,7 +315,9 @@ def _convert_tensor(value, path, context):
   if context == _ConversionContext.SPEC:
     if not (isinstance(value, type_spec.TypeSpec) and
             value.value_type is ops.Tensor):
-      raise TypeError(f'{"".join(path)}: expected a TensorSpec, got {value!r}')
+      raise TypeError(
+          f'{"".join(path)}: expected a TensorSpec, got '
+          f'{type(value).__name__!r}')
     return value
 
   if not isinstance(value, ops.Tensor):
@@ -328,7 +330,7 @@ def _convert_tensor(value, path, context):
       value = ops.convert_to_tensor(value)
     except (ValueError, TypeError) as e:
       raise TypeError(f'{"".join(path)}: expected a Tensor, '
-                      f'got {value!r}') from e
+                      f'got {type(value).__name__!r}') from e
   return value
 
 
@@ -338,19 +340,21 @@ def _convert_composite_tensor(value, expected_type, path, context):
     if not (isinstance(value, type_spec.TypeSpec) and
             issubclass(value.value_type, expected_type)):
       raise TypeError(f'{"".join(path)}: expected a TypeSpec for '
-                      f'{expected_type.__name__}, got {value!r}')
+                      f'{expected_type.__name__!r}, got '
+                      f'{type(value).__name__!r}')
     return value
 
   if not isinstance(value, expected_type):
-    raise TypeError(f'{"".join(path)}: expected {expected_type.__name__}, '
-                    f'got {value!r}')
+    raise TypeError(f'{"".join(path)}: expected {expected_type.__name__!r}, '
+                    f'got {type(value).__name__!r}')
   return value
 
 
 def _convert_tuple(value, expected_type, path, context):
   """Converts `value` to a tuple with type `expected_type`."""
   if not isinstance(value, typing.Sequence):
-    raise TypeError(f'{"".join(path)}: expected tuple, got {value!r}')
+    raise TypeError(f'{"".join(path)}: expected tuple, got '
+                    f'{type(value).__name__!r}')
   element_types = type_annotations.get_generic_type_args(expected_type)
   if len(element_types) == 2 and element_types[1] is Ellipsis:
     return tuple([
@@ -360,7 +364,7 @@ def _convert_tuple(value, expected_type, path, context):
   else:
     if len(value) != len(element_types):
       raise TypeError(f'{"".join(path)}: expected tuple with length '
-                      f'{len(element_types)}, got {value!r})')
+                      f'{len(element_types)}, got {type(value).__name__!r})')
     return tuple([
         _convert_value(v, t, path + (f'[{i}]',), context)
         for (i, (v, t)) in enumerate(zip(value, element_types))
@@ -370,7 +374,8 @@ def _convert_tuple(value, expected_type, path, context):
 def _convert_mapping(value, expected_type, path, context):
   """Converts `value` to a mapping with type `expected_type`."""
   if not isinstance(value, typing.Mapping):
-    raise TypeError(f'{"".join(path)}: expected mapping, got {value!r}')
+    raise TypeError(f'{"".join(path)}: expected mapping, got '
+                    f'{type(value).__name__!r}')
   key_type, value_type = type_annotations.get_generic_type_args(expected_type)
   return immutable_dict.ImmutableDict([
       (_convert_value(k, key_type, path + ('[<key>]',), context),
@@ -386,7 +391,8 @@ def _convert_union(value, expected_type, path, context):
       return _convert_value(value, type_option, path, context)
     except TypeError:
       pass
-  raise TypeError(f'{"".join(path)}: expected {expected_type}, got {value!r}')
+  raise TypeError(f'{"".join(path)}: expected {expected_type!r}, got '
+                  f'{type(value).__name__!r}')
 
 
 def _report_field_mismatches(fields, field_values):
