@@ -2475,7 +2475,7 @@ TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages_RamBudgetExceeded) {
         name: "ParallelMapV2"
         autotune: true
         num_elements: 100
-        processing_time: 25000
+        processing_time: 62000
         bytes_produced: 10000
         node_class: ASYNC_KNOWN_RATIO
         ratio: 1
@@ -2497,7 +2497,7 @@ TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages_RamBudgetExceeded) {
         name: "ParallelMapV2"
         autotune: true
         num_elements: 100
-        processing_time: 20000
+        processing_time: 70000
         bytes_produced: 10000
         node_class: ASYNC_KNOWN_RATIO
         ratio: 1
@@ -2601,6 +2601,64 @@ TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatio) {
                    &cancellation_manager);
 
   EXPECT_EQ(16, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+}
+
+TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatioLessThanOne) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelBatch"
+        autotune: true
+        num_elements: 100
+        processing_time: 40000
+        bytes_produced: 10000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 0.5
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 4
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "Map"
+        autotune: true
+        num_elements: 100
+        processing_time: 3000
+        node_class: KNOWN_RATIO
+        ratio: 1
+        inputs: 3
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 1000
+        node_class: KNOWN_RATIO
+        ratio: 2
+      }
+    }
+    output: 1
+  )pb");
+
+  CancellationManager cancellation_manager;
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 20, 10000, 50,
+                   &cancellation_manager);
+
+  EXPECT_EQ(14, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
 }
 
 TEST_F(ModelTimingTest, ComputeTargetTime) {
