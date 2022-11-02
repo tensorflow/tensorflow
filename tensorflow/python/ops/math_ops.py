@@ -1017,8 +1017,10 @@ def saturate_cast(value, dtype, name=None):
   applies the appropriate clamping before the cast.
 
   Args:
-    value: A `Tensor`.
-    dtype: The desired output `DType`.
+    value: A `Tensor`. Must be one of the following types: bfloat16, half, 
+    float, double, int8, int16, int32, int64, uint8, uint16, uint32, uint64
+    dtype: The desired output `DType`. Must be one of the supported types of 
+    value.
     name: A name for the operation (optional).
 
   Returns:
