@@ -310,6 +310,7 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
       CreateExecutorDialectToFunctionalConversionPass());
   // Guarantee all functions have one use, which enables more exact shape
   // inference.
+  pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   pm.addPass(TF::CreateTFShapeInferencePass());
   // Encapsulate PartitionedCall ops within a cluster so that the composite
   // resource ops can be decomposed.
