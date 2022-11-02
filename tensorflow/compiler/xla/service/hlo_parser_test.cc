@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -3898,6 +3899,17 @@ TEST_F(HloParserTest, ParseDynamicTuple) {
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseInvalidDimLevel) {
+  constexpr std::string_view shape_string = "f32[123]{0:D(D+~)}";
+  StatusOr<Shape> result = ParseShape(shape_string);
+  ASSERT_THAT(
+      result.status(),
+      tsl::testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          testing::HasSubstr(
+              "invalid DimLevelType/unique/ordered combination in shape")));
 }
 
 TEST_F(HloParserTest, NegativeParameterNumber) {

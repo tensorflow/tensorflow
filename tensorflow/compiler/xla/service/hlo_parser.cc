@@ -5024,19 +5024,20 @@ bool HloParserImpl::ParseDimLevelTypes(
     absl::InlinedVector<bool, InlineRank()>* dim_unique,
     absl::InlinedVector<bool, InlineRank()>* dim_ordered) {
   auto parse_and_add_item = [&]() {
-    bool dim_level_type_valid = false;
     if (lexer_.GetKind() == TokKind::kIdent) {
+      bool dim_level_type_valid = false;
+      DimLevelType dim_level_type;
       if (lexer_.GetStrVal() == "D") {
         lexer_.Lex();
-        dim_level_types->push_back(DIM_DENSE);
+        dim_level_type = DIM_DENSE;
         dim_level_type_valid = true;
       } else if (lexer_.GetStrVal() == "C") {
-        dim_level_types->push_back(DIM_COMPRESSED);
         lexer_.Lex();
+        dim_level_type = DIM_COMPRESSED;
         dim_level_type_valid = true;
       } else if (lexer_.GetStrVal() == "S") {
-        dim_level_types->push_back(DIM_SINGLETON);
         lexer_.Lex();
+        dim_level_type = DIM_SINGLETON;
         dim_level_type_valid = true;
       }
       if (dim_level_type_valid) {
@@ -5050,6 +5051,13 @@ bool HloParserImpl::ParseDimLevelTypes(
           new_dim_ordered = false;
           lexer_.Lex();
         }
+        if (!LayoutUtil::ValidateDimLevel(dim_level_type, new_dim_unique,
+                                          new_dim_ordered)) {
+          return Error(
+              lexer_.GetLoc(),
+              "invalid DimLevelType/unique/ordered combination in shape");
+        }
+        dim_level_types->push_back(dim_level_type);
         dim_unique->push_back(new_dim_unique);
         dim_ordered->push_back(new_dim_ordered);
         return true;
