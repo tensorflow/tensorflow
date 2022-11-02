@@ -48,6 +48,11 @@ struct AccumulatorType<Eigen::half> {
   typedef float type;
 };
 
+template <>
+struct AccumulatorType<Eigen::bfloat16> {
+  typedef float type;
+};
+
 // Definition of the GPU implementations declared in bias_op.cc.
 
 template <typename T>
@@ -291,6 +296,7 @@ void BiasGradGPU<T>::DoColReduction(OpKernelContext* context, T* output,
   template struct BiasGradGPU<T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
+TF_CALL_bfloat16(DEFINE_GPU_SPECS);
 
 // No BiasGrad kernel for int32.
 template struct BiasGPU<int32>;
