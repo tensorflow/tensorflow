@@ -1386,9 +1386,9 @@ class SliceConverter : public OpConversionPattern<mhlo::SliceOp> {
       // Say that there are k elements in total, we have condition:
       //   start + (k - 1) * strides <= limit - 1
       // ->
-      //   k <= (limit - 1 - start) / strides + 1
+      //   k <= (limit - 1 - start + strides) / strides
       sizes.push_back(
-          rewriter.getI64IntegerAttr((limit - 1 - start) / stride + 1));
+          rewriter.getI64IntegerAttr((limit - 1 - start + stride) / stride));
       strides.push_back(rewriter.getI64IntegerAttr(stride));
     }
     rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(
