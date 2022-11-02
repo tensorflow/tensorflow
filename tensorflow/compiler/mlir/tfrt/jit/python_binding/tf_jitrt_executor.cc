@@ -76,12 +76,10 @@ TfJitRtExecutor::TfJitRtExecutor()
           },
           CreateMallocAllocator(), CreateMultiThreadedWorkQueue(4, 4)) {}
 
-TfJitRtExecutor::Handle TfJitRtExecutor::Compile(const std::string& mlir_module,
-                                                 const std::string& entrypoint,
-                                                 Specialization specialization,
-                                                 bool vectorize,
-                                                 bool codegen_transpose,
-                                                 bool legalize_i1_tensors) {
+TfJitRtExecutor::Handle TfJitRtExecutor::Compile(
+    const std::string& mlir_module, const std::string& entrypoint,
+    Specialization specialization, bool vectorize, bool codegen_transpose,
+    bool legalize_i1_tensors, bool peel) {
   // Options for the default JitRt compilation pipeline (lowering to LLVM).
   CompilationPipelineOptions copts;
   copts.alignment = EIGEN_MAX_ALIGN_BYTES;
@@ -102,6 +100,7 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(const std::string& mlir_module,
         opts.vectorize = vectorize;
         opts.codegen_transpose = codegen_transpose;
         opts.legalize_i1_tensors = legalize_i1_tensors;
+        opts.peel = peel;
         tensorflow::CreateTfJitRtPipeline(*passes, opts);
         CreateDefaultJitRtCompilationPipeline(passes, copts);
       };
@@ -289,7 +288,8 @@ PYBIND11_MODULE(_tf_jitrt_executor, m) {
            py::arg("specialization") =
                tensorflow::TfJitRtExecutor::Specialization::kEnabled,
            py::arg("vectorize") = false, py::arg("codegen_transpose") = false,
-           py::arg("legalize_i1_tensors") = false)
+           // TODO(b/248219927): Enable matmul peeling when bufferization works.
+           py::arg("legalize_i1_tensors") = false, py::arg("peel") = false)
       .def("execute", &tensorflow::TfJitRtExecutor::Execute)
       .def("built_with", &tensorflow::TfJitRtExecutor::BuiltWith,
            py::arg("cpu_feature"));
