@@ -6962,7 +6962,6 @@ tf_cc_test(
         ":pattern_matcher_gmock",
         "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
