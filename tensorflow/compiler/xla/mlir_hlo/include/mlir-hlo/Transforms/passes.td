@@ -115,6 +115,9 @@ def TestShapeComponentAnalysis : Pass<"test-print-shape-components",
 def LowerIndexCastPass
     : Pass<"lower-index-cast", "mlir::func::FuncOp"> {
   let summary = "Lower index cast on tensors to tensor dialect";
+  let dependentDialects = [
+    "tensor::TensorDialect"
+  ];
   let constructor = "createLowerIndexCastPass()";
 }
 
