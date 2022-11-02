@@ -10,21 +10,9 @@ package(
 
 cc_library(
     name = "preemption_sync_manager",
-    srcs = ["preemption_sync_manager.cc"],
     hdrs = ["preemption_sync_manager.h"],
     deps = [
-        "//tensorflow/core/distributed_runtime:call_options",
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:statusor",
-        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
-        "//tensorflow/tsl/distributed_runtime/preemption:preemption_notifier",
-        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
+        "//tensorflow/tsl/distributed_runtime/preemption:preemption_sync_manager",
     ],
 )
 

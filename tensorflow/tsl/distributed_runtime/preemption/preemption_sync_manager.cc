@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/distributed_runtime/preemption/preemption_sync_manager.h"
+#include "tensorflow/tsl/distributed_runtime/preemption/preemption_sync_manager.h"
 
 #include <algorithm>
 #include <functional>
@@ -23,18 +23,18 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/distributed_runtime/call_options.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/distributed_runtime/call_options.h"
 #include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/tsl/distributed_runtime/preemption/preemption_notifier.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
-using tsl::CoordinationServiceAgent;
-using tsl::PreemptionNotifier;
+using tensorflow::CoordinatedTask;
+using tensorflow::KeyValueEntry;
 
 constexpr int64_t kPreemptionSyncUnsetCounter = -1;
 constexpr char kPreemptionNoticeKey[] = "RECEIVED_PREEMPTION_NOTICE";
@@ -289,4 +289,4 @@ bool PreemptionSyncManagerImpl::ReachedSyncPoint(int step_counter) {
 std::unique_ptr<PreemptionSyncManager> CreatePreemptionSyncManager() {
   return std::make_unique<PreemptionSyncManagerImpl>();
 }
-}  // namespace tensorflow
+}  // namespace tsl
