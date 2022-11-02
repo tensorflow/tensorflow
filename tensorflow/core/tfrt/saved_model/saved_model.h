@@ -270,7 +270,8 @@ class SavedModelImpl final : public SavedModel {
   // Returns the loading result given the signature names.
   tensorflow::StatusOr<
       std::reference_wrapper<const SavedModelImpl::LoadingResult>>
-  GetOrCreateLoadingResult(absl::Span<const std::string> names)
+  GetOrCreateLoadingResult(const RunOptions& run_options,
+                           absl::Span<const std::string> names)
       TF_LOCKS_EXCLUDED(loading_result_cache_mu_);
 
   // Runs `func` with the given inputs, and outputs the result.

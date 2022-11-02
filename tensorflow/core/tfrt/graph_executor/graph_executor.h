@@ -178,6 +178,7 @@ class GraphExecutor {
   // no existing one yet, creates one first.
   StatusOr<std::reference_wrapper<const GraphExecutor::LoadedClientGraph>>
   GetOrCreateLoadedClientGraph(
+      const RunOptions& run_options,
       absl::Span<const std::string> input_tensor_names,
       absl::Span<const tensorflow::DataType> input_tensor_dtypes,
       absl::Span<const std::string> output_tensor_names,
