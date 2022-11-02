@@ -301,6 +301,9 @@ PJRT_HostBufferSemantics ConvertToPjRtHostBufferSemantics(
     case xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall:
       return PJRT_HostBufferSemantics::
           PJRT_HostBufferSemantics_kImmutableOnlyDuringCall;
+    case xla::PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes:
+      return PJRT_HostBufferSemantics::
+          PJRT_HostBufferSemantics_kImmutableUntilTransferCompletes;
     case xla::PjRtClient::HostBufferSemantics::kZeroCopy:
       return PJRT_HostBufferSemantics::PJRT_HostBufferSemantics_kZeroCopy;
     default:
@@ -316,6 +319,10 @@ xla::PjRtClient::HostBufferSemantics ConvertFromPjRtHostBufferSemantics(
     case PJRT_HostBufferSemantics::
         PJRT_HostBufferSemantics_kImmutableOnlyDuringCall:
       return xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall;
+    case PJRT_HostBufferSemantics::
+        PJRT_HostBufferSemantics_kImmutableUntilTransferCompletes:
+      return xla::PjRtClient::HostBufferSemantics::
+          kImmutableUntilTransferCompletes;
     case PJRT_HostBufferSemantics::PJRT_HostBufferSemantics_kZeroCopy:
       return xla::PjRtClient::HostBufferSemantics::kZeroCopy;
   }

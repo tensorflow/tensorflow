@@ -412,6 +412,13 @@ typedef enum {
   // PJRT_Client_BufferFromHostBuffer call.
   PJRT_HostBufferSemantics_kImmutableOnlyDuringCall,
 
+  // The runtime may hold onto `data` after the call to
+  // `PJRT_Client_BufferFromHostBuffer`
+  // returns while the runtime completes a transfer to the device. The caller
+  // promises not to mutate or free `data` until the transfer completes, at
+  // which point `done_with_host_buffer` will be triggered.
+  PJRT_HostBufferSemantics_kImmutableUntilTransferCompletes,
+
   // The PjRtBuffer may alias `data` internally and the runtime may use the
   // `data` contents as long as the buffer is alive. The caller promises to
   // keep `data` alive and not to mutate its contents as long as the buffer is
