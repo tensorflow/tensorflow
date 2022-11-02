@@ -111,6 +111,7 @@ class _SavedModelBuilder(object):
     # on the SavedModel MUST use the add_meta_graph() API which does not save
     # weights.
     self._has_saved_variables = False
+    self._saved_asset_files = set()
 
   def _save_and_write_assets(self, meta_graph_def, assets_list=None):
     """Saves asset to the meta graph and writes asset files to disk.
@@ -129,7 +130,8 @@ class _SavedModelBuilder(object):
       return
 
     # Copy assets from source path to destination path.
-    copy_assets_to_destination_dir(asset_filename_map, self._export_dir)
+    copy_assets_to_destination_dir(asset_filename_map, self._export_dir,
+                                   self._saved_asset_files)
 
   def _tag_and_add_meta_graph(self, meta_graph_def, tags, signature_def_map):
     """Tags the meta graph def and adds it to the SavedModel.
@@ -141,7 +143,7 @@ class _SavedModelBuilder(object):
       meta_graph_def: The meta graph def to add to the SavedModel.
       tags: The set of tags to annotate the meta graph def with.
       signature_def_map: The map of signature defs to be added to the meta graph
-          def.
+        def.
     """
     for tag in tags:
       meta_graph_def.meta_info_def.tags.append(tag)
@@ -245,15 +247,15 @@ class _SavedModelBuilder(object):
     Args:
       tags: The set of tags to annotate the meta graph def with.
       signature_def_map: The map of signature defs to be added to the meta graph
-          def.
+        def.
       assets_list: Assets to be saved with SavedModel. Note
           that this list should be a subset of the assets saved as part of
           the first meta graph in the SavedModel.
       clear_devices: Set to true if the device info on the default graph should
-          be cleared.
+        be cleared.
       init_op: Op or group of ops to execute when the graph is loaded. Note
           that when the init_op is specified it is run after the restore op at
-          load-time.
+        load-time.
       train_op: Op or group of opts that trains the model when run. This will
         not be run automatically when the graph is loaded, instead saved in
         a SignatureDef accessible through the exported MetaGraph.
@@ -327,10 +329,10 @@ class _SavedModelBuilder(object):
         def.
       assets_list: Assets to be saved with SavedModel.
       clear_devices: Set to true if the device info on the default graph should
-          be cleared.
+        be cleared.
       init_op: Op or group of ops to execute when the graph is loaded. Note
           that when the init_op is specified it is run after the restore op at
-          load-time.
+        load-time.
       train_op: Op or group of ops that trains the model when run. This will
         not be run automatically when the graph is loaded, instead saved in
         a SignatureDef accessible through the exported MetaGraph.
@@ -464,7 +466,8 @@ class SavedModelBuilder(_SavedModelBuilder):
       return
 
     # Copy assets from source path to destination path.
-    copy_assets_to_destination_dir(asset_filename_map, self._export_dir)
+    copy_assets_to_destination_dir(asset_filename_map, self._export_dir,
+                                   self._saved_asset_files)
 
   def _maybe_add_main_op(self, main_op):
     """Adds main op to the SavedModel.
@@ -759,8 +762,20 @@ def _add_asset_to_metagraph(meta_graph_def, asset_filename, asset_tensor):
   asset_proto.tensor_info.name = asset_tensor.name
 
 
-def copy_assets_to_destination_dir(asset_filename_map, destination_dir):
-  """Copy all assets from source path to destination path."""
+def copy_assets_to_destination_dir(asset_filename_map, destination_dir,
+                                   saved_files=None):
+  """Copy all assets from source path to destination path.
+
+  Args:
+    asset_filename_map: a dict of filenames used for saving the asset in
+      the SavedModel to full paths from which the filenames were derived.
+    destination_dir: the destination directory that assets are stored in.
+    saved_files: a set of destination filepaths that have already been copied
+      and will be skipped
+  """
+  if saved_files is None:
+    saved_files = set()
+
   assets_destination_dir = saved_model_utils.get_or_create_assets_dir(
       destination_dir)
 
@@ -770,11 +785,14 @@ def copy_assets_to_destination_dir(asset_filename_map, destination_dir):
         compat.as_bytes(assets_destination_dir),
         compat.as_bytes(asset_basename))
 
-    # Only copy the asset file to the destination if it does not already
-    # exist. This is to ensure that an asset with the same name defined as
-    # part of multiple graphs is only copied the first time.
-    if not file_io.file_exists(asset_destination_filepath):
-      file_io.copy(asset_source_filepath, asset_destination_filepath)
+    # Copy if source file exists, src & dst are not the same, and dst is not in
+    # saved_files
+    if (file_io.file_exists(asset_source_filepath) and
+        asset_source_filepath != asset_destination_filepath and
+        asset_destination_filepath not in saved_files):
+      file_io.copy(
+          asset_source_filepath, asset_destination_filepath, overwrite=True)
+      saved_files.add(asset_destination_filepath)
 
   tf_logging.info("Assets written to: %s",
                   compat.as_text(assets_destination_dir))
