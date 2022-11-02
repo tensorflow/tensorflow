@@ -30,10 +30,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 
-namespace tensorflow {
-class CoordinationServiceRpcHandler;
-}
-
 namespace tsl {
 class Env;
 
@@ -226,7 +222,7 @@ class CoordinationServiceInterface {
                                const tensorflow::CoordinatedTask& task) = 0;
 
  private:
-  friend class tensorflow::CoordinationServiceRpcHandler;
+  friend class CoordinationServiceRpcHandler;
   friend class CoordinationServiceTest_ListClusterDevices_TfDevice_Test;
   friend class CoordinationServiceTest_ListClusterDevices_XlaDevice_Test;
   friend class

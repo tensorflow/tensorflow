@@ -22,19 +22,12 @@ cc_library(
 
 cc_library(
     name = "coordination_service_rpc_handler",
-    srcs = ["coordination_service_rpc_handler.cc"],
     hdrs = [
         "coordination_service_rpc_handler.h",
     ],
     deps = [
-        ":coordination_service_error_util",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/time",
-        "//tensorflow/core:lib",
-        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
-        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
-        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
-    ] + tf_grpc_cc_dependencies(),
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_rpc_handler",
+    ],
 )
 
 cc_library(

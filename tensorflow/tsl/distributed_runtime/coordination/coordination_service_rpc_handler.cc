@@ -13,28 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_rpc_handler.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_rpc_handler.h"
 
 #include <iterator>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
+#include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
-using tsl::CoordinationServiceAgent;
-using tsl::CoordinationServiceInterface;
-}
+using tensorflow::CoordinatedTask;
+using tensorflow::CoordinationServiceError;
+using tensorflow::KeyValueEntry;
+}  // namespace
 
 void CoordinationServiceRpcHandler::SetAgentInstance(
     CoordinationServiceAgent* agent) {
@@ -300,4 +302,4 @@ void CoordinationServiceRpcHandler::CancelBarrierAsync(
   done(service->CancelBarrier(request->barrier_id(), request->source_task()));
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

@@ -32,7 +32,6 @@ limitations under the License.
 
 namespace tensorflow {
 class CoordinationServiceConfig;
-class CoordinationServiceRpcHandler;
 };  // namespace tensorflow
 
 namespace tsl {
@@ -273,7 +272,7 @@ class CoordinationServiceAgent {
                                const std::map<std::string, std::string>&) = 0;
 
  private:
-  friend class tensorflow::CoordinationServiceRpcHandler;
+  friend class CoordinationServiceRpcHandler;
 };
 
 std::unique_ptr<CoordinationServiceAgent> CreateCoordinationServiceAgent();
