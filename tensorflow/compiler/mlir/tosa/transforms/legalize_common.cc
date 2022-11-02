@@ -2516,8 +2516,7 @@ llvm::Optional<Value> convertFloorModOp(PatternRewriter& rewriter,
       rewriter, op->getLoc(), output_type, a2_mul_lhs_a1_op.getResult());
   auto a4_sub_a2_a3_op = CreateOpAndInfer<tosa::SubOp>(
       rewriter, op->getLoc(), output_type,
-      a2_mul_lhs_a1_op.getResult(), a3_floor_a2_op.getResult())
-      .getResult();
+      a2_mul_lhs_a1_op.getResult(), a3_floor_a2_op.getResult());
   
   return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
                                        a4_sub_a2_a3_op.getResult(),
