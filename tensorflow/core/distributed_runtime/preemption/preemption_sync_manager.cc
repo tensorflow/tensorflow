@@ -24,15 +24,16 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/tsl/distributed_runtime/preemption/preemption_notifier.h"
 #include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 namespace {
+using tsl::CoordinationServiceAgent;
 using tsl::PreemptionNotifier;
 
 constexpr int64_t kPreemptionSyncUnsetCounter = -1;

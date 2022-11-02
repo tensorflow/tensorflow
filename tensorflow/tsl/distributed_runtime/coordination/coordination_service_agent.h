@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_AGENT_H_
-#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_AGENT_H_
+#ifndef TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_AGENT_H_
+#define TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_AGENT_H_
 
 #include <functional>
 #include <map>
@@ -24,18 +24,19 @@ limitations under the License.
 #include <vector>
 
 #include "absl/time/time.h"
-#include "tensorflow/core/distributed_runtime/call_options.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/distributed_runtime/call_options.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/protobuf/coordination_service.pb.h"
+
+namespace tensorflow {
+class CoordinationServiceConfig;
+class CoordinationServiceRpcHandler;
+};  // namespace tensorflow
 
 namespace tsl {
 class Env;
-}  // namespace tsl
-namespace tensorflow {
-class CoordinationServiceConfig;
-class CoordinatedTask;
 
 // CoordinationServiceAgent defines the interface for tasks to communicate with
 // the coordination service instance (which implements
@@ -65,23 +66,24 @@ class CoordinationServiceAgent {
   using StatusOrValueCallback =
       std::function<void(const StatusOr<std::string>&)>;
   // Collection of key-value pairs in the same directory.
-  using StatusOrValueDirCallback =
-      std::function<void(const StatusOr<std::vector<KeyValueEntry>>&)>;
+  using StatusOrValueDirCallback = std::function<void(
+      const StatusOr<std::vector<tensorflow::KeyValueEntry>>&)>;
   using ChangedKeyValuesCallback =
       std::function<void(const std::map<std::string, std::string>&)>;
 
   virtual ~CoordinationServiceAgent() {}
 
   // Initialize coordination service agent.
-  virtual Status Initialize(tsl::Env* env, const std::string& job_name,
-                            int task_id,
-                            const CoordinationServiceConfig& configs,
-                            std::unique_ptr<CoordinationClient> leader_client,
-                            StatusCallback error_fn) = 0;
-  virtual Status Initialize(tsl::Env* env, const CoordinatedTask& task,
-                            const CoordinationServiceConfig& configs,
-                            std::unique_ptr<CoordinationClient> leader_client,
-                            StatusCallback error_fn) = 0;
+  virtual Status Initialize(
+      tsl::Env* env, const std::string& job_name, int task_id,
+      const tensorflow::CoordinationServiceConfig& configs,
+      std::unique_ptr<CoordinationClient> leader_client,
+      StatusCallback error_fn) = 0;
+  virtual Status Initialize(
+      tsl::Env* env, const tensorflow::CoordinatedTask& task,
+      const tensorflow::CoordinationServiceConfig& configs,
+      std::unique_ptr<CoordinationClient> leader_client,
+      StatusCallback error_fn) = 0;
 
   // Return true if the coordination service agent has been initialized.
   virtual bool IsInitialized() = 0;
@@ -109,10 +111,11 @@ class CoordinationServiceAgent {
   // Possible service errors:
   //   - FailedPrecondition: Agent is not in CONNECTED state.
   //   - InvalidArgument: Unexpected task request
-  virtual Status WaitForAllTasks(const DeviceInfo& local_devices) = 0;
+  virtual Status WaitForAllTasks(
+      const tensorflow::DeviceInfo& local_devices) = 0;
 
   // Get the device attributes of tasks from remote tasks in the cluster.
-  virtual const DeviceInfo& GetClusterDeviceInfo() = 0;
+  virtual const tensorflow::DeviceInfo& GetClusterDeviceInfo() = 0;
 
   // State transition in coordination service agent:
   //
@@ -123,11 +126,11 @@ class CoordinationServiceAgent {
   //                                         Reset
 
   // Get task associated with this agent.
-  virtual StatusOr<CoordinatedTask> GetOwnTask() = 0;
+  virtual StatusOr<tensorflow::CoordinatedTask> GetOwnTask() = 0;
 
   // Get status of a remote task.
-  virtual StatusOr<std::vector<CoordinatedTaskStateInfo>> GetTaskState(
-      const std::vector<CoordinatedTask>& task) = 0;
+  virtual StatusOr<std::vector<tensorflow::CoordinatedTaskStateInfo>>
+  GetTaskState(const std::vector<tensorflow::CoordinatedTask>& task) = 0;
 
   // Report error to coordination service. This will invoke the error callback.
   // Note that the error payload will set `is_reported_error` to true, to
@@ -183,7 +186,7 @@ class CoordinationServiceAgent {
   // This is not a blocking call.
   // Agent does not need to be connected to utilize the distributed key-value
   // store.
-  virtual StatusOr<std::vector<KeyValueEntry>> GetKeyValueDir(
+  virtual StatusOr<std::vector<tensorflow::KeyValueEntry>> GetKeyValueDir(
       const std::string& key) = 0;
   virtual void GetKeyValueDirAsync(const std::string& key,
                                    StatusOrValueDirCallback done) = 0;
@@ -238,14 +241,14 @@ class CoordinationServiceAgent {
   //       list of participating tasks.
   //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state. Or the
   //       same barrier_id was already used previously.
-  virtual Status WaitAtBarrier(const std::string& barrier_id,
-                               absl::Duration timeout,
-                               const std::vector<CoordinatedTask>& tasks) = 0;
+  virtual Status WaitAtBarrier(
+      const std::string& barrier_id, absl::Duration timeout,
+      const std::vector<tensorflow::CoordinatedTask>& tasks) = 0;
 
-  virtual void WaitAtBarrierAsync(const std::string& barrier_id,
-                                  absl::Duration timeout,
-                                  const std::vector<CoordinatedTask>& tasks,
-                                  StatusCallback done) = 0;
+  virtual void WaitAtBarrierAsync(
+      const std::string& barrier_id, absl::Duration timeout,
+      const std::vector<tensorflow::CoordinatedTask>& tasks,
+      StatusCallback done) = 0;
 
   // Aborts the barrier if it is ongoing.
   // Current and future WaitAtBarrier() calls with the same id will return a
@@ -270,11 +273,11 @@ class CoordinationServiceAgent {
                                const std::map<std::string, std::string>&) = 0;
 
  private:
-  friend class CoordinationServiceRpcHandler;
+  friend class tensorflow::CoordinationServiceRpcHandler;
 };
 
 std::unique_ptr<CoordinationServiceAgent> CreateCoordinationServiceAgent();
 
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_AGENT_H_
+#endif  // TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_AGENT_H_

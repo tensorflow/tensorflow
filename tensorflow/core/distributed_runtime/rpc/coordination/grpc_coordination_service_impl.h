@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_COORDINATION_GRPC_COORDINATION_SERVICE_IMPL_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_COORDINATION_GRPC_COORDINATION_SERVICE_IMPL_H_
 
+#include <memory>
+
 #include "grpcpp/alarm.h"
 #include "grpcpp/completion_queue.h"
 #include "grpcpp/server_builder.h"
@@ -24,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/grpc_util.h"
@@ -45,7 +48,8 @@ class GrpcCoordinationServiceImpl : public tsl::AsyncServiceInterface {
 
   void HandleRPCsLoop() override;
   void Shutdown() override;
-  void SetCoordinationServiceAgentInstance(CoordinationServiceAgent* agent) {
+  void SetCoordinationServiceAgentInstance(
+      tsl::CoordinationServiceAgent* agent) {
     rpc_handler_.SetAgentInstance(agent);
   }
 

@@ -36,6 +36,7 @@ cc_library(
         "//tensorflow/core:ptr_util",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_rpc_handler",
         "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/tsl/distributed_runtime/rpc:grpc_call",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
         "//tensorflow/tsl/distributed_runtime/rpc:grpc_util",

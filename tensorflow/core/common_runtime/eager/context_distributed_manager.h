@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/tsl/distributed_runtime/preemption/preemption_notifier.h"
 #endif  // !IS_MOBILE_PLATFORM
 
@@ -49,10 +49,10 @@ class EagerContextDistributedManager
   Status CheckRemoteAlive(const std::string& remote_task_name,
                           bool* is_alive) override;
 
-  CoordinationServiceAgent* GetCoordinationServiceAgent() override {
+  tsl::CoordinationServiceAgent* GetCoordinationServiceAgent() override {
     return coordination_service_agent_;
   }
-  void SetCoordinationServiceAgent(CoordinationServiceAgent* agent) {
+  void SetCoordinationServiceAgent(tsl::CoordinationServiceAgent* agent) {
     coordination_service_agent_ = agent;
   }
   void SetPreemptionNotifier(
@@ -63,7 +63,7 @@ class EagerContextDistributedManager
  private:
   EagerContext* context_;
   // Owned by context_->GetServer()->worker_env()->session_mgr.
-  CoordinationServiceAgent* coordination_service_agent_ = nullptr;
+  tsl::CoordinationServiceAgent* coordination_service_agent_ = nullptr;
   std::unique_ptr<tsl::PreemptionNotifier> preemption_notifier_;
 };
 #endif  // !IS_MOBILE_PLATFORM

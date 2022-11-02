@@ -490,7 +490,7 @@ PYBIND11_MODULE(xla_extension, m) {
           "initialize",
           [](tensorflow::PreemptionSyncManager& manager,
              DistributedRuntimeClient* client) {
-            TF_ASSIGN_OR_RETURN(tensorflow::CoordinationServiceAgent * agent,
+            TF_ASSIGN_OR_RETURN(tsl::CoordinationServiceAgent * agent,
                                 client->GetCoordinationServiceAgent());
             return manager.Initialize(agent);
           },

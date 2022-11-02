@@ -18,7 +18,7 @@ tf_cuda_library(
     srcs = ["coordination_test_opkernel_registration.cc"],
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
     ],
     alwayslink = 1,
 )
@@ -97,9 +97,9 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/distributed_runtime:server_lib",
-        "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/core/platform:env",
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
     ],
 )
 
@@ -129,9 +129,9 @@ tf_cc_test(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:kernel_and_device",
         "//tensorflow/core/distributed_runtime:server_lib",
-        "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:env",
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
     ],
 )

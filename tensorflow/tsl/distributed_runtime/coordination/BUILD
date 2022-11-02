@@ -126,6 +126,53 @@ tsl_cc_test(
     ],
 )
 
+tsl_gpu_library(
+    name = "coordination_service_agent",
+    srcs = ["coordination_service_agent.cc"],
+    hdrs = ["coordination_service_agent.h"],
+    deps = [
+        ":coordination_client",
+        ":coordination_service_error_util",
+        "//tensorflow/tsl/distributed_runtime:call_options",
+        "//tensorflow/tsl/framework:cancellation",
+        "//tensorflow/tsl/lib/monitoring:gauge",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:random",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:thread_annotations",
+        "//tensorflow/tsl/protobuf:coordination_config_proto_cc",
+        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+tsl_cc_test(
+    name = "coordination_service_agent_test",
+    srcs = ["coordination_service_agent_test.cc"],
+    deps = [
+        ":coordination_client",
+        ":coordination_service_agent",
+        "//tensorflow/tsl/distributed_runtime:call_options",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:env_impl",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/protobuf:coordination_config_proto_cc_impl",
+        "//tensorflow/tsl/protobuf:coordination_service_proto_cc_impl",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/time",
+    ],
+)
+
 filegroup(
     name = "pywrap_required_hdrs",
     srcs = [

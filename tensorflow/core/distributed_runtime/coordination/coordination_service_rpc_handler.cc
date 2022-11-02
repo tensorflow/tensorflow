@@ -21,16 +21,18 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 namespace {
+using tsl::CoordinationServiceAgent;
 using tsl::CoordinationServiceInterface;
 }
 

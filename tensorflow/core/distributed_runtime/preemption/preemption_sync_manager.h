@@ -18,8 +18,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/tsl/distributed_runtime/preemption/preemption_notifier.h"
 
 namespace tensorflow {
@@ -35,11 +35,11 @@ class PreemptionSyncManager {
  public:
   virtual ~PreemptionSyncManager() = default;
 
-  virtual Status Initialize(CoordinationServiceAgent* agent) = 0;
-  virtual Status Initialize(CoordinationServiceAgent* agent,
+  virtual Status Initialize(tsl::CoordinationServiceAgent* agent) = 0;
+  virtual Status Initialize(tsl::CoordinationServiceAgent* agent,
                             const std::string& preemption_notifier_type) = 0;
   virtual Status Initialize(
-      CoordinationServiceAgent* agent,
+      tsl::CoordinationServiceAgent* agent,
       std::unique_ptr<tsl::PreemptionNotifier> notifier) = 0;
 
   // Check if the synchronized point has been reached. When a task has been

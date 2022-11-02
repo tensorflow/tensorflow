@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 
 #include <memory>
 #include <string>
@@ -23,18 +23,22 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/distributed_runtime/call_options.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/distributed_runtime/call_options.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 #include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
+using tensorflow::CoordinatedTask;
+using tensorflow::CoordinationServiceConfig;
+using tensorflow::KeyValueEntry;
+
 using ::testing::_;
 using ::testing::DoAll;
 using ::testing::InvokeArgument;
@@ -471,4 +475,4 @@ TEST_F(CoordinationServiceAgentTest, Connect_AbortedErrorShouldFailEventually) {
 }
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace tsl

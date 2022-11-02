@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "tensorflow/core/platform/env.h"
@@ -34,13 +33,16 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/tsl/distributed_runtime/preemption/preemption_notifier.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 
 namespace tensorflow {
 namespace {
+using tsl::CoordinationServiceAgent;
 using tsl::CoordinationServiceInterface;
+using tsl::CreateCoordinationServiceAgent;
 
 constexpr char kJobName[] = "test_worker";
 

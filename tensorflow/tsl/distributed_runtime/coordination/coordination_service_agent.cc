@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 
 #include <algorithm>
 #include <iterator>
@@ -31,20 +31,26 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/distributed_runtime/call_options.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
-#include "tensorflow/core/framework/cancellation.h"
-#include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/random.h"
-#include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/tsl/distributed_runtime/call_options.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
+#include "tensorflow/tsl/framework/cancellation.h"
+#include "tensorflow/tsl/lib/monitoring/gauge.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/random.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"
 #include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 #include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
-namespace tensorflow {
+namespace tsl {
+using tensorflow::CoordinatedTask;
+using tensorflow::CoordinatedTaskState;
+using tensorflow::CoordinatedTaskStateInfo;
+using tensorflow::CoordinationServiceConfig;
+using tensorflow::DeviceInfo;
+using tensorflow::KeyValueEntry;
 
 auto* enabled_usage_metric =
     monitoring::Gauge<bool, 0>::New("/coordination_service/agent/enabled",
@@ -277,8 +283,8 @@ Status CoordinationServiceAgentImpl::Connect() {
            // 2. aborted duplicate task registration error - this means that
            // this task restarted and is trying to reconnect but the service
            // has not restarted yet.
-           (connect_status.GetPayload(
-                tensorflow::CoordinationErrorPayloadKey()) == std::nullopt ||
+           (connect_status.GetPayload(CoordinationErrorPayloadKey()) ==
+                std::nullopt ||
             errors::IsAborted(connect_status)));
   if (!connect_status.ok()) {
     SetError(connect_status);
@@ -830,4 +836,4 @@ std::unique_ptr<CoordinationServiceAgent> CreateCoordinationServiceAgent() {
   return std::make_unique<CoordinationServiceAgentImpl>();
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

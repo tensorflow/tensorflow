@@ -31,9 +31,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/random.h"
 #include "tensorflow/tsl/protobuf/coordination_config.pb.h"
@@ -58,8 +58,8 @@ class DistributedRuntimeClientImpl : public DistributedRuntimeClient {
   xla::Status KeyValueSet(std::string key, std::string value) override;
   xla::Status WaitAtBarrier(std::string barrier_id,
                             absl::Duration timeout) override;
-  xla::StatusOr<tensorflow::CoordinationServiceAgent*>
-  GetCoordinationServiceAgent() override;
+  xla::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
+      override;
 
  private:
   // Entry point for the heartbeat thread.
@@ -125,11 +125,11 @@ class DistributedRuntimeCoordinationServiceClient
   xla::Status KeyValueSet(std::string key, std::string value) override;
   xla::Status WaitAtBarrier(std::string barrier_id,
                             absl::Duration timeout) override;
-  xla::StatusOr<tensorflow::CoordinationServiceAgent*>
-  GetCoordinationServiceAgent() override;
+  xla::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
+      override;
 
  private:
-  std::unique_ptr<tensorflow::CoordinationServiceAgent> coord_agent_;
+  std::unique_ptr<tsl::CoordinationServiceAgent> coord_agent_;
   tensorflow::CoordinationServiceConfig config_;
   absl::Duration min_connect_barrier_timeout_;
   int task_id_;
@@ -376,7 +376,7 @@ xla::Status DistributedRuntimeClientImpl::WaitAtBarrier(
   return FromGrpcStatus(status);
 }
 
-xla::StatusOr<tensorflow::CoordinationServiceAgent*>
+xla::StatusOr<tsl::CoordinationServiceAgent*>
 DistributedRuntimeClientImpl::GetCoordinationServiceAgent() {
   return xla::Internal(
       "Invoking GetCoordinationServiceAgent() while coordination service is "
@@ -455,7 +455,7 @@ DistributedRuntimeCoordinationServiceClient::
 
   std::unique_ptr<tensorflow::CoordinationClient> leader_client;
   leader_client.reset(tensorflow::NewGrpcCoordinationClient(channel));
-  coord_agent_ = tensorflow::CreateCoordinationServiceAgent();
+  coord_agent_ = tsl::CreateCoordinationServiceAgent();
   const Status status =
       coord_agent_->Initialize(options.env, "jax_worker", options.node_id,
                                config, std::move(leader_client), error_fn);
@@ -535,7 +535,7 @@ xla::Status DistributedRuntimeCoordinationServiceClient::WaitAtBarrier(
   return coord_agent_->WaitAtBarrier(barrier_id, timeout, /*tasks=*/{});
 }
 
-xla::StatusOr<tensorflow::CoordinationServiceAgent*>
+xla::StatusOr<tsl::CoordinationServiceAgent*>
 DistributedRuntimeCoordinationServiceClient::GetCoordinationServiceAgent() {
   return coord_agent_.get();
 }

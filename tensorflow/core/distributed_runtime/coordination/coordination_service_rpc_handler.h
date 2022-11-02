@@ -19,16 +19,15 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
-class CoordinationServiceAgent;
-
 class CoordinationServiceRpcHandler {
  public:
   explicit CoordinationServiceRpcHandler() {}
 
-  void SetAgentInstance(CoordinationServiceAgent* agent);
+  void SetAgentInstance(tsl::CoordinationServiceAgent* agent);
 
   void RegisterTaskAsync(const RegisterTaskRequest* request,
                          RegisterTaskResponse* response, StatusCallback done);
@@ -84,7 +83,7 @@ class CoordinationServiceRpcHandler {
 
  private:
   mutex agent_mu_;
-  CoordinationServiceAgent* agent_ TF_GUARDED_BY(agent_mu_) = nullptr;
+  tsl::CoordinationServiceAgent* agent_ TF_GUARDED_BY(agent_mu_) = nullptr;
 };
 
 }  // namespace tensorflow
