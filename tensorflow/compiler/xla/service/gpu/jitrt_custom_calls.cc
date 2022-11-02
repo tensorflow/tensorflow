@@ -51,6 +51,7 @@
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/io_feed.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/memcpy.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
@@ -381,77 +382,6 @@ static bool Gemm(runtime::ExecutionContext* ctx, void** args, void** attrs,
                              .Attr<DotDimensionNumbers>("dot_dims")
                              .Attr<int64_t>("uid")
                              .To<RuntimeChecks()>(Gemm::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
-
-// -------------------------------------------------------------------------- //
-
-namespace {
-
-enum class MemcpyDirection { kDeviceToDevice, kDeviceToHost, kHostToDevice };
-
-template <MemcpyDirection direction>
-struct Memcpy {
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          runtime::StridedMemrefView dst,
-                          runtime::StridedMemrefView src) const;
-  static Memcpy Handler() { return Memcpy(); }
-};
-}  // namespace
-
-template <MemcpyDirection direction>
-absl::Status Memcpy<direction>::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    runtime::StridedMemrefView dst, runtime::StridedMemrefView src) const {
-  se::Stream* stream = run_options->stream();
-
-  if (dst.sizes != src.sizes) {
-    return absl::InvalidArgumentError(
-        "Source memref sizes do not match destination memref sizes");
-  }
-
-  if (dst.strides != src.strides) {
-    return absl::InvalidArgumentError(
-        "Source memref strides do not match destination memref strides");
-  }
-
-  switch (direction) {
-    case MemcpyDirection::kDeviceToDevice: {
-      se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
-      se::DeviceMemoryBase src_data = GetDeviceAddress(src);
-      stream->ThenMemcpy(&dst_data, src_data, src_data.size());
-    } break;
-    case MemcpyDirection::kDeviceToHost: {
-      se::DeviceMemoryBase src_data = GetDeviceAddress(src);
-      stream->ThenMemcpy(dst.data, src_data, src_data.size());
-    } break;
-    case MemcpyDirection::kHostToDevice: {
-      se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
-      stream->ThenMemcpy(&dst_data, src.data, dst_data.size());
-    } break;
-  }
-
-  // TODO(ezhulenev): H2D and D2H memcpy instead of blocking the execution
-  // thread should return an async token that will become available when
-  // transfer is completed.
-  if (direction != MemcpyDirection::kDeviceToDevice) {
-    auto st = stream->BlockHostUntilDone();
-    if (!st.ok()) return ToAbslStatus(st);
-  }
-
-  return absl::OkStatus();
-}
-
-template <MemcpyDirection direction>
-static bool MemcpyFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                     void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.memcpy")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<runtime::StridedMemrefView>()  // dst
-                             .Arg<runtime::StridedMemrefView>()  // src
-                             .To<RuntimeChecks()>(Memcpy<direction>::Handler())
                              .release();
 
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
@@ -1532,13 +1462,7 @@ void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry) {
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   RegisterConvCustomCalls(registry);
-
-  registry.Register("xla.gpu.memcpy.d2d",
-                    &MemcpyFn<MemcpyDirection::kDeviceToDevice>);
-  registry.Register("xla.gpu.memcpy.h2d",
-                    &MemcpyFn<MemcpyDirection::kHostToDevice>);
-  registry.Register("xla.gpu.memcpy.d2h",
-                    &MemcpyFn<MemcpyDirection::kDeviceToHost>);
+  RegisterMemcpyCustomCalls(registry);
   registry.Register("xla.gpu.memset", &MemsetFn);
   RegisterIoFeedCustomCalls(registry);
 

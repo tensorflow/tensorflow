@@ -138,6 +138,20 @@ cc_library(
 )
 
 cc_library(
+    name = "memcpy",
+    srcs = ["memcpy.cc"],
+    hdrs = ["memcpy.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service/gpu:io_feed_manager",
+    ],
+)
+
+cc_library(
     name = "support",
     hdrs = ["support.h"],
     deps = [

@@ -541,6 +541,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu/runtime:conv",
         "//tensorflow/compiler/xla/service/gpu/runtime:io_feed",
+        "//tensorflow/compiler/xla/service/gpu/runtime:memcpy",
         "//tensorflow/compiler/xla/service/gpu/runtime:fft",
         "//tensorflow/compiler/xla/service/gpu/runtime:kernel_launch",
         "//tensorflow/compiler/xla/service/gpu/runtime:cublas_lt_matmul",
