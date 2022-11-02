@@ -1446,5 +1446,15 @@ TEST_F(XlaBuilderTest, ComplexAbsConstant) {
             PrimitiveType::F32);
 }
 
+TEST_F(XlaBuilderTest, OutfeedDummyTupleSharding) {
+  XlaBuilder b(TestName());
+  XlaOp value = ConstantR1<int32_t>(&b, {0});
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, /* dimensions= */ {1},
+                                                    /* minor_to_major= */ {0});
+  Outfeed(value, shape, "");
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  EXPECT_FALSE(module->entry_computation()->root_instruction()->has_sharding());
+}
+
 }  // namespace
 }  // namespace xla

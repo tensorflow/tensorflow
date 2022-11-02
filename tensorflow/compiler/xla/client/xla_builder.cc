@@ -2007,7 +2007,7 @@ void XlaBuilder::Outfeed(XlaOp operand, const Shape& shape_with_layout,
 
     // The dummy tuple should have no sharding.
     {
-      XlaScopedShardingAssignment scoped_sharding(this, OpSharding());
+      XlaScopedShardingAssignment scoped_sharding(this, std::nullopt);
       TF_ASSIGN_OR_RETURN(
           XlaOp empty_tuple,
           AddInstruction(std::move(tuple_instr), HloOpcode::kTuple, {}));
