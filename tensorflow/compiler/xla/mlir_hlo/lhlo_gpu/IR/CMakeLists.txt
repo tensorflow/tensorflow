@@ -28,3 +28,19 @@ mlir_tablegen(lhlo_gpu_ops_dialect.cc.inc -gen-dialect-defs)
 add_public_tablegen_target(MLIRlhlo_gpu_opsIncGen)
 add_dependencies(mlir-headers MLIRlhlo_gpu_opsIncGen)
 
+
+include_directories(BEFORE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_mlir_dialect_library(LmhloGPUDialect
+  lhlo_gpu_ops.cc
+
+  DEPENDS
+  MLIRlhlo_gpu_opsIncGen
+
+  LINK_LIBS PUBLIC
+  MhloDialect
+  MLIRIR
+  HloOpsCommon
+)

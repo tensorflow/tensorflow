@@ -15,7 +15,7 @@ limitations under the License.
 
 // This file defines the operations used in the LMHLO GPU dialect.
 
-#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "lhlo_gpu/IR/lhlo_gpu_ops.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -73,10 +73,10 @@ static FailureOr<SmallVector<int64_t>> parseI64Array(AsmParser &parser) {
 }  // namespace mlir
 
 // Include order below matters.
-#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_dialect.cc.inc"
-#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.cc.inc"
+#include "lhlo_gpu/IR/lhlo_gpu_ops_dialect.cc.inc"
+#include "lhlo_gpu/IR/lhlo_gpu_ops_enums.cc.inc"
 #define GET_ATTRDEF_CLASSES
-#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_attrdefs.cc.inc"
+#include "lhlo_gpu/IR/lhlo_gpu_ops_attrdefs.cc.inc"
 
 namespace mlir {
 namespace lmhlo_gpu {
@@ -87,11 +87,11 @@ void LmhloGpuDialect::initialize() {
   getContext()->loadDialect<mhlo::MhloDialect>();
   addOperations<
 #define GET_OP_LIST
-#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.cc.inc"
+#include "lhlo_gpu/IR/lhlo_gpu_ops.cc.inc"
       >();
   addAttributes<
 #define GET_ATTRDEF_LIST
-#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_attrdefs.cc.inc"
+#include "lhlo_gpu/IR/lhlo_gpu_ops_attrdefs.cc.inc"
       >();
 }
 
@@ -113,4 +113,4 @@ mlir::LogicalResult AllReduceStartOp::verify() {
 }  // namespace mlir
 
 #define GET_OP_CLASSES
-#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.cc.inc"
+#include "lhlo_gpu/IR/lhlo_gpu_ops.cc.inc"

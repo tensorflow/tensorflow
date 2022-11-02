@@ -20,7 +20,7 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/EnumAttr.td"
 include "mlir/IR/AttrTypeBase.td"
 
-include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_base.td"
+include "lhlo_gpu/IR/lhlo_gpu_ops_base.td"
 
 def ActivationModeNone : I32EnumAttrCase<"None", 0>;
 def ActivationModeSigmoid : I32EnumAttrCase<"Sigmoid", 1>;

@@ -15,5 +15,4 @@
 #
 add_subdirectory(gml_st)
 add_subdirectory(lhlo)
-add_subdirectory(lhlo_gpu)
 add_subdirectory(mhlo)

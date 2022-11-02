@@ -35,11 +35,11 @@ class OpBuilder;
 }  // namespace mlir
 
 // Include order below matters.
-#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_dialect.h.inc"
-#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.h.inc"
+#include "lhlo_gpu/IR/lhlo_gpu_ops_dialect.h.inc"
+#include "lhlo_gpu/IR/lhlo_gpu_ops_enums.h.inc"
 #define GET_ATTRDEF_CLASSES
-#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_attrdefs.h.inc"
+#include "lhlo_gpu/IR/lhlo_gpu_ops_attrdefs.h.inc"
 #define GET_OP_CLASSES
-#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h.inc"
+#include "lhlo_gpu/IR/lhlo_gpu_ops.h.inc"
 
 #endif  // MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H
