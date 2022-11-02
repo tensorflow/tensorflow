@@ -11,32 +11,34 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
+
+set(LLVM_TARGET_DEFINITIONS thlo_ops.td)
+mlir_tablegen(thlo_ops.h.inc -gen-op-decls)
+mlir_tablegen(thlo_ops.cc.inc -gen-op-defs)
+mlir_tablegen(thlo_dialect.h.inc -gen-dialect-decls)
+mlir_tablegen(thlo_dialect.cc.inc -gen-dialect-defs)
+
+add_public_tablegen_target(MLIRthlo_opsIncGen)
+add_dependencies(mlir-headers MLIRthlo_opsIncGen)
+
+
 include_directories(BEFORE
     ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_mlir_library(ThloBufferizableOpInterface
-  bufferizable_op_interface_impl.cc
-
-  LINK_LIBS PUBLIC
-  THLODialect
-  MLIRBufferizationDialect
-  MLIRDestinationStyleOpInterface
-)
-
-add_mlir_library(ThloPasses
-  legalize_sort.cc
+add_mlir_dialect_library(THLODialect
+  thlo_ops.cc
 
   DEPENDS
-  MLIRThloPassIncGen
+  MLIRthlo_opsIncGen
+  MLIRGmlStTilingInterfaceIncGen
 
   LINK_LIBS PUBLIC
-  MLIRArithDialect
-  MLIRArithUtils
-  MLIRFuncDialect
+  GmlStDialect
+  MLIRDestinationStyleOpInterface
+  MLIRIR
   MLIRMemRefDialect
-  MLIRPass
-  MLIRSCFDialect
-  MLIRTransforms
+  MLIRSideEffectInterfaces
+  MLIRSupport
+  MLIRTensorDialect
 )

@@ -22,13 +22,13 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
-#include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "thlo/IR/thlo_ops.h"
 
 namespace mlir::gml_st {
 namespace {

@@ -17,8 +17,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
-#include "mlir-hlo/Dialect/thlo/transforms/passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -26,12 +24,14 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "thlo/IR/thlo_ops.h"
+#include "thlo/transforms/passes.h"
 
 namespace mlir {
 namespace thlo {
 
 #define GEN_PASS_DEF_THLOLEGALIZESORTPASS
-#include "mlir-hlo/Dialect/thlo/transforms/thlo_passes.h.inc"
+#include "thlo/transforms/thlo_passes.h.inc"
 
 namespace {
 

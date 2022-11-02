@@ -28,10 +28,10 @@ limitations under the License.
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
 // Generated dialect declarations.
-#include "mlir-hlo/Dialect/thlo/IR/thlo_dialect.h.inc"
+#include "thlo/IR/thlo_dialect.h.inc"
 
 // Generated operation classes.
 #define GET_OP_CLASSES
-#include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h.inc"
+#include "thlo/IR/thlo_ops.h.inc"
 
 #endif  // MLIR_HLO_DIALECT_THLO_IR_THLO_OPS_H

@@ -32,13 +32,13 @@ class FuncOp;
 namespace thlo {
 
 #define GEN_PASS_DECL_THLOLEGALIZESORTPASS
-#include "mlir-hlo/Dialect/thlo/transforms/thlo_passes.h.inc"
+#include "thlo/transforms/thlo_passes.h.inc"
 
 /// Lowers sort to Arith, MemRef, and SCF
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeSortPass();
 
 #define GEN_PASS_REGISTRATION
-#include "mlir-hlo/Dialect/thlo/transforms/thlo_passes.h.inc"
+#include "thlo/transforms/thlo_passes.h.inc"
 
 }  // namespace thlo
 }  // namespace mlir

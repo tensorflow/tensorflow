@@ -16,3 +16,32 @@
 set(LLVM_TARGET_DEFINITIONS thlo_passes.td)
 mlir_tablegen(thlo_passes.h.inc -gen-pass-decls -name AllThlo)
 add_public_tablegen_target(MLIRThloPassIncGen)
+
+include_directories(BEFORE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_mlir_library(ThloBufferizableOpInterface
+  bufferizable_op_interface_impl.cc
+
+  LINK_LIBS PUBLIC
+  THLODialect
+  MLIRBufferizationDialect
+  MLIRDestinationStyleOpInterface
+)
+
+add_mlir_library(ThloPasses
+  legalize_sort.cc
+
+  DEPENDS
+  MLIRThloPassIncGen
+
+  LINK_LIBS PUBLIC
+  MLIRArithDialect
+  MLIRArithUtils
+  MLIRFuncDialect
+  MLIRMemRefDialect
+  MLIRPass
+  MLIRSCFDialect
+  MLIRTransforms
+)

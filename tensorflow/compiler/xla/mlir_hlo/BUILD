@@ -1006,15 +1006,15 @@ cc_library(
         # shouldn't be. Ideally, this entire target should be removed.
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h.inc",
         "include/mlir-hlo/Dialect/lhlo/transforms/lmhlo_passes.h.inc",
-        "include/mlir-hlo/Dialect/thlo/transforms/thlo_passes.h.inc",
+        "thlo/transforms/thlo_passes.h.inc",
         "include/mlir-hlo/Transforms/passes.h.inc",
     ],
     hdrs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
         "include/mlir-hlo/Dialect/lhlo/transforms/passes.h",
         "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
-        "include/mlir-hlo/Dialect/thlo/transforms/passes.h",
         "include/mlir-hlo/Transforms/passes.h",
+        "thlo/transforms/passes.h",
     ],
     deps = [
         ":chlo_legalize_to_hlo",
@@ -1671,7 +1671,7 @@ cc_library(
 
 td_library(
     name = "thlo_ops_td_files",
-    srcs = glob(["include/mlir-hlo/Dialect/thlo/IR/*.td"]),
+    srcs = glob(["thlo/IR/*.td"]),
     compatible_with = get_compatible_with_cloud(),
     includes = ["include"],
     deps = [
@@ -1684,27 +1684,26 @@ td_library(
 gentbl_cc_library(
     name = "thlo_ops_inc_gen",
     compatible_with = get_compatible_with_cloud(),
-    strip_include_prefix = "include",
     tbl_outs = [
         (
             ["-gen-op-decls"],
-            "include/mlir-hlo/Dialect/thlo/IR/thlo_ops.h.inc",
+            "thlo/IR/thlo_ops.h.inc",
         ),
         (
             ["-gen-op-defs"],
-            "include/mlir-hlo/Dialect/thlo/IR/thlo_ops.cc.inc",
+            "thlo/IR/thlo_ops.cc.inc",
         ),
         (
             ["-gen-dialect-decls"],
-            "include/mlir-hlo/Dialect/thlo/IR/thlo_dialect.h.inc",
+            "thlo/IR/thlo_dialect.h.inc",
         ),
         (
             ["-gen-dialect-defs"],
-            "include/mlir-hlo/Dialect/thlo/IR/thlo_dialect.cc.inc",
+            "thlo/IR/thlo_dialect.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/thlo/IR/thlo_ops.td",
+    td_file = "thlo/IR/thlo_ops.td",
     td_srcs = ["include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.td"],
     deps = [
         ":thlo_ops_td_files",
@@ -1714,9 +1713,12 @@ gentbl_cc_library(
 
 cc_library(
     name = "thlo",
-    srcs = ["lib/Dialect/thlo/IR/thlo_ops.cc"],
-    hdrs = ["include/mlir-hlo/Dialect/thlo/IR/thlo_ops.h"],
-    includes = ["include"],
+    srcs = ["thlo/IR/thlo_ops.cc"],
+    hdrs = ["thlo/IR/thlo_ops.h"],
+    includes = [
+        ".",
+        "include",
+    ],
     deps = [
         ":gml_st",
         ":thlo_ops_inc_gen",
@@ -1742,9 +1744,12 @@ cc_library(
 
 cc_library(
     name = "thlo_bufferizable_op_interface",
-    srcs = ["lib/Dialect/thlo/transforms/bufferizable_op_interface_impl.cc"],
-    hdrs = ["include/mlir-hlo/Dialect/thlo/transforms/bufferizable_op_interface_impl.h"],
-    includes = ["include"],
+    srcs = ["thlo/transforms/bufferizable_op_interface_impl.cc"],
+    hdrs = ["thlo/transforms/bufferizable_op_interface_impl.h"],
+    includes = [
+        ".",
+        "include",
+    ],
     deps = [
         ":thlo",
         "@llvm-project//mlir:BufferizationDialect",
@@ -1755,29 +1760,28 @@ cc_library(
 gentbl_cc_library(
     name = "thlo_passes_inc_gen",
     compatible_with = get_compatible_with_cloud(),
-    strip_include_prefix = "include",
     tbl_outs = [
         (
             [
                 "-gen-pass-decls",
                 "-name=AllThlo",
             ],
-            "include/mlir-hlo/Dialect/thlo/transforms/thlo_passes.h.inc",
+            "thlo/transforms/thlo_passes.h.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/thlo/transforms/thlo_passes.td",
+    td_file = "thlo/transforms/thlo_passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
 )
 
 cc_library(
     name = "thlo_passes",
     srcs = [
-        "include/mlir-hlo/Dialect/thlo/transforms/thlo_passes.h.inc",
-        "lib/Dialect/thlo/transforms/legalize_sort.cc",
+        "thlo/transforms/legalize_sort.cc",
+        "thlo/transforms/thlo_passes.h.inc",
     ],
     hdrs = [
-        "include/mlir-hlo/Dialect/thlo/transforms/passes.h",
+        "thlo/transforms/passes.h",
     ],
     deps = [
         ":thlo",

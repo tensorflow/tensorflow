@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
-#include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
@@ -25,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/Interfaces/DestinationStyleOpInterface.h"
+#include "thlo/IR/thlo_ops.h"
 
 namespace mlir {
 namespace gml_st {

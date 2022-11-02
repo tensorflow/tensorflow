@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/thlo/IR/thlo_ops.h"
 
 int main(int argc, char **argv) {
   mlir::mhlo::registerAllMhloPasses();

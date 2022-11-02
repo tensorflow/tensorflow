@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
+#include "thlo/IR/thlo_ops.h"
 
 #include <algorithm>
 #include <functional>
@@ -27,7 +27,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
-#include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
@@ -41,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Interfaces/DestinationStyleOpInterface.h"
+#include "thlo/IR/thlo_ops.h"
 
 namespace mlir {
 namespace {
@@ -181,7 +181,7 @@ Value getMaterializedTile(OpBuilder &b, Location loc,
 }  // namespace mlir
 
 // Generated dialect definitions.
-#include "mlir-hlo/Dialect/thlo/IR/thlo_dialect.cc.inc"
+#include "thlo/IR/thlo_dialect.cc.inc"
 
 namespace mlir {
 namespace thlo {
@@ -189,7 +189,7 @@ namespace thlo {
 void THLODialect::initialize() {
   addOperations<
 #define GET_OP_LIST
-#include "mlir-hlo/Dialect/thlo/IR/thlo_ops.cc.inc"
+#include "thlo/IR/thlo_ops.cc.inc"
       >();
 }
 
@@ -1091,4 +1091,4 @@ FailureOr<Value> SortOp::generateResultTileValue(OpBuilder &b,
 
 // Generated op classes.
 #define GET_OP_CLASSES
-#include "mlir-hlo/Dialect/thlo/IR/thlo_ops.cc.inc"
+#include "thlo/IR/thlo_ops.cc.inc"
