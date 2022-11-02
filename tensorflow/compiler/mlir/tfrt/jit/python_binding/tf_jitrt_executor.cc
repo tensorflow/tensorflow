@@ -288,8 +288,7 @@ PYBIND11_MODULE(_tf_jitrt_executor, m) {
            py::arg("specialization") =
                tensorflow::TfJitRtExecutor::Specialization::kEnabled,
            py::arg("vectorize") = false, py::arg("codegen_transpose") = false,
-           // TODO(b/248219927): Enable matmul peeling when bufferization works.
-           py::arg("legalize_i1_tensors") = false, py::arg("peel") = false)
+           py::arg("legalize_i1_tensors") = false, py::arg("peel") = true)
       .def("execute", &tensorflow::TfJitRtExecutor::Execute)
       .def("built_with", &tensorflow::TfJitRtExecutor::BuiltWith,
            py::arg("cpu_feature"));

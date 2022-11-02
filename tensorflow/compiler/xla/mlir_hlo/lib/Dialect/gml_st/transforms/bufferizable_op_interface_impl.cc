@@ -509,7 +509,8 @@ struct SetYieldOpInterface
 
         Value resultToTensor =
             rewriter.create<ToTensorOp>(loop->getLoc(), dstBuffer);
-        for (OpOperand &use : loopResult.getUses()) {
+        for (OpOperand &use :
+             llvm::make_early_inc_range(loopResult.getUses())) {
           rewriter.updateRootInPlace(use.getOwner(),
                                      [&]() { use.set(resultToTensor); });
         }
