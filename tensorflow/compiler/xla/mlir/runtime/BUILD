@@ -29,12 +29,12 @@ cc_binary(
     srcs = ["xla-runtime-opt.cc"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "//tensorflow/compiler/xla/mlir/memref/transforms:passes",
         "//tensorflow/compiler/xla/mlir/runtime/ir/tests:testlib",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_cpu",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:passes",
         "//tensorflow/compiler/xla/mlir/transforms/math:passes",
-        "//tensorflow/compiler/xla/mlir/transforms/memref:passes",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MemRefDialect",

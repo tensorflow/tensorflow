@@ -28,7 +28,7 @@ def AlignedAllocationsPass
     configured for this pass.
   }];
 
-  let constructor = "::xla::runtime::CreateAlignedAllocationsPass()";
+  let constructor = "::xla::CreateAlignedAllocationsPass()";
 
   let options = [
    Option<"alignment_", "alignment", "int64_t", "64",

@@ -17,10 +17,10 @@ limitations under the License.
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/memref/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/ir/tests/testlib.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/transforms/math/passes.h"
-#include "tensorflow/compiler/xla/mlir/transforms/memref/passes.h"
 
 int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
@@ -28,9 +28,8 @@ int main(int argc, char **argv) {
   registry.insert<mlir::func::FuncDialect, mlir::memref::MemRefDialect,
                   mlir::math::MathDialect, xla::runtime::RuntimeDialect,
                   xla::runtime::TestlibDialect>();
-
+  xla::registerMemrefTransformsPasses();
   xla::runtime::registerMathTransformsPasses();
-  xla::runtime::registerMemrefTransformsPasses();
   xla::runtime::registerRuntimeTransformsPasses();
 
   return failed(MlirOptMain(argc, argv, "Xla Runtime Pass Driver\n", registry));
