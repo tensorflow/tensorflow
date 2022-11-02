@@ -73,6 +73,10 @@ class CompositeTensorVariantToComponents : public OpKernel {
                                 "tensor, but got ",
                                 encoded_t.DebugString()));
     auto* encoded = encoded_t.flat<Variant>()(0).get<CompositeTensorVariant>();
+    OP_REQUIRES(context, encoded != nullptr,
+                errors::InvalidArgument("The input `encoded` is not a valid "
+                                        "CompositeTensorVariant tensor, got ",
+                                        encoded_t.DebugString()));
 
     // Check that the encoded TypeSpec is compatible with the expected TypeSpec.
     // For now, we just check that the class matches.
