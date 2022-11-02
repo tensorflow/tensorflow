@@ -36,7 +36,7 @@ apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repo
 apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub
 
 # LLVM/Clang: https://apt.llvm.org/
-# apt-key adv --fetch-keys https://apt.llvm.org/llvm-snapshot.gpg.key
+apt-key adv --fetch-keys https://apt.llvm.org/llvm-snapshot.gpg.key
 
 # Set up custom sources
 cat >/etc/apt/sources.list.d/custom.list <<SOURCES
@@ -48,6 +48,6 @@ deb http://ppa.launchpad.net/deadsnakes/ppa/ubuntu focal main
 deb-src http://ppa.launchpad.net/deadsnakes/ppa/ubuntu focal main
 
 # LLVM/Clang repository
-# deb http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main
-# deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main
+deb http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main
+deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main
 SOURCES

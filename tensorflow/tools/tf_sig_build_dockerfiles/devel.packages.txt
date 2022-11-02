@@ -25,6 +25,7 @@ autoconf
 automake
 build-essential
 ca-certificates
+clang-15
 clang-format-12
 cmake
 colordiff

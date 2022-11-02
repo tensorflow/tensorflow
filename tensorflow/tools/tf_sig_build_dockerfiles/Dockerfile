@@ -28,8 +28,8 @@ COPY devel.packages.txt /devel.packages.txt
 RUN /setup.sources.sh && /setup.packages.sh /devel.packages.txt && /setup.cuda.sh
 
 # Install LLVM/Clang at HEAD
-COPY setup.clang.sh /setup.clang.sh
-RUN /setup.clang.sh
+# COPY setup.clang.sh /setup.clang.sh
+# RUN /setup.clang.sh
 
 # Install various tools.
 # - bats: bash unit testing framework
