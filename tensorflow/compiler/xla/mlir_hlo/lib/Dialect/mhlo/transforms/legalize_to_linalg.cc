@@ -1796,7 +1796,7 @@ class ReduceRegionReturnOpConversion
   }
 };
 
-class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
+class ReduceOpToGenericConverter : public OpConversionPattern<mhlo::ReduceOp> {
  public:
   using OpConversionPattern<mhlo::ReduceOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
@@ -1891,6 +1891,90 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
 
     rewriter.applySignatureConversion(&region, signatureConverter,
                                       getTypeConverter());
+    rewriter.replaceOp(op, linalgOp.getResults());
+    return success();
+  }
+};
+
+struct ReduceOpToReduceConverter : public OpConversionPattern<mhlo::ReduceOp> {
+  using OpConversionPattern<mhlo::ReduceOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ReduceOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    auto reductionDims =
+        llvm::to_vector(op.getDimensions().getValues<int64_t>());
+    // mhlo.reduce doesn't specify the order of the reduction dimensions.
+    llvm::sort(reductionDims);
+
+    auto toRankedTensor = [](Value v) -> RankedTensorType {
+      return v.getType().dyn_cast<RankedTensorType>();
+    };
+
+    SmallVector<Value> outputs;
+    SmallVector<RankedTensorType> operandTypes, initTypes;
+    SmallVector<Type> resultTypes;
+    if (failed(typeConverter->convertTypes(op.getResultTypes(), resultTypes)))
+      return failure();
+
+    Location loc = op.getLoc();
+    for (auto [operand, initValue, resultType] :
+         llvm::zip(adaptor.getInputs(), adaptor.getInitValues(), resultTypes)) {
+      auto initType = toRankedTensor(initValue);
+      if (!initType)
+        return rewriter.notifyMatchFailure(op,
+                                           "expects known-rank init values");
+      initTypes.push_back(initType);
+      auto operandType = toRankedTensor(operand);
+      if (!operandType)
+        return rewriter.notifyMatchFailure(op, "expects known-rank operands");
+      operandTypes.push_back(operandType);
+      initValue = rewriter.createOrFold<tensor::ExtractOp>(loc, initValue);
+      auto tensorResultType = resultType.cast<RankedTensorType>();
+
+      SmallVector<Value, 8> dynShape = getReduceOpEmptyTensorDynSizes(
+          rewriter, loc, operand, tensorResultType, reductionDims);
+      Value emptyTensor = rewriter.create<tensor::EmptyOp>(
+          loc, tensorResultType.getShape(), tensorResultType.getElementType(),
+          dynShape);
+      Value filledTensor =
+          rewriter.create<linalg::FillOp>(loc, initValue, emptyTensor).result();
+      outputs.push_back(filledTensor);
+    }
+
+    auto linalgOp = rewriter.create<linalg::ReduceOp>(
+        loc, adaptor.getInputs(), outputs, reductionDims,
+        /*bodyBuild=*/nullptr, linalg::getPrunedAttributeList(op));
+
+    Region& region = linalgOp.getRegion();
+    rewriter.inlineRegionBefore(op.getBody(), region, region.end());
+
+    // Convert the signature of the body. The reduce op 'computation' region
+    // apply function has a signature with tensor types, this is converted to a
+    // function with element types. E.g. the signature "(tensor<f32>,
+    // tensor<f32>) -> tensor<f32>" will be converted to "(f32, f32) -> f32".
+    // Also, we need to swap the operands of the function. The mhlo.reduce op
+    // expects the init values to be the first parameters of the apply function,
+    // while the linalg.reduction op expects the init values as the last
+    // parameters of the 'combiner' region apply function.
+    TypeConverter::SignatureConversion signatureConverter(
+        linalgOp.getNumDpsInputs() * 2);
+    assert(linalgOp.getNumDpsInputs() == linalgOp.getNumDpsInits());
+    for (const auto& [idx, val] : llvm::enumerate(operandTypes)) {
+      signatureConverter.addInputs(
+          /*origInputNo=*/idx + linalgOp.getNumDpsInputs(),
+          // type for new operand number 'idx'.
+          typeConverter->convertType(val.getElementType()));
+    }
+    for (const auto& [idx, val] : llvm::enumerate(initTypes)) {
+      signatureConverter.addInputs(
+          /*origInputNo=*/idx,
+          // type for new operand number 'idx' + linalgOp.getNumInputs()
+          typeConverter->convertType(val.getElementType()));
+    }
+    rewriter.applySignatureConversion(&region, signatureConverter,
+                                      getTypeConverter());
+
     rewriter.replaceOp(op, linalgOp.getResults());
     return success();
   }
@@ -3656,7 +3740,6 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       GatherConversion,
       PadOpConversion,
       PadOpNegativePaddingConversion,
-      ReduceConversion,
       ReduceWindowOpOnTensorsGenericConversion,
       ReduceWindowOpConversion,
       RngUniformConversion,
@@ -3712,8 +3795,9 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgMapConverter<mhlo::SubtractOp>,
       PointwiseToLinalgMapConverter<mhlo::TanhOp>,
       PointwiseToLinalgMapConverter<mhlo::XorOp>,
-      TransposeOpToTransposeConverter,
-      SelectOpToMapConverter
+      ReduceOpToReduceConverter,
+      SelectOpToMapConverter,
+      TransposeOpToTransposeConverter
     >(typeConverter, context);
   } else {
     patterns->add<
@@ -3765,6 +3849,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::SubtractOp>,
       PointwiseToLinalgConverter<mhlo::TanhOp>,
       PointwiseToLinalgConverter<mhlo::XorOp>,
+      ReduceOpToGenericConverter,
       TransposeConverter<mhlo::TransposeOp>
     >(typeConverter, context);
   }
