@@ -70,7 +70,7 @@ HloModule TestModule
   RunAndCompareWithLayoutsNormalized(hlo);
 
   MatchOptimizedHlo(hlo, R"(
-// CHECK: (f32[1,136,23]{2,1,0}, u8[{{[0-9]+}}]{0}) custom-call(%fusion.1, %transpose.1), window={size=31 stride=2 pad=23_23}, dim_labels=bf0_oi0->bf0, custom_call_target="__cudnn$convBackwardInput"
+// CHECK: (f32[1,136,23]{2,1,0}, u8[{{[0-9]+}}]{0}) custom-call([[fusion_1_0:%[^ ]+]], [[transpose_1_1:%[^ ]+]]), window={size=31 stride=2 pad=23_23}, dim_labels=bf0_oi0->bf0, custom_call_target="__cudnn$convBackwardInput"
   )");
 }
 
@@ -87,7 +87,7 @@ ENTRY %TestComputation {
 
   RunAndCompareWithLayoutsNormalized(hlo);
   MatchOptimizedHlo(hlo, R"(
-// CHECK: (f32[2,128,1,378]{3,2,1,0}, u8[{{[0-9]+}}]{0}) custom-call(%param_0, %bitcast.5), window={size=1x5 pad=0_0x2_2}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convForward"
+// CHECK: (f32[2,128,1,378]{3,2,1,0}, u8[{{[0-9]+}}]{0}) custom-call([[param_0_0:%[^ ]+]], [[bitcast_5_1:%[^ ]+]]), window={size=1x5 pad=0_0x2_2}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convForward"
   )");
 }
 
@@ -111,7 +111,7 @@ ENTRY TestComputation {
   RunAndCompareWithLayoutsNormalized(hlo);
 
   MatchOptimizedHlo(hlo, R"(
-// CHECK: (f32[8,32,4,5,5]{4,3,2,1,0}, u8[0]{0}) custom-call(%bitcast.8, %fusion, %bias), window={size=3x3x3 pad=1_1x1_1x1_1}, dim_labels=bf012_oi012->bf012, custom_call_target="__cudnn$convBiasActivationForward"
+// CHECK: (f32[8,32,4,5,5]{4,3,2,1,0}, u8[0]{0}) custom-call([[bitcast_8_0:%[^ ]+]], [[fusion_1:%[^ ]+]], [[bias_2:%[^ ]+]]), window={size=3x3x3 pad=1_1x1_1x1_1}, dim_labels=bf012_oi012->bf012, custom_call_target="__cudnn$convBiasActivationForward"
   )");
 }
 

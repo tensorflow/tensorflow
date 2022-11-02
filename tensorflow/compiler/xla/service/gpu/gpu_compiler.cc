@@ -116,13 +116,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
-#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
-#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
 #include "tensorflow/compiler/xla/service/gpu/move_copy_to_users.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
-#include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_degenerate_dim_remover.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_dimension_grouper.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_layout_normalizer.h"
@@ -145,11 +142,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
-#include "tensorflow/compiler/xla/service/hlo_proto_util.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/layout_normalization.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -171,7 +165,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/service/sharding_remover.h"
 #include "tensorflow/compiler/xla/service/simplify_fp_conversions.h"
-#include "tensorflow/compiler/xla/service/slice_sinker.h"
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/spmd/stateful_rng_spmd_partitioner.h"
@@ -188,19 +181,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
-#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/blocking_counter.h"
 #include "tensorflow/tsl/platform/casts.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/regexp.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/threadpool.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
-#include "tensorflow/tsl/util/env_var.h"
 
 namespace xla {
 namespace gpu {
@@ -752,16 +741,49 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   {
     HloPassPipeline pipeline("hlo normalization");
+
+    // The LayoutAssignment pass may leave behind kCopy instructions which are
+    // duplicate or NOPs, so remove them with algebraic simplification and CSE.
+    AlgebraicSimplifierOptions options;
+    options.set_is_layout_sensitive(true);
+    options.set_enable_conv_operand_swap(false);
+    // "slow" minmax means we propagate nan.
+    options.set_minmax_propagate_nan(
+        !hlo_module->config().debug_options().xla_gpu_enable_fast_min_max());
+    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
+
+    // GemmRewriter assumes that all transposes are folded into gemms, but,
+    // since commit 7d529df, this is not always true at this point.
+    // Therefore, rerun transpose folding.
+    pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot,
+                                       TransposeFolding::NeverFoldTranspose);
+
     pipeline.AddPass<ReshapeDecomposer>();
     pipeline.AddPass<ReduceDecomposer>([&](const HloInstruction* r) {
       return IsReductionFromOrToContiguousDimensions(*r);
     });
     pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
+
+    // Rewrite GEMMs into custom calls.
+    pipeline.AddPass<GemmRewriter>(
+        stream_exec->GetDeviceDescription().cuda_compute_capability());
+
+    // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
+    pipeline.AddPass<GemmBroadcastFoldingRewriter>();
+
     if (hlo_module->config().debug_options().xla_gpu_normalize_layouts()) {
       pipeline.AddPass<LayoutNormalization>(
           &NormalizeLayoutForCustomCallConvolution);
+      pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
     }
     pipeline.AddPass<BroadcastCanonicalizer>();
+
+    pipeline.AddPass<ReductionDegenerateDimRemover>();
+    pipeline.AddPass<ReductionLayoutNormalizer>();
+    pipeline.AddPass<ReductionDimensionGrouper>();
+    pipeline.AddPass<HloPassFix<ReductionSplitter>>();
+    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(
+        stream_exec->GetDeviceDescription().cuda_compute_capability());
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -775,34 +797,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
                      .VerifyReshapeIsBitcast(),
                  /*debug_only=*/true);
 
-  pipeline.AddPass<ReductionDegenerateDimRemover>();
-  pipeline.AddPass<ReductionLayoutNormalizer>();
-  pipeline.AddPass<ReductionDimensionGrouper>();
-  pipeline.AddPass<HloPassFix<ReductionSplitter>>();
-  pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(
-      stream_exec->GetDeviceDescription().cuda_compute_capability());
 
-  // The LayoutAssignment pass may leave behind kCopy instructions which are
-  // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-  AlgebraicSimplifierOptions options;
-  options.set_is_layout_sensitive(true);
-  options.set_enable_conv_operand_swap(false);
-  // "slow" minmax means we propagate nan.
-  options.set_minmax_propagate_nan(
-      !hlo_module->config().debug_options().xla_gpu_enable_fast_min_max());
-  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
-
-  // GemmRewriter assumes that all transposes are folded into gemms, but,
-  // since commit 7d529df, this is not always true at this point.
-  // Therefore, rerun transpose folding.
-  pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot,
-                                     TransposeFolding::NeverFoldTranspose);
-  // Rewrite GEMMs into custom calls.
-  pipeline.AddPass<GemmRewriter>(
-      stream_exec->GetDeviceDescription().cuda_compute_capability());
-
-  // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
-  pipeline.AddPass<GemmBroadcastFoldingRewriter>();
 
   // Run conversion again, to catch those matrix multiplications which were not
   // rewritten into cuBLAS calls.
