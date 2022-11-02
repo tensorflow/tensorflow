@@ -25,6 +25,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import composite_tensor_ops
 from tensorflow.python.ops import gen_composite_tensor_ops
+from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
@@ -96,6 +97,18 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           encoded=constant_op.constant([], dtype=dtypes.variant),
           metadata='',
           Tcomponents=[dtypes.int32])
+
+  def testDecodingInvalidEncodedInputError(self):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'not a valid CompositeTensorVariant tensor'):
+      self.evaluate(
+          gen_composite_tensor_ops.CompositeTensorVariantToComponents(
+              encoded=gen_list_ops.EmptyTensorList(
+                  element_dtype=dtypes.int32,
+                  element_shape=[1, 2],
+                  max_num_elements=2),
+              metadata='',
+              Tcomponents=[dtypes.int32]))
 
   def testRoundTripThroughTensorProto(self):
     value = ragged_factory_ops.constant([[1, 2], [3], [4, 5, 6]])
