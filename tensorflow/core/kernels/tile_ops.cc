@@ -168,6 +168,12 @@ class TileOp : public OpKernel {
         context, TensorShapeUtils::IsVector(multiples.shape()),
         errors::InvalidArgument("Expected multiples to be 1-D, but got shape ",
                                 multiples.shape().DebugString()));
+    // TODO: modify the input sizes, etc and remove the below check.
+    if (input.dims() < multiple.NumEntries()) {
+      // prepend the input by multiple.NumEntries() - input.dims() number of dimensions.
+    } else if (input.dims() > multipleNumEntries()) {
+      // prepend 1's to the multiple Tensor with input.dims() - multiple.NumEntries() number of entries.
+    }
     OP_REQUIRES(context, input.dims() == multiples.NumElements(),
                 errors::InvalidArgument(
                     "Expected multiples argument to be a vector of length ",
