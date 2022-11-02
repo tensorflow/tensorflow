@@ -54,7 +54,7 @@ def RankedTensorOrVector : AnyTypeOf<[
   AnyRankedTensor, AnyVectorOfAnyRank
 ], "", "::mlir::ShapedType">;
 def RankedTensorOrVectorOrScalar : AnyTypeOf<[
-  AnyRankedTensor, AnyVectorOfAnyRank, AnyFloat, AnyInteger, AnyComplex
+  AnyRankedTensor, AnyVectorOfAnyRank, AnyFloat, AnyInteger, AnyComplex, Index
 ]>;
 
 ///////////////////////////////////////////////////////////////////////////////
