@@ -3562,8 +3562,7 @@ ReductionCodegenState IrEmitterUnnested::GenerateReductionCodegenState(
 
 void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForReduce(
     const HloComputation* reducer,
-    absl::Span<std::pair<llvm::Value* const, llvm::Type* const>>
-        partial_result_addresses,
+    absl::Span<TypedPointer const> partial_result_addresses,
     int threads_per_block, int num_results_per_warp) {
   // This only works when the block size is a multiple of 32 threads.
 
@@ -3579,10 +3578,8 @@ void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForReduce(
       reduction_params.push_back(acc.first);
     }
 
-    for (auto i : partial_result_addresses) {
-      llvm::Value* partial_result_address = i.first;
-      llvm::Type* element_type = i.second;
-
+    for (auto [partial_result_address, element_type] :
+         partial_result_addresses) {
       int bit_width = llvm_ir::GetSizeInBits(element_type);
       llvm::Value* result_from_other_lane = llvm_ir::EmitAllocaAtFunctionEntry(
           element_type, "result_from_other_lane", &b_);
@@ -3745,6 +3742,28 @@ llvm::Value* IrEmitterUnnested::CastSharedToGlobal(llvm::Value* input,
                                 name);
 }
 
+void IrEmitterUnnested::WriteReductionOutput(
+    llvm::Type* index_ty, const ReductionCodegenState& reduction_codegen_state,
+    const TilingKernelInfo& tiling_kernel_info,
+    const ReductionOutputMap& output_arrays,
+    const HloReduceInstruction* reduction, int partial_result_idx,
+    const absl::Span<TypedPointer const> values) {
+  const HloComputation* reducer = reduction->to_apply();
+  for (auto [oidx, typed_ptr] : llvm::enumerate(values)) {
+    auto [output_ptr, type] = typed_ptr;
+    llvm::Value* output_address = GetOutputAddressForReduction(
+        partial_result_idx, index_ty, reduction_codegen_state,
+        tiling_kernel_info, output_arrays, reduction, oidx);
+    if (reduction_codegen_state.IsRaceFree()) {
+      b_.CreateStore(b_.CreateLoad(type, output_ptr, "output"), output_address);
+    } else {
+      CHECK_EQ(values.size(), 1);
+      TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
+          *reducer, output_address, output_ptr, type));
+    }
+  }
+}
+
 void IrEmitterUnnested::EmitReductionOutputForRowReduction(
     const TilingKernelInfo& tiling_kernel_info,
     const ReductionCodegenState& reduction_codegen_state, llvm::Type* index_ty,
@@ -3761,8 +3780,7 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
 
   int num_outputs = reducer->num_parameters() / 2;
   const TilingScheme& tiling_scheme = reduction_codegen_state.GetTilingScheme();
-  absl::InlinedVector<std::pair<llvm::Value* const, llvm::Type* const>, 2>
-      current_outputs;
+  absl::InlinedVector<TypedPointer, 2> current_outputs;
   for (int output_idx = 0; output_idx < num_outputs; output_idx++) {
     const ReductionCodegenState::ReductionCalculationState& state =
         reduction_codegen_state.GetCalculationStateFor(reduction, output_idx);
@@ -3783,28 +3801,14 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
   llvm::Value* warp_id =
       b_.CreateUDiv(thread_id_info.thread_id_x, constant(WarpSize()));
 
-  auto emit_write_output =
-      [&](llvm::Value* write_condition,
-          const absl::InlinedVector<
-              std::pair<llvm::Value* const, llvm::Type* const>, 2>& values) {
-        ksl.If("reduction_write_output", write_condition, [&] {
-          for (int oidx = 0; oidx < num_outputs; oidx++) {
-            llvm::Value* output_address = GetOutputAddressForReduction(
-                partial_result_idx, index_ty, reduction_codegen_state,
-                tiling_kernel_info, output_arrays, reduction, oidx);
-
-            if (reduction_codegen_state.IsRaceFree()) {
-              Store(Load(values[oidx].second, values[oidx].first, "output"),
-                    output_address);
-            } else {
-              CHECK_EQ(num_outputs, 1);
-              TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-                  *reducer, output_address, values[oidx].first,
-                  values[oidx].second));
-            }
-          }
-        });
-      };
+  auto emit_write_output = [&](llvm::Value* write_condition,
+                               const absl::Span<TypedPointer const> values) {
+    ksl.If("reduction_write_output", write_condition, [&] {
+      WriteReductionOutput(index_ty, reduction_codegen_state,
+                           tiling_kernel_info, output_arrays, reduction,
+                           partial_result_idx, values);
+    });
+  };
 
   if (num_rows_per_warp > 1) {
     llvm::Value* is_writing_thread = is_zero(b_.CreateAnd(
@@ -3828,8 +3832,7 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
   // output? Not once per each?
   EmitSyncThreads();
   ksl.If("inter_warp_reduce", is_zero(warp_id), [&] {
-    absl::InlinedVector<std::pair<llvm::Value* const, llvm::Type* const>, 2>
-        selected_values;
+    absl::InlinedVector<TypedPointer, 2> selected_values;
     for (int oidx = 0; oidx < num_outputs; oidx++) {
       const ReductionCodegenState::ReductionCalculationState& state =
           reduction_codegen_state.GetCalculationStateFor(reduction, oidx);
@@ -3914,9 +3917,7 @@ void IrEmitterUnnested::EmitReductionOutputForColumnReduction(
   EmitSyncThreads();
 
   // Get transposed element from shared memory.
-  absl::InlinedVector<std::pair<llvm::Value* const, llvm::Type* const>, 1>
-      shmem_transposed_addrs;
-
+  absl::InlinedVector<TypedPointer, 2> shmem_transposed_addrs;
   for (int output_idx = 0; output_idx < num_outputs; output_idx++) {
     const ReductionCodegenState::ReductionCalculationState& state =
         reduction_codegen_state.GetCalculationStateFor(reduction, output_idx);
@@ -3948,21 +3949,9 @@ void IrEmitterUnnested::EmitReductionOutputForColumnReduction(
 
   ksl.If("reduction_write_output",
          b_.CreateAnd(has_output, is_zero(thread_id_info.lane_id)), [&] {
-           for (int oidx = 0; oidx < num_outputs; oidx++) {
-             llvm::Value* output_address = GetOutputAddressForReduction(
-                 partial_result_idx, index_ty, reduction_codegen_state,
-                 tiling_kernel_info, output_arrays, reduction, oidx);
-             if (reduction_codegen_state.IsRaceFree()) {
-               Store(Load(shmem_transposed_addrs[oidx].second,
-                          shmem_transposed_addrs[oidx].first, "output_value"),
-                     output_address);
-             } else {
-               CHECK_EQ(num_outputs, 1);
-               TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-                   *reducer, output_address, shmem_transposed_addrs[oidx].first,
-                   shmem_transposed_addrs[oidx].second));
-             }
-           }
+           WriteReductionOutput(index_ty, reduction_codegen_state,
+                                tiling_kernel_info, output_arrays, reduction,
+                                partial_result_idx, shmem_transposed_addrs);
          });
 }
 

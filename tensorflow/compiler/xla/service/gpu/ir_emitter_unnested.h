@@ -611,6 +611,16 @@ class IrEmitterUnnested : public IrEmitter {
       const IrEmitterUnnested::ReductionOutputMap& output_arrays,
       const HloReduceInstruction* reduction, int output_idx);
 
+  // Performs the actual write of the reduction result.
+  using TypedPointer = std::pair<llvm::Value* const, llvm::Type* const>;
+  void WriteReductionOutput(
+      llvm::Type* index_ty,
+      const ReductionCodegenState& reduction_codegen_state,
+      const TilingKernelInfo& tiling_kernel_info,
+      const ReductionOutputMap& output_arrays,
+      const HloReduceInstruction* reduction, int partial_result_idx,
+      const absl::Span<TypedPointer const> values);
+
   // `current_output`: the value the tile has calculated.
   // `output_address`: address where the output value has to be written.
   void EmitReductionOutputForRowReduction(
@@ -651,8 +661,7 @@ class IrEmitterUnnested : public IrEmitter {
   // reduction: each one should get the output value.
   void EmitFullWarpShuffleDownLoopForReduce(
       const HloComputation* reducer,
-      absl::Span<std::pair<llvm::Value* const, llvm::Type* const>>
-          partial_result_addresses,
+      absl::Span<TypedPointer const> partial_result_addresses,
       int threads_per_block, int num_results_per_warp = 1);
 
   // Allocates a shared tile of given dimensions, applying scaling specified in
