@@ -32,7 +32,7 @@ def MathOptimizationPass
     "mlir::x86vector::X86VectorDialect"
   ];
 
-  let constructor = "::xla::runtime::CreateMathOptimizationPass()";
+  let constructor = "::xla::CreateMathOptimizationPass()";
 
   let options = [
    Option<"enable_avx2_", "enable-avx2", "bool", "false",

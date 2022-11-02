@@ -47,12 +47,12 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/X86Vector/X86VectorToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/math/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/memref/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/transforms/cpu/passes.h"
-#include "tensorflow/compiler/xla/mlir/transforms/math/passes.h"
 
 namespace xla {
 namespace runtime {
@@ -88,7 +88,7 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
   // Optimize operations from the math dialect before outlining compute regions
   // into functions to see all constant operands.
   pm.addNestedPass<mlir::func::FuncOp>(
-      xla::runtime::CreateMathOptimizationPass(opts.math_avx2));
+      xla::CreateMathOptimizationPass(opts.math_avx2));
 
   // Convert all linalg operations to parallel loops.
   pm.addNestedPass<mlir::func::FuncOp>(
