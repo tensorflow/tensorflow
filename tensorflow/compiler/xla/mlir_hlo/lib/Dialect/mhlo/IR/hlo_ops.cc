@@ -7994,6 +7994,8 @@ using mlir::hlo::printSelectOpType;
 using mlir::hlo::parseSelectOpType;
 using mlir::hlo::printTupleOpType;
 using mlir::hlo::parseTupleOpType;
+using mlir::hlo::printExponentMantissa;
+using mlir::hlo::parseExponentMantissa;
 // clang-format on
 
 #define GET_OP_CLASSES

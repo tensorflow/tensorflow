@@ -3077,6 +3077,10 @@ def HLO_ReducePrecisionOp :
     implementations.
 
     See https://www.tensorflow.org/xla/operation_semantics#reduceprecision.
+
+    ```mlir
+    %0 = mhlo.reduce_precision %arg0, format = e8m10 : tensor<3x4xf32>
+    ```
   }];
   let arguments = (ins
     HLO_FpTensor:$operand,
@@ -3085,6 +3089,11 @@ def HLO_ReducePrecisionOp :
   );
   let hasVerifier = 1;
   let results = (outs HLO_FpTensor:$output);
+
+  let assemblyFormat = [{
+    $operand `,` `format` `=` custom<ExponentMantissa>($exponent_bits, $mantissa_bits)
+      attr-dict `:` custom<SameOperandsAndResultType>(type($operand), type($output))
+  }];
 }
 
 def HLO_RealDynamicSliceOp: HLO_ShapedInterfaceOp<
