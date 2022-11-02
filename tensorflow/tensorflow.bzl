@@ -1656,7 +1656,7 @@ def tf_java_test(
         **kwargs):
     cc_library_name = name + "_cclib"
     cc_library(
-        # TODO(b/183579145): Remove when cc_shared_library supports CcInfo or JavaInfo providers .
+        # TODO(b/183579145): Remove when cc_shared_library supports CcInfo or JavaInfo providers.
         name = cc_library_name,
         srcs = tf_binary_additional_srcs(fullversion = True) + tf_binary_dynamic_kernel_dsos() + tf_binary_dynamic_kernel_deps(kernels),
     )
