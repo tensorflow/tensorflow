@@ -447,13 +447,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "hlo_evaluator",
-    deps = [
-        "//tensorflow/compiler/xla/hlo/evaluator:hlo_evaluator",
-    ],
-)
-
-cc_library(
     name = "hlo_live_range",
     srcs = [
         "hlo_live_range.cc",
