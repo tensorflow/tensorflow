@@ -577,7 +577,7 @@ REGISTER_OP("FusedResizeAndPadConv2D")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .SetShapeFn([](InferenceContext* c) {
-      return CommonFusedConvCalculations(c, true /* has_resize */);
+      return CommonFusedConvCalculations(c, /*has_resize=*/true);
     });
 
 REGISTER_OP("FusedPadConv2D")
@@ -590,7 +590,7 @@ REGISTER_OP("FusedPadConv2D")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .SetShapeFn([](InferenceContext* c) {
-      return CommonFusedConvCalculations(c, false /* has_resize */);
+      return CommonFusedConvCalculations(c, /*has_resize=*/false);
     });
 
 // --------------------------------------------------------------------------

@@ -178,7 +178,8 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                                      int num_threads,
                                      bool allow_fp32_relax_to_fp16,
                                      bool apply_delegate,
-                                     bool allocate_and_delegate) {
+                                     bool allocate_and_delegate,
+                                     bool use_simple_allocator) {
   input_shapes_ = input_shapes;
   allow_fp32_relax_to_fp16_ = allow_fp32_relax_to_fp16;
   apply_delegate_ = apply_delegate;
@@ -203,7 +204,7 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
   uint8_t* buffer_pointer = builder_.GetBufferPointer();
   UpdateOpVersion(buffer_pointer);
 
-  bool use_simple_allocator =
+  use_simple_allocator |=
       tflite::KernelTestDelegateProviders::Get()->ConstParams().Get<bool>(
           tflite::KernelTestDelegateProviders::kUseSimpleAllocator);
 
@@ -288,11 +289,12 @@ TfLiteStatus SingleOpModel::ApplyDelegate() {
 
 TfLiteStatus SingleOpModel::Invoke() { return interpreter_->Invoke(); }
 
-void SingleOpModel::BuildInterpreter(
-    std::vector<std::vector<int>> input_shapes) {
+void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                                     bool use_simple_allocator) {
   BuildInterpreter(input_shapes, /*num_threads=*/-1,
                    /*allow_fp32_relax_to_fp16=*/false,
-                   /*apply_delegate=*/true, /*allocate_and_delegate=*/true);
+                   /*apply_delegate=*/true, /*allocate_and_delegate=*/true,
+                   use_simple_allocator);
 }
 
 // static
