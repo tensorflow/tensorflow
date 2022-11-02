@@ -49,13 +49,13 @@ __device__ __host__ EIGEN_STRONG_INLINE
 template <>
 __device__ __host__ EIGEN_STRONG_INLINE float strict_cast<float, Eigen::half>(
     Eigen::half t) {
-  return functor::HalfToFloat()(t);
+  return functor::HalfToFloat<Eigen::half>()(t);
 }
 
 template <>
 __device__ __host__ EIGEN_STRONG_INLINE Eigen::half
 strict_cast<Eigen::half, float>(float t) {
-  return functor::FloatToHalf()(t);
+  return functor::FloatToHalf<Eigen::half>()(t);
 }
 
 template <typename T>
