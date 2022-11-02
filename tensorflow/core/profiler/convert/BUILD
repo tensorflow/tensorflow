@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_oss", "tf_cc_test")
-load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts", "tf_profiler_pybind_cc_library_wrapper", "tf_profiler_xla_proto_header")
+load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts", "tf_profiler_pybind_cc_library_wrapper")
 
 package(
     default_visibility = ["//tensorflow/core/profiler:internal"],
@@ -829,7 +829,7 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         ":repository",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -837,7 +837,8 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:file_system_utils",
         "//tensorflow/core/profiler/utils:hlo_proto_map",
-    ] + tf_profiler_xla_proto_header(),
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
