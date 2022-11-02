@@ -79,8 +79,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
         num_callback_events_(0),
         num_activity_events_(0),
         start_walltime_ns_(start_walltime_ns),
-        start_gputime_ns_(start_gputime_ns),
-        per_device_collector_(options.num_gpus) {}
+        start_gputime_ns_(start_gputime_ns) {}
 
   void AddEvent(RocmTracerEvent&& event, bool is_auxiliary) override {
     mutex_lock lock(event_maps_mutex_);
@@ -146,15 +145,6 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
             << aggregated_events_.size() << " events.";
 
     for (auto& event : aggregated_events_) {
-      if (event.device_id >= options_.num_gpus) {
-        OnEventsDropped("device id >= num gpus", event.correlation_id);
-        DumpRocmTracerEvent(event, 0, 0, ". Dropped!");
-        LOG(WARNING) << "A ROCm profiler event record with wrong device ID "
-                        "dropped! Type="
-                     << GetRocmTracerEventTypeName(event.type);
-        continue;
-      }
-
       activity_api_events_map_.clear();
       activity_ops_events_map_.clear();
       api_events_map_.clear();
@@ -163,8 +153,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       per_device_collector_[event.device_id].AddEvent(event);
     }
 
-    for (int i = 0; i < options_.num_gpus; ++i) {
-      per_device_collector_[i].SortByStartTime();
+    for (auto& device : per_device_collector_) {
+      device.second.SortByStartTime();
     }
   }
 
@@ -172,18 +162,19 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
     uint64_t end_gputime_ns = RocmTracer::GetTimestamp();
     XPlaneBuilder host_plane(
         FindOrAddMutablePlaneWithName(space, kRoctracerApiPlaneName));
-    for (int i = 0; i < options_.num_gpus; ++i) {
+    int i = 0;
+    for (auto& device : per_device_collector_) {
       std::string name = GpuPlaneName(i);
       XPlaneBuilder device_plane(FindOrAddMutablePlaneWithName(space, name));
-      device_plane.SetId(i);
+      device_plane.SetId(device.first);
       // Calculate device capabilities before flushing, so that device
       // properties are available to the occupancy calculator in export().
-      per_device_collector_[i].GetDeviceCapabilities(i, &device_plane);
-      per_device_collector_[i].Export(start_walltime_ns_, start_gputime_ns_,
+      device.second.GetDeviceCapabilities(i, &device_plane);
+      device.second.Export(start_walltime_ns_, start_gputime_ns_,
                                       end_gputime_ns, &device_plane,
                                       &host_plane);
-
       NormalizeTimeStamps(&device_plane, start_walltime_ns_);
+      ++i;
     }
     NormalizeTimeStamps(&host_plane, start_walltime_ns_);
   }
@@ -907,7 +898,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
     hipDeviceProp_t device_properties_;
   };
 
-  absl::FixedArray<PerDeviceCollector> per_device_collector_;
+  absl::flat_hash_map<const uint32_t, PerDeviceCollector>
+      per_device_collector_;
 };
 
 // GpuTracer for ROCm GPU.
