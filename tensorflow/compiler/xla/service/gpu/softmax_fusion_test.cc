@@ -84,14 +84,14 @@ max_computation {
 }
 
 ENTRY main {
-  param_0 = f32[32,8,128,128]{3,2,1,0} parameter(0)
-  exponential = f32[32,8,128,128]{3,2,1,0} exponential(param_0)
+  param_0 = f32[128,128]{1,0} parameter(0)
+  exponential = f32[128,128]{1,0} exponential(param_0)
   constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[32,8,128]{2,1,0} reduce(exponential, constant_neg_inf), dimensions={3}, to_apply=max_computation
-  broadcast = f32[32,8,128,128]{3,2,1,0} broadcast(reduce), dimensions={0,1,2}
-  negate = f32[32,8,128,128]{3,2,1,0} negate(exponential)
-  subtract = f32[32,8,128,128]{3,2,1,0} subtract(negate, broadcast)
-  ROOT log = f32[32,8,128,128]{3,2,1,0} log(subtract)
+  reduce = f32[128]{0} reduce(exponential, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[128,128]{1,0} broadcast(reduce), dimensions={0}
+  negate = f32[128,128]{1,0} negate(exponential)
+  subtract = f32[128,128]{1,0} subtract(negate, broadcast)
+  ROOT log = f32[128,128]{1,0} log(subtract)
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
@@ -187,18 +187,18 @@ add_computation {
 }
 
 ENTRY main {
-  param_0 = f32[32,8,128,128]{3,2,1,0} parameter(0)
-  log = f32[32,8,128,128]{3,2,1,0} log(param_0)
+  param_0 = f32[64,128]{1,0} parameter(0)
+  log = f32[64,128]{1,0} log(param_0)
   constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[32,8,128]{2,1,0} reduce(log, constant_neg_inf), dimensions={3}, to_apply=max_computation
-  broadcast = f32[32,8,128,128]{3,2,1,0} broadcast(reduce), dimensions={0,1,2}
-  subtract = f32[32,8,128,128]{3,2,1,0} subtract(log, broadcast)
-  exponential = f32[32,8,128,128]{3,2,1,0} exponential(subtract)
-  negate = f32[32,8,128,128]{3,2,1,0} negate(exponential)
+  reduce = f32[64]{0} reduce(log, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[64,128]{1,0} broadcast(reduce), dimensions={0}
+  subtract = f32[64,128]{1,0} subtract(log, broadcast)
+  exponential = f32[64,128]{1,0} exponential(subtract)
+  negate = f32[64,128]{1,0} negate(exponential)
   constant_zero = f32[] constant(0)
-  second_reduce = f32[32,8,128]{2,1,0} reduce(negate, constant_zero), dimensions={3}, to_apply=add_computation
-  second_broadcast = f32[32,8,128,128]{3,2,1,0} broadcast(second_reduce), dimensions={0,1,2}
-  ROOT divide = f32[32,8,128,128]{3,2,1,0} divide(negate, second_broadcast)
+  second_reduce = f32[64]{0} reduce(negate, constant_zero), dimensions={1}, to_apply=add_computation
+  second_broadcast = f32[64,128]{1,0} broadcast(second_reduce), dimensions={0}
+  ROOT divide = f32[64,128]{1,0} divide(negate, second_broadcast)
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
@@ -242,18 +242,18 @@ add_computation {
 }
 
 ENTRY main {
-  param_0 = f32[32,8,128,128]{3,2,1,0} parameter(0)
+  param_0 = f32[64,128]{1,0} parameter(0)
   constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[32,8,128]{2,1,0} reduce(param_0, constant_neg_inf), dimensions={3}, to_apply=max_computation
-  broadcast = f32[32,8,128,128]{3,2,1,0} broadcast(reduce), dimensions={0,1,2}
-  subtract = f32[32,8,128,128]{3,2,1,0} subtract(param_0, broadcast)
+  reduce = f32[64]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[64,128]{1,0} broadcast(reduce), dimensions={0}
+  subtract = f32[64,128]{1,0} subtract(param_0, broadcast)
   constant_zero = f32[] constant(0)
-  second_reduce = f32[32,8,128]{2,1,0} reduce(subtract, constant_zero), dimensions={3}, to_apply=add_computation
-  second_broadcast = f32[32,8,128,128]{3,2,1,0} broadcast(second_reduce), dimensions={0,1,2}
-  divide = f32[32,8,128,128]{3,2,1,0} divide(subtract, second_broadcast)
-  third_reduce = f32[32,8,128]{2,1,0} reduce(divide, constant_zero), dimensions={3}, to_apply=add_computation
-  third_broadcast = f32[32,8,128,128]{3,2,1,0} broadcast(third_reduce), dimensions={0,1,2}
-  ROOT add = f32[32,8,128,128]{3,2,1,0} add(divide, third_broadcast)
+  second_reduce = f32[64]{0} reduce(subtract, constant_zero), dimensions={1}, to_apply=add_computation
+  second_broadcast = f32[64,128]{1,0} broadcast(second_reduce), dimensions={0}
+  divide = f32[64,128]{1,0} divide(subtract, second_broadcast)
+  third_reduce = f32[64]{0} reduce(divide, constant_zero), dimensions={1}, to_apply=add_computation
+  third_broadcast = f32[64,128]{1,0} broadcast(third_reduce), dimensions={0}
+  ROOT add = f32[64,128]{1,0} add(divide, third_broadcast)
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
@@ -428,17 +428,17 @@ add_computation {
 }
 
 ENTRY main {
-  param_0 = f32[32,8,128,128]{3,2,1,0} parameter(0)
+  param_0 = f32[64,128]{1,0} parameter(0)
   constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[32,8,128]{2,1,0} reduce(param_0, constant_neg_inf), dimensions={3}, to_apply=max_computation
-  broadcast = f32[32,8,128,128]{3,2,1,0} broadcast(reduce), dimensions={0,1,2}
-  subtract = f32[32,8,128,128]{3,2,1,0} subtract(param_0, broadcast)
-  exponential = f32[32,8,128,128]{3,2,1,0} exponential(subtract)
-  add = f32[32,8,128,128]{3,2,1,0} add(exponential, exponential)
+  reduce = f32[64]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[64,128]{1,0} broadcast(reduce), dimensions={0}
+  subtract = f32[64,128]{1,0} subtract(param_0, broadcast)
+  exponential = f32[64,128]{1,0} exponential(subtract)
+  add = f32[64,128]{1,0} add(exponential, exponential)
   constant_zero = f32[] constant(0)
-  second_reduce = f32[32,8,128]{2,1,0} reduce(add, constant_zero), dimensions={3}, to_apply=add_computation
-  second_broadcast = f32[32,8,128,128]{3,2,1,0} broadcast(second_reduce), dimensions={0,1,2}
-  ROOT divide = f32[32,8,128,128]{3,2,1,0} divide(add, second_broadcast)
+  second_reduce = f32[64]{0} reduce(add, constant_zero), dimensions={1}, to_apply=add_computation
+  second_broadcast = f32[64,128]{1,0} broadcast(second_reduce), dimensions={0}
+  ROOT divide = f32[64,128]{1,0} divide(add, second_broadcast)
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
@@ -487,17 +487,17 @@ add_computation {
 }
 
 ENTRY main {
-  param_0 = f32[32,8,128,128]{3,2,1,0} parameter(0)
+  param_0 = f32[64,128]{1,0} parameter(0)
   constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[32,8,128]{2,1,0} reduce(param_0, constant_neg_inf), dimensions={3}, to_apply=max_computation
-  broadcast = f32[32,8,128,128]{3,2,1,0} broadcast(reduce), dimensions={0,1,2}
-  subtract = f32[32,8,128,128]{3,2,1,0} subtract(param_0, broadcast)
-  exponential = f32[32,8,128,128]{3,2,1,0} exponential(subtract)
+  reduce = f32[64]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[64,128]{1,0} broadcast(reduce), dimensions={0}
+  subtract = f32[64,128]{1,0} subtract(param_0, broadcast)
+  exponential = f32[64,128]{1,0} exponential(subtract)
   constant_zero = f32[] constant(0)
-  second_reduce = f32[32,8,128]{2,1,0} reduce(exponential, constant_zero), dimensions={3}, to_apply=add_computation
-  second_broadcast = f32[32,8,128,128]{3,2,1,0} broadcast(second_reduce), dimensions={0,1,2}
-  divide = f32[32,8,128,128]{3,2,1,0} divide(exponential, second_broadcast)
-  ROOT add = f32[32,8,128,128]{3,2,1,0} add(divide, exponential)
+  second_reduce = f32[64]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
+  second_broadcast = f32[64,128]{1,0} broadcast(second_reduce), dimensions={0}
+  divide = f32[64,128]{1,0} divide(exponential, second_broadcast)
+  ROOT add = f32[64,128]{1,0} add(divide, exponential)
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
