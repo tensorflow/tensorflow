@@ -271,12 +271,8 @@ if __name__ == "__main__":
   trans_options = [[False, False], [True, False], [False, True]]
   dtypes_to_test = [
       np.int32, np.int64, np.float16, np.float32, np.float64, np.complex64,
-      np.complex128
+      np.complex128, dtypes.bfloat16.as_numpy_dtype
   ]
-
-  if test_util.is_gpu_available(cuda_only=True,
-                                min_cuda_compute_capability=(8, 0)):
-    dtypes_to_test.append(dtypes.bfloat16.as_numpy_dtype)
 
   # TF2 does not support placeholders under eager so we skip it
   for use_static_shape in set([True, tf2.enabled()]):
