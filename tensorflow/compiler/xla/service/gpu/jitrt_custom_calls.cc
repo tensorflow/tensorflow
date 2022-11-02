@@ -46,6 +46,7 @@
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/cholesky.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
@@ -514,74 +515,6 @@ static bool MemsetFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
                              .Arg<runtime::StridedMemrefView>()  // dst
                              .Arg<CustomCall::VariantArg>()      // constant
                              .To<RuntimeChecks()>(Memset::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
-
-// -------------------------------------------------------------------------- //
-
-namespace {
-struct Cholesky {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          const DebugOptions* debug_options,
-                          runtime::StridedMemrefView operand,
-                          runtime::StridedMemrefView a,
-                          runtime::MemrefView workspace,
-                          runtime::MemrefView info, int64_t batch_size,
-                          bool is_lower, int64_t n) const;
-  static Cholesky Handler() { return Cholesky(); }
-};
-}  // namespace
-
-absl::Status Cholesky::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, runtime::StridedMemrefView operand,
-    runtime::StridedMemrefView a, runtime::MemrefView workspace,
-    runtime::MemrefView info, int64_t batch_size, bool is_lower,
-    int64_t n) const {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  se::DeviceMemoryBase operand_buffer = GetDeviceAddress(operand);
-  se::DeviceMemoryBase a_buffer = GetDeviceAddress(a);
-  se::DeviceMemoryBase workspace_buffer = GetDeviceAddress(workspace);
-  se::DeviceMemoryBase info_buffer = GetDeviceAddress(info);
-
-  VLOG(3) << "Running Cholesky";
-  se::Stream* stream = run_options->stream();
-
-  // Copy operand to the a buffer if they are different.
-  if (a.data != operand.data)
-    stream->ThenMemcpy(&a_buffer, operand_buffer, operand_buffer.size());
-
-  using UpperLower = se::blas::UpperLower;
-  UpperLower uplo = is_lower ? UpperLower::kLower : UpperLower::kUpper;
-
-  CholeskyParams params{n,        batch_size,       uplo,
-                        a_buffer, workspace_buffer, info_buffer};
-  auto executed = RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
-                              operand.dtype, &params, stream);
-  if (!executed.ok()) return ToAbslStatus(executed);
-
-  return absl::OkStatus();
-#else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  return absl::InternalError("Not implemented without Gpu");
-#endif
-}
-
-static bool Cholesky(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                     void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.cholesky")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const DebugOptions*>()
-                             .Arg<runtime::StridedMemrefView>()  // operand
-                             .Arg<runtime::StridedMemrefView>()  // a
-                             .Arg<runtime::MemrefView>()         // workspace
-                             .Arg<runtime::MemrefView>()         // info
-                             .Attr<int64_t>("batch_size")
-                             .Attr<bool>("is_lower")
-                             .Attr<int64_t>("n")
-                             .To<RuntimeChecks()>(Cholesky::Handler())
                              .release();
 
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
@@ -1449,7 +1382,7 @@ void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry) {
 #endif  // GOOGLE_CUDA
 
   RegisterFftCustomCalls(registry);
-  registry.Register("xla.gpu.cholesky", &xla::gpu::Cholesky);
+  RegisterCholeskyCustomCalls(registry);
   registry.Register("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
   registry.Register("xla.gpu.gemm", &xla::gpu::Gemm);
 

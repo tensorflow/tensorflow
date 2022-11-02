@@ -11,6 +11,22 @@ package_group(
 )
 
 cc_library(
+    name = "cholesky",
+    srcs = ["cholesky.cc"],
+    hdrs = ["cholesky.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service/gpu:cholesky_thunk",
+        "//tensorflow/compiler/xla/service/gpu:gpu_asm_opts_util",
+    ],
+)
+
+cc_library(
     name = "conv",
     srcs = ["conv.cc"],
     hdrs = ["conv.h"],
