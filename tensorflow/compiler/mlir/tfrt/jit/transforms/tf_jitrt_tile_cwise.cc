@@ -41,7 +41,9 @@ using mlir::SmallVector;
 using mlir::success;
 using mlir::Value;
 using mlir::arith::ConstantIndexOp;
+using mlir::gml_st::ForOp;
 using mlir::gml_st::LoopOp;
+using mlir::gml_st::ParallelOp;
 using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
 using mlir::linalg::LinalgOp;
@@ -84,7 +86,9 @@ struct TileCWisePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
 // Return true if the generic has only parallel iterations. This disallows
 // windowed and reduction iteration.
 bool isNonTiledCwiseGeneric(Operation *op) {
-  if (op->getParentOfType<LoopOp>()) return false;
+  if (op->getParentOfType<LoopOp>() || op->getParentOfType<ForOp>() ||
+      op->getParentOfType<ParallelOp>())
+    return false;
   auto linalg_op = mlir::dyn_cast<GenericOp>(op);
   if (linalg_op) {
     if (!linalg_op.hasTensorSemantics()) return false;
@@ -100,7 +104,9 @@ bool isNonTiledCwiseGeneric(Operation *op) {
 // Return true if the generic has only parallel iterations. This disallows
 // windowed and reduction iteration.
 bool isNonTiledFill(Operation *op) {
-  if (op->getParentOfType<LoopOp>()) return false;
+  if (op->getParentOfType<LoopOp>() || op->getParentOfType<ForOp>() ||
+      op->getParentOfType<ParallelOp>())
+    return false;
   if (auto fill_op = mlir::dyn_cast<FillOp>(op)) {
     return fill_op.hasTensorSemantics();
   }
