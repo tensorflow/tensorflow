@@ -1727,11 +1727,8 @@ class MapOpToMapConverter : public OpConversionPattern<mhlo::MapOp> {
         getEmptyTensorFor(rewriter, loc, resultType, op, adaptor.getOperands());
 
     auto linalgOp = rewriter.create<linalg::MapOp>(
-        loc, resultType, adaptor.getOperands(), output);
-    // TODO(shyshkov): Add a builder for linalg::MapOp that accepts (inputs,
-    // init, attrs). Default builder can do either (inputs, init) or (all
-    // operands, attrs).
-    linalgOp->setAttrs(linalg::getPrunedAttributeList(op));
+        loc, adaptor.getOperands(), output,
+        /*bodyBuild=*/nullptr, linalg::getPrunedAttributeList(op));
 
     // Convert the signature of the body. We scalarize the operands and add a
     // scalar operand representing the output tensor.
@@ -3515,36 +3512,19 @@ class SelectOpToMapConverter : public OpConversionPattern<mhlo::SelectOp> {
     auto emptyTensor =
         getEmptyTensorFor(rewriter, loc, *resultTy, op, op.getOperands());
 
-    auto linalgOp = rewriter.create<linalg::MapOp>(loc, *resultTy, mappedInputs,
-                                                   emptyTensor);
-    linalgOp->setAttrs(linalg::getPrunedAttributeList(op));
-
-    {
-      OpBuilder::InsertionGuard guard(rewriter);
-      Region& region = linalgOp.getRegion();
-
-      SmallVector<Type, 4> blockArgTypes;
-      SmallVector<Location, 4> blockArgLocs;
-      for (Value v : mappedInputs) {
-        blockArgTypes.push_back(getElementTypeOrSelf(v));
-        blockArgLocs.push_back(v.getLoc());
-      }
-
-      Block* block = rewriter.createBlock(&region, region.end(), blockArgTypes,
-                                          blockArgLocs);
-
-      // If predicate is scalar, the block has two arguments (on_true, on_false)
-      // and the predicate value is extracted outside of the block.
-      // If predicate is shaped, the block has three arguments (pred, on_true,
-      // on_false).
-      Value innerResult = rewriter.create<arith::SelectOp>(
-          loc, getElementTypeOrSelf(emptyTensor),
-          isScalarPred ? ValueRange{predValue, block->getArgument(0),
-                                    block->getArgument(1)}
-                       : block->getArguments());
-
-      rewriter.create<linalg::YieldOp>(loc, innerResult);
-    }
+    auto linalgOp = rewriter.create<linalg::MapOp>(
+        loc, mappedInputs, emptyTensor,
+        [&](OpBuilder& b, Location loc, ValueRange args) {
+          // If predicate is scalar, the block has two arguments (on_true,
+          // on_false) and the predicate value is extracted outside of the
+          // block. If predicate is shaped, the block has three arguments (pred,
+          // on_true, on_false).
+          Value innerResult = b.create<arith::SelectOp>(
+              loc, getElementTypeOrSelf(emptyTensor),
+              isScalarPred ? ValueRange{predValue, args[0], args[1]} : args);
+          b.create<linalg::YieldOp>(loc, innerResult);
+        },
+        linalg::getPrunedAttributeList(op));
 
     rewriter.replaceOp(op, linalgOp.getResult());
     return success();
@@ -3587,7 +3567,7 @@ class PointwiseToLinalgMapConverter : public OpConversionPattern<OpTy> {
     }
 
     auto loc = op.getLoc();
-    // Within a thlo.map region, we can immediately de-tensorsize if the
+    // Within a linalg.map region, we can immediately de-tensorsize if the
     // computation is scalar. We do not do this on the top-level, as that would
     // break the nice invariant that all programs are exclusively on tensors,
     // which is currently relied on for fusion in some pipelines.
@@ -3609,28 +3589,14 @@ class PointwiseToLinalgMapConverter : public OpConversionPattern<OpTy> {
     ValueRange inputs = adaptor.getOperands();
     Value emptyTensor =
         getEmptyTensorFor(rewriter, loc, *resultTy, op, adaptor.getOperands());
-    auto mapOp =
-        rewriter.create<linalg::MapOp>(loc, *resultTy, inputs, emptyTensor);
-    mapOp->setAttrs(linalg::getPrunedAttributeList(op));
-
-    {
-      OpBuilder::InsertionGuard guard(rewriter);
-      auto& region = mapOp.getRegion();
-
-      SmallVector<Type, 4> blockArgTypes;
-      SmallVector<Location, 4> blockArgLocs;
-      for (Value v : inputs) {
-        blockArgTypes.push_back(getElementTypeOrSelf(v));
-        blockArgLocs.push_back(v.getLoc());
-      }
-      Block* block = rewriter.createBlock(&region, region.end(), blockArgTypes,
-                                          blockArgLocs);
-
-      Value innerResult = mhlo::MhloOpToStdScalarOp::mapOp(
-          op, getElementTypeOrSelf(emptyTensor), block->getArguments(),
-          &rewriter);
-      rewriter.create<linalg::YieldOp>(loc, innerResult);
-    }
+    auto mapOp = rewriter.create<linalg::MapOp>(
+        loc, inputs, emptyTensor,
+        [&](OpBuilder& b, Location loc, ValueRange args) {
+          Value innerResult = mhlo::MhloOpToStdScalarOp::mapOp(
+              op, getElementTypeOrSelf(emptyTensor), args, &b);
+          b.create<linalg::YieldOp>(loc, innerResult);
+        },
+        linalg::getPrunedAttributeList(op));
 
     rewriter.replaceOp(op, mapOp->getResults());
     return success();
