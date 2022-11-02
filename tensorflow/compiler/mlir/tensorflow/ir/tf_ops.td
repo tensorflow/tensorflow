@@ -377,7 +377,7 @@ else_branch: A region that computes the outputs of the op if cond = false.
 }
 
 def TF_LegacyCallOp : TF_Op<"LegacyCall",
-                            [CallOpInterface, Pure]> {
+                            [CallOpInterface, SymbolUserOpInterface, Pure]> {
   let summary =
     "returns `f(inputs)`, where `f` is a function.";
 
@@ -418,6 +418,9 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
     }
     // TODO(b/204997177): Deprecate and remove.
     func::FuncOp func() {  return ResolveFunc(nullptr); }
+
+    // SymbolUserOpInterface verifier.
+    LogicalResult verifySymbolUses(SymbolTableCollection &symbolTable);
   }];
 }
 

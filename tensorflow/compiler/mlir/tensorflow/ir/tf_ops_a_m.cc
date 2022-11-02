@@ -3088,6 +3088,35 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// LegacyCallOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult LegacyCallOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
+  StringAttr func_attr = cast<SymbolRefAttr>(fAttr()).getRootReference();
+  StringRef func_name = func_attr.getValue();
+  func::FuncOp func =
+      symbolTable.lookupNearestSymbolFrom<func::FuncOp>(*this, func_attr);
+
+  if (!func) {
+    return emitError("'f' attribute refers to an undefined function: ")
+           << func_name;
+  }
+
+  FunctionType func_ty = func.getFunctionType();
+  int func_arg_count = func_ty.getNumInputs();
+  int arg_count = args().size();
+
+  if (arg_count != func_arg_count) {
+    return emitError() << "argument count mismatch: 'args' has " << arg_count
+                       << " argument(s), but '" << func_name << "' expects "
+                       << func_arg_count;
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // LogOp
 //===----------------------------------------------------------------------===//
 
