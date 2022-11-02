@@ -13,14 +13,17 @@ cc_library(
     srcs = ["grpc_coordination_client.cc"],
     hdrs = ["grpc_coordination_client.h"],
     deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/distributed_runtime:call_options",
+        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
+        "//tensorflow/tsl/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime/coordination:coordination_client",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_client_cq_tag",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_state",
-        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_client_cq_tag",
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_state",
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/tsl/platform:thread_annotations",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/core/platform:protobuf",
     ] + tf_grpc_cc_dependencies(),
 )
 

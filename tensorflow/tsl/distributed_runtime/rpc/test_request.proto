@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,15 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CLIENT_CQ_TAG_H_
-#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CLIENT_CQ_TAG_H_
+syntax = "proto3";
 
-#include "tensorflow/tsl/distributed_runtime/rpc/grpc_client_cq_tag.h"
+package tsl.test;
 
-namespace tensorflow {
-// NOLINTBEGIN(misc-unused-using-decls)
-using tsl::GrpcClientCQTag;
-// NOLINTEND(misc-unused-using-decls)
-}  // namespace tensorflow
-
-#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CLIENT_CQ_TAG_H_
+// Dummy proto for testing.
+message TestRequest {
+  repeated string data = 1;
+}
