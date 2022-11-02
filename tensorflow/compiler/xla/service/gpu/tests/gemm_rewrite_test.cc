@@ -3178,6 +3178,43 @@ ENTRY test {
           m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()))));
 }
 
+TEST_F(CublasLtGemmRewriteTest, MultipleMaximumUsers) {
+  const char* hlo_text = R"(
+HloModule multiple_maximum_users
+
+relu {
+  Arg_0 = f32[3,896,54]{2,1,0} parameter(0)
+  constant = f32[] constant(0)
+  broadcast = f32[3,896,54]{2,1,0} broadcast(constant), dimensions={}
+  ROOT maximum = f32[3,896,54]{2,1,0} maximum(Arg_0, broadcast)
+}
+
+ENTRY main {
+  constant = f32[] constant(1)
+  broadcast_1 = f32[3,896,1024]{2,1,0} broadcast(constant), dimensions={}
+  Arg_2 = f32[1024,54]{1,0} parameter(2)
+  dot = f32[3,896,54]{2,1,0} dot(broadcast_1, Arg_2), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  Arg_1 = f32[54]{0} parameter(1)
+  broadcast_2 = f32[3,896,54]{2,1,0} broadcast(Arg_1), dimensions={2}
+  add = f32[3,896,54]{2,1,0} add(dot, broadcast_2)
+  call = f32[3,896,54]{2,1,0} call(add), to_apply=relu
+  Arg_0 = f32[1]{0} parameter(0)
+  reshape_1 = f32[1,1,1]{2,1,0} reshape(Arg_0)
+  broadcast_3 = f32[1,1,1]{2,1,0} broadcast(reshape_1), dimensions={0,1,2}
+  reshape_2 = f32[] reshape(broadcast_3)
+  broadcast_4 = f32[3,896,54]{2,1,0} broadcast(reshape_2), dimensions={}
+  multiply = f32[3,896,54]{2,1,0} multiply(call, broadcast_4)
+  ROOT tuple = (f32[3,896,54]{2,1,0}, f32[3,896,54]{2,1,0}) tuple(multiply, call)
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+      )");
+}
+
 class GemmRewriteAllocationTest : public GpuCodegenTest {
  public:
   void CheckNumberOfAllocations(const std::string& hlo,
