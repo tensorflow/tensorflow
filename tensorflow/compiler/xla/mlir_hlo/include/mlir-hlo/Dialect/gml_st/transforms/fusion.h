@@ -27,6 +27,11 @@ namespace gml_st {
 FailureOr<Value> createFusedOp(PatternRewriter &rewriter,
                                MaterializeOp materializeOp);
 
+// Fuses an op into `gml_st.materialize` and performs the necessary updates to
+// the surrounding loop if any.
+FailureOr<Operation *> fuse(PatternRewriter &rewriter,
+                            MaterializeOp materializeOp);
+
 /// Populate fusion patterns.
 void populateFusionPatterns(MLIRContext *ctx,
                             function_ref<LogicalResult(Operation *)> filterFn,

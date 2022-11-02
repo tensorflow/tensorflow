@@ -161,42 +161,7 @@ class FusionPattern : public OpRewritePattern<MaterializeOp> {
     assert(filterFn && "expect filter function");
     if (failed(filterFn(materializeOp)))
       return rewriter.notifyMatchFailure(materializeOp, "filtered");
-
-    Location loc = materializeOp.getLoc();
-    FailureOr<Value> fusedOr = createFusedOp(rewriter, materializeOp);
-    if (failed(fusedOr)) return failure();  // Match failure aleady notified.
-
-    // Insert cast if needed.
-    Value fused = *fusedOr;
-    if (fused.getType() != materializeOp.getType()) {
-      if (!materializeOp.getType().isa<RankedTensorType>()) {
-        // the result should be a scalar, insert tensor.extract
-        auto tensorType = fused.getType().dyn_cast<RankedTensorType>();
-        assert(tensorType && tensorType.getNumElements() == 1 &&
-               "resulting tensor should contain a single element");
-        auto zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
-        fused = rewriter.create<tensor::ExtractOp>(
-            loc, fused, SmallVector<Value>(tensorType.getRank(), zero));
-      } else {
-        // The result should be a tensor, cast it to the correct shape
-        fused = rewriter.create<tensor::CastOp>(loc, materializeOp.getType(),
-                                                fused);
-      }
-    }
-
-    // Update destination argument of SetYieldOp if we are fusing into the
-    // output tile.
-    if (auto parallelOp = dyn_cast<ParallelOp>(materializeOp->getParentOp())) {
-      SetYieldOp setYieldOp = parallelOp.getTerminator();
-      Value src = materializeOp.getSource();
-      if (llvm::is_contained(src.getUsers(), setYieldOp)) {
-        if (failed(replaceSetYieldDstByProducerInit(setYieldOp, src)))
-          return failure();
-      }
-    }
-
-    rewriter.replaceOp(materializeOp, fused);
-    return success();
+    return fuse(rewriter, materializeOp);
   }
 
  private:
@@ -251,6 +216,45 @@ struct FusionPass : public impl::FusionPassBase<FusionPass> {
 };
 
 }  // namespace
+
+FailureOr<Operation*> fuse(PatternRewriter& rewriter,
+                           MaterializeOp materializeOp) {
+  Location loc = materializeOp.getLoc();
+  FailureOr<Value> fusedOr = createFusedOp(rewriter, materializeOp);
+  if (failed(fusedOr)) return failure();  // Match failure already notified.
+
+  // Insert cast if needed.
+  Value fused = *fusedOr;
+  if (fused.getType() != materializeOp.getType()) {
+    if (!materializeOp.getType().isa<RankedTensorType>()) {
+      // the result should be a scalar, insert tensor.extract
+      auto tensorType = fused.getType().dyn_cast<RankedTensorType>();
+      assert(tensorType && tensorType.getNumElements() == 1 &&
+             "resulting tensor should contain a single element");
+      auto zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+      fused = rewriter.create<tensor::ExtractOp>(
+          loc, fused, SmallVector<Value>(tensorType.getRank(), zero));
+    } else {
+      // The result should be a tensor, cast it to the correct shape
+      fused =
+          rewriter.create<tensor::CastOp>(loc, materializeOp.getType(), fused);
+    }
+  }
+
+  // Update destination argument of SetYieldOp if we are fusing into the
+  // output tile.
+  if (auto parallelOp = dyn_cast<ParallelOp>(materializeOp->getParentOp())) {
+    SetYieldOp setYieldOp = parallelOp.getTerminator();
+    Value src = materializeOp.getSource();
+    if (llvm::is_contained(src.getUsers(), setYieldOp)) {
+      if (failed(replaceSetYieldDstByProducerInit(setYieldOp, src)))
+        return failure();
+    }
+  }
+
+  rewriter.replaceOp(materializeOp, fused);
+  return fused.getDefiningOp();
+}
 
 FailureOr<Value> createFusedOp(PatternRewriter& rewriter,
                                MaterializeOp materializeOp) {

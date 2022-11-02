@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/fusion.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h"
@@ -35,9 +36,90 @@ namespace {
 #define GEN_PASS_DEF_TRANSFORMMATMULFORCPUPASS
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
+FailureOr<TilingResult> tileMatmul(PatternRewriter &rewriter,
+                                   TilingInterface op,
+                                   ArrayRef<int64_t> tileSizes,
+                                   bool distribute) {
+  TilingOptions opts;
+  opts.setTileSizeComputationFn(tileSizes);
+  opts.distribute = distribute;
+  return tile(opts, rewriter, op);
+}
+
+/// Pattern to tile `linalg.matmul` and fuse `linalg.fill` into generated
+/// `gml_st.parallel`.
+struct MatmulTransformPattern
+    : public OpInterfaceRewritePattern<TilingInterface> {
+  using OpInterfaceRewritePattern<TilingInterface>::OpInterfaceRewritePattern;
+
+  MatmulTransformPattern() = default;
+
+  explicit MatmulTransformPattern(MLIRContext *context,
+                                  int64_t lhsParallelDimTileSize = 2,
+                                  int64_t rhsParallelDimTileSize = 4,
+                                  int64_t reductionDimTileSize = 8,
+                                  PatternBenefit benefit = 1)
+      : OpInterfaceRewritePattern<TilingInterface>(context, benefit),
+        lhsParallelDimTileSize(lhsParallelDimTileSize),
+        rhsParallelDimTileSize(rhsParallelDimTileSize),
+        reductionDimTileSize(reductionDimTileSize) {}
+
+  LogicalResult matchAndRewrite(TilingInterface op,
+                                PatternRewriter &rewriter) const override {
+    if (hasTransformationAttr(op) || !isa<mlir::linalg::MatmulOp>(op))
+      return failure();
+
+    TilingInterface matmul = op;
+
+    // First level tiling: parallel dimensions.
+    SmallVector<int64_t> parallelDimsTileSizes{lhsParallelDimTileSize,
+                                               rhsParallelDimTileSize, 0};
+    auto tilingParallelDimsResult =
+        tileMatmul(rewriter, matmul, parallelDimsTileSizes,
+                   /*distribute=*/true);
+    if (failed(tilingParallelDimsResult)) return failure();
+
+    // Update the results if tiling succeeded.
+    if (tilingParallelDimsResult->loop != nullptr) {
+      rewriter.replaceOp(matmul, tilingParallelDimsResult->loop->getResults());
+      matmul = cast<TilingInterface>(tilingParallelDimsResult->tiledOp);
+    }
+
+    // Fusion into the output.
+    OpOperand *matmulOutput =
+        cast<linalg::MatmulOp>(matmul.getOperation()).getDpsInitOperand(0);
+    auto materialize = matmulOutput->get().getDefiningOp<MaterializeOp>();
+    if (!materialize) return failure();
+    if (materialize.getSource().getDefiningOp<linalg::FillOp>()) {
+      if (failed(fuse(rewriter, materialize))) return failure();
+    }
+
+    // Second level tiling: reduction dimension.
+    SmallVector<int64_t> reductionDimsTileSizes{0, 0, reductionDimTileSize};
+    auto tilingReductionDimsResult = tileMatmul(
+        rewriter, matmul, reductionDimsTileSizes, /*distribute=*/false);
+    if (failed(tilingReductionDimsResult)) return failure();
+
+    // Update the results if tiling succeeded.
+    if (tilingReductionDimsResult->loop != nullptr) {
+      rewriter.replaceOp(matmul, tilingReductionDimsResult->loop->getResults());
+      matmul = cast<TilingInterface>(tilingReductionDimsResult->tiledOp);
+    }
+
+    setTransformationAttr(rewriter, matmul);
+    return success();
+  }
+
+ private:
+  int64_t lhsParallelDimTileSize;
+  int64_t rhsParallelDimTileSize;
+  int64_t reductionDimTileSize;
+};
+
 struct TransformMatmulForCpuPass
     : public impl::TransformMatmulForCpuPassBase<TransformMatmulForCpuPass> {
   TransformMatmulForCpuPass() = default;
+
   explicit TransformMatmulForCpuPass(
       llvm::ArrayRef<int64_t> matmulTileSizes) {
     tileSizes = matmulTileSizes;
@@ -53,42 +135,18 @@ struct TransformMatmulForCpuPass
     func::FuncOp f = getOperation();
     MLIRContext *ctx = &getContext();
 
-    mlir::gml_st::TilingOptions opts;
-
     if ((*tileSizes).empty()) {
-      tileSizes = {2, 2, 2};
+      tileSizes = {2, 4, 8};
     }
 
     assert(tileSizes.size() == 3 &&
            "Tiling sizes for MatMul should have 3 elements");
 
-    auto filter_fn = [&](Operation *op) {
-      return success(isa<mlir::linalg::MatmulOp>(op));
-    };
-
-    ///////////////////////////////
-    // Tiling parallel dimensions
-    opts.setTileSizeComputationFn({(*tileSizes)[0], (*tileSizes)[1], 0});
-
     RewritePatternSet patterns(ctx);
-    populateTilingPatterns(ctx, filter_fn, opts, &patterns);
+    patterns.add<MatmulTransformPattern>(ctx, (*tileSizes)[0], (*tileSizes)[1],
+                                         (*tileSizes)[2]);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
-      return signalPassFailure();
-    }
-
-    // Ensure we drop the marker in the end.
-    f.walk([](linalg::LinalgOp op) { gml_st::removeTransformationAttr(op); });
-
-    ///////////////////////////////
-    // Tiling reduction dimension
-    opts.setTileSizeComputationFn({0, 0, (*tileSizes).back()});
-    opts.distribute = false;
-
-    RewritePatternSet newpatterns(ctx);
-    populateTilingPatterns(ctx, filter_fn, opts, &newpatterns);
-
-    if (failed(applyPatternsAndFoldGreedily(f, std::move(newpatterns)))) {
       return signalPassFailure();
     }
 
@@ -98,9 +156,6 @@ struct TransformMatmulForCpuPass
 };
 
 }  // namespace
-}  // namespace mlir::gml_st
-
-namespace mlir::gml_st {
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformMatmulForCpuPass() {

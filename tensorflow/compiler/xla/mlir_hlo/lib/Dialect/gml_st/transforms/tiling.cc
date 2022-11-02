@@ -46,8 +46,7 @@ void TilingOptions::setTileSizeComputationFn(ArrayRef<int64_t> ts) {
   SmallVector<int64_t, 4> tileSizes(ts.begin(), ts.end());
   tileSizeComputationFn = [tileSizes](OpBuilder &b, Operation *op) {
     return llvm::to_vector<4>(map_range(tileSizes, [&](int64_t s) {
-      Value v = b.create<arith::ConstantIndexOp>(op->getLoc(), s);
-      return v;
+      return b.create<arith::ConstantIndexOp>(op->getLoc(), s).getResult();
     }));
   };
 }
@@ -273,6 +272,7 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
 
 FailureOr<TilingResult> tile(const TilingOptions &options,
                              PatternRewriter &rewriter, TilingInterface op) {
+  rewriter.setInsertionPoint(op);
   if (!options.tileSizeComputationFn) {
     return rewriter.notifyMatchFailure(
         op, "missing tile size computation function");
