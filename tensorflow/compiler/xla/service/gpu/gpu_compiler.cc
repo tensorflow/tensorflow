@@ -642,7 +642,8 @@ Status GpuCompiler::OptimizeHloModule(
         /*debug_only=*/true);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
-    fusion.AddPass<FusionMerger>(ShapeSizeBytesFunction());
+    const GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
+    fusion.AddPass<FusionMerger>(gpu_device_info, ShapeSizeBytesFunction());
     fusion.AddPass<GpuMultiOutputFusion>(ShapeSizeBytesFunction());
     fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                            /*only_fusion_computations=*/true);
