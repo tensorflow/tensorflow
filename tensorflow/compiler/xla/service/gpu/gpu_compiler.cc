@@ -91,6 +91,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gather_simplifier.h"
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/gpu/all_reduce_blueconnect.h"
+#include "tensorflow/compiler/xla/service/gpu/all_reduce_promotion.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/conv_layout_normalization.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
@@ -589,6 +590,12 @@ Status GpuCompiler::OptimizeHloModule(
         layout_insensitive_algsimp_opts);
 
     collectives_pipeline.AddPass<AllGatherBroadcastReorder>();
+
+    // promote 16 bit integer all-reduce and reduce-scatter to 32-bit.
+    collectives_pipeline.AddPass<AllReducePromotion>();
+    // Remove dead computations left over after ar/rs promotion.
+    collectives_pipeline.AddPass<HloDCE>();
+
     TF_RETURN_IF_ERROR(collectives_pipeline.Run(hlo_module).status());
   }
 

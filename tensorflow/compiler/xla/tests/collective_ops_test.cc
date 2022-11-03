@@ -1396,5 +1396,72 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(CollectivePermute_16BitInt)) {
   LiteralTestUtil::ExpectR1Equal<uint16_t>({10, 15}, results[1]);
 }
 
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_16BitInt)) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  sum {
+    a = u16[] parameter(0)
+    b = u16[] parameter(1)
+    ROOT add.2 = u16[] add(a, b)
+  }
+
+  ENTRY test_computation {
+    id32 = u32[] replica-id()
+    id = u16[] convert(id32)
+    id2 = u16[2] broadcast(id), dimensions={}
+    a0 = u16[2] constant({10, 15})
+    a1 = u16[2] add(id2, a0)
+    ROOT cp = u16[2] all-reduce(a1), replica_groups={}, to_apply=sum
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  auto config = GetModuleConfigForTest(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (const Literal& result : results) {
+    LiteralTestUtil::ExpectR1Equal<uint16_t>({21, 31}, result);
+  }
+}
+
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(ReduceScatter_16BitInt)) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  sum {
+    a = u16[] parameter(0)
+    b = u16[] parameter(1)
+    ROOT add.2 = u16[] add(a, b)
+  }
+
+  ENTRY test_computation {
+    id32 = u32[] replica-id()
+    id = u16[] convert(id32)
+    id2 = u16[2] broadcast(id), dimensions={}
+    a0 = u16[2] constant({10, 15})
+    a1 = u16[2] add(id2, a0)
+    ROOT cp = u16[1]reduce-scatter(a1), dimensions={0}, replica_groups={}, to_apply=sum
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  auto config = GetModuleConfigForTest(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<uint16_t>({21}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint16_t>({31}, results[1]);
+}
+
 }  // namespace
 }  // namespace xla

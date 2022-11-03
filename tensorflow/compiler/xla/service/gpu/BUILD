@@ -1663,6 +1663,7 @@ cc_library(
     deps = [
         ":alias_passthrough_params",
         ":all_reduce_blueconnect",
+        ":all_reduce_promotion",
         ":conv_layout_normalization",
         ":executable_proto_cc",
         ":fusion_merger",
@@ -2058,6 +2059,35 @@ tf_cc_test(
         ":all_reduce_blueconnect",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "all_reduce_promotion",
+    srcs = ["all_reduce_promotion.cc"],
+    hdrs = ["all_reduce_promotion.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:change_op_data_type",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+    ],
+)
+
+tf_cc_test(
+    name = "all_reduce_promotion_test",
+    srcs = ["all_reduce_promotion_test.cc"],
+    deps = [
+        ":all_reduce_promotion",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/tsl/platform:status_matchers",
