@@ -22,30 +22,20 @@ cc_library(
 
 cc_library(
     name = "host_tracer",
-    srcs = ["host_tracer_factory.cc"],
     deps = [
-        ":host_tracer_impl",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
-        "//tensorflow/core/profiler/lib:profiler_factory",
+        "//tensorflow/compiler/xla/backends/profiler/cpu:host_tracer",
     ],
     alwayslink = True,
 )
 
 cc_library(
     name = "host_tracer_impl",
-    srcs = ["host_tracer.cc"],
     hdrs = ["host_tracer.h"],
     copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
-        ":host_tracer_utils",
-        ":traceme_recorder",
-        "//tensorflow/core:lib",
+        "//tensorflow/compiler/xla/backends/profiler/cpu:host_tracer_impl",
         "//tensorflow/core/profiler/lib:profiler_interface",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler/utils:time_utils",
-        "//tensorflow/core/profiler/utils:xplane_schema",
-        "//tensorflow/core/profiler/utils:xplane_utils",
     ],
 )
 
@@ -135,27 +125,21 @@ cc_library(
 
 cc_library(
     name = "python_tracer",
-    srcs = ["python_tracer_factory.cc"],
     deps = [
-        ":python_tracer_impl",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
-        "//tensorflow/core/profiler/lib:profiler_factory",
+        "//tensorflow/compiler/xla/backends/profiler/cpu:python_tracer",
     ],
     alwayslink = True,
 )
 
 cc_library(
     name = "python_tracer_impl",
-    srcs = ["python_tracer.cc"],
     hdrs = ["python_tracer.h"],
     copts = tf_profiler_copts() + ["-fexceptions"],
     features = ["-use_header_modules"],
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/compiler/xla/backends/profiler/cpu:python_tracer_impl",
         "//tensorflow/core/profiler/lib:profiler_interface",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/python/profiler/internal:python_hooks",
     ],
 )
 

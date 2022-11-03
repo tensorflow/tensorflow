@@ -15,6 +15,7 @@ cc_library(
     copts = tf_profiler_copts() + ["-fexceptions"],
     features = ["-use_header_modules"],  # Incompatible with -fexceptions.
     visibility = [
+        "//tensorflow/compiler/xla/backends/profiler:__subpackages__",
         "//tensorflow/core/profiler:__subpackages__",
         "//tensorflow/python/profiler/internal:__subpackages__",
     ],
