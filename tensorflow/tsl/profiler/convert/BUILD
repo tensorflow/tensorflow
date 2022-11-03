@@ -13,6 +13,10 @@ package(
 cc_library(
     name = "xla_op_utils",
     hdrs = ["xla_op_utils.h"],
+    visibility = [
+        "//tensorflow/compiler/xla/backends/profiler:__subpackages__",
+        "//tensorflow/core/profiler:internal",
+    ],
     deps = ["@com_google_absl//absl/strings"],
 )
 

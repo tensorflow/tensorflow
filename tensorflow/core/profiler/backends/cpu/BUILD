@@ -145,19 +145,9 @@ cc_library(
 
 cc_library(
     name = "metadata_collector",
-    srcs = ["metadata_collector.cc"],
     copts = tf_profiler_copts(),
     deps = [
-        ":metadata_utils",
-        "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/service:xla_debug_info_manager",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
-        "//tensorflow/core/profiler/lib:profiler_factory",
-        "//tensorflow/core/profiler/lib:profiler_interface",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler/utils:xplane_schema",
-        "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/compiler/xla/backends/profiler/cpu:metadata_collector",
     ],
     alwayslink = True,
 )
@@ -167,6 +157,7 @@ cc_library(
     hdrs = ["metadata_utils.h"],
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
+        "//tensorflow/compiler/xla/backends/profiler/cpu:metadata_utils",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core/profiler/convert:xla_op_utils",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",

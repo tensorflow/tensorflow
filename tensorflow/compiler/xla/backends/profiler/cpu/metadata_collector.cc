@@ -18,19 +18,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/backends/profiler/cpu/metadata_utils.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/xla_debug_info_manager.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/backends/cpu/metadata_utils.h"
-#include "tensorflow/core/profiler/lib/profiler_factory.h"
-#include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/profiler/lib/profiler_factory.h"
+#include "tensorflow/tsl/profiler/lib/profiler_interface.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
+#include "tensorflow/tsl/profiler/utils/xplane_utils.h"
 
-namespace tensorflow {
+namespace xla {
 namespace profiler {
 namespace {
 
@@ -38,7 +38,7 @@ namespace {
 // from XLA runtime etc.
 //
 // Thread-safety: This class is go/thread-compatible.
-class MetadataCollector : public ProfilerInterface {
+class MetadataCollector : public tsl::profiler::ProfilerInterface {
  public:
   MetadataCollector() = default;
 
@@ -58,9 +58,11 @@ class MetadataCollector : public ProfilerInterface {
     return OkStatus();
   }
 
-  Status CollectData(XSpace* space) override {
+  Status CollectData(tsl::profiler::XSpace* space) override {
     if (!debug_info_.empty()) {
-      XPlane* plane = FindOrAddMutablePlaneWithName(space, kMetadataPlaneName);
+      tsl::profiler::XPlane* plane =
+          tsl::profiler::FindOrAddMutablePlaneWithName(
+              space, tsl::profiler::kMetadataPlaneName);
       MetadataXPlaneBuilder metadata_plane(plane);
       for (auto& hlo_proto : debug_info_) {
         metadata_plane.AddHloProto(hlo_proto->hlo_module().id(), *hlo_proto);
@@ -78,8 +80,8 @@ class MetadataCollector : public ProfilerInterface {
   TF_DISALLOW_COPY_AND_ASSIGN(MetadataCollector);
 };
 
-std::unique_ptr<ProfilerInterface> CreatMetadataCollector(
-    const ProfileOptions& options) {
+std::unique_ptr<tsl::profiler::ProfilerInterface> CreatMetadataCollector(
+    const tensorflow::ProfileOptions& options) {
   return options.enable_hlo_proto() ? std::make_unique<MetadataCollector>()
                                     : nullptr;
 }
@@ -92,4 +94,4 @@ auto register_metadata_collector_factory = [] {
 }();
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace xla
