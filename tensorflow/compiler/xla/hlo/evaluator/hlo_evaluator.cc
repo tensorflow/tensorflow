@@ -3773,19 +3773,25 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
     }
   }
 
-  std::unique_ptr<HloEvaluator> embedded_evaluator =
-      CreateEmbedded(max_loop_iterations_);
+  const int num_threads = tsl::port::MaxParallelism() + 1;
+  std::vector<std::unique_ptr<HloEvaluator>> embedded_evaluators;
+  embedded_evaluators.reserve(num_threads);
+  for (int i = 0; i < num_threads; ++i) {
+    embedded_evaluators.push_back(CreateEmbedded(max_loop_iterations_));
+  }
+
   absl::InlinedVector<Literal, 1> results(num_args);
   for (int64_t i = 0; i < num_args; ++i) {
     results[i] = Literal(is_tuple ? out_shape.tuple_shapes(i) : out_shape);
   }
 
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
-      output_shape, [&](absl::Span<const int64_t> output_index) {
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexParallelWithStatus(
+      output_shape, [&](absl::Span<const int64_t> output_index, int thread_id) {
         return GenerateReduceOutputElement(
             is_tuple, output_index, init_values, input_args,
-            absl::Span<Literal>(results), function, embedded_evaluator.get(),
-            arg_dim_steps, arg_dim_counts, result_to_arg_index);
+            absl::Span<Literal>(results), function,
+            embedded_evaluators[thread_id + 1].get(), arg_dim_steps,
+            arg_dim_counts, result_to_arg_index);
       }));
 
   if (is_tuple) {

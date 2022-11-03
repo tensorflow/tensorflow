@@ -702,9 +702,18 @@ class ShapeUtil {
       absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
       const ForEachParallelVisitorFunction& visitor_function);
 
+  static Status ForEachIndexParallelWithStatus(
+      const Shape& shape, absl::Span<const int64_t> base,
+      absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
+      const ForEachParallelVisitorFunction& visitor_function);
+
   // Convenience wrapper which doesn't take `base`, `count` and `incr`
   // explicitly, but iterates over every element in `shape` instead.
   static void ForEachIndexParallel(
+      const Shape& shape,
+      const ForEachParallelVisitorFunction& visitor_function);
+
+  static Status ForEachIndexParallelWithStatus(
       const Shape& shape,
       const ForEachParallelVisitorFunction& visitor_function);
 
