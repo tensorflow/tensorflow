@@ -78,6 +78,7 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
     mlir::OpPassManager& pm, const CpuPipelineOptions& opts) {
   // Convert entry function to the XLA entrypoint.
   pm.addPass(CreateExportRuntimeFunctionsPass());
+  pm.addPass(cpu::createConvertLmhloToCpuRuntimePass());
   pm.addPass(CreateConvertCustomCallsPass());
   pm.addPass(CreateConvertAssertsPass());
 
@@ -118,8 +119,6 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
   pm.addPass(mlir::createConvertSCFToCFPass());
 
   // Convert runtime operations and custom calls to LLVM dialect.
-  pm.addPass(cpu::createConvertLmhloToCpuRuntimePass());
-  pm.addPass(CreateConvertCustomCallsPass());
   const CompilationPipelineOptions& copts = opts.common_options;
   ConvertRuntimeToLLvmOpts rt_to_llvm_opts = {
       copts.populate_type_id_names, copts.populate_type_conversions,
