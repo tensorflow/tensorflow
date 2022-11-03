@@ -190,6 +190,21 @@ cc_library(
 )
 
 cc_library(
+    name = "memset",
+    srcs = ["memset.cc"],
+    hdrs = ["memset.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service/gpu:io_feed_manager",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "support",
     hdrs = ["support.h"],
     deps = [
