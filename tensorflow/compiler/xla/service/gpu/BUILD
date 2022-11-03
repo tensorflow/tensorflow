@@ -216,6 +216,32 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_device_info_for_tests",
+    testonly = 1,
+    srcs = ["gpu_device_info_for_tests.cc"],
+    hdrs = ["gpu_device_info_for_tests.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        ":gpu_device_info",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_device_info_test",
+    srcs = ["gpu_device_info_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_device_info_for_tests",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_gpu_executor",
+        "//tensorflow/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+cc_library(
     name = "ir_emitter",
     srcs = [
         "ir_emitter.cc",
@@ -1337,6 +1363,7 @@ tf_cc_test(
     deps = [
         ":fusion_merger",
         ":gpu_device_info",
+        ":gpu_device_info_for_tests",
         ":gpu_fusible",
         ":instruction_fusion",
         "//tensorflow/compiler/xla:test_helpers",

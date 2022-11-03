@@ -16,10 +16,6 @@ load(
     "if_cuda_is_configured",
 )
 load(
-    "//tensorflow/tsl/platform:build_config.bzl",
-    "tsl_cc_test",
-)
-load(
     "//tensorflow/tsl/platform:build_config_root.bzl",
     "if_static",
     "tf_cuda_tests_tags",
@@ -596,19 +592,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
     ],
     alwayslink = True,
-)
-
-tsl_cc_test(
-    name = "cuda_gpu_executor_test",
-    srcs = ["cuda_gpu_executor_test.cc"],
-    tags = [
-        "requires-gpu-nvidia",
-    ],
-    deps = [
-        ":cuda_gpu_executor",
-        "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_main",
-    ],
 )
 
 cc_library(

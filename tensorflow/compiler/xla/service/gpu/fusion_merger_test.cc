@@ -18,7 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -37,19 +37,9 @@ class FusionMergerTest : public HloTestBase {
     };
   }
 
-  GpuDeviceInfo A6000DeviceInfo() {
-    GpuDeviceInfo d;
-    d.shared_memory_per_core = 100 * 1024;
-    d.core_count = 84;
-    d.fpus_per_core = 128;
-    d.memory_bandwidth = (1 << 30) * 768L;
-    d.l2_cache_size = 6 * 1024 * 1024;
-    d.clock_rate_ghz = 1.410;
-    return d;
-  }
-
  public:
-  FusionMerger fusion_merger_{A6000DeviceInfo(), ShapeSizeBytesFunction()};
+  FusionMerger fusion_merger_{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+                              ShapeSizeBytesFunction()};
   FusionMergerTest() : HloTestBase() {}
 };
 
