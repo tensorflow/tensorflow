@@ -51,6 +51,11 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   bool ProducerConsumerMergedTooLarge(const HloInstruction& producer,
                                       const HloInstruction& consumer);
 
+  // IR size scale of an instruction: 1 for most instructions,
+  // but for fusions is the number of instructions emitted including the
+  // duplication due to non-element-wise accesses.
+  float IrSize(const HloInstruction& hlo) const;
+
  protected:
   std::unique_ptr<HloCostAnalysis> CreateNestedCostAnalysis() override;
   int64_t FusionParameterReadBytes(const HloInstruction* hlo) const override;
@@ -66,11 +71,6 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   // containing such an instruction.
   // Count these to avoid unmanageable IR code size.
   float IrBasicBlockSplitCount(const HloInstruction& hlo) const;
-
-  // IR size scale of an instruction: 1 for most instructions,
-  // but for fusions is the number of instructions emitted including the
-  // duplication due to non-element-wise accesses.
-  float IrSize(const HloInstruction& hlo) const;
 };
 
 }  // namespace gpu

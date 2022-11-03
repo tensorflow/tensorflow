@@ -128,7 +128,7 @@ ENTRY e {
 
   EXPECT_EQ(analysis.output_bytes_accessed(*root), 10000);
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 10000);
-  // operand + output
+  // Operand + output.
   EXPECT_EQ(analysis.bytes_accessed(*root), 2 * 10000);
   EXPECT_EQ(analysis.bytes_accessed(), 2 * 10000);
 }
@@ -160,6 +160,7 @@ ENTRY e {
   EXPECT_EQ(analysis.bytes_accessed(*root), n_elements * 4);
   EXPECT_EQ(analysis.bytes_accessed(), n_elements * 4);
   EXPECT_EQ(analysis.flop_count(), n_elements * 3 * 3);
+  EXPECT_EQ(analysis.IrSize(*root), 5);
 }
 
 TEST_F(GpuHloCostAnalysisTest, Slice) {
@@ -188,6 +189,7 @@ ENTRY e {
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 1);
   EXPECT_EQ(analysis.bytes_accessed(*root), 2);
   EXPECT_EQ(analysis.bytes_accessed(), 2);
+  EXPECT_EQ(analysis.IrSize(*root), 4);
 }
 
 TEST_F(GpuHloCostAnalysisTest, TwoSlices) {
@@ -219,6 +221,7 @@ ENTRY e {
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 2);
   EXPECT_EQ(analysis.bytes_accessed(*root), 3);
   EXPECT_EQ(analysis.bytes_accessed(), 3);
+  EXPECT_EQ(analysis.IrSize(*root), 9);
 }
 
 TEST_F(GpuHloCostAnalysisTest, MultipleTrivialUsers) {
@@ -249,6 +252,7 @@ ENTRY e {
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 1);
   EXPECT_EQ(analysis.bytes_accessed(*root), 1 + 1);
   EXPECT_EQ(analysis.bytes_accessed(), 1 + 1);
+  EXPECT_EQ(analysis.IrSize(*root), 4);
 }
 
 TEST_F(GpuHloCostAnalysisTest, MixedUsers) {
@@ -257,10 +261,11 @@ HloModule m
 
 f {
   p0 = s8[10] parameter(0)
-  m0 = s8[10] multiply(p0, p0)
-  a0 = s8[10] add(p0, p0)
+  n0 = s8[10] negate(p0)
+  m0 = s8[10] multiply(n0, n0)
+  a0 = s8[10] add(n0, n0)
   s0 = s8[5] slice(a0), slice={[0:5]}
-  s1 = s8[2] slice(p0), slice={[4:6]}
+  s1 = s8[2] slice(n0), slice={[4:6]}
   n1 = s8[2] negate(s1)
   ROOT c0 = s8[17] concatenate(s0, m0, n1), dimensions={0}
 }
@@ -276,13 +281,20 @@ ENTRY e {
   GpuHloCostAnalysis analysis({ShapeSize});
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis));
 
-  // Expect that uses of p0 by different trivial users (m0, a0) can be
+  // Expect that uses of n0 by different trivial users (m0, a0) can be
   // combined into a single memory access, but slices have to be counted
   // separately.
   EXPECT_EQ(analysis.output_bytes_accessed(*root), 17);
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 17);
   EXPECT_EQ(analysis.bytes_accessed(*root), 17 + 17);
   EXPECT_EQ(analysis.bytes_accessed(), 17 + 17);
+  // There are 2 slice accesses + 1 element-wise from the root.
+  EXPECT_EQ(analysis.IrSize(*root->fused_parameter(0)), 3);
+  // Because p0 is only directly used by elementwise n0 their code sizes
+  // have to be equal.
+  EXPECT_EQ(analysis.IrSize(*root->fused_parameter(0)),
+            analysis.IrSize(*root->fused_parameter(0)->users()[0]));
+  EXPECT_EQ(analysis.IrSize(*root), 12);
 }
 
 TEST_F(GpuHloCostAnalysisTest, FractionalUseRoundingUp) {
@@ -352,6 +364,7 @@ ENTRY e {
   // parameter + output + constant
   EXPECT_EQ(analysis.bytes_accessed(*root), 3000);
   EXPECT_EQ(analysis.bytes_accessed(), 3000);
+  EXPECT_EQ(analysis.IrSize(*root), 3);
 }
 
 TEST_F(GpuHloCostAnalysisTest, DynUpdateSliceUsingOperandData) {

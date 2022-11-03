@@ -27,7 +27,7 @@ namespace gpu {
 GpuPerformanceModel::EstimateRunTimes(const HloInstruction* producer,
                                       const GpuHloCostAnalysis* cost_analysis,
                                       const GpuDeviceInfo& gpu_device_info) {
-  VLOG(8) << "Producer fusion: " << producer->ToString();
+  VLOG(8) << "Producer fusion: " << producer->name();
   VLOG(10) << producer->fused_instructions_computation()->ToString();
 
   float memory_bandwidth_bytes_per_second = gpu_device_info.memory_bandwidth;
