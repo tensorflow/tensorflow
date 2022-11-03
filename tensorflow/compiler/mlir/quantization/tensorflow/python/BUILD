@@ -1,5 +1,14 @@
 load("//tensorflow:pytype.default.bzl", "pytype_library", "pytype_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud", "tf_py_test", "tf_python_pybind_extension")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+)
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "get_compatible_with_cloud",
+    "tf_py_test",
+    "tf_python_pybind_extension",
+)
 
 package(
     default_visibility = [
@@ -9,15 +18,17 @@ package(
     licenses = ["notice"],
 )
 
+# Do NOT directly depend on `quantize_model_cc_impl` unless it is necessary
+# (i.e. undefined symbol). See the comments in `quantize_model_cc`.
 cc_library(
-    name = "quantize_model_lib",
-    srcs = [
-        "quantize_model.cc",
-    ],
-    hdrs = [
-        "quantize_model.h",
-    ],
+    name = "quantize_model_cc_impl",
+    srcs = ["quantize_model.cc"],
+    hdrs = ["quantize_model.h"],
     compatible_with = get_compatible_with_cloud(),
+    visibility = [
+        # Directly linked to `lib_pywrap_tensorflow_internal.so`.
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -57,47 +68,36 @@ cc_library(
     ],
 )
 
+# OSS: This is a header-only target. The implementation target `quantize_model_cc_impl` is
+# directly linked to `lib_pywrap_tensorflow_internal.so`, so in most use cases of python-
+# exported symbols depending directly on `quantize_model_cc_impl` should be unnecessary.
+# Using the header-only target will help avoid the ODR violation.
 cc_library(
     name = "quantize_model_cc",
-    srcs = [
-        "quantize_model_wrapper.cc",
-    ],
-    hdrs = [
-        "quantize_model_wrapper.h",
-    ],
-    copts = ["-fexceptions"],
-    features = [
-        "-use_header_modules",  # Required for pybind11
-        "-parse_headers",
-    ],
-    visibility = [
-        "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
-        "//tensorflow/python:__subpackages__",
-    ],
-    deps = [
-        ":quantize_model_lib",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/python/lib/core:pybind11_lib",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@pybind11",
-    ],
+    hdrs = ["quantize_model.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = if_static([":quantize_model_cc_impl"]),
 )
 
+# Exports python symbols via pybind11.
 tf_python_pybind_extension(
     name = "pywrap_quantize_model",
     srcs = [
         "pywrap_quantize_model.cc",
+        "quantize_model_wrapper.cc",
+        "quantize_model_wrapper.h",  # Private header.
     ],
-    hdrs = [
-        "quantize_model_wrapper.h",
-    ],
+    # All deps must be header-only.
     deps = [
+        ":quantize_model_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@pybind11",
     ],
 )
