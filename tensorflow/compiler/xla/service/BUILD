@@ -21,6 +21,7 @@ load(
 )
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("//tensorflow/compiler/xla/service:xla_compile.bzl", "xla_aot_compile")
 
 package(
     default_visibility = [":friends"],
@@ -6993,3 +6994,30 @@ tf_cc_binary(
         "@llvm-project//mlir:Parser",
     ],
 )
+
+# TODO(b/248362914): Fix the OSS build.
+# copybara:uncomment_begin
+# # A simple test of xla_aot_compile which generates an output file from an mhlo file.
+# xla_aot_compile(
+#     name = "xla_aot_compile_test_output",
+#     mhlo = "xla_aot_compile_test.mlir",
+# )
+#
+# tf_cc_test(
+#     name = "xla_aot_compile_test",
+#     srcs = ["xla_aot_compile_test.cc"],
+#     data = [
+#         ":xla_aot_compile_test_output",
+#     ],
+#     deps = [
+#         "//tensorflow/compiler/xla:status",
+#         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+#         "//tensorflow/tsl/lib/core:status_test_util",
+#         "//tensorflow/tsl/platform:env",
+#         "//tensorflow/tsl/platform:resource_loader",
+#         "//tensorflow/tsl/platform:statusor",
+#         "//tensorflow/tsl/platform:test",
+#         "@com_google_googletest//:gtest_main",
+#     ],
+# )
+# copybara:uncomment_end
