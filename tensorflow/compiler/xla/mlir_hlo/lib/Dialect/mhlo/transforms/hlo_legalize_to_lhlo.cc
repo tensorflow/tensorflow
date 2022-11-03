@@ -18,8 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <utility>
 
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "mlir-hlo/Dialect/lhlo/transforms/map_hlo_to_lhlo_op.h"
+#include "lhlo/IR/lhlo_ops.h"
+#include "lhlo/transforms/map_hlo_to_lhlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"

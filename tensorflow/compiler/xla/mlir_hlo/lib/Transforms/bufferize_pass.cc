@@ -21,11 +21,11 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "lhlo/IR/lhlo_ops.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/bufferizable_op_interface_impl.h"
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/bufferizable_op_interface_impl.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"

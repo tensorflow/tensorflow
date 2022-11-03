@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_LHLO_TRANSFORMS_MAP_LMHLO_TO_SCALAR_OP_H
 #define MLIR_HLO_DIALECT_LHLO_TRANSFORMS_MAP_LMHLO_TO_SCALAR_OP_H
 
-#include "mlir-hlo/Dialect/lhlo/transforms/map_lhlo_to_hlo_op.h"
+#include "lhlo/transforms/map_lhlo_to_hlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
 
 namespace mlir {

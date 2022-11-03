@@ -13,18 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines structures used in LMHLO dialect.
+#include "lhlo/IR/lhlo_structured_interface.h"
 
-#ifndef MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_STRUCTS_H
-#define MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_STRUCTS_H
+namespace mlir {
+namespace lmhlo {
 
-#include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Types.h"
+#include "lhlo/IR/lhlo_structured_interface.cpp.inc"
 
-// Order matters, this .inc header is not self-contained, and relies on the
-// #includes above.
-#define GET_ATTRDEF_CLASSES
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.h.inc"
-
-#endif  // MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_STRUCTS_H
+}  // namespace lmhlo
+}  // namespace mlir

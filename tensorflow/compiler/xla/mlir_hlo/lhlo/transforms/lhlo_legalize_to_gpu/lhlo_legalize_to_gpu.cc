@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "lhlo/IR/lhlo_ops.h"
+#include "lhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "mlir-hlo/Dialect/lhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -43,7 +43,7 @@ namespace mlir {
 namespace lmhlo {
 
 #define GEN_PASS_DEF_LHLOLEGALIZETOGPUPASS
-#include "mlir-hlo/Dialect/lhlo/transforms/lmhlo_passes.h.inc"
+#include "lhlo/transforms/lmhlo_passes.h.inc"
 
 namespace {
 

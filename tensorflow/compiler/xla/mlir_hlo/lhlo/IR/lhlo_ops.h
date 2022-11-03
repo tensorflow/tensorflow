@@ -18,9 +18,9 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_H
 #define MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_H
 
+#include "lhlo/IR/lhlo_ops_structs.h"
+#include "lhlo/IR/lhlo_structured_interface.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.h"
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_structured_interface.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -59,6 +59,6 @@ class LmhloDialect : public Dialect {
 }  // end namespace mlir
 
 #define GET_OP_CLASSES
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h.inc"
+#include "lhlo/IR/lhlo_ops.h.inc"
 
 #endif  // MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_H

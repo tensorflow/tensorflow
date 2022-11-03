@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <utility>
 
+#include "lhlo/transforms/passes.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
-#include "mlir-hlo/Dialect/lhlo/transforms/passes.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -37,7 +37,7 @@ namespace mlir {
 namespace lmhlo {
 
 #define GEN_PASS_DEF_LHLOFUSELINALGPASS
-#include "mlir-hlo/Dialect/lhlo/transforms/lmhlo_passes.h.inc"
+#include "lhlo/transforms/lmhlo_passes.h.inc"
 
 namespace {
 

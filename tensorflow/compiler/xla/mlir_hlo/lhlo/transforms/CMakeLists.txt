@@ -13,30 +13,41 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+
+set(LLVM_TARGET_DEFINITIONS lmhlo_passes.td)
+mlir_tablegen(lmhlo_passes.h.inc -gen-pass-decls -name AllLmhlo)
+add_public_tablegen_target(MLIRLmhloPassIncGen)
+
 include_directories(BEFORE
     ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_mlir_library(LmhloStructuredInterface
-  lhlo_structured_interface.cc
-
-  LINK_LIBS PUBLIC
-  MLIRIR
-
-  DEPENDS
-  MLIRlhlo_structured_interfaceIncGen
-)
-
-add_mlir_dialect_library(LmhloDialect
-  lhlo_ops.cc
+add_mlir_library(LmhloPasses
+  legalize_to_tensor_op/legalize_to_tensor_op.cc
+  lhlo_elemental_utils.cc
+  lhlo_fuse_linalg/lhlo_fuse_linalg.cc
+  lhlo_legalize_to_affine/lhlo_legalize_to_affine.cc
+  lhlo_legalize_to_gpu/lhlo_legalize_to_gpu.cc
+  lhlo_legalize_to_parallel_loops/lhlo_legalize_to_parallel_loops.cc
 
   DEPENDS
   MLIRlhlo_opsIncGen
+  MLIRLmhloPassIncGen
+  MLIRMhloPassIncGen
+
+  LINK_COMPONENTS
+  Core
 
   LINK_LIBS PUBLIC
-  HloOpsCommon
-  LmhloStructuredInterface
-  MhloDialect
+  LmhloDialect
+  MLIRComplexDialect
+  MLIRGPUOps
+  MLIRLinalgDialect
+  MLIRLinalgAnalysis
+  MLIRLinalgTransforms
+  MLIRMhloUtils
   MLIRIR
+  MLIRPass
+  MLIRRewrite
+  MLIRTransformUtils
 )
-

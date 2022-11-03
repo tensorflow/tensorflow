@@ -19,6 +19,6 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"
 
 /// Include the generated interface declarations.
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_structured_interface.h.inc"
+#include "lhlo/IR/lhlo_structured_interface.h.inc"
 
 #endif  // MLIR_HLO_DIALECT_LHLO_IR_LHLO_STRUCTURED_INTERFACE_H

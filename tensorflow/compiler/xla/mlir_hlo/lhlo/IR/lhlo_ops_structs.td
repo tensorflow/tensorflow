@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef LHLO_OPS_STRUCTS
 #define LHLO_OPS_STRUCTS
 
-include "mlir-hlo/Dialect/lhlo/IR/lhlo_dialect.td"
+include "lhlo/IR/lhlo_dialect.td"
 include "mlir/IR/AttrTypeBase.td"
 
 // This attribute defines information about how arguments to the LHLO custom

@@ -14,5 +14,4 @@
 # limitations under the License.
 #
 add_subdirectory(gml_st)
-add_subdirectory(lhlo)
 add_subdirectory(mhlo)

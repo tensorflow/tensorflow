@@ -18,9 +18,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "lhlo/IR/lhlo_ops.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Transforms/gpu_passes.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"

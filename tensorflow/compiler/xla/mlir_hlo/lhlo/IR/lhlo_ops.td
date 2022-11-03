@@ -40,10 +40,10 @@ include "mlir/Interfaces/CopyOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
-include "mlir-hlo/Dialect/lhlo/IR/lhlo_dialect.td"
-include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_base.td"
-include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.td"
-include "mlir-hlo/Dialect/lhlo/IR/lhlo_structured_interface.td"
+include "lhlo/IR/lhlo_dialect.td"
+include "lhlo/IR/lhlo_ops_base.td"
+include "lhlo/IR/lhlo_ops_structs.td"
+include "lhlo/IR/lhlo_structured_interface.td"
 
 //===----------------------------------------------------------------------===//
 // LMHLO nullary op definitions.

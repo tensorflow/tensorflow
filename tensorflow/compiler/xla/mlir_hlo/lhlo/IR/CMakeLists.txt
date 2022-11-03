@@ -28,3 +28,31 @@ endfunction()
 add_mlir_hlo_dialect_separate_files(lhlo_ops)
 
 add_mlir_interface(lhlo_structured_interface)
+
+include_directories(BEFORE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_mlir_library(LmhloStructuredInterface
+  lhlo_structured_interface.cc
+
+  LINK_LIBS PUBLIC
+  MLIRIR
+
+  DEPENDS
+  MLIRlhlo_structured_interfaceIncGen
+)
+
+add_mlir_dialect_library(LmhloDialect
+  lhlo_ops.cc
+
+  DEPENDS
+  MLIRlhlo_opsIncGen
+
+  LINK_LIBS PUBLIC
+  HloOpsCommon
+  LmhloStructuredInterface
+  MhloDialect
+  MLIRIR
+)
+

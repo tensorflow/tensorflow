@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "lhlo/IR/lhlo_ops.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -30,7 +30,7 @@ namespace mlir {
 namespace lmhlo {
 
 #define GEN_PASS_DEF_LHLOLEGALIZETOPARALLELLOOPSPASS
-#include "mlir-hlo/Dialect/lhlo/transforms/lmhlo_passes.h.inc"
+#include "lhlo/transforms/lmhlo_passes.h.inc"
 
 namespace {
 

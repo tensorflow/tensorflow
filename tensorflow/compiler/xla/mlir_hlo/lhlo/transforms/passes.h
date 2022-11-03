@@ -38,7 +38,7 @@ class FusionOp;
 namespace lmhlo {
 
 #define GEN_PASS_DECL
-#include "mlir-hlo/Dialect/lhlo/transforms/lmhlo_passes.h.inc"
+#include "lhlo/transforms/lmhlo_passes.h.inc"
 
 // Lowers from LHLO dialect to Affine dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createLhloLegalizeToAffinePass();
@@ -69,7 +69,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeToTensorOpPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createInputInlineFusionPass();
 
 #define GEN_PASS_REGISTRATION
-#include "mlir-hlo/Dialect/lhlo/transforms/lmhlo_passes.h.inc"
+#include "lhlo/transforms/lmhlo_passes.h.inc"
 
 }  // namespace lmhlo
 }  // namespace mlir

@@ -16,11 +16,11 @@ limitations under the License.
 // This file provides basic utilities for the elemental lowering of
 // each node
 
-#include "mlir-hlo/Dialect/lhlo/transforms/lhlo_elemental_utils.h"
+#include "lhlo/transforms/lhlo_elemental_utils.h"
 
+#include "lhlo/IR/lhlo_ops.h"
+#include "lhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "llvm/Support/Debug.h"
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "mlir-hlo/Dialect/lhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir-hlo/utils/codegen_utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"

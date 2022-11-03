@@ -15,7 +15,7 @@ limitations under the License.
 
 // This file defines the operations used in the LMHLO dialect.
 
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "lhlo/IR/lhlo_ops.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -54,7 +54,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 
 #define GET_ATTRDEF_CLASSES
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.cc.inc"
+#include "lhlo/IR/lhlo_ops_structs.cc.inc"
 
 namespace mlir {
 namespace lmhlo {
@@ -64,11 +64,11 @@ LmhloDialect::LmhloDialect(MLIRContext* context)
   context->loadDialect<mhlo::MhloDialect>();
   addOperations<
 #define GET_OP_LIST
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.cc.inc"
+#include "lhlo/IR/lhlo_ops.cc.inc"
       >();
   addAttributes<
 #define GET_ATTRDEF_LIST
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.cc.inc"
+#include "lhlo/IR/lhlo_ops_structs.cc.inc"
       >();
 }
 
@@ -422,7 +422,7 @@ using mlir::hlo::printWindowAttributes;
 }  // namespace mlir
 
 #define GET_OP_CLASSES
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.cc.inc"
+#include "lhlo/IR/lhlo_ops.cc.inc"
 
 namespace mlir {
 namespace lmhlo {

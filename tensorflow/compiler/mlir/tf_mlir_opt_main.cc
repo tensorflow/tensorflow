@@ -35,9 +35,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo/transforms/passes.h"
 #include "tensorflow/core/platform/init_main.h"
 
 int main(int argc, char **argv) {

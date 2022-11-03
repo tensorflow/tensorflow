@@ -162,6 +162,7 @@ set(MLIR_HLO_LIB_DIR ${MLIR_HLO_BINARY_DIR}/lib)
 add_custom_target(check-mlir-hlo)
 
 add_subdirectory(include/mlir-hlo)
+add_subdirectory(lhlo)
 add_subdirectory(lhlo_gpu)
 add_subdirectory(lib)
 add_subdirectory(stablehlo)
