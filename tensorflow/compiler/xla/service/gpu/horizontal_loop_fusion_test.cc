@@ -650,11 +650,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-  TEST_F(HorizontalLoopFusionTest, CopyInsertionFusionControlFlow) {
-  if (GetTestPlatform()->Name() != "CUDA") {
-    GTEST_SKIP_("Only work on CUDA platform");
-  }
-
+TEST_F(HorizontalLoopFusionTest, CopyInsertionFusionControlFlow) {
   const char* hlo_text = R"(
 HloModule cluster
 
