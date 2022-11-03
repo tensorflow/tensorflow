@@ -231,6 +231,7 @@ cc_library(
         "//tensorflow/tsl/framework:allocator",
         "//tensorflow/tsl/framework:device_id",
         "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/profiler/lib:traceme",
     ],
 )
 
