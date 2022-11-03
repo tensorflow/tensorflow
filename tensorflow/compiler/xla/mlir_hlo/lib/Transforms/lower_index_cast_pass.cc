@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -41,21 +42,15 @@ struct IndexCastConverter : public OpRewritePattern<arith::IndexCastOp> {
     auto resultTy = op.getType().dyn_cast<RankedTensorType>();
     if (!resultTy) return failure();
 
-    SmallVector<Value> dynamicExtents;
-    for (auto dim : llvm::seq<int64_t>(0, resultTy.getRank())) {
-      if (resultTy.isDynamicDim(dim)) {
-        dynamicExtents.push_back(
-            rewriter.create<tensor::DimOp>(op.getLoc(), op.getIn(), dim));
-      }
-    }
-
+    SmallVector<Value> dynamicExtents =
+        tensor::createDynamicDimValues(rewriter, op.getLoc(), op.getIn());
     rewriter.replaceOpWithNewOp<tensor::GenerateOp>(
-        op, op.getType(), dynamicExtents,
+        op, resultTy, dynamicExtents,
         [&](OpBuilder &b, Location loc, ValueRange args) {
           Value extent = b.create<tensor::ExtractOp>(loc, op.getIn(), args);
-          Value casted = b.create<arith::IndexCastOp>(
+          Value cast = b.create<arith::IndexCastOp>(
               loc, resultTy.getElementType(), extent);
-          b.create<tensor::YieldOp>(loc, casted);
+          b.create<tensor::YieldOp>(loc, cast);
         });
     return success();
   }
