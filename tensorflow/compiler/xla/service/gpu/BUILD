@@ -2345,7 +2345,6 @@ cc_library(
         ":cublas_cudnn",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_creation_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
@@ -2376,7 +2375,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:convert_mover",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_constant_folding",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_pass",
@@ -2388,11 +2386,9 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 

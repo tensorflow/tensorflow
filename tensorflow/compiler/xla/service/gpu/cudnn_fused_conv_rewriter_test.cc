@@ -16,9 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 
 #include <string>
-#include <string_view>
 
-#include <gtest/gtest.h>
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/convert_mover.h"
@@ -28,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
@@ -39,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
@@ -1015,134 +1011,6 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseToS8IfMultipleUsers) {
                               m::GetTupleElement(m::CustomCall(&conv2), 0),
                               m::Op())))));
   EXPECT_EQ(conv1, conv2);
-}
-
-TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingF16ToF32) {
-  const std::string_view module_str = R"(
-    HloModule Test
-
-    ENTRY test_entry {
-      inputs = f16[1, 17, 9, 9] parameter(0)
-      filters = f16[3, 3, 17, 32] parameter(1)
-      mult_op  = f32[1, 32, 9, 9] parameter(2)
-      conv = f16[1, 32, 9, 9] convolution(inputs, filters), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01
-      ROOT ret = multiply(f32[1, 32, 9, 9] convert(conv), mult_op)
-    })";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  GpuConvRewriter rewriter;
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
-  SCOPED_TRACE(m->ToString());
-  HloInstruction* conv1 = nullptr;
-  // Checks that it removed the Convert inside multiply around conv.
-  ASSERT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::Multiply(m::GetTupleElement(m::CustomCall(&conv1)),
-                                     m::Parameter(2))));
-}
-
-TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS32ToF32) {
-  const std::string_view module_str = R"(
-    HloModule Test
-
-    ENTRY test_entry {
-      inputs = s8[1, 17, 9, 9] parameter(0)
-      filters = s8[3, 3, 17, 32] parameter(1)
-      mult_op  = f32[1, 32, 9, 9] parameter(2)
-      conv = s32[1, 32, 9, 9] convolution(inputs, filters), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01
-      ROOT ret = multiply(f32[1, 32, 9, 9] convert(conv), mult_op)
-    })";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  GpuConvRewriter rewriter;
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
-  SCOPED_TRACE(m->ToString());
-  HloInstruction* conv1 = nullptr;
-  // Checks that it removed the Convert inside multiply around conv.
-  ASSERT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::Multiply(m::GetTupleElement(m::CustomCall(&conv1)),
-                                     m::Parameter(2))));
-}
-
-TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS8ToF32) {
-  const std::string_view module_str = R"(
-    HloModule Test
-
-    ENTRY test_entry {
-      inputs = s8[1, 17, 9, 9] parameter(0)
-      filters = s8[3, 3, 17, 32] parameter(1)
-      mult_op  = f32[1, 32, 9, 9] parameter(2)
-      conv = convolution(inputs, filters), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01
-      ROOT ret = multiply(f32[1, 32, 9, 9] convert(conv), mult_op)
-    })";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  GpuConvRewriter rewriter;
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
-  SCOPED_TRACE(m->ToString());
-  HloInstruction* conv1 = nullptr;
-  // Checks that it removed the Convert inside multiply around conv.
-  ASSERT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::Multiply(m::GetTupleElement(m::CustomCall(&conv1)),
-                                     m::Parameter(2))));
-}
-
-TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingF32ToS8) {
-  const std::string_view module_str = R"(
-    HloModule Test
-
-    ENTRY test_entry {
-      inputs = f32[1, 17, 9, 9] parameter(0)
-      filters = f32[3, 3, 17, 32] parameter(1)
-      mult_op  = s8[1, 32, 9, 9] parameter(2)
-      conv = convolution(inputs, filters), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01
-      ROOT ret = multiply(s8[1, 32, 9, 9] convert(conv), mult_op)
-    })";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  GpuConvRewriter rewriter;
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
-  SCOPED_TRACE(m->ToString());
-  HloInstruction* conv1 = nullptr;
-  // Checks that it removed the Convert inside multiply around conv.
-  ASSERT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::Multiply(m::GetTupleElement(m::CustomCall(&conv1)),
-                                     m::Parameter(2))));
-}
-
-TEST_F(CudnnFusedConvRewriterHloTest, DontRemoveConvertDuetoMultpleUser) {
-  const std::string_view module_str = R"(
-    HloModule Test
-
-    ENTRY test_entry {
-      inputs = f16[1, 17, 9, 9] parameter(0)
-      filters = f16[3, 3, 17, 32] parameter(1)
-      mult_op  = f32[1, 32, 9, 9] parameter(2)
-      sub_op = f32[1, 32, 9, 9] parameter(3)
-      conv = convolution(inputs, filters), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01
-      another = subtract(f32[1, 32, 9, 9] convert(conv), sub_op)
-      ROOT ret = multiply(f32[1, 32, 9, 9] convert(conv), mult_op)
-    })";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  GpuConvRewriter rewriter;
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
-  SCOPED_TRACE(m->ToString());
-  HloInstruction* conv1 = nullptr;
-  // Checks that it removed the Convert inside multiply around conv.
-  ASSERT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::Multiply(
-                  m::Convert(m::GetTupleElement(m::CustomCall(&conv1))),
-                  m::Parameter(2))));
 }
 
 TEST_F(CudnnFusedConvRewriterHloTest, FuseBias) {
