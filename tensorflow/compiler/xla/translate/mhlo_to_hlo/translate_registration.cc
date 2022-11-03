@@ -36,12 +36,6 @@ llvm::cl::opt<bool> emit_return_tuple(
     llvm::cl::init(false));
 
 // NOLINTNEXTLINE
-llvm::cl::opt<bool> legalize_node_names(
-    "legalize-node-names",
-    llvm::cl::desc("Legalize nodes names when translating MHLO->XLA HLO"),
-    llvm::cl::init(true));
-
-// NOLINTNEXTLINE
 llvm::cl::opt<bool> with_layouts(
     "with-layouts",
     llvm::cl::desc("Propagate layouts when translating MHLO->XLA HLO"),
@@ -73,9 +67,8 @@ static mlir::LogicalResult MlirHloToHloTranslate(mlir::ModuleOp module,
 static mlir::LogicalResult MlirHloToHloTextTranslate(
     mlir::ModuleOp module, llvm::raw_ostream& output) {
   return xla::MlirHloToHloTextTranslateFunction(
-      module, output, emit_return_tuple, emit_use_tuple_arg,
-      legalize_node_names, print_layouts, print_large_constants, via_builder,
-      with_layouts);
+      module, output, emit_return_tuple, emit_use_tuple_arg, print_layouts,
+      print_large_constants, via_builder, with_layouts);
 }
 
 static void RegisterInputDialects(mlir::DialectRegistry& registry) {

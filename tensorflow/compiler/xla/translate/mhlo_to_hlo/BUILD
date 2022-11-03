@@ -44,7 +44,6 @@ cc_library(
     srcs = ["location_exporter.cc"],
     hdrs = ["location_exporter.h"],
     deps = [
-        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

@@ -42,9 +42,6 @@ struct MlirToHloConversionOptions {
   // use elemental IR emitters for fused bitcasts without propagating layouts.
   bool propagate_bitcast_layouts_to_backend_config = false;
 
-  // Legalize names to be compatible with TensorFlow.
-  bool legalize_node_names = true;
-
   LayoutPreferenceFn layout_preference_fn;
   ShapeRepresentationFn shape_representation_fn;
 };
