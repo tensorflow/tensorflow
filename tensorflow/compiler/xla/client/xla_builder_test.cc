@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 
+#include <complex>
+#include <functional>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -25,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/util.h"

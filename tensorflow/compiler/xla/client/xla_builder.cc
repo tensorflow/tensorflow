@@ -21,6 +21,7 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <queue>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,7 +30,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -393,7 +393,7 @@ void XlaBuilder::ToStringHelper(std::string* out, int ident,
 XlaBuilder::XlaBuilder(const std::string& computation_name)
     : name_(computation_name) {}
 
-XlaBuilder::~XlaBuilder() {}
+XlaBuilder::~XlaBuilder() = default;
 
 XlaOp XlaBuilder::ReportError(const Status& error) {
   CHECK(!error.ok());
@@ -4648,10 +4648,10 @@ XlaOp OptimizationBarrier(XlaOp operand) {
   return operand.builder()->OptimizationBarrier(operand);
 }
 
-XlaOp Complex(const XlaOp lhs, const XlaOp rhs,
+XlaOp Complex(const XlaOp real, const XlaOp imag,
               absl::Span<const int64_t> broadcast_dimensions) {
-  return lhs.builder()->BinaryOp(HloOpcode::kComplex, lhs, rhs,
-                                 broadcast_dimensions);
+  return real.builder()->BinaryOp(HloOpcode::kComplex, real, imag,
+                                  broadcast_dimensions);
 }
 
 XlaOp Conj(const XlaOp operand) {
@@ -4910,10 +4910,9 @@ XlaOp Abs(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kAbs, operand);
 }
 
-XlaOp Atan2(const XlaOp lhs, const XlaOp rhs,
+XlaOp Atan2(const XlaOp y, const XlaOp x,
             absl::Span<const int64_t> broadcast_dimensions) {
-  return lhs.builder()->BinaryOp(HloOpcode::kAtan2, lhs, rhs,
-                                 broadcast_dimensions);
+  return y.builder()->BinaryOp(HloOpcode::kAtan2, y, x, broadcast_dimensions);
 }
 
 XlaOp Exp(const XlaOp operand) {

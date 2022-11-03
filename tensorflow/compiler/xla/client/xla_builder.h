@@ -43,9 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/stacktrace.h"
 
@@ -361,7 +359,7 @@ class XlaBuilder {
   //
   // This will copy the needed ops/computations to the subgraph.
   StatusOr<XlaComputation> BuildConstantSubGraph(
-      XlaOp root_op, bool dynamic_dimension_is_uint_max = false);
+      XlaOp root_op, bool dynamic_dimension_is_minus_one = false);
 
   // Returns the first error that was encountered while building the
   // computation. When an error is encountered, by default we return a vacuous
