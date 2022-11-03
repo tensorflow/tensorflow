@@ -470,7 +470,6 @@ void CoordinationServiceStandaloneImpl::Stop(bool shut_staleness_thread) {
   }
   {
     mutex_lock l(state_mu_);
-    cluster_state_.clear();
     for (auto& [barrier_id, barrier] : barriers_) {
       if (!barrier.passed) {
         Status error = MakeCoordinationError(errors::Aborted(absl::StrCat(
@@ -480,6 +479,9 @@ void CoordinationServiceStandaloneImpl::Stop(bool shut_staleness_thread) {
       }
     }
     barriers_.clear();
+    // Cluster state is used in `PassBarrier` and it needs to be cleared after
+    // it.
+    cluster_state_.clear();
   }
   {
     mutex_lock l(check_staleness_thread_shutdown_mu_);
@@ -504,10 +506,15 @@ Status CoordinationServiceStandaloneImpl::RegisterTask(
       return MakeCoordinationError(errors::InvalidArgument(
           "Unexpected task registered with task_name=", task_name));
     }
+    const auto task_status = cluster_state_[task_name]->GetStatus();
     if (cluster_state_[task_name]->GetState() ==
-        CoordinatedTaskState::TASKSTATE_DISCONNECTED) {
+            CoordinatedTaskState::TASKSTATE_DISCONNECTED ||
+        (errors::IsUnavailable(task_status) &&
+         task_status.GetPayload(CoordinationErrorPayloadKey()))) {
       // This task is currently disconnected (registering for the first time or
-      // has called ResetTask() previously).
+      // has called ResetTask() previously), or being unavailable, e.g. due
+      // to preemption, but does not have chance to be reset. We should allow
+      // the connection.
       cluster_state_[task_name]->SetConnected(incarnation);
       LOG(INFO) << task_name
                 << " has connected to coordination service. Incarnation: "
