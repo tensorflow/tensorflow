@@ -55,6 +55,11 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass();
 /// Pass to collapse (or uncollapse) materialize operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createCollapseMaterializeOpsPass();
 
+/// Pass to lower `gml_st.parallel` to `gpu.launch`.
+std::unique_ptr<OperationPass<func::FuncOp>> createGmlStToGpuPass(
+    StringRef blockDistributionLabel = "block",
+    StringRef warpDistributionLabel = "warp");
+
 /// Create a pass to convert `gml_st.loop` to `scf.for` and `scf.parallel`
 /// loops and memref.load/memref.store accesses.
 std::unique_ptr<OperationPass<func::FuncOp>> createGmlStToScfPass();

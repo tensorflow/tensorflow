@@ -47,7 +47,7 @@ def TilingCwisePass : Pass<"gml-tiling-cwise", "mlir::func::FuncOp"> {
   let options = [
     Option<"distribute_", "distribute", "bool", /*default=*/"true",
            "Generate gml_st.parallel or gml_st.for">,
-    ListOption<"tileSizes_", "tile-sizes", "int64_t", 
+    ListOption<"tileSizes_", "tile-sizes", "int64_t",
                "Right-aligned tile sizes. Do not tile possible remaining "
                "dimensions", "llvm::cl::ZeroOrMore">,
     Option<"distributionLabel_", "distribution-label", "std::string",
@@ -95,6 +95,16 @@ def GmlStToGpuPass : Pass<"gml-st-to-gpu", "mlir::func::FuncOp"> {
                            "::mlir::gpu::GPUDialect", "::mlir::scf::SCFDialect",
                            "::mlir::vector::VectorDialect",
                            "::mlir::memref::MemRefDialect"];
+  let options = [
+    Option<"blockDistributionLabel", "block-distribution-label",
+           "std::string", /*default=*/"\"block\"",
+           "Direct children of `gml_st.parallel` loops with this distribution "
+           "type are distributed over blocks.">,
+    Option<"warpDistributionLabel", "warp-distribution-label",
+           "std::string", /*default=*/"\"warp\"",
+           "Direct children of `gml_st.parallel` loops with this distribution "
+           "type are distributed over warps.">
+  ];
 }
 
 def VectorizeGmlStLoopsPass :

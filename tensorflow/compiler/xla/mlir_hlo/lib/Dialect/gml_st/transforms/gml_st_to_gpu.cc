@@ -18,6 +18,7 @@ limitations under the License.
 #include <initializer_list>
 #include <iterator>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -51,6 +52,9 @@ using mlir::vector::TransferReadOp;
 using mlir::vector::TransferWriteOp;
 
 namespace {
+
+constexpr const char kDistributionLabelKey[] = "gml-st-distribution-label";
+
 /// Converts a sequence of 3 nested gml_st.parallel ops into a gpu.launch op.
 /// Throughout thes pass we will call the first level of nesting "block", the
 /// second "warp", and the 3rd "thread" level. The intention is to allude to the
@@ -77,16 +81,31 @@ namespace {
 struct ParallelOpToGpuPattern : public OpRewritePattern<ParallelOp> {
   using OpRewritePattern<ParallelOp>::OpRewritePattern;
 
+  ParallelOpToGpuPattern(MLIRContext* context, StringRef blockDistributionLabel)
+      : OpRewritePattern<ParallelOp>(context),
+        blockDistributionLabel(blockDistributionLabel) {}
+
   LogicalResult matchAndRewrite(ParallelOp root,
                                 PatternRewriter& rewriter) const override;
+
+ private:
+  std::string blockDistributionLabel;
 };
 
 struct MultiDimReductionOpToWarpReductionPattern
     : OpRewritePattern<MultiDimReductionOp> {
   using OpRewritePattern<MultiDimReductionOp>::OpRewritePattern;
 
+  MultiDimReductionOpToWarpReductionPattern(MLIRContext* context,
+                                            StringRef warpDistributionLabel)
+      : OpRewritePattern<MultiDimReductionOp>(context),
+        warpDistributionLabel(warpDistributionLabel) {}
+
   LogicalResult matchAndRewrite(MultiDimReductionOp reductionOp,
                                 PatternRewriter& rewriter) const override;
+
+ private:
+  std::string warpDistributionLabel;
 };
 
 struct EliminateMaterializeOfTransferReadPattern
@@ -108,12 +127,18 @@ struct EliminateDistributeIntoTransferWritePattern
 /// Implements the GmlStToGpuPass declared in
 /// include/mlir-hlo/Dialect/gml_st/transforms/passes.td.
 struct GmlStToGpuPass : public ::impl::GmlStToGpuPassBase<GmlStToGpuPass> {
+  using GmlStToGpuPassBase<GmlStToGpuPass>::GmlStToGpuPassBase;
+
   void runOnOperation() override {
-    RewritePatternSet patterns(&getContext());
-    patterns
-        .add<ParallelOpToGpuPattern, EliminateMaterializeOfTransferReadPattern,
-             EliminateDistributeIntoTransferWritePattern,
-             MultiDimReductionOpToWarpReductionPattern>(&getContext());
+    MLIRContext& ctx = getContext();
+    RewritePatternSet patterns(&ctx);
+
+    patterns.add<ParallelOpToGpuPattern>(&ctx, blockDistributionLabel);
+    patterns.add<EliminateMaterializeOfTransferReadPattern,
+                 EliminateDistributeIntoTransferWritePattern>(&ctx);
+    patterns.add<MultiDimReductionOpToWarpReductionPattern>(
+        &ctx, warpDistributionLabel);
+
     func::FuncOp func = getOperation();
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
       signalPassFailure();
@@ -265,11 +290,15 @@ LogicalResult ParallelOpToGpuPattern::matchAndRewrite(
     ParallelOp root, PatternRewriter& rewriter) const {
   Location loc = root.getLoc();
 
-  if (root->getParentOfType<ParallelOp>())
-    return rewriter.notifyMatchFailure(root, "should be the root parallel");
+  if (!root.getDistributionType().has_value() ||
+      root.getDistributionType().value() != blockDistributionLabel)
+    return rewriter.notifyMatchFailure(root,
+                                       "expected block distribution label");
 
   Value defaultSize = rewriter.create<arith::ConstantIndexOp>(loc, 1);
   LaunchOp launch = createInitialGpuLaunchOp(loc, defaultSize, rewriter);
+
+  constexpr size_t kNumberOfNestedLoops = 3;
 
   BlockAndValueMapping bvm;
   // We need to keep track of which value in the gpu.launch region represents
@@ -277,16 +306,19 @@ LogicalResult ParallelOpToGpuPattern::matchAndRewrite(
   // we might have multiple gml_st.parallel operations on the same level, and
   // their induction variables should map to the same value in the flattened
   // gpu.launch region.
-  SmallVector<Value, 3> nestingLevelToInductionVarMap;
+  SmallVector<Value, kNumberOfNestedLoops> nestingLevelToInductionVarMap;
   // This is our stack holding in-flight operations of gml_st.parallel regions
   // that we started to copy over to the gpu.launch region, but are on hold
   // while we are processing a nested gml_st.parallel.
-  SmallVector<iterator_range<Block::iterator>, 3> loopIterators;
+  SmallVector<iterator_range<Block::iterator>, kNumberOfNestedLoops>
+      loopIterators;
 
   // This functor implements the processing of a single parallel op:
   // 1)  update of GPU launch bounds according to the interation space
   // 2)  addition of a nesting level to `loopIterators`, with the iterator
   //     over `parallel`'s body
+  // 3)  propagation of the distribution level of the op to all its
+  //     (non-ParallelOp) children if it is not at the innermost nesting level
   auto processParallelOp = [&](ParallelOp parallel) {
     unsigned nestingLevel = loopIterators.size();
     unsigned inductionVarIdx = 0;
@@ -314,10 +346,31 @@ LogicalResult ParallelOpToGpuPattern::matchAndRewrite(
           parallel, bvm, inductionVarIdx, launch, rewriter));
     }
 
+    Block* body = parallel.getBody();
+
+    // Check that the nesting level is not the innermost one (i.e. that we
+    // are not at the thread level, but either at the block, or at the warp
+    // level).
+    if (nestingLevel < kNumberOfNestedLoops - 1) {
+      if (!parallel.getDistributionType().has_value())
+        return rewriter.notifyMatchFailure(
+            parallel,
+            "expected parallel operation to define a distribution type");
+
+      const StringAttr distributionTypeAttr =
+          parallel.getDistributionTypeAttr();
+      body->walk<WalkOrder::PreOrder>(
+          [&distributionTypeAttr](Operation* nestedOp) {
+            if (dyn_cast<ParallelOp>(nestedOp)) return WalkResult::skip();
+            nestedOp->setAttr(kDistributionLabelKey, distributionTypeAttr);
+            return WalkResult::advance();
+          });
+    }
+
     bvm.map(parallel.getInductionVars().front(),
             nestingLevelToInductionVarMap[nestingLevel]);
-    Block* body = parallel.getBody();
     loopIterators.push_back(llvm::make_range(body->begin(), body->end()));
+
     return success();
   };
 
@@ -396,6 +449,14 @@ static Value createCombineOp(Location loc, Value lhs, Value rhs,
 
 LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
     MultiDimReductionOp reductionOp, PatternRewriter& rewriter) const {
+  auto distributionLevelAttr =
+      reductionOp->getAttrOfType<StringAttr>(kDistributionLabelKey);
+
+  if (!distributionLevelAttr ||
+      distributionLevelAttr.getValue() != warpDistributionLabel)
+    return rewriter.notifyMatchFailure(reductionOp,
+                                       "expected warp-level operation");
+
   auto inType = reductionOp.getSourceVectorType();
   int64_t width = inType.getNumElements();
   std::initializer_list<int64_t> supportedWidths = {1, 2, 4, 8, 16, 32};
@@ -551,4 +612,12 @@ LogicalResult EliminateDistributeIntoTransferWritePattern::matchAndRewrite(
       transferWrite.getIndices(), transferWrite.getPermutationMap(),
       /*mask=*/nullptr, transferWrite.getInBounds().value_or(nullptr));
   return success();
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>> mlir::gml_st::createGmlStToGpuPass(
+    StringRef blockDistributionLabel, StringRef warpDistributionLabel) {
+  const GmlStToGpuPassOptions passOptions = {
+      /*.blockDistributionLabel=*/std::string(blockDistributionLabel),
+      /*.warpDistributionLabel=*/std::string(warpDistributionLabel)};
+  return std::make_unique<GmlStToGpuPass>(passOptions);
 }
