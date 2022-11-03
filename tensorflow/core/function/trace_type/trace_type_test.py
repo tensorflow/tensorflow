@@ -243,6 +243,16 @@ class TraceTypeBuilderTest(test.TestCase, parameterized.TestCase):
         trace_type.from_value(MockWrapper()),
         trace_type.from_value(ActualType(1, 2, 3)))
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testBadReturnType(self):
+    class MyClass:
+
+      def __tf_tracing_type__(self, _):
+        return 1
+
+    with self.assertRaises(TypeError):
+      trace_type.from_value(MyClass())
+
 
 class SignatureToTraceTypeTest(test.TestCase):
 

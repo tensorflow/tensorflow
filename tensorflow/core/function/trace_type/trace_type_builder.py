@@ -102,7 +102,12 @@ def from_value(value: Any,
   if context.is_legacy_signature and isinstance(value, trace.TraceType):
     return value
   elif isinstance(value, trace.SupportsTracingProtocol):
-    return value.__tf_tracing_type__(context)
+    generated_type = value.__tf_tracing_type__(context)
+    if not isinstance(generated_type, trace.TraceType):
+      raise TypeError(
+          "Expected an instance of TraceType for Tracing Protocol call to " +
+          str(value) + " but got " + str(generated_type))
+    return generated_type
 
   if hasattr(value, "__wrapped__"):
     return from_value(value.__wrapped__, context)
