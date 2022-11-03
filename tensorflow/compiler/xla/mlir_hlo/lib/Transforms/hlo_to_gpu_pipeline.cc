@@ -52,6 +52,7 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
                                   bool experimentalSoftmax) {
   pm.addNestedPass<FuncOp>(hlo::createUnbufferizePass());
   pm.addNestedPass<FuncOp>(hlo::createInlineFusionPass());
+  pm.addPass(createCanonicalizerPass());  // Clean up get_tuple_element.
   pm.addPass(createCSEPass());  // Combine repeated subtract(broadcast).
 
   // HLO -> Linalg
