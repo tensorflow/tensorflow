@@ -2420,20 +2420,36 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddParameterToConstantF32s) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, CosF32s) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<float>(&builder, {3.14159f, 0.0f, 1.570796f, -0.78539f});
+  auto kInf = std::numeric_limits<float>::infinity();
+  auto kQNaN = std::numeric_limits<float>::quiet_NaN();
+  // Test a variety of values of both signs that stress trigonometric range
+  // reduction, as well as numbers that fall in different quadrants.
+  // Also test IEEE special values {+/-0, +/-Inf, NaN}; for the latter two
+  // Cos(x) should return NaN.
+  auto a = ConstantR1<float>(
+      &builder,
+      {-1.9938988e-28, 1.9938988e-28, -1e20f, 1e20f, -3.14159f, 3.14159f, -0.0f,
+       0.0f, -1.570796f, 1.570796f, -0.78539f, 0.78539f, -kInf, kInf, kQNaN});
   Cos(a);
 
-  ComputeAndCompareR1<float>(&builder, {-1.0f, 1.0f, 0.0f, 0.707107f}, {},
-                             error_spec_);
+  ComputeAndCompare(&builder, {}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, SinF32s) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<float>(&builder, {3.14159f, 0.0f, 1.570796f, -0.78539f});
+  auto kInf = std::numeric_limits<float>::infinity();
+  auto kQNaN = std::numeric_limits<float>::quiet_NaN();
+  // Test a variety of values of both signs that stress trigonometric range
+  // reduction, as well as numbers that fall in different quadrants.
+  // Also test IEEE special values {+/-0, +/-Inf, NaN}; for the latter two
+  // Sin(x) should return NaN.
+  auto a = ConstantR1<float>(
+      &builder,
+      {-1.9938988e-28, 1.9938988e-28, -1e20f, 1e20f, -3.14159f, 3.14159f, -0.0f,
+       0.0f, -1.570796f, 1.570796f, -0.78539f, 0.78539f, -kInf, kInf, kQNaN});
   Sin(a);
 
-  ComputeAndCompareR1<float>(&builder, {0.0f, 0.0f, 1.0f, -0.707107f}, {},
-                             error_spec_);
+  ComputeAndCompare(&builder, {}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, RealF64s) {
