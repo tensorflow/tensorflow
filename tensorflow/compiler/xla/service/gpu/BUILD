@@ -1190,6 +1190,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:fused_ir_emitter",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1345,6 +1346,7 @@ cc_library(
         ":gpu_hlo_cost_analysis",
         ":gpu_performance_model",
         ":instruction_fusion",
+        ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",

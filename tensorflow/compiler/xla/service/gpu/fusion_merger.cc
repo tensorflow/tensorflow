@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_performance_model.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -278,6 +279,12 @@ StatusOr<bool> FusionMerger::Run(
   VLOG(1) << "FusionMerger for module: " << module->name();
   for (auto* computation :
        module->MakeNonfusionComputations(execution_threads)) {
+    // Skip Softmax CustomCall computations.
+    if (computation->IsCustomCallComputation() &&
+        IsSoftmaxCustomCall(*computation->CustomCallInstruction())) {
+      continue;
+    }
+
     VLOG(9) << "Before running FusionInstructionMerger for computation: "
             << computation->name();
     XLA_VLOG_LINES(9, computation->ToString());
