@@ -41,7 +41,7 @@ def initialize_multi_client_cluster(job_name: str,
                                     collective_leader: str,
                                     port: Optional[int] = None,
                                     gpu_use_nccl_communication: bool = False,
-                                    enable_coordination_service: bool = False):
+                                    enable_coordination_service: bool = True):
   """Initialize GRPC servers and collectives for multi-client DTensor setup.
 
   This function can be used to initialize a multi-client cluster and enable
@@ -112,7 +112,7 @@ def initialize_multi_client_cluster(job_name: str,
     v1=[])
 def initialize_accelerator_system(
     device_type: Optional[str] = None,
-    enable_coordination_service: Optional[bool] = False) -> str:
+    enable_coordination_service: Optional[bool] = True) -> str:
   """Initializes accelerators and communication fabrics for DTensor.
 
   DTensor configures TensorFlow to run in the local mode or multi-client mode.

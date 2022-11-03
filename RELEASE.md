@@ -38,6 +38,11 @@
     *   Updated `tf.keras.layers.BatchNormalization` to support masking of the
         inputs when computing the mean and variance.
 
+* `tf.experimental.dtensor`:
+
+  * Coordination service now works with `dtensor.initialize_accelerator_system`,
+    and enabled by default.
+
 # Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
