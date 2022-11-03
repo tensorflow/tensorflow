@@ -9,7 +9,7 @@ tf_cc_binary(
     name = "xla-cpu-opt",
     srcs = ["xla-cpu-opt.cc"],
     deps = [
-        "//tensorflow/compiler/xla/mlir/transforms/cpu:passes",
+        "//tensorflow/compiler/xla/mlir/backends/cpu/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_passes",

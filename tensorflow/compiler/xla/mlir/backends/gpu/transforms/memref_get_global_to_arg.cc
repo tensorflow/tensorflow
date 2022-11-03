@@ -21,13 +21,13 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h"
+#include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
 
 namespace xla {
 namespace gpu {
 
 #define GEN_PASS_DEF_CONVERTMEMREFGETGLOBALTOARGPASS
-#include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h.inc"
+#include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h.inc"
 
 using namespace mlir;  // NOLINT
 

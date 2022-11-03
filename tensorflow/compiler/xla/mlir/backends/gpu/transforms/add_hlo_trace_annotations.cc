@@ -20,15 +20,15 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
-#include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
 
 namespace xla {
 namespace gpu {
 
 #define GEN_PASS_DEF_ADDHLOTRACEANNOTATIONSPASS
-#include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h.inc"
+#include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h.inc"
 
 using namespace mlir;  // NOLINT
 

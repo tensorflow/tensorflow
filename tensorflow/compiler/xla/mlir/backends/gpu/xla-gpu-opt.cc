@@ -17,7 +17,7 @@ limitations under the License.
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h"
+#include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 

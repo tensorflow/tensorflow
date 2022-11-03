@@ -48,7 +48,7 @@ namespace xla {
 namespace gpu {
 
 #define GEN_PASS_DEF_CONVERTLMHLOTOGPURUNTIMEPASS
-#include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h.inc"
+#include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h.inc"
 
 using namespace mlir;  // NOLINT
 

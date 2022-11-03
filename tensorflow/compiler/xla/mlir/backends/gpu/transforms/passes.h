@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_GPU_PASSES_H_
-#define TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_GPU_PASSES_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_GPU_TRANSFORMS_PASSES_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_GPU_TRANSFORMS_PASSES_H_
 
 #include <memory>
 
@@ -31,7 +31,7 @@ namespace gpu {
 #define GEN_PASS_DECL_CONVERTLMHLOTOGPURUNTIMEPASS
 #define GEN_PASS_DECL_CONVERTMEMREFGETGLOBALTOARGPASS
 #define GEN_PASS_DECL_CONVERTLAUNCHFUNCTOCUDAGRAPHPASS
-#include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h.inc"
+#include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h.inc"
 
 class ThunkSequence;  // forward declare
 
@@ -92,9 +92,9 @@ createConvertLaunchFuncToCudaGraphPass();
 //===-----------------------------------------------------------------------===/
 
 #define GEN_PASS_REGISTRATION
-#include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h.inc"
+#include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h.inc"
 
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_GPU_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_GPU_TRANSFORMS_PASSES_H_

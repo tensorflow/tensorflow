@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h"
+#include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
 
 #include <cstdlib>
 #include <string_view>

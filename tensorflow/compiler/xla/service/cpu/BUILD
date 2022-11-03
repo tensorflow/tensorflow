@@ -375,8 +375,8 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/xla:xla_passes",
         "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla/mlir/backends/cpu/transforms:passes",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compiler",
-        "//tensorflow/compiler/xla/mlir/transforms/cpu:passes",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_bufferizable_op_interface",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",

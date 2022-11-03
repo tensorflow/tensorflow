@@ -17,7 +17,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
-#include "tensorflow/compiler/xla/mlir/transforms/cpu/passes.h"
+#include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/IR/gml_st_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/test_passes.h"

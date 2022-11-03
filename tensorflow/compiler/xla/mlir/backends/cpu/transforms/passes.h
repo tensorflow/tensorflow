@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_CPU_PASSES_H_
-#define TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_CPU_PASSES_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_CPU_TRANSFORMS_PASSES_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_CPU_TRANSFORMS_PASSES_H_
 
 #include <memory>
 
@@ -38,9 +38,9 @@ createXlaAbiLegalizationPass();
 //===-----------------------------------------------------------------------===/
 
 #define GEN_PASS_REGISTRATION
-#include "tensorflow/compiler/xla/mlir/transforms/cpu/passes.h.inc"
+#include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h.inc"
 
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_CPU_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_CPU_TRANSFORMS_PASSES_H_

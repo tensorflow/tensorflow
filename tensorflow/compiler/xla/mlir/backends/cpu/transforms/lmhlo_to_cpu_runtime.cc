@@ -29,8 +29,8 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
-#include "tensorflow/compiler/xla/mlir/transforms/cpu/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 
 namespace xla {
@@ -38,7 +38,7 @@ namespace cpu {
 namespace {
 
 #define GEN_PASS_DEF_CONVERTLMHLOTOCPURUNTIMEPASS
-#include "tensorflow/compiler/xla/mlir/transforms/cpu/passes.h.inc"
+#include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h.inc"
 
 using namespace mlir;  // NOLINT
 

@@ -9,7 +9,7 @@ tf_cc_binary(
     name = "xla-gpu-opt",
     srcs = ["xla-gpu-opt.cc"],
     deps = [
-        "//tensorflow/compiler/xla/mlir/transforms/gpu:passes",
+        "//tensorflow/compiler/xla/mlir/backends/gpu/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
         "@llvm-project//mlir:FuncDialect",
