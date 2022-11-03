@@ -80,6 +80,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -4476,7 +4477,11 @@ static bool CanVectorizeReduction(
     se::CudaComputeCapability cc, mlir::lmhlo::FusionOp fusion,
     HloComputation* fused_computation,
     const ReductionDimensions& reduction_dimensions, int num_threads_x,
-    std::array<int64_t, 3> reduction_tiling, const Shape& input_shape) {
+    Vector3 reduction_tiling, const Shape& input_shape, int64_t shmem_usage) {
+  // Vectorization might cause us to run out of budget.
+  if (shmem_usage * 2 > kSharedMemoryBudgetInBytes) {
+    return false;
+  }
   if (!reduction_dimensions.is_row_reduction) {
     return IsUnrollingColumnReductionBeneficial(
         fusion, fused_computation, input_shape,
@@ -4512,9 +4517,30 @@ static bool CanVectorizeReduction(
   return false;
 }
 
+// Projected shmem usage of reduction fusion.
+static int64_t ProjectedShmemUsageBytes(
+    const ReductionDimensions& reduction_dimensions,
+    const std::vector<std::vector<HloInstruction*>>& instr_index_groups) {
+  int64_t out = 0;
+  // Different groups are computed in parallel on different blocks, so they are
+  // not sharing the shmem budget. The overall usage is given by the largest
+  // one.
+  for (const std::vector<HloInstruction*>& group : instr_index_groups) {
+    int64_t sum = 0;
+    for (HloInstruction* root : group) {
+      if (IsReductionFromOrToContiguousDimensions(*root)) {
+        sum += SharedMemoryUsage(*root);
+      }
+    }
+    out = std::max(out, sum);
+  }
+  return out;
+}
+
 StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
     mlir::lmhlo::FusionOp fusion, HloComputation* fused_computation,
-    HloInstruction* first_reduce) {
+    HloInstruction* first_reduce,
+    const std::vector<std::vector<HloInstruction*>>& instr_index_groups) {
   Shape input_shape = first_reduce->operand(0)->shape();
   ReductionDimensions reduction_dimensions =
       GetReductionKindAndContiguousComponents(*first_reduce);
@@ -4557,10 +4583,13 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
   TilingScheme::IndexingOrder indexing_order =
       reduction_dimensions.is_row_reduction ? kStridedIndexingX
                                             : kLinearIndexingX;
-  bool vectorize =
-      CanVectorizeReduction(cc, fusion, fused_computation, reduction_dimensions,
-                            num_threads_x, reduction_tiling, input_shape);
+  int64_t shmem_usage =
+      ProjectedShmemUsageBytes(reduction_dimensions, instr_index_groups);
+  bool vectorize = CanVectorizeReduction(
+      cc, fusion, fused_computation, reduction_dimensions, num_threads_x,
+      reduction_tiling, input_shape, shmem_usage);
   int vector_size = vectorize ? 2 : 1;
+
   int num_partial_results = 1;
   if (!reduction_dimensions.is_row_reduction && vectorize) {
     if (smallest_input_dtype_bits <= 32) {
@@ -4581,6 +4610,13 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
       num_partial_results = std::max(num_partial_results, 2);
     } else {
       num_partial_results = 2;
+    }
+  }
+
+  while (shmem_usage * num_partial_results > kSharedMemoryBudgetInBytes) {
+    num_partial_results /= 2;
+    if (num_partial_results == 1) {
+      break;
     }
   }
 
@@ -4863,7 +4899,8 @@ Status IrEmitterUnnested::EmitUnnestedReduction(
   // same shape and layout as verified by `IsFusedReductionOutputConsistent()`.
   TF_ASSIGN_OR_RETURN(
       ReductionCodegenInfo reduction_codegen_info,
-      ComputeReductionCodegenInfo(fusion, fused_computation, first_reduce));
+      ComputeReductionCodegenInfo(fusion, fused_computation, first_reduce,
+                                  instr_index_groups));
   const TilingScheme& tiling_scheme = reduction_codegen_info.GetTilingScheme();
 
   // block_y_count is set to instr_index_groups.size(), so that each reduction

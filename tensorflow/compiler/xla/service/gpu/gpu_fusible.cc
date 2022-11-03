@@ -367,8 +367,7 @@ static int64_t SharedMemoryUsageNoCache(const HloInstruction& instr) {
   return 0;
 }
 
-static int64_t SharedMemoryUsage(const HloInstruction& instr,
-                                 FusionInfoCache* cache = nullptr) {
+int64_t SharedMemoryUsage(const HloInstruction& instr, FusionInfoCache* cache) {
   if (!cache) {
     return SharedMemoryUsageNoCache(instr);
   }

@@ -582,6 +582,22 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "reduction_emitter_test",
+    srcs = ["reduction_emitter_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
     name = "gpu_ldg_test",
     srcs = ["gpu_ldg_test.cc"],
     tags = tf_cuda_tests_tags(),

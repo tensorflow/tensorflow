@@ -267,6 +267,7 @@ cc_library(
         ":gpu_conv_runner",
         ":gpu_executable",
         ":gpu_device_info",
+        ":gpu_fusible",
         ":hlo_to_ir_bindings",
         ":ir_emission_utils",
         ":launch_dimensions",

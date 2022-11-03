@@ -475,7 +475,8 @@ class IrEmitterUnnested : public IrEmitter {
   // reduce op.
   StatusOr<ReductionCodegenInfo> ComputeReductionCodegenInfo(
       mlir::lmhlo::FusionOp fusion, HloComputation* fused_computation,
-      HloInstruction* first_reduce);
+      HloInstruction* first_reduce,
+      const std::vector<std::vector<HloInstruction*>>& instr_index_groups);
 
   // Generates code for input-fusible slices.
   //
