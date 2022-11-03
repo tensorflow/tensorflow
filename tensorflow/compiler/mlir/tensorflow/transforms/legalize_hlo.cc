@@ -3190,10 +3190,10 @@ class ConvertWhileOp : public OpConversionPattern<mhlo::WhileOp> {
         while_op.getLoc(), while_op->getResultTypes(), while_op->getOperands(),
         /*parallel_iterations=*/10,
         /*is_stateless=*/false, /*shape_invariant=*/false);
-    new_while.cond().takeBody(while_op.getCond());
-    new_while.body().takeBody(while_op.getBody());
-    ReplaceReturnOp(new_while.cond(), rewriter);
-    ReplaceReturnOp(new_while.body(), rewriter);
+    new_while.getCond().takeBody(while_op.getCond());
+    new_while.getBody().takeBody(while_op.getBody());
+    ReplaceReturnOp(new_while.getCond(), rewriter);
+    ReplaceReturnOp(new_while.getBody(), rewriter);
     rewriter.replaceOp(while_op, new_while.getResults());
     return success();
   }
@@ -3211,10 +3211,10 @@ class ConvertIfOp : public OpConversionPattern<mhlo::IfOp> {
         op.getLoc(), op->getResultTypes(), op.getPred(),
         /*is_stateless=*/false, /*_then_func_name=*/nullptr,
         /*_else_func_name=*/nullptr);
-    new_op.then_branch().takeBody(op.getTrueBranch());
-    new_op.else_branch().takeBody(op.getFalseBranch());
-    ReplaceReturnOp(new_op.then_branch(), rewriter);
-    ReplaceReturnOp(new_op.else_branch(), rewriter);
+    new_op.getThenBranch().takeBody(op.getTrueBranch());
+    new_op.getElseBranch().takeBody(op.getFalseBranch());
+    ReplaceReturnOp(new_op.getThenBranch(), rewriter);
+    ReplaceReturnOp(new_op.getElseBranch(), rewriter);
     rewriter.replaceOp(op, new_op.getResults());
     return success();
   }

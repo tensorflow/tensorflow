@@ -254,10 +254,10 @@ class ReplaceDequantizePattern
 // index information for each op.
 bool IsQuantizedCallforDynamicRange(TF::PartitionedCallOp call_op) {
   bool has_quantized_types_for_weights = false;
-  for (int32_t cur_idx = 0; cur_idx < call_op.args().size(); cur_idx++) {
+  for (int32_t cur_idx = 0; cur_idx < call_op.getArgs().size(); cur_idx++) {
     // Check if the only the weight index has QuantizeCastOp.
     auto cur_op = dyn_cast_or_null<quantfork::QuantizeCastOp>(
-        call_op.args()[cur_idx].getDefiningOp());
+        call_op.getArgs()[cur_idx].getDefiningOp());
     if ((!cur_op && cur_idx == 1) || (cur_op && cur_idx != 1)) {
       return false;
     } else if (cur_op) {
@@ -270,7 +270,7 @@ bool IsQuantizedCallforDynamicRange(TF::PartitionedCallOp call_op) {
       has_quantized_types_for_weights = true;
     }
   }
-  for (Value output : call_op.output()) {
+  for (Value output : call_op.getOutput()) {
     if (auto type = output.getType().dyn_cast<TensorType>()) {
       if (type.getElementType().isa<QuantizedType>()) {
         return false;
@@ -283,7 +283,7 @@ bool IsQuantizedCallforDynamicRange(TF::PartitionedCallOp call_op) {
 // Checks if all the inputs are quantized.
 bool IsQuantizedCallforStaticRange(TF::PartitionedCallOp call_op) {
   bool has_quantized_types = false;
-  for (Value input : call_op.args()) {
+  for (Value input : call_op.getArgs()) {
     if (auto type = input.getType().dyn_cast<TensorType>()) {
       if (type.getElementType().isa<FloatType>()) {
         return false;
@@ -293,7 +293,7 @@ bool IsQuantizedCallforStaticRange(TF::PartitionedCallOp call_op) {
       }
     }
   }
-  for (Value output : call_op.output()) {
+  for (Value output : call_op.getOutput()) {
     if (auto type = output.getType().dyn_cast<TensorType>()) {
       if (type.getElementType().isa<FloatType>()) {
         return false;
@@ -419,7 +419,7 @@ class QuantizeFunctionPattern
 
   LogicalResult matchAndRewrite(TF::PartitionedCallOp call_op,
                                 PatternRewriter& rewriter) const override {
-    const auto f_attr = call_op.fAttr().dyn_cast<FlatSymbolRefAttr>();
+    const auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
     // removeAttr will return nullptr if no attribute was removed.
     if (!call_op->removeAttr(kQuantTraitAttrName) || !f_attr) {
       return failure();
@@ -445,7 +445,7 @@ class QuantizeFunctionPattern
 
     SmallVector<Value, 4> args;
     SmallVector<Value, 4> qparam_args;
-    for (Value arg : call_op.args()) {
+    for (Value arg : call_op.getArgs()) {
       if (const auto arg_type = arg.getType().dyn_cast<TensorType>()) {
         QuantizedType qtype =
             arg_type.getElementType().dyn_cast<QuantizedType>();
@@ -491,7 +491,7 @@ class QuantizeFunctionPattern
 
     rewriter.setInsertionPoint(call_op);
 
-    for (Value arg : call_op.args()) {
+    for (Value arg : call_op.getArgs()) {
       TensorType arg_type = arg.getType().dyn_cast<TensorType>();
       if (!arg_type) {
         args.push_back(arg);
@@ -639,7 +639,7 @@ class QuantizeFunctionPattern
     auto module = call_op->getParentOfType<ModuleOp>();
     SymbolTable symbol_table(module);
 
-    const auto f_attr = call_op.fAttr().dyn_cast<FlatSymbolRefAttr>();
+    const auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
     const auto float_func =
         dyn_cast<func::FuncOp>(symbol_table.lookup(f_attr.getValue()));
     rewriter.setInsertionPointAfter(float_func);
@@ -745,7 +745,7 @@ class QuantizeConstPattern
     // Add scast op to match quantize -> composition pattern. The added scast
     // is then removed by canonicalization. ([scast - scast] -> [])
     auto scast_op = rewriter.create<quantfork::StorageCastOp>(
-        loc, tensor_qtype, const_op.output());
+        loc, tensor_qtype, const_op.getOutput());
     q_op->replaceAllUsesWith(scast_op);
     return success();
   }

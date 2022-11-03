@@ -155,7 +155,7 @@ void ReplaceHoistedValues(
           builder.getStrArrayAttr(container_arr));
       get_resource_op->setAttr("device", builder.getStringAttr(device));
 
-      auto new_values = get_resource_op.results();
+      auto new_values = get_resource_op.getResults();
       for (auto iter : llvm::zip(old_values, new_values)) {
         auto old_value = std::get<0>(iter);
         auto new_value = std::get<1>(iter);
@@ -186,7 +186,7 @@ bool CanHoist(const llvm::DenseSet<mlir::TF::ResourceHandle> &read_only_vars,
   // If it is ReadVariableOp and the variable is readonly, it can be hoisted.
   if (auto read_var_op = llvm::dyn_cast<mlir::TF::ReadVariableOp>(op)) {
     if (auto var_handle_op = llvm::dyn_cast_or_null<mlir::TF::VarHandleOp>(
-            read_var_op.resource().getDefiningOp())) {
+            read_var_op.getResource().getDefiningOp())) {
       if (read_only_vars.count(GetResourceHandle(var_handle_op)) > 0)
         return true;
     }
@@ -197,7 +197,7 @@ bool CanHoist(const llvm::DenseSet<mlir::TF::ResourceHandle> &read_only_vars,
   if (auto lookup_table_size_op =
           llvm::dyn_cast<mlir::TF::LookupTableSizeV2Op>(op)) {
     if (auto hash_table_op = llvm::dyn_cast_or_null<mlir::TF::HashTableV2Op>(
-            lookup_table_size_op.table_handle().getDefiningOp())) {
+            lookup_table_size_op.getTableHandle().getDefiningOp())) {
       if (read_only_vars.count(GetResourceHandle(hash_table_op)) > 0)
         return true;
     }
@@ -565,14 +565,14 @@ class ConvertReferenceVariableToResourceVariablePass
 mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
     mlir::TF::VariableV2Op var_op) {
   auto tensor_type =
-      mlir::TF::DropRefType(var_op.ref().getType()).cast<mlir::TensorType>();
+      mlir::TF::DropRefType(var_op.getRef().getType()).cast<mlir::TensorType>();
 
   llvm::SmallVector<mlir::TF::IdentityOp, 4> identity_ops;
   llvm::SmallVector<mlir::TF::AssignOp, 4> assign_ops;
   llvm::SmallVector<std::pair<mlir::Operation *, unsigned>, 4>
       side_effect_free_ops;
 
-  for (mlir::OpOperand &use : var_op.ref().getUses()) {
+  for (mlir::OpOperand &use : var_op.getRef().getUses()) {
     mlir::Operation *user = use.getOwner();
 
     if (auto identity = llvm::dyn_cast<mlir::TF::IdentityOp>(user)) {
@@ -581,7 +581,7 @@ mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
     } else if (auto assign = llvm::dyn_cast<mlir::TF::AssignOp>(user)) {
       // Conservatively we only allow the case that the output of this tf.Assign
       // is not consumed by any other ops.
-      if (assign.output_ref().use_empty()) {
+      if (assign.getOutputRef().use_empty()) {
         assign_ops.push_back(assign);
         continue;
       }
@@ -603,7 +603,7 @@ mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
           {}, mlir::TF::ResourceType::get(
                   llvm::ArrayRef<mlir::TensorType>{tensor_type},
                   builder.getContext())),
-      var_op.container(), var_op.shared_name());
+      var_op.getContainer(), var_op.getSharedName());
 
   for (auto op : identity_ops) {
     // Set insertion point to this identity_op so that the side-effect
@@ -611,7 +611,7 @@ mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
     builder.setInsertionPoint(op);
     auto read_var_op = builder.create<mlir::TF::ReadVariableOp>(
         op.getLoc(), op.getType(), var_handle_op);
-    op.replaceAllUsesWith(read_var_op.value());
+    op.replaceAllUsesWith(read_var_op.getValue());
     op.erase();
   }
 
@@ -620,7 +620,7 @@ mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
     // dominating the newly created op.
     builder.setInsertionPoint(op);
     builder.create<mlir::TF::AssignVariableOp>(op.getLoc(), var_handle_op,
-                                               op.value());
+                                               op.getValue());
     op.erase();
   }
 
@@ -633,7 +633,7 @@ mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
     // Create a new read variable op, so that the side-effects are preserved.
     auto read_var_op = builder.create<mlir::TF::ReadVariableOp>(
         op->getLoc(), tensor_type, var_handle_op);
-    op->setOperand(idx, read_var_op.value());
+    op->setOperand(idx, read_var_op.getValue());
   }
 
   return mlir::success();
@@ -650,7 +650,7 @@ void ConvertReferenceVariableToResourceVariablePass::runOnOperation() {
 
   // First, we collect all variables' corresponding tf.VariableV2 ops.
   module.walk([&ref_vars](mlir::TF::VariableV2Op op) {
-    if (op.shared_name().empty()) {
+    if (op.getSharedName().empty()) {
       op.emitOpError()
           << "unable to convert reference variables with empty shared_names.";
       return mlir::WalkResult::interrupt();
@@ -661,7 +661,7 @@ void ConvertReferenceVariableToResourceVariablePass::runOnOperation() {
       device = device_attr.getValue();
     }
 
-    ref_vars[{device, op.container(), op.shared_name()}].push_back(op);
+    ref_vars[{device, op.getContainer(), op.getSharedName()}].push_back(op);
 
     return mlir::WalkResult::advance();
   });

@@ -53,7 +53,7 @@ StatusOr<mlir::Operation*> BiasAddExpander::ExpandOp(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto output_layout,
                       ExtractRequiredSingleLayoutFromOp(op));
   mlir::TF::BiasAddOp bias_add_op = llvm::cast<mlir::TF::BiasAddOp>(op);
-  const llvm::StringRef data_format = bias_add_op.data_format();
+  const llvm::StringRef data_format = bias_add_op.getDataFormat();
   const int c_dim_idx = get_c_dimension_idx(output_layout, data_format);
 
   // Bias add op has 2 inputs: value and bias.
@@ -121,7 +121,7 @@ StatusOr<llvm::DenseMap<int, Layout>> BiasAddExpander::ComputeLayoutForward(
 
   Layout input_layout = input_layouts.lookup(0);
   mlir::TF::BiasAddOp bias_add_op = llvm::cast<mlir::TF::BiasAddOp>(op);
-  llvm::StringRef data_format = bias_add_op.data_format();
+  llvm::StringRef data_format = bias_add_op.getDataFormat();
   int c_dim_idx = get_c_dimension_idx(input_layout, data_format);
 
   std::vector<std::string> new_output_layout_specs =
@@ -158,7 +158,7 @@ StatusOr<llvm::DenseMap<int, Layout>> BiasAddExpander::ComputeLayoutBackward(
 
   // Bias layout should match 'C' dimension of input layout.
   mlir::TF::BiasAddOp bias_add_op = llvm::cast<mlir::TF::BiasAddOp>(op);
-  llvm::StringRef data_format = bias_add_op.data_format();
+  llvm::StringRef data_format = bias_add_op.getDataFormat();
   const int c_dim_idx = get_c_dimension_idx(output_layout, data_format);
 
   std::vector<std::string> bias_new_specs = {

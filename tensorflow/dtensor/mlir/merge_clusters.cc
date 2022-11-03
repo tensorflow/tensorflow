@@ -272,14 +272,14 @@ void CloneEmptyIfWithPredicate(mlir::TF::IfRegionOp if_region, const Mesh& mesh,
   // DTensorSend op sends the predicate to `mesh` cluster with replicated
   // layout.
   mlir::TensorType predicate_tensor_type =
-      if_region.cond().getType().cast<mlir::TensorType>();
+      if_region.getCond().getType().cast<mlir::TensorType>();
   const std::string send_recv_key =
       absl::StrCat(kSendRecvKeyPrefix, *num_send_recvs);
   *num_send_recvs += 1;
 
   const Layout target_layout = Layout::ReplicatedOnMesh(mesh, 0);
   builder.create<mlir::TF::DTensorSend>(
-      if_region.getLoc(), if_region.cond(),
+      if_region.getLoc(), if_region.getCond(),
       builder.getStringAttr(send_recv_key),
       mlir::dtensor::LayoutAttr::get(context, target_layout));
 
@@ -302,21 +302,21 @@ void CloneEmptyIfWithPredicate(mlir::TF::IfRegionOp if_region, const Mesh& mesh,
   // Clone tf.IfRegion op inside newly created cluster and make sure
   // that the predicate tensor is from DTensorRecv op created above.
   auto host_side_if = builder.create<mlir::TF::IfRegionOp>(
-      if_region.getLoc(), llvm::SmallVector<mlir::Type, 4>{}, recv_op.output(),
-      if_region.is_stateless(),
+      if_region.getLoc(), llvm::SmallVector<mlir::Type, 4>{},
+      recv_op.getOutput(), if_region.getIsStateless(),
       GetUniqueControlflowFnName("cloned_if_then", builder),
       GetUniqueControlflowFnName("cloned_if_else", builder));
   *cloned_if_region_op = host_side_if;
 
   // Create empty then branch region.
-  auto& then_branch = host_side_if.then_branch();
+  auto& then_branch = host_side_if.getThenBranch();
   then_branch.push_back(new mlir::Block);
   builder.setInsertionPointToEnd(&then_branch.front());
   builder.create<mlir::TF::YieldOp>(if_region.getLoc(),
                                     /*operands=*/llvm::ArrayRef<mlir::Value>{});
 
   // Create empty else branch region.
-  auto& else_branch = host_side_if.else_branch();
+  auto& else_branch = host_side_if.getElseBranch();
   else_branch.push_back(new mlir::Block);
   builder.setInsertionPointToEnd(&else_branch.front());
   builder.create<mlir::TF::YieldOp>(if_region.getLoc(),
@@ -350,7 +350,7 @@ mlir::LogicalResult VerifyClusterInputOutput(
 bool IsInsideIfThenBranch(mlir::TF::IfRegionOp if_op,
                           mlir::tf_device::ClusterOp cluster) {
   assert(if_op->isProperAncestor(cluster));
-  return if_op.then_branch().isAncestor(cluster->getParentRegion());
+  return if_op.getThenBranch().isAncestor(cluster->getParentRegion());
 }
 
 // Decomposes multi-mesh computation nested inside tf_if operations. See
@@ -379,19 +379,19 @@ mlir::LogicalResult DecomposeIf(mlir::TF::IfRegionOp if_op,
     // corresponding branch.
     if (IsInsideIfThenBranch(if_op, nested_cluster)) {
       mlir::Operation* then_branch_terminator =
-          cloned_if.then_branch().begin()->getTerminator();
+          cloned_if.getThenBranch().begin()->getTerminator();
       auto& nested_cluster_operations =
           nested_cluster.GetBody().getOperations();
-      cloned_if.then_branch().begin()->getOperations().splice(
+      cloned_if.getThenBranch().begin()->getOperations().splice(
           then_branch_terminator->getIterator(), nested_cluster_operations,
           nested_cluster_operations.begin(),
           std::prev(nested_cluster_operations.end()));
     } else {
       mlir::Operation* else_branch_terminator =
-          cloned_if.else_branch().begin()->getTerminator();
+          cloned_if.getElseBranch().begin()->getTerminator();
       auto& nested_cluster_operations =
           nested_cluster.GetBody().getOperations();
-      cloned_if.else_branch().begin()->getOperations().splice(
+      cloned_if.getElseBranch().begin()->getOperations().splice(
           else_branch_terminator->getIterator(), nested_cluster_operations,
           nested_cluster_operations.begin(),
           std::prev(nested_cluster_operations.end()));

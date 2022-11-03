@@ -499,7 +499,7 @@ def : Pattern<
 //===----------------------------------------------------------------------===//
 
 def UnpackStartingIndices: NativeCodeCall<
-  "UnpackTensorAlongZeroDim($0.getLoc(), $1, &$_builder).output()">;
+  "UnpackTensorAlongZeroDim($0.getLoc(), $1, &$_builder).getOutput()">;
 
 def CanBeTranslatedToDynamicSlice : Constraint<CPred<
   "CanBeTranslatedToDynamicSlice($0, $1, $2.cast<DenseIntElementsAttr>())">>;
@@ -648,9 +648,9 @@ class HLO_RngDistributionValue<string enumStr> :
 def : Pat<(TF_RandomUniformOp:$old $shape, $seed, $seed2),
           (HLO_RngOp
             (HLO_ConstantOp
-              (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 0.0)">)),
+              (NativeCodeCall<"$_builder.getFloatAttr(old.getDtype(), 0.0)">)),
             (HLO_ConstantOp
-              (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 1.0)">)),
+              (NativeCodeCall<"$_builder.getFloatAttr(old.getDtype(), 1.0)">)),
             (CastValueToI64 $old, $shape),
             HLO_RngDistributionValue<"UNIFORM">),
           [(IsShapedTensor $shape)]>;
@@ -658,9 +658,9 @@ def : Pat<(TF_RandomUniformOp:$old $shape, $seed, $seed2),
 def : Pat<(TF_RandomStandardNormalOp:$old $shape, $seed, $seed2),
           (HLO_RngOp
             (HLO_ConstantOp
-              (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 0.0)">)),
+              (NativeCodeCall<"$_builder.getFloatAttr(old.getDtype(), 0.0)">)),
             (HLO_ConstantOp
-              (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 1.0)">)),
+              (NativeCodeCall<"$_builder.getFloatAttr(old.getDtype(), 1.0)">)),
             (CastValueToI64 $old, $shape),
             HLO_RngDistributionValue<"NORMAL">),
           [(IsShapedTensor $shape)]>;

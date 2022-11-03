@@ -241,7 +241,7 @@ class OpSideEffectCollector {
     } else if (auto while_op = dyn_cast<WhileOp>(op)) {
       AddRegionSideEffectsForOp(while_op.body_function().getBody(), op);
     } else if (auto while_region_op = dyn_cast<WhileRegionOp>(op)) {
-      AddRegionSideEffectsForOp(while_region_op.body(), op);
+      AddRegionSideEffectsForOp(while_region_op.getBody(), op);
     } else if (auto case_op = dyn_cast<CaseOp>(op)) {
       llvm::SmallVector<func::FuncOp, 4> branch_funcs;
       case_op.get_branch_functions(branch_funcs);

@@ -135,7 +135,7 @@ LogicalResult FoldOperation(TFE_Context* ctx, OpBuilder& builder, Operation* op,
   for (auto operand : op->getOperands()) {
     auto preceding_const_op = operand.getDefiningOp<TF::ConstOp>();
     if (preceding_const_op) {
-      inputs.push_back(preceding_const_op.value());
+      inputs.push_back(preceding_const_op.getValue());
       continue;
     }
 
@@ -153,7 +153,7 @@ LogicalResult FoldOperation(TFE_Context* ctx, OpBuilder& builder, Operation* op,
     }
     auto preceding_result = preceding_results[preceding_result_id];
     preceding_const_op = preceding_result.getDefiningOp<TF::ConstOp>();
-    inputs.push_back(preceding_const_op.value());
+    inputs.push_back(preceding_const_op.getValue());
   }
 
   // Avoid overlapping folds with the same context.

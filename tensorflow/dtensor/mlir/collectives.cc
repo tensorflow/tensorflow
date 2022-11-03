@@ -99,7 +99,7 @@ StatusOr<mlir::Value> EmitAllGather(
 
   if (newly_created_ops != nullptr) newly_created_ops->insert(all_gather);
 
-  return all_gather.output();
+  return all_gather.getOutput();
 }
 
 StatusOr<const mlir::Value> EmitAllScatter(
@@ -143,7 +143,7 @@ StatusOr<const mlir::Value> EmitAllScatter(
 
   if (newly_created_ops != nullptr) newly_created_ops->insert(all_scatter);
 
-  return all_scatter.output();
+  return all_scatter.getOutput();
 }
 
 StatusOr<mlir::Value> EmitDenseToSparseToDense(

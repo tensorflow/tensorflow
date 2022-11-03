@@ -49,7 +49,7 @@ TODO: Make invariants more structured so that we can reference them in ops.
 
   let cppNamespace = "::mlir::TF";
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 //===----------------------------------------------------------------------===//

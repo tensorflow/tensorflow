@@ -62,7 +62,7 @@ ValueRange createFusedFnCall(OpBuilder builder, Location location,
       builder.getStringAttr(llvm::StringRef(
           std::string(QuantTraitValues[QuantizationTrait::FullyQuantizable]))));
 
-  return call_op.output();
+  return call_op.getOutput();
 }
 
 // Finds ops in the paths from arguments to results. The ops is listed in an

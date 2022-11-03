@@ -71,7 +71,7 @@ template <typename OpT,
 void RewriteCall(OpT pcall_op, SymbolTable &symtab) {
   llvm::SmallVector<Value> non_resource_args, resource_args;
   bool has_resources = false, in_order = true;
-  for (const Value &arg : pcall_op.args()) {
+  for (const Value &arg : pcall_op.getArgs()) {
     if (!getElementTypeOrSelf(arg.getType()).template isa<TF::ResourceType>()) {
       non_resource_args.push_back(arg);
       if (has_resources) in_order = false;
@@ -85,7 +85,7 @@ void RewriteCall(OpT pcall_op, SymbolTable &symtab) {
     // Functions do not get reused in practice, so skip the check for if the
     // callee has been updated.
     StringAttr callee_sym =
-        cast<SymbolRefAttr>(pcall_op.fAttr()).getRootReference();
+        cast<SymbolRefAttr>(pcall_op.getFAttr()).getRootReference();
     MoveResourceArgsToEnd(cast<func::FuncOp>(symtab.lookup(callee_sym)));
   }
   OpBuilder builder(pcall_op->getContext());
@@ -93,7 +93,7 @@ void RewriteCall(OpT pcall_op, SymbolTable &symtab) {
   auto xla_launch_op = builder.create<TF::XlaLaunchOp>(
       pcall_op.getLoc(), pcall_op.getResultTypes(),
       /*constants=*/ValueRange({}), ValueRange(non_resource_args),
-      ValueRange(resource_args), pcall_op.fAttr());
+      ValueRange(resource_args), pcall_op.getFAttr());
 
   CopyDeviceAndUnderscoredAttributes(pcall_op, xla_launch_op);
   pcall_op.replaceAllUsesWith(xla_launch_op.getResults());

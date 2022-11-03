@@ -58,9 +58,9 @@ TF::AssignVariableOp GetSingleUseResourceWrite(
   auto assign_var = dyn_cast<TF::AssignVariableOp>(use.getOwner());
   if (!assign_var) return nullptr;
 
-  if (use.get() != assign_var.value()) return nullptr;
+  if (use.get() != assign_var.getValue()) return nullptr;
 
-  auto* resource_handle_op = assign_var.resource().getDefiningOp();
+  auto* resource_handle_op = assign_var.getResource().getDefiningOp();
   if (resource_handle_op == parallel_execute) return nullptr;
 
   if (resource_handle_op &&
@@ -104,7 +104,8 @@ void SinkResourceWritesIntoParallelExecute(
       // resource variable to be the non forwarded value from within the
       // parallel_execute region.
       assign_var.getOperation()->moveBefore(terminator);
-      assign_var.valueMutable().assign(terminator->getOperand(result.index()));
+      assign_var.getValueMutable().assign(
+          terminator->getOperand(result.index()));
       results_to_remove.push_back(result.index());
     }
 
