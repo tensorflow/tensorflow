@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <numeric>
 #include <string>
 #include <utility>
@@ -3689,6 +3690,8 @@ class PointwiseToLinalgMapConverter : public OpConversionPattern<OpTy> {
 
 struct HloLegalizeToLinalgPass
     : public impl::HloLegalizeToLinalgPassBase<HloLegalizeToLinalgPass> {
+  using HloLegalizeToLinalgPassBase::HloLegalizeToLinalgPassBase;
+
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<bufferization::BufferizationDialect, linalg::LinalgDialect,
                     scf::SCFDialect, complex::ComplexDialect, math::MathDialect,
@@ -3871,8 +3874,11 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
   // clang-format on
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeHloToLinalgPass() {
-  return std::make_unique<HloLegalizeToLinalgPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeHloToLinalgPass(
+    bool enablePrimitiveOps) {
+  HloLegalizeToLinalgPassOptions options;
+  options.enablePrimitiveOps = enablePrimitiveOps;
+  return std::make_unique<HloLegalizeToLinalgPass>(options);
 }
 
 std::unique_ptr<TypeConverter> createHloToLinalgTypeConverter() {
