@@ -139,7 +139,8 @@ class TerminationConfig(object):
   def __init__(self,
                termination_watcher_fn=None,
                exit_fn=None,
-               grace_period=None):
+               grace_period=None,
+               save_fn=None):
     """Creates a `TerminationConfig` object.
 
     Args:
@@ -157,10 +158,16 @@ class TerminationConfig(object):
       grace_period: the length of time between receiving a preemption signal and
         the actual preemption. A change is **NOT** recommended for users on
         Google Borg, Google Cloud Platform, or users with a short grace period.
+      save_fn: an optional function letting you configure how to save a
+        checkpoint. This is useful if you'd like to pass extra argument to
+        `tf.train.CheckpointManager.save` or `tf.train.Checkpoint.save`. By
+        default, if not configured, the API will save checkpoint without extra
+        arguments.
     """
     self.termination_watcher_fn = termination_watcher_fn
     self.exit_fn = exit_fn
     self.grace_period = grace_period
+    self.save_fn = save_fn
 
 
 # TODO(wxinyi): configure the exit function based on device type (GPU or TPU).
@@ -171,12 +178,14 @@ class GcpGpuTerminationConfig(TerminationConfig):
       self,
       termination_watcher_fn=None,
       exit_fn=None,
-      grace_period=None):
+      grace_period=None,
+      save_fn=None):
     self.termination_watcher_fn = termination_watcher_fn or failure_handling_util.termination_watcher_function_gce
     self.exit_fn = exit_fn or failure_handling_util.gce_exit_fn
     self.grace_period = (
         grace_period if grace_period or grace_period == 0 else
         failure_handling_util.GRACE_PERIOD_GCE)
+    self.save_fn = save_fn
 
 
 class GcpCpuTerminationConfig(TerminationConfig):
@@ -186,10 +195,12 @@ class GcpCpuTerminationConfig(TerminationConfig):
       self,
       termination_watcher_fn=None,
       exit_fn=None,
-      grace_period=None):
+      grace_period=None,
+      save_fn=None):
     self.termination_watcher_fn = termination_watcher_fn or failure_handling_util.termination_watcher_function_gce
     self.exit_fn = exit_fn or failure_handling_util.gce_exit_fn
     self.grace_period = grace_period or 0
+    self.save_fn = save_fn
 
 
 class BorgTerminationConfig(TerminationConfig):
@@ -199,11 +210,13 @@ class BorgTerminationConfig(TerminationConfig):
       self,
       termination_watcher_fn=None,
       exit_fn=None,
-      grace_period=None):
+      grace_period=None,
+      save_fn=None):
     self.termination_watcher_fn = termination_watcher_fn
     default_exit_fn = lambda: sys.exit(42)
     self.exit_fn = exit_fn or default_exit_fn
     self.grace_period = grace_period or 0
+    self.save_fn = save_fn
 
 
 def _complete_config_for_environment(platform_device, termination_config):
@@ -214,19 +227,22 @@ def _complete_config_for_environment(platform_device, termination_config):
   if platform_device is failure_handling_util.PlatformDevice.GCE_GPU:
     return GcpGpuTerminationConfig(termination_config.termination_watcher_fn,
                                    termination_config.exit_fn,
-                                   termination_config.grace_period)
+                                   termination_config.grace_period,
+                                   termination_config.save_fn)
 
   elif platform_device is failure_handling_util.PlatformDevice.GCE_CPU:
     return GcpCpuTerminationConfig(termination_config.termination_watcher_fn,
                                    termination_config.exit_fn,
-                                   termination_config.grace_period)
+                                   termination_config.grace_period,
+                                   termination_config.save_fn)
 
   else:
     # The default we chose are the same as the ones used by Borg. So we just
     # return this.
     return BorgTerminationConfig(
         termination_config.termination_watcher_fn,
-        termination_config.exit_fn, termination_config.grace_period)
+        termination_config.exit_fn, termination_config.grace_period,
+        termination_config.save_fn)
 
 
 # TODO(wxinyi): add release updates.
@@ -422,6 +438,8 @@ class PreemptionCheckpointHandler(object):
         `tf.distribute.experimental.TerminationConfig` object to configure for a
         platform other than Google Borg or GCP.
     """
+    # TODO(wxinyi): Maybe make checkpoint_or_checkpoint_manager optional if
+    # save_fn is passed. For now it's still useful for restore.
     if isinstance(checkpoint_or_checkpoint_manager,
                   checkpoint_lib.Checkpoint) and not checkpoint_dir:
       raise errors.InvalidArgumentError('When a checkpoint is passed, a '
@@ -434,6 +452,14 @@ class PreemptionCheckpointHandler(object):
     self._checkpoint_dir = checkpoint_dir
 
     self._platform_device = failure_handling_util.detect_platform()
+
+    completed_termination_config = _complete_config_for_environment(
+        self._platform_device, self._termination_config)
+    self._termination_watcher_fn = completed_termination_config.termination_watcher_fn
+    self._exit_fn = completed_termination_config.exit_fn
+    self._grace_period = completed_termination_config.grace_period
+    self._save_fn = completed_termination_config.save_fn
+
     if self._platform_device in (failure_handling_util.PlatformDevice.GCE_TPU,
                                  failure_handling_util.PlatformDevice.GCE_CPU):
       # While running MultiWorkerMirroredStrategy training with GPUs and CPUs
@@ -528,12 +554,6 @@ class PreemptionCheckpointHandler(object):
     # step number to save a checkpoint has been aligned.
     self._received_checkpoint_step = threading.Event()
 
-    completed_termination_config = _complete_config_for_environment(
-        self._platform_device, self._termination_config)
-    self._termination_watcher_fn = completed_termination_config.termination_watcher_fn
-    self._exit_fn = completed_termination_config.exit_fn
-    self._grace_period = completed_termination_config.grace_period
-
     distribution_strategy_api_counter.get_cell(
         self._platform_device.name,
         'PreemptionCheckpointHandler').increase_by(1)
@@ -558,7 +578,7 @@ class PreemptionCheckpointHandler(object):
 
     self._poll_termination_signal_thread = None
 
-    if completed_termination_config.termination_watcher_fn:
+    if self._termination_watcher_fn:
       self._start_polling_for_termination_signal()
     else:
       self._start_watching_for_signal()
@@ -849,7 +869,10 @@ class PreemptionCheckpointHandler(object):
 
     start_time = time.monotonic()
 
-    self._write_checkpoint_manager.save()
+    if self._save_fn:
+      self._save_fn()
+    else:
+      self._write_checkpoint_manager.save()
 
     end_time = time.monotonic()
 
