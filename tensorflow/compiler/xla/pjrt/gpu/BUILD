@@ -37,7 +37,6 @@ cc_library(
     visibility = ["//tensorflow/compiler/xla/pjrt:friends"],
     deps = [
         ":gpu_helpers",
-        ":nccl_id_store",
         "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -55,10 +54,12 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
     ] + if_cuda([
+        ":nccl_id_store_cuda",
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/core/common_runtime/gpu:gpu_cudamallocasync_allocator",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
     ]) + if_rocm([
+        ":nccl_id_store_rocm",
         "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
@@ -68,7 +69,24 @@ cc_library(
 # an intermediate library that has the conditional NCCL pieces that is only
 # itself included as a dependency if CUDA is enabled.
 cc_library(
-    name = "nccl_id_store",
+    name = "nccl_id_store_cuda",
+    srcs = ["nccl_id_store.cc"],
+    hdrs = ["nccl_id_store.h"],
+    defines = if_nccl(["NCCL_ENABLED=1"]),
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+        "//tensorflow/compiler/xla/pjrt/distributed:client",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:global_device_id",
+        "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
+    ] + if_nccl(["@local_config_nccl//:nccl"]),
+)
+
+cc_library(
+    name = "nccl_id_store_rocm",
     srcs = ["nccl_id_store.cc"],
     hdrs = ["nccl_id_store.h"],
     defines = if_nccl(["NCCL_ENABLED=1"]),

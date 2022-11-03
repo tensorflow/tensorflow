@@ -20,16 +20,15 @@ limitations under the License.
 #include "grpcpp/completion_queue.h"
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_rpc_handler.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
-#include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/threadpool.h"
-#include "tensorflow/core/protobuf/coordination_service.grpc.pb.h"
-#include "tensorflow/core/protobuf/coordination_service.pb.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/grpc_call.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/tsl/protobuf/coordination_service.grpc.pb.h"
+#include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 

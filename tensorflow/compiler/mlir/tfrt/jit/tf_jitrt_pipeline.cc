@@ -79,8 +79,9 @@ void AddLinalgTransformations(OpPassManager& pm,
       options.vector_size, options.reduction_1d_tile_size,
       options.reduction_2d_tile_sizes));
 
-  pm.addNestedPass<FuncOp>(
-      mlir::gml_st::createTransformMatmulForCpuPass(options.matmul_tile_sizes));
+  // TODO(b/248219927): Enable matmul transformations when bufferization works.
+  // pm.addNestedPass<FuncOp>(
+  //     mlir::gml_st::createTransformMatmulForCpuPass(options.matmul_tile_sizes));
 
   if (options.vectorize && options.codegen_transpose)
     pm.addNestedPass<FuncOp>(CreateTileTransposePass());

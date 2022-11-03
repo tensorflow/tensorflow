@@ -27,6 +27,11 @@ py_library(
 )
 
 py_library(
+    name = "padded_batch_op",
+    srcs = ["padded_batch_op.py"],
+)
+
+py_library(
     name = "rebatch_op",
     srcs = ["rebatch_op.py"],
     deps = [
@@ -53,6 +58,7 @@ py_library(
         ":iterator_ops",
         ":load_ops",
         ":options",
+        ":padded_batch_op",
         ":ragged_batch_op",
         ":rebatch_op",
         ":save_ops",

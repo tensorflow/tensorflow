@@ -391,7 +391,7 @@ xla::status_macros::MakeErrorStream::Impl::GetStatus
 xla::status_macros::MakeErrorStream::CheckNotDone
 xla::status_macros::MakeErrorStream::add_ret_check_failure
 
-[//tensorflow/compiler/xla/service:hlo] # tfcompile
+[//tensorflow/compiler/xla/hlo/ir:hlo] # tfcompile
 xla::DfsHloVisitorBase::SetVisited
 xla::DfsHloVisitorBase<class xla::HloInstruction.*>::SetVisited
 xla::HloComputation::Accept

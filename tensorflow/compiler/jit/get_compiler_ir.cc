@@ -219,7 +219,6 @@ StatusOr<std::string> GetCompilerIr(
           *executable->executable()->module().entry_computation(),
           "Visualization",
           /*debug_options=*/{}, xla::RenderedGraphFormat::kDot,
-          /*hlo_execution_profile=*/nullptr,
           /*hlo_render_options=*/{});
       TF_RETURN_IF_ERROR(graph.status());
       return *graph;

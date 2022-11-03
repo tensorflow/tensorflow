@@ -376,7 +376,7 @@ tensorflow::Status InitSavedModel(
 
 }  // namespace
 
-SavedModel::~SavedModel() {}
+SavedModel::~SavedModel() = default;  // Out-of-line C++ key function.
 
 tfrt::HostContext* SavedModel::GetHostContext() const {
   return runtime_->core_runtime()->GetHostContext();
@@ -624,8 +624,6 @@ SavedModelImpl::SavedModelImpl(
       graph_executor_(std::move(graph_executor)),
       lazy_loading_enabled_(meta_graph_def_.signature_def_size() >
                             options.lazy_loading_threshold) {}
-
-SavedModelImpl::~SavedModelImpl() = default;
 
 std::vector<std::string> SavedModelImpl::GetFunctionNames() const {
   std::vector<std::string> result;

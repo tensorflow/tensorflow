@@ -1731,7 +1731,7 @@ let product:f32[] = reduce_product(padded_v_five);
 
 // Changing padding size will yield different result.
 // sum == 1 + 2 + 3 + 4 + 5 + 6
-let sum':f32[] = reduce_sum(padded_v_six);
+let sum:f32[] = reduce_sum(padded_v_six);
 ```
 
 ## GetTupleElement

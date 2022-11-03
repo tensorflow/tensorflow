@@ -20,9 +20,9 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.h"
 #include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
 
 namespace xla {
 namespace gpu {
@@ -56,7 +56,8 @@ void AddHloTraceAnnotationsPass::runOnOperation() {
   int64_t program_id = uid ? uid.getValue().getZExtValue() : -1;
 
   // XLA HLO -> MLIR export encodes module name in the location.
-  std::string module_name = mlir::GetNameFromLoc(module->getLoc());
+  std::string module_name =
+      mlir::mhlo::GetDebugNameFromLocation(module->getLoc());
 
   getOperation().walk([&](func::CallOp call) {
     // Check if the callee is a custom call.
@@ -64,7 +65,7 @@ void AddHloTraceAnnotationsPass::runOnOperation() {
     if (!callee->hasAttr("rt.custom_call")) return;
 
     // HLO operation name is encoded in the operation location.
-    std::string hlo_op = mlir::GetNameFromLoc(call->getLoc());
+    std::string hlo_op = mlir::mhlo::GetDebugNameFromLocation(call->getLoc());
     auto annotation = HloTraceAttr::get(ctx, hlo_op, module_name, program_id);
     call->setAttr("rt.trace", annotation);
   });

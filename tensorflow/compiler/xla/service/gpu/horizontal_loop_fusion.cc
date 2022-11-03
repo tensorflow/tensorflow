@@ -410,7 +410,7 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
       if (new_output->shape().dimensions_size() == 1) {
         instr_outputs[j] = new_output;
       } else {
-        Shape new_shape = ShapeUtil::MakeShapeWithLayout(
+        Shape new_shape = ShapeUtil::MakeShapeWithDenseLayout(
             new_output->shape().element_type(),
             {ShapeUtil::ElementsIn(new_output->shape())},
             /*minor_to_major=*/std::vector<int64_t>(1, 0));

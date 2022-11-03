@@ -62,6 +62,10 @@ message GemmBackendConfig {
   enum Epilogue {
     DEFAULT = 0;
     BIAS = 1;
+    RELU = 2;
+    BIASRELU = 3;
+    GELU = 4;
+    BIASGELU = 5;
   }
 
   Epilogue epilogue = 13;

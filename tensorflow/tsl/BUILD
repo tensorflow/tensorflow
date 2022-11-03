@@ -428,6 +428,7 @@ bzl_library(
     srcs = ["tsl.bzl"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/tsl/platform:rules_cc_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
@@ -437,3 +438,14 @@ bzl_library(
         "@local_config_tensorrt//:build_defs_bzl",
     ],
 )
+
+# copybara:comment_begin(oss-only)
+cc_library(
+    name = "grpc++",
+    visibility = ["//visibility:public"],
+    deps = select({
+        ":linux_s390x": ["@com_github_grpc_grpc//:grpc++_unsecure"],
+        "//conditions:default": ["@com_github_grpc_grpc//:grpc++"],
+    }),
+)
+# copybara:comment_end

@@ -34,12 +34,12 @@ class DialectRegistry {
 
 class PassManager {
  public:
-  explicit PassManager(mlir::OpPassManager* pm) : pm_(pm) {}
-  mlir::OpPassManager* operator->() { return pm_; }
-  mlir::OpPassManager& operator*() { return *pm_; }
+  explicit PassManager(mlir::PassManager* pm) : pm_(pm) {}
+  mlir::PassManager* operator->() { return pm_; }
+  mlir::PassManager& operator*() { return *pm_; }
 
  private:
-  mlir::OpPassManager* pm_;
+  mlir::PassManager* pm_;
 };
 
 }  // namespace runtime

@@ -42,7 +42,7 @@ ENTRY %tfcompile.0 {
   %conditional.16 = (f32[]) conditional(%compare.4, %tuple.5, %tuple.5), true_computation=%then_branch0, false_computation=%else_branch0, metadata={op_type="If" op_name="cond/Merge_if"}
 
   %get-tuple-element.17 = f32[] get-tuple-element(%conditional.16), index=0, metadata={op_type="If" op_name="cond/Merge_if"}
-  // CHECK: [[R4:%.+]] = "mhlo.tuple"([[R2]])
+  // CHECK: [[R4:%.+]] = mhlo.tuple [[R2]]
   // CHECK:   return [[R4]]
   ROOT %tuple.19 = (f32[]) tuple(%get-tuple-element.17), metadata={op_name="XLA_Retvals"}
 }
@@ -92,8 +92,8 @@ ENTRY %tfcompile.0 {
 //CHECK-NEXT:      %[[EXP2:.*]] = mhlo.exponential %[[A2]] : tensor<f32>
 //CHECK-NEXT:      mhlo.return %[[EXP0]], %[[EXP1]], %[[EXP2]] : tensor<f32>, tensor<f32>, tensor<f32>
 //CHECK-NEXT:    }) : (tensor<i1>) -> (tensor<f32>, tensor<f32>, tensor<f32>)
-//CHECK-NEXT:    %[[R0:.*]] = "mhlo.tuple"(%[[IF]]#0, %[[IF]]#1)
-//CHECK-NEXT:    %[[R1:.*]] = "mhlo.tuple"(%[[R0]], %[[IF]]#2)
+//CHECK-NEXT:    %[[R0:.*]] = mhlo.tuple %[[IF]]#0, %[[IF]]#1
+//CHECK-NEXT:    %[[R1:.*]] = mhlo.tuple %[[R0]], %[[IF]]#2
 //CHECK-NEXT:    return %[[R1]] : tuple<tuple<tensor<f32>, tensor<f32>>, tensor<f32>>
 
 %tfcompile.1 {

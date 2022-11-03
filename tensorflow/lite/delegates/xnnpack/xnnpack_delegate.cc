@@ -2337,6 +2337,14 @@ class Subgraph {
                                 node, context->tensors, softmax_params,
                                 xnnpack_tensors);
       }
+      case kTfLiteBuiltinSpaceToDepth: {
+        const TfLiteSpaceToDepthParams* space_to_depth_params =
+            static_cast<const TfLiteSpaceToDepthParams*>(node->builtin_data);
+
+        return VisitSpaceToDepthNode(subgraph, delegate, logging_context,
+                                     node_index, node, context->tensors,
+                                     space_to_depth_params, xnnpack_tensors);
+      }
       case kTfLiteBuiltinSplit: {
         const TfLiteSplitParams* split_params =
             static_cast<const TfLiteSplitParams*>(node->builtin_data);
@@ -4820,6 +4828,73 @@ class Subgraph {
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context,
                            "failed to delegate SOFTMAX node #%d", node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitSpaceToDepthNode(
+      xnn_subgraph_t subgraph, const Delegate& delegate,
+      TfLiteContext* logging_context, int node_index, TfLiteNode* node,
+      const TfLiteTensor* tensors,
+      const TfLiteSpaceToDepthParams* space_to_depth_params,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    TF_LITE_ENSURE_STATUS(
+        CheckNumInputsAndOutputs(logging_context, node, 1, 1, node_index));
+
+    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
+                                       node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
+                                       node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    const int block_size = space_to_depth_params->block_size;
+    if (block_size <= 1) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "block size (%d) in SPACE_TO_DEPTH node #%d must be greater > 1",
+          block_size, node_index);
+      return kTfLiteError;
+    }
+
+    const int input_height = input_tensor.dims->data[1];
+    const int input_width = input_tensor.dims->data[2];
+    if (input_height % block_size != 0) {
+      TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                               "SPACE_TO_DEPTH node #%d input height (%d) must "
+                               "be divisible by block_size (%d).",
+                               input_height, block_size, node_index);
+      return kTfLiteError;
+    }
+
+    if (input_width % block_size != 0) {
+      TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                               "SPACE_TO_DEPTH node #%d input width (%d) must "
+                               "be divisible by block_size (%d).",
+                               input_width, block_size, node_index);
+      return kTfLiteError;
+    }
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_space_to_depth_2d(
+          subgraph, static_cast<uint32_t>(block_size),
+          /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+          /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
+          /*flags=*/0);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context,
+                           "failed to delegate SPACE_TO_DEPTH node #%d",
+                           node_index);
         return kTfLiteError;
       }
     }

@@ -471,9 +471,8 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     // Register a custom pipeline for lowering from Tensorflow dialect to LLVM.
     opts.compiler.create_compilation_pipeline =
         [=](xla::runtime::PassManager& passes) {
-          // TODO(yijiagu) : Add crash reproducer for xla::runtime::PassManager
-          /* if (GetJitRtFlags().enable_crash_reproducer)
-               SetCrashReproducer(pm, kCrashReproducerStdErr); */
+          if (GetJitRtFlags().enable_crash_reproducer)
+            SetCrashReproducer(*passes, kCrashReproducerStdErr);
 
           TfJitRtPipelineOptions opts;
           if (tf_jitrt_opts) {
@@ -493,9 +492,8 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     // Register a custom pipeline to propagate specialization information.
     opts.compiler.create_specialization_pipeline =
         [=](xla::runtime::PassManager& passes) {
-          // TODO(yijiagu) : Add crash reproducer for xla::runtime::PassManager
-          /*           if (GetJitRtFlags().enable_crash_reproducer)
-                      SetCrashReproducer(pm, kCrashReproducerStdErr); */
+          if (GetJitRtFlags().enable_crash_reproducer)
+            SetCrashReproducer(*passes, kCrashReproducerStdErr);
           CreateJitRtSpecializationPipeline(passes);
         };
 

@@ -188,7 +188,7 @@ void DefaultQuantParamsPass::QuantizeValue(OpBuilder builder, Value value,
   auto quantize = builder.create<TFL::QuantizeOp>(value.getLoc(), new_type,
                                                   value, type_attr);
   auto dequantize = builder.create<TFL::DequantizeOp>(
-      value.getLoc(), expressed_type, quantize.output());
+      value.getLoc(), expressed_type, quantize.getOutput());
   value.replaceAllUsesWith(dequantize);
 
   // `quantize` is using `dequantize` now, so we should set its operand to
@@ -204,7 +204,7 @@ quant::QuantParams DefaultQuantParamsPass::GetQuantParamsForBias(
   for (int non_bias : non_biases) {
     Operation *non_bias_define = op->getOperand(non_bias).getDefiningOp();
     if (auto dequant = llvm::dyn_cast<TFL::DequantizeOp>(non_bias_define)) {
-      auto non_bias_type = dequant.input().getType().cast<TensorType>();
+      auto non_bias_type = dequant.getInput().getType().cast<TensorType>();
       auto non_bias_ele_type =
           non_bias_type.getElementType().cast<quant::QuantizedType>();
       non_bias_types.push_back(non_bias_ele_type);

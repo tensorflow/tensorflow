@@ -1439,7 +1439,7 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr) {
                 !sharding->IsTuple()) {
               // Expand sharding into tuple sharding per
               // CloneShardingForDomain() in
-              // third_party/tensorflow/compiler/xla/service/hlo_sharding_metadata.cc
+              // third_party/tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.cc
               // Create Tuple HloSharding.
               ShapeTree<HloSharding> output_tuple_sharding(operand->shape(),
                                                            *sharding);
@@ -2388,11 +2388,11 @@ bool ShardingPropagation::InferShardingFromOperands(
 
 Status ShardingPropagation::CanonicalizeLayouts(HloModule* module) {
   if (!allow_spmd_sharding_propagation_to_output_) {
-    return Status::OK();
+    return OkStatus();
   }
   if (!module->layout_canonicalization_callback()) {
     LOG(INFO) << "There is no registered layout_canonicalization_callback.";
-    return Status::OK();
+    return OkStatus();
   }
   TF_ASSIGN_OR_RETURN(auto layouts,
                       module->layout_canonicalization_callback()(*module));
@@ -2401,7 +2401,7 @@ Status ShardingPropagation::CanonicalizeLayouts(HloModule* module) {
                          .mutable_entry_computation_layout()
                          ->mutable_result_layout()
                          ->CopyLayoutFromShape(result_shape));
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<bool> ShardingPropagation::Run(

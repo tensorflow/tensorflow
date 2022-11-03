@@ -66,6 +66,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
       const xla::HloInstruction* instr);
 
   xla::StatusOr<Operation*> EmitCustomCallOp(const xla::HloInstruction* instr);
+  xla::StatusOr<lmhlo::FusionOp> EmitSoftmax(const xla::HloInstruction* instr);
   xla::StatusOr<lmhlo_gpu::CholeskyOp> EmitCholesky(
       const xla::HloCustomCallInstruction* custom_call);
   xla::StatusOr<Operation*> EmitGemm(

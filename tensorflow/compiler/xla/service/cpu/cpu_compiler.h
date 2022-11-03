@@ -102,12 +102,12 @@ class CpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
 
   static StatusOr<std::unique_ptr<CpuXlaRuntimeAotCompilationResult>>
   FromString(const std::string& serialized) {
-    XlaRuntimeCpuExecutableProto xla_runtime_gpu_executable;
-    if (!xla_runtime_gpu_executable.ParseFromString(serialized)) {
+    XlaRuntimeCpuExecutableProto xla_runtime_cpu_executable;
+    if (!xla_runtime_cpu_executable.ParseFromString(serialized)) {
       return InternalError("Failed to parse serialized JitRtExecutableProto.");
     }
     return std::make_unique<CpuXlaRuntimeAotCompilationResult>(
-        xla_runtime_gpu_executable);
+        xla_runtime_cpu_executable);
   }
 
   StatusOr<std::unique_ptr<Executable>> LoadExecutable(
@@ -190,6 +190,13 @@ class CpuCompiler : public LLVMCompiler {
 
   StatusOr<std::unique_ptr<AotCompilationResult>> Export(
       Executable* executable) const override;
+
+  // Returns a (deserialized) AotCompilationResult from a serialized
+  // AotCompilationResult.
+  StatusOr<std::unique_ptr<AotCompilationResult>> LoadAotCompilationResult(
+      const std::string& serialized_aot_result) override {
+    return CpuXlaRuntimeAotCompilationResult::FromString(serialized_aot_result);
+  }
 
  private:
   // Initialize the LLVM target.

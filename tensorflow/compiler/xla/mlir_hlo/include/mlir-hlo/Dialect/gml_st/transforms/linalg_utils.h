@@ -27,6 +27,7 @@ namespace gml_st {
 bool isSimpleReduction(Operation *op, int64_t *dimension = nullptr,
                        Value *operand = nullptr);
 
+// Returns whether 'op' is element-wise linalg.generic with single result.
 bool isCwiseGenericOp(Operation *op, int64_t *arity = nullptr);
 
 bool isUnaryCwiseGenericOp(Operation *op);

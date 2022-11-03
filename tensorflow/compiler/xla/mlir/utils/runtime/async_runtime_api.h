@@ -20,10 +20,7 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
-
-namespace tfrt {
-class Chain;
-}  // namespace tfrt
+#include "tfrt/host_context/chain.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {

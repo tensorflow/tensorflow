@@ -35,6 +35,7 @@ cc_library(
         "lmhlo_to_gpu_runtime.cc",
         "memref_get_global_to_arg.cc",
         "passes.cc",
+        "uid_generator.h",
     ],
     hdrs = ["passes.h"],
     # Override cc_library()'s internal default value of ["//buildenv/target:gce"].`
@@ -42,7 +43,6 @@ cc_library(
     compatible_with = [],
     deps = [
         ":passes_inc_gen",
-        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/xla/mlir/ir/runtime:rt",
         "//tensorflow/compiler/xla/mlir/utils/runtime:custom_calls",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
@@ -51,6 +51,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:launch_dimensions",
         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
         "//tensorflow/compiler/xla/stream_executor:blas",
+        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:location_exporter",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

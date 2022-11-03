@@ -2251,5 +2251,27 @@ HloSharding MergeShardingDimension(const HloSharding& sharding,
                                      sharding.subgroup_types());
 }
 
+std::shared_ptr<const HloSharding> CreateTupleSharding(
+    const Shape& shape, absl::Span<const HloInstruction* const> elements) {
+  bool any_sharding = false;
+  for (const HloInstruction* element : elements) {
+    any_sharding |= element->has_sharding();
+  }
+  if (!any_sharding) {
+    return nullptr;
+  }
+
+  std::vector<HloSharding> sub_shardings;
+  sub_shardings.reserve(elements.size());
+  for (const HloInstruction* element : elements) {
+    if (element->has_sharding()) {
+      sub_shardings.push_back(element->sharding());
+    } else {
+      sub_shardings.push_back(HloSharding::Replicate());
+    }
+  }
+  return std::make_shared<const HloSharding>(
+      HloSharding::Tuple(shape, sub_shardings));
+}
 }  // namespace hlo_sharding_util
 }  // namespace xla

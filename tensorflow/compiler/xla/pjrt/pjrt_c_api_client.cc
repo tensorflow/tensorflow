@@ -208,57 +208,6 @@ StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
   return GetCppDevice(args.device);
 }
 
-static Status ValidateCompileOption(CompileOptions options) {
-  if (options.argument_layouts.has_value()) {
-    return xla::Unimplemented(
-        "argument_layouts in CompileOptions is not supported.");
-  }
-  if (options.compile_portable_executable) {
-    return xla::Unimplemented(
-        "compile_portable_executable in CompileOptions is not supported.");
-  }
-  if (options.profile_version != 0) {
-    return xla::Unimplemented(
-        "profile_version in CompileOptions is not supported.");
-  }
-  if (options.multi_slice_config != nullptr) {
-    return xla::Unimplemented(
-        "multi_slice_config in CompileOptions is not supported.");
-  }
-  return xla::OkStatus();
-}
-
-// Convert `CompileOptions` to `PJRT_CompileOptions`. `device_assignment_str`
-// will be used for serialized DeviceAssignment storage.
-static StatusOr<PJRT_CompileOptions> ConvertCppCompileOptionsToCCompileOptions(
-    const CompileOptions& options, std::string& device_assignment_str) {
-  PJRT_CompileOptions c_options;
-  c_options.struct_size = PJRT_CompileOptions_STRUCT_SIZE;
-  c_options.parameter_is_tupled_arguments =
-      options.parameter_is_tupled_arguments;
-  c_options.device_ordinal = options.executable_build_options.device_ordinal();
-  c_options.num_replicas = options.executable_build_options.num_replicas();
-  c_options.num_partitions = options.executable_build_options.num_partitions();
-  c_options.use_spmd_partitioning =
-      options.executable_build_options.use_spmd_partitioning();
-  c_options.allow_spmd_sharding_propagation_to_output =
-      options.executable_build_options
-          .allow_spmd_sharding_propagation_to_output();
-
-  if (options.executable_build_options.has_device_assignment()) {
-    DeviceAssignmentProto device_assignment_proto;
-    TF_RETURN_IF_ERROR(
-        options.executable_build_options.device_assignment().Serialize(
-            &device_assignment_proto));
-    device_assignment_str = device_assignment_proto.SerializeAsString();
-    c_options.device_assignment = device_assignment_str.c_str();
-    c_options.device_assignment_size = device_assignment_str.size();
-  } else {
-    c_options.device_assignment_size = 0;
-    c_options.device_assignment = nullptr;
-  }
-  return c_options;
-}
 
 // Initializes `PJRT_Client_Compile_Args`, which will be used to call
 // API PJRT_Client_Compile().
@@ -266,17 +215,15 @@ static StatusOr<std::unique_ptr<PjRtLoadedExecutable>> InitializeArgsAndCompile(
     PjRtCApiClient* api_client, const PJRT_Api* c_api, PJRT_Client* client,
     const CompileOptions& options, const std::string& code,
     const std::string& format) {
-  TF_RETURN_IF_ERROR(ValidateCompileOption(options));
-
   PJRT_Client_Compile_Args args;
   args.struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.client = client;
-  std::string device_assignment_str;
-  TF_ASSIGN_OR_RETURN(PJRT_CompileOptions c_options,
-                      ConvertCppCompileOptionsToCCompileOptions(
-                          options, device_assignment_str));
-  args.options = &c_options;
+  TF_ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
+                      options.ToProto());
+  std::string options_str = options_proto.SerializeAsString();
+  args.compile_options = options_str.c_str();
+  args.compile_options_size = options_str.size();
 
   PJRT_Program program;
   program.struct_size = PJRT_Program_STRUCT_SIZE;

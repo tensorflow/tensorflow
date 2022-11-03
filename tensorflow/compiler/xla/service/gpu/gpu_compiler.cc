@@ -49,6 +49,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
 #include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/gpu_passes.h"
@@ -66,7 +67,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/async_collective_creator.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
-#include "tensorflow/compiler/xla/service/bitcast_decomposer.h"
 #include "tensorflow/compiler/xla/service/bitcast_dtypes_expander.h"
 #include "tensorflow/compiler/xla/service/broadcast_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -130,6 +130,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime_intrinsics.h"
 #include "tensorflow/compiler/xla/service/gpu/scatter_slice_simplifier.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/softmax_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/tree_reduction_rewriter.h"
@@ -324,8 +325,8 @@ GpuXlaRuntimeAotCompilationResult::LoadExecutable(
   return GpuExecutable::LoadFromObjFile(
       std::move(hlo_module), xla_runtime_executable.obj_file(),
       xla_runtime_executable.mlir_module(),
-      xla_runtime_executable.entry_func_attrs(), GetDebugOptionsFromFlags(),
-      xla_runtime_gpu_executable_.gpu_asm_text(),
+      xla_runtime_gpu_executable_.entry_func_attrs(),
+      GetDebugOptionsFromFlags(), xla_runtime_gpu_executable_.gpu_asm_text(),
       xla_runtime_gpu_executable_.gpu_binary(),
       gpu_compiler->GetGpuVersion(executor), executor);
 }
@@ -372,51 +373,54 @@ Status GpuCompiler::OptimizeHloModule(
     layout_insensitive_algsimp_opts.set_enable_conv_operand_swap(false);
   }
 
-  if (hlo_module->config().use_spmd_partitioning()) {
-    HloPassPipeline spmd_pipeline("spmd-partitioner");
-    AddHloVerifier(&spmd_pipeline);
-    const int64_t num_partitions = hlo_module->config().num_partitions();
-    if (num_partitions > 1) {
-      // Run some IR cleanup passes before running the SPMD partitioning
-      // passes.
-      spmd_pipeline.AddPass<CallInliner>();
-      spmd_pipeline.AddPass<ZeroSizedHloElimination>();
-      spmd_pipeline.AddPass<ConditionalCanonicalizer>();
-
-      HloPassPipeline& spmd_simplify =
-          spmd_pipeline.AddPass<HloPassFix<HloPassPipeline>>("spmd-simplify");
-
-      spmd_simplify.AddPass<AlgebraicSimplifier>(
-          layout_insensitive_algsimp_opts);
-
-      spmd_simplify.AddPass<SortSimplifier>();
-      spmd_simplify.AddPass<TupleSimplifier>();
-      spmd_simplify.AddPass<ScatterSimplifier>();
-      spmd_simplify.AddPass<ScatterExpander>(
-          ScatterExpander::kEliminateSimpleScatters);
-      spmd_simplify.AddPass<GatherSimplifier>();
-      spmd_simplify.AddPass<GatherExpander>(
-          GatherExpander::kEliminateSimpleGathers);
-      spmd_simplify.AddPass<WhileLoopConstantSinking>();
-      spmd_simplify.AddPass<WhileLoopSimplifier>();
-
-      spmd_simplify.AddPass<ReshapeMover>();
-      spmd_simplify.AddPass<HloConstantFolding>();
-      spmd_simplify.AddPass<ConditionalSimplifier>();
-      spmd_simplify.AddPass<HloDCE>();
-
-      spmd_pipeline.AddPass<HloConstantSplitter>();
-      spmd_pipeline.AddPass<ShardingPropagation>(
-          /*is_spmd=*/true, /*propagate_metadata=*/false,
-          hlo_module->config().allow_spmd_sharding_propagation_to_output());
-      spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
-          num_partitions, hlo_module->config().replica_count());
-    } else {
-      // Remove redundant sharding ops when partition_count == 1.
-      spmd_pipeline.AddPass<ShardingRemover>();
-      spmd_pipeline.AddPass<HloDCE>();
+  const int64_t num_partitions = hlo_module->config().num_partitions();
+  if (num_partitions > 1) {
+    if (!hlo_module->config().use_spmd_partitioning()) {
+      return InvalidArgument(
+          "num_partitions=%d but SPMD partitioning not enabled.",
+          num_partitions);
     }
+    HloPassPipeline spmd_pipeline("spmd-partitioner");
+    // Run some IR cleanup passes before running the SPMD partitioning
+    // passes.
+    spmd_pipeline.AddPass<CallInliner>();
+    spmd_pipeline.AddPass<ZeroSizedHloElimination>();
+    spmd_pipeline.AddPass<ConditionalCanonicalizer>();
+
+    HloPassPipeline& spmd_simplify =
+        spmd_pipeline.AddPass<HloPassFix<HloPassPipeline>>("spmd-simplify");
+
+    spmd_simplify.AddPass<AlgebraicSimplifier>(layout_insensitive_algsimp_opts);
+
+    spmd_simplify.AddPass<SortSimplifier>();
+    spmd_simplify.AddPass<TupleSimplifier>();
+    spmd_simplify.AddPass<ScatterSimplifier>();
+    spmd_simplify.AddPass<ScatterExpander>(
+        ScatterExpander::kEliminateSimpleScatters);
+    spmd_simplify.AddPass<GatherSimplifier>();
+    spmd_simplify.AddPass<GatherExpander>(
+        GatherExpander::kEliminateSimpleGathers);
+    spmd_simplify.AddPass<WhileLoopConstantSinking>();
+    spmd_simplify.AddPass<WhileLoopSimplifier>();
+
+    spmd_simplify.AddPass<ReshapeMover>();
+    spmd_simplify.AddPass<HloConstantFolding>();
+    spmd_simplify.AddPass<ConditionalSimplifier>();
+    spmd_simplify.AddPass<HloDCE>();
+
+    spmd_pipeline.AddPass<HloConstantSplitter>();
+    spmd_pipeline.AddPass<ShardingPropagation>(
+        /*is_spmd=*/true, /*propagate_metadata=*/false,
+        hlo_module->config().allow_spmd_sharding_propagation_to_output());
+    spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
+        num_partitions, hlo_module->config().replica_count());
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(hlo_module).status());
+  } else {
+    HloPassPipeline sharding_removal_pipeline("sharding-removal");
+    // Remove redundant sharding ops when partition_count == 1.
+    sharding_removal_pipeline.AddPass<ShardingRemover>();
+    sharding_removal_pipeline.AddPass<HloDCE>();
+    TF_RETURN_IF_ERROR(sharding_removal_pipeline.Run(hlo_module).status());
   }
 
   {
@@ -567,6 +571,15 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<AlgebraicSimplifier>(layout_insensitive_algsimp_opts);
     }();
 
+    // Run Softmax fusion after the simplification pipeline. This makes matching
+    // softmax easier, because redundant reshapes/broadcasts have already been
+    // removed. But we also want to run before layout assignment so that we can
+    // assure that the default layout will be used for the matched softmax
+    // fusion.
+    if (hlo_module->config().debug_options().xla_gpu_enable_softmax_fusion()) {
+      pipeline.AddPass<SoftmaxFusion>();
+    }
+
     // Run WhileLoopTripCountAnnotator at the end of the simplification
     // pipeline, before layout assignment and fusion.  This pass does some
     // pattern-matching on while bodies/conditions, and this is where the HLO is
@@ -697,7 +710,6 @@ Status GpuCompiler::OptimizeHloModule(
     options.set_is_layout_sensitive(true);
     pipeline.AddPass<AlgebraicSimplifier>(options);
     pipeline.AddPass<OptimizationBarrierExpander>();
-    pipeline.AddPass<BitcastDecomposer>();
     pipeline.AddPass<TupleSimplifier>();
 
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
@@ -1281,8 +1293,9 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   }
 
   // Test whether LinkModules is supported.
-  if (this->LinkModules(stream_exec, {}).status().code() ==
-      tsl::error::Code::UNIMPLEMENTED) {
+  TF_ASSIGN_OR_RETURN(bool can_use_link_modules,
+                      CanUseLinkModules(module_config));
+  if (!can_use_link_modules) {
     return compile_single_module(llvm_module.get(), /*relocatable=*/false,
                                  /*shard_number=*/std::nullopt);
   }

@@ -291,6 +291,7 @@ class api_export(object):  # pylint: disable=invalid-name
     self._api_name = kwargs.get('api_name', TENSORFLOW_API_NAME)
     self._overrides = kwargs.get('overrides', [])
     self._allow_multiple_exports = kwargs.get('allow_multiple_exports', False)
+    self._deprecation_inst = kwargs.get('deprecation_inst', None)
 
     self._validate_symbol_names()
 
@@ -348,10 +349,19 @@ class api_export(object):  # pylint: disable=invalid-name
     self.set_attr(undecorated_func, api_names_attr, self._names)
     self.set_attr(undecorated_func, api_names_attr_v1, self._names_v1)
 
+    if self._deprecation_inst is not None:
+      # Inline import to avoid dependency cycle between deprecation
+      # utility and tf_export
+      from tensorflow.python.util import deprecation  # pylint: disable=g-import-not-at-top
+      deprecation_wrapper = deprecation.deprecated(
+          None, self._deprecation_inst, warn_once=True)
+      func = deprecation_wrapper(func)
+
     for name in self._names:
       _NAME_TO_SYMBOL_MAPPING[name] = func
     for name_v1 in self._names_v1:
       _NAME_TO_SYMBOL_MAPPING['compat.v1.%s' % name_v1] = func
+
     return func
 
   def set_attr(self, func, api_names_attr, names):
@@ -415,5 +425,9 @@ def kwarg_only(f):
 
 
 tf_export = functools.partial(api_export, api_name=TENSORFLOW_API_NAME)
-estimator_export = functools.partial(api_export, api_name=ESTIMATOR_API_NAME)
+estimator_export = functools.partial(
+    api_export,
+    api_name=ESTIMATOR_API_NAME,
+    is_deprecated=True,
+    deprecation_inst='Use tf.keras instead.')
 keras_export = functools.partial(api_export, api_name=KERAS_API_NAME)

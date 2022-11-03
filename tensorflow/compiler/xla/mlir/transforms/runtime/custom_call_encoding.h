@@ -425,6 +425,15 @@ struct SymbolRefAttrEncoding : public CustomCallAttrEncoding {
                                   mlir::Attribute) const final;
 };
 
+struct UnitAttrEncoding : public CustomCallAttrEncoding {
+  mlir::LogicalResult Match(mlir::SymbolTable &, std::string_view,
+                            mlir::Attribute) const final;
+  mlir::FailureOr<Encoded> Encode(mlir::SymbolTable &, Globals &,
+                                  mlir::ImplicitLocOpBuilder &,
+                                  std::string_view,
+                                  mlir::Attribute) const final;
+};
+
 // Custom call attribute encoding that encodes enums using their underlying
 // scalar type. Type id is based on the enum type passed to the runtime.
 //

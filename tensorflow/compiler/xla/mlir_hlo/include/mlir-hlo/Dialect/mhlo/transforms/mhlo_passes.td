@@ -101,6 +101,10 @@ def HloLegalizeShapeOpsToStandardPass : Pass<"hlo-legalize-shapeops-to-standard"
 def HloLegalizeToLinalgPass : Pass<"hlo-legalize-to-linalg", "func::FuncOp"> {
   let summary = "Legalize from HLO dialect to Linalg dialect.";
   let constructor = "createLegalizeHloToLinalgPass()";
+  let options = [Option<"enablePrimitiveOps", "enable-primitive-ops", "bool",
+                        /*default=*/"false",
+                        "Lower to primitive Linalg ops (map, reduce and "
+                        "transpose) when possible, instead of linalg.generic">];
 }
 
 def LegalizeMHLOToTHLOPass : Pass<"legalize-mhlo-to-thlo", "mlir::func::FuncOp"> {

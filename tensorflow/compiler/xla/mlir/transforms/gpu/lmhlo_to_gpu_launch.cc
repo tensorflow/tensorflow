@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -82,16 +83,16 @@ class ConvertLmhloToGpuLaunchPass
 
 static Value MakeBitPatternConstant(OpBuilder& b, Location loc, Type type,
                                     uint32_t bit_pattern) {
+  mlir::MLIRContext* ctx = type.getContext();
+
   // For zero bit pattern always memset with a zero value of the same type.
-  // TODO(ezhulenev): Add Memzero operation to MLIR gpu dialect.
   if (bit_pattern == 0) {
     // Because `arith` dialect doesn't support unsigned constants, we have to
     // create signless constant first, and then use `rt.unsigned_cast` operation
     // to make it unsigned. When lowering to LLVM and function calls, this
     // casting operation will be erased.
     if (type.isUnsignedInteger()) {
-      auto signless =
-          IntegerType::get(type.getContext(), type.getIntOrFloatBitWidth());
+      auto signless = IntegerType::get(ctx, type.getIntOrFloatBitWidth());
       auto zero = b.create<arith::ConstantOp>(loc, b.getZeroAttr(signless));
       return b.create<runtime::UnsignedCastOp>(loc, type, zero.getResult());
     }
@@ -106,17 +107,54 @@ static Value MakeBitPatternConstant(OpBuilder& b, Location loc, Type type,
     return b.create<arith::ConstantOp>(loc, b.getBoolAttr(bit_pattern));
   }
 
-  if (type.isInteger(32)) {
+  // Xla IR emitter copies integers of smaller width to fill 32 bits, so we can
+  // safely truncate the bit pattern. For integers larger than 32 bits we can
+  // construct a wider integer, as Xla guarantees that all 32-bit words are
+  // equal.
+  if (auto integer = type.dyn_cast<mlir::IntegerType>()) {
     llvm::APInt i32(32, bit_pattern);
-    return b.create<arith::ConstantIntOp>(loc, i32.getSExtValue(), type);
+
+    assert(integer.getWidth() <= 64 && "integer value must be <= 64 bits");
+    llvm::APInt value = integer.getWidth() <= 32 ? i32.trunc(integer.getWidth())
+                                                 : i32.concat(i32);
+
+    // See unsigned-to-signed cast documentation above.
+    if (integer.isUnsigned()) {
+      auto signless = IntegerType::get(ctx, integer.getWidth());
+      auto cst =
+          b.create<arith::ConstantOp>(loc, b.getIntegerAttr(signless, value));
+      return b.create<runtime::UnsignedCastOp>(loc, type, cst.getResult());
+    }
+
+    return b.create<arith::ConstantOp>(loc, b.getIntegerAttr(integer, value));
   }
 
-  if (type.isF32()) {
-    llvm::APFloat f32(llvm::APInt(32, bit_pattern).bitsToFloat());
-    return b.create<arith::ConstantFloatOp>(loc, f32, type.cast<FloatType>());
+  // Similar to integer type we can safely truncate or concat bit pattern.
+  if (auto fp = type.dyn_cast<mlir::FloatType>()) {
+    llvm::APInt i32(32, bit_pattern);
+
+    assert(fp.getWidth() <= 64 && "floating point value must be <= 64 bits");
+    llvm::APInt ivalue =
+        fp.getWidth() <= 32 ? i32.trunc(fp.getWidth()) : i32.concat(i32);
+
+    llvm::APFloat fvalue = [&]() -> llvm::APFloat {
+      if (fp.isBF16()) return {llvm::APFloat::BFloat(), ivalue};
+      if (fp.isF16()) return {llvm::APFloat::IEEEhalf(), ivalue};
+      if (fp.isF32()) return {llvm::APFloat::IEEEsingle(), ivalue};
+      if (fp.isF64()) return {llvm::APFloat::IEEEdouble(), ivalue};
+
+      assert(false && "unsupported floating point type");
+      return llvm::APFloat::getZero(llvm::APFloat::IEEEsingle());
+    }();
+
+    return b.create<arith::ConstantFloatOp>(loc, fvalue, fp);
   }
 
-  llvm_unreachable("unsupported type and bit pattern");
+  // Return a constant index value, that will safely fail verification (there is
+  // no memset operation for `index` type), so that we do not accidentally crash
+  // the binary in optimized builds.
+  assert(false && "unsupported memset type");
+  return b.create<arith::ConstantIndexOp>(loc, 0);
 }
 
 // Replaces lmhlo ops within a module with gpu.launch_func and gpu.memcpy ops.

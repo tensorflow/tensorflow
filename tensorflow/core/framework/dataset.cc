@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -417,13 +418,35 @@ Status IteratorBase::InitializeBase(IteratorContext* ctx,
   return OkStatus();
 }
 
+Status GetCompressedElementFromVariantTensor(
+    const Tensor& tensor, const CompressedElement** out_compressed_element) {
+  if (!(tensor.dtype() == DT_VARIANT &&
+        TensorShapeUtils::IsScalar(tensor.shape()))) {
+    return errors::InvalidArgument(
+        "`CompressedElement` tensor must be a scalar of dtype `DT_VARIANT`.");
+  }
+  const Variant& variant = tensor.scalar<Variant>()();
+  const CompressedElement* compressed_element =
+      variant.get<CompressedElement>();
+  if (compressed_element == nullptr) {
+    return errors::InvalidArgument(
+        "Tensor must be a `CompressedElement` object.");
+  }
+  *out_compressed_element = compressed_element;
+  return OkStatus();
+}
+
 int64_t GetAllocatedBytes(const std::vector<Tensor>& element) {
   int64_t allocated_bytes = 0;
   DatasetBase* dataset;
+  const CompressedElement* compressed_element;
   for (auto& tensor : element) {
-    if (tensor.dtype() == DT_VARIANT &&
-        GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
+    if (GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
       allocated_bytes += dataset->AllocatedBytes();
+    } else if (GetCompressedElementFromVariantTensor(tensor,
+                                                     &compressed_element)
+                   .ok()) {
+      allocated_bytes += compressed_element->ByteSizeLong();
     } else {
       allocated_bytes += tensor.AllocatedBytes();
     }
@@ -434,10 +457,14 @@ int64_t GetAllocatedBytes(const std::vector<Tensor>& element) {
 int64_t GetTotalBytes(const std::vector<Tensor>& element) {
   int64_t total_bytes = 0;
   DatasetBase* dataset;
+  const CompressedElement* compressed_element;
   for (auto& tensor : element) {
-    if (tensor.dtype() == DT_VARIANT &&
-        GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
+    if (GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
       total_bytes += dataset->TotalBytes();
+    } else if (GetCompressedElementFromVariantTensor(tensor,
+                                                     &compressed_element)
+                   .ok()) {
+      total_bytes += compressed_element->ByteSizeLong();
     } else {
       total_bytes += tensor.TotalBytes();
     }

@@ -16,6 +16,6 @@ limitations under the License.
 #define TENSORFLOW_LITE_MODEL_H_
 
 /// For documentation, see third_party/tensorflow/lite/core/model.h.
-#include "tensorflow/lite/core/model.h"
+#include "tensorflow/lite/core/model.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_LITE_MODEL_H_

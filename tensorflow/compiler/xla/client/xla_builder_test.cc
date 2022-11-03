@@ -479,8 +479,8 @@ TEST_F(XlaBuilderTest, AllToAllTuple) {
   // AllToAll is converted into a single all-to-all HloInstruction.
   EXPECT_EQ(root->opcode(), HloOpcode::kAllToAll);
   auto expected_shape =
-      ShapeUtil::MakeShapeWithLayout(F32, /* dimensions= */ {2, 4},
-                                     /* minor_to_major= */ {0, 1});
+      ShapeUtil::MakeShapeWithDenseLayout(F32, /* dimensions= */ {2, 4},
+                                          /* minor_to_major= */ {0, 1});
   EXPECT_THAT(root, op::ShapeWithLayout(ShapeUtil::MakeTupleShape(
                         {expected_shape, expected_shape})));
   EXPECT_THAT(root, op::ReplicaGroups({{0, 1}}));

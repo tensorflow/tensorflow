@@ -22,6 +22,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -97,15 +98,16 @@ class CustomCall {
   // doesn't match the custom call handler, it can lead to undefined behavior.
   enum class RuntimeChecks : uint8_t {
     // Check arguments and attributes types, also check attribute names. It is
-    // safe to pass extra arguments to the custom call handler when name
-    // checking is enabled, because it will safely skip irrelevant attributes.
+    // safe to pass extra attributes (if `exact_attrs` is false) to the custom
+    // call when name checking is enabled, because it will safely skip
+    // irrelevant attributes.
     kDefault = 0,
 
-    // Check only the types of the arguments and attributes. If an attribute
-    // with the same type but different name is passed to the custom call
-    // handler,
-    // it will happily proceed ignoring the name mismatch.
-    kTypes = 1,
+    // Check only the types of the arguments and attributes. At this check level
+    // custom calls never check the names of the attributes because it can be
+    // too expensive, however type checking should prevent catastrophic
+    // segfaults. This is the recommended checks level in optimized builds.
+    kLess = 1,
 
     // Do not check the number of arguments and attributes and their types, and
     // do not check that the user data was passed to the custom call. This is
@@ -113,6 +115,16 @@ class CustomCall {
     // passed to the handler, and can easily lead to segfaults if the data
     // doesn't match the expected custom call signature.
     kNone = 2
+  };
+
+  struct Options {
+    // Check that attributes passed at run time exactly match the attributes
+    // defined by the custom call binding. If `false` then custom call handler
+    // will happily ignore any additional attributes passed at run time. It is
+    // unsafe to disable run-time checks for custom calls that support non-exact
+    // attributes, as the custom call handler uses pre-computed attributes
+    // offsets based on the binding specification.
+    bool exact_attrs = true;
   };
 
   static constexpr bool CheckNames(RuntimeChecks checks) {
@@ -148,6 +160,7 @@ class CustomCall {
                              const DiagnosticEngine* diagnostic) const = 0;
 
   static CustomCallBinding<> Bind(std::string callee);
+  static CustomCallBinding<> Bind(std::string callee, const Options& opts);
 };
 
 // Forward declare template defined below.
@@ -217,6 +230,7 @@ using HasRemainingArgs =
 template <typename... Ts>
 class CustomCallBinding {
  public:
+  using Options = CustomCall::Options;
   using RuntimeChecks = CustomCall::RuntimeChecks;
 
   template <typename T>
@@ -258,7 +272,7 @@ class CustomCallBinding {
     return std::unique_ptr<CustomCallHandler<checks, Fn, Ts...>>(
         new CustomCallHandler<checks, Fn, Ts...>(
             std::forward<Fn>(fn), std::move(callee_), std::move(attrs_),
-            std::move(values_)));
+            std::move(values_), opts_));
   }
 
  private:
@@ -266,7 +280,8 @@ class CustomCallBinding {
   friend class CustomCallBinding;
   friend class CustomCall;
 
-  explicit CustomCallBinding(std::string callee) : callee_(std::move(callee)) {
+  CustomCallBinding(std::string callee, const Options& opts)
+      : callee_(std::move(callee)), opts_(opts) {
     static_assert(sizeof...(Ts) == 0, "custom call arguments must be empty");
   }
 
@@ -274,17 +289,24 @@ class CustomCallBinding {
   CustomCallBinding(CustomCallBinding<TTs...>&& other)  // NOLINT
       : callee_(std::move(other.callee_)),
         attrs_(std::move(other.attrs_)),
-        values_(std::move(other.values_)) {}
+        values_(std::move(other.values_)),
+        opts_(other.opts_) {}
 
   CustomCallBinding(CustomCallBinding&) = delete;
 
   std::string callee_;              // custom call target
   std::vector<std::string> attrs_;  // names of bound attributes
   std::vector<std::any> values_;    // values bound to arguments
+  Options opts_;
 };
 
 inline CustomCallBinding<> CustomCall::Bind(std::string callee) {
-  return CustomCallBinding<>(std::move(callee));
+  return Bind(std::move(callee), Options());
+}
+
+inline CustomCallBinding<> CustomCall::Bind(std::string callee,
+                                            const Options& opts) {
+  return CustomCallBinding<>(std::move(callee), opts);
 }
 
 // Custom calls return results to the caller through the template
@@ -865,36 +887,40 @@ class CustomCallHandler : public CustomCall {
       diagnostic = DiagnosticEngine::DefaultDiagnosticEngine();
 
     // If all runtime checks are disabled we are just reinterpreting opaque
-    // `args` and `attrs` memory acording to the requested handler signature.
-    if (checks != RuntimeChecks::kNone) {
-      // Check that the number of passed arguments matches the signature. Each
-      // individual argument decoding will check the actual type.
-      if (internal::HasRemainingArgs<Ts...>::value) {
-        if (LLVM_UNLIKELY(num_args < kNumArgs - 1))
-          return diagnostic->EmitError(InvalidArgument(
-              "Wrong number of arguments: expected at least %d got %d",
-              kNumArgs - 1, num_args));
-      } else {
-        if (LLVM_UNLIKELY(num_args != kNumArgs))
-          return diagnostic->EmitError(
-              InvalidArgument("Wrong number of arguments: expected %d got %d",
-                              kNumArgs, num_args));
-      }
+    // `args`, `attrs` and `rets` memory acording to the custom call handler
+    // signature and skip all checks (these checks will be optimized out).
+    auto eval = [](bool condition) {
+      return checks == RuntimeChecks::kNone ? false : condition;
+    };
 
-      // Check that we have enough attributes passed to the custom call. Each
-      // individual attribute decoding will check the name and the type.
-      if (LLVM_UNLIKELY(num_attrs < attrs_.size()))
+    // Check that the number of passed arguments matches the signature. Each
+    // individual argument decoding will check the actual type.
+    if (internal::HasRemainingArgs<Ts...>::value) {
+      if (LLVM_UNLIKELY(eval(num_args < kNumArgs - 1)))
         return diagnostic->EmitError(InvalidArgument(
-            "Wrong number of attributes: expected at least %d got %d",
-            attrs_.size(), num_attrs));
-
-      // Check that the number of returns matches the signature. The return
-      // decoding will check the actual type.
-      if (LLVM_UNLIKELY(num_rets != kNumRets)) {
-        return diagnostic->EmitError(InvalidArgument(
-            "Wrong number of returns: expected %d got %d", kNumRets, num_rets));
-      }
+            "Wrong number of arguments: expected at least %d got %d",
+            kNumArgs - 1, num_args));
+    } else {
+      if (LLVM_UNLIKELY(eval(num_args != kNumArgs)))
+        return diagnostic->EmitError(
+            InvalidArgument("Wrong number of arguments: expected %d got %d",
+                            kNumArgs, num_args));
     }
+
+    // Check that the number of returns matches the signature. The return
+    // decoding will check the actual type.
+    if (LLVM_UNLIKELY(eval(num_rets != kNumRets)))
+      return diagnostic->EmitError(InvalidArgument(
+          "Wrong number of returns: expected %d got %d", kNumRets, num_rets));
+
+    // Check that we have a correct number of attributes passed to the custom
+    // call. Each individual attribute decoding will check the name and the
+    // type of the attribute.
+    if (LLVM_UNLIKELY(eval(opts_.exact_attrs ? num_attrs != attrs_.size()
+                                             : num_attrs < attrs_.size())))
+      return diagnostic->EmitError(InvalidArgument(
+          "Wrong number of attributes: expected %s%d got %d",
+          opts_.exact_attrs ? "" : "at least ", attrs_.size(), num_attrs));
 
     // Define index sequences to access custom call operands.
     using Is = std::make_index_sequence<kSize>;
@@ -973,11 +999,12 @@ class CustomCallHandler : public CustomCall {
   friend class CustomCallBinding;
 
   CustomCallHandler(Fn fn, std::string callee, std::vector<std::string> attrs,
-                    std::vector<std::any> values)
+                    std::vector<std::any> values, const Options& opts)
       : fn_(std::move(fn)),
         callee_(std::move(callee)),
         attrs_(std::move(attrs)),
         values_(std::move(values)),
+        opts_(opts),
         attrs_idx_(attrs_.size()) {
     // Sort attributes names.
     std::vector<std::string> sorted = attrs_;
@@ -994,6 +1021,8 @@ class CustomCallHandler : public CustomCall {
   std::string callee_;
   std::vector<std::string> attrs_;
   std::vector<std::any> values_;
+  Options opts_;
+
   // A mapping from the attribute index to its index in the lexicographically
   // sorter vector of attribute names. Attributes passed in the custom call
   // handler sorted by the name, we use this index to efficiently find the
@@ -1337,6 +1366,25 @@ struct CustomCallAttrDecoding<CustomCall::FunctionOrdinal, checks> {
   }
 };
 
+template <typename T, CustomCall::RuntimeChecks checks>
+struct CustomCallAttrDecoding<std::optional<T>, checks> {
+  using ValueDecoding = CustomCallAttrDecoding<T, checks>;
+
+  LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<std::optional<T>> Decode(
+      std::string_view name, TypeID type_id, void* value) {
+    // Convert nullptr to empty optional.
+    bool is_nullopt = CustomCall::Isa<std::nullopt_t>(checks, type_id);
+    if (is_nullopt && value == nullptr) return std::optional<T>();
+
+    // Try to decode the underlying value if it is present.
+    if (auto decoded = ValueDecoding::Decode(name, type_id, value);
+        succeeded(decoded)) {
+      return std::optional<T>(std::move(*decoded));
+    }
+    return failure();
+  }
+};
+
 template <CustomCall::RuntimeChecks checks>
 struct CustomCallAttrDecoding<CustomCall::VariantAttr, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<CustomCall::VariantAttr> Decode(
@@ -1512,19 +1560,14 @@ struct DecodeAggregateAttr {
         if (attrs[i].name != names[i]) return failure();
     }
 
-    // Check if all members were decoded.
-    bool all_decoded = true;
-    auto check_all_decoded = [&](auto result) {
-      all_decoded &= succeeded(result);
-      return std::move(result);
-    };
-
     // Decode all arguments into FailureOr containers. It is guaranteed
     // that initializer list will be evaluated left-to-right, and we can rely
     // on correct offsets computation.
     std::tuple<FailureOr<Ts>...> members = {
-        check_all_decoded(CustomCallAttrDecoding<Ts, checks>::Decode(
-            attrs[Is].name, attrs[Is].type_id, attrs[Is].value))...};
+        CustomCallAttrDecoding<Ts, checks>::Decode(
+            attrs[Is].name, attrs[Is].type_id, attrs[Is].value)...};
+
+    bool all_decoded = (succeeded(std::get<Is>(members)) && ...);
     if (LLVM_UNLIKELY(!all_decoded)) return failure();
 
     // Forward unpacked members to the type constructor.

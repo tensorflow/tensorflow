@@ -27,7 +27,6 @@ import numpy as np
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import coordination_config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python import tf2
@@ -42,6 +41,7 @@ from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tsl.protobuf import coordination_config_pb2
 
 GRAPH_MODE = 0
 EAGER_MODE = 1
@@ -789,6 +789,22 @@ class Context:
     if self._context_handle:
       pywrap_tfe.TFE_ReportErrorToCluster(self._context_handle, error_code,
                                           error_message)
+    else:
+      raise ValueError("Context is not initialized.")
+
+  def get_task_states(self, job_configs):
+    """Get task states from the Coordination Service.
+
+    Args:
+      job_configs: A list of tuples of job name and task number.
+
+    Returns:
+      A list of TF_Status.
+    """
+    if self._context_handle:
+      job_names, task_nums = zip(*job_configs)
+      return pywrap_tfe.TFE_GetTaskStates(self._context_handle, job_names,
+                                          task_nums)
     else:
       raise ValueError("Context is not initialized.")
 

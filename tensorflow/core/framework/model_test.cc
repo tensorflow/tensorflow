@@ -1454,6 +1454,174 @@ TEST_F(ModelTimingTest, Interleave) {
   EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/4)->total_time_nsec);
 }
 
+// When the `parallelism` parameter of a `ParallelInterleave` is not present in
+// the model proto, its default value should be 1.
+TEST_F(ModelTimingTest, TestDefaultParallelismInParallelInterleave) {
+  const int32_t parallelism = 1;
+  const int32_t deterministic = 1;
+  const int32_t cycle_length = 3;
+  ComputeModelTiming(strings::Printf(
+      R"pb(
+        nodes: {
+          key: 1
+          value: {
+            id: 1
+            name: "Batch"
+            autotune: true
+            num_elements: 100
+            processing_time: 1000
+            node_class: KNOWN_RATIO
+            ratio: 1
+            inputs: 2
+          }
+        }
+        nodes: {
+          key: 2
+          value: {
+            id: 2
+            name: "ParallelInterleaveV4"
+            autotune: true
+            num_elements: 100
+            processing_time: 2000
+            node_class: ASYNC_INTERLEAVE_MANY
+            inputs: 3
+            inputs: 4
+            inputs: 5
+            inputs: 6
+            inputs: 7
+            parameters: { name: "deterministic" value: %d tunable: false }
+            parameters: { name: "cycle_length" value: %d tunable: false }
+          }
+        }
+        nodes: {
+          key: 3
+          value: {
+            id: 3
+            name: "Batch"
+            autotune: true
+            num_elements: 60
+            processing_time: 60
+            node_class: KNOWN_RATIO
+            ratio: 1
+          }
+        }
+        nodes: {
+          key: 4
+          value: {
+            id: 4
+            name: "Batch"
+            autotune: true
+            num_elements: 60
+            processing_time: 1200
+            node_class: KNOWN_RATIO
+            ratio: 1
+          }
+        }
+        nodes: {
+          key: 5
+          value: {
+            id: 5
+            name: "Batch"
+            autotune: true
+            num_elements: 40
+            processing_time: 1200
+            node_class: KNOWN_RATIO
+            ratio: 1
+          }
+        }
+        nodes: {
+          key: 6
+          value: {
+            id: 6
+            name: "Batch"
+            autotune: true
+            num_elements: 60
+            processing_time: 2400
+            node_class: KNOWN_RATIO
+            ratio: 1
+          }
+        }
+        nodes: {
+          key: 7
+          value: {
+            id: 7
+            name: "Batch"
+            autotune: false  # Marked as an inactive input
+            num_elements: 40
+            processing_time: 2000
+            node_class: KNOWN_RATIO
+            ratio: 1
+          }
+        }
+        output: 1
+      )pb",
+      deterministic, cycle_length));
+
+  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/1)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/2)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
+                   GetNodeTiming(/*node_id=*/3)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
+                   GetNodeTiming(/*node_id=*/4)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
+                   GetNodeTiming(/*node_id=*/5)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
+                   GetNodeTiming(/*node_id=*/6)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(0, GetNodeTiming(/*node_id=*/7)->pipeline_ratio);
+
+  const double expected_self_time_1 = 1000.0 / 100.0;
+  const double expected_self_time_2 = 2000.0 / 100.0 / parallelism;
+  const double expected_self_time_3 = 60.0 / 60.0;
+  const double expected_self_time_4 = 1200.0 / 60.0;
+  const double expected_self_time_5 = 1200.0 / 40.0;
+  const double expected_self_time_6 = 2400.0 / 60.0;
+  const double expected_self_time_7 = 2000.0 / 40.0;
+
+  EXPECT_DOUBLE_EQ(expected_self_time_1,
+                   GetNodeTiming(/*node_id=*/1)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_2,
+                   GetNodeTiming(/*node_id=*/2)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_3,
+                   GetNodeTiming(/*node_id=*/3)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_4,
+                   GetNodeTiming(/*node_id=*/4)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_5,
+                   GetNodeTiming(/*node_id=*/5)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_6,
+                   GetNodeTiming(/*node_id=*/6)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_7,
+                   GetNodeTiming(/*node_id=*/7)->self_time_nsec);
+
+  EXPECT_DOUBLE_EQ(expected_self_time_1,
+                   GetNodeTiming(/*node_id=*/1)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_3,
+                   GetNodeTiming(/*node_id=*/3)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_4,
+                   GetNodeTiming(/*node_id=*/4)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_5,
+                   GetNodeTiming(/*node_id=*/5)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_6,
+                   GetNodeTiming(/*node_id=*/6)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(0, GetNodeTiming(/*node_id=*/7)->total_time_nsec);
+
+  const double max_input_time = expected_self_time_6;
+  double input_throughput = 1.0 / expected_self_time_4 +
+                            1.0 / expected_self_time_5 +
+                            1.0 / expected_self_time_6;
+  const double active_inputs = 3.0;
+  double expected_input_time;
+  if (deterministic == 1) {
+    expected_input_time = max_input_time / std::min(parallelism, cycle_length);
+  } else {
+    if (std::min(parallelism, cycle_length) < active_inputs) {
+      input_throughput *= std::min(parallelism, cycle_length) / active_inputs;
+    }
+    expected_input_time = 1.0 / input_throughput;
+  }
+  EXPECT_DOUBLE_EQ(expected_input_time + expected_self_time_2,
+                   GetNodeTiming(/*node_id=*/2)->total_time_nsec);
+}
+
 class ParallelInterleaveTimingTest
     : public ModelTimingTest,
       public ::testing::WithParamInterface<

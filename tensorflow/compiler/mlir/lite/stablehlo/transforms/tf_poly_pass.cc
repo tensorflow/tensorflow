@@ -160,7 +160,7 @@ void TFPolyPass::runOnOperation() {
     // Create TF region.
     Region tf_region;
     (void)CopyTfAndCreateRegion(&builder, op, &tf_region);
-    poly_op.calls()
+    poly_op.getCalls()
         .take_back(num_transformation + 1)
         .data()
         ->takeBody(tf_region);
@@ -169,7 +169,7 @@ void TFPolyPass::runOnOperation() {
     for (int i = 0; i < num_transformation; i++) {
       Region region;
       to_transform[i].push_back(CopyTfAndCreateRegion(&builder, op, &region));
-      poly_op.calls().take_back(i + 1).data()->takeBody(region);
+      poly_op.getCalls().take_back(i + 1).data()->takeBody(region);
     }
 
     // Replace original func with polycall.

@@ -23,9 +23,8 @@ limitations under the License.
 namespace tensorflow {
 namespace cc_op {
 
-/// Result is written to file fname.
-void WriteFuzzers(const OpList& ops, const ApiDefMap& api_def_map,
-                  const string& fname);
+/// String with fuzzer file contents.
+string WriteFuzzers(const OpList& ops, const ApiDefMap& api_def_map);
 
 }  // namespace cc_op
 }  // namespace tensorflow

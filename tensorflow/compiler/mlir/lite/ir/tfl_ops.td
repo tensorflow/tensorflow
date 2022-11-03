@@ -1774,9 +1774,9 @@ def TFL_FillOp: TFL_Op<"fill", [
   }];
 
   let arguments = (ins TFL_I32OrI64Tensor:$dims,
-                   TFL_TensorOf<[F32, I32, I64, I1, QI8, QI16, TFL_Str]>:$input);
+                   TFL_TensorOf<[F32, F16, I32, I64, I1, QI8, QI16, TFL_Str]>:$input);
 
-  let results = (outs TFL_TensorOf<[F32, I32, I64, I1, QI8, QI16, TFL_Str]>:$result);
+  let results = (outs TFL_TensorOf<[F32, F16, I32, I64, I1, QI8, QI16, TFL_Str]>:$result);
 
   let hasOptions = 0;
 }
@@ -1933,7 +1933,7 @@ def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [Pure,
   // FixedOutputRangeInterface:
   quant::UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
-    auto result_type = output().getType();
+    auto result_type = getOutput().getType();
     // central_value = min_value / 2 + (max_value - 1) / 2 + 1
     // zero_point = central_value
     // scale = 1. / (central_value - min_value)
@@ -2085,7 +2085,7 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
   // FixedOutputRangeInterface:
   quant::UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
-    auto result_type = y().getType();
+    auto result_type = getY().getType();
     // zero_point = 0
     // scale = 1. / (max_value + 1)
     return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
@@ -2154,7 +2154,7 @@ def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
   // FixedOutputRangeInterface:
   quant::UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
-    auto result_type = output().getType();
+    auto result_type = getOutput().getType();
     // zero_point = max_value
     // scale = -log_softmax_output_min / (max_value + 1)
     return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
@@ -3201,7 +3201,7 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
   // FixedOutputRangeInterface:
   quant::UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
-    auto result_type = output().getType();
+    auto result_type = getOutput().getType();
     // zero_point = 0
     // scale = 1. / (max_value + 1)
     return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
@@ -3363,7 +3363,7 @@ def TFL_TanhOp: TFL_Op<"tanh", [
   // FixedOutputRangeInterface:
   quant::UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
-    auto result_type = output().getType();
+    auto result_type = getOutput().getType();
     // central_value = min_value / 2 + (max_value - 1) / 2 + 1
     // zero_point = central_value
     // scale = 1. / (central_value - min_value)
@@ -5112,12 +5112,12 @@ def TFL_IfOp : Op<TFL_Dialect, "if", [
   let extraClassDeclaration = [{
     OpBuilder getThenBodyBuilder(OpBuilder::Listener *listener = nullptr) {
       Block* body = getBody(0);
-      return results().empty() ? OpBuilder::atBlockTerminator(body, listener)
+      return getResults().empty() ? OpBuilder::atBlockTerminator(body, listener)
                                : OpBuilder::atBlockEnd(body, listener);
     }
     OpBuilder getElseBodyBuilder(OpBuilder::Listener *listener = nullptr) {
       Block* body = getBody(1);
-      return results().empty() ? OpBuilder::atBlockTerminator(body, listener)
+      return getResults().empty() ? OpBuilder::atBlockTerminator(body, listener)
                                : OpBuilder::atBlockEnd(body, listener);
     }
   }];

@@ -61,6 +61,7 @@ cc_library(
         "interpreter.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    tags = ["avoid_dep"],
     visibility = [
         "//visibility:public",
     ],
@@ -433,6 +434,7 @@ cc_library(
         "create_op_resolver.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    tags = ["avoid_dep"],
     visibility = [
         "//visibility:public",
     ],

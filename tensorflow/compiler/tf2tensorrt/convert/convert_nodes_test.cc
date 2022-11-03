@@ -9387,11 +9387,20 @@ void OpConverter_Select::RunTest(const string& opName) {
     }
   };
 
-  auto shape_error_msg = [&](const NodeDef& node, bool same_then_else) {
+  auto shape_error_msg = [&](const NodeDef& node, bool same_then_else = true) {
     nvinfer1::Dims shape[3];
     const auto j = same_then_else ? 0 : 1;
-    for (int i = 0; i < 2; i++) {
-      DimsAdapter(*par_dims[i + j]).TrtDims(&shape[i + j]);
+    if (trt_mode_ == TrtTestMode::kDynamicShape) {
+      // Creating dynamic shapes corresponding to 'cond' and 'then' parameters.
+      for (int i = 0; i < 2; i++) {
+        for (int j = shape[i].nbDims = par_dims[i]->size(); j--;) {
+          shape[i].d[j] = -1;
+        }
+      }
+    } else {
+      for (int i = 0; i < 2; i++) {
+        DimsAdapter(*par_dims[i + j]).TrtDims(&shape[i + j]);
+      }
     }
 
     return input_shapes_error_msg(shape[j], shape[j + 1], node,
@@ -9530,7 +9539,7 @@ void OpConverter_Select::RunTest(const string& opName) {
           err_msg = "Infeasible broadcast scheme (" + bc_comment[k] + " vs " +
                     bc_comment[1 - k];
         } else {
-          err_msg = shape_error_msg(node, true);
+          err_msg = shape_error_msg(node);
         }
 
         set_parameters();
@@ -9752,6 +9761,41 @@ void OpConverter_Select::RunTest(const string& opName) {
       } else {
         TestOpConverter(node, dims, OkStatus(), OkStatus(),
                         ElementsAreArray(expected_output));
+      }
+    }
+
+    // Restoring the original value.
+    par_type[2] = tf_type_;
+  }
+
+  if (trt_mode_ == TrtTestMode::kDynamicShape) {
+    std::vector<float> values_then{1, 2, 3, 4, 5, 6};
+    std::vector<float> values_else{-1, -2, -3, -4, -5, -6};
+    std::vector<float> expected_output{1, -2, 3, 4, -5, 6};
+    data_cond = std::vector<int>{1, 0, 1};
+    const std::vector<int> cond_dims{1, 3}, input_dims{1, 2, 3};
+    par_dims = {&cond_dims, &input_dims, &input_dims};
+    // Loop when condition is reversed and the expected_output
+    // should change from 'else' to 'then'.
+    const auto len_cond = data_cond.size();
+    for (int i = 0; i < 2; i++) {
+      par_value[i + 1] = &values_then;
+      par_value[2 - i] = &values_else;
+      for (int j = 0; j < values_then.size(); j++) {
+        expected_output[j] = par_value[2 - data_cond[j % len_cond]]->at(j);
+      }
+
+      set_parameters();
+      if (testing_SelectV2) {
+        TestOpConverter(node, input_dims, OkStatus(), OkStatus(),
+                        ElementsAreArray(expected_output));
+      } else {
+        const auto err_msg = shape_error_msg(node);
+        RunValidationAndConversion(node, error::INVALID_ARGUMENT, err_msg);
+      }
+      // Changing the condition and expected_output.
+      for (int j = len_cond; j--;) {
+        data_cond[j] = 1 - data_cond[j];
       }
     }
   }

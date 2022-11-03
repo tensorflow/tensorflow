@@ -129,11 +129,11 @@ DLDevice GetDlContext(TFE_TensorHandle* h, TF_Status* status) {
   if (device_type == "CPU") {
     ctx.device_type = DLDeviceType::kDLCPU;
   } else if (device_type == "GPU") {
-    #if TENSORFLOW_USE_ROCM
-      ctx.device_type = DLDeviceType::kDLROCM;
-    #else
-      ctx.device_type = DLDeviceType::kDLCUDA;
-    #endif
+#if TENSORFLOW_USE_ROCM
+    ctx.device_type = DLDeviceType::kDLROCM;
+#else
+    ctx.device_type = DLDeviceType::kDLCUDA;
+#endif
   } else {
     status->status = tensorflow::errors::InvalidArgument(
         "Unsupported Device Type for dlpack");

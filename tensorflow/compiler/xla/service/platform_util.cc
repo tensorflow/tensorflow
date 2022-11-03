@@ -79,8 +79,8 @@ StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms() {
 
 }  // namespace
 
-/*static */ StatusOr<std::string> 
-PlatformUtil::CanonicalPlatformName(const std::string& platform_name) {
+/*static */ StatusOr<std::string> PlatformUtil::CanonicalPlatformName(
+    const std::string& platform_name) {
   return xla::CanonicalPlatformName(platform_name);
 }
 

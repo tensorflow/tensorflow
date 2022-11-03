@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
-#include "tensorflow/core/distributed_runtime/preemption/preemption_notifier.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
@@ -47,8 +46,8 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
-
+#include "tensorflow/tsl/distributed_runtime/preemption/preemption_notifier.h"
+#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 namespace tensorflow {
 namespace eager {
 
@@ -320,8 +319,31 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     auto dist_mgr = std::make_unique<EagerContextDistributedManager>(ctx);
     auto coord_agent = env_->session_mgr->GetCoordinationServiceAgent();
     dist_mgr->SetCoordinationServiceAgent(coord_agent);
+    // TODO(b/254356090): See if enabling health check needs to be inside the
+    // Coordination Service.
+    if (config.experimental().coordination_config().enable_health_check()) {
+      // The error state should already be consumed when a new context is
+      // created. It should be fine to reset the agent.
+      if (coord_agent->IsError()) {
+        const Status s = coord_agent->Reset();
+        if (!s.ok()) {
+          LOG(ERROR) << "Coordination Service agent reset failed " << s;
+          return s;
+        }
+      }
+      // The Coordination Service agent could still be connected due to not
+      // propagating the error. We should not let it connect again.
+      if (!coord_agent->IsConnected()) {
+        const Status s = coord_agent->Connect();
+        if (!s.ok()) {
+          LOG(ERROR) << "Coordination Service agent connect failed " << s;
+          return s;
+        }
+      }
+    }
     auto preemption_notifier =
-        PreemptionNotifier::CreatePreemptionNotifier("sigterm", Env::Default());
+        tsl::PreemptionNotifier::CreatePreemptionNotifier("sigterm",
+                                                          Env::Default());
     preemption_notifier->WillBePreemptedAtAsync(
         [coord_agent](StatusOr<absl::Time> time_or_status) {
           if (time_or_status.ok()) {

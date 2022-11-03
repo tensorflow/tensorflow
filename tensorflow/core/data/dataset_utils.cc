@@ -953,7 +953,7 @@ REGISTER_DATASET_EXPERIMENT("reduce_interleave_prefetch",
 REGISTER_DATASET_EXPERIMENT("serialize_input_cycle_length",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune",
-                            RandomJobSamplePercentage<5>, IndependentHostTasks);
+                            RandomJobSamplePercentage<0>, IndependentHostTasks);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

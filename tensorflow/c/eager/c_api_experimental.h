@@ -719,6 +719,11 @@ TF_CAPI_EXPORT extern void TFE_ReportErrorToCluster(TFE_Context* ctx,
                                                     const char* error_message,
                                                     TF_Status* status);
 
+// Get task states from the Coordination Service.
+TF_CAPI_EXPORT extern void TFE_GetTaskStates(TFE_Context* ctx,
+                                             const TF_Buffer& tasks,
+                                             void* states, TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

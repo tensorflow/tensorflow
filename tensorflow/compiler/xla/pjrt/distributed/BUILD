@@ -50,7 +50,6 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core/protobuf:coordination_config_proto_cc",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_impl",
         "//tensorflow/core/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
@@ -58,6 +57,7 @@ cc_library(
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:random",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/protobuf:coordination_config_proto_cc",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -96,8 +96,6 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_error_util",
-        "//tensorflow/core/protobuf:coordination_service_proto_cc",
-        "//tensorflow/core/protobuf:coordination_config_proto_cc",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
@@ -105,6 +103,8 @@ cc_library(
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/core/distributed_runtime/rpc/coordination:grpc_coordination_client",
         "//tensorflow/tsl/platform:random",
+        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
+        "//tensorflow/tsl/protobuf:coordination_config_proto_cc",
     ] + tf_grpc_cc_dependencies(),
 )
 

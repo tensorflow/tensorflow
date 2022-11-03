@@ -816,8 +816,8 @@ TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {
           {1, 2},
           {3, 4},
       })));
-  auto shape10 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0});
-  auto shape01 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1});
+  auto shape10 = ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0});
+  auto shape01 = ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {0, 1});
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
   auto outfeed10 = builder.AddInstruction(
       HloInstruction::CreateOutfeed(shape10, constant, token, ""));
@@ -1178,7 +1178,8 @@ TEST_F(HloInstructionTest, FullyElementwise) {
 
 TEST_F(HloInstructionTest, MapIsElementwise) {
   auto module = CreateNewVerifiedModule();
-  const Shape r2f32 = ShapeUtil::MakeShapeWithLayout(F32, {10, 10}, {1, 0});
+  const Shape r2f32 =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 10}, {1, 0});
   HloComputation::Builder builder(TestName());
   HloComputation::Builder map_builder("id");
   map_builder.AddInstruction(

@@ -72,6 +72,7 @@ class SpmdPartitioningTest : public HloTestBase {
 
     HloModuleConfig config = GetModuleConfigForTest();
     config.set_use_spmd_partitioning(true);
+    config.set_num_partitions(num_devices);
     TF_ASSIGN_OR_RETURN(auto module,
                         ParseAndReturnVerifiedModule(hlo_module, config));
     HloPassPipeline pass("spmd-partitioning");
@@ -7172,7 +7173,7 @@ ENTRY entry {
     scatter(%input0, %input1, %indices, %updates0, %updates1),
       to_apply=add_min_max, update_window_dims={1}, inserted_window_dims={0},
       scatter_dims_to_operand_dims={0}, index_vector_dim=1,
-      sharding={devices=[1,2]0,1}
+      sharding={{devices=[1,2]0,1},{devices=[1,2]0,1}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -7247,7 +7248,8 @@ ENTRY entry {
     scatter(%input0, %input1, %indices, %updates0, %updates1),
       to_apply=add_min_max, update_window_dims={1}, inserted_window_dims={0},
       scatter_dims_to_operand_dims={0}, index_vector_dim=1,
-      sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+      sharding={{devices=[1,2,2]0,1,2,3 last_tile_dim_replicate},
+                {devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/4));
@@ -7456,7 +7458,7 @@ ENTRY entry {
     scatter(%input0, %input1, %indices, %updates0, %updates1),
       to_apply=add_min_max, update_window_dims={2}, inserted_window_dims={0},
       scatter_dims_to_operand_dims={0}, index_vector_dim=2,
-      sharding={devices=[2,1]0,1}
+      sharding={{devices=[2,1]0,1},{devices=[2,1]0,1}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -7537,7 +7539,8 @@ ENTRY entry {
     scatter(%input0, %input1, %indices, %updates0, %updates1),
       to_apply=add_min_max, update_window_dims={2}, inserted_window_dims={0},
       scatter_dims_to_operand_dims={0}, index_vector_dim=2,
-      sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+      sharding={{devices=[2,1,2]0,1,2,3 last_tile_dim_replicate},
+                {devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/4));
@@ -11761,7 +11764,7 @@ ENTRY entry {
   param = f32[2,2] parameter(0),
     sharding={devices=[2,1,2]0,2,1,3 last_tile_dims={manual}}
   ROOT reduce = f32[2] reduce(param, constant), dimensions={0}, to_apply=sum,
-    sharding={devices=[2,2]0,1,2,3 last_tile_dims={manual,replicated}}
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dims={manual,replicated}}
 }
 )";
 

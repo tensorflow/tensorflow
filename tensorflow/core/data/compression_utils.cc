@@ -20,7 +20,10 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/snappy.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -167,6 +170,29 @@ Status UncompressElement(const CompressedElement& compressed,
     }
   }
   return OkStatus();
+}
+
+StatusOr<std::string> CompressAndSerialize(const std::vector<Tensor>& tensors) {
+  CompressedElement compressed_tensors;
+  TF_RETURN_IF_ERROR(CompressElement(tensors, &compressed_tensors));
+  std::string serialized;
+  if (!compressed_tensors.SerializeToString(&serialized)) {
+    return errors::Internal("Failed to serialize compressed Tensors: ",
+                            compressed_tensors.ShortDebugString());
+  }
+  return serialized;
+}
+
+StatusOr<std::vector<Tensor>> DeserializeAndUncompress(
+    const std::string& serialized_tensors) {
+  CompressedElement compressed_tensors;
+  if (!compressed_tensors.ParseFromString(serialized_tensors)) {
+    return errors::Internal("Failed to deserialize compressed Tensors: ",
+                            serialized_tensors);
+  }
+  std::vector<Tensor> tensors;
+  TF_RETURN_IF_ERROR(UncompressElement(compressed_tensors, &tensors));
+  return tensors;
 }
 
 }  // namespace data

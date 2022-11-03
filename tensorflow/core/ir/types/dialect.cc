@@ -381,7 +381,7 @@ void ShapeAttr::print(AsmPrinter &os) const {
   os << "<";
   if (hasRank()) {
     auto print_dim = [&](int64_t dim) {
-      if (dim != -1)
+      if (dim != ShapedType::kDynamicSize)
         os << dim;
       else
         os << "?";

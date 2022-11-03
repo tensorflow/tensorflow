@@ -24,3 +24,19 @@ add_mlir_library(ThloBufferizableOpInterface
   MLIRBufferizationDialect
   MLIRDestinationStyleOpInterface
 )
+
+add_mlir_library(ThloPasses
+  legalize_sort.cc
+
+  DEPENDS
+  MLIRThloPassIncGen
+
+  LINK_LIBS PUBLIC
+  MLIRArithDialect
+  MLIRArithUtils
+  MLIRFuncDialect
+  MLIRMemRefDialect
+  MLIRPass
+  MLIRSCFDialect
+  MLIRTransforms
+)

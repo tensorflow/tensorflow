@@ -18,16 +18,13 @@ limitations under the License.
 
 #include <array>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
-#include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
-#include "tensorflow/compiler/xla/service/custom_call_status.h"
-#include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
@@ -501,7 +498,7 @@ class IrEmitterUnnested : public IrEmitter {
   // update. Using true for unique_indices behaves properly only when it is
   // guaranteed that the indices to be updated do not overlap. The caller is
   // responsible for ensuring this is the case.
-  Status EmitScatter(Thunk* thunk, mlir::lmhlo::ScatterOp scatter,
+  Status EmitScatter(mlir::lmhlo::ScatterOp scatter,
                      const LaunchDimensions& launch_dimensions,
                      const llvm_ir::IrArray& output,
                      const llvm_ir::ElementGenerator& scatter_indices_gen,
@@ -527,7 +524,7 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Emits code for an in-place scatter using the provided scatter operation
   // description.
-  Status EmitScatter(const ScatterDescriptor& desc, Thunk* thunk,
+  Status EmitScatter(const ScatterDescriptor& desc,
                      const LaunchDimensions& launch_dimensions);
 
   Status EmitTranspose021Tile(mlir::lmhlo::FusionOp fusion,
@@ -670,20 +667,23 @@ class IrEmitterUnnested : public IrEmitter {
     mlir::Value value;
     BufferSlice slice;
   };
-  StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkImpl(
+
+  StatusOr<KernelArgument> ValueToKernelArgument(mlir::Value operand, int order,
+                                                 bool is_written);
+
+  // Build a kernel thunk, add it to list of thunks, and return IrArrays backing
+  // kernel arguments.
+  StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunkImpl(
       absl::string_view name, Thunk::ThunkInfo thunk_info,
-      std::vector<KernelArgument> value_slice_tuples,
-      std::vector<llvm_ir::IrArray>* ir_arrays,
+      std::vector<KernelArgument> kernel_arguments,
       const LaunchDimensions& launch_dimensions);
 
-  StatusOr<std::unique_ptr<Thunk>> BuildKernelThunk(
+  StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunk(
       mlir::Operation* op, mlir::ValueRange operands,
-      Thunk::ThunkInfo thunk_info, std::vector<llvm_ir::IrArray>* ir_arrays,
-      const LaunchDimensions& launch_dimensions);
+      Thunk::ThunkInfo thunk_info, const LaunchDimensions& launch_dimensions);
 
-  StatusOr<std::unique_ptr<Thunk>> BuildKernelThunk(
+  StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunk(
       mlir::Operation* op, Thunk::ThunkInfo thunk_info,
-      std::vector<llvm_ir::IrArray>* ir_arrays,
       const LaunchDimensions& launch_dimensions);
 
   // Returns a thunk that, given a reduce or select-and-scatter op,
@@ -696,11 +696,10 @@ class IrEmitterUnnested : public IrEmitter {
   StatusOr<std::unique_ptr<Thunk>> TryBuildConstantInitializerThunk(
       mlir::Operation* op, mlir::Value init_value, mlir::Value dest);
 
-  StatusOr<std::unique_ptr<Thunk>> BuildInitializerThunk(mlir::Operation* op,
-                                                         mlir::Value init_value,
-                                                         mlir::Value dest);
-  StatusOr<std::unique_ptr<Thunk>> BuildFusedInitializerThunk(
-      mlir::lmhlo::FusionOp fusion, int output_index);
+  Status BuildInitializerThunk(mlir::Operation* op, mlir::Value init_value,
+                               mlir::Value dest);
+  Status BuildFusedInitializerThunk(mlir::lmhlo::FusionOp fusion,
+                                    int output_index);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction 'hlo'.
@@ -759,9 +758,6 @@ class IrEmitterUnnested : public IrEmitter {
   StatusOr<HloComputation*> GetOrCreateSubComputationFromRegion(
       mlir::Region* region, bool is_fusion);
 
-  // Returns the last generated thunk.
-  Thunk* LastThunk() const { return thunk_sequence_.back().get(); }
-
   Status AssertNonDeterminismIsOkay(const std::string& op_name);
 
   // The thunk sequence this IrEmitter generates for the input computation.
@@ -788,6 +784,8 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns the buffer allocation Slice for the given operands.
   StatusOr<std::vector<BufferAllocation::Slice>> GetSlices(
       mlir::Operation::operand_range operands);
+
+  GpuElementalIrEmitter elemental_emitter_;
 };
 
 }  // namespace gpu

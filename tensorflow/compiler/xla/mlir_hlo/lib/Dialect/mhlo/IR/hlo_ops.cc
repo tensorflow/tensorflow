@@ -78,6 +78,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "stablehlo/dialect/AssemblyFormat.h"
 #include "stablehlo/dialect/TypeInference.h"
 
 namespace mlir {
@@ -160,10 +161,10 @@ void createArgs(ArrayRef<OpAsmParser::UnresolvedOperand> operands,
   }
 }
 
-const auto hasDuplicates = [](SmallVector<int64_t>& nums) {
-  if (!llvm::is_sorted(nums)) std::sort(nums.begin(), nums.end());
-  auto* last = std::unique(nums.begin(), nums.end());
-  return last != nums.end();
+// Checks if the vector `nums` has duplicates.
+const auto hasDuplicates = [](const ArrayRef<int64_t> nums) {
+  llvm::SmallDenseSet<int64_t> set(nums.begin(), nums.end());
+  return set.size() != nums.size();
 };
 
 //===----------------------------------------------------------------------===//
@@ -2875,7 +2876,8 @@ LogicalResult BatchNormGradOp::inferReturnTypeComponents(
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   BatchNormGradOp::Adaptor adaptor(operands, attributes, regions);
   return hlo::inferBatchNormGradOp(
-      adaptor.getOperand(), adaptor.getFeatureIndex(), inferredReturnShapes);
+      location, adaptor.getOperand(), adaptor.getScale(),
+      adaptor.getFeatureIndex(), inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2897,7 +2899,8 @@ LogicalResult BatchNormTrainingOp::inferReturnTypeComponents(
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   BatchNormTrainingOp::Adaptor adaptor(operands, attributes, regions);
   return hlo::inferBatchNormTrainingOp(
-      adaptor.getOperand(), adaptor.getFeatureIndex(), inferredReturnShapes);
+      location, adaptor.getOperand(), adaptor.getScale(),
+      adaptor.getFeatureIndex(), inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2918,8 +2921,9 @@ LogicalResult BatchNormInferenceOp::inferReturnTypeComponents(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   BatchNormInferenceOp::Adaptor adaptor(operands, attributes, regions);
-  return hlo::inferBatchNormInferenceOp(adaptor.getOperand(),
-                                        inferredReturnShapes);
+  return hlo::inferBatchNormInferenceOp(
+      location, adaptor.getOperand(), adaptor.getScale(),
+      adaptor.getFeatureIndex(), inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3160,7 +3164,6 @@ LogicalResult BroadcastInDimOp::verify() {
                       operandRank));
   }
 
-  auto dimensions = getBroadcastDimensions();
   auto dimensionsType = getBroadcastDimensions().getType();
   auto dimensionsRank = dimensionsType.getRank();
   if (dimensionsRank != 1) {
@@ -3175,16 +3178,15 @@ LogicalResult BroadcastInDimOp::verify() {
         dimensionsSize, operandRank));
   }
 
+  auto dimensions =
+      llvm::to_vector(getBroadcastDimensions().getValues<int64_t>());
+  if (hasDuplicates(dimensions))
+    return emitOpError("broadcast_dimensions should not have duplicates");
+
   auto resultType = getResult().getType().cast<RankedTensorType>();
   auto resultRank = resultType.getRank();
-  if (resultRank < operandRank) {
-    return emitOpError(
-        llvm::formatv("result rank ({0}) is less than operand rank ({1})",
-                      resultRank, operandRank));
-  }
-
   for (int i = 0; i != dimensionsSize; ++i) {
-    auto dimIndex = dimensions.getValues<int64_t>()[i];
+    auto dimIndex = dimensions[i];
     if (dimIndex >= resultRank) {
       return emitOpError(
           llvm::formatv("broadcast_dimensions contains invalid value {0} for "
@@ -4645,8 +4647,7 @@ OpFoldResult ReverseOp::fold(ArrayRef<Attribute> operands) {
 // Returns the result type after reducing operand of the given type across the
 // specified dimensions.
 static TensorType getReduceResultType(Type operandTy,
-                                      DenseIntElementsAttr dimensions,
-                                      Builder* builder) {
+                                      DenseIntElementsAttr dimensions) {
   Type elementTy = getElementTypeOrSelf(operandTy);
 
   auto rankedTy = operandTy.dyn_cast<RankedTensorType>();
@@ -4662,19 +4663,6 @@ static TensorType getReduceResultType(Type operandTy,
   }
 
   return RankedTensorType::get(shape, elementTy);
-}
-
-void ReduceOp::build(OpBuilder& builder, OperationState& state,
-                     ValueRange operands, ValueRange initValues,
-                     DenseIntElementsAttr dimensions) {
-  SmallVector<Type, 1> resultTy;
-  resultTy.reserve(operands.size());
-
-  for (Value operand : operands) {
-    resultTy.push_back(
-        getReduceResultType(operand.getType(), dimensions, &builder));
-  }
-  build(builder, state, resultTy, operands, initValues, dimensions);
 }
 
 LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
@@ -5018,13 +5006,22 @@ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
 }
 
 LogicalResult ReduceOp::inferReturnTypeComponents(
-    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+    MLIRContext*, Optional<Location>, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   ReduceOp::Adaptor adaptor(operands, attributes, regions);
-  return hlo::inferReduceOp(location, adaptor.getInputs(),
-                            adaptor.getInitValues(), adaptor.getDimensions(),
-                            adaptor.getBody(), inferredReturnShapes);
+  for (auto input : adaptor.getInputs()) {
+    ShapedType outputType =
+        getReduceResultType(input.getType(), adaptor.getDimensions());
+    inferredReturnShapes.emplace_back(outputType);
+  }
+  return success();
+}
+
+LogicalResult ReduceOp::verify() {
+  SmallVector<ShapedTypeComponents> unusedReturnShapes;
+  return hlo::inferReduceOp(getLoc(), getInputs(), getInitValues(),
+                            getDimensions(), getBody(), unusedReturnShapes);
 }
 
 // Enable constant folding to occur within the region of the ReduceOp
@@ -5956,51 +5953,6 @@ void CaseOp::getCanonicalizationPatterns(RewritePatternSet& results,
 // UnaryOps
 //===----------------------------------------------------------------------===//
 
-ParseResult parseUnaryOp(OpAsmParser& parser, OperationState& result) {
-  SmallVector<OpAsmParser::UnresolvedOperand> operands;
-  Type type;
-  // If the operand is in-between parentheses, use generic form.
-  SMLoc loc = parser.getCurrentLocation();
-  if (!parser.parseOptionalLParen()) {
-    if (parser.parseOperandList(operands) || parser.parseRParen() ||
-        parser.parseOptionalAttrDict(result.attributes) ||
-        parser.parseColon() || parser.parseType(type))
-      return failure();
-    auto fnType = type.dyn_cast<FunctionType>();
-    if (!fnType) {
-      parser.emitError(loc, "expected function type");
-      return failure();
-    }
-    if (parser.resolveOperands(operands, fnType.getInputs(), loc,
-                               result.operands))
-      return failure();
-    result.addTypes(fnType.getResults());
-    return success();
-  }
-  // Otherwise, use shorthand syntax.
-  return failure(parser.parseOperandList(operands) ||
-                 parser.parseOptionalAttrDict(result.attributes) ||
-                 parser.parseColonType(type) ||
-                 parser.resolveOperands(operands, type, result.operands) ||
-                 parser.addTypeToList(type, result.types));
-}
-
-void printUnaryOp(Operation* op, OpAsmPrinter& p) {
-  assert(op->getNumResults() == 1 && "op should have one result");
-  assert(op->getNumOperands() == 1 && "op should have one input");
-  // If not all types are the same, use generic form.
-  auto resultType = op->getResult(0).getType();
-  if (resultType != op->getOperandTypes()[0]) {
-    p.printGenericOp(op, /*printOpName=*/false);
-    return;
-  }
-  // Otherwise, use the shorthand syntax.
-  p << ' ';
-  p.printOperands(op->getOperands());
-  p.printOptionalAttrDict(op->getAttrs());
-  p << " : " << resultType;
-}
-
 template <typename ValType>
 struct AnyValue {
   bool operator()(const ValType&) { return true; }
@@ -6018,8 +5970,9 @@ struct PositiveValue {
 
 static const APFloat& addSign(const APFloat& v, Type) { return v; }
 static APSInt addSign(const APInt& v, Type t) {
-  // Add signedness information to the value, treating signless as signed.
-  return APSInt(v, t.isUnsignedInteger());
+  // Add signedness information to the value, treating signless as signed,
+  // unless it's i1.
+  return APSInt(v, t.isUnsignedInteger() || t.isSignlessInteger(1));
 }
 
 template <typename Op, typename ElementType, typename ValType, typename Convert,
@@ -6170,51 +6123,6 @@ UNARY_FOLDER_UPCAST_TO_F64(TanhOp, std::tanh, AnyValue)
 //===----------------------------------------------------------------------===//
 // BinaryOps
 //===----------------------------------------------------------------------===//
-
-ParseResult parseBinaryOp(OpAsmParser& parser, OperationState& result) {
-  SmallVector<OpAsmParser::UnresolvedOperand> operands;
-  Type type;
-  // If the operand list is in-between parentheses, use generic form.
-  SMLoc loc = parser.getCurrentLocation();
-  if (!parser.parseOptionalLParen()) {
-    if (parser.parseOperandList(operands) || parser.parseRParen() ||
-        parser.parseOptionalAttrDict(result.attributes) ||
-        parser.parseColon() || parser.parseType(type))
-      return failure();
-    auto fnType = type.dyn_cast<FunctionType>();
-    if (!fnType) {
-      parser.emitError(loc, "expected function type");
-      return failure();
-    }
-    if (parser.resolveOperands(operands, fnType.getInputs(), loc,
-                               result.operands))
-      return failure();
-    result.addTypes(fnType.getResults());
-    return success();
-  }
-  // Otherwise, use shorthand syntax.
-  return failure(parser.parseOperandList(operands) ||
-                 parser.parseOptionalAttrDict(result.attributes) ||
-                 parser.parseColonType(type) ||
-                 parser.resolveOperands(operands, type, result.operands) ||
-                 parser.addTypeToList(type, result.types));
-}
-
-void printBinaryOp(Operation* op, OpAsmPrinter& p) {
-  assert(op->getNumResults() == 1 && "op should have one result");
-  // If not all types are the same, use generic form.
-  auto resultType = op->getResult(0).getType();
-  if (llvm::any_of(op->getOperandTypes(),
-                   [&](Type type) { return type != resultType; })) {
-    p.printGenericOp(op, /*printOpName=*/false);
-    return;
-  }
-  // Otherwise, use the shorthand syntax.
-  p << ' ';
-  p.printOperands(op->getOperands());
-  p.printOptionalAttrDict(op->getAttrs());
-  p << " : " << resultType;
-}
 
 template <typename Op, typename ElementType = Type, typename ValType,
           typename Convert>
@@ -6806,12 +6714,19 @@ void SortOp::build(OpBuilder& builder, OperationState& state,
 }
 
 LogicalResult SortOp::inferReturnTypeComponents(
-    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+    MLIRContext*, Optional<Location>, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   SortOp::Adaptor adaptor(operands, attributes, regions);
-  return hlo::inferSortOp(location, adaptor.getInputs(), adaptor.getDimension(),
-                          adaptor.getComparator(), inferredReturnShapes);
+  for (auto resultType : adaptor.getInputs().getTypes())
+    inferredReturnShapes.emplace_back(resultType.cast<ShapedType>());
+  return success();
+}
+
+LogicalResult SortOp::verify() {
+  SmallVector<ShapedTypeComponents> unusedReturnShapes;
+  return hlo::inferSortOp(getLoc(), getInputs(), getDimension(),
+                          getComparator(), unusedReturnShapes);
 }
 
 /// Drops the operands if the results are not used and they are not used in
@@ -8064,6 +7979,21 @@ using mlir::hlo::printWindowAttributes;
 
 }  // namespace mhlo
 }  // namespace mlir
+
+// clang-format off
+using mlir::hlo::printSameOperandsAndResultType;
+using mlir::hlo::parseSameOperandsAndResultType;
+using mlir::hlo::printVariadicSameOperandsAndResultType;
+using mlir::hlo::parseVariadicSameOperandsAndResultType;
+using mlir::hlo::printComplexOpType;
+using mlir::hlo::parseComplexOpType;
+using mlir::hlo::printPairwiseOpType;
+using mlir::hlo::parsePairwiseOpType;
+using mlir::hlo::printSelectOpType;
+using mlir::hlo::parseSelectOpType;
+using mlir::hlo::printTupleOpType;
+using mlir::hlo::parseTupleOpType;
+// clang-format on
 
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc"

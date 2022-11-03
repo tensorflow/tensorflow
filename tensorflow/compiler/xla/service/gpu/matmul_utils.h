@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -126,6 +127,12 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
                se::DeviceMemoryBase output_buffer, se::Stream* stream,
                std::optional<se::blas::AlgorithmType> algorithm = std::nullopt,
                se::blas::ProfileResult* profile_result = nullptr);
+
+namespace cublas_lt {
+
+StatusOr<bool> EpilogueAddsVectorBias(GemmBackendConfig_Epilogue epilogue);
+
+}  // namespace cublas_lt
 
 StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype);
 

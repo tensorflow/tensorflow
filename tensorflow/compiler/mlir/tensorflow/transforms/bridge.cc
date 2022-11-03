@@ -329,7 +329,7 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   pm.addPass(TFDevice::CreateResourceOpLiftingPass());
   // Inline the StatefulPartitionedCallOp op based in the parent region.
   pm.addPass(TFDevice::CreateXlaInlineDeviceOpsPass());
-  pm.addNestedPass<func::FuncOp>(TFDevice::CreateXlaRewritePass());
+  pm.addPass(TFDevice::CreateXlaRewritePass());
   // Re-run the canonicalizer pass as some cleanup during resource op lifting
   // pass opens up some opportunities for canonicalization of cluster ops.
   // Specifically, we want to eliminate pass through results from the cluster

@@ -2324,10 +2324,11 @@ TEST_F(AlgebraicSimplifierTest, ConvertBetweenSameType) {
 TEST_F(AlgebraicSimplifierTest, EliminateConvertPairUpCast) {
   auto m = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
-  HloInstruction* input =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShapeWithLayout(F16, {1, 14, 14, 64}, {3, 2, 1, 0}),
-          "param"));
+  HloInstruction* input = builder.AddInstruction(
+      HloInstruction::CreateParameter(0,
+                                      ShapeUtil::MakeShapeWithDenseLayout(
+                                          F16, {1, 14, 14, 64}, {3, 2, 1, 0}),
+                                      "param"));
   HloInstruction* convert_1 =
       builder.AddInstruction(HloInstruction::CreateConvert(
           ShapeUtil::ChangeElementType(input->shape(), F32), input));
@@ -2350,10 +2351,11 @@ TEST_F(AlgebraicSimplifierTest, EliminateConvertPairUpCast) {
 TEST_F(AlgebraicSimplifierTest, DoNotEliminateConvertPairDownCast) {
   auto m = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
-  HloInstruction* input =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShapeWithLayout(F32, {1, 14, 14, 64}, {3, 2, 1, 0}),
-          "param"));
+  HloInstruction* input = builder.AddInstruction(
+      HloInstruction::CreateParameter(0,
+                                      ShapeUtil::MakeShapeWithDenseLayout(
+                                          F32, {1, 14, 14, 64}, {3, 2, 1, 0}),
+                                      "param"));
   HloInstruction* convert_1 =
       builder.AddInstruction(HloInstruction::CreateConvert(
           ShapeUtil::ChangeElementType(input->shape(), F16), input));
@@ -2377,10 +2379,11 @@ TEST_F(AlgebraicSimplifierTest, DoNotEliminateConvertPairDownCast) {
 TEST_F(AlgebraicSimplifierTest, EliminateConvertPairMultiOut) {
   auto m = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
-  HloInstruction* input =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShapeWithLayout(F16, {1, 14, 14, 64}, {3, 2, 1, 0}),
-          "param"));
+  HloInstruction* input = builder.AddInstruction(
+      HloInstruction::CreateParameter(0,
+                                      ShapeUtil::MakeShapeWithDenseLayout(
+                                          F16, {1, 14, 14, 64}, {3, 2, 1, 0}),
+                                      "param"));
   HloInstruction* convert_1 =
       builder.AddInstruction(HloInstruction::CreateConvert(
           ShapeUtil::ChangeElementType(input->shape(), F32), input));
@@ -2432,18 +2435,20 @@ TEST_F(AlgebraicSimplifierTest, RemoveCopy) {
 TEST_F(AlgebraicSimplifierTest, CopyOfReshapeOfCopyEqualsBitcast) {
   auto m = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
-  HloInstruction* param =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShapeWithLayout(F32, {1, 14, 14, 64}, {3, 2, 1, 0}),
-          "param"));
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0,
+                                      ShapeUtil::MakeShapeWithDenseLayout(
+                                          F32, {1, 14, 14, 64}, {3, 2, 1, 0}),
+                                      "param"));
   HloInstruction* copy = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShapeWithLayout(F32, {1, 14, 14, 64}, {0, 1, 2, 3}),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 14, 14, 64}, {0, 1, 2, 3}),
       HloOpcode::kCopy, param));
   HloInstruction* reshape =
       builder.AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShapeWithLayout(F32, {14 * 14, 64}, {0, 1}), copy));
+          ShapeUtil::MakeShapeWithDenseLayout(F32, {14 * 14, 64}, {0, 1}),
+          copy));
   builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShapeWithLayout(F32, {14 * 14, 64}, {1, 0}),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {14 * 14, 64}, {1, 0}),
       HloOpcode::kCopy, reshape));
   auto computation = m->AddEntryComputation(builder.Build());
   EXPECT_THAT(computation->root_instruction(),
@@ -2461,15 +2466,16 @@ TEST_F(AlgebraicSimplifierTest, CopyOfReshapeOfCopyEqualsBitcast) {
 TEST_F(AlgebraicSimplifierTest, ReshapeOfCopyEqualsBitcast) {
   auto m = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
-  HloInstruction* param =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShapeWithLayout(F32, {1, 14, 14, 64}, {3, 2, 1, 0}),
-          "param"));
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0,
+                                      ShapeUtil::MakeShapeWithDenseLayout(
+                                          F32, {1, 14, 14, 64}, {3, 2, 1, 0}),
+                                      "param"));
   HloInstruction* copy = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShapeWithLayout(F32, {1, 14, 14, 64}, {0, 1, 2, 3}),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 14, 14, 64}, {0, 1, 2, 3}),
       HloOpcode::kCopy, param));
   builder.AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeShapeWithLayout(F32, {14 * 14, 64}, {1, 0}), copy));
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {14 * 14, 64}, {1, 0}), copy));
 
   auto computation = m->AddEntryComputation(builder.Build());
   EXPECT_THAT(computation->root_instruction(),
@@ -2487,12 +2493,13 @@ TEST_F(AlgebraicSimplifierTest, ReshapeOfCopyEqualsBitcast) {
 TEST_F(AlgebraicSimplifierTest, CopyEqualsBitcast) {
   auto m = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
-  HloInstruction* param =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShapeWithLayout(F32, {1, 14, 14, 64}, {0, 1, 2, 3}),
-          "param"));
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0,
+                                      ShapeUtil::MakeShapeWithDenseLayout(
+                                          F32, {1, 14, 14, 64}, {0, 1, 2, 3}),
+                                      "param"));
   builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShapeWithLayout(F32, {1, 14, 14, 64}, {1, 2, 0, 3}),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 14, 14, 64}, {1, 2, 0, 3}),
       HloOpcode::kCopy, param));
   auto computation = m->AddEntryComputation(builder.Build());
   EXPECT_THAT(computation->root_instruction(),
@@ -3145,11 +3152,11 @@ TEST_F(AlgebraicSimplifierTest, CopiesMerged) {
           "param0"));
 
   HloInstruction* copy1 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShapeWithLayout(F32, {2, 2, 2}, {0, 1, 2}),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2, 2}, {0, 1, 2}),
       HloOpcode::kCopy, param0));
 
   builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShapeWithLayout(F32, {2, 2, 2}, {0, 2, 1}),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2, 2}, {0, 2, 1}),
       HloOpcode::kCopy, copy1));
 
   auto computation = m->AddEntryComputation(builder.Build());
@@ -4569,7 +4576,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
     auto make_shape = [](absl::Span<const int64_t> dims,
                          bool minor_to_major_layout) {
       if (minor_to_major_layout) {
-        return ShapeUtil::MakeShapeWithLayout(F32, dims, {0, 1, 2, 3});
+        return ShapeUtil::MakeShapeWithDenseLayout(F32, dims, {0, 1, 2, 3});
       } else {
         return ShapeUtil::MakeShape(F32, dims);
       }
@@ -4587,8 +4594,8 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
                           /*preferred_element_type=*/std::nullopt)
                           .value();
     if (options.output_minor_to_major_layout) {
-      out_shape = ShapeUtil::MakeShapeWithLayout(F32, out_shape.dimensions(),
-                                                 {0, 1, 2, 3});
+      out_shape = ShapeUtil::MakeShapeWithDenseLayout(
+          F32, out_shape.dimensions(), {0, 1, 2, 3});
     }
 
     b.AddInstruction(HloInstruction::CreateConvolve(

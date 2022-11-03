@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #elif TENSORFLOW_USE_ROCM
-#include "tensorflow/core/platform/rocm_rocdl_path.h"
+#include "tensorflow/tsl/platform/rocm_rocdl_path.h"
 #endif
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -75,7 +75,7 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
   std::string target_triple = "nvptx64-nvidia-cuda";
   std::string datalayout = "nvptx64-nvidia-cuda";
   std::string platform_name = "CUDA";
-#else
+#elif TENSORFLOW_USE_ROCM
   std::string target_triple = "amdgcn--amdhsa-amdgiz";
   std::string datalayout = ""; // TODO: correct value?
   std::string platform_name = "ROCm"; // ditto
@@ -84,8 +84,13 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
       std::unique_ptr<llvm::Module> llvm_module,
       xla::gpu::CompileModuleToLlvmIr(
           hlo_module.get(), &llvm_context,
+#if GOOGLE_CUDA
           /*target_triple=*/xla::gpu::nvptx::TargetTriple(),
           /*data_layout=*/xla::gpu::nvptx::DataLayout(),
+#elif TENSORFLOW_USE_ROCM
+          /*target_triple=*/xla::gpu::amdgpu::TargetTriple(),
+          /*data_layout=*/xla::gpu::amdgpu::DataLayout(),
+#endif
           /*platform_name=*/platform_name,
           stream_executor::rocm::kROCmPlatformId, gpu_device_info,
           cuda_compute_capability, rocm_compute_capability,
@@ -101,8 +106,8 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
                             llvm_module.get(), cuda_compute_capability,
                             hlo_module->config(), libdevice_dir));
     std::cout << ptx << std::endl;
-#else
-    std::string libdevice_dir = tensorflow::RocdlRoot();
+#elif TENSORFLOW_USE_ROCM
+    std::string libdevice_dir = tsl::RocdlRoot();
     xla::gpu::GpuVersion gpu_version{rocm_compute_capability};
     TF_ASSIGN_OR_RETURN(
       std::vector<uint8_t> ptx,

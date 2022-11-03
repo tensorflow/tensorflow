@@ -43,18 +43,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
-namespace tfrt {
-namespace gpu {
-
-class GpuContextCache;
-
-}  // namespace gpu
-}  // namespace tfrt
-
 namespace xla {
 namespace gpu {
 
-// Returns whether GpuExecutable runs on TFRT or Xla Runtime.
+// Returns whether GpuExecutable runs with Xla Runtime.
 bool IsXlaRuntimeExecutableEnabled(const HloModuleConfig& config);
 
 // GPU-targeting implementation of the XLA Executable interface.
@@ -128,17 +120,16 @@ class GpuExecutable : public Executable {
     std::unique_ptr<HloModule> debug_module = nullptr;
   };
 
-  // TODO(hanbinyoon): Once BEF replaces Thunks, hide this method as an
-  // implementation detail of GpuExecutable.
   // Analyze the entry function to construct buffer allocation and other output
-  // information. Optionally use buffer_param_offset to indicate the position of
-  // buffer parameters in the entry function - in tfrt_gpu dialect, buffer
-  // arguments start from the third parameter (after tfrt::Chain and GpuStream).
+  // information.
+  //
+  // TODO(ezhulenev): Once Xla runtime enabled by default, hide this method as
+  // an implementation detail of GpuExecutable.
   static Status SetUpMlirAllocation(
       mlir::func::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
       std::vector<BufferAllocation>* allocations,
       absl::flat_hash_map<ShapeIndex, OutputInfo>* output_info,
-      Shape* output_shape, int buffer_param_offset = 0);
+      Shape* output_shape);
 
   // Returns an Executable that is loaded from an object file (XLA program
   // compiled to a native function using the XLA Runtime stack).

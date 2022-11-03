@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/tsl/platform/threadpool.h"
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
+#include "tfrt/support/ref_count.h"  // from @tf_runtime
 
 namespace mlir {
 namespace runtime {

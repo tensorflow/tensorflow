@@ -34,11 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 
-#include "tensorflow/core/util/env_var.h"
-
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace xla {
 namespace gpu {
@@ -116,7 +112,7 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   }
 #elif TENSORFLOW_USE_ROCM
   bool is_enabled = false;
-  TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
+  TF_CHECK_OK(tsl::ReadBoolFromEnvVar(
       "TF_USE_ROCM_NHWC",
       /*default_val=*/false, &is_enabled));
   auto rocm_compute_capability =

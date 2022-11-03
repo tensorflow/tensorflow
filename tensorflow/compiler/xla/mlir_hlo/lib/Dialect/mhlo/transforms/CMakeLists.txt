@@ -375,3 +375,8 @@ target_link_libraries(AllGmlStPasses INTERFACE
   MLIRFuncDialect
   MLIRPass
 )
+
+add_library(AllThloPasses INTERFACE)
+target_link_libraries(AllThloPasses INTERFACE
+  ThloPasses
+)

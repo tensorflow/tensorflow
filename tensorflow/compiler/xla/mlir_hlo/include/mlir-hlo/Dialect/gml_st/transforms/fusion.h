@@ -17,13 +17,15 @@ limitations under the License.
 #define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_FUSION_H
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir/IR/PatternMatch.h"
 
 namespace mlir {
 namespace gml_st {
 
 // Create fused operation based on the specificed subset. The result is
 // equivalent to the given `materialize` op.
-FailureOr<Value> createFusedOp(OpBuilder &b, MaterializeOp materializeOp);
+FailureOr<Value> createFusedOp(PatternRewriter &rewriter,
+                               MaterializeOp materializeOp);
 
 /// Populate fusion patterns.
 void populateFusionPatterns(MLIRContext *ctx,

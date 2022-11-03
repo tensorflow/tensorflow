@@ -934,6 +934,61 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     TFE_ContextSetJitCompileRewrite(tensorflow::InputTFE_Context(ctx), enable,
                                     status.get());
   });
+  m.def("TFE_GetTaskStates", [](py::handle& ctx,
+                                const std::vector<std::string>& job_names,
+                                const std::vector<int>& task_nums) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    if (job_names.size() != task_nums.size()) {
+      status->status = tensorflow::errors::InvalidArgument(
+          "The size of job names is not equal to the size of task nums.");
+      tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+    }
+    std::vector<tensorflow::CoordinatedTask> coordinated_tasks;
+    for (size_t i = 0; i < job_names.size(); ++i) {
+      for (size_t j = 0; j < task_nums[i]; ++j) {
+        auto& coordinated_task = coordinated_tasks.emplace_back();
+        coordinated_task.set_job_name(job_names[i]);
+        coordinated_task.set_task_id(j);
+      }
+    }
+    size_t task_len = coordinated_tasks.size();
+    auto state = std::make_unique<TF_Status[]>(task_len);
+    TF_Buffer tasks;
+    tasks.data = coordinated_tasks.data();
+    tasks.length = task_len;
+    TFE_GetTaskStates(tensorflow::InputTFE_Context(ctx), tasks, state.get(),
+                      status.get());
+    PyObject* output = PyList_New(task_len);
+    for (size_t i = 0; i < task_len; ++i) {
+      auto code = TF_GetCode(&state[i]);
+      if (code != TF_Code::TF_OK) {
+        PyObject* payloads = PyDict_New();
+        for (const auto& payload :
+             tensorflow::errors::GetPayloads(state[i].status)) {
+          PyDict_SetItemString(payloads, payload.first.c_str(),
+                               PyUnicode_FromString(payload.second.c_str()));
+        }
+        PyObject* exception_class =
+            tensorflow::PyExceptionRegistry::Lookup(code);
+        if (exception_class == nullptr) {
+          status->status = tensorflow::errors::Internal(absl::StrCat(
+              "Fail to find the corresponding exception class for ", code));
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        }
+        // If `Py_BuildValue` returns NULL, it would raise an exception.
+        // So we may not raise another exception here when `value` is NULL.
+        PyObject* value = Py_BuildValue("sssO", nullptr, nullptr,
+                                        TF_Message(&state[i]), payloads);
+        PyObject* instance = PyObject_CallObject(exception_class, value);
+        PyList_SetItem(output, i, instance);
+      } else {
+        PyList_SetItem(output, i, Py_None);
+      }
+    }
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+    return tensorflow::PyoOrThrow(output);
+  });
 
   // TFE_Executor logic
   m.def(

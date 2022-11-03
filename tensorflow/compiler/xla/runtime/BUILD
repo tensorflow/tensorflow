@@ -54,6 +54,7 @@ cc_library(
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/status",
         "@tf_runtime//:hostcontext",
+        "@tf_runtime//:support",
     ],
 )
 
@@ -400,7 +401,7 @@ cc_library(
 )
 
 cc_library(
-    name = "compiler_headers",
+    name = "compiler",
     hdrs = ["compiler.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [

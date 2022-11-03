@@ -216,7 +216,7 @@ class SavedModelImpl final : public SavedModel {
       std::unique_ptr<tfrt::ResourceContext> resource_context,
       std::unique_ptr<GraphExecutor> graph_executor);
 
-  ~SavedModelImpl() override;
+  ~SavedModelImpl() override = default;
 
   SavedModelImpl(const SavedModelImpl&) = delete;
   SavedModelImpl& operator=(const SavedModelImpl&) = delete;
@@ -309,6 +309,8 @@ class SavedModelImpl final : public SavedModel {
   bool lazy_loading_enabled_ = false;
 };
 
+class SavedModelMiraImpl;
+
 }  // namespace tfrt_stub
 }  // namespace tensorflow
 
@@ -316,6 +318,7 @@ namespace tfrt {
 
 using SavedModel = ::tensorflow::tfrt_stub::SavedModel;
 using SavedModelImpl = ::tensorflow::tfrt_stub::SavedModelImpl;
+using SavedModelMiraImpl = ::tensorflow::tfrt_stub::SavedModelMiraImpl;
 using TensorSpec = ::tensorflow::tfrt_stub::TensorSpec;
 using FunctionMetadata = ::tensorflow::tfrt_stub::FunctionMetadata;
 

@@ -43,11 +43,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass(
     StringRef distributionLabel = "");
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass();
 
-/// Pass to tile a linalg.generic reduction.
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingReductionPass();
-
-/// Pass to tile a linalg.generic reduction for GPU on the warp level.
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwiseGPUWarpsPass();
+/// Pass to tile warp-level ops on GPU.
+std::unique_ptr<OperationPass<func::FuncOp>> createTilingGPUWarpPass();
 
 /// Pass to match, tile, and fuse softmax implementations.
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass(
@@ -74,6 +71,14 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
 /// Pass to transform a linalg.matmul op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForCpuPass(
     ArrayRef<int64_t> tileSizes = llvm::None);
+
+/// Pass to transform a linalg.map op for CPU backend.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createTransformMapForCpuPass(int64_t tileSize = 1);
+
+/// Pass to transform a linalg.transpose op for CPU backend.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createTransformTransposeForCpuPass(ArrayRef<int64_t> tileSizes = llvm::None);
 
 #define GEN_PASS_REGISTRATION
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"

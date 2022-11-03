@@ -18,6 +18,7 @@
 import sys
 
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_export
 
@@ -78,10 +79,10 @@ class ValidateExportTest(test.TestCase):
                      tf_export.get_v1_names(decorated_function))
     self.assertEqual(['nameA', 'nameB'],
                      tf_export.get_v2_names(decorated_function))
-    self.assertEqual(tf_export.get_symbol_from_name('nameA'),
-                     decorated_function)
-    self.assertEqual(tf_export.get_symbol_from_name('nameB'),
-                     decorated_function)
+    self.assertEqual(
+        tf_export.get_symbol_from_name('nameA'), decorated_function)
+    self.assertEqual(
+        tf_export.get_symbol_from_name('nameB'), decorated_function)
     self.assertEqual(
         tf_export.get_symbol_from_name(
             tf_export.get_canonical_name_for_symbol(decorated_function)),
@@ -94,12 +95,11 @@ class ValidateExportTest(test.TestCase):
     self.assertAllEqual(('nameA', 'nameB'), decorated_function._tf_api_names_v1)
     self.assertAllEqual(['nameA', 'nameB'],
                         tf_export.get_v1_names(decorated_function))
-    self.assertEqual([],
-                     tf_export.get_v2_names(decorated_function))
-    self.assertEqual(tf_export.get_symbol_from_name('compat.v1.nameA'),
-                     decorated_function)
-    self.assertEqual(tf_export.get_symbol_from_name('compat.v1.nameB'),
-                     decorated_function)
+    self.assertEqual([], tf_export.get_v2_names(decorated_function))
+    self.assertEqual(
+        tf_export.get_symbol_from_name('compat.v1.nameA'), decorated_function)
+    self.assertEqual(
+        tf_export.get_symbol_from_name('compat.v1.nameB'), decorated_function)
     self.assertEqual(
         tf_export.get_symbol_from_name(
             tf_export.get_canonical_name_for_symbol(
@@ -115,19 +115,17 @@ class ValidateExportTest(test.TestCase):
     self.assertEqual(decorated_function2, _test_function2)
     self.assertEqual(('nameA', 'nameB'), decorated_function1._tf_api_names)
     self.assertEqual(('nameC', 'nameD'), decorated_function2._tf_api_names)
-    self.assertEqual(tf_export.get_symbol_from_name('nameB'),
-                     decorated_function1)
-    self.assertEqual(tf_export.get_symbol_from_name('nameD'),
-                     decorated_function2)
+    self.assertEqual(
+        tf_export.get_symbol_from_name('nameB'), decorated_function1)
+    self.assertEqual(
+        tf_export.get_symbol_from_name('nameD'), decorated_function2)
     self.assertEqual(
         tf_export.get_symbol_from_name(
-            tf_export.get_canonical_name_for_symbol(
-                decorated_function1)),
+            tf_export.get_canonical_name_for_symbol(decorated_function1)),
         decorated_function1)
     self.assertEqual(
         tf_export.get_symbol_from_name(
-            tf_export.get_canonical_name_for_symbol(
-                decorated_function2)),
+            tf_export.get_canonical_name_for_symbol(decorated_function2)),
         decorated_function2)
 
   def testExportClasses(self):
@@ -148,14 +146,32 @@ class ValidateExportTest(test.TestCase):
     export_decorator_a(TestClassA)
     self.assertEqual(('TestClassA1',), TestClassA._tf_api_names)
 
-    export_decorator_b = tf_export.estimator_export(
-        'estimator.TestClassB1')
+    export_decorator_b = tf_export.estimator_export('estimator.TestClassB1')
     export_decorator_b(TestClassB)
     self.assertTrue('_tf_api_names' not in TestClassB.__dict__)
     self.assertEqual(('TestClassA1',), TestClassA._tf_api_names)
     self.assertEqual(['TestClassA1'], tf_export.get_v1_names(TestClassA))
     self.assertEqual(['estimator.TestClassB1'],
                      tf_export.get_v1_names(TestClassB))
+
+  @test.mock.patch.object(logging, 'warning', autospec=True)
+  def testExportDeprecated(self, mock_warning):
+    export_decorator = tf_export.estimator_export(
+        'estimator.TestClassA', is_deprecated=True)
+    export_decorator(TestClassA)
+
+    export_decorator2 = tf_export.tf_export('TestClassB1')
+    export_decorator2(TestClassB)
+
+    # Deprecation should trigger a runtime warning
+    TestClassA()
+    self.assertEqual(1, mock_warning.call_count)
+    # Deprecation should only warn once, upon first call
+    TestClassA()
+    self.assertEqual(1, mock_warning.call_count)
+    # No warning should be triggered when inherting from a deprecated class
+    TestClassB()
+    self.assertEqual(1, mock_warning.call_count)
 
   def testExportSingleConstant(self):
     module1 = self._CreateMockModule('module1')
@@ -225,10 +241,14 @@ class ValidateExportTest(test.TestCase):
     self.assertFalse(hasattr(_test_function2, '_tf_api_names'))
 
   def testMultipleDecorators(self):
+
     def get_wrapper(func):
+
       def wrapper(*unused_args, **unused_kwargs):
         pass
+
       return tf_decorator.make_decorator(func, wrapper)
+
     decorated_function = get_wrapper(_test_function)
 
     export_decorator = tf_export.tf_export('nameA', 'nameB')

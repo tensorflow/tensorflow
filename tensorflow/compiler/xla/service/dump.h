@@ -31,7 +31,6 @@ limitations under the License.
 namespace xla {
 
 class BufferAssignment;
-class HloExecutionProfile;
 class HloSnapshot;
 
 // Get a timestamp which we can use as a filename prefix specific to this
@@ -91,16 +90,9 @@ void DumpPerModuleProtobufToFile(const HloModule& module,
 
 // Dumps the given HLO module if dumping is enabled for the module. Exactly
 // where and in what formats it's dumped is determined by the module's config.
-//
-// If you pass an HloExecutionProfile, note that currently only DOT-based output
-// formats (i.e. --xla_dump_as_{dot,html,url}) are able to incorporate it into
-// their output.  Other formats will just ignore the profile.
 void DumpHloModuleIfEnabled(const HloModule& module, absl::string_view name);
 void DumpHloModuleIfEnabled(const HloModule& module,
                             const BufferAssignment& buffer_assn,
-                            absl::string_view name);
-void DumpHloModuleIfEnabled(const HloModule& module,
-                            const HloExecutionProfile& profile,
                             absl::string_view name);
 
 // Dumps the given HLO module after running one HLO pass and before running

@@ -497,6 +497,7 @@ class HloParserImpl : public HloParser {
                    std::optional<HloOpcode>* async_wrapped_opcode);
   bool ParseFftType(FftType* result);
   bool ParsePaddingType(PaddingType* result);
+  bool ParsePrimitiveType(PrimitiveType* result);
   bool ParseComparisonDirection(ComparisonDirection* result);
   bool ParseComparisonType(Comparison::Type* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
@@ -508,6 +509,7 @@ class HloParserImpl : public HloParser {
   bool ParseComplex(std::complex<double>* result);
   bool ParseBool(bool* result);
   bool ParseToken(TokKind kind, const std::string& msg);
+  bool ParseUnsignedIntegerType(PrimitiveType* primitive_type);
 
   using AliasingData =
       absl::flat_hash_map<ShapeIndex, HloInputOutputAliasConfig::Alias>;
@@ -5087,6 +5089,26 @@ bool HloParserImpl::ParsePhysicalShape(Shape* physical_shape) {
   return true;
 }
 
+bool HloParserImpl::ParsePrimitiveType(PrimitiveType* result) {
+  if (lexer_.GetKind() != TokKind::kPrimitiveType) {
+    return TokenError(absl::StrCat("expected primitive type, saw ",
+                                   TokKindToString(lexer_.GetKind())));
+  }
+  *result = lexer_.GetPrimitiveTypeVal();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParserImpl::ParseUnsignedIntegerType(PrimitiveType* primitive_type) {
+  if (!ParsePrimitiveType(primitive_type)) {
+    return false;
+  }
+  if (!primitive_util::IsUnsignedIntegralType(*primitive_type)) {
+    return TokenError("expecting an unsigned integer type");
+  }
+  return true;
+}
+
 // int_attribute
 //   ::= /*empty*/
 //   ::= attr_token '(' attr_value ')'
@@ -5126,6 +5148,8 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
   std::vector<int64_t> minor_to_major;
   std::vector<DimLevelType> dim_level_types;
   std::vector<Tile> tiles;
+  PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID;
+  PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID;
   int64_t memory_space = 0;
   std::optional<Shape> physical_shape;
 
@@ -5166,6 +5190,30 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
         ParseTiles(&tiles);
       }
 
+      if (lexer_.GetKind() == TokKind::kOctothorp) {
+        lexer_.Lex();
+        ParseToken(
+            TokKind::kLparen,
+            StrCat("expects ", TokKindToString(TokKind::kOctothorp),
+                   " to be followed by ", TokKindToString(TokKind::kLparen)));
+        ParseUnsignedIntegerType(&index_primitive_type);
+        ParseToken(TokKind::kRparen,
+                   StrCat("expects index primitive type to be followed by ",
+                          TokKindToString(TokKind::kRparen)));
+      }
+
+      if (lexer_.GetKind() == TokKind::kAsterisk) {
+        lexer_.Lex();
+        ParseToken(
+            TokKind::kLparen,
+            StrCat("expects ", TokKindToString(TokKind::kAsterisk),
+                   " to be followed by ", TokKindToString(TokKind::kLparen)));
+        ParseUnsignedIntegerType(&pointer_primitive_type);
+        ParseToken(TokKind::kRparen,
+                   StrCat("expects pointer primitive type to be followed by ",
+                          TokKindToString(TokKind::kRparen)));
+      }
+
       if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "S") {
         lexer_.Lex();
         ParseLayoutIntAttribute(&memory_space, "memory space");
@@ -5189,6 +5237,7 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
     vec_tiles[i] = Tile(tiles[i]);
   }
   *layout = LayoutUtil::MakeLayout(minor_to_major, dim_level_types, vec_tiles,
+                                   index_primitive_type, pointer_primitive_type,
                                    memory_space, std::move(physical_shape));
   return true;
 }
@@ -5216,12 +5265,10 @@ bool HloParserImpl::ParseShape(Shape* result) {
     return ParseToken(TokKind::kRparen, "expects ')' at the end of tuple.");
   }
 
-  if (lexer_.GetKind() != TokKind::kPrimitiveType) {
-    return TokenError(absl::StrCat("expected primitive type, saw ",
-                                   TokKindToString(lexer_.GetKind())));
+  PrimitiveType primitive_type;
+  if (!ParsePrimitiveType(&primitive_type)) {
+    return false;
   }
-  PrimitiveType primitive_type = lexer_.GetPrimitiveTypeVal();
-  lexer_.Lex();
 
   // Each element contains a dimension size and a bool indicating whether this
   // is a dynamic dimension.

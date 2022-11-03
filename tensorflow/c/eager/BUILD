@@ -888,6 +888,7 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
+        "//tensorflow/core/distributed_runtime/coordination:coordination_service_error_util",
         "//tensorflow/core/distributed_runtime/eager:eager_client",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",

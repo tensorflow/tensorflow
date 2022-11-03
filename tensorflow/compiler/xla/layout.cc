@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -64,24 +63,23 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major)
 
 Layout::Layout(absl::Span<const int64_t> minor_to_major,
                absl::Span<const DimLevelType> dim_level_types,
-               absl::Span<const Tile> tiles, int64_t memory_space,
+               absl::Span<const Tile> tiles, PrimitiveType index_primitive_type,
+               PrimitiveType pointer_primitive_type, int64_t memory_space,
                std::unique_ptr<Shape> physical_shape)
     : dim_level_types_(dim_level_types.begin(), dim_level_types.end()),
       minor_to_major_(minor_to_major.begin(), minor_to_major.end()),
       tiles_(tiles.begin(), tiles.end()),
+      index_primitive_type_(index_primitive_type),
+      pointer_primitive_type_(pointer_primitive_type),
       memory_space_(memory_space),
       physical_shape_(std::move(physical_shape)) {}
-
-Layout::Layout(absl::Span<const int64_t> minor_to_major,
-               absl::Span<const DimLevelType> dim_level_types,
-               absl::Span<const Tile> tiles, int64_t memory_space)
-    : Layout(minor_to_major, dim_level_types, tiles, memory_space,
-             /*physical_shape=*/nullptr) {}
 
 Layout::Layout(const Layout& other)
     : dim_level_types_(other.dim_level_types_),
       minor_to_major_(other.minor_to_major_),
       tiles_(other.tiles_),
+      index_primitive_type_(other.index_primitive_type_),
+      pointer_primitive_type_(other.pointer_primitive_type_),
       memory_space_(other.memory_space_),
       physical_shape_(other.physical_shape_ != nullptr
                           ? std::make_unique<Shape>(*other.physical_shape_)
@@ -96,6 +94,8 @@ Layout& Layout::operator=(const Layout& other) {
     dim_level_types_ = other.dim_level_types_;
     minor_to_major_ = other.minor_to_major_;
     tiles_ = other.tiles_;
+    index_primitive_type_ = other.index_primitive_type_;
+    pointer_primitive_type_ = other.pointer_primitive_type_;
     memory_space_ = other.memory_space_;
     if (other.physical_shape_ != nullptr) {
       physical_shape_ = std::make_unique<Shape>(*other.physical_shape_);
@@ -120,6 +120,8 @@ Layout& Layout::operator=(Layout&& other) = default;
   for (const TileProto& tile_proto : proto.tiles()) {
     *layout.add_tiles() = Tile::CreateFromProto(tile_proto);
   }
+  layout.set_index_primitive_type(proto.index_primitive_type());
+  layout.set_pointer_primitive_type(proto.pointer_primitive_type());
   layout.set_memory_space(proto.memory_space());
   if (proto.has_physical_shape()) {
     *layout.mutable_physical_shape() = Shape(proto.physical_shape());
@@ -139,6 +141,8 @@ LayoutProto Layout::ToProto() const {
   for (const Tile& tile : tiles()) {
     *proto.add_tiles() = tile.ToProto();
   }
+  proto.set_index_primitive_type(index_primitive_type());
+  proto.set_pointer_primitive_type(pointer_primitive_type());
   proto.set_memory_space(memory_space_);
   if (has_physical_shape()) {
     *proto.mutable_physical_shape() = physical_shape_->ToProto();
@@ -164,13 +168,6 @@ absl::string_view DimLevelTypeAbbrev(DimLevelType dim_level_type) {
 std::string Layout::ToString() const {
   std::string colon_string;
 
-  if (!tiles().empty()) {
-    absl::StrAppend(&colon_string, "T");
-    for (const Tile& tile : tiles()) {
-      absl::StrAppend(&colon_string, tile.ToString());
-    }
-  }
-
   if (!dim_level_types().empty()) {
     absl::StrAppend(
         &colon_string, "D(",
@@ -179,6 +176,27 @@ std::string Layout::ToString() const {
                         absl::StrAppend(out,
                                         DimLevelTypeAbbrev(dim_level_type));
                       }),
+        ")");
+  }
+
+  if (!tiles().empty()) {
+    absl::StrAppend(&colon_string, "T");
+    for (const Tile& tile : tiles()) {
+      absl::StrAppend(&colon_string, tile.ToString());
+    }
+  }
+
+  if (index_primitive_type() != PRIMITIVE_TYPE_INVALID) {
+    absl::StrAppend(
+        &colon_string, "#(",
+        primitive_util::LowercasePrimitiveTypeName(index_primitive_type()),
+        ")");
+  }
+
+  if (pointer_primitive_type() != PRIMITIVE_TYPE_INVALID) {
+    absl::StrAppend(
+        &colon_string, "*(",
+        primitive_util::LowercasePrimitiveTypeName(pointer_primitive_type()),
         ")");
   }
 
@@ -205,6 +223,14 @@ bool Layout::Equal::operator()(const Layout& lhs, const Layout& rhs) {
     return false;
   }
   if (!ignore_tiles_ && lhs.tiles() != rhs.tiles()) {
+    return false;
+  }
+  if (!ignore_index_primitive_type_ &&
+      lhs.index_primitive_type() != rhs.index_primitive_type()) {
+    return false;
+  }
+  if (!ignore_pointer_primitive_type_ &&
+      lhs.pointer_primitive_type() != rhs.pointer_primitive_type()) {
     return false;
   }
   if (!ignore_memory_space_ && lhs.memory_space() != rhs.memory_space()) {

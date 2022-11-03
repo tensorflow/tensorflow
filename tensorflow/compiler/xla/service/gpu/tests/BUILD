@@ -633,6 +633,25 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "gpu_fusion_pipeline_test",
+    srcs = ["gpu_fusion_pipeline_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
+        "//tensorflow/compiler/xla/service/gpu:fusion_merger",
+        "//tensorflow/compiler/xla/service/gpu:gpu_fusible",
+        "//tensorflow/compiler/xla/service/gpu:instruction_fusion",
+        "//tensorflow/compiler/xla/service/gpu:multi_output_fusion",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "gpu_unrolling_test",
     srcs = ["gpu_unrolling_test.cc"],
     tags = tf_cuda_tests_tags(),
@@ -750,7 +769,7 @@ tf_cc_test(
 tf_cc_binary(
     name = "hlo_to_llvm_ir",
     srcs = ["hlo_to_llvm_ir.cc"],
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
         "@llvm-project//llvm:Target",
         "//tensorflow/compiler/xla:status",
@@ -760,7 +779,6 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service/gpu:target_constants",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
-        "//tensorflow/core:framework_internal",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
         "//tensorflow/tsl/platform:platform_port",
@@ -770,6 +788,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service/gpu:nvptx_helper",
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler_impl",
+	"//tensorflow/tsl/platform:rocm_rocdl_path",
     ]),
 )
 
@@ -781,10 +800,44 @@ glob_lit_tests(
     driver = "@llvm-project//mlir:run_lit.sh",
     exclude = ["execute_memzero_thunk.mlir"],
     tags_override = {
-        "reduction_vectorization_sm_all.hlo": ["no_rocm"],
+        "add_preds.hlo": ["no_rocm"],
+        "concat.hlo": ["no_rocm"],
+        "copy.hlo": ["no_rocm"],
+        "dynamic_update_slice_inplace.hlo": ["no_rocm"],
         "element_wise_row_vectorization.hlo": ["no_rocm"],
-        "reduce_unnested.hlo": ["no_rocm"],
         "fused_scatter.hlo": ["no_rocm"],
+        "fused_slice.hlo": ["no_rocm"],
+        "fused_slice_different_operands.hlo": ["no_rocm"],
+        "fusion.hlo": ["no_rocm"],
+        "launch_dimensions.hlo": ["no_rocm"],
+        "pad_to_static.hlo": ["no_rocm"],
+        "reduce_unnested.hlo": ["no_rocm"],
+        "reduction_vectorization_sm_all.hlo": ["no_rocm"],
+        "rng_get_and_update_state.hlo": ["no_rocm"],
+        "scatter.hlo": ["no_rocm"],
+        "select_and_scatter.hlo": ["no_rocm"],
+        "single_instruction.hlo": ["no_rocm"],
+        "slice_to_dynamic.hlo": ["no_rocm"],
+        "copy_nested.hlo": ["no_rocm"],
+        "sorting.hlo": ["no_rocm"],
+        "add_preds_amdgcn.hlo": ["no_cuda_asan"],
+        "concat_amdgcn.hlo": ["no_cuda_asan"],
+        "copy_amdgcn.hlo": ["no_cuda_asan"],
+        "copy_nested_amdgcn.hlo": ["no_cuda_asan"],
+        "dynamic_update_slice_inplace_amdgcn.hlo": ["no_cuda_asan"],
+        "fused_scatter_amdgcn.hlo": ["no_cuda_asan"],
+        "fused_slice_amdgcn.hlo": ["no_cuda_asan"],
+        "fused_slice_different_operands_amdgcn.hlo": ["no_cuda_asan"],
+        "fusion_amdgcn.hlo": ["no_cuda_asan"],
+        "launch_dimensions_amdgcn.hlo": ["no_cuda_asan"],
+        "pad_to_static_amdgcn.hlo": ["no_cuda_asan"],
+        "reduce_unnested_amdgcn.hlo": ["no_cuda_asan"],
+        "rng_get_and_update_state_amdgcn.hlo": ["no_cuda_asan"],
+        "scatter_amdgcn.hlo": ["no_cuda_asan"],
+        "select_and_scatter_amdgcn.hlo": ["no_cuda_asan"],
+        "single_instruction_amdgcn.hlo": ["no_cuda_asan"],
+        "slice_to_dynamic_amdgcn.hlo": ["no_cuda_asan"],
+        "sorting_amdgcn.hlo": ["no_cuda_asan"],
     },
     test_file_exts = ["hlo"],
 )
