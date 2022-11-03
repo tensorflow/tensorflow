@@ -1072,7 +1072,7 @@ static Status CompileModuleToLlvmIrImpl(
           << results->buffer_assignment->GetStats().ToString();
   DumpHloModuleIfEnabled(*hlo_module, *results->buffer_assignment,
                          absl::StrCat("sm_", cuda_compute_capability.ToString(),
-                                      "_gpu_after_optimizations"));
+                                      "_gpu_", kAfterOptimizationsDumpName));
 
   uint64_t start_usecs = tsl::Env::Default()->NowMicros();
   mlir::DialectRegistry registry;

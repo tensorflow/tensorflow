@@ -418,10 +418,15 @@ static std::vector<std::string> DumpHloModuleImpl(
         pb, opts, opts.dump_compress_protos));
   }
 
-  auto render_graph = [&](RenderedGraphFormat format) {
-    StatusOr<std::string> rendered_graph = RenderGraph(
-        *module.entry_computation(),
-        /*label=*/filename, module.config().debug_options(), format);
+  auto render_graph = [&](RenderedGraphFormat format,
+                          bool show_fusion_subcomputations = true) {
+    HloRenderOptions hlo_render_options;
+    hlo_render_options.show_fusion_subcomputations =
+        show_fusion_subcomputations;
+    StatusOr<std::string> rendered_graph =
+        RenderGraph(*module.entry_computation(),
+                    /*label=*/filename, module.config().debug_options(), format,
+                    hlo_render_options);
     if (rendered_graph.ok()) {
       return std::move(rendered_graph).value();
     }
@@ -439,6 +444,11 @@ static std::vector<std::string> DumpHloModuleImpl(
     file_paths.push_back(
         DumpToFileInDirImpl(StrFormat("%s.html", filename),
                             render_graph(RenderedGraphFormat::kHtml), opts));
+    if (absl::StrContains(filename, kAfterOptimizationsDumpName)) {
+      file_paths.push_back(DumpToFileInDirImpl(
+          StrFormat("%s.top_level.html", filename),
+          render_graph(RenderedGraphFormat::kHtml, false), opts));
+    }
   }
 
   if (opts.dump_fusion_visualization) {
