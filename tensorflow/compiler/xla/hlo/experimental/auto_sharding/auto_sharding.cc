@@ -933,10 +933,12 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
             ShardingStrategy({name, existing_sharding, 0, 0, memory_cost,
                               resharding_costs, input_shardings}));
       }
-    } else {
+    } else if (!strategies->following) {
       // If existing sharding is a partial sharding from previous iteration,
       // find the strategies that are 1D&&complete or align with user
       // sharding.
+      // It is IMPORTANT that we do this only for instructions that do no follow
+      // others, to keep the number of ILP variable small.
       std::vector<ShardingStrategy> new_vector;
       for (const auto& strategy : strategies->leaf_vector) {
         if (strategy.output_sharding.IsReplicated() ||
@@ -954,7 +956,8 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
       // If no sharding strategy left, just keep the original set, because we do
       // not have to strictly keep those shardings and the only purpose is to
       // reduce problem size for the last iteration.
-      if (!new_vector.empty()) {
+      if (!new_vector.empty() &&
+          new_vector.size() != strategies->leaf_vector.size()) {
         strategies->following = nullptr;
         strategies->leaf_vector = std::move(new_vector);
       }
