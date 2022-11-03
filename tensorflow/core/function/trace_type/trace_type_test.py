@@ -218,7 +218,7 @@ class TraceTypeBuilderTest(test.TestCase, parameterized.TestCase):
     obj = CustomUnhashable()
     with self.assertRaisesRegex(
         TypeError,
-        r'could not be represented through the generic tracing type'):
+        r'Could not generate a generic TraceType for'):
       trace_type.from_value(obj)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))

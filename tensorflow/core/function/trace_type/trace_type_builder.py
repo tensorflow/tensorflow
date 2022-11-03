@@ -144,6 +144,7 @@ def from_value(value: Any,
     try:
       return default_types.Literal(value)
     except:
-      raise TypeError(
-          f"Python object could not be represented through the generic tracing "
-          f"type. Consider implementing the Tracing Protocol for it: {value!r}")
+      raise TypeError(  # pylint: disable=raise-missing-from
+          f"Could not generate a generic TraceType for {value!r}."
+          f"Please verify that it is immutable/hashable. Otheriwse, consider "
+          f"implementing the Tracing Protocol for it.")
