@@ -1,31 +1,32 @@
 # Release 2.11.0
 
 ## Breaking Changes
-*   `tf.keras.optimizers.Optimizer` now points to the new Keras optimizer, and old optimizers have moved to the `tf.keras.optimizers.legacy` namespace.  
+
+*   The `tf.keras.optimizers.Optimizer` base class now points to the new Keras optimizer, while the old optimizers have been moved to the `tf.keras.optimizers.legacy` namespace.
+
     If you find your workflow failing due to this change, you may be facing one of the following issues:
+
     *   **Checkpoint loading failure.** The new optimizer handles optimizer state differently from the old optimizer, which simplifies the logic of checkpoint saving/loading, but at the cost of breaking checkpoint backward compatibility in some cases. If you want to keep using an old checkpoint, please change your optimizer to `tf.keras.optimizer.legacy.XXX` (e.g. `tf.keras.optimizer.legacy.Adam`).
-    *   **TF1 compatibility.** The new optimizer, `tf.keras.optimizers.Optimizer`, does not support TF1 any more, so please use the legacy optimizer `tf.keras.optimizer.legacy.XXX`.  
-        We highly recommend to migrate your workflow to TF2 for stable support and new features.
-    *   **Old optimizer API not found.** The new optimizer, `tf.keras.optimizers.Optimizer`, has a different set of public APIs from the old optimizer.  
-        These API changes are mostly related to getting rid of slot variables and TF1 support. Please check the API documentation to find alternatives to the missing API. If you must call the deprecated API, please change your optimizer to the legacy optimizer.
-    *   **Learning rate schedule access.** When using a `LearningRateSchedule`, The new optimizer's `learning_rate` property returns the current learning rate value instead of a `LearningRateSchedule` object as before. If you need to access the `LearningRateSchedule` object, please use `optimizer._learning_rate`.
-    *   **If you implemented a custom optimizer based on the old optimizer.** Please set your optimizer to subclass `tf.keras.optimizer.legacy.XXX`. If you want to migrate to the new optimizer and find it does not support your optimizer, please file an issue in the Keras GitHub repo.
-    *   **Errors, such as `Cannot recognize variable...`.** The new optimizer requires all optimizer variables to be created at the first `apply_gradients()` or `minimize()` call. If your workflow calls optimizer to update different parts of model in multiple stages, please call `optimizer.build(model.trainable_variables)` before the training loop.
+    *   **TF1 compatibility.** The new optimizer, `tf.keras.optimizers.Optimizer`, does not support TF1 any more, so please use the legacy optimizer `tf.keras.optimizer.legacy.XXX`. We highly recommend [migrating your workflow to TF2](https://www.tensorflow.org/guide/migrate) for stable support and new features.
+    *   **Old optimizer API not found.** The new optimizer, `tf.keras.optimizers.Optimizer`, has a different set of public APIs from the old optimizer. These API changes are mostly related to getting rid of slot variables and TF1 support. Please check the API documentation to find alternatives to the missing API. If you must call the deprecated API, please change your optimizer to the legacy optimizer.
+    *   **Learning rate schedule access.** When using a `tf.keras.optimizers.schedules.LearningRateSchedule`, the new optimizer's `learning_rate` property returns the current learning rate value instead of a `LearningRateSchedule` object as before. If you need to access the `LearningRateSchedule` object, please use `optimizer._learning_rate`.
+    *   **If you implemented a custom optimizer based on the old optimizer.** Please set your optimizer to subclass `tf.keras.optimizer.legacy.XXX`. If you want to migrate to the new optimizer and find it does not support your optimizer, please file an issue in the [Keras GitHub repo](https://github.com/keras-team/keras/issues).
+    *   **Errors, such as `Cannot recognize variable...`.** The new optimizer requires all optimizer variables to be created at the first `apply_gradients()` or `minimize()` call. If your workflow calls the optimizer to update different parts of the model in multiple stages, please call `optimizer.build(model.trainable_variables)` before the training loop.
     *   **Timeout or performance loss.** We don't anticipate this to happen, but if you see such issues, please use the legacy optimizer, and file an issue in the Keras GitHub repo.
 
-    The old Keras optimizer will never be deleted, but will not see any new feature additions. New optimizers (for example, `tf.keras.optimizers.Adafactor`) will only be implemented based on `tf.keras.optimizers.Optimizer`, the new base class.
+    The old Keras optimizer will never be deleted, but will not see any new feature additions. New optimizers (for example, `tf.keras.optimizers.Adafactor`) will only be implemented based on the new `tf.keras.optimizers.Optimizer` base class.
 
-*   `tensorflow/python/keras` code is a legacy copy of Keras since 2.7 release, and will be deleted in 2.12 release. Please remove any import of `tensorflow.python.keras` and use public API with `from tensorflow import keras` or `import tensorflow as tf; tf.keras`.
+*   `tensorflow/python/keras` code is a legacy copy of Keras since the TensorFlow v2.7 release, and will be deleted in the v2.12 release. Please remove any import of `tensorflow.python.keras` and use the public API with `from tensorflow import keras` or `import tensorflow as tf; tf.keras`.
 
 ## Major Features and Improvements
 
 *   `tf.lite`:
 
-    *   New operations supported: `tf.unsortedsegmentmin`, `tf.atan2` and `tf.sign`.
+    *   New operations supported: `tf.math.unsorted_segment_sum`, `tf.atan2` and `tf.sign`.
     *   Updates to existing operations:
           * `tfl.mul` now supports complex32 inputs.
 
-*   `tf.experimental.StructuredTensor`
+*   `tf.experimental.StructuredTensor`:
 
     *   Introduced `tf.experimental.StructuredTensor`, which provides a flexible and TensorFlow-native way to encode structured data such as protocol buffers or pandas dataframes.
 
@@ -34,36 +35,40 @@
     *   Added a new `get_metrics_result()` method to `tf.keras.models.Model`.
         *   Returns the current metrics values of the model as a dict.
     *   Added a new group normalization layer - `tf.keras.layers.GroupNormalization`.
-    *   Added weight decay support for all Keras optimizers.
-    *   Added Adafactor optimizer `tf.keras.optimizers.Adafactor`.
+    *   Added weight decay support for all Keras optimizers via the `weight_decay` argument.
+    *   Added the Adafactor optimizer - `tf.keras.optimizers.Adafactor`.
     *   Added `warmstart_embedding_matrix` to `tf.keras.utils`.
-        *   This utility can be used to warmstart an embeddings matrix, so you reuse previously-learned word embeddings when working with a new set of words which may include previously unseen words (the embedding vectors for unseen words will be randomly initialized).
+        *   This utility can be used to warmstart an embedding matrix, so you reuse previously-learned word embeddings when working with a new set of words which may include previously unseen words (the embedding vectors for unseen words will be randomly initialized).
 
 *   `tf.Variable`:
 
-    *   Added `CompositeTensor` as a baseclass to `ResourceVariable`.
+    *   Added `CompositeTensor` as a base class to `ResourceVariable`.
         *   This allows `tf.Variable`s to be nested in `tf.experimental.ExtensionType`s.
-    *   Added a new constructor argument `experimental_enable_variable_lifting` to `tf.Variable`, defaulting to True.
-        *   When it's `False`, the variable won't be lifted out of `tf.function`, thus it can be used as a `tf.function`-local variable: during each execution of the `tf.function`, the variable will be created and then disposed, similar to a local (that is, stack-allocated) variable in C/C++. Currently, `experimental_enable_variable_lifting=False` only works on non-XLA devices (for example, under `@tf.function(jit_compile=False)`).
+    *   Added a new constructor argument `experimental_enable_variable_lifting` to `tf.Variable`, defaulting to `True`.
+        *   When it's set to `False`, the variable won't be lifted out of `tf.function`; thus it can be used as a `tf.function`-local variable: during each execution of the `tf.function`, the variable will be created and then disposed, similar to a local (that is, stack-allocated) variable in C/C++. Currently, `experimental_enable_variable_lifting=False` only works on non-XLA devices (for example, under `@tf.function(jit_compile=False)`).
 
 *   TF SavedModel:
+
     *   Added `fingerprint.pb` to the SavedModel directory. The `fingerprint.pb` file is a protobuf containing the "fingerprint" of the SavedModel. See the [RFC](https://github.com/tensorflow/community/pull/415) for more details regarding its design and properties.
         
 *   TF pip:
-    *   Windows CPU-builds for x86/x64 processors are now built, maintained, tested and released by a third party: Intel. Installing the windows-native pip packages for `tensorflow` or `tensorflow-cpu` would install Intel's tensorflow-intel package. These packages are provided as-is. Tensorflow will use reasonable efforts to maintain the availability and integrity of this pip package. There may be delays if the third party fails to release the pip package. For using TensorFlow GPU on Windows, you will need to install TensorFlow in WSL2.
+
+    *   Windows CPU-builds for x86/x64 processors are now built, maintained, tested and released by a third party: Intel. Installing the Windows-native pip packages for `tensorflow` or `tensorflow-cpu` would install Intel's `tensorflow-intel` package. These packages are provided on an as-is basis. TensorFlow will use reasonable efforts to maintain the availability and integrity of this pip package. There may be delays if the third party fails to release the pip package. For using TensorFlow GPU on Windows, you will need to install TensorFlow in WSL2.
 
 ## Bug Fixes and Other Changes
 
-*   `tf.image`
-    *   Added an optional parameter `return_index_map` to `tf.image.ssim` which causes the returned value to be the local SSIM map instead of the global mean.
+*   `tf.image`:
+
+    *   Added an optional parameter `return_index_map` to `tf.image.ssim`, which causes the returned value to be the local SSIM map instead of the global mean.
 
 *   TF Core:
 
     *   `tf.custom_gradient` can now be applied to functions that accept "composite" tensors, such as `tf.RaggedTensor`, as inputs.
     *   Fix device placement issues related to datasets with ragged tensors of strings (i.e. variant encoded data with types not supported on GPU).
-    *   `experimental_follow_type_hints` for tf.function has been deprecated. Please `use input_signature` or `reduce_retracing` to minimize retracing.
+    *   `experimental_follow_type_hints` for `tf.function` has been deprecated. Please `use input_signature` or `reduce_retracing` to minimize retracing.
 
 *   `tf.SparseTensor`:
+
     *   Introduced `set_shape`, which sets the static dense shape of the sparse tensor and has the same semantics as `tf.Tensor.set_shape`.
 
 ## Thanks to our Contributors
