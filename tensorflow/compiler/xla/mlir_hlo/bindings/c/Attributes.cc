@@ -10,7 +10,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo-c/Attributes.h"
+#include "bindings/c/Attributes.h"
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir/CAPI/IR.h"

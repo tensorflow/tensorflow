@@ -1375,17 +1375,17 @@ cc_library(
 )
 
 CAPI_HEADERS = [
-    "include/mlir-hlo-c/Attributes.h",
-    "include/mlir-hlo-c/Dialects.h",
-    "include/mlir-hlo-c/Passes.h",
-    "include/mlir-hlo-c/Types.h",
+    "bindings/c/Attributes.h",
+    "bindings/c/Dialects.h",
+    "bindings/c/Passes.h",
+    "bindings/c/Types.h",
 ]
 
 CAPI_SOURCES = [
-    "lib/CAPI/Attributes.cc",
-    "lib/CAPI/Dialects.cc",
-    "lib/CAPI/Passes.cc",
-    "lib/CAPI/Types.cc",
+    "bindings/c/Attributes.cc",
+    "bindings/c/Dialects.cc",
+    "bindings/c/Passes.cc",
+    "bindings/c/Types.cc",
 ]
 
 cc_library(

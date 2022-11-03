@@ -10,9 +10,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo-c/Dialects.h"
+#include "bindings/c/Types.h"
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir/CAPI/Registration.h"
+#include "mlir/CAPI/IR.h"
 
-MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(Mhlo, mhlo, mlir::mhlo::MhloDialect)
+MlirType mlirMhloTokenTypeGet(MlirContext ctx) {
+  return wrap(mlir::mhlo::TokenType::get(unwrap(ctx)));
+}
+
+bool mlirMhloTypeIsAToken(MlirType type) {
+  return unwrap(type).isa<mlir::mhlo::TokenType>();
+}

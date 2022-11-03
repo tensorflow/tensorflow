@@ -10,11 +10,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "bindings/c/Attributes.h"
+#include "bindings/c/Dialects.h"
+#include "bindings/c/Passes.h"
+#include "bindings/c/Types.h"
 #include "mlir-c/IR.h"
-#include "mlir-hlo-c/Attributes.h"
-#include "mlir-hlo-c/Dialects.h"
-#include "mlir-hlo-c/Passes.h"
-#include "mlir-hlo-c/Types.h"
 #include "mlir/Bindings/Python/PybindAdaptors.h"
 
 namespace py = pybind11;

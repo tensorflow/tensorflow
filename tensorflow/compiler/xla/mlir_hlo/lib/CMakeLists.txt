@@ -14,7 +14,6 @@
 # limitations under the License.
 #
 add_subdirectory(Analysis)
-add_subdirectory(CAPI)
 add_subdirectory(Dialect)
 add_subdirectory(Transforms)
 add_subdirectory(utils)

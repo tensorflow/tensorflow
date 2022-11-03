@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -10,8 +10,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo-c/Passes.h"
+#include "bindings/c/Dialects.h"
 
-#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir/CAPI/Registration.h"
 
-void mlirRegisterAllMhloPasses() { mlir::mhlo::registerAllMhloPasses(); }
+MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(Mhlo, mhlo, mlir::mhlo::MhloDialect)
