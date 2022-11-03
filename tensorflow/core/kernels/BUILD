@@ -1263,6 +1263,7 @@ tf_kernel_library(
     gpu_srcs = [
         "tile_functor.h",
         "tile_functor_gpu.h",
+        "tile_functor_gpu_bfloat16.cu.cc",
         "tile_functor_gpu_bool.cu.cc",
         "tile_functor_gpu_complex64.cu.cc",
         "tile_functor_gpu_complex128.cu.cc",
