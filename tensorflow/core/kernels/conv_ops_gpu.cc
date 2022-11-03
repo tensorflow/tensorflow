@@ -33,9 +33,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if GOOGLE_CUDA
 bool ComputeInNhwcEnabled(DataType data_type, se::Stream* stream,
                           bool use_4d_tensor) {
+#if GOOGLE_CUDA
   // Tensor Core supports efficient convolution with fp16 for NVIDIA Volta+
   // GPUs and tf32 for Ampere+ GPUs in NHWC data layout. In all other
   // configurations it's more efficient to run computation in NCHW data format.
@@ -50,8 +50,11 @@ bool ComputeInNhwcEnabled(DataType data_type, se::Stream* stream,
     return use_nhwc_fp16 || use_nhwc_tf32;
   }
   return CUDNN_VERSION >= 8000 && (use_nhwc_fp16 || use_nhwc_tf32);
-}
+#else
+  // fast NHWC implementation is a CUDA only feature
+  return false;
 #endif  // GOOGLE_CUDA
+}
 
 // Finds the best convolution algorithm for the given ConvLaunch (cuda
 // convolution on the stream) and parameters, by running all possible

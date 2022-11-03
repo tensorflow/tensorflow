@@ -809,13 +809,9 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     return;
   }
 
-#if GOOGLE_CUDA
   const bool compute_in_nhwc =
       ComputeInNhwcEnabled(DataTypeToEnum<T>::value, stream);
-#else
   // fast NHWC implementation is a CUDA only feature
-  const bool compute_in_nhwc = false;
-#endif
 
   // We only do one directional conversion: NHWC->NCHW. We never convert in the
   // other direction. Grappler layout optimizer selects preferred layout and
