@@ -35,7 +35,6 @@ namespace xla {
 namespace gpu {
 class JitRtKernelsCache;
 class JitRtGemmConfigCache;
-class JitRtCollectiveSupport;
 class JitRtAsyncCollectiveSupport;
 
 // Populate custom calls implementing XLA GPU runtime API.
@@ -59,31 +58,6 @@ class JitRtGemmConfigCache {
   llvm::SmallDenseMap<int64_t, GemmConfig> configs_ ABSL_GUARDED_BY(mutex_);
 };
 
-class JitRtCollectiveSupport {
- public:
-  // Maybe block host after the first call to the collective operation with the
-  // given uid, to ensure that all devices have allocated the required buffers
-  // for their communicators before allowing any device to continue enqueuing
-  // operations. Otherwise, the allocations can cause deadlock in the CUDA
-  // driver.
-  //
-  // This basically ports workaround form cr/435058849 to JitRt (see details in
-  // the b/215649390).
-  Status MaybeBlockAfterFirstRun(int32_t uid, int32_t device_ordinal,
-                                 se::Stream* stream);
-
- private:
-  static int64_t Key(int32_t uid, int32_t device_ordinal) {
-    return static_cast<int64_t>(uid) << 32 | device_ordinal;
-  }
-
-  mutable absl::Mutex mutex_;
-
-  // Store if a particular collective operation was executed at least once. We
-  // rely on unique `uid` assigned to each collective operation by the lowering
-  // pass.
-  llvm::SmallDenseMap<int64_t, bool> executed_ ABSL_GUARDED_BY(mutex_);
-};
 
 // Support for running async collective operations communicating via events.
 class JitRtAsyncCollectiveSupport {

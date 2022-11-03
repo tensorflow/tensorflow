@@ -47,6 +47,7 @@
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cholesky.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/collectives.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
@@ -1166,107 +1167,6 @@ static bool AllToAll(runtime::ExecutionContext* ctx, void** args, void** attrs,
 // -------------------------------------------------------------------------- //
 
 namespace {
-struct CollectivePermute {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          JitRtCollectiveSupport* collectives,
-                          CustomCall::RemainingArgs args, int32_t uid,
-                          int64_t group_mode, int64_t op_id,
-                          ArrayRef<int64_t> replica_group_offsets,
-                          ArrayRef<int64_t> replica_group_values,
-                          ArrayRef<int64_t> source_peers,
-                          ArrayRef<int64_t> target_peers) const;
-  static CollectivePermute Handler() { return CollectivePermute(); }
-};
-}  // namespace
-
-absl::Status CollectivePermute::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
-    int32_t uid, int64_t group_mode, int64_t op_id,
-    ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values, ArrayRef<int64_t> source_peers,
-    ArrayRef<int64_t> target_peers) const {
-#if XLA_ENABLE_XCCL
-  VLOG(3) << "Running CollectivePermute";
-  se::Stream* stream = run_options->stream();
-  NcclExecuteParams params(*run_options, stream);
-
-  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                          replica_group_values);
-  if (failed(comm)) return absl::InternalError("Failed to get NcclComm");
-
-  auto device_buffers = GetDeviceBufferPairs(args);
-  if (failed(device_buffers))
-    return absl::InternalError("Failed to get device buffers");
-  if (device_buffers->size() != 1) {
-    return absl::InternalError(absl::StrFormat(
-        "Expected device buffer size: 1, got %d", device_buffers->size()));
-  }
-
-  StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
-  if (!global_device_id.ok()) return ToAbslStatus(global_device_id.status());
-
-  StatusOr<DeviceAssignment::LogicalID> current_logical_id =
-      params.device_assn->LogicalIdForDevice(global_device_id.value());
-  if (!current_logical_id.ok())
-    return ToAbslStatus(current_logical_id.status());
-
-  const int64_t current_id = static_cast<CollectiveOpGroupMode>(group_mode) ==
-                                     CollectiveOpGroupMode::kCrossReplica
-                                 ? current_logical_id.value().replica_id
-                                 : current_logical_id.value().computation_id;
-  std::string device_string = NcclCollectiveThunk::GetDeviceString(params);
-
-  NcclCollectivePermuteConfig::IdToSourceTargetMap id_to_source_target;
-  for (int i = 0; i < source_peers.size(); ++i) {
-    id_to_source_target.insert({target_peers[i], {}}).first->second.source =
-        source_peers[i];
-    id_to_source_target.insert({source_peers[i], {}}).first->second.target =
-        target_peers[i];
-  }
-  const NcclCollectivePermuteConfig::SourceTargetMapEntry source_target =
-      NcclCollectivePermuteConfig::GetSourceTarget(id_to_source_target,
-                                                   current_id);
-
-  auto executed =
-      RunCollectivePermute(source_target, (*device_buffers)[0], *stream, **comm,
-                           device_string, current_id);
-  if (!executed.ok()) return ToAbslStatus(executed);
-
-  int32_t device_ordinal = stream->parent()->device_ordinal();
-  auto st = collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream);
-  if (!st.ok()) return ToAbslStatus(st);
-
-  return absl::OkStatus();
-#else   // XLA_ENABLE_XCCL
-  return absl::InternalError("NCCL disabled");
-#endif  // XLA_ENABLE_XCCL
-}
-
-static bool CollectivePermute(runtime::ExecutionContext* ctx, void** args,
-                              void** attrs, void** rets) {
-  static auto* handler =
-      CustomCall::Bind("xla.gpu.collective_permute")
-          .UserData<const ServiceExecutableRunOptions*>()
-          .UserData<JitRtCollectiveSupport*>()
-          .RemainingArgs()  // args
-          .Attr<int32_t>("uid")
-          .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
-          .Attr<int64_t>("op_id")
-          .Attr<ArrayRef<int64_t>>("replica_group_offsets")
-          .Attr<ArrayRef<int64_t>>("replica_group_values")
-          .Attr<ArrayRef<int64_t>>("source_peers")
-          .Attr<ArrayRef<int64_t>>("target_peers")
-          .To<RuntimeChecks()>(CollectivePermute::Handler())
-          .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
-
-// -------------------------------------------------------------------------- //
-
-namespace {
 struct ReplicaId {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   absl::Status operator()(const ServiceExecutableRunOptions* run_options,
@@ -1383,8 +1283,8 @@ void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry) {
 
   RegisterFftCustomCalls(registry);
   RegisterCholeskyCustomCalls(registry);
-  registry.Register("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
   registry.Register("xla.gpu.gemm", &xla::gpu::Gemm);
+  RegisterCollectiveCustomCalls(registry);
 
 #if GOOGLE_CUDA
   RegisterMatmulCustomCalls(registry);

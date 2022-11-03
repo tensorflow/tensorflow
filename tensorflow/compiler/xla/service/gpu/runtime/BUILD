@@ -27,6 +27,26 @@ cc_library(
 )
 
 cc_library(
+    name = "collectives",
+    srcs = ["collectives.cc"],
+    hdrs = ["collectives.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:global_device_id",
+        "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
+        "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
+        "//tensorflow/compiler/xla/stream_executor:event",
+        "//tensorflow/compiler/xla/stream_executor:executor_cache",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "conv",
     srcs = ["conv.cc"],
     hdrs = ["conv.h"],
@@ -50,12 +70,14 @@ cc_library(
     srcs = ["executable.cc"],
     hdrs = ["executable.h"],
     deps = [
+        ":collectives",
         ":conv",
         ":kernel_launch",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/runtime:jit_executable",
+        "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu:buffer_allocations",
         "//tensorflow/compiler/xla/service/gpu:jitrt_custom_calls",
         "@com_google_absl//absl/strings",
