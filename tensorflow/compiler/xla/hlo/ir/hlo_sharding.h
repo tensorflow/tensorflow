@@ -121,7 +121,8 @@ class HloSharding {
   std::string ToString(bool include_metadata = false) const;
 
   // Validate that this sharding can be applied to a tensor with shape `shape`.
-  Status Validate(const Shape& shape, int64_t num_devices) const;
+  Status Validate(const Shape& shape,
+                  std::optional<int64_t> num_devices = {}) const;
 
   // Returns true if the sharding has tuple type.
   bool IsTuple() const { return tuple_; }
@@ -419,10 +420,12 @@ class HloSharding {
   Status CheckLeafCount(const Shape& shape) const;
 
   // Internal helper to validate a tuple sharding.
-  Status ValidateTuple(const Shape& shape, int64_t num_devices) const;
+  Status ValidateTuple(const Shape& shape,
+                       std::optional<int64_t> num_devices) const;
 
   // Internal helper to validate a non-tuple (leaf) sharding.
-  Status ValidateNonTuple(const Shape& shape, int64_t num_devices) const;
+  Status ValidateNonTuple(const Shape& shape,
+                          std::optional<int64_t> num_devices) const;
 
   bool replicated_;
   bool maximal_;
