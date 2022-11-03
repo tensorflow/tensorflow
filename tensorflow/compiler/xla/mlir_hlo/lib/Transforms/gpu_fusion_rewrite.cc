@@ -133,6 +133,17 @@ FusionRewritePattern::FusionRewritePattern(MLIRContext* ctx,
       parentPass(parentPass),
       symbolTable(symbolTable) {}
 
+// Returns the number of groups per block for softmax. Each group of threads
+// handles a row. A group has power-of-two size up to a warp. We use 256 threads
+// per block and a group size that leaves less than half of the threads unused.
+static int64_t getGroupsPerBlock(TensorType type) {
+  int64_t reductionDim = type.getShape().back();
+  for (int64_t numGroups = 8; numGroups <= 128; numGroups *= 2) {
+    if (reductionDim * numGroups > 128) return numGroups;
+  }
+  return 8;
+}
+
 // Returns the number of elements each thread should handle for 'type'.
 // The intention is that loads and stores are vectorized later on to this width
 // to maximize memory throughput.
@@ -291,11 +302,13 @@ FusionRewritePattern::getPipelineOptions(lmhlo::FusionOp fusionOp,
   if (isa<bufferization::ToTensorOp>(fusionOp.getFusionRoots().front()))
     return rewriter.notifyMatchFailure(fusionOp, "expected non-empty fusion");
 
+  auto resultType =
+      fusionOp.getFusionResults().front().getType().cast<TensorType>();
   // If fusion type is tagged as softmax, use that.
   if (auto fusionType = fusionOp->getAttrOfType<StringAttr>("fusion_type");
       fusionType && fusionType.getValue() == "softmax_fusion") {
     HloToGpuPipelineOptions options;
-    options.blockTileDim = {8};
+    options.blockTileDim = {getGroupsPerBlock(resultType)};
     options.warpTileDim = {1};
     options.experimentalSoftmax = true;
     return options;
@@ -310,8 +323,6 @@ FusionRewritePattern::getPipelineOptions(lmhlo::FusionOp fusionOp,
   };
   if (fusionOp.getRegion().walk(callback).wasInterrupted()) return failure();
 
-  auto resultType =
-      fusionOp.getFusionResults().front().getType().cast<TensorType>();
   int64_t elementsPerThread = getElementsPerThread(resultType);
   constexpr int64_t kThreadsPerWarp = 32;
   int64_t elementsPerWarp = elementsPerThread * kThreadsPerWarp;
