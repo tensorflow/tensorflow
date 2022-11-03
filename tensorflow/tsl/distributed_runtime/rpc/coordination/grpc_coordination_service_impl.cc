@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
-namespace tensorflow {
+namespace tsl {
 
 GrpcCoordinationServiceImpl::GrpcCoordinationServiceImpl(
     thread::ThreadPool* compute_pool, ::grpc::ServerBuilder* server_builder)
@@ -28,19 +28,19 @@ GrpcCoordinationServiceImpl::GrpcCoordinationServiceImpl(
 }
 
 void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
-#define ENQUEUE_REQUEST(method)                                         \
-  do {                                                                  \
-    tf_shared_lock l(shutdown_mu_);                                     \
-    if (shutdown_) {                                                    \
-      continue;                                                         \
-    }                                                                   \
-    tsl::Call<GrpcCoordinationServiceImpl,                              \
-              grpc::CoordinationService::AsyncService, method##Request, \
-              method##Response>::                                       \
-        EnqueueRequest(                                                 \
-            &service_, cq_.get(),                                       \
-            &grpc::CoordinationService::AsyncService::Request##method,  \
-            &GrpcCoordinationServiceImpl::method##Handler, false);      \
+#define ENQUEUE_REQUEST(method)                                               \
+  do {                                                                        \
+    tf_shared_lock l(shutdown_mu_);                                           \
+    if (shutdown_) {                                                          \
+      continue;                                                               \
+    }                                                                         \
+    Call<GrpcCoordinationServiceImpl,                                         \
+         tensorflow::grpc::CoordinationService::AsyncService,                 \
+         tensorflow::method##Request, tensorflow::method##Response>::         \
+        EnqueueRequest(&service_, cq_.get(),                                  \
+                       &tensorflow::grpc::CoordinationService::AsyncService:: \
+                           Request##method,                                   \
+                       &GrpcCoordinationServiceImpl::method##Handler, false); \
   } while (0)
   ENQUEUE_REQUEST(RegisterTask);
   ENQUEUE_REQUEST(WaitForAllTasks);
@@ -67,8 +67,8 @@ void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
       // The queue is shutting down.
       break;
     }
-    tsl::GrpcCallTag<GrpcCoordinationServiceImpl>* callback_tag =
-        static_cast<tsl::GrpcCallTag<GrpcCoordinationServiceImpl>*>(tag);
+    GrpcCallTag<GrpcCoordinationServiceImpl>* callback_tag =
+        static_cast<GrpcCallTag<GrpcCoordinationServiceImpl>*>(tag);
 
     if (callback_tag) {
       callback_tag->OnCompleted(this, ok);
@@ -88,4 +88,4 @@ void GrpcCoordinationServiceImpl::Shutdown() {
       cq_.get(), gpr_now(GPR_CLOCK_MONOTONIC), nullptr);
 }
 
-}  // namespace tensorflow
+}  // namespace tsl
