@@ -888,7 +888,7 @@ pybind_extension(
         "//tensorflow/compiler/xla/pjrt/distributed:client",
         "//tensorflow/compiler/xla/pjrt/distributed:service",
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/core/distributed_runtime/preemption:preemption_sync_manager",
+        "//tensorflow/tsl/distributed_runtime/preemption:preemption_sync_manager",
         "//tensorflow/python:bfloat16_lib",
     ] + select({
         ":gpu_enabled": [

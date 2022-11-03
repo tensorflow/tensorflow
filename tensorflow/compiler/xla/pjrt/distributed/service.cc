@@ -26,9 +26,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/random.h"
@@ -514,9 +514,8 @@ CoordinationServiceImpl::CoordinationServiceImpl(
   coord_compute_pool_ = std::make_unique<tsl::thread::ThreadPool>(
       options.env, "CoordinationServiceRpcHandler",
       /*num_threads=*/4);
-  coord_rpc_service_ =
-      std::make_unique<tensorflow::GrpcCoordinationServiceImpl>(
-          coord_compute_pool_.get(), builder);
+  coord_rpc_service_ = std::make_unique<tsl::GrpcCoordinationServiceImpl>(
+      coord_compute_pool_.get(), builder);
   LOG(INFO) << "Experimental coordination service is enabled.";
 }
 
