@@ -321,7 +321,7 @@ Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
     hipSetDevice) for each thread.
     */
 
-  thread_local uint32_t default_device = 0;
+  thread_local uint32_t default_device = hipGetStreamDeviceId(nullptr);
 
   // DumpApiCallbackData(domain, cbid, cbdata);
 
@@ -338,7 +338,7 @@ Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
     }
 
     if (cbid == HIP_API_ID_hipSetDevice) {
-      default_device = data->args.hipSetDevice.deviceId;
+      default_device = hipGetStreamDeviceId(nullptr);
     }
   } else if (data->phase == ACTIVITY_API_PHASE_EXIT) {
     uint64_t enter_time = 0, exit_time = 0;
