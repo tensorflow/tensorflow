@@ -15,6 +15,8 @@
 """Defines an input type specification for tf.function."""
 
 import functools
+import inspect
+from typing import Any, Dict
 import weakref
 
 import numpy as np
@@ -37,6 +39,43 @@ from tensorflow.python.util import tf_inspect
 # indicate that a non-tensor parameter should use the value that was
 # specified when the concrete function was created.
 BOUND_VALUE = object()
+
+
+def to_fullargspec(function_type: function_type_lib.FunctionType,
+                   default_values: Dict[str, Any]) -> inspect.FullArgSpec:
+  """Generates backwards compatible FullArgSpec from FunctionType."""
+  args = []
+  varargs = None
+  varkw = None
+  defaults = []
+  kwonlyargs = []
+  kwonlydefaults = {}
+
+  for parameter in function_type.parameters.values():
+    if parameter.kind in [
+        inspect.Parameter.POSITIONAL_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD
+    ]:
+      args.append(parameter.name)
+      if parameter.default is not inspect.Parameter.empty:
+        defaults.append(default_values[parameter.name])
+    elif parameter.kind is inspect.Parameter.KEYWORD_ONLY:
+      kwonlyargs.append(parameter.name)
+      if parameter.default is not inspect.Parameter.empty:
+        kwonlydefaults[parameter.name] = default_values[parameter.name]
+    elif parameter.kind is inspect.Parameter.VAR_POSITIONAL:
+      varargs = parameter.name
+    elif parameter.kind is inspect.Parameter.VAR_KEYWORD:
+      varkw = parameter.name
+
+  return inspect.FullArgSpec(
+      args,
+      varargs,
+      varkw,
+      tuple(defaults) if defaults else None,
+      kwonlyargs,
+      kwonlydefaults if kwonlydefaults else None,
+      annotations={})
 
 
 # TODO(b/214462107): Clean up and migrate to core/function when unblocked.
@@ -63,9 +102,12 @@ class FunctionSpec(object):
     _validate_signature(input_signature)
     _validate_python_function(python_function, input_signature)
 
-    fullargspec = tf_inspect.getfullargspec(python_function)
-    # Checks if the `fullargspec` contains self or cls as its first argument.
+    fullargspec = to_fullargspec(
+        function_type_lib.FunctionType.from_callable(python_function),
+        function_type_lib.FunctionType.get_default_values(python_function))
     is_method = tf_inspect.isanytargetmethod(python_function)
+    if (is_method and (not fullargspec.args or fullargspec.args[0] != "self")):
+      fullargspec.args.insert(0, "self")
 
     # Get the function's name.  Remove functools.partial wrappers if necessary.
     while isinstance(python_function, functools.partial):
