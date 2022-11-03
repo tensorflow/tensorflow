@@ -42,6 +42,11 @@ cc_library(
         "time_utils.h",
     ],
     copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
+        "//tensorflow/tsl/platform/cloud:__pkg__",
+        "//tensorflow/tsl/profiler:internal",
+    ],
     deps = [
         ":math_utils",
         "@com_google_absl//absl/time",
@@ -123,9 +128,9 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":timespan",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -141,10 +146,10 @@ cc_library(
     deps = [
         ":math_utils",
         ":timespan",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
@@ -159,9 +164,9 @@ tf_cc_test(
     deps = [
         ":xplane_builder",
         ":xplane_visitor",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -189,13 +194,13 @@ cc_library(
         ":xplane_builder",
         ":xplane_schema",
         ":xplane_visitor",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/tsl/platform:fingerprint",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:types",
         "//tensorflow/tsl/profiler/lib:context_types",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/util:stats_calculator_portable",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -212,11 +217,11 @@ tf_cc_test(
         ":xplane_schema",
         ":xplane_utils",
         ":xplane_visitor",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:tf_xplane_visitor",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -231,7 +236,7 @@ cc_library(
     deps = [
         ":xplane_schema",
         ":xplane_visitor",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -251,8 +256,8 @@ tf_cc_test(
     srcs = ["parse_annotation_test.cc"],
     deps = [
         ":parse_annotation",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -269,11 +274,11 @@ cc_library(
         ":xplane_schema",
         ":xplane_utils",
         ":xplane_visitor",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/lib/gtl:map_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:types",
         "//tensorflow/tsl/profiler/lib:context_types_hdrs",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -293,8 +298,8 @@ cc_library(
         ":xplane_builder",
         ":xplane_schema",
         ":xplane_utils",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
@@ -311,10 +316,10 @@ tf_cc_test(
         ":xplane_schema",
         ":xplane_test_utils",
         ":xplane_visitor",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
@@ -327,8 +332,8 @@ cc_library(
     deps = [
         ":xplane_schema",
         ":xplane_utils",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/platform:regexp",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -339,8 +344,18 @@ tf_cc_test(
         ":tpu_xplane_utils",
         ":xplane_schema",
         ":xplane_utils",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "file_system_utils",
+    hdrs = ["file_system_utils.h"],
+    copts = tf_profiler_copts(),
+    deps = [
+        "//tensorflow/tsl/platform",
+        "@com_google_absl//absl/strings",
     ],
 )

@@ -42,10 +42,13 @@ class DelegatePerformanceBenchmark {
     latencyBenchmarkNativeRun(args, resultPath);
   }
 
-  // TODO(b/240438534): add the logics to trigger accuracy benchmark tests.
-  public static void runAccuracyBenchmark(String[] args, String resultPath) {
-    // no-op
+  public static int runAccuracyBenchmark(
+      String[] args, int modelFd, long modelOffset, long modelSize, String resultPath) {
+    return accuracyBenchmarkNativeRun(args, modelFd, modelOffset, modelSize, resultPath);
   }
 
   private static native void latencyBenchmarkNativeRun(String[] args, String resultPath);
+
+  private static native int accuracyBenchmarkNativeRun(
+      String[] args, int modelFd, long modelOffset, long modelSize, String resultPath);
 }

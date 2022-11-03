@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -44,19 +45,19 @@ namespace gpu {
 class GpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
  public:
   GpuXlaRuntimeAotCompilationResult(HloModuleProto hlo,
-                                    const std::string& obj_file,
-                                    const std::string& mlir_module,
+                                    std::string_view obj_file,
+                                    std::string_view mlir_module,
                                     EntryFunctionAttributes entry_func_attrs,
-                                    const std::string& gpu_asm_text,
+                                    std::string_view gpu_asm_text,
                                     absl::Span<const uint8_t> gpu_binary) {
     XlaRuntimeExecutableProto xla_runtime_executable;
     *xla_runtime_executable.mutable_hlo_module_proto() = hlo;
-    *xla_runtime_executable.mutable_entry_func_attrs() = entry_func_attrs;
-    xla_runtime_executable.set_obj_file(obj_file);
-    xla_runtime_executable.set_mlir_module(mlir_module);
+    xla_runtime_executable.set_obj_file(std::string(obj_file));
+    xla_runtime_executable.set_mlir_module(std::string(mlir_module));
     *xla_runtime_gpu_executable_.mutable_xla_runtime_executable() =
         xla_runtime_executable;
-    xla_runtime_gpu_executable_.set_gpu_asm_text(gpu_asm_text);
+    *xla_runtime_gpu_executable_.mutable_entry_func_attrs() = entry_func_attrs;
+    xla_runtime_gpu_executable_.set_gpu_asm_text(std::string(gpu_asm_text));
     xla_runtime_gpu_executable_.set_gpu_binary(gpu_binary.data(),
                                                gpu_binary.size());
   }
@@ -161,6 +162,10 @@ class GpuCompiler : public LLVMCompiler {
                       const HloModule* debug_module) = 0;
 
   Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
+
+  virtual StatusOr<bool> CanUseLinkModules(const HloModuleConfig& config) {
+    return false;
+  }
 
   virtual StatusOr<std::vector<uint8_t>> LinkModules(
       se::StreamExecutor* stream_exec,

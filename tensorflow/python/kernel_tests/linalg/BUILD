@@ -2,10 +2,7 @@
 
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
-package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],
-)
+package(licenses = ["notice"])
 
 cuda_py_test(
     name = "cholesky_op_test",
@@ -620,7 +617,6 @@ cuda_py_test(
     srcs = ["matrix_solve_ls_op_test.py"],
     tags = [
         "noasan",  # TODO(b/337374867) fails with -fsanitize=null
-        "nomac",  # TODO(b/233829166): Breaks nightly build
     ],
     deps = [
         "//tensorflow/python:array_ops",

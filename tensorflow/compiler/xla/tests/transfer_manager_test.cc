@@ -197,7 +197,7 @@ XLA_TEST_F(TransferManagerTest,
   Literal literal = LiteralUtil::CreateR2WithLayout<float>(
       {{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}}, LayoutUtil::MakeLayout({0, 1}));
   const Shape ondevice_shape =
-      ShapeUtil::MakeShapeWithLayout(F32, {2, 3}, {1, 0});
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3}, {1, 0});
   auto device_buffer = AllocateDeviceBuffer(ondevice_shape);
 
   // Round trip literal through device. Set the on-device layout to something

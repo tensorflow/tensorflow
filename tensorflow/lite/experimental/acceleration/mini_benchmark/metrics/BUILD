@@ -19,6 +19,7 @@ load("//tensorflow/lite/experimental/acceleration/mini_benchmark:special_rules.b
 
 default_visibility_group = [
     "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
+    "//tensorflow/lite/tools/benchmark:__subpackages__",
 ] + minibenchmark_visibility_allowlist()
 
 package(

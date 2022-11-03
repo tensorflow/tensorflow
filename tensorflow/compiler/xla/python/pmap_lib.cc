@@ -118,35 +118,36 @@ xla::StatusOr<ShardArgResult> ShardArg(
     const py::function& python_fallback) {
   if (arg.get_type() == xla::PyArray::type()) {
     auto py_array = py::reinterpret_borrow<xla::PyArray>(arg);
+    if (py_array.fastpath_enabled()) {
+      if (py_array.sharding().get_type() ==
+          input_spec.array_sharding.get_type()) {
+        auto* pmap_sharding = py_array.sharding().cast<jax::PmapSharding*>();
+        auto* cached_pmap_sharding =
+            input_spec.array_sharding.cast<jax::PmapSharding*>();
 
-    if (py_array.sharding().get_type() ==
-        input_spec.array_sharding.get_type()) {
-      auto* pmap_sharding = py_array.sharding().cast<jax::PmapSharding*>();
-      auto* cached_pmap_sharding =
-          input_spec.array_sharding.cast<jax::PmapSharding*>();
+        if (pmap_sharding->sharding_spec() ==
+            cached_pmap_sharding->sharding_spec()) {
+          ShardArgResult result;
+          result.owning_sda = py::reinterpret_borrow<py::object>(arg);
+          auto& per_device_buffers = result.per_device_buffers;
+          per_device_buffers.reserve(devices.size());
 
-      if (pmap_sharding->sharding_spec() ==
-          cached_pmap_sharding->sharding_spec()) {
-        ShardArgResult result;
-        result.owning_sda = py::reinterpret_borrow<py::object>(arg);
-        auto& per_device_buffers = result.per_device_buffers;
-        per_device_buffers.reserve(devices.size());
+          DCHECK_EQ(py_array.num_shards(), devices.size());
 
-        DCHECK_EQ(py_array.num_shards(), devices.size());
-
-        for (int i = 0; i < devices.size(); ++i) {
-          auto* pjrt_buffer = py_array.GetBuffer(i);
-          if (devices[i] == pjrt_buffer->device()) {
-            per_device_buffers.push_back(pjrt_buffer);
-          } else {
-            TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtBuffer> out,
-                                pjrt_buffer->CopyToDevice(devices[i]));
-            per_device_buffers.push_back(out.get());
-            result.owned_buffers.push_back(std::move(out));
+          for (int i = 0; i < devices.size(); ++i) {
+            auto* pjrt_buffer = py_array.GetBuffer(i);
+            if (devices[i] == pjrt_buffer->device()) {
+              per_device_buffers.push_back(pjrt_buffer);
+            } else {
+              TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtBuffer> out,
+                                  pjrt_buffer->CopyToDevice(devices[i]));
+              per_device_buffers.push_back(out.get());
+              result.owned_buffers.push_back(std::move(out));
+            }
           }
-        }
 
-        return result;
+          return result;
+        }
       }
     }
   }

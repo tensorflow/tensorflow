@@ -1579,8 +1579,8 @@ class ConvertSortToTfTopk : public OpConversionPattern<mhlo::SortOp> {
     if (op->getOperands().size() != 2)
       return rewriter.notifyMatchFailure(
           op, "only match for the case where operands is of size 2");
-    auto keys = op.operands()[0];
-    auto indices = op.operands()[1];
+    auto keys = op.getInputs()[0];
+    auto indices = op.getInputs()[1];
     auto keys_ty = keys.getType().dyn_cast_or_null<ShapedType>();
     auto indices_ty = indices.getType().dyn_cast_or_null<ShapedType>();
     if (!keys_ty || !keys_ty.hasStaticShape() ||
@@ -1883,7 +1883,7 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
     if (failed(MatchBinaryReduceFunction<BinaryOp>(reduce_op.getBody())))
       return failure();
 
-    auto operand = reduce_op.operands()[0];
+    auto operand = reduce_op.getInputs()[0];
 
     // Get reduction dimension.
     DenseIntElementsAttr dimension = reduce_op.getDimensions();
@@ -1920,12 +1920,12 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
   // This function tries to match that the "mhlo::ReduceOp" only has one
   // operand, one init_value and one result.
   LogicalResult MatchReduceOpOperand(mhlo::ReduceOp reduce_op) const {
-    if (reduce_op.operands().size() != 1 ||
+    if (reduce_op.getInputs().size() != 1 ||
         reduce_op.getInitValues().size() != 1 ||
         reduce_op.getResults().size() != 1)
       return failure();
 
-    if (!reduce_op.operands()[0].getType().isa<RankedTensorType>())
+    if (!reduce_op.getInputs()[0].getType().isa<RankedTensorType>())
       return failure();
     if (!reduce_op.getType(0).isa<RankedTensorType>()) return failure();
     return success();
@@ -2046,7 +2046,7 @@ class ConvertReduceOpToTfArgMinMax
   LogicalResult matchAndRewrite(
       mhlo::ReduceOp reduce_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    if (reduce_op.operands().size() != 2) return failure();
+    if (reduce_op.getInputs().size() != 2) return failure();
     if (reduce_op.getDimensions().getNumElements() != 1) return failure();
 
     // Check that the operand init is the expected value.
@@ -2064,7 +2064,7 @@ class ConvertReduceOpToTfArgMinMax
 
     // Verify that the second argument is an Iota op along the same dimension
     // as the reduction.
-    Value iota = reduce_op.operands().back();
+    Value iota = reduce_op.getInputs().back();
     if (!MatchIota(reduce_op.getDimensions(), iota)) return failure();
 
     // Match the reduction computation.
@@ -2072,7 +2072,7 @@ class ConvertReduceOpToTfArgMinMax
     if (failed(matchReduceComputation(reduce_op.getBody(), is_float)))
       return failure();
 
-    Value operand = reduce_op.operands().front();
+    Value operand = reduce_op.getInputs().front();
     int64_t axis = reduce_op.getDimensions().getValues<int64_t>()[0];
 
     auto dim_type = RankedTensorType::get({1}, rewriter.getI64Type());
@@ -2351,7 +2351,7 @@ bool IsSpatialPoolingWithoutDilation(
 
   // Check that the individual padding values are corresponding to SAME
   // padding from TensorFlow.
-  auto operand_type = rw.operands()[0].getType().dyn_cast<RankedTensorType>();
+  auto operand_type = rw.getInputs()[0].getType().dyn_cast<RankedTensorType>();
   RankedTensorType output_type =
       rw.getResult(0).getType().dyn_cast<RankedTensorType>();
   if (!operand_type || !output_type) return false;
@@ -2384,7 +2384,7 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
   LogicalResult matchAndRewrite(
       mhlo::ReduceWindowOp rw, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    if (rw.getNumResults() != 1 || rw.operands().size() != 1 ||
+    if (rw.getNumResults() != 1 || rw.getInputs().size() != 1 ||
         rw.getInitValues().size() != 1)
       return failure();
 
@@ -2400,7 +2400,7 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
       return failure();
     }
 
-    auto operand_type = rw.operands()[0].getType().cast<ShapedType>();
+    auto operand_type = rw.getInputs()[0].getType().cast<ShapedType>();
 
     // For a cumulative op, require a tensor of 1s for each dimension in
     // operand.
@@ -2470,7 +2470,7 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
         rw->getLoc(),
         rewriter.getIntegerAttr(rewriter.getIntegerType(64), cumulative_axis));
 
-    rewriter.replaceOpWithNewOp<TfCumOp>(rw, rw.getType(0), rw.operands()[0],
+    rewriter.replaceOpWithNewOp<TfCumOp>(rw, rw.getType(0), rw.getInputs()[0],
                                          axis, /* exclusive */ false,
                                          /* reverse */ false);
     return success();
@@ -2568,7 +2568,7 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       }
 
       return replaceWithAvgPool(
-          div_op, rw.operands()[0],
+          div_op, rw.getInputs()[0],
           llvm::to_vector<4>(rw.getWindowDimensions().getValues<int64_t>()),
           window_strides, "VALID", rewriter);
     }
@@ -2584,7 +2584,7 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       // as the init value.
       DenseFPElementsAttr rhs_operand;
       if (!isFloatZero(rw_rhs.getInitValues()[0]) ||
-          !matchPattern(rw_rhs.operands()[0], m_Constant(&rhs_operand)) ||
+          !matchPattern(rw_rhs.getInputs()[0], m_Constant(&rhs_operand)) ||
           !rhs_operand.isSplat() ||
           !rhs_operand.getSplatValue<APFloat>().isExactlyValue(1.0))
         return failure();
@@ -2598,7 +2598,7 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
         return failure();
 
       return replaceWithAvgPool(
-          div_op, rw.operands()[0],
+          div_op, rw.getInputs()[0],
           llvm::to_vector<4>(rw.getWindowDimensions().getValues<int64_t>()),
           window_strides, padding_mode, rewriter);
     }
@@ -2666,7 +2666,7 @@ class ConvertMaxPoolOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
     }
 
     return replaceWithMaxPool(
-        rw, rw.operands()[0],
+        rw, rw.getInputs()[0],
         llvm::to_vector<4>(rw.getWindowDimensions().getValues<int64_t>()),
         window_strides, padding_mode, rewriter);
   }
@@ -3228,7 +3228,7 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
   LogicalResult matchAndRewrite(
       mhlo::ScatterOp scatter_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    OperandRange operands = scatter_op.operands();
+    OperandRange operands = scatter_op.getInputs();
     Value indices = scatter_op.getScatterIndices();
     OperandRange updates = scatter_op.getUpdates();
     if (operands.size() != 1 || updates.size() != 1) return failure();

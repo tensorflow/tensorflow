@@ -26,7 +26,6 @@ package(
 )
 
 COMMON_PROTO_SRCS = [
-    "bfc_memory_map.proto",
     "config.proto",
     "cluster.proto",
     "debug.proto",
@@ -128,25 +127,6 @@ tf_proto_library(
 )
 
 tf_proto_library(
-    name = "coordination_config_proto",
-    srcs = ["coordination_config.proto"],
-    cc_api_version = 2,
-    make_default_target_header_only = True,
-)
-
-tf_proto_library(
-    name = "coordination_service_proto",
-    srcs = ["coordination_service.proto"],
-    has_services = 1,
-    cc_api_version = 2,
-    cc_stubby_versions = ["2"],
-    create_grpc_library = True,
-    create_service = True,
-    protodeps = ["//tensorflow/compiler/xla/pjrt/distributed:protocol_proto"] +
-                tf_additional_all_protos(),
-)
-
-tf_proto_library(
     name = "replay_log_proto",
     srcs = ["replay_log.proto"],
     cc_api_version = 2,
@@ -187,7 +167,6 @@ exports_files(
         "tensorflow_server.proto",
         "trackable_object_graph.proto",
         "transport_options.proto",
-        "distributed_runtime_payloads.proto",
         "core_platform_payloads.proto",
         "fingerprint.proto",
     ],
@@ -201,6 +180,7 @@ tf_proto_library(
         #
         # Note that some protos are in neither core_proto_srcs nor this
         # filegroup; e.g. ones with individual proto_library targets.
+        "bfc_memory_map.proto",
         "control_flow.proto",
         # TODO(ebrevdo): Re-enable once CriticalSection is in core.
         # "critical_section.proto",
@@ -215,24 +195,30 @@ tf_proto_library(
         "meta_graph.proto",
         "named_tensor.proto",
         "remote_tensor_handle.proto",
+        "rpc_options.proto",
         "saved_model.proto",
         "saved_object_graph.proto",
         "struct.proto",
         "tensorflow_server.proto",
         "trackable_object_graph.proto",
         "transport_options.proto",
-        "distributed_runtime_payloads.proto",
         "core_platform_payloads.proto",
         "fingerprint.proto",
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
-        ":coordination_config_proto",
         ":error_codes_proto_impl",
         "//tensorflow/core/framework:protos_all",
+        "//tensorflow/tsl/protobuf:bfc_memory_map_proto",
+        "//tensorflow/tsl/protobuf:coordination_config_proto",
+        "//tensorflow/tsl/protobuf:rpc_options_proto",
     ],
     tags = ["alt_dep=//third_party/tensorflow/core:protos_all"],
+    exports = [
+        "//tensorflow/tsl/protobuf:bfc_memory_map_proto",
+        "//tensorflow/tsl/protobuf:rpc_options_proto",
+    ],
 )
 
 # copybara:uncomment_begin(google-only)

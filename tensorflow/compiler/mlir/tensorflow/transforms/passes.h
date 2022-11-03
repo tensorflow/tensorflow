@@ -295,11 +295,17 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateRemoveUnusedArgumentsPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateRemoveUnusedWhileResultsPass();
 
+// Hoists loop invariant ops to the outside of the loop.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateHoistLoopInvariantPass();
+
 // Creates VarHandleOps right next to the operations that use them.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLocalizeVarHandlesPass();
 
 // Removes all TF attributes
-std::unique_ptr<OperationPass<func::FuncOp>> CreateStripTfAttributesPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateStripTfAttributesPass();
+
+// Converts AnonymousIteratorOps to (named) IteratorOps.
+std::unique_ptr<OperationPass<ModuleOp>> CreateNameAnonymousIteratorsPass();
 
 // Populates the supplied passmanager with the passes required to run the
 // CPU/GPU bridge.
@@ -456,7 +462,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateXlaInlineDeviceOpsPass();
 
 // Creates a pass that rewrites partitioned calls with `_xla_compile_device
 // type` with `tf.XlaLaunch` ops.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateXlaRewritePass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateXlaRewritePass();
 }  // namespace TFDevice
 
 namespace TFTPU {

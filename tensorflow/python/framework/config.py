@@ -878,12 +878,6 @@ def set_logical_device_configuration(device, logical_devices):
 def enable_mlir_bridge():
   """Enables experimental MLIR-Based TensorFlow Compiler Bridge.
 
-  DO NOT USE, DEV AND TESTING ONLY AT THE MOMENT.
-
-  NOTE: MLIR-Based TensorFlow Compiler is under active development and has
-  missing features, please refrain from using. This API exists for development
-  and testing only.
-
   TensorFlow Compiler Bridge (TF Bridge) is responsible for translating parts
   of TensorFlow graph into a form that can be accepted as an input by a backend
   compiler such as XLA.

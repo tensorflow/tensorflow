@@ -48,7 +48,6 @@ tf_proto_library(
     create_java_proto = False,
     protodeps = tf_additional_all_protos() + [
         ":common_proto",
-        "//tensorflow/core/data:dataset_proto",
     ],
     visibility = [
         ":data_transfer_visibility",
@@ -249,7 +248,7 @@ cc_library(
     deps = [
         ":worker_proto_cc",
         "//tensorflow/core:framework",
-        "//tensorflow/core/data:dataset_proto_cc",
+        "//tensorflow/core/framework:dataset_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:macros",
@@ -706,7 +705,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",
@@ -930,7 +928,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
-        "//tensorflow/core/data:dataset_proto_cc",
+        "//tensorflow/core/framework:dataset_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -1007,7 +1005,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/data:standalone",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:errors",

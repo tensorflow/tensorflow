@@ -86,37 +86,6 @@ package_group(
 )
 
 config_setting(
-    # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm for
-    # sparse matrix multiplications. You will also need appropriate -mavx*
-    # options, as required by specific op you use.
-    name = "xsmm",
-    define_values = {
-        "tensorflow_xsmm": "1",
-    },
-)
-
-config_setting(
-    # Add "--define tensorflow_xsmm_convolutions=1" to your build command to
-    # use libxsmm for forward convolutions. You will also need appropriate
-    # -mavx* # options, as required by specific op you use.
-    name = "xsmm_convolutions",
-    define_values = {
-        "tensorflow_xsmm_convolutions": "1",
-    },
-)
-
-config_setting(
-    # Add "--define tensorflow_xsmm_convolutions=1 --define
-    # tensorflow_xsmm_backward_convolutions=1" to your build command to use libxsmm for
-    # backward convolutions (and possibly more in the future). You will also
-    # need appropriate -mavx* options, as required by specific op you use.
-    name = "xsmm_backward_convolutions",
-    define_values = {
-        "tensorflow_xsmm_backward_convolutions": "1",
-    },
-)
-
-config_setting(
     # Add "--define tensorflow_mkldnn_contraction_kernel=0" to your build command to disable mkldnn
     # sgemm in Eigen tensor contractions (matrix multiplications and convolutions). The mkldnn
     # kernels are generated at runtime and use avx/avx2/fma/avx512 based on cpu status registers
@@ -1802,32 +1771,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
-)
-
-tf_cc_test(
-    name = "xsmm_conv2d_test",
-    size = "small",
-    srcs = select({
-        ":xsmm_convolutions": ["xsmm_conv2d_test.cc"],
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":conv_ops",
-        ":ops_testutil",
-        ":ops_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ] + select({
-        ":xsmm_convolutions": [
-            "@libxsmm_archive//:xsmm_avx",
-        ],
-        "//conditions:default": [],
-    }),
 )
 
 tf_cuda_cc_test(
@@ -3521,17 +3464,8 @@ MATH_DEPS = [
 
 tf_kernel_library(
     name = "sparse_matmul_op",
-    defines = select({
-        ":xsmm": ["TENSORFLOW_USE_LIBXSMM"],
-        "//conditions:default": [],
-    }),
     prefix = "sparse_matmul_op",
-    deps = MATH_DEPS + [":eigen_contraction_kernel"] + select({
-        ":xsmm": [
-            "@libxsmm_archive//:xsmm_avx",
-        ],
-        "//conditions:default": [],
-    }),
+    deps = MATH_DEPS + [":eigen_contraction_kernel"],
 )
 
 cc_library(
@@ -3592,19 +3526,12 @@ tf_kernel_library(
     name = "matmul_op",
     # <prefix>*impl.h are excluded by default from the CPU build, add explicitly.
     hdrs = ["matmul_op_impl.h"],
-    defines = select({
-        ":xsmm": ["TENSORFLOW_USE_LIBXSMM"],
-        "//conditions:default": [],
-    }),
     prefix = "matmul_op",
     deps = MATH_DEPS + [
         ":eigen_contraction_kernel",
         ":fused_eigen_output_kernels",
         ":loose_headers",
-    ] + select({
-        ":xsmm": ["@libxsmm_archive//:xsmm_avx"],
-        "//conditions:default": [],
-    }) + mkl_deps() + if_cuda([
+    ] + mkl_deps() + if_cuda([
         ":matmul_util",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
@@ -4096,38 +4023,26 @@ tf_kernel_library(
     name = "conv_ops",
     srcs = [
         "conv_grad_filter_ops.cc",
+        "conv_grad_input_ops.cc",
+        "conv_grad_input_ops_bfloat16.cc",
         "conv_grad_input_ops_double.cc",
         "conv_grad_input_ops_float.cc",
         "conv_grad_input_ops_half.cc",
-        "conv_grad_input_ops_bfloat16.cc",
         "conv_grad_input_ops_int32.cc",
-        "conv_grad_input_ops.cc",
         "conv_grad_ops_3d.cc",
         "deep_conv2d.cc",
-    ] + select({
-        ":xsmm_convolutions": ["xsmm_conv2d.cc"],
-        "//conditions:default": [],
-    }),
+    ],
     hdrs = [
         "autotune_conv_impl.h",
-        "fill_functor.h",
-        "conv_grad_ops.h",
         "conv_grad_input_ops.h",
+        "conv_grad_ops.h",
+        "conv_ops_fused_impl.h",
         "deep_conv2d.h",
+        "fill_functor.h",
         "gemm_functors.h",
         "winograd_transform.h",
-        "conv_ops_fused_impl.h",
-    ] + select({
-        ":xsmm_convolutions": ["xsmm_conv2d.h"],
-        "//conditions:default": [],
-    }),
-    defines = select({
-        ":xsmm_convolutions": ["TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS"],
-        "//conditions:default": [],
-    }) + select({
-        ":xsmm_backward_convolutions": ["TENSORFLOW_USE_LIBXSMM_BACKWARD_CONVOLUTIONS"],
-        "//conditions:default": [],
-    }) + [
+    ],
+    defines = [
         "EIGEN_NEON_GEBP_NR=4",
     ],
     prefix = "conv_ops",
@@ -4154,12 +4069,7 @@ tf_kernel_library(
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/util:image_resizer_state",
         "//tensorflow/core/util/proto:proto_utils",
-    ] + select({
-        ":xsmm_convolutions": [
-            "@libxsmm_archive//:xsmm_avx",
-        ],
-        "//conditions:default": [],
-    }) + if_cuda([
+    ] + if_cuda([
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/tsl/platform/default/build_config:cudnn_plugin",
@@ -6692,13 +6602,7 @@ filegroup(
         "//tensorflow/core/kernels/image:encode_png_op.cc",
         "//tensorflow/core/kernels/image:colorspace_op.cc",
         "//tensorflow/core/kernels/uniform_quant_ops:portable_all_op_kernels",
-    ] + select({
-        ":xsmm_convolutions": [
-            "xsmm_conv2d.h",
-            "xsmm_conv2d.cc",
-        ],
-        "//conditions:default": [],
-    }),
+    ],
 )
 
 filegroup(
@@ -7016,7 +6920,6 @@ filegroup(
             "unicode_ops.cc",
             "unicode_script_op.cc",
             # Ops that are inherently incompatible with Android (e.g. tied to x86 platform).
-            "xsmm_*",
             "nextafter_op.cc",
             "initializable_lookup_table.*",
             "lookup_util.*",
@@ -7894,7 +7797,6 @@ tf_cc_shared_library(
         "@icu//:__subpackages__",
         "@jsoncpp_git//:__subpackages__",
         "@libjpeg_turbo//:__subpackages__",
-        "@libxsmm_archive//:__subpackages__",
         "@llvm_openmp//:__subpackages__",
         "@llvm-project//:__subpackages__",
         "@llvm_terminfo//:__subpackages__",

@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,12 +25,7 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class GpuCompilerTest : public HloTestBase {
- public:
-  GpuCompilerTest()
-      : HloTestBase(PlatformUtil::GetPlatform("CUDA").value(),
-                    GetReferencePlatform()) {}
-};
+using GpuCompilerTest = HloTestBase;
 
 TEST_F(GpuCompilerTest, CopyInsertionFusion) {
   const char* hlo_text = R"(
@@ -43,7 +38,7 @@ ENTRY main {
 )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0, 0}));
 
-  auto module = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_text).value();
   std::unique_ptr<HloModule> compiled_module =
       backend()
           .compiler()

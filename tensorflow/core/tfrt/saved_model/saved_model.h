@@ -216,7 +216,7 @@ class SavedModelImpl final : public SavedModel {
       std::unique_ptr<tfrt::ResourceContext> resource_context,
       std::unique_ptr<GraphExecutor> graph_executor);
 
-  ~SavedModelImpl() override;
+  ~SavedModelImpl() override = default;
 
   SavedModelImpl(const SavedModelImpl&) = delete;
   SavedModelImpl& operator=(const SavedModelImpl&) = delete;
@@ -270,7 +270,8 @@ class SavedModelImpl final : public SavedModel {
   // Returns the loading result given the signature names.
   tensorflow::StatusOr<
       std::reference_wrapper<const SavedModelImpl::LoadingResult>>
-  GetOrCreateLoadingResult(absl::Span<const std::string> names)
+  GetOrCreateLoadingResult(const RunOptions& run_options,
+                           absl::Span<const std::string> names)
       TF_LOCKS_EXCLUDED(loading_result_cache_mu_);
 
   // Runs `func` with the given inputs, and outputs the result.
@@ -309,6 +310,8 @@ class SavedModelImpl final : public SavedModel {
   bool lazy_loading_enabled_ = false;
 };
 
+class SavedModelMiraImpl;
+
 }  // namespace tfrt_stub
 }  // namespace tensorflow
 
@@ -316,6 +319,7 @@ namespace tfrt {
 
 using SavedModel = ::tensorflow::tfrt_stub::SavedModel;
 using SavedModelImpl = ::tensorflow::tfrt_stub::SavedModelImpl;
+using SavedModelMiraImpl = ::tensorflow::tfrt_stub::SavedModelMiraImpl;
 using TensorSpec = ::tensorflow::tfrt_stub::TensorSpec;
 using FunctionMetadata = ::tensorflow::tfrt_stub::FunctionMetadata;
 

@@ -112,7 +112,7 @@ class MemoryChecker(object):
     """Raises an exception if a leak is detected.
 
     This algorithm classifies a series of allocations as a leak if it's the same
-    type(Python) orit happens at the same stack trace(C++) at every snapshot,
+    type(Python) or it happens at the same stack trace(C++) at every snapshot,
     but possibly except one snapshot.
     """
 

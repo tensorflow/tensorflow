@@ -98,6 +98,7 @@ cc_library(
         ":run_handler",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",

@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -225,9 +225,10 @@ StatusOr<bool> HloCSE::Run(
                 ? ShapeUtil::Equal(a->shape(), b->shape())
                 : ShapeUtil::Compatible(a->shape(), b->shape()));
   };
-  const std::function<bool(const HloComputation*, const HloComputation*)>
-      eq_computations = [](const HloComputation* lhs,
-                           const HloComputation* rhs) { return *lhs == *rhs; };
+  const auto eq_computations = [](const HloComputation* lhs,
+                                  const HloComputation* rhs) {
+    return *lhs == *rhs;
+  };
 
   auto cse_equal = [&](const CseKey& lhs, const CseKey& rhs) {
     return lhs.hlo->IdenticalIgnoringCommutativeOperandOrder(

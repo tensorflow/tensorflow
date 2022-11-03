@@ -1,5 +1,8 @@
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
+load(
+    "//tensorflow/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
+)
 load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
@@ -15,6 +18,7 @@ package(
         # tensorflow/core/framework uses map_util, and flatmap
         "//tensorflow/core/framework:__pkg__",
         "//tensorflow/tsl/framework:__pkg__",
+        "//tensorflow/tsl/platform/cloud:__pkg__",
         # tensorflow/core/util uses inlined_vector
         "//tensorflow/core/util:__pkg__",
         # tensorflow/core/tfrt/utils uses inlined_vector
@@ -23,6 +27,7 @@ package(
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
         "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/core/lib/gtl:__subpackages__",
+        "//tensorflow/tsl/distributed_runtime/rpc:__pkg__",
         "//tensorflow/tsl/profiler/utils:__pkg__",
     ],
     licenses = ["notice"],
@@ -196,7 +201,7 @@ filegroup(
     ],
 )
 
-tf_cc_tests(
+tsl_cc_test(
     name = "tsl_lib_gtl_tests",
     srcs = [
         "compactptrset_test.cc",

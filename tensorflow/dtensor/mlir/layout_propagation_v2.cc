@@ -770,6 +770,12 @@ class LayoutPrinter : public mlir::OpAsmPrinter {
     os_.indent(indent_level_);
   }
 
+  /// Increase indentation.
+  void increaseIndent() override { indent_level_ += 2; }
+
+  /// Decrease indentation.
+  void decreaseIndent() override { indent_level_ -= 2; }
+
   // Note that we ignore the parameters printEntryBlockArgs and
   // printBlockTerminators for simplicity.
   void printRegion(mlir::Region& blocks, bool printEntryBlockArgs,

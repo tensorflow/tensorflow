@@ -18,7 +18,7 @@ module attributes {tf_saved_model.semantics} {
   // Test case: Invalid multiple blocks in the initializer funcion.
   "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
   // expected-error@+1 {{expects exactly one block in the MLIR function}}
-  func.func @init() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"]} {
+  func.func @init() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"], tf_saved_model.initializer_type = "restore_op"} {
     cf.br ^bb1
     ^bb1:
     func.return
@@ -33,7 +33,7 @@ module attributes {tf_saved_model.semantics} {
   // CHECK: tf.Const
   // CHECK: return
   "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
-  func.func @init() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"]} {
+  func.func @init() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"], tf_saved_model.initializer_type = "restore_op"} {
     "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
     func.return
   }
@@ -49,7 +49,7 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
   // CHECK-NOT: tf.AssignAddVariableOp
   // CHECK: return
   "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
-  func.func @init() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"]} {
+  func.func @init() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"], tf_saved_model.initializer_type = "restore_op"} {
     %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<2x8xi32>>>
     %1 = "tf.VarHandleOp"() {container = "c", shared_name = "w"} : () -> tensor<*x!tf_type.resource<tensor<2xi32>>>
     %2 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
@@ -70,7 +70,7 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
   // CHECK-NOT: tf.AssignAddVariableOp
   // CHECK: return
   "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
-  func.func @init() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"]} {
+  func.func @init() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"], tf_saved_model.initializer_type = "restore_op"} {
     %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<2x8xi32>>>
     %1 = "tf.VarHandleOp"() {container = "c", shared_name = "w"} : () -> tensor<*x!tf_type.resource<tensor<2xi32>>>
     %2 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>

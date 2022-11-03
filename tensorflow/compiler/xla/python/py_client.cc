@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/callback.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/pprof_profile_builder.h"
+#include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -94,6 +96,9 @@ std::vector<py::object> PyClient::LiveBuffers() {
             py::reinterpret_borrow<py::object>(buffer->AsHandle()));
       }
     }
+  }
+  for (py::object& array : LiveArrays()) {
+    buffers.push_back(std::move(array));
   }
   return buffers;
 }
@@ -414,18 +419,39 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
   CHECK(PyGILState_Check());
   absl::flat_hash_set<PjRtBuffer*> buffer_set;
   absl::flat_hash_map<HeapProfileKey, int64_t> entries;
+
+  auto add_buffer_to_profile = [&](PjRtBuffer* buffer, Traceback* traceback) {
+    // We only wish to count each PjRtBuffer once, even though they may be
+    // shared by multiple PyBuffers.
+    if (!buffer->IsDeleted() && buffer_set.insert(buffer).second) {
+      TF_ASSIGN_OR_RETURN(size_t size, buffer->GetOnDeviceSizeInBytes());
+      HeapProfileKey key{traceback, static_cast<int64_t>(size),
+                         buffer->device()};
+      ++entries[key];
+    }
+    return OkStatus();
+  };
+
   for (PyBuffer* device_buffers : buffers_) {
     for (PyBuffer* buffer = device_buffers; buffer; buffer = buffer->next_) {
-      // We only wish to count each PjRtBuffer once, even though they may be
-      // shared by multiple PyBuffers.
-      if (!buffer->is_deleted() && buffer_set.insert(buffer->buffer()).second) {
-        TF_ASSIGN_OR_RETURN(size_t size,
-                            buffer->buffer()->GetOnDeviceSizeInBytes());
-        HeapProfileKey key{buffer->traceback().get(),
-                           static_cast<int64_t>(size),
-                           buffer->buffer()->device()};
-        ++entries[key];
-      }
+      TF_RETURN_IF_ERROR(
+          add_buffer_to_profile(buffer->buffer(), buffer->traceback().get()));
+    }
+  }
+
+  for (PyArray_Storage* array = arrays_; array; array = array->next) {
+    for (const auto& buffer : array->pjrt_buffers) {
+      TF_RETURN_IF_ERROR(
+          add_buffer_to_profile(buffer.get(), array->traceback.get()));
+    }
+  }
+
+  for (auto* sharded_buffer = sharded_buffers_; sharded_buffer;
+       sharded_buffer = sharded_buffer->next_) {
+    for (int i = 0; i < sharded_buffer->num_devices(); ++i) {
+      auto* buffer = sharded_buffer->GetPjRtBuffer(i);
+      TF_RETURN_IF_ERROR(
+          add_buffer_to_profile(buffer, sharded_buffer->traceback().get()));
     }
   }
 
@@ -711,12 +737,10 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",
                                              &XlaPythonCpuCallback);
 
-#if TENSORFLOW_USE_ROCM
-XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_gpu_callback",
-                                         &XlaPythonGpuCallback, "ROCM");
-#elif defined(GOOGLE_CUDA)
-XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_gpu_callback",
-                                         &XlaPythonGpuCallback, "CUDA");
-#endif  // TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(
+    "xla_python_gpu_callback", &XlaPythonGpuCallback,
+    absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value()));
+#endif
 
 }  // namespace xla

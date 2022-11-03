@@ -115,6 +115,9 @@ def TestShapeComponentAnalysis : Pass<"test-print-shape-components",
 def LowerIndexCastPass
     : Pass<"lower-index-cast", "mlir::func::FuncOp"> {
   let summary = "Lower index cast on tensors to tensor dialect";
+  let dependentDialects = [
+    "tensor::TensorDialect"
+  ];
   let constructor = "createLowerIndexCastPass()";
 }
 
@@ -160,6 +163,14 @@ def GenericHostToLLVMPass : Pass<"generic-host-to-llvm", "ModuleOp"> {
   let options = [];
 }
 
+def InlineFusionPass : Pass<"inline-fusion", "mlir::func::FuncOp"> {
+  let summary = "Inline mhlo.fusion regions.";
+  let description = [{
+    Inlines all mhlo.fusion regions into the parent block.
+  }];
+  let constructor = "hlo::createInlineFusionPass()";
+}
+
 def UnbufferizePass : Pass<"unbufferize", "mlir::func::FuncOp"> {
   let summary = "Unbufferize partially bufferized functions.";
   let description = [{
@@ -187,6 +198,7 @@ def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
   let dependentDialects = [
     "arith::ArithDialect",
     "gml_st::GmlStDialect",
+    "scf::SCFDialect",
     "tensor::TensorDialect"
   ];
   let constructor = "createScalarizationPass()";

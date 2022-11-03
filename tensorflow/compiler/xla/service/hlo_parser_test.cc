@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -2258,6 +2259,34 @@ ENTRY test {
 },
 
 {
+"SparseShapeWithIndexPrimitiveType",
+R"(HloModule test
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(D,C)#(u32)} parameter(0)
+})",
+R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)#(u32)})->f32[10,10]{1,0:D(D,C)#(u32)}}
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(D,C)#(u32)} parameter(0)
+})",
+},
+
+{
+"SparseShapeWithPointerPrimitiveType",
+R"(HloModule test
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(D,C)*(u32)} parameter(0)
+})",
+R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)*(u32)})->f32[10,10]{1,0:D(D,C)*(u32)}}
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(D,C)*(u32)} parameter(0)
+})",
+},
+
+{
 "SparseShapeWithPhysicalShape",
 R"(HloModule test
 
@@ -2268,6 +2297,48 @@ R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)P((s32[10]{0:
 
 ENTRY test {
   ROOT root = f32[10,10]{1,0:D(D,C)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))} parameter(0)
+})",
+},
+
+{
+"SparseShapeFull",
+R"(HloModule test
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(D,C)#(u64)*(u32)S(42)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))} parameter(0)
+})",
+R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)#(u64)*(u32)S(42)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))})->f32[10,10]{1,0:D(D,C)#(u64)*(u32)S(42)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))}}
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(D,C)#(u64)*(u32)S(42)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))} parameter(0)
+})",
+},
+
+{
+"SparseCOO",
+R"(HloModule test
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(C+,S)} parameter(0)
+})",
+R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(C+,S)})->f32[10,10]{1,0:D(C+,S)}}
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(C+,S)} parameter(0)
+})",
+},
+
+{
+"SparseCOOUnordered",
+R"(HloModule test
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(C+~,S~)} parameter(0)
+})",
+R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(C+~,S~)})->f32[10,10]{1,0:D(C+~,S~)}}
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(C+~,S~)} parameter(0)
 })",
 },
 });
@@ -3713,7 +3784,7 @@ TEST_F(HloParserTest, ParseShapeStringNestedTuple) {
 TEST_F(HloParserTest, ParseShapeStringWithLayout) {
   std::string shape_string = "f32[123,456]{0,1}";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected = ShapeUtil::MakeShapeWithLayout(F32, {123, 456}, {0, 1});
+  Shape expected = ShapeUtil::MakeShapeWithDenseLayout(F32, {123, 456}, {0, 1});
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
@@ -3723,8 +3794,8 @@ TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
   // One tile.
   std::string shape_string = "f32[123,456]{0,1:T(2,128)}";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected = ShapeUtil::MakeShapeWithLayout(F32, {123, 456}, {0, 1}, {},
-                                                  {Tile({2, 128})});
+  Shape expected = ShapeUtil::MakeShapeWithDenseLayout(F32, {123, 456}, {0, 1},
+                                                       {Tile({2, 128})});
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -3732,9 +3803,9 @@ TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
   // Tile with negative dimension size for combining dimensions.
   shape_string = "f32[123,456,789]{0,1,2:T(2, * , 128)}";
   TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
-  expected =
-      ShapeUtil::MakeShapeWithLayout(F32, {123, 456, 789}, {0, 1, 2}, {},
-                                     {Tile({2, Tile::kCombineDimension, 128})});
+  expected = ShapeUtil::MakeShapeWithDenseLayout(
+      F32, {123, 456, 789}, {0, 1, 2},
+      {Tile({2, Tile::kCombineDimension, 128})});
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -3742,27 +3813,9 @@ TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
   // Two tiles.
   shape_string = "bf16[123,456,789]{2,1,0:T(2,*,128)(2,1)}";
   TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
-  expected = ShapeUtil::MakeShapeWithLayout(
-      BF16, {123, 456, 789}, {2, 1, 0}, {},
+  expected = ShapeUtil::MakeShapeWithDenseLayout(
+      BF16, {123, 456, 789}, {2, 1, 0},
       {Tile({2, Tile::kCombineDimension, 128}), Tile({2, 1})});
-  EXPECT_EQ(expected, actual)
-      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
-      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
-
-  // Tile with element size in bits.
-  shape_string = "pred[123,456]{1,0:T(2,128)E(1)}";
-  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
-  expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {},
-                                            {Tile({2, 128})}, 1);
-  EXPECT_EQ(expected, actual)
-      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
-      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
-
-  // Element size in bits without tile.
-  shape_string = "pred[123,456]{1,0:E(1)}";
-  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
-  expected =
-      ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, {}, 1);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -3776,19 +3829,19 @@ TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
 
 TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   // Tile, element size, and memory space.
-  std::string shape_string = "pred[123,456]{1,0:T(2,128)E(1)S(3)}";
+  std::string shape_string = "pred[123,456]{1,0:T(2,128)S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {},
-                                                  {Tile({2, 128})}, 1, 3);
+  Shape expected = ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0},
+                                                       {Tile({2, 128})}, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
 
   // Element size and memory space.
-  shape_string = "pred[123,456]{1,0:E(1)S(3)}";
+  shape_string = "pred[123,456]{1,0:S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
   expected =
-      ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, {}, 1, 3);
+      ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {}, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -3797,7 +3850,7 @@ TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   shape_string = "pred[123,456]{1,0:S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
   expected =
-      ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, {}, 0, 3);
+      ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {}, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -3846,6 +3899,17 @@ TEST_F(HloParserTest, ParseDynamicTuple) {
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseInvalidDimLevel) {
+  constexpr std::string_view shape_string = "f32[123]{0:D(D+~)}";
+  StatusOr<Shape> result = ParseShape(shape_string);
+  ASSERT_THAT(
+      result.status(),
+      tsl::testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          testing::HasSubstr(
+              "invalid DimLevelType/unique/ordered combination in shape")));
 }
 
 TEST_F(HloParserTest, NegativeParameterNumber) {
@@ -3971,7 +4035,7 @@ ENTRY InferBinaryShape {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
   EXPECT_TRUE(ShapeUtil::Equal(
       module->entry_computation()->ComputeProgramShape().result(),
-      ShapeUtil::MakeShapeWithLayout(F32, {2, 10}, {1, 0})));
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 10}, {1, 0})));
 }
 
 TEST_F(HloParserTest, InferTernaryShape) {
@@ -4015,7 +4079,7 @@ ENTRY InferTupleShape () -> s32[2,3] {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
   EXPECT_TRUE(ShapeUtil::Equal(
       module->entry_computation()->ComputeProgramShape().result(),
-      ShapeUtil::MakeShapeWithLayout(S32, {2, 3}, {1, 0})));
+      ShapeUtil::MakeShapeWithDenseLayout(S32, {2, 3}, {1, 0})));
 }
 
 TEST_F(HloParserTest, InferShapeMixedExplicitShape) {
@@ -4079,7 +4143,7 @@ ENTRY test {
 })";
   EXPECT_THAT(ParseAndReturnUnverifiedModule(original).status(),
               tsl::testing::StatusIs(
-                  tensorflow::error::INVALID_ARGUMENT,
+                  tsl::error::INVALID_ARGUMENT,
                   HasSubstr("expected a DimLevelType abbreviation")));
 }
 
@@ -4092,7 +4156,7 @@ ENTRY test {
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(original).status(),
       tsl::testing::StatusIs(
-          tensorflow::error::INVALID_ARGUMENT,
+          tsl::error::INVALID_ARGUMENT,
           HasSubstr("Dimensions size is 2, but dim level types size is 1")));
 }
 
@@ -4104,7 +4168,7 @@ ENTRY test {
 })";
   EXPECT_THAT(ParseAndReturnUnverifiedModule(original).status(),
               tsl::testing::StatusIs(
-                  tensorflow::error::INVALID_ARGUMENT,
+                  tsl::error::INVALID_ARGUMENT,
                   HasSubstr("Layout has tiles, but is for a sparse array")));
 }
 
@@ -4117,7 +4181,7 @@ ENTRY test {
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(original).status(),
       tsl::testing::StatusIs(
-          tensorflow::error::INVALID_ARGUMENT,
+          tsl::error::INVALID_ARGUMENT,
           HasSubstr(
               "Layout has physical shape, but is not for a sparse array")));
 }

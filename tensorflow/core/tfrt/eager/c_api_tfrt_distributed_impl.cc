@@ -96,7 +96,7 @@ class DistributedManagerContextImpl
   tensorflow::Status CheckRemoteAlive(const std::string& remote_task_name,
                                       bool* is_alive) override;
 
-  tensorflow::CoordinationServiceAgent* GetCoordinationServiceAgent() override;
+  tsl::CoordinationServiceAgent* GetCoordinationServiceAgent() override;
 
   void UpdateRequestContextBuilder(RequestContextBuilder* builder) override;
   void PopulateRemoteDevices(tensorflow::DeviceSet* dev_set) override;
@@ -188,7 +188,7 @@ tensorflow::Status DistributedManagerContextImpl::CheckRemoteAlive(
       "CheckRemoteAlive in TFRT is not yet implemented.");
 }
 
-tensorflow::CoordinationServiceAgent*
+tsl::CoordinationServiceAgent*
 DistributedManagerContextImpl::GetCoordinationServiceAgent() {
   TFRT_LOG(FATAL) << "Coordination service in TFRT is not yet enabled.";
   return nullptr;

@@ -1443,6 +1443,7 @@ py_test(
     name = "ragged_tensor_supported_values_test",
     srcs = ["ragged_tensor_supported_values_test.py"],
     python_version = "PY3",
+    shard_count = 10,
     srcs_version = "PY3",
     deps = [
         ":ragged_factory_ops",

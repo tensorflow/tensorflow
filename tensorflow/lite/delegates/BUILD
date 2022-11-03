@@ -69,6 +69,7 @@ cc_library(
     name = "interpreter_utils",
     srcs = ["interpreter_utils.cc"],
     hdrs = ["interpreter_utils.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:framework",
@@ -120,7 +121,6 @@ cc_test(
     srcs = ["delegate_test.cc"],
     data = ["//tensorflow/lite:testdata/add.bin"],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs.
-    tags = ["nomsan"],  # TODO(b/246990697)
     deps = [
         ":delegate_test_util",
         ":interpreter_utils",

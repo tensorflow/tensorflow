@@ -3416,7 +3416,7 @@ AlternateMemoryBestFitHeap::FindBestChunkCandidate(
     // Find a chunk that's as long living as possible.
     std::optional<Chunk> last_chunk_candidate;
     int64_t latest_matching_use = std::numeric_limits<int64_t>::min();
-    std::lower_bound(
+    (void)std::lower_bound(
         earliest_use_it, std::next(use_time_it), -1, [&](int64_t use, int64_t) {
           alternate_mem_interval->end = use;
           Chunk chunk_candidate = FindChunkCandidate(*alternate_mem_interval);

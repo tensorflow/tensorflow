@@ -76,7 +76,7 @@ llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
     static_dims.append(output_type.getShape().begin(),
                        output_type.getShape().end());
   } else {
-    static_dims.resize(dims.size(), -1);
+    static_dims.resize(dims.size(), tensorflow::kTFDynamicSize);
   }
 
   int64_t dyn_count = 0;
@@ -92,18 +92,19 @@ llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
       int64_t size = dim_attr.getSplatValue<APInt>().getSExtValue();
 
       // Check that static shapes agree.
-      if (size != ShapedType::kDynamicSize &&
-          static_dims[i] != ShapedType::kDynamicSize &&
+      if (size != tensorflow::kTFDynamicSize &&
+          static_dims[i] != tensorflow::kTFDynamicSize &&
           size != static_dims[i]) {
         (void)rewriter.notifyMatchFailure(
             op, "mismatch reshape static dim when creating tosa::ReshapeOp");
         return llvm::None;
       }
 
-      static_dims[i] = size == ShapedType::kDynamicSize ? static_dims[i] : size;
+      static_dims[i] =
+          size == tensorflow::kTFDynamicSize ? static_dims[i] : size;
     }
 
-    if (static_dims[i] == ShapedType::kDynamicSize) dyn_count++;
+    if (static_dims[i] == tensorflow::kTFDynamicSize) dyn_count++;
   }
 
   if (dyn_count > 1) {

@@ -1,4 +1,4 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
@@ -35,6 +35,7 @@ cc_library(
         "lmhlo_to_gpu_runtime.cc",
         "memref_get_global_to_arg.cc",
         "passes.cc",
+        "uid_generator.h",
     ],
     hdrs = ["passes.h"],
     # Override cc_library()'s internal default value of ["//buildenv/target:gce"].`
@@ -42,15 +43,15 @@ cc_library(
     compatible_with = [],
     deps = [
         ":passes_inc_gen",
-        "//tensorflow/compiler/mlir:name_utils",
-        "//tensorflow/compiler/xla/mlir/ir/runtime:rt",
-        "//tensorflow/compiler/xla/mlir/utils/runtime:custom_calls",
+        "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
+        "//tensorflow/compiler/xla/mlir/runtime/utils:custom_calls",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
         "//tensorflow/compiler/xla/service/gpu:launch_dimensions",
         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
         "//tensorflow/compiler/xla/stream_executor:blas",
+        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:location_exporter",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

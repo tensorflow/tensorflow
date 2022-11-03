@@ -325,12 +325,14 @@ class TPUEmbedding(autotrackable.AutoTrackable):
 
     if self._using_tpu:
       # Extract a list of callable learning rates also in fixed order. Each
-      # table in the confix proto will get a index into this list and we will
+      # table in the config proto will get a index into this list and we will
       # pass this list in the same order after evaluation to the
       # send_tpu_embedding_gradients op.
-      self._dynamic_learning_rates = list({
-          table.optimizer.learning_rate for table in self._table_config if
-          callable(table.optimizer.learning_rate)})
+      self._dynamic_learning_rates = []
+      for table in self._table_config:
+        if (callable(table.optimizer.learning_rate) and
+            table.optimizer.learning_rate not in self._dynamic_learning_rates):
+          self._dynamic_learning_rates.append(table.optimizer.learning_rate)
 
       # We need to list of host devices for the load/retrieve operations.
       self._hosts = get_list_of_hosts(self._strategy)

@@ -54,7 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -1288,7 +1288,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     }
 
     const Shape& output_shape = instruction->shape();
-    Shape output_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
+    Shape output_shape_with_layout = ShapeUtil::MakeShapeWithDenseLayout(
         output_shape.element_type(), output_shape.dimensions(),
         LayoutUtil::MinorToMajor(output_layout));
     Shape operand_shape = operand->shape();
@@ -1365,7 +1365,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
       // Don't assign a layout in case of R1 -> effective R1 reshape.
       return nullptr;
     }
-    Shape operand_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
+    Shape operand_shape_with_layout = ShapeUtil::MakeShapeWithDenseLayout(
         operand->shape().element_type(), operand->shape().dimensions(),
         LayoutUtil::MinorToMajor(operand_layout));
     Shape output_shape = user->shape();

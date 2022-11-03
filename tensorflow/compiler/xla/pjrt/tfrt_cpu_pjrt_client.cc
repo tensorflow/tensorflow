@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 #define EIGEN_USE_THREADS
 
@@ -302,8 +303,6 @@ FindResultBufferAllocationIndex(const BufferAssignment& assignment,
 
 StatusOr<std::string> TfrtCpuClient::SerializeExecutable(
     const PjRtLoadedExecutable& executable) const {
-  return Unimplemented("SerializeExecutable not implemented on %s",
-                       platform_name());
   const TfrtCpuExecutable* tfrt_cpu_executable =
       tensorflow::down_cast<const TfrtCpuExecutable*>(&executable);
 
@@ -1332,14 +1331,24 @@ Status TfrtCpuExecutable::SetUpDonation(bool tuple_inputs) {
 // and assemble the buffer pointers in order to call into CpuExecutable.
 static StatusOr<std::shared_ptr<MaybeOwningCpuMemory>> MemoryForAllocation(
     const BufferAllocation& allocation,
-    absl::Span<TrackedTfrtCpuDeviceBuffer* const> arguments) {
+    absl::Span<std::pair<bool, TrackedTfrtCpuDeviceBuffer*> const> arguments) {
   if (allocation.is_entry_computation_parameter()) {
-    TrackedTfrtCpuDeviceBuffer* arg = arguments[allocation.parameter_number()];
+    auto [can_donate, arg] = arguments[allocation.parameter_number()];
     std::shared_ptr<MaybeOwningCpuMemory> out =
         arg->Buffer(allocation.param_shape_index());
     CHECK_EQ(allocation.size(), out->size())
         << "Size mismatch on param " << allocation.parameter_number()
         << " at shape index " << allocation.param_shape_index().ToString();
+
+    // If we don't own the buffer, we can't overwrite it or donate it. For
+    // example we might be pointing to a buffer owned by the client whose
+    // lifetime will not extend past the lifetime of the donated input buffer.
+    if ((!can_donate || !out->owns_data()) && !allocation.is_readonly()) {
+      TF_ASSIGN_OR_RETURN(
+          auto copy, MaybeOwningCpuMemory::AllocateShared(allocation.size()));
+      std::memcpy(copy->data(), out->data(), allocation.size());
+      return copy;
+    }
     return out;
   } else if (allocation.is_constant()) {
     return std::make_shared<MaybeOwningCpuMemory>();
@@ -1348,21 +1357,21 @@ static StatusOr<std::shared_ptr<MaybeOwningCpuMemory>> MemoryForAllocation(
   }
 
   // Output and temporary buffer.
-  int64_t buffer_size = allocation.size();
   TF_ASSIGN_OR_RETURN(auto out,
-                      MaybeOwningCpuMemory::AllocateShared(buffer_size));
+                      MaybeOwningCpuMemory::AllocateShared(allocation.size()));
 
   // Since the output buffer and all the temporary buffers were written into
   // by the JITed code, msan has no way of knowing their memory was
   // initialized. Mark them initialized so that msan doesn't flag loads from
   // these buffers.
-  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(out->data(), buffer_size);
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(out->data(), allocation.size());
   return out;
 }
 
 static StatusOr<std::vector<std::shared_ptr<MaybeOwningCpuMemory>>>
-CreateBufferTable(const BufferAssignment& assignment,
-                  absl::Span<TrackedTfrtCpuDeviceBuffer* const> arguments) {
+CreateBufferTable(
+    const BufferAssignment& assignment,
+    absl::Span<std::pair<bool, TrackedTfrtCpuDeviceBuffer*> const> arguments) {
   std::vector<std::shared_ptr<MaybeOwningCpuMemory>> buffers(
       assignment.Allocations().size());
   for (BufferAllocation::Index i = 0; i < assignment.Allocations().size();
@@ -1376,8 +1385,7 @@ CreateBufferTable(const BufferAssignment& assignment,
 static absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4>
 CreateResultShapedBuffer(
     absl::Span<const BufferAllocation::Index> buffer_indices,
-    absl::Span<const std::shared_ptr<MaybeOwningCpuMemory>> buffer_table,
-    absl::Span<TrackedTfrtCpuDeviceBuffer* const> arguments) {
+    absl::Span<const std::shared_ptr<MaybeOwningCpuMemory>> buffer_table) {
   absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> output_buffers;
   output_buffers.reserve(buffer_indices.size());
   for (int i = 0; i < buffer_indices.size(); ++i) {
@@ -1387,7 +1395,8 @@ CreateResultShapedBuffer(
 }
 
 Status TfrtCpuExecutable::CheckBufferCompatibilities(
-    absl::Span<TrackedTfrtCpuDeviceBuffer* const> input_buffers) const {
+    absl::Span<std::pair<bool, TrackedTfrtCpuDeviceBuffer*> const>
+        input_buffers) const {
   if (input_buffers.size() != input_buffer_sizes_in_bytes_.size()) {
     return InvalidArgument(
         "Execution supplied %lld buffers but compiled program expected %lld "
@@ -1395,7 +1404,7 @@ Status TfrtCpuExecutable::CheckBufferCompatibilities(
         input_buffers.size(), input_buffer_sizes_in_bytes_.size());
   }
   for (int i = 0; i < input_buffers.size(); ++i) {
-    const auto& buffer = input_buffers[i];
+    const auto& buffer = input_buffers[i].second;
     if (input_buffer_sizes_in_bytes_[i] != buffer->Buffers()[0]->size()) {
       return InvalidArgument(
           "Executable expected parameter %d of size %lld but got buffer with "
@@ -1453,7 +1462,9 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
   absl::InlinedVector<TfrtCpuBuffer::DonationTransaction, 4>
       donation_transactions;
-  absl::InlinedVector<TrackedTfrtCpuDeviceBuffer*, 4> tracked_buffers;
+
+  absl::InlinedVector<std::pair<bool, TrackedTfrtCpuDeviceBuffer*>, 4>
+      tracked_buffers;
   tracked_buffers.reserve(argument_handles.size());
   // To avoid clobbering inputs, we must ensure that
   //   `extra_deps` = inputs' definition events + donated inputs' usage events.
@@ -1476,34 +1487,43 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           device->DebugString());
     }
 
-    bool must_donate =
-        donate_it != parameters_that_must_be_donated_.end() && *donate_it == i;
-    TrackedTfrtCpuDeviceBuffer* tracked_buffer = nullptr;
-    if (must_donate) {
-      ++donate_it;
-      TF_ASSIGN_OR_RETURN(auto donation_transaction,
-                          tfrt_buffer->AcquireDonation());
-
-      // After acquiring the buffer for donation, we retrieve the dependent
-      // usage events. Note that we don't need any locking here as
-      // AcquireDonation() is supposed to synchronize with other usages.
-      for (const auto& ev :
-           donation_transaction.device_buffer()->UsageEvents()) {
-        if (!ev.IsAvailable()) {
-          input_deps.push_back(ev.CopyRCRef());
+    TrackedTfrtCpuDeviceBuffer* tracked_buffer;
+    auto get_buffer = [&](int i) -> Status {
+      bool must_donate = donate_it != parameters_that_must_be_donated_.end() &&
+                         *donate_it == i;
+      if (must_donate) {
+        ++donate_it;
+        StatusOr<TfrtCpuBuffer::DonationTransaction> donation_transaction =
+            tfrt_buffer->AcquireDonation();
+        // On CPU, we allow donation to succeed by introducing a copy. This was
+        // added when enabling buffer donation on CPU since it turned out that a
+        // number of users were holding external references to buffers that were
+        // supposed to be donated. We may wish to tighten those semantics in the
+        // future.
+        if (donation_transaction.ok()) {
+          // After acquiring the buffer for donation, we retrieve the dependent
+          // usage events. Note that we don't need any locking here as
+          // AcquireDonation() is supposed to synchronize with other usages.
+          for (const auto& ev :
+               donation_transaction->device_buffer()->UsageEvents()) {
+            if (!ev.IsAvailable()) {
+              input_deps.push_back(ev.CopyRCRef());
+            }
+          }
+          tracked_buffer = donation_transaction->device_buffer();
+          tracked_buffers.emplace_back(/*can_donate=*/true, tracked_buffer);
+          donation_transactions.push_back(std::move(*donation_transaction));
+          return OkStatus();
         }
       }
-      tracked_buffer = donation_transaction.device_buffer();
-      tracked_buffers.push_back(tracked_buffer);
-      donation_transactions.push_back(std::move(donation_transaction));
-
-    } else {
       tracked_buffer = tfrt_buffer->AcquireUsage(execute_event);
       if (!tracked_buffer)
         return InvalidArgument(
             "Invalid buffer passed: buffer has been deleted or donated.");
-      tracked_buffers.push_back(tracked_buffer);
-    }
+      tracked_buffers.emplace_back(/*can_donate=*/false, tracked_buffer);
+      return OkStatus();
+    };
+    TF_RETURN_IF_ERROR(get_buffer(i));
 
     // Definition events are never modified after buffer construction.
     const auto& definition_event = tracked_buffer->definition_event();
@@ -1521,7 +1541,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> leaf_buffers;
     leaf_buffers.reserve(tracked_buffers.size());
     for (const auto& tracked_buffer : tracked_buffers) {
-      auto span = tracked_buffer->Buffers();
+      auto span = tracked_buffer.second->Buffers();
       leaf_buffers.insert(leaf_buffers.end(), span.begin(), span.end());
     }
 
@@ -1530,7 +1550,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     tuplized_arg = std::make_unique<TrackedTfrtCpuDeviceBuffer>(
         /*is_tuple=*/true, std::move(leaf_buffers),
         /*definition_event=*/tfrt::MakeAvailableAsyncValueRef<CpuEvent>());
-    tracked_buffers.push_back(tuplized_arg.get());
+    tracked_buffers.emplace_back(false, tuplized_arg.get());
   }
 
   auto* cpu_executable =
@@ -1538,8 +1558,8 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
   TF_ASSIGN_OR_RETURN(
       std::vector<std::shared_ptr<MaybeOwningCpuMemory>> buffer_table,
       CreateBufferTable(cpu_executable->buffer_assignment(), tracked_buffers));
-  auto result_buffers = CreateResultShapedBuffer(result_buffer_indices_,
-                                                 buffer_table, tracked_buffers);
+  auto result_buffers =
+      CreateResultShapedBuffer(result_buffer_indices_, buffer_table);
 
   // The choice of where we wait is arbitrary; the reason for the wait is
   // pacing to avoid problems such as memory fragmentation and running ahead

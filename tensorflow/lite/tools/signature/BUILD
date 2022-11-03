@@ -49,6 +49,7 @@ cc_test(
         "//tensorflow/lite:framework_lib",
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",

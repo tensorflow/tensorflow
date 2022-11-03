@@ -66,8 +66,6 @@ class ProfilerSession {
       TF_LOCKS_EXCLUDED(mutex_);
 
  private:
-  friend class DeviceProfilerSession;
-
   // Constructs an instance of the class and starts profiling
   explicit ProfilerSession(const ProfileOptions& options);
 

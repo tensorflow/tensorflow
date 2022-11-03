@@ -1400,7 +1400,7 @@ class AnonymousExtensionTypeTest(test_util.TensorFlowTestCase,
       [
           lambda: extension_type.AnonymousExtensionType(
               values=(1, 2, 3), mask=None), MaskedTensorV2,
-          'mask: expected a Tensor, got None'
+          "mask: expected a Tensor, got 'NoneType'"
       ],
       [
           lambda: extension_type.AnonymousExtensionType(

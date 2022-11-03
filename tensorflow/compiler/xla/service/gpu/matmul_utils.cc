@@ -24,8 +24,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
-#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -110,7 +109,7 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
     });
   };
 
-  return ShapeUtil::MakeShapeWithLayout(
+  return ShapeUtil::MakeShapeWithDenseLayout(
       shape.element_type(),
       {dim_size(batch_dims), dim_size(row_dims), dim_size(col_dims)},
       minor_to_major);
@@ -366,22 +365,6 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
       op.getBeta().convertToDouble(), algorithm, compute_precision);
 }
 
-namespace {
-
-// BLAS GeMM's output is column-major. If we require row-major, use identity:
-// C^T = (A @ B)^T = B^T @ A^T.
-bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
-                           MatrixLayout& output) {
-  bool swap_operands = output.order != MatrixLayout::Order::kColumnMajor;
-  if (swap_operands) {
-    std::swap(lhs, rhs);
-    lhs.Transpose();
-    rhs.Transpose();
-    output.Transpose();
-  }
-  return swap_operands;
-}
-
 StatusOr<se::blas::ComputationType> GetBlasComputationType(
     PrimitiveType dtype) {
   switch (dtype) {
@@ -400,6 +383,34 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
     default:
       return InternalError("unsupported type");
   }
+}
+
+namespace cublas_lt {
+
+se::blas::DataType GetScaleType(se::blas::DataType c_type,
+                                se::blas::ComputationType computation_type) {
+  return ((computation_type == se::blas::ComputationType::kF32) &&
+          (c_type != se::blas::DataType::kComplexFloat))
+             ? se::blas::DataType::kFloat
+             : c_type;
+}
+
+}  // namespace cublas_lt
+
+namespace {
+
+// BLAS GeMM's output is column-major. If we require row-major, use identity:
+// C^T = (A @ B)^T = B^T @ A^T.
+bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
+                           MatrixLayout& output) {
+  bool swap_operands = output.order != MatrixLayout::Order::kColumnMajor;
+  if (swap_operands) {
+    std::swap(lhs, rhs);
+    lhs.Transpose();
+    rhs.Transpose();
+    output.Transpose();
+  }
+  return swap_operands;
 }
 
 se::blas::Transpose AsBlasTranspose(MatrixLayout::Order order) {
@@ -558,9 +569,24 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
   }
 }
 
-#if GOOGLE_CUDA
+namespace cublas_lt {
 
-namespace {
+StatusOr<bool> EpilogueAddsVectorBias(GemmBackendConfig_Epilogue epilogue) {
+  switch (epilogue) {
+    case GemmBackendConfig::DEFAULT:
+    case GemmBackendConfig::RELU:
+    case GemmBackendConfig::GELU:
+      return false;
+    case GemmBackendConfig::BIAS:
+    case GemmBackendConfig::BIASRELU:
+    case GemmBackendConfig::BIASGELU:
+      return true;
+    default:
+      return InternalError("Unknown Epilogue.");
+  }
+}
+
+}  // namespace cublas_lt
 
 StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype) {
   switch (dtype) {
@@ -580,6 +606,10 @@ StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype) {
       return InternalError("unsupported type");
   }
 }
+
+#if GOOGLE_CUDA
+
+namespace {
 
 StatusOr<se::cuda::BlasLt::MatrixLayout> AsBlasLtMatrixLayout(
     const MatrixLayout& layout) {
@@ -605,6 +635,10 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
       return se::cuda::BlasLt::Epilogue::kDefault;
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Bias:
       return se::cuda::BlasLt::Epilogue::kBias;
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Relu:
+      return se::cuda::BlasLt::Epilogue::kReLU;
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::BiasRelu:
+      return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
     default:
       return InternalError("unknown epilogue");
   }
@@ -664,8 +698,7 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
   TF_ASSIGN_OR_RETURN(
       se::cuda::BlasLt::MatmulDesc op_desc,
       se::cuda::BlasLt::MatmulDesc::Create(
-          computation_type,
-          se::cuda::BlasLt::GetScaleType(output_dtype, computation_type),
+          computation_type, GetScaleType(output_dtype, computation_type),
           /*trans_a=*/se::blas::Transpose::kNoTranspose,
           /*trans_b=*/se::blas::Transpose::kNoTranspose, epilogue));
 

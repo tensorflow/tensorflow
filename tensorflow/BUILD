@@ -13,6 +13,7 @@ load(
     "tf_cc_shared_object",
     "tf_custom_op_library_additional_deps_impl",
     "tf_native_cc_binary",
+    "tsl_async_value_deps",
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -63,7 +64,6 @@ PACKAGE_STATIC_DEPS = [
     "@png//:__subpackages__",
     "@sobol_data//:__subpackages__",
     "@stablehlo//:__subpackages__",
-    "@tf_runtime//:__subpackages__",
     "@bazel_tools//:__subpackages__",
     "@boringssl//:__subpackages__",
     "@com_github_cares_cares//:__subpackages__",
@@ -82,7 +82,6 @@ PACKAGE_STATIC_DEPS = [
     "@fft2d//:__subpackages__",
     "@gemmlowp//:__subpackages__",
     "@jsoncpp_git//:__subpackages__",
-    "@libxsmm_archive//:__subpackages__",
     "@llvm_openmp//:__subpackages__",
     "@llvm_terminfo//:__subpackages__",
     "@llvm_zlib//:__subpackages__",
@@ -101,7 +100,7 @@ PACKAGE_STATIC_DEPS = [
     "@snappy//:__subpackages__",
     "@upb//:__subpackages__",
     "@zlib//:__subpackages__",
-]
+] + tsl_async_value_deps()
 
 package(
     # copybara:uncomment default_applicable_licenses = [":license"],
@@ -992,6 +991,7 @@ bzl_library(
     deps = [
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
+        "//tensorflow/tsl:tsl_bzl",
         "//tensorflow/tsl/platform/default:cuda_build_defs_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//third_party/llvm_openmp:openmp_bzl",
@@ -1012,6 +1012,7 @@ bzl_library(
     deps = [":tensorflow_bzl"],
 )
 
+# TODO(jakeharmon): Remove these in favor of tsl:grpc
 # copybara:comment_begin(oss-only)
 cc_library(
     name = "grpc",
@@ -1175,7 +1176,10 @@ tf_cc_shared_object(
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/core:distributed_tensorflow_dependencies",
         "//tensorflow/core:tensorflow",
-    ],
+    ] + select({
+        "//tensorflow:windows": ["//tensorflow/c:kernels_experimental"],
+        "//conditions:default": [],
+    }),
 )
 
 tf_cc_shared_library(

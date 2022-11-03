@@ -16,29 +16,31 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_COORDINATION_GRPC_COORDINATION_SERVICE_IMPL_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_COORDINATION_GRPC_COORDINATION_SERVICE_IMPL_H_
 
+#include <memory>
+
 #include "grpcpp/alarm.h"
 #include "grpcpp/completion_queue.h"
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_rpc_handler.h"
-#include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
-#include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/threadpool.h"
-#include "tensorflow/core/protobuf/coordination_service.grpc.pb.h"
-#include "tensorflow/core/protobuf/coordination_service.pb.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/grpc_call.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/tsl/protobuf/coordination_service.grpc.pb.h"
+#include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 
-class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
+class GrpcCoordinationServiceImpl : public tsl::AsyncServiceInterface {
  public:
   template <class RequestMessage, class ResponseMessage>
-  using CoordCall =
-      Call<GrpcCoordinationServiceImpl, grpc::CoordinationService::AsyncService,
-           RequestMessage, ResponseMessage>;
+  using CoordCall = tsl::Call<GrpcCoordinationServiceImpl,
+                              grpc::CoordinationService::AsyncService,
+                              RequestMessage, ResponseMessage>;
 
   GrpcCoordinationServiceImpl(thread::ThreadPool* compute_pool,
                               ::grpc::ServerBuilder* server_builder);
@@ -46,31 +48,35 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
 
   void HandleRPCsLoop() override;
   void Shutdown() override;
-  void SetCoordinationServiceAgentInstance(CoordinationServiceAgent* agent) {
+  void SetCoordinationServiceAgentInstance(
+      tsl::CoordinationServiceAgent* agent) {
     rpc_handler_.SetAgentInstance(agent);
   }
 
  private:
-#define HANDLER(method)                                                        \
-  void method##Handler(CoordCall<method##Request, method##Response>* call) {   \
-    tf_shared_lock l(shutdown_mu_);                                            \
-    if (shutdown_) {                                                           \
-      return;                                                                  \
-    }                                                                          \
-    compute_pool_.Schedule([this, call]() {                                    \
-      rpc_handler_.method##Async(&call->request, &call->response,              \
-                                 [call](const Status& s) {                     \
-                                   call->ClearCancelCallback();                \
-                                   call->SendResponse(ToGrpcStatus(s));        \
-                                 });                                           \
-    });                                                                        \
-    Call<GrpcCoordinationServiceImpl, grpc::CoordinationService::AsyncService, \
-         method##Request, method##Response>::                                  \
-        EnqueueRequest(                                                        \
-            &service_, cq_.get(),                                              \
-            &grpc::CoordinationService::AsyncService::Request##method,         \
-            &GrpcCoordinationServiceImpl::method##Handler,                     \
-            /*supports_cancel=*/false);                                        \
+#define HANDLER(method)                                                      \
+  void method##Handler(CoordCall<method##Request, method##Response>* call) { \
+    tf_shared_lock l(shutdown_mu_);                                          \
+    if (shutdown_) {                                                         \
+      call->SendResponse(ToGrpcStatus(                                       \
+          errors::Internal("Coordination service has been shut down.")));    \
+      return;                                                                \
+    }                                                                        \
+    compute_pool_.Schedule([this, call]() {                                  \
+      rpc_handler_.method##Async(&call->request, &call->response,            \
+                                 [call](const Status& s) {                   \
+                                   call->ClearCancelCallback();              \
+                                   call->SendResponse(ToGrpcStatus(s));      \
+                                 });                                         \
+    });                                                                      \
+    tsl::Call<GrpcCoordinationServiceImpl,                                   \
+              grpc::CoordinationService::AsyncService, method##Request,      \
+              method##Response>::                                            \
+        EnqueueRequest(                                                      \
+            &service_, cq_.get(),                                            \
+            &grpc::CoordinationService::AsyncService::Request##method,       \
+            &GrpcCoordinationServiceImpl::method##Handler,                   \
+            /*supports_cancel=*/false);                                      \
   }
   HANDLER(RegisterTask);
   HANDLER(WaitForAllTasks);

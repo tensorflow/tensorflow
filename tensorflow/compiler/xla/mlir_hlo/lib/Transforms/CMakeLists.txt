@@ -15,20 +15,23 @@
 #
 
 add_mlir_library(MLIRBufferTransforms
+  alloc_to_arg_pass.cc
   buffer_packing.cc
   buffer_reuse.cc
   bufferize.cc
   bufferize_pass.cc
+  collapse_parallel_loops_to_1d_pass.cc
   copy_removal.cc
   detensorize_scf_ops.cc
   generic_host_to_llvm.cc
-  propagate_static_shapes_to_kernel.cc
+  inline_fusion_pass.cc
   lower_index_cast_pass.cc
+  propagate_static_shapes_to_kernel.cc
   scalarization.cc
-  symbolic_shape_optimization.cc
   shape_simplification.cc
+  symbolic_shape_optimization.cc
   tile_loops_pass.cc
-  collapse_parallel_loops_to_1d_pass.cc
+  unbufferize_pass.cc
   unroll_loops.cc
 
   DEPENDS
@@ -47,14 +50,14 @@ add_mlir_library(MLIRBufferTransforms
   MLIRPass
   MLIRShapeDialect
   MLIRTransforms
+  THLODialect
+  ThloBufferizableOpInterface
 )
 
 add_mlir_library(MLIRHLOGPUTransforms
-  alloc_to_arg_pass.cc
   gpu_kernel_lowering_passes.cc
   gpu_fusion_rewrite.cc
   hlo_to_gpu_pipeline.cc
-  unbufferize_pass.cc
 
   DEPENDS
   LMHLOGPUTransformsPassIncGen
@@ -72,17 +75,4 @@ add_mlir_library(MLIRHLOGPUTransforms
   MLIRShapeDialect
   MLIRSCFTransforms
   MLIRTransforms
-)
-
-add_mlir_library(MLIRHLOGmlStPipeline
-  gml_st_pipeline.cc
-
-  LINK_COMPONENTS
-  Core
-
-  LINK_LIBS PUBLIC
-  GmlStPasses
-  MLIRBufferTransforms
-  MLIRLinalgTransforms
-  MLIRPass
 )

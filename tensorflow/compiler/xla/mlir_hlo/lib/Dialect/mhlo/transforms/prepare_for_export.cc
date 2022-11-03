@@ -57,11 +57,11 @@ void prepareConstantOp(Operation *op, SplatElementsAttr attr) {
   // Arbitrarialy chosen "small" number. This could be chosen based on the
   // proto size too.
   if (attr.getNumElements() < 32) return;
-  ShapedType return_type = op->getResultTypes().front().cast<ShapedType>();
+  ShapedType returnType = op->getResultTypes().front().cast<ShapedType>();
   ImplicitLocOpBuilder b(op->getLoc(), op);
   ConstantOp cst;
-  if (auto complexTy = return_type.getElementType().dyn_cast<ComplexType>()) {
-    auto tensorType = RankedTensorType::get({}, return_type.getElementType());
+  if (auto complexTy = returnType.getElementType().dyn_cast<ComplexType>()) {
+    auto tensorType = RankedTensorType::get({}, returnType.getElementType());
     assert(complexTy.getElementType().isa<FloatType>() &&
            "unexpected int complex in MHLO");
     auto complexVal = attr.getSplatValue<std::complex<APFloat>>();
@@ -70,15 +70,15 @@ void prepareConstantOp(Operation *op, SplatElementsAttr attr) {
     cst = b.create<ConstantOp>(attr.getSplatValue<Attribute>());
   }
   auto broadcast =
-      b.create<BroadcastInDimOp>(return_type, cst, b.getI64TensorAttr({}));
+      b.create<BroadcastInDimOp>(returnType, cst, b.getI64TensorAttr({}));
   op->replaceAllUsesWith(broadcast);
   op->erase();
 }
 
 // Ensure that there aren't any implicit capture before exporting.
-void prepareWhileOp(WhileOp while_op) {
-  llvm::SetVector<Value> implicit_inputs;
-  getUsedValuesDefinedAbove(while_op->getRegions(), implicit_inputs);
+void prepareWhileOp(WhileOp whileOp) {
+  llvm::SetVector<Value> implicitInputs;
+  getUsedValuesDefinedAbove(whileOp->getRegions(), implicitInputs);
   // Each captured value has to be passed as operand to the while, become then
   // an operand to the condition region and the body region, and an extra
   // operand to the return op in the body. It also becomes an extra result for
@@ -87,41 +87,41 @@ void prepareWhileOp(WhileOp while_op) {
   // condition regions as we go, but we'll accumulate the new operands and
   // result type and recreate a new while op to replace the existing one at the
   // end.
-  SmallVector<Type> returned_types(while_op->getResultTypes().begin(),
-                                   while_op->getResultTypes().end());
-  SmallVector<Value> operands(while_op->getOperands().begin(),
-                              while_op->getOperands().end());
-  Region &cond_region = while_op.getCond();
-  Region &body_region = while_op.getBody();
+  SmallVector<Type> returnedTypes(whileOp->getResultTypes().begin(),
+                                  whileOp->getResultTypes().end());
+  SmallVector<Value> operands(whileOp->getOperands().begin(),
+                              whileOp->getOperands().end());
+  Region &condRegion = whileOp.getCond();
+  Region &bodyRegion = whileOp.getBody();
 
-  for (Value input : implicit_inputs) {
-    returned_types.push_back(input.getType());
+  for (Value input : implicitInputs) {
+    returnedTypes.push_back(input.getType());
     operands.push_back(input);
 
-    Value cond_arg =
-        cond_region.front().addArgument(input.getType(), input.getLoc());
-    Value body_arg =
-        body_region.front().addArgument(input.getType(), input.getLoc());
+    Value condArg =
+        condRegion.front().addArgument(input.getType(), input.getLoc());
+    Value bodyArg =
+        bodyRegion.front().addArgument(input.getType(), input.getLoc());
     for (OpOperand &operand : llvm::make_early_inc_range(input.getUses())) {
-      if (cond_region.isAncestor(operand.getOwner()->getParentRegion()))
-        operand.set(cond_arg);
-      else if (body_region.isAncestor(operand.getOwner()->getParentRegion()))
-        operand.set(body_arg);
+      if (condRegion.isAncestor(operand.getOwner()->getParentRegion()))
+        operand.set(condArg);
+      else if (bodyRegion.isAncestor(operand.getOwner()->getParentRegion()))
+        operand.set(bodyArg);
     }
-    auto return_op = cast<mhlo::ReturnOp>(body_region.front().back());
-    return_op->insertOperands(return_op->getNumOperands(), body_arg);
+    auto returnOp = cast<mhlo::ReturnOp>(bodyRegion.front().back());
+    returnOp->insertOperands(returnOp->getNumOperands(), bodyArg);
   }
-  OpBuilder builder(while_op);
-  auto new_while_op = builder.create<mhlo::WhileOp>(while_op.getLoc(),
-                                                    returned_types, operands);
-  new_while_op.getCond().getBlocks().clear();
-  new_while_op.getCond().takeBody(while_op.getCond());
-  new_while_op.getBody().getBlocks().clear();
-  new_while_op.getBody().takeBody(while_op.getBody());
-  for (auto zipped_results :
-       llvm::zip_first(while_op.getResults(), new_while_op.getResults()))
-    std::get<0>(zipped_results).replaceAllUsesWith(std::get<1>(zipped_results));
-  while_op->erase();
+  OpBuilder builder(whileOp);
+  auto newWhileOp =
+      builder.create<mhlo::WhileOp>(whileOp.getLoc(), returnedTypes, operands);
+  newWhileOp.getCond().getBlocks().clear();
+  newWhileOp.getCond().takeBody(whileOp.getCond());
+  newWhileOp.getBody().getBlocks().clear();
+  newWhileOp.getBody().takeBody(whileOp.getBody());
+  for (auto zippedResults :
+       llvm::zip_first(whileOp.getResults(), newWhileOp.getResults()))
+    std::get<0>(zippedResults).replaceAllUsesWith(std::get<1>(zippedResults));
+  whileOp->erase();
 }
 
 void prepareBroadcastInDim(BroadcastInDimOp bcast) {

@@ -72,7 +72,7 @@ const filter_action = async ({github, context, domain}) => {
     }
     if (title.toLowerCase().includes('xla') ||
         title.toLowerCase().includes('gpu')) {
-      assignees.push('cheshire', 'gcforster', 'reedwm', 'chsigg');
+      assignees.push('cheshire', 'gcforster', 'reedwm', 'chsigg', 'xla-rotation');
     }
     if (title.toLowerCase().includes('tf')) {
       assignees.push('rohan100jain', 'bfontain');

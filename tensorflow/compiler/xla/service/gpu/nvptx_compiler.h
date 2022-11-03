@@ -55,6 +55,9 @@ class NVPTXCompiler : public GpuCompiler {
       const HloModule* debug_module) override;
 
  private:
+  StatusOr<bool> CanUseLinkModules(
+      const HloModuleConfig& module_config) override;
+
   StatusOr<std::vector<uint8_t>> LinkModules(
       se::StreamExecutor* stream_exec,
       std::vector<std::vector<uint8_t>> modules) override;

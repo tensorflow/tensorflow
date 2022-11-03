@@ -921,7 +921,7 @@ void BatchResourceBase::SplitBatchCosts(
     const int64_t processed_size, BatchT& batch) {
   for (auto& batch_cost_measurement : batch_cost_measurements) {
     if (batch_cost_measurement->GetTotalCost() <= absl::ZeroDuration()) {
-      return;
+      continue;
     }
     if (batch.size() == 0) {  // NOLINT: empty() checks the batch contains 0
                               // tasks. size() gets the sum of task sizes.

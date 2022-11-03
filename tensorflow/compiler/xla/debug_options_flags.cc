@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/debug_options_parsers.h"
 #include "tensorflow/compiler/xla/parse_flags_from_env.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
 
@@ -94,6 +95,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
   opts.set_xla_cpu_enable_mlir_lowering(false);
   opts.set_xla_gpu_enable_mlir_lowering(true);
+  opts.set_xla_gpu_enable_softmax_fusion(false);
   opts.set_xla_gpu_normalize_layouts(false);
   opts.set_xla_gpu_simplify_all_fp_conversions(true);
   return opts;
@@ -173,6 +175,16 @@ static void AllocateFlags() {
           return true;
         };
       };
+
+  // Custom "sub-parser" lambda for xla_gpu_shape_checks.
+  auto setter_for_xla_gpu_shape_checks = [](const std::string& value) {
+    DebugOptions::ShapeChecks shape_checks;
+    if (!DebugOptions::ShapeChecks_Parse(value, &shape_checks)) {
+      return false;
+    }
+    flag_values->set_xla_gpu_shape_checks(shape_checks);
+    return true;
+  };
 
   // Custom "sub-parser" lambda for xla_disable_hlo_passes.
   auto setter_for_xla_disable_hlo_passes =
@@ -748,6 +760,10 @@ static void AllocateFlags() {
       flag_values->xla_gpu_simplify_all_fp_conversions(),
       "Allows any chain of floating-point conversions to be simplified."));
   flag_objects->push_back(tsl::Flag(
+      "xla_gpu_shape_checks", setter_for_xla_gpu_shape_checks,
+      DebugOptions::ShapeChecks_Name(flag_values->xla_gpu_shape_checks()),
+      "When to perform shape checks in XLA:GPU."));
+  flag_objects->push_back(tsl::Flag(
       "xla_cpu_enable_mlir_lowering",
       bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_lowering),
       flag_values->xla_cpu_enable_mlir_lowering(),
@@ -757,6 +773,11 @@ static void AllocateFlags() {
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_mlir_lowering),
       flag_values->xla_gpu_enable_mlir_lowering(),
       "Enable MLIR-based lowering in XLA:GPU instead of LLVM emitters."));
+  flag_objects->push_back(tsl::Flag(
+      "xla_gpu_enable_softmax_fusion",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_softmax_fusion),
+      flag_values->xla_gpu_enable_mlir_lowering(),
+      "Enable MLIR-based softmax fusion."));
   flag_objects->push_back(
       tsl::Flag("xla_gpu_normalize_layouts",
                 bool_setter_for(&DebugOptions::set_xla_gpu_normalize_layouts),

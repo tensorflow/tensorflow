@@ -340,7 +340,7 @@ static RankedTensorType GetStaticBroadcastType(
                                           shape_large.end());
 
   // Update according to the broadcast dimensions.
-  for (auto index_pair : llvm::enumerate(broadcast_dimensions)) {
+  for (auto &index_pair : llvm::enumerate(broadcast_dimensions)) {
     auto old_value = out_shape[index_pair.value()];
     auto new_value = shape_small[index_pair.index()];
     out_shape[index_pair.value()] = std::max(old_value, new_value);
@@ -664,7 +664,7 @@ static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
   llvm::SmallVector<int64_t, 4> values;
   values.reserve(shaped_type.getNumElements() / shape[1]);
 
-  for (auto it : llvm::enumerate(int_attr.getValues<APInt>())) {
+  for (auto &it : llvm::enumerate(int_attr.getValues<APInt>())) {
     if (static_cast<int>(it.index() % shape[1]) == column) {
       values.push_back(it.value().getSExtValue());
     }
@@ -2942,16 +2942,16 @@ class ConvertSelectOp : public OpRewritePattern<TF::SelectOp> {
                                 PatternRewriter &rewriter) const override {
     // This lowering only works on ranked types.
     auto cond_type = op.condition().getType().dyn_cast<RankedTensorType>();
-    auto then_type = op.t().getType().dyn_cast<RankedTensorType>();
-    auto else_type = op.e().getType().dyn_cast<RankedTensorType>();
+    auto then_type = op.then_value().getType().dyn_cast<RankedTensorType>();
+    auto else_type = op.else_value().getType().dyn_cast<RankedTensorType>();
     if (!cond_type || !then_type || !else_type) {
       return failure();
     }
 
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     Value cond_shape = b.createOrFold<shape::ShapeOfOp>(op.condition());
-    Value then_shape = b.createOrFold<shape::ShapeOfOp>(op.t());
-    Value else_shape = b.createOrFold<shape::ShapeOfOp>(op.e());
+    Value then_shape = b.createOrFold<shape::ShapeOfOp>(op.then_value());
+    Value else_shape = b.createOrFold<shape::ShapeOfOp>(op.else_value());
 
     // First check that the `then` and `else` shapes are the equal.
     Value assumption =
@@ -2997,7 +2997,8 @@ class ConvertSelectOp : public OpRewritePattern<TF::SelectOp> {
           cond, result_extents,
           GetI64ElementsAttrForSeq(0, cond_type.getRank(), &b));
     }
-    Value select = b.create<mhlo::SelectOp>(result_type, cond, op.t(), op.e());
+    Value select = b.create<mhlo::SelectOp>(result_type, cond, op.then_value(),
+                                            op.else_value());
     b.create<shape::AssumingYieldOp>(select);
     rewriter.replaceOp(op, {assuming_op.getResult(0)});
     return success();
@@ -3338,7 +3339,7 @@ class ConvertSplitOp : public OpRewritePattern<TF::SplitOp> {
 
     // Parameters for constructing each slice.
     SmallVector<int64_t, 4> begin_indices(input_rank, 0);
-    auto end_indices = llvm::to_vector<4>(input_type.getShape());
+    auto end_indices = tensorflow::ConvertMlirShapeToTF(input_type.getShape());
     SmallVector<int64_t, 4> strides(input_rank, 1);
 
     // All HLO slice results used to replace the original tf.Split op.
@@ -3507,10 +3508,10 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
     llvm::Optional<int> dynamic_dim_index;
     split_sizes.reserve(
         split_sizes_attr.getType().cast<ShapedType>().getNumElements());
-    for (auto dim : llvm::enumerate(split_sizes_attr)) {
+    for (auto &dim : llvm::enumerate(split_sizes_attr)) {
       int64_t dim_val = dim.value().getSExtValue();
       split_sizes.push_back(dim_val);
-      if (dim_val == ShapedType::kDynamicSize) {
+      if (dim_val == -1) {
         // We cannot have more than one dynamic dimension.
         assert(!dynamic_dim_index && "invalid split sizes");
         dynamic_dim_index = dim.index();
@@ -3537,7 +3538,7 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
 
     // Parameters for constructing each slice.
     SmallVector<int64_t, 4> begin_indices(input_rank, 0);
-    auto end_indices = llvm::to_vector<4>(input_type.getShape());
+    auto end_indices = tensorflow::ConvertMlirShapeToTF(input_type.getShape());
     SmallVector<int64_t, 4> strides(input_rank, 1);
 
     // All HLO slice results used to replace the original tf.Split op.
@@ -5417,7 +5418,7 @@ class ConvertInfeedDequeueTupleOp
     }
     llvm::SmallVector<Value> results;
     results.reserve(result_types.size());
-    for (auto idx_and_type : llvm::enumerate(result_types)) {
+    for (auto &idx_and_type : llvm::enumerate(result_types)) {
       results.push_back(data_and_token.getResult(idx_and_type.index()));
     }
     rewriter.replaceOp(op, ValueRange(results));
@@ -5948,8 +5949,7 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
     Value swaped_indices = while_output[1];
 
     // Gather the data using the swapped indices as the shuffled order.
-    ArrayRef<int64_t> input_shape = input_type.getShape();
-    SmallVector<int64_t, 4> slice_sizes(input_shape.begin(), input_shape.end());
+    auto slice_sizes = tensorflow::ConvertMlirShapeToTF(input_type.getShape());
     slice_sizes[0] = 1;
     auto dims_attr = GatherDimensionNumbersAttr::get(
         rewriter.getContext(),
@@ -6200,7 +6200,7 @@ class ConvertClipByValueOp : public OpRewritePattern<TF::ClipByValueOp> {
 
   LogicalResult matchAndRewrite(TF::ClipByValueOp op,
                                 PatternRewriter &rewriter) const override {
-    Value input = op.t();
+    Value input = op.x();
     Value min = op.clip_value_min();
     Value max = op.clip_value_max();
 

@@ -2052,7 +2052,8 @@ HloModule module
   %count = u32[] get-tuple-element(%param), index=0
   %after-all = token[] after-all()
   %recv = (f32[], u32[], token[]) recv(%after-all), channel_id=1,
-    sharding={maximal device=1 metadata={op_name="a"}}
+    sharding={{maximal device=1 metadata={op_name="a"}}, 
+              {maximal device=1}, {maximal device=1}}
   %recv-done = (f32[], token[]) recv-done(%recv), channel_id=1
   %data = f32[] get-tuple-element(%recv-done), index=0
   ROOT %tuple = (u32[], f32[]) tuple(%count, %data)
@@ -2112,7 +2113,8 @@ HloModule module
     sharding={maximal device=0 metadata={op_name="a"}}
   %after-all = token[] after-all()
   %recv = (f32[], u32[], token[]) recv(%after-all), channel_id=1,
-    sharding={maximal device=1 metadata={op_name="b"}}
+    sharding={{maximal device=1 metadata={op_name="b"}}, 
+              {maximal device=1}, {maximal device=1}}
   %recv-done = (f32[], token[]) recv-done(%recv), channel_id=1
   %data = f32[] get-tuple-element(%recv-done), index=0
   ROOT %tuple = (u32[], f32[]) tuple(%count, %data)
@@ -2156,7 +2158,8 @@ HloModule module
   %count = u32[] get-tuple-element(%param), index=0
   %after-all = token[] after-all()
   %recv = (f32[], u32[], token[]) recv(%after-all), channel_id=1,
-    sharding={maximal device=1 metadata={op_name="a"}}
+    sharding={{maximal device=1 metadata={op_name="a"}}, 
+              {maximal device=1}, {maximal device=1}}
   %recv-done = (f32[], token[]) recv-done(%recv), channel_id=1
   %data = f32[] get-tuple-element(%recv-done), index=0,
     sharding={maximal device=0 metadata={op_name="b"}}
@@ -2201,7 +2204,8 @@ HloModule module
   %count = u32[] get-tuple-element(%param), index=0
   %after-all = token[] after-all()
   %recv = (f32[], u32[], token[]) recv(%after-all), channel_id=1,
-    sharding={maximal device=1 metadata={op_name="a"}}
+    sharding={{maximal device=1 metadata={op_name="a"}}, 
+              {maximal device=1}, {maximal device=1}}
   %recv-done = (f32[], token[]) recv-done(%recv), channel_id=1
   %data = f32[] get-tuple-element(%recv-done), index=0
   ROOT %tuple = (u32[], f32[]) tuple(%count, %data)
@@ -2212,7 +2216,7 @@ ENTRY %entry {
   %zero = u32[] constant(0)
   %init = (u32[], f32[]) tuple(%zero, %p0)
   %while = (u32[], f32[]) while(%init), body=%body, condition=%cond,
-    sharding={maximal device=0 metadata={op_name="b"}}
+    sharding={{maximal device=0 metadata={op_name="b"}},{maximal device=0}}
   ROOT %result = f32[] get-tuple-element(%while), index=1
 })";
 
@@ -7945,7 +7949,7 @@ ENTRY %entry {
   %annotate2 = f32[3] custom-call(%reduce), custom_call_target="Sharding",
     sharding={manual}
   %to_auto = f32[6] custom-call(%annotate2),
-    custom_call_target="SPMDShardToFullShape", sharding={devices=[2,1]0,1}
+    custom_call_target="SPMDShardToFullShape", sharding={devices=[2]0,1}
   ROOT %copy.2 = f32[6] copy(%to_auto)
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,

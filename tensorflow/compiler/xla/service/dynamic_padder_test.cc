@@ -41,9 +41,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace xla {
 namespace {
@@ -2197,7 +2197,7 @@ ENTRY gds {
       DynamicDimensionInference::ShapeCheckMode::kCompileTime;
   DynamicPadder pass(options);
   auto status = pass.Run(module.get()).status();
-  EXPECT_THAT(status.code(), tensorflow::error::INVALID_ARGUMENT);
+  EXPECT_THAT(status.code(), tsl::error::INVALID_ARGUMENT);
 }
 
 TEST_F(SizeCheckTest, CompileTimeCheckBinaryOpPass) {

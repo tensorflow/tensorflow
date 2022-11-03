@@ -304,7 +304,9 @@ void ConvGeneric::GenerateCode(const GpuInfo& gpu_info) {
   if (gpu_info.IsMali()) {
     compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
   }
-  if (conv_params_.IsPrivateMemBroadcast() && gpu_info.IsCL20OrHigher()) {
+  if (conv_params_.IsPrivateMemBroadcast() &&
+      (gpu_info.IsCL20OrHigher() ||
+       gpu_info.opencl_info.platform_version.find("clvk"))) {
     compiler_options_.push_back(CompilerOptions::kCl20);
   }
   bool kernel_is_trivial =
@@ -1291,30 +1293,34 @@ ConvGeneric::ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
   options.push_back(CreateWorkGroupSizeOption(
       {8, 4, 1}, WorkGroupSizeOption::ThreadMapping::kDefault, 1.0f, dst_shape,
       params.block_size));
-  options.push_back(CreateWorkGroupSizeOption(
-      {4, 4, 1}, WorkGroupSizeOption::ThreadMapping::kDefault, 1.01f, dst_shape,
-      params.block_size));
-  options.push_back(CreateWorkGroupSizeOption(
-      {4, 2, 1}, WorkGroupSizeOption::ThreadMapping::kDefault, 1.25f, dst_shape,
-      params.block_size));
+  if (!apple_info.IsA7GenerationGpu()) {
+    options.push_back(CreateWorkGroupSizeOption(
+        {4, 4, 1}, WorkGroupSizeOption::ThreadMapping::kDefault, 1.01f,
+        dst_shape, params.block_size));
+    options.push_back(CreateWorkGroupSizeOption(
+        {4, 2, 1}, WorkGroupSizeOption::ThreadMapping::kDefault, 1.25f,
+        dst_shape, params.block_size));
+  }
   options.push_back(CreateWorkGroupSizeOption(
       {32, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearSpatial, 1.0f,
       dst_shape, params.block_size));
-  options.push_back(CreateWorkGroupSizeOption(
-      {16, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearSpatial, 1.01f,
-      dst_shape, params.block_size));
-  options.push_back(CreateWorkGroupSizeOption(
-      {8, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearSpatial, 1.25f,
-      dst_shape, params.block_size));
-  options.push_back(CreateWorkGroupSizeOption(
-      {32, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearAll, 3.1 * 1.0f,
-      dst_shape, params.block_size));
-  options.push_back(CreateWorkGroupSizeOption(
-      {16, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearAll, 3.1 * 1.01f,
-      dst_shape, params.block_size));
-  options.push_back(CreateWorkGroupSizeOption(
-      {8, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearAll, 3.1 * 1.25f,
-      dst_shape, params.block_size));
+  if (!apple_info.IsA7GenerationGpu()) {
+    options.push_back(CreateWorkGroupSizeOption(
+        {16, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearSpatial, 1.01f,
+        dst_shape, params.block_size));
+    options.push_back(CreateWorkGroupSizeOption(
+        {8, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearSpatial, 1.25f,
+        dst_shape, params.block_size));
+    options.push_back(CreateWorkGroupSizeOption(
+        {32, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearAll, 3.1 * 1.0f,
+        dst_shape, params.block_size));
+    options.push_back(CreateWorkGroupSizeOption(
+        {16, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearAll, 3.1 * 1.01f,
+        dst_shape, params.block_size));
+    options.push_back(CreateWorkGroupSizeOption(
+        {8, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearAll, 3.1 * 1.25f,
+        dst_shape, params.block_size));
+  }
 
   float optimum = options[0].work_groups_count * options[0].penalty *
                   options[0].work_group_size.x * options[0].work_group_size.y *

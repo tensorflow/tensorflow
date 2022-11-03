@@ -37,6 +37,10 @@ using namespace mlir;
 using ::mlir::func::FuncOp;
 using ::mlir::gpu::GPUModuleOp;
 
+static constexpr const char* kBlockDistributionLabel = "block";
+static constexpr const char* kWarpDistributionLabel = "warp";
+static constexpr const char* kThreadDistributionLabel = "thread";
+
 // TODO(b/233761238): We only want to have this pipeline temporarily, as it is
 // not yet clear how exactly it will look like. The goal is to merge this with
 // the unified kernel generator + autofusion + XLA Next pipeline once we have
@@ -44,39 +48,70 @@ using ::mlir::gpu::GPUModuleOp;
 void mlir::createHloToGpuPipeline(OpPassManager& pm,
                                   ArrayRef<int64_t> blockTileDim,
                                   ArrayRef<int64_t> warpTileDim,
-                                  ArrayRef<int64_t> threadTileDim) {
+                                  ArrayRef<int64_t> threadTileDim,
+                                  bool experimentalSoftmax) {
   pm.addNestedPass<FuncOp>(hlo::createUnbufferizePass());
+  pm.addNestedPass<FuncOp>(hlo::createInlineFusionPass());
+  pm.addPass(createCSEPass());  // Combine repeated subtract(broadcast).
 
   // HLO -> Linalg
+  pm.addNestedPass<FuncOp>(mhlo::createChloLegalizeToHloPass());
+  pm.addPass(createCanonicalizerPass());  // Clean up shape.assuming ops.
   pm.addNestedPass<FuncOp>(mhlo::createLegalizeHloToLinalgPass());
-  // TODO(b/244313563): This is a workaround to avoid temporary allocs within
-  // threads. It works for as long as all of our operations are cwise. Vectorize
-  // the inner loops instead.
-  pm.addNestedPass<FuncOp>(createLinalgElementwiseOpFusionPass());
 
-  // Tiling
-  pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
-      /*distribute=*/true, SmallVector<int64_t>(blockTileDim)));
-  pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
-      /*distribute=*/true, SmallVector<int64_t>(warpTileDim)));
-  pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
-      /*distribute=*/true, SmallVector<int64_t>(threadTileDim)));
-  pm.addNestedPass<FuncOp>(gml_st::createTilingReductionPass());
-  pm.addNestedPass<FuncOp>(createScalarizationPass());
+  // Perform tiling either for softmax or for element-wise.
+  if (experimentalSoftmax) {
+    // Simplify unit dimension.
+    pm.addPass(mlir::createLinalgFoldUnitExtentDimsPass());
+
+    // Tile parallel dimensions of the softmax-like patterns and distribute them
+    // across warps. Warps remain independant of each other.
+    pm.addNestedPass<FuncOp>(gml_st::createTilingSoftmaxPass(
+        /*distribute=*/true, blockTileDim, kBlockDistributionLabel));
+    pm.addNestedPass<FuncOp>(gml_st::createTilingSoftmaxPass(
+        /*distribute=*/true, warpTileDim, kWarpDistributionLabel));
+
+    // GPU-specific tiling for ops on the warp level.
+    pm.addNestedPass<FuncOp>(gml_st::createTilingGPUWarpPass());
+    pm.addNestedPass<FuncOp>(createScalarizationPass());
+
+    pm.addNestedPass<FuncOp>(gml_st::createVectorizeGmlStLoopsPass(
+        /*vectorizeGmlStOps=*/true, /*distributionLabels=*/{
+            kWarpDistributionLabel, kThreadDistributionLabel}));
+  } else {
+    // TODO(b/244313563): This is a workaround to avoid temporary allocs within
+    // threads. It works for as long as all of our operations are cwise.
+    // Vectorize the inner loops instead.
+    // TODO(frgossen): We should not have to skip this pass for softmax.
+    pm.addNestedPass<FuncOp>(createLinalgElementwiseOpFusionPass());
+
+    // Tiling
+    pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
+        /*distribute=*/true, blockTileDim, kBlockDistributionLabel));
+    pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
+        /*distribute=*/true, warpTileDim, kWarpDistributionLabel));
+    pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
+        /*distribute=*/true, threadTileDim, kThreadDistributionLabel));
+    pm.addNestedPass<FuncOp>(createScalarizationPass());
+  }
 
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
-  pm.addNestedPass<FuncOp>(gml_st::createComposeSetOpsPass());
 
   // Bufferization-related passes.
   pm.addNestedPass<FuncOp>(bufferization::createEmptyTensorToAllocTensorPass());
   pm.addPass(hlo::createOneShotBufferizePass());
+  // We do not deallocate buffers, since grid-level buffers get converted into
+  // functions arguments, while block- (and lower-)level buffers become shared
+  // memory. None of which have to be deallocated.
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
-  pm.addNestedPass<FuncOp>(bufferization::createBufferDeallocationPass());
+  // Canonicalize away memory copies into itself
+  pm.addPass(createCanonicalizerPass());
 
   // Linalg + GmlSt -> GPU
   pm.addNestedPass<FuncOp>(createGmlStToGpuPass());
+  pm.addNestedPass<FuncOp>(gml_st::createGmlStToScfPass());
   pm.addNestedPass<FuncOp>(arith::createArithExpandOpsPass());
   pm.addNestedPass<FuncOp>(createConvertLinalgToLoopsPass());
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());

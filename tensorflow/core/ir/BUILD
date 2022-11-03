@@ -162,7 +162,6 @@ cc_library(
     hdrs = ["utils/shape_inference_utils.h"],
     deps = [
         ":Dialect",
-        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir/importexport:convert_tensor",

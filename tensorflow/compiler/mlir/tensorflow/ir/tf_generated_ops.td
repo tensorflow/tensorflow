@@ -1276,38 +1276,6 @@ about broadcasting
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_BatchNormWithGlobalNormalizationOp : TF_Op<"BatchNormWithGlobalNormalization", [Pure]> {
-  let summary = "Batch normalization.";
-
-  let description = [{
-This op is deprecated. Prefer `tf.nn.batch_normalization`.
-  }];
-
-  let arguments = (ins
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{A 4D input Tensor.}]>:$t,
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{A 1D mean Tensor with size matching the last dimension of t.
-This is the first output from tf.nn.moments,
-or a saved moving average thereof.}]>:$m,
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{A 1D variance Tensor with size matching the last dimension of t.
-This is the second output from tf.nn.moments,
-or a saved moving average thereof.}]>:$v,
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{A 1D beta Tensor with size matching the last dimension of t.
-An offset to be added to the normalized tensor.}]>:$beta,
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{A 1D gamma Tensor with size matching the last dimension of t.
-If "scale_after_normalization" is true, this tensor will be multiplied
-with the normalized tensor.}]>:$gamma,
-
-    F32Attr:$variance_epsilon,
-    BoolAttr:$scale_after_normalization
-  );
-
-  let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$result
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
 def TF_BatchToSpaceOp : TF_Op<"BatchToSpace", [Pure]> {
   let summary = "BatchToSpace for 4-D tensors of type T.";
 
@@ -1753,7 +1721,9 @@ tf.Tensor(
      [  0   0 128  63]], shape=(3, 4), dtype=uint8)
 
 *NOTE*: Bitcast is implemented as a low-level cast, so machines with different
-endian orderings will give different results.
+endian orderings will give different results. A copy from input buffer to output
+buffer is made on BE machines when types are of different sizes in order to get
+the same casting results as on LE machines.
   }];
 
   let arguments = (ins
@@ -2174,48 +2144,6 @@ case it might be faster to use the CPU.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
-def TF_ClipByValueOp : TF_Op<"ClipByValue", [Pure, TF_SameOperandsAndResultElementTypeResolveRef]> {
-  let summary = "Clips tensor values to a specified min and max.";
-
-  let description = [{
-Given a tensor `t`, this operation returns a tensor of the same type and
-shape as `t` with its values clipped to `clip_value_min` and `clip_value_max`.
-Any values less than `clip_value_min` are set to `clip_value_min`. Any values
-greater than `clip_value_max` are set to `clip_value_max`.
-  }];
-
-  let arguments = (ins
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{A `Tensor`.}]>:$t,
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
-as `t`. The minimum value to clip by.}]>:$clip_value_min,
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
-as `t`. The maximum value to clip by.}]>:$clip_value_max
-  );
-
-  let results = (outs
-    Res<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{A clipped `Tensor` with the same shape as input 't'.}]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
-def TF_CollateTPUEmbeddingMemoryOp : TF_Op<"CollateTPUEmbeddingMemory", []> {
-  let summary = [{
-An op that merges the string-encoded memory config protos from all hosts.
-  }];
-
-  let arguments = (ins
-    Arg<Variadic<TF_StrTensor>, [{String-encoded memory config protos containing metadata about
-the memory allocations reserved for TPUEmbedding across all hosts.}]>:$memory_configs
-  );
-
-  let results = (outs
-    TF_StrTensor:$merged_memory_config
-  );
-
-  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
 def TF_CollectiveAssignGroupV2Op : TF_Op<"CollectiveAssignGroupV2", [Pure, TF_NoConstantFold]> {
@@ -3122,6 +3050,51 @@ tf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]
 
   let results = (outs
     TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$out
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+
+  let hasVerifier = 1;
+}
+
+def TF_CumulativeLogsumexpOp : TF_Op<"CumulativeLogsumexp", [Pure, TF_AllTypesMatch<["x", "out"]>]> {
+  let summary = [{
+Compute the cumulative product of the tensor `x` along `axis`.
+  }];
+
+  let description = [{
+By default, this op performs an inclusive cumulative log-sum-exp,
+which means that the first
+element of the input is identical to the first element of the output:
+```python
+tf.math.cumulative_logsumexp([a, b, c])  # => [a, log(exp(a) + exp(b)), log(exp(a) + exp(b) + exp(c))]
+```
+
+By setting the `exclusive` kwarg to `True`, an exclusive cumulative log-sum-exp is
+performed instead:
+```python
+tf.cumulative_logsumexp([a, b, c], exclusive=True)  # => [-inf, a, log(exp(a) * exp(b))]
+```
+Note that the neutral element of the log-sum-exp operation is `-inf`,
+however, for performance reasons, the minimal value representable by the
+floating point type is used instead.
+
+By setting the `reverse` kwarg to `True`, the cumulative log-sum-exp is performed in the
+opposite direction.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>, [{A `Tensor`. Must be one of the following types: `float16`, `float32`, `float64`.}]>:$x,
+    Arg<TF_I32OrI64Tensor, [{A `Tensor` of type `int32` (default: 0). Must be in the range
+`[-rank(x), rank(x))`.}]>:$axis,
+
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$exclusive,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$reverse
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$out
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -7007,26 +6980,6 @@ top_k_unique.
   let results = (outs
     TF_Float32Tensor:$output
   );
-}
-
-def TF_L2LossOp : TF_Op<"L2Loss", [Pure]> {
-  let summary = "L2 Loss.";
-
-  let description = [{
-Computes half the L2 norm of a tensor without the `sqrt`:
-
-    output = sum(t ** 2) / 2
-  }];
-
-  let arguments = (ins
-    Arg<TF_FloatTensor, [{Typically 2-D, but may have any dimensions.}]>:$t
-  );
-
-  let results = (outs
-    Res<TF_FloatTensor, [{0-D.}]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_LRNOp : TF_Op<"LRN", [Pure]> {
@@ -15067,87 +15020,6 @@ has size `k`, the number of segments.}]>:$output
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_SelectOp : TF_Op<"Select", [Pure]> {
-  let summary = "Selects elements from `x` or `y`, depending on `condition`.";
-
-  let description = [{
-The `x`, and `y` tensors must all have the same shape, and the
-output will also have that shape.
-
-The `condition` tensor must be a scalar if `x` and `y` are scalars.
-If `x` and `y` are vectors or higher rank, then `condition` must be either a
-scalar, a vector with size matching the first dimension of `x`, or must have
-the same shape as `x`.
-
-The `condition` tensor acts as a mask that chooses, based on the value at each
-element, whether the corresponding element / row in the output should be
-taken from `x` (if true) or `y` (if false).
-
-If `condition` is a vector and `x` and `y` are higher rank matrices, then
-it chooses which row (outer dimension) to copy from `x` and `y`.
-If `condition` has the same shape as `x` and `y`, then it chooses which
-element to copy from `x` and `y`.
-
-For example:
-
-```python
-# 'condition' tensor is [[True,  False]
-#                        [False, True]]
-# 't' is [[1, 2],
-#         [3, 4]]
-# 'e' is [[5, 6],
-#         [7, 8]]
-select(condition, t, e)  # => [[1, 6], [7, 4]]
-
-
-# 'condition' tensor is [True, False]
-# 't' is [[1, 2],
-#         [3, 4]]
-# 'e' is [[5, 6],
-#         [7, 8]]
-select(condition, t, e) ==> [[1, 2],
-                             [7, 8]]
-
-```
-  }];
-
-  let arguments = (ins
-    TF_BoolTensor:$condition,
-    Arg<TF_Tensor, [{= A `Tensor` which may have the same shape as `condition`.
-If `condition` is rank 1, `x` may have higher rank,
-but its first dimension must match the size of `condition`.}]>:$t,
-    Arg<TF_Tensor, [{= A `Tensor` with the same type and shape as `x`.}]>:$e
-  );
-
-  let results = (outs
-    Res<TF_Tensor, [{= A `Tensor` with the same type and shape as `x` and `y`.}]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
-
-  let hasVerifier = 1;
-}
-
-def TF_SelectV2Op : TF_Op<"SelectV2", [Pure, ResultsBroadcastableShape]> {
-  let summary = "";
-
-  let arguments = (ins
-    TF_BoolTensor:$condition,
-    TF_Tensor:$t,
-    TF_Tensor:$e
-  );
-
-  let results = (outs
-    TF_Tensor:$output
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
-
-  let builders = [
-    OpBuilder<(ins "Value":$condition, "Value":$e, "Value":$t)>
-  ];
-}
-
 def TF_SelfAdjointEigV2Op : TF_Op<"SelfAdjointEigV2", [Pure]> {
   let summary = [{
 Computes the eigen decomposition of one or more square self-adjoint matrices.
@@ -15639,7 +15511,7 @@ size(t) ==> 12
   let hasFolder = 1;
 }
 
-def TF_SliceOp : TF_Op<"Slice", [Pure, PredOpTrait<"input and output must have same element type", TCresVTEtIsSameAsOp<0, 0>>]> {
+def TF_SliceOp : TF_Op<"Slice", [PredOpTrait<"input and output must have same element type", TCresVTEtIsSameAsOp<0, 0>>, Pure]> {
   let summary = "Return a slice from 'input'.";
 
   let description = [{
@@ -18612,21 +18484,29 @@ Split the data from the input value into TensorArray elements.
   let description = [{
 Assuming that `lengths` takes on values
 
-  ```(n0, n1, ..., n(T-1))```
+  ```
+  (n0, n1, ..., n(T-1))
+  ```
 
 and that `value` has shape
 
-  ```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```,
+  ```
+  (n0 + n1 + ... + n(T-1) x d0 x d1 x ...),
+  ```
 
 this splits values into a TensorArray with T tensors.
 
 TensorArray index t will be the subtensor of values with starting position
 
-  ```(n0 + n1 + ... + n(t-1), 0, 0, ...)```
+  ```
+  (n0 + n1 + ... + n(t-1), 0, 0, ...)
+  ```
 
 and having size
 
-  ```nt x d0 x d1 x ...```
+  ```
+  nt x d0 x d1 x ...
+  ```
   }];
 
   let arguments = (ins
@@ -19636,6 +19516,145 @@ def TF_UncompressElementOp : TF_Op<"UncompressElement", [Pure]> {
   TF_DerivedResultTypeListAttr output_types = TF_DerivedResultTypeListAttr<0>;
 }
 
+def TF_UniformDequantizeOp : TF_Op<"UniformDequantize", [Pure]> {
+  let summary = "Perform dequantization on the quantized Tensor `input`.";
+
+  let description = [{
+Given quantized `input` which was quantized using `scales` and `zero_points`, performs dequantization using the formula:
+dequantized_data = (quantized_data - zero_point) * scale.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Qint32, TF_Qint8]>, [{Must be a Tensor of Tin.}]>:$input,
+    Arg<TF_Float32Tensor, [{The float value(s) used as scale(s) when quantizing original data that input represents.
+Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).}]>:$scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero_point(s) when quantizing original data that input represents.
+Same shape condition as scales.}]>:$zero_points,
+
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$quantization_axis,
+    I64Attr:$quantization_min_val,
+    I64Attr:$quantization_max_val
+  );
+
+  let results = (outs
+    Res<TF_Float32Tensor, [{The output dequantized Tensor of Tout, whose shape is same as input.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_UniformQuantizeOp : TF_Op<"UniformQuantize", [Pure]> {
+  let summary = "Perform quantization on Tensor `input`.";
+
+  let description = [{
+Given `input`, `scales` and `zero_points`, performs quantization using the formula:
+quantized_data = floor(input_data * (1.0f / scale) + 0.5f) + zero_point
+  }];
+
+  let arguments = (ins
+    Arg<TF_Float32Tensor, [{Must be a Tensor of Tin.}]>:$input,
+    Arg<TF_Float32Tensor, [{The float value(s) to use as scale(s) to quantize `input`.
+Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).}]>:$scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) to use as zero_point(s) to quantize `input`.
+Same shape condition as scales.}]>:$zero_points,
+
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$quantization_axis,
+    I64Attr:$quantization_min_val,
+    I64Attr:$quantization_max_val
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Qint32, TF_Qint8]>, [{The output quantized Tensor of Tout, whose shape is same as input.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_UniformQuantizedClipByValueOp : TF_Op<"UniformQuantizedClipByValue", [Pure]> {
+  let summary = "Perform clip by value on the quantized Tensor `operand`.";
+
+  let description = [{
+Given quantized `operand` which was quantized using `scales` and `zero_points`, performs clip by value using `min` and `max` values.
+If quantization_axis is -1 (per-tensor quantized), the entire operand is clipped using scalar min, max.
+Otherwise (per-channel quantized), the clipping is also done per-channel.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Qint32Tensor, [{Must be a Tensor of T.}]>:$operand,
+    Arg<TF_Qint32Tensor, [{The min value(s) to clip operand. Must be a Tensor of T.
+Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (operand.dim_size(quantization_axis),) (per-axis quantization).}]>:$min,
+    Arg<TF_Qint32Tensor, [{The min value(s) to clip operand. Must be a Tensor of T.
+Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (operand.dim_size(quantization_axis),) (per-axis quantization).}]>:$max,
+    Arg<TF_Float32Tensor, [{The float value(s) used as scale(s) when quantizing `operand`, `min` and `max`.
+Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (operand.dim_size(quantization_axis),) (per-axis quantization).}]>:$scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero_point(s) when quantizing `operand`, `min` and `max`.
+Same shape condition as scales.}]>:$zero_points,
+
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$quantization_axis,
+    I64Attr:$quantization_min_val,
+    I64Attr:$quantization_max_val
+  );
+
+  let results = (outs
+    Res<TF_Qint32Tensor, [{The output clipped Tensor of T, whose shape is same as operand.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_UniformQuantizedDotOp : TF_Op<"UniformQuantizedDot", [Pure]> {
+  let summary = [{
+Perform quantized dot of quantized Tensor `lhs` and quantized Tensor `rhs` to make quantized `output`.
+  }];
+
+  let description = [{
+Given quantized `lhs` and quantized `rhs`, performs quantized dot on `lhs` and `rhs` to make quantized `output`.
+`lhs` and `rhs` must be 2D Tensors and the lhs.dim_size(1) must match rhs.dim_size(0).
+`lhs` and `rhs` must be quantized Tensor, where data value is quantized using the formula:
+quantized_data = clip(original_data / scale + zero_point, quantization_min_val, quantization_max_val).
+`output` is also quantized, using the same formula.
+If `rhs` is per-tensor quantized, `output` must be also per-tensor quantized.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Qint8Tensor, [{Must be a 2D Tensor of Tin.}]>:$lhs,
+    Arg<TF_Qint8Tensor, [{Must be a 2D Tensor of Tin.}]>:$rhs,
+    Arg<TF_Float32Tensor, [{The float value(s) used as scale when quantizing original data that lhs represents.
+Must be a scalar Tensor (lhs supports only per-tensor quantization).}]>:$lhs_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero_point when quantizing original data that lhs represents.
+Same shape condition as lhs_scales.}]>:$lhs_zero_points,
+    Arg<TF_Float32Tensor, [{The float value(s) used as scale when quantizing original data that rhs represents.
+Must be a scalar Tensor (per-tensor quantization) or 1D Tensor of size (rhs.dim_size(1),) (per-channel quantization).}]>:$rhs_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero_point when quantizing original data that rhs represents.
+Same shape condition as rhs_scales.}]>:$rhs_zero_points,
+    Arg<TF_Float32Tensor, [{The float value(s) to use as scales when quantizing original data that output represents.
+Must be a scalar Tensor (per-tensor quantization) or 1D Tensor of size (output.dim_size(1),) (per-channel quantization).
+If rhs is per-tensor quantized, output must be also per-tensor quantized.
+This means that if rhs_scales and rhs_zero_points are scalar Tensors, output_scales and output_zero_points must be scalar Tensors as well.}]>:$output_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero_point when quantizing original data that output represents.
+Same shape condition as rhs_scales.}]>:$output_zero_points,
+
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$lhs_quantization_axis,
+    I64Attr:$lhs_quantization_min_val,
+    I64Attr:$lhs_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$rhs_quantization_axis,
+    I64Attr:$rhs_quantization_min_val,
+    I64Attr:$rhs_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$output_quantization_axis,
+    I64Attr:$output_quantization_min_val,
+    I64Attr:$output_quantization_max_val
+  );
+
+  let results = (outs
+    Res<TF_Qint32Tensor, [{The output 2D Tensor of Tout, whose shape is (lhs.dim_size(0), rhs.dim_size(1)).}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_UniformQuantizedDotHybridOp : TF_Op<"UniformQuantizedDotHybrid", [Pure]> {
   let summary = [{
 Perform hybrid quantized dot of float Tensor `lhs` and quantized Tensor `rhs`.
@@ -19669,6 +19688,54 @@ The output data is the original output data itself (Not quantized).}]>:$output
 
   TF_DerivedOperandTypeAttr Tlhs = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Trhs = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_UniformRequantizeOp : TF_Op<"UniformRequantize", [Pure]> {
+  let summary = [{
+Given quantized tensor `input`, requantize it with new quantization parameters.
+  }];
+
+  let description = [{
+Given quantized tensor `input`, which was quantized using {input_scales, input_zero_points, input_quantization_axis, input_quantization_min_val, input_quantization_max_val},
+requantize it to a tensor, which is quantized using {output_scales, output_zero_points, output_quantization_axis, output_quantization_min_val, output_quantization_max_val}.
+The requantization is done by using the formula:
+output_quantized_data = clip(
+  (input_quantized_data - input_zero_point) * (input_scale / output_scale) + output_zero_point,
+  output_quantization_min_val,
+  output_quantization_max_val)
+
+Per-tensor and per-axis quantization supported cases are followings:
+* per-tensor -> per-tensor
+* per-tensor -> per-axis
+* per-axis -> per-axis where input_quantization_axis equals output_quantization_axis.
+i.e. At least one among input_quantization_axis and output_quantization_axis must be -1, or two must be equal.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Qint32, TF_Qint8]>, [{Must be a Tensor of Tin.}]>:$input,
+    Arg<TF_Float32Tensor, [{The float value(s) used as scale(s) when quantizing original data that `input` represents.
+Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).}]>:$input_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero_point(s) when quantizing original data that `input` represents.
+Same shape condition as scales.}]>:$input_zero_points,
+    Arg<TF_Float32Tensor, [{The float value(s) to use as new scale(s) to quantize original data that `input` represents.
+Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).}]>:$output_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) to use as new zero_point(s) to quantize original data that `input` represents.
+Same shape condition as scales.}]>:$output_zero_points,
+
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$input_quantization_axis,
+    I64Attr:$input_quantization_min_val,
+    I64Attr:$input_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$output_quantization_axis,
+    I64Attr:$output_quantization_min_val,
+    I64Attr:$output_quantization_max_val
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Qint32, TF_Qint8]>, [{The output quantized Tensor of Tout, whose shape is same as input.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
@@ -20275,11 +20342,7 @@ very likely to change. This op will be used only in jax2tf under an
 experimental flag.
 
 This is an experimental op to allow a smooth evolution of jax2tf towards
-emitting and serializing MHLO directly from JAX. At the moment this op
-carries a serialized MHLO module, therefore there are no backward-compatibility
-guarantees, and should not be used for serialization.
-Eventually, the op will carry a MHLO object, which will have
-backwards-compatibility guarantees.
+emitting and serializing StableHLO directly from JAX.
 
 The serialized module must return a tuple if and only if the Sout is an empty
 list or a list with more than 1 elements. The length of Tout and Sout must
@@ -20301,6 +20364,7 @@ E.g., the specification "2.1" denotes the value args[2].shape[1].
     Arg<Variadic<TF_Tensor>, [{A list of `Tensor` with possibly different types to be passed as arguments
 to the HLO module.}]>:$args,
 
+    I64Attr:$version,
     StrAttr:$module,
     TF_ShapeAttrArray:$Sout,
     StrArrayAttr:$dim_args_spec

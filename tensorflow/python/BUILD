@@ -3,7 +3,7 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_mlir", "if_oss", "if_windows", "if_xla_available", "py_test", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps")
+load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_mlir", "if_oss", "if_windows", "if_xla_available", "py_test", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "get_compatible_with_portable", "pywrap_tensorflow_macro", "tf_external_workspace_visible", "tf_monitoring_python_deps", "tf_py_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -2842,23 +2842,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "histogram_ops_test",
-    size = "small",
-    srcs = ["ops/histogram_ops_test.py"],
-    main = "ops/histogram_ops_test.py",
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":histogram_ops",
-        ":init_ops",
-        ":variables",
-        "//tensorflow/python/framework:for_generated_wrappers",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
     name = "image_grad_d9m_test",
     size = "large",
     srcs = ["ops/image_grad_d9m_test.py"],
@@ -3318,7 +3301,6 @@ pywrap_tensorflow_macro(
         "@icu//:__subpackages__",
         "@jsoncpp_git//:__subpackages__",
         "@libjpeg_turbo//:__subpackages__",
-        "@libxsmm_archive//:__subpackages__",
         "@llvm_openmp//:__subpackages__",
         "@llvm-project//:__subpackages__",
         "@llvm_terminfo//:__subpackages__",
@@ -3344,12 +3326,11 @@ pywrap_tensorflow_macro(
         "@snappy//:__subpackages__",
         "@sobol_data//:__subpackages__",
         "@stablehlo//:__subpackages__",
-        "@tf_runtime//:__subpackages__",
         "//:__subpackages__",
         "@upb//:__subpackages__",
         "@XNNPACK//:__subpackages__",
         "@zlib//:__subpackages__",
-    ],
+    ] + tsl_async_value_deps(),
     win_def_file = ":pywrap_tensorflow_filtered_def_file",
     deps = [
         ":bfloat16_lib",
@@ -3551,7 +3532,7 @@ filegroup(
     ] + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
         "//tensorflow/compiler/xla:status_macros",  # tfcompile
-        "//tensorflow/compiler/xla/service:hlo",  # tfcompile
+        "//tensorflow/compiler/xla/hlo/ir:hlo",  # tfcompile
     ]),
     visibility = ["//visibility:private"],
 )
@@ -4164,6 +4145,8 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:py_exception_registry_hdr",
         "//tensorflow/python/lib/core:safe_ptr_hdr",
         "//tensorflow/python/util:util_hdr",
+        "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
+        "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
     ],
     # Only include TensorFlow header-only targets here.
     # If a cc_library needs to depend on TensorFlow .cc files through srcs or
@@ -4195,16 +4178,16 @@ tf_python_pybind_extension(
         "//tensorflow/core/lib/llvm_rtti",
     ] + if_static(
         extra_deps = [
-            "//tensorflow/core/protobuf:coordination_service_proto_cc",
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
+            "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
         ],
         otherwise = [
-            "//tensorflow/core/protobuf:coordination_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
+            "//tensorflow/tsl/protobuf:coordination_service_proto_cc_headers_only",
         ],
     ),
 )

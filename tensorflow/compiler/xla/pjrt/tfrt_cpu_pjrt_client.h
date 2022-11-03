@@ -559,7 +559,8 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   // Checks that the input buffers passed in by the user have the correct size
   // on device for the compiled program.
   Status CheckBufferCompatibilities(
-      absl::Span<TrackedTfrtCpuDeviceBuffer* const> input_buffers) const;
+      absl::Span<std::pair<bool, TrackedTfrtCpuDeviceBuffer*> const>
+          input_buffers) const;
 
   StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,

@@ -133,7 +133,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute:combinations",
     "//tensorflow/python/distribute/failure_handling:check_preemption_py",
     "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
-    "//tensorflow/python/distribute/failure_handling:gce_util",
+    "//tensorflow/python/distribute/failure_handling:failure_handling_util",
     "//tensorflow/python/distribute:multi_process_runner",
     "//tensorflow/python/eager:eager_pip",
     "//tensorflow/python/keras:combinations",
@@ -251,11 +251,6 @@ filegroup(
         "//conditions:default": [
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
-    }) + select({
-        "//tensorflow/core/kernels:xsmm": [
-            "@libxsmm_archive//:LICENSE.md",
-        ],
-        "//conditions:default": [],
     }) + select({
         "//tensorflow/tsl:with_numa_support": [
             "@hwloc//:COPYING",

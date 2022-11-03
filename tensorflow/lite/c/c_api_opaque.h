@@ -15,9 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_C_C_API_OPAQUE_H_
 #define TENSORFLOW_LITE_C_C_API_OPAQUE_H_
 
-#include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/c/c_api_types.h"  // IWYU pragma: export
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -150,11 +150,32 @@ TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
 //
 // The ownership of the `nodes_to_replace` and the `opaque_delegate` remains
 // with the caller.
-TfLiteStatus TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
+TFL_CAPI_EXPORT TfLiteStatus
+TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
     struct TfLiteOpaqueContext* opaque_context,
     TfLiteRegistrationExternal* registration_external,
     const TfLiteIntArray* nodes_to_replace,
     struct TfLiteOpaqueDelegateStruct* opaque_delegate);
+
+// Returns modifiable access to the opaque tensor that corresponds to the
+// specified `index` and is associated with the provided `opaque_context`.
+//
+// This requires the `index` to be between 0 and N - 1, where N is the
+// number of tensors in the model.
+//
+// Typically the tensors associated with the `context` would be set
+// during the initialization of the `interpreter` that the `context` belongs to,
+// through a mechanism like the `InterpreterBuilder`, and remain unchanged
+// throughout the lifetime of the interpreter.  However, there are some
+// circumstances in which the pointer may not remain valid throughout the
+// lifetime of the interpreter, because calls to `AddTensors` on the interpreter
+// invalidate the returned pointer.
+//
+// The ownership of the tensor remains with the TFLite runtime, meaning the
+// caller should not deallocate the pointer.
+TFL_CAPI_EXPORT
+TfLiteOpaqueTensor* TfLiteOpaqueContextGetOpaqueTensor(
+    const TfLiteOpaqueContext* opaque_context, int index);
 
 #ifdef __cplusplus
 }  // extern "C"

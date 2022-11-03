@@ -5,10 +5,11 @@
 #   to other TF components outside of TSL.
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_copts",
+    "//tensorflow/tsl:tsl.bzl",
+    "if_not_fuchsia",
+    "tsl_copts",
 )
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
@@ -16,9 +17,11 @@ load(
     "tf_fingerprint_deps",
     "tf_google_mobile_srcs_no_runtime",
     "tf_logging_deps",
+    "tf_platform_alias",
     "tf_platform_deps",
     "tf_protobuf_compiler_deps",
     "tf_resource_deps",
+    "tf_stream_executor_deps",
     "tf_testing_deps",
     "tf_windows_aware_platform_deps",
     "tsl_cc_test",
@@ -28,6 +31,11 @@ load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
+load(
+    "@bazel_skylib//:bzl_library.bzl",
+    "bzl_library",
+)
+load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 
 package(
     default_visibility = [
@@ -115,7 +123,7 @@ cc_library(
         "file_system_helper.h",
         "threadpool.h",
     ],
-    deps = tf_windows_aware_platform_deps("env"),
+    deps = tf_windows_aware_platform_deps("env") + if_static([":env_impl"]),
 )
 
 cc_library(
@@ -529,6 +537,7 @@ filegroup(
         "stringprintf.cc",
         "stringprintf.h",
         "thread_annotations.h",
+        "threadpool.cc",
         "threadpool.h",
         "threadpool_interface.h",
         "tracing.h",
@@ -537,7 +546,6 @@ filegroup(
         "//conditions:default": [
             "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
             "file_system_helper.cc",
-            "threadpool.cc",
             "tracing.cc",
         ],
     }),
@@ -552,7 +560,6 @@ filegroup(
         "png.h",
         "random.cc",
         "random.h",
-        "subprocess.h",
         "test_benchmark.h",
         "threadpool_options.h",
         "unbounded_work_queue.h",
@@ -561,7 +568,9 @@ filegroup(
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.cc",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.h",
         "//tensorflow/tsl/platform/profile_utils:i_cpu_utils_helper.h",
-    ],
+    ] + if_not_fuchsia([
+        "subprocess.h",
+    ]),
     compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -1003,6 +1012,14 @@ cc_library(
 )
 
 cc_library(
+    name = "dso_loader",
+    hdrs = ["dso_loader.h"],
+    deps = [
+        ":platform",
+    ] + tf_stream_executor_deps("dso_loader"),
+)
+
+cc_library(
     name = "logger",
     srcs = ["logger.cc"],
     hdrs = ["logger.h"],
@@ -1159,7 +1176,7 @@ cc_library(
     name = "tensor_float_32_utils",
     srcs = ["tensor_float_32_utils.cc"],
     hdrs = ["tensor_float_32_utils.h"],
-    copts = tf_copts(),
+    copts = tsl_copts(),
     alwayslink = 1,
 )
 
@@ -1249,7 +1266,7 @@ cc_library(
     name = "test_main",
     testonly = 1,
     srcs = ["test_main.cc"],
-    copts = tf_copts(),
+    copts = tsl_copts(),
     linkopts = select({
         "//tensorflow/tsl:windows": [],
         "//conditions:default": ["-lm"],
@@ -1568,6 +1585,9 @@ tsl_cc_test(
     srcs = [
         "port_test.cc",
     ],
+    tags = [
+        "notap",  #TODO(b/245510532) : disabled due to flakiness.
+    ],
     deps = [
         ":env",
         ":env_impl",
@@ -1656,5 +1676,73 @@ tsl_cc_test(
         ":numbers",
         ":test",
         ":test_main",
+    ],
+)
+
+bzl_library(
+    name = "rules_cc_bzl",
+    srcs = ["rules_cc.bzl"],
+    deps = tf_platform_alias("rules_cc_bzl"),
+)
+
+cc_library(
+    name = "retrying_utils",
+    srcs = [
+        "retrying_utils.cc",
+    ],
+    hdrs = [
+        "retrying_utils.h",
+    ],
+    copts = tsl_copts(),
+    deps = [
+        ":env",
+        ":errors",
+        ":random",
+        ":status",
+    ],
+)
+
+cc_library(
+    name = "retrying_file_system",
+    hdrs = [
+        "retrying_file_system.h",
+    ],
+    copts = tsl_copts(),
+    deps = [
+        ":env",
+        ":errors",
+        ":random",
+        ":retrying_utils",
+        ":status",
+    ],
+)
+
+tsl_cc_test(
+    name = "retrying_file_system_test",
+    size = "small",
+    srcs = ["retrying_file_system_test.cc"],
+    deps = [
+        ":env_impl",
+        ":retrying_file_system",
+        ":str_util",
+        ":test",
+        ":test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+    ],
+)
+
+tsl_cc_test(
+    name = "retrying_utils_test",
+    size = "small",
+    srcs = ["retrying_utils_test.cc"],
+    deps = [
+        ":env",
+        ":env_impl",
+        ":errors",
+        ":retrying_utils",
+        ":str_util",
+        ":test",
+        ":test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
     ],
 )

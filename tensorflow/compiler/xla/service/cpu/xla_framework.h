@@ -19,6 +19,8 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/cpu/xla_framework.pb.h"
+
 namespace xla {
 namespace cpu {
 
@@ -37,6 +39,24 @@ struct XlaFrameworkMapping {
   std::vector<int64_t> flattened_outputs;
   int64_t result = -1;
   bool output_is_tuple = false;
+
+  XlaFrameworkMappingProto ToProto() const {
+    XlaFrameworkMappingProto proto;
+    *proto.mutable_inputs() = {inputs.begin(), inputs.end()};
+    *proto.mutable_flattened_outputs() = {flattened_outputs.begin(),
+                                          flattened_outputs.end()};
+    proto.set_result(result);
+    proto.set_output_is_tuple(output_is_tuple);
+    return proto;
+  }
+
+  void FromProto(const XlaFrameworkMappingProto& proto) {
+    inputs = {proto.inputs().begin(), proto.inputs().end()};
+    flattened_outputs = {proto.flattened_outputs().begin(),
+                         proto.flattened_outputs().end()};
+    result = proto.result();
+    output_is_tuple = proto.output_is_tuple();
+  }
 };
 
 }  // namespace cpu

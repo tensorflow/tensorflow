@@ -26,6 +26,64 @@ limitations under the License.
 
 namespace xla {
 
+// Private to PyArray, but you cannot forward declare member classes.
+struct PyArray_Storage {
+  PyArray_Storage(pybind11::object aval, bool weak_type, pybind11::dtype dtype,
+                  std::vector<int64_t> shape, pybind11::object sharding,
+                  bool committed, std::shared_ptr<PyClient> py_client,
+                  std::shared_ptr<Traceback> traceback,
+                  std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers)
+      : fastpath_enabled(true),
+        aval(std::move(aval)),
+        weak_type(weak_type),
+        dtype(std::move(dtype)),
+        shape(std::move(shape)),
+        sharding(std::move(sharding)),
+        committed(committed),
+        py_client(std::move(py_client)),
+        traceback(std::move(traceback)),
+        pjrt_buffers(std::move(pjrt_buffers)) {
+    next = this->py_client->arrays_;
+    this->py_client->arrays_ = this;
+    if (next) {
+      next->prev = this;
+    }
+    prev = nullptr;
+  }
+
+  // TODO(yashkatariya): remove this once the transition completes.
+  struct DisableFastpath {};
+  explicit PyArray_Storage(DisableFastpath) : fastpath_enabled(false) {}
+
+  ~PyArray_Storage();
+  pybind11::handle AsHandle();
+
+  // TODO(yashkatariya): remove this once the transition completes.
+  bool fastpath_enabled;
+
+  pybind11::object aval;
+  bool weak_type = false;
+  pybind11::dtype dtype;
+  std::vector<int64_t> shape;
+
+  pybind11::object sharding;
+  pybind11::object npy_value = pybind11::none();
+  bool committed = false;
+
+  std::shared_ptr<PyClient> py_client;
+  std::shared_ptr<Traceback> traceback;
+  std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers;
+
+  // optional field, used only in python
+  std::vector<PyBuffer::object> py_buffers;
+
+  // Doubly-linked list of all PyArrays known to the client. Protected by the
+  // GIL. Since multiple PyBuffers may share the same PjRtBuffer, there may be
+  // duplicate PjRtBuffers in this list.
+  PyArray_Storage* next;
+  PyArray_Storage* prev;
+};
+
 // The C++ implementation of jax.Array. A few key methods and data members are
 // implemented in C++ for performance, while most of the functionalities are
 // still implemented in python.
@@ -47,6 +105,10 @@ class PyArray : public pybind11::object {
                      absl::Span<const PyArray> py_arrays, bool committed,
                      bool skip_checks);
 
+  // TODO(yashkatariya): remove this once the transition completes.
+  struct DisableFastpath {};
+  static void PyInit(pybind11::object self, DisableFastpath);
+
   // Only used in C++
   PyArray(pybind11::object aval, bool weak_type, pybind11::dtype dtype,
           std::vector<int64_t> shape, pybind11::object sharding,
@@ -57,38 +119,7 @@ class PyArray : public pybind11::object {
 
   static Status RegisterTypes(pybind11::module& m);
 
-  struct Storage {
-    Storage(pybind11::object aval, bool weak_type, pybind11::dtype dtype,
-            std::vector<int64_t> shape, pybind11::object sharding,
-            bool committed, std::shared_ptr<PyClient> py_client,
-            std::shared_ptr<Traceback> traceback,
-            std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers)
-        : aval(std::move(aval)),
-          weak_type(weak_type),
-          dtype(std::move(dtype)),
-          shape(std::move(shape)),
-          sharding(std::move(sharding)),
-          committed(committed),
-          py_client(std::move(py_client)),
-          traceback(std::move(traceback)),
-          pjrt_buffers(std::move(pjrt_buffers)) {}
-
-    pybind11::object aval;
-    bool weak_type = false;
-    pybind11::dtype dtype;
-    std::vector<int64_t> shape;
-
-    pybind11::object sharding;
-    pybind11::object npy_value = pybind11::none();
-    bool committed = false;
-
-    std::shared_ptr<PyClient> py_client;
-    std::shared_ptr<Traceback> traceback;
-    std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers;
-
-    // optional field, used only in python
-    std::vector<PyBuffer::object> py_buffers;
-  };
+  using Storage = PyArray_Storage;
 
   const pybind11::object& aval() const { return GetStorage().aval; }
   void set_aval(pybind11::object aval) { GetStorage().aval = std::move(aval); }
@@ -141,6 +172,9 @@ class PyArray : public pybind11::object {
 
   int num_shards() const { return pjrt_buffers().size(); }
 
+  // TODO(yashkatariya): remove this once the transition completes.
+  bool fastpath_enabled() const { return GetStorage().fastpath_enabled; }
+
   static pybind11::handle type() {
     DCHECK(type_);
     return pybind11::handle(type_);
@@ -151,6 +185,8 @@ class PyArray : public pybind11::object {
   }
 
   Status BlockUntilReady() const;
+
+  bool IsDeleted() const;
 
  private:
   void CheckAndRearrange();

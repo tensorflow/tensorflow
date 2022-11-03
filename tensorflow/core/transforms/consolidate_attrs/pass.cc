@@ -27,12 +27,12 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/ir/utility.h"
+#include "tensorflow/core/ir/utils/shape_inference_utils.h"
 
 namespace mlir {
 namespace tfg {
@@ -58,7 +58,7 @@ static Type GetReifiedType(Type orig, ShapeAttr shape) {
     SmallVector<int64_t> dims = llvm::to_vector(shape.getShape());
     for (int64_t &dim : dims)
       if (dim < -1) dim = -1;
-    inferred = tensorflow::GetTypeFromTFTensorShape(dims, element_type);
+    inferred = GetTypeFromTFTensorShape(dims, element_type);
   } else {
     inferred = UnrankedTensorType::get(element_type);
   }

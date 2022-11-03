@@ -66,6 +66,7 @@ filegroup(
         "padding.h",
         "tensor_format.cc",
         "tensor_format.h",
+        "//tensorflow/tsl/util:mobile_srcs_no_runtime",
     ],
 )
 
@@ -79,7 +80,6 @@ filegroup(
         "bcast.h",
         "command_line_flags.h",
         "determinism.h",
-        "device_name_utils.cc",
         "device_name_utils.h",
         "dump_graph.cc",
         "dump_graph.h",
@@ -210,7 +210,6 @@ filegroup(
         "batch_util.cc",
         "bcast.cc",
         "debug_events_writer.cc",
-        "device_name_utils.cc",
         "dump_graph.cc",
         "equal_graph_def.cc",
         "events_writer.cc",
@@ -384,16 +383,31 @@ cc_library(
 
 cc_library(
     name = "stats_calculator_portable",
-    srcs = [
-        "stat_summarizer_options.h",
-        "stats_calculator.cc",
-    ],
     hdrs = [
+        "stat_summarizer_options.h",
         "stats_calculator.h",
     ],
     copts = tf_copts(),
     visibility = [
         "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/tsl/util:stats_calculator_portable",
+    ],
+)
+
+cc_library(
+    name = "stat_summarizer",
+    hdrs = [
+        "stat_summarizer.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/python/util:__pkg__",
+    ],
+    deps = [
+        ":stats_calculator_portable",
+        "//tensorflow/core:framework",
     ],
 )
 
@@ -450,16 +464,6 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "stats_calculator_test",
-    srcs = ["stats_calculator_test.cc"],
-    deps = [
-        ":stats_calculator_portable",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
 cc_library(
     name = "reporter",
     hdrs = ["reporter.h"],
@@ -467,7 +471,7 @@ cc_library(
         "//tensorflow/core:__subpackages__",
     ],
     deps = [
-        ":test_log_proto_impl_cc",
+        ":test_log_proto_cc",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform:errors",
@@ -488,6 +492,11 @@ cc_library(
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/util:__pkg__",
+    ],
+    deps = [
+        ":env_var",
+        "//tensorflow/core/platform:platform_port",
+        "@com_google_absl//absl/base",
     ],
     alwayslink = 1,
 )
@@ -631,8 +640,8 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
+        ":env_var",
         "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/util:env_var",
         "//tensorflow/tsl/util:determinism",
     ],
     alwayslink = 1,
@@ -828,7 +837,6 @@ tf_cc_tests(
     srcs = [
         "bcast_test.cc",
         "command_line_flags_test.cc",
-        "device_name_utils_test.cc",
         "dump_graph_test.cc",
         "equal_graph_def_test.cc",
         "events_writer_test.cc",
@@ -926,15 +934,13 @@ tf_cc_test(
 
 # Proto libraries.
 tf_proto_library(
-    name = "test_log_proto_impl",
+    name = "test_log_proto",
     srcs = ["test_log.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = ["//tensorflow/tsl/protobuf:test_log_proto"],
     # Not to be used outside of tensorflow/core.
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/tsl/util:__pkg__",
-    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+    exports = ["//tensorflow/tsl/protobuf:test_log_proto"],
 )
 
 tf_proto_library(

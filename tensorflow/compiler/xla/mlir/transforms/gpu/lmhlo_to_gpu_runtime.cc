@@ -35,9 +35,9 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/utils/runtime/custom_calls.h"
+#include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
@@ -149,23 +149,20 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
     // By default all operands passed to the custom call handler.
     llvm::SmallVector<Value> operands = op.getOperands();
 
-    // If custom call has target arguments mapping, then we need to pass empty
-    // memrefs in place of holes.
+    // If custom call has target arguments mapping, then we need to pass `i64`
+    // scalars in place of holes to detect them in custom call handler.
+    //
+    // TODO(ezhulenev): We need an `xla` dialect to model Xla framework
+    // semantics including holes for custom call. As a work around we pass `i64`
+    // values because xla custom call do not support scalar arguments, and we
+    // can disambiguate holes from buffers.
     if (op.getTargetArgMapping().has_value()) {
       auto mapping = *op.getTargetArgMapping();
       int64_t num_args = mapping.getNumArgs();
       int64_t num_results = mapping.getNumResults();
 
-      // Always create an `alloca` in the parent function entry block.
-      // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
-      Value hole = [&]() -> Value {
-        OpBuilder::InsertionGuard guard(b);
-        b.setInsertionPointToStart(
-            &op->getParentOfType<func::FuncOp>().front());
-        return b.create<memref::AllocaOp>(MemRefType::get({0}, b.getI8Type()));
-      }();
-
-      // We represent holes as empty i8 memrefs.
+      // We represent holes as an arbitrary `i64` constant.
+      Value hole = b.create<arith::ConstantOp>(b.getI64IntegerAttr(-1));
       operands = llvm::SmallVector<Value>(num_args + num_results, hole);
 
       // Update operands to mapped custom call arguments.
@@ -338,15 +335,37 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(WhileOp op,
-                                PatternRewriter& rewriter) const override {
+  // Rewrite while loop with known trip count to `scf.for` operation.
+  LogicalResult rewriteForLoop(WhileOp op, PatternRewriter& rewriter) const {
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    Value lb = b.create<arith::ConstantIndexOp>(0);
+    Value ub = b.create<arith::ConstantIndexOp>(*op.getTripCount());
+    Value c1 = b.create<arith::ConstantIndexOp>(1);
+
+    // Create an `scf.for` loop in place of `lmhlo.while` loop.
+    auto loop = b.create<scf::ForOp>(lb, ub, c1, ValueRange());
+
+    // Move body region into the new loop operation.
+    BlockAndValueMapping mapping;
+    rewriter.eraseOp(op.getBody().front().getTerminator());
+    rewriter.mergeBlockBefore(&op.getBody().front(),
+                              loop.getLoopBody().front().getTerminator());
+
+    // Erase the original while loop.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+
+  // Rewrite while loop with unknown trip count to `scf.while` operation.
+  LogicalResult rewriteWhileLoop(WhileOp op, PatternRewriter& rewriter) const {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
     // Create an `scf.while` loop in place of `lmhlo.while` loop.
     auto loop = b.create<scf::WhileOp>(TypeRange(), ValueRange());
 
     // Predicate buffer placed on the device.
-    assert(op.getNumOperands() == 1 && "expected single cond operand");
     Value pred = op.getOperand(0);
 
     // Inline condition and body regions into the new loop operation.
@@ -391,6 +410,13 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
     rewriter.eraseOp(op);
 
     return success();
+  }
+
+  LogicalResult matchAndRewrite(WhileOp op,
+                                PatternRewriter& rewriter) const override {
+    assert(op.getNumOperands() == 1 && "expected single lmhlo.while operand");
+    return op.getTripCount().has_value() ? rewriteForLoop(op, rewriter)
+                                         : rewriteWhileLoop(op, rewriter);
   }
 };
 
@@ -611,10 +637,6 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
 
   LogicalResult matchAndRewrite(CollectiveOp op,
                                 PatternRewriter& rewriter) const override {
-    // Channel ID is not supported.
-    if (op.getChannelId().has_value())
-      return op.emitOpError() << "Collective channel id is not supported";
-
     // Construct an NCCL collective config from the parent func attributes.
     func::FuncOp fn = op->template getParentOfType<func::FuncOp>();
     auto replica_count_attr = fn->getAttrOfType<IntegerAttr>("replica_count");

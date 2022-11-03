@@ -72,6 +72,7 @@ class SpmdPartitioningTest : public HloTestBase {
 
     HloModuleConfig config = GetModuleConfigForTest();
     config.set_use_spmd_partitioning(true);
+    config.set_num_partitions(num_devices);
     TF_ASSIGN_OR_RETURN(auto module,
                         ParseAndReturnVerifiedModule(hlo_module, config));
     HloPassPipeline pass("spmd-partitioning");
@@ -2535,7 +2536,7 @@ ge {
   p.0.lhs.1247 = f32[]{:T(256)} parameter(0), sharding={replicated}
   bitcast-convert = s32[]{:T(256)} bitcast-convert(p.0.lhs.1247), sharding={replicated}
   constant = s32[]{:T(256)} constant(0), sharding={replicated}
-  compare = pred[]{:T(256)E(32)} compare(bitcast-convert, constant), direction=LT, sharding={replicated}
+  compare = pred[]{:T(256)} compare(bitcast-convert, constant), direction=LT, sharding={replicated}
   constant.1 = u32[]{:T(256)} constant(2147483647), sharding={replicated}
   bitcast-convert.1 = u32[]{:T(256)} bitcast-convert(p.0.lhs.1247), sharding={replicated}
   subtract = u32[]{:T(256)} subtract(constant.1, bitcast-convert.1), sharding={replicated}
@@ -2543,18 +2544,18 @@ ge {
   select = s32[]{:T(256)} select(compare, bitcast-convert.2, bitcast-convert), sharding={replicated}
   p.0.rhs.1248 = f32[]{:T(256)} parameter(1), sharding={replicated}
   bitcast-convert.3 = s32[]{:T(256)} bitcast-convert(p.0.rhs.1248), sharding={replicated}
-  compare.1 = pred[]{:T(256)E(32)} compare(bitcast-convert.3, constant), direction=LT, sharding={replicated}
+  compare.1 = pred[]{:T(256)} compare(bitcast-convert.3, constant), direction=LT, sharding={replicated}
   bitcast-convert.4 = u32[]{:T(256)} bitcast-convert(p.0.rhs.1248), sharding={replicated}
   subtract.1 = u32[]{:T(256)} subtract(constant.1, bitcast-convert.4), sharding={replicated}
   bitcast-convert.5 = s32[]{:T(256)} bitcast-convert(subtract.1), sharding={replicated}
   select.1 = s32[]{:T(256)} select(compare.1, bitcast-convert.5, bitcast-convert.3), sharding={replicated}
-  compare.2 = pred[]{:T(256)E(32)} compare(select, select.1), direction=GT, sharding={replicated}
-  compare.258 = pred[]{:T(256)E(32)} compare(select.1, select), direction=GT, sharding={replicated}
-  compare.259 = pred[]{:T(256)E(32)} compare(compare.2, compare.258), direction=EQ, sharding={replicated}
+  compare.2 = pred[]{:T(256)} compare(select, select.1), direction=GT, sharding={replicated}
+  compare.258 = pred[]{:T(256)} compare(select.1, select), direction=GT, sharding={replicated}
+  compare.259 = pred[]{:T(256)} compare(compare.2, compare.258), direction=EQ, sharding={replicated}
   p.1.lhs.1249 = s32[]{:T(256)} parameter(2), sharding={replicated}
   p.1.rhs.1250 = s32[]{:T(256)} parameter(3), sharding={replicated}
-  compare.260 = pred[]{:T(256)E(32)} compare(p.1.lhs.1249, p.1.rhs.1250), direction=LT, sharding={replicated}
-  ROOT select.86 = pred[]{:T(256)E(32)} select(compare.259, compare.260, compare.2), sharding={replicated}
+  compare.260 = pred[]{:T(256)} compare(p.1.lhs.1249, p.1.rhs.1250), direction=LT, sharding={replicated}
+  ROOT select.86 = pred[]{:T(256)} select(compare.259, compare.260, compare.2), sharding={replicated}
 }
 
 ENTRY entry {
@@ -6703,6 +6704,21 @@ ENTRY entry {
                   op::Shape("s32[4]")));
 }
 
+TEST_F(SpmdPartitioningTest, ManualPartitionId) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  ROOT %lhs = s32[] partition-id(), sharding={manual}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::PartitionId());
+}
+
 TEST_F(SpmdPartitioningTest, DynamicSliceAlongNonPartitionedDimension) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -6963,6 +6979,28 @@ ENTRY entry {
                           op::Shape("f32[8,2,2]")));
 }
 
+TEST_F(SpmdPartitioningTest, IndexAndOperandPassthroughGather) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[7,12] parameter(0),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+  %indices = s32[16,2] parameter(1),
+    sharding={devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}
+  ROOT %gather = f32[16,1,12] gather(%input, %indices),
+    offset_dims={1,2}, collapsed_slice_dims={}, start_index_map={0,1},
+    index_vector_dim=1, slice_sizes={1,12},
+    sharding={devices=[2,1,2]0,2,1,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Gather(op::Parameter(0), op::Parameter(1)),
+                          op::Shape("f32[8,1,6]")));
+}
+
 TEST_F(SpmdPartitioningTest, IndexPassthroughGatherPartitionedIndexVectorDim) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -7135,7 +7173,7 @@ ENTRY entry {
     scatter(%input0, %input1, %indices, %updates0, %updates1),
       to_apply=add_min_max, update_window_dims={1}, inserted_window_dims={0},
       scatter_dims_to_operand_dims={0}, index_vector_dim=1,
-      sharding={devices=[1,2]0,1}
+      sharding={{devices=[1,2]0,1},{devices=[1,2]0,1}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -7210,7 +7248,8 @@ ENTRY entry {
     scatter(%input0, %input1, %indices, %updates0, %updates1),
       to_apply=add_min_max, update_window_dims={1}, inserted_window_dims={0},
       scatter_dims_to_operand_dims={0}, index_vector_dim=1,
-      sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+      sharding={{devices=[1,2,2]0,1,2,3 last_tile_dim_replicate},
+                {devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/4));
@@ -7419,7 +7458,7 @@ ENTRY entry {
     scatter(%input0, %input1, %indices, %updates0, %updates1),
       to_apply=add_min_max, update_window_dims={2}, inserted_window_dims={0},
       scatter_dims_to_operand_dims={0}, index_vector_dim=2,
-      sharding={devices=[2,1]0,1}
+      sharding={{devices=[2,1]0,1},{devices=[2,1]0,1}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -7500,7 +7539,8 @@ ENTRY entry {
     scatter(%input0, %input1, %indices, %updates0, %updates1),
       to_apply=add_min_max, update_window_dims={2}, inserted_window_dims={0},
       scatter_dims_to_operand_dims={0}, index_vector_dim=2,
-      sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+      sharding={{devices=[2,1,2]0,1,2,3 last_tile_dim_replicate},
+                {devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/4));
@@ -9718,6 +9758,140 @@ ENTRY %module {
                         op::DynamicUpdateSlice(_, gather, _, _, _, _))));
 }
 
+TEST_F(SpmdPartitioningTest, GatherParallelDimFromOutsideWhilePositive) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+cond {
+  %parameters = (s32[8,4,2,2], s32[1,8,4], s32[]) parameter(0),
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}, {replicated}}
+  %counter = s32[] get-tuple-element(parameters), index=2, sharding={replicated}
+  %constant = s32[] constant(3), sharding={replicated}
+  ROOT %lt = pred[] compare(counter, constant), direction=LT,
+    sharding={replicated}
+}
+
+body {
+  %parameters = (s32[8,4,2,2], s32[1,8,4], s32[]) parameter(0),
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}, {replicated}}
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} get-tuple-element(parameters), index=0,
+    sharding={replicated}
+  %iota = s32[1,8,4]{2,1,0} get-tuple-element(parameters), index=1,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %counter = s32[] get-tuple-element(parameters), index=2, sharding={replicated}
+  %constant = s32[] constant(1), sharding={replicated}
+  %updated_counter = s32[] add(counter, constant), sharding={replicated}
+  %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %concatenate.19 = s32[2,8,4]{2,1,0} concatenate(s32[1,8,4]{2,1,0} %iota,
+    s32[1,8,4]{2,1,0} %iota2), dimensions={0},
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %gather.20 = s32[8,4,2,2]{3,2,1,0} gather(
+    s32[8,4,2,2]{3,2,1,0} %parameter.0,
+    s32[2,8,4]{2,1,0} %concatenate.19), offset_dims={2,3},
+    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
+    slice_sizes={1,1,2,2}, sharding={replicated}
+  ROOT %tuple = (s32[8,4,2,2], s32[1,8,4], s32[])
+    tuple(gather.20, iota, updated_counter),
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}, {replicated}}
+}
+
+ENTRY entry {
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} parameter(0), sharding={replicated}
+  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %counter = s32[] constant(0), sharding={replicated}
+  %tuple = (s32[8,4,2,2], s32[1,8,4], s32[]) tuple(parameter.0, iota, counter),
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}, {replicated}}
+  ROOT while = (s32[8,4,2,2], s32[1,8,4], s32[]) while(tuple), body=body,
+    condition=cond,
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}, {replicated}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  const auto root = module->entry_computation()
+                        ->root_instruction()
+                        ->while_body()
+                        ->root_instruction();
+  VLOG(1) << module->ToString();
+  auto operand = AllOf(op::Shape("s32[1,4,2,2]"), op::DynamicSlice());
+  auto indices = AllOf(op::Shape("s32[2,1,4]"), op::Subtract());
+  auto gather = AllOf(op::Shape("s32[1,4,2,2]"), op::Gather(operand, indices));
+  EXPECT_THAT(
+      root,
+      op::Tuple(op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)), _,
+                _));
+}
+
+TEST_F(SpmdPartitioningTest, GatherParallelDimFromOutsideWhileNegative) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+cond {
+  %parameters = (s32[8,4,2,2], s32[1,8,4], s32[]) parameter(0),
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}, {replicated}}
+  %counter = s32[] get-tuple-element(parameters), index=2, sharding={replicated}
+  %constant = s32[] constant(3), sharding={replicated}
+  ROOT %lt = pred[] compare(counter, constant), direction=LT,
+    sharding={replicated}
+}
+
+body {
+  %parameters = (s32[8,4,2,2], s32[1,8,4], s32[]) parameter(0),
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}, {replicated}}
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} get-tuple-element(parameters), index=0,
+    sharding={replicated}
+  %iota = s32[1,8,4]{2,1,0} get-tuple-element(parameters), index=1,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %counter = s32[] get-tuple-element(parameters), index=2, sharding={replicated}
+  %constant = s32[] constant(1), sharding={replicated}
+  %updated_counter = s32[] add(counter, constant), sharding={replicated}
+  %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %concatenate.19 = s32[2,8,4]{2,1,0} concatenate(s32[1,8,4]{2,1,0} %iota,
+    s32[1,8,4]{2,1,0} %iota2), dimensions={0},
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %gather.20 = s32[8,4,2,2]{3,2,1,0} gather(
+    s32[8,4,2,2]{3,2,1,0} %parameter.0,
+    s32[2,8,4]{2,1,0} %concatenate.19), offset_dims={2,3},
+    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
+    slice_sizes={1,1,2,2}, sharding={replicated}
+  %iota.2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  ROOT %tuple = (s32[8,4,2,2], s32[1,8,4], s32[])
+    tuple(gather.20, iota.2, updated_counter),
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}, {replicated}}
+}
+
+ENTRY entry {
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} parameter(0), sharding={replicated}
+  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %counter = s32[] constant(0), sharding={replicated}
+  %tuple = (s32[8,4,2,2], s32[1,8,4], s32[]) tuple(parameter.0, iota, counter),
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}, {replicated}}
+  ROOT while = (s32[8,4,2,2], s32[1,8,4], s32[]) while(tuple), body=body,
+    condition=cond,
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}, {replicated}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  const auto root = module->entry_computation()
+                        ->root_instruction()
+                        ->while_body()
+                        ->root_instruction();
+  VLOG(1) << module->ToString();
+  auto operand = AllOf(op::Shape("s32[8,4,2,2]"), op::GetTupleElement());
+  auto indices = AllOf(op::Shape("s32[2,1,4]"), op::Concatenate());
+  auto gather = AllOf(op::Shape("s32[1,4,2,2]"), op::Gather(operand, indices));
+  EXPECT_THAT(
+      root,
+      op::Tuple(op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)), _,
+                _));
+}
+
 TEST_F(SpmdPartitioningTest, GatherParallelDimAndNonParallelDimPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -10385,6 +10559,88 @@ ENTRY %module {
       AllOf(op::Shape("s32[4,1,2,2]"), op::Scatter(operand, indices, update));
   EXPECT_THAT(root, op::AllReduce(op::AllReduce(
                         op::DynamicUpdateSlice(_, scatter, _, _, _, _))));
+}
+
+TEST_F(SpmdPartitioningTest, ScatterParallelDimFromOutsideWhilePositive) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT sum = s32[] add(lhs, rhs)
+}
+
+cond {
+  %parameters = (s32[8,4,2,2], s32[1,8,4], s32[8,4,2,2], s32[]) parameter(0),
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}, {replicated}, {replicated}}
+  %counter = s32[] get-tuple-element(parameters), index=3, sharding={replicated}
+  %constant = s32[] constant(3), sharding={replicated}
+  ROOT %lt = pred[] compare(counter, constant), direction=LT,
+    sharding={replicated}
+}
+
+body {
+  %parameters = (s32[8,4,2,2], s32[1,8,4], s32[8,4,2,2], s32[]) parameter(0),
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}, {replicated}, {replicated}}
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} get-tuple-element(parameters), index=0,
+    sharding={replicated}
+  %iota = s32[1,8,4]{2,1,0} get-tuple-element(parameters), index=1,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %concatenate.19 = s32[2,8,4]{2,1,0} concatenate(s32[1,8,4]{2,1,0} %iota,
+    s32[1,8,4]{2,1,0} %iota2), dimensions={0},
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %parameter.1 = s32[8,4,2,2]{3,2,1,0} get-tuple-element(parameters), index=2,
+    sharding={replicated}
+  %counter = s32[] get-tuple-element(parameters), index=3, sharding={replicated}
+  %constant = s32[] constant(1), sharding={replicated}
+  %updated_counter = s32[] add(counter, constant), sharding={replicated}
+  %scatter.20 = s32[8,4,2,2]{3,2,1,0} scatter(
+    s32[8,4,2,2]{3,2,1,0} %parameter.0,
+    s32[2,8,4]{2,1,0} %concatenate.19,
+    s32[8,4,2,2]{3,2,1,0} %parameter.1),
+    to_apply=add,
+    update_window_dims={2,3},
+    inserted_window_dims={0,1},
+    scatter_dims_to_operand_dims={0,1},
+    index_vector_dim=0, sharding={replicated}
+  ROOT %tuple = (s32[8,4,2,2], s32[1,8,4], s32[8,4,2,2], s32[])
+    tuple(scatter.20, iota, parameter.1, updated_counter),
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}, {replicated}, {replicated}}
+}
+
+ENTRY entry {
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} parameter(0), sharding={replicated}
+  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %counter = s32[] constant(0), sharding={replicated}
+  %parameter.1 = s32[8,4,2,2]{3,2,1,0} parameter(1), sharding={replicated}
+  %tuple = (s32[8,4,2,2], s32[1,8,4], s32[8,4,2,2], s32[])
+    tuple(parameter.0, iota, parameter.1, counter),
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}, {replicated}, {replicated}}
+  ROOT while = (s32[8,4,2,2], s32[1,8,4], s32[8,4,2,2], s32[]) while(tuple), body=body,
+    condition=cond,
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}, {replicated}, {replicated}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  const auto root = module->entry_computation()
+                        ->root_instruction()
+                        ->while_body()
+                        ->root_instruction();
+  VLOG(1) << module->ToString();
+  auto operand = AllOf(op::Shape("s32[1,4,2,2]"), op::DynamicSlice());
+  auto indices = AllOf(op::Shape("s32[2,1,4]"), op::Subtract());
+  auto update = AllOf(op::Shape("s32[1,4,2,2]"), op::DynamicSlice());
+  auto scatter =
+      AllOf(op::Shape("s32[1,4,2,2]"), op::Scatter(operand, indices, update));
+  EXPECT_THAT(
+      root,
+      op::Tuple(op::AllReduce(op::DynamicUpdateSlice(_, scatter, _, _, _, _)),
+                _, _, _));
 }
 
 TEST_F(SpmdPartitioningTest, ScatterParallelDimAndNonParallelDimPartitioned) {
@@ -11508,7 +11764,7 @@ ENTRY entry {
   param = f32[2,2] parameter(0),
     sharding={devices=[2,1,2]0,2,1,3 last_tile_dims={manual}}
   ROOT reduce = f32[2] reduce(param, constant), dimensions={0}, to_apply=sum,
-    sharding={devices=[2,2]0,1,2,3 last_tile_dims={manual,replicated}}
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dims={manual,replicated}}
 }
 )";
 

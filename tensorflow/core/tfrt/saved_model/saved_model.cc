@@ -376,7 +376,7 @@ tensorflow::Status InitSavedModel(
 
 }  // namespace
 
-SavedModel::~SavedModel() {}
+SavedModel::~SavedModel() = default;  // Out-of-line C++ key function.
 
 tfrt::HostContext* SavedModel::GetHostContext() const {
   return runtime_->core_runtime()->GetHostContext();
@@ -510,6 +510,10 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     // memory.
     session_options.config.mutable_experimental()
         ->set_optimize_for_static_graph(true);
+    LOG_FIRST_N(INFO, 10) << "SessionOptions: "
+                          << session_options.config.DebugString();
+    LOG_FIRST_N(INFO, 10) << "GraphExecutionOptions: "
+                          << options.graph_execution_options;
 
     // Creating the fallback_state using the original function def library
     // without applying placer or grappler, it is OK for now because it's only
@@ -621,8 +625,6 @@ SavedModelImpl::SavedModelImpl(
       lazy_loading_enabled_(meta_graph_def_.signature_def_size() >
                             options.lazy_loading_threshold) {}
 
-SavedModelImpl::~SavedModelImpl() = default;
-
 std::vector<std::string> SavedModelImpl::GetFunctionNames() const {
   std::vector<std::string> result;
   for (const auto& entry : signatures_) {
@@ -695,8 +697,9 @@ tensorflow::Status SavedModelImpl::Run(
   if (lazy_loading_enabled_) {
     // If lazy loading is enabled, no signature is loaded into `bef_file_`, so
     // we need to find the BEF from the cache or create one.
-    TF_ASSIGN_OR_RETURN(const LoadingResult& loading_result,
-                        GetOrCreateLoadingResult({std::string(name)}));
+    TF_ASSIGN_OR_RETURN(
+        const LoadingResult& loading_result,
+        GetOrCreateLoadingResult(run_options, {std::string(name)}));
     func = loading_result.bef_file->GetFunction(
         tensorflow::kImportModelDefaultGraphFuncName);
     resource_context = loading_result.resource_context.get();
@@ -1005,11 +1008,19 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
 }
 
 StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
-SavedModelImpl::GetOrCreateLoadingResult(absl::Span<const std::string> names) {
+SavedModelImpl::GetOrCreateLoadingResult(const RunOptions& run_options,
+                                         absl::Span<const std::string> names) {
   const auto joined_name = absl::StrJoin(names, kSignatureJoiningDelimiter);
   tensorflow::mutex_lock l(loading_result_cache_mu_);
   const auto iter = loading_result_cache_.find(joined_name);
   if (iter != loading_result_cache_.end()) return {*iter->second};
+
+  if (run_options.disable_compilation) {
+    return tensorflow::errors::InvalidArgument(
+        absl::StrCat("GraphExecutor: compilation is disabled in execution but "
+                     "the compiled graph is not found for ",
+                     joined_name));
+  }
 
   TF_ASSIGN_OR_RETURN(
       const auto joined_signature,

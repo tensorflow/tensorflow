@@ -76,14 +76,14 @@ struct HloCompareAdaptor {
   static mhlo::CompareOp createOp(BroadcastCompareOp fromOp, Type resultType,
                                   ValueRange broadcastedOperands,
                                   OpBuilder &builder) {
-    auto chloDirection = fromOp.comparison_direction();
+    auto chloDirection = fromOp.getComparisonDirection();
     auto mhloDirection = mhloComparisonDirection(chloDirection);
     if (!mhloDirection) return nullptr;
-    auto chloType = fromOp.compare_type().value_or(ComparisonType::NOTYPE);
+    auto chloType = fromOp.getCompareType().value_or(ComparisonType::NOTYPE);
     auto mhloType = mhloComparisonType(chloType);
     if (!mhloType) return nullptr;
     auto mhloTypeAttr =
-        fromOp.compare_type()
+        fromOp.getCompareType()
             ? mhlo::ComparisonTypeAttr::get(builder.getContext(), *mhloType)
             : nullptr;
     return builder.create<mhlo::CompareOp>(

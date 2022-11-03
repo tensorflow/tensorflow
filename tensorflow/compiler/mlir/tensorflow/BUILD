@@ -4,6 +4,10 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gen_op_wrapper_py")
 
+# copybara:uncomment_begin(google-only)
+# load("//learning/brain/experimental/mlir/tensorflow/dialectgen:dialectgen.bzl", "dialectgen")
+#
+# copybara:uncomment_end(google-only)
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
@@ -403,6 +407,7 @@ cc_library(
         ":tensorflow_passes",
         ":tf_saved_model_passes",
         "//tensorflow/compiler/mlir/xla:legalize_tf",
+        "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -1187,6 +1192,7 @@ cc_library(
         "transforms/graph_pruning.cc",
         "transforms/group_by_dialect.cc",
         "transforms/guarantee_all_funcs_one_use.cc",
+        "transforms/hoist_loop_invariant.cc",
         "transforms/hoist_replicate_invariant_resource_writes.cc",
         "transforms/host_launch_to_outside_compiled.cc",
         "transforms/init_text_file_to_import.cc",
@@ -1198,6 +1204,7 @@ cc_library(
         "transforms/mark_ops_for_outside_compilation.cc",
         "transforms/materialize_mlir_passthrough_op.cc",
         "transforms/merge_control_flow.cc",
+        "transforms/name_anonymous_iterators.cc",
         "transforms/optimize.cc",
         "transforms/order_by_dialect.cc",
         "transforms/outside_compiled_to_host_launch.cc",
@@ -1328,6 +1335,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:variant",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineAnalysis",
@@ -1370,8 +1378,12 @@ cc_library(
         ":tf_device_pass_inc_gen",
         ":tf_pass_inc_gen",
         ":translate_utils",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:shape_inference",
+        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
+        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:type_to_shape",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir/types:Dialect",
@@ -1852,6 +1864,7 @@ cc_library(
     hdrs = ["utils/convert_tensor.h"],
     deps = [
         ":convert_type",
+        ":dynamic_shape_utils",
         ":mangling_util",
         ":tensorflow_attributes",
         ":tensorflow_types",
@@ -1907,10 +1920,11 @@ cc_library(
     hdrs = ["utils/error_util.h"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
+        "//tensorflow/compiler/xla/mlir/utils:error_util",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/util:managed_stack_trace",
-        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/status",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -2081,10 +2095,10 @@ tf_cc_test(
     deps = [
         ":error_util",
         "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/mlir/utils:error_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
@@ -2667,3 +2681,27 @@ build_test(
         ":tensorflow",
     ],
 )
+# copybara:uncomment_begin(google-only)
+#
+# # Generate new_tf_generated_ops.td. Without --update-existing, this file can
+# # replace tf_generated_ops.td. However, right now, we only use it to determine
+# # whether the latter is stale.
+# dialectgen(
+#     name = "tf-generated-ops",
+#     output = "new_tf_generated_ops.td",
+# )
+#
+# sh_test(
+#     name = "tf_generated_ops_not_stale",
+#     srcs = ["ir/tf_generated_ops_not_stale.sh"],
+#     args = [
+#         "$(location //tensorflow/compiler/mlir/tensorflow:ir/tf_generated_ops.td)",
+#         "$(location :new_tf_generated_ops.td)",
+#     ],
+#     data = [
+#         ":new_tf_generated_ops.td",
+#         "//tensorflow/compiler/mlir/tensorflow:ir/tf_generated_ops.td",
+#     ],
+# )
+#
+# copybara:uncomment_end(google-only)

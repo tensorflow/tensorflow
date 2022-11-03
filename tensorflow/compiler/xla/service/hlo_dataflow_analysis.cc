@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -39,7 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
@@ -1332,9 +1333,9 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
       // HloValueSet. should_define may be provided to define a subset of
       // values.
       auto define_all_values =
-          [this,
-           &instruction](std::function<bool(const ShapeIndex&)> should_define =
-                             [](const ShapeIndex&) { return true; }) {
+          [this, &instruction](
+              absl::FunctionRef<bool(const ShapeIndex&)> should_define =
+                  [](const ShapeIndex&) { return true; }) {
             for (auto& pair : GetInstructionValueSet(instruction)) {
               const ShapeIndex& index = pair.first;
               if (should_define(index)) {

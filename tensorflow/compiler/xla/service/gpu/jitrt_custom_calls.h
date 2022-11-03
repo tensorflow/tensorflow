@@ -21,11 +21,12 @@
 
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/custom_call_encoding.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/tracing.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
@@ -36,94 +37,6 @@ class JitRtKernelsCache;
 class JitRtGemmConfigCache;
 class JitRtCollectiveSupport;
 class JitRtAsyncCollectiveSupport;
-
-struct DotDimensionNumbers {
-  llvm::ArrayRef<int64_t> lhs_batch;
-  llvm::ArrayRef<int64_t> lhs_contract;
-  llvm::ArrayRef<int64_t> rhs_batch;
-  llvm::ArrayRef<int64_t> rhs_contract;
-};
-
-struct ConvDimensionNumbers {
-  int64_t input_batch_dim;
-  int64_t input_feature_dim;
-  llvm::ArrayRef<int64_t> input_spatial_dims;
-
-  int64_t kernel_in_feature_dim;
-  int64_t kernel_out_feature_dim;
-  llvm::ArrayRef<int64_t> kernel_spatial_dims;
-
-  int64_t output_batch_dim;
-  int64_t output_feature_dim;
-  llvm::ArrayRef<int64_t> output_spatial_dims;
-};
-
-struct ConvBackendConfig {
-  int64_t algorithm;
-  bool tensor_ops_enabled;
-  bool is_cudnn_frontend;
-  llvm::ArrayRef<int64_t> knob_ids;
-  llvm::ArrayRef<int64_t> knob_values;
-  llvm::ArrayRef<int64_t> operand_0_layout;
-  llvm::ArrayRef<int64_t> operand_1_layout;
-  llvm::ArrayRef<int64_t> result_layout;
-  int64_t workspace_size;
-};
-}  // namespace gpu
-}  // namespace xla
-
-namespace xla {
-namespace runtime {
-
-using llvm::ArrayRef;
-
-#if GOOGLE_CUDA
-XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(
-    stream_executor::cuda::BlasLt::Epilogue);
-#endif  // GOOGLE_CUDA
-
-XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(stream_executor::dnn::ActivationMode);
-XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(stream_executor::fft::Type);
-
-XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
-    xla::gpu::DotDimensionNumbers,
-    AggregateMember<ArrayRef<int64_t>>("lhs_batch"),
-    AggregateMember<ArrayRef<int64_t>>("lhs_contract"),
-    AggregateMember<ArrayRef<int64_t>>("rhs_batch"),
-    AggregateMember<ArrayRef<int64_t>>("rhs_contract"));
-
-XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
-    xla::gpu::ConvDimensionNumbers,
-    // --- input dimensions
-    AggregateMember<int64_t>("input_batch_dim"),
-    AggregateMember<int64_t>("input_feature_dim"),
-    AggregateMember<ArrayRef<int64_t>>("input_spatial_dims"),
-    // --- kernel dimensions
-    AggregateMember<int64_t>("kernel_in_feature_dim"),
-    AggregateMember<int64_t>("kernel_out_feature_dim"),
-    AggregateMember<ArrayRef<int64_t>>("kernel_spatial_dims"),
-    // --- output dimensions
-    AggregateMember<int64_t>("output_batch_dim"),
-    AggregateMember<int64_t>("output_feature_dim"),
-    AggregateMember<ArrayRef<int64_t>>("output_spatial_dims"));
-
-XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
-    xla::gpu::ConvBackendConfig,  //
-    AggregateMember<int64_t>("algorithm"),
-    AggregateMember<bool>("tensor_ops_enabled"),
-    AggregateMember<bool>("is_cudnn_frontend"),
-    AggregateMember<ArrayRef<int64_t>>("knob_ids"),
-    AggregateMember<ArrayRef<int64_t>>("knob_values"),
-    AggregateMember<ArrayRef<int64_t>>("operand_0_layout"),
-    AggregateMember<ArrayRef<int64_t>>("operand_1_layout"),
-    AggregateMember<ArrayRef<int64_t>>("result_layout"),
-    AggregateMember<int64_t>("workspace_size"));
-
-}  // namespace runtime
-}  // namespace xla
-
-namespace xla {
-namespace gpu {
 
 // Populate custom calls implementing XLA GPU runtime API.
 void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry);

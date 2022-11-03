@@ -89,9 +89,4 @@ class ValidatorRunner {
 }  // namespace acceleration
 }  // namespace tflite
 
-extern "C" {
-int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
-                                                                char** argv);
-}  // extern "C"
-
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_VALIDATOR_RUNNER_H_

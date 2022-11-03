@@ -603,9 +603,11 @@ def custom_call_v2(
   )
 
 
-def call_module(args, *, module, Tout, Sout, dim_args_spec=()):
+def call_module(args, *, version=1, module, Tout, Sout, dim_args_spec=()):
+  # See documentation for the XlaCallModule op.
   return gen_xla_ops.xla_call_module(
-      args, module=module, dim_args_spec=dim_args_spec, Tout=Tout, Sout=Sout)
+      args, version=version, module=module, dim_args_spec=dim_args_spec,
+      Tout=Tout, Sout=Sout)
 
 
 def gather(operand,

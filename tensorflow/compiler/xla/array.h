@@ -28,6 +28,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -345,7 +346,7 @@ class Array {
 
   // Invokes a callback with the (indices, value_ptr) for each cell in the
   // array.
-  void Each(std::function<void(absl::Span<const int64_t>, T*)> f) {
+  void Each(absl::FunctionRef<void(absl::Span<const int64_t>, T*)> f) {
     std::vector<int64_t> index(sizes_.size());
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       f(index, &values_[i]);
@@ -353,7 +354,7 @@ class Array {
   }
 
   // Invokes a callback with the (indices, value) for each cell in the array.
-  void Each(std::function<void(absl::Span<const int64_t>, T)> f) const {
+  void Each(absl::FunctionRef<void(absl::Span<const int64_t>, T)> f) const {
     std::vector<int64_t> index(sizes_.size());
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       f(index, values_[i]);
@@ -363,7 +364,8 @@ class Array {
   // Invokes a callback with the (indices, value_ptr) for each cell in the
   // array. If a callback returns a non-OK status, returns that else returns
   // OkStatus().
-  Status EachStatus(std::function<Status(absl::Span<const int64_t>, T*)> f) {
+  Status EachStatus(
+      absl::FunctionRef<Status(absl::Span<const int64_t>, T*)> f) {
     std::vector<int64_t> index(sizes_.size());
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       Status s = f(index, &values_[i]);
@@ -378,7 +380,7 @@ class Array {
   // If a callback returns a non-OK status, returns that else returns
   // OkStatus().
   Status EachStatus(
-      std::function<Status(absl::Span<const int64_t>, T)> f) const {
+      absl::FunctionRef<Status(absl::Span<const int64_t>, T)> f) const {
     std::vector<int64_t> index(sizes_.size());
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
       Status s = f(index, values_[i]);

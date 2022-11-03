@@ -29,7 +29,13 @@ tf_proto_library(
     srcs = ["xplane.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = [
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto",
+    ],
     visibility = [":friends"],
+    exports = [
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto",
+    ],
 )
 
 # This is needed because of how tf_android_core_proto_sources parses proto paths.

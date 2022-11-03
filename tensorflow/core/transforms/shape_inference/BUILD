@@ -14,7 +14,6 @@ cc_library(
     srcs = ["pass.cc"],
     hdrs = ["pass.h"],
     deps = [
-        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir:shape_inference_utils",

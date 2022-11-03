@@ -16,15 +16,13 @@
 
 import contextlib
 import threading
-from typing import Any, Callable, List, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
-from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
-from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -134,13 +132,14 @@ def copy_to_mesh(
   Args:
     tensor: A regular tf.Tensor to be copied as a DTensor.
     layout: Target layout (and mesh) for the result DTensor.
-    source_layout: Source layout of the tensor before copy, used for backward
-      passes.
+    source_layout: Source layout of the tensor before copy. This argument
+      is deprecated.
 
   Returns:
     A DTensor on the DTensor device with the given layout.
   """
-  return _dtensor_device().copy_to_mesh(tensor, layout, source_layout)
+  del source_layout
+  return _dtensor_device().copy_to_mesh(tensor, layout)
 
 
 @tf_export("experimental.dtensor.pack", v1=[])
@@ -399,70 +398,6 @@ def relayout(tensor: ops.Tensor, layout: layout_lib.Layout) -> ops.Tensor:
 
 
 # -----------------------------------------------------------------------------
-# Distributed training-related methods.
-#
-# Most users should use DTensor utility methods to create a mesh. The methods
-# here are only for advanced users who want to fully customize their meshes.
-# Note that local_devices and num_local_devices return the actual number of
-# locally attached devices. The others are set through environment variables.
-
-
-@tf_export("experimental.dtensor.local_devices", v1=[])
-def local_devices(
-    device_type: str,
-    for_client_id: Optional[int] = None) -> List[tf_device.DeviceSpec]:
-  """Returns a list of device specs configured on this client."""
-  if device_type.upper() not in ["CPU", "GPU", "TPU"]:
-    raise ValueError(f"Device type {device_type} is not CPU, GPU, or TPU.")
-
-  if for_client_id is None:
-    for_client_id = config.client_id()
-
-  # Directly generate a list of local devices to avoid
-  # triggering TensorFlow context initialization.
-  logical_devices = [
-      tf_device.DeviceSpec.from_string(f"/device:{device_type}:{i}")
-      for i in range(num_local_devices(device_type))
-  ]
-
-  # Get the number of local devices.
-  device_count = 0
-  for d in logical_devices:
-    # d might have a partial name, e.g. /device:TPU:0.
-    if (d.job is None or d.job
-        == config.job_name()) and (d.task is None or d.task == for_client_id):
-      device_count = device_count + 1
-
-  # Return fully qualified device specs, sorted by increasing device index.
-  return [
-      tf_device.DeviceSpec(  # pylint: disable=g-complex-comprehension
-          job=config.job_name(),
-          replica=0,  # replica is deprecated and mostly hard-coded now.
-          task=for_client_id,
-          device_type=device_type,
-          device_index=i) for i in range(device_count)
-  ]
-
-
-@tf_export("experimental.dtensor.num_local_devices", v1=[])
-def num_local_devices(device_type: str) -> int:
-  """Returns the number of devices of device_type configured on this client."""
-
-  # Reads from config because CPU and GPU can use logical devices.
-  if device_type.upper() in ["CPU", "GPU"]:
-    context_config = context.get_config()
-    return context_config.device_count[device_type.upper()]
-
-  return len(tf_config.list_physical_devices(device_type))
-
-
-@tf_export("experimental.dtensor.num_global_devices", v1=[])
-def num_global_devices(device_type: str) -> int:
-  """Returns the number of devices of device_type in this DTensor cluster."""
-  return num_local_devices(device_type) * config.num_clients()
-
-
-# -----------------------------------------------------------------------------
 # Private methods.
 
 
@@ -511,8 +446,19 @@ def _relayout_gradient(op, grad):
 
 @ops.RegisterGradient("CopyToMesh")
 def _copy_to_mesh_gradient(op, grad):
-  grad = gen_dtensor_ops.copy_to_mesh(
+  grad = gen_dtensor_ops.copy_to_mesh_grad(
       grad,
-      layout=op.get_attr("source_layout"),
-      source_layout=op.get_attr("layout"))
+      forward_input=op.inputs[0],
+      reference_layout=op.get_attr("layout"),
+  )
   return grad
+
+
+@ops.RegisterGradient("CopyToMeshGrad")
+def _copy_to_mesh_grad_gradient(op, grad):
+  grad = gen_dtensor_ops.copy_to_mesh_grad(
+      grad,
+      forward_input=op.inputs[0],
+      reference_layout=op.get_attr("reference_layout"),
+  )
+  return grad, None

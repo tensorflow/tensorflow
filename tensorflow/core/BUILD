@@ -93,9 +93,7 @@ load(
     "tf_portable_deps_no_runtime",
     "tf_portable_proto_lib",
     "tf_proto_library",
-    "tf_protos_all_impl",
     "tf_protos_grappler_impl",
-    "tf_protos_profiler_impl",
     "tf_tpu_dependencies",
 )
 load(
@@ -120,7 +118,10 @@ package(
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
     ],
-    features = if_google(["-parse_headers"]),
+    features = if_google([
+        "-layering_check",
+        "-parse_headers",
+    ]),
     licenses = ["notice"],
 )
 
@@ -166,12 +167,14 @@ tf_proto_library(
         "//tensorflow/core/lib/core:error_codes_proto",
         "//tensorflow/core/profiler/protobuf:xplane_proto",
         "//tensorflow/core/profiler:profiler_options_proto",
-        "//tensorflow/core/protobuf:coordination_config_proto",
         "//tensorflow/core/protobuf:error_codes_proto_impl",
         "//tensorflow/core/protobuf:for_core_protos",
         "//tensorflow/core/util:protos_all",
-        "//tensorflow/core/util:test_log_proto_impl",
+        "//tensorflow/core/util:test_log_proto",
         "//tensorflow/core/grappler/costs:op_performance_data",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto",
+        "//tensorflow/tsl/protobuf:coordination_config_proto",
+        "//tensorflow/tsl/protobuf:distributed_runtime_payloads_proto",
     ],
     visibility = ["//visibility:public"],
 )
@@ -817,24 +820,14 @@ filegroup(
         "//tensorflow/core/lib/hash:mobile_srcs_no_runtime",
         "//tensorflow/core/lib/strings:mobile_srcs_no_runtime",
         "//tensorflow/core/platform:mobile_srcs_no_runtime",
+        "//tensorflow/core/profiler:mobile_srcs_no_runtime",
         "//tensorflow/core/public:mobile_srcs_no_runtime",
         "//tensorflow/core/util:mobile_srcs_no_runtime",
         "//tensorflow/core/util/ctc:mobile_srcs",
-        "//tensorflow/core/profiler:mobile_srcs_no_runtime",
         "//tensorflow/tsl/framework:mobile_srcs_no_runtime",
         "//tensorflow/tsl/framework/fixedpoint:mobile_srcs_no_runtime",
         "//tensorflow/tsl/platform:mobile_srcs_no_runtime",
-    ] + glob(
-        [
-            "client/**/*.cc",
-        ],
-        exclude = [
-            "**/*test.*",
-            "**/*testutil*",
-            "**/*testlib*",
-            "**/*main.cc",
-        ],
-    ),
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -1030,6 +1023,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core/platform:resource",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/core:mobile_additional_lib_deps",
     ] + tf_portable_proto_lib() + tf_portable_deps_no_runtime(),
@@ -1065,6 +1059,7 @@ cc_library(
 #         "@com_google_absl//absl/strings",
 #         "@com_google_absl//absl/types:optional",
 #         "//tensorflow/core/util:managed_stack_trace",
+#         "//tensorflow/core/platform:resource",
 #         "//tensorflow/tsl/framework/fixedpoint",
 #         "//tensorflow/core/util:stats_calculator_portable",
 #         "//tensorflow/core:mobile_additional_lib_deps",
@@ -1457,7 +1452,20 @@ cc_library(
     ] + select({
         "//tensorflow:fuchsia": [],
         "//conditions:default": ["//tensorflow/core/platform:subprocess"],
-    }) + tf_protos_all_impl() + tf_protos_grappler_impl() + tf_protos_profiler_impl() + tf_monitoring_framework_deps(),
+    }) +
+    # The TF proto implementations that we will statically link here.
+    [
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc_impl",
+        "//tensorflow/core/profiler:profiler_options_proto_cc_impl",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl",
+        "//tensorflow/core/protobuf:autotuning_proto_cc_impl",
+        "//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl",
+        "//tensorflow/core:protos_all_cc_impl",
+        "//tensorflow/tsl/protobuf:protos_all_cc_impl",
+        "//tensorflow/compiler/xla:xla_proto_cc_impl",
+        "//tensorflow/compiler/xla:xla_data_proto_cc_impl",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc_impl",
+    ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps(),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:
     # https://docs.bazel.build/versions/master/be/c-cpp.html#cc_library.alwayslink
@@ -1681,6 +1689,7 @@ tf_cuda_library(
         "//tensorflow/compiler/jit:common",
         "//tensorflow/tsl/framework:cancellation",
         "//tensorflow/tsl/util:command_line_flags",
+        "//tensorflow/tsl/util:device_name_utils",
         "@com_google_absl//absl/container:btree",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",

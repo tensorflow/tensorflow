@@ -3328,7 +3328,9 @@ func Bincount(scope *Scope, arr tf.Output, size tf.Output, weights tf.Output) (b
 //	 [  0   0 128  63]], shape=(3, 4), dtype=uint8)
 //
 // *NOTE*: Bitcast is implemented as a low-level cast, so machines with different
-// endian orderings will give different results.
+// endian orderings will give different results. A copy from input buffer to output
+// buffer is made on BE machines when types are of different sizes in order to get
+// the same casting results as on LE machines.
 func Bitcast(scope *Scope, input tf.Output, type_ tf.DataType) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -47875,6 +47877,37 @@ func StatelessRandomGammaV2(scope *Scope, shape tf.Output, seed tf.Output, alpha
 	return op.Output(0)
 }
 
+// Outputs deterministic pseudorandom random numbers from a gamma distribution.
+//
+// Outputs random values from a gamma distribution.
+//
+// The outputs are a deterministic function of the inputs.
+//
+// Arguments:
+//
+//	shape: The shape of the output tensor.
+//	key: Key for the counter-based RNG algorithm (shape uint64[1]).
+//	counter: Initial counter for the counter-based RNG algorithm (shape uint64[2] or uint64[1] depending on the algorithm). If a larger vector is given, only the needed portion on the left (i.e. [:N]) will be used.
+//	alg: The RNG algorithm (shape int32[]).
+//	alpha: The concentration of the gamma distribution. Shape must match the rightmost
+//
+// dimensions of `shape`.
+//
+// Returns Random values with specified shape.
+func StatelessRandomGammaV3(scope *Scope, shape tf.Output, key tf.Output, counter tf.Output, alg tf.Output, alpha tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "StatelessRandomGammaV3",
+		Input: []tf.Input{
+			shape, key, counter, alg, alpha,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Picks the best counter-based RNG algorithm based on device.
 //
 // This op picks the best counter-based RNG algorithm based on device.
@@ -51325,21 +51358,29 @@ func TensorArraySplitV2(scope *Scope, handle tf.Output, value tf.Output, lengths
 //
 // Assuming that `lengths` takes on values
 //
-//	```(n0, n1, ..., n(T-1))```
+//	```
+//	(n0, n1, ..., n(T-1))
+//	```
 //
 // and that `value` has shape
 //
-//	```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```,
+//	```
+//	(n0 + n1 + ... + n(T-1) x d0 x d1 x ...),
+//	```
 //
 // this splits values into a TensorArray with T tensors.
 //
 // TensorArray index t will be the subtensor of values with starting position
 //
-//	```(n0 + n1 + ... + n(t-1), 0, 0, ...)```
+//	```
+//	(n0 + n1 + ... + n(t-1), 0, 0, ...)
+//	```
 //
 // and having size
 //
-//	```nt x d0 x d1 x ...```
+//	```
+//	nt x d0 x d1 x ...
+//	```
 //
 // Arguments:
 //
@@ -54294,6 +54335,174 @@ func UniformQuantizedClipByValue(scope *Scope, operand tf.Output, min tf.Output,
 	return op.Output(0)
 }
 
+// UniformQuantizedConvolutionHybridAttr is an optional argument to UniformQuantizedConvolutionHybrid.
+type UniformQuantizedConvolutionHybridAttr func(optionalAttr)
+
+// UniformQuantizedConvolutionHybridWindowStrides sets the optional window_strides attribute to value.
+//
+// value: The stride of the sliding window for each spatial dimension of `lhs`.
+// Must be an empty list (default) or a list of size (number of spatial dimensions).
+// If an empty list is provided, the stride for each spatial dimension is set to 1.
+// If not specified, defaults to {}
+func UniformQuantizedConvolutionHybridWindowStrides(value []int64) UniformQuantizedConvolutionHybridAttr {
+	return func(m optionalAttr) {
+		m["window_strides"] = value
+	}
+}
+
+// UniformQuantizedConvolutionHybridExplicitPadding sets the optional explicit_padding attribute to value.
+//
+// value: If `padding` Attr is `"EXPLICIT"`, must be set as a list indicating
+// the explicit paddings at the start and end of each lhs spatial dimension.
+// Otherwise, this Attr is must be empty.
+//
+// (If used,) Must be a list of size 2 * (number of lhs spatial dimensions),
+// where (explicit_padding[2 * i], explicit_padding[2 * i + 1]) indicates
+// spatial_dimensions[i] (start_padding, end_padding).
+// If not specified, defaults to {}
+func UniformQuantizedConvolutionHybridExplicitPadding(value []int64) UniformQuantizedConvolutionHybridAttr {
+	return func(m optionalAttr) {
+		m["explicit_padding"] = value
+	}
+}
+
+// UniformQuantizedConvolutionHybridLhsDilation sets the optional lhs_dilation attribute to value.
+//
+// value: The dilation factor to apply in each spatial dimension of `lhs`.
+// Must be an empty list (default) or a list of size (number of lhs spatial dimensions).
+// If empty list, the dilation for each lhs spatial dimension is set to 1.
+// If not specified, defaults to {}
+func UniformQuantizedConvolutionHybridLhsDilation(value []int64) UniformQuantizedConvolutionHybridAttr {
+	return func(m optionalAttr) {
+		m["lhs_dilation"] = value
+	}
+}
+
+// UniformQuantizedConvolutionHybridRhsDilation sets the optional rhs_dilation attribute to value.
+//
+// value: The dilation factor to apply in each spatial dimension of `rhs`.
+// Must be an empty list (default) or a list of size (number of rhs spatial dimensions).
+// If empty list, the dilation for each rhs spatial dimension is set to 1.
+// If not specified, defaults to {}
+func UniformQuantizedConvolutionHybridRhsDilation(value []int64) UniformQuantizedConvolutionHybridAttr {
+	return func(m optionalAttr) {
+		m["rhs_dilation"] = value
+	}
+}
+
+// UniformQuantizedConvolutionHybridBatchGroupCount sets the optional batch_group_count attribute to value.
+//
+// value: The number of batch groups. Used for grouped filters.
+// Must be a divisor of output_feature.
+// If not specified, defaults to 1
+func UniformQuantizedConvolutionHybridBatchGroupCount(value int64) UniformQuantizedConvolutionHybridAttr {
+	return func(m optionalAttr) {
+		m["batch_group_count"] = value
+	}
+}
+
+// UniformQuantizedConvolutionHybridFeatureGroupCount sets the optional feature_group_count attribute to value.
+//
+// value: The number of feature groups. Used for grouped convolutions.
+// Must be a divisor of both lhs_feature and output_feature.
+// If not specified, defaults to 1
+func UniformQuantizedConvolutionHybridFeatureGroupCount(value int64) UniformQuantizedConvolutionHybridAttr {
+	return func(m optionalAttr) {
+		m["feature_group_count"] = value
+	}
+}
+
+// UniformQuantizedConvolutionHybridDimensionNumbers sets the optional dimension_numbers attribute to value.
+//
+// value: Structure of dimension information for the convolution op.
+// Must be an empty string (default) or a serialized string of tensorflow.UniformQuantizedConvolutionDimensionNumbersAttr proto.
+// If empty string, the default is `("NCHW", "OIHW", "NCHW")` (for a 2D convolution).
+// If not specified, defaults to ""
+func UniformQuantizedConvolutionHybridDimensionNumbers(value string) UniformQuantizedConvolutionHybridAttr {
+	return func(m optionalAttr) {
+		m["dimension_numbers"] = value
+	}
+}
+
+// UniformQuantizedConvolutionHybridRhsQuantizationAxis sets the optional rhs_quantization_axis attribute to value.
+//
+// value: Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+// If set to -1 (default), this indicates per-tensor quantization.
+// For the `rhs`, only per-tensor quantization
+// or per-channel quantization along kernel_output_feature_dimension is supported.
+// Thus, this attribute must be set to -1 or `dimension_numbers.kernel_output_feature_dimension`.
+// Other values will raise error at OpKernel construction.
+// If not specified, defaults to -1
+func UniformQuantizedConvolutionHybridRhsQuantizationAxis(value int64) UniformQuantizedConvolutionHybridAttr {
+	return func(m optionalAttr) {
+		m["rhs_quantization_axis"] = value
+	}
+}
+
+// Perform hybrid quantized convolution of float Tensor `lhs` and quantized Tensor `rhs`.
+//
+// Given float `lhs` and quantized `rhs`, internally performs quantization on `lhs`,
+// and then performs quantized convolution on quantized `lhs` and `rhs`.
+//
+// The internal quantization on `lhs` is a quantization to `Trhs`, dynamic range,
+// per-batch (per-axis along axis `dimension_numbers.input_batch_dimension`), asymmetric,
+// and not narrow range (the range is [Trhs_MIN, Trhs_MAX]).
+//
+// `lhs` and `rhs` must be Tensors of same rank, and meet following shape conditions.
+// - lhs_feature % feature_group_count == 0
+// - lhs_feature % rhs_input_feature == 0
+// - lhs_feature / feature_group_count == rhs_input_feature
+// - rhs_output_feature % feature_group_count == 0
+// - lhs_batch % batch_group_count == 0
+// - rhs_output_feature % batch_group_count == 0
+//
+// `rhs` must be quantized Tensor, where its data value is quantized using the formula:
+// quantized_data = clip(original_data / scale + zero_point, quantization_min_val, quantization_max_val).
+//
+// Arguments:
+//
+//	lhs: Must be a non-quantized Tensor of `Tlhs`, rank >= 3.
+//	rhs: Must be a quantized Tensor of `Trhs`, same rank as `lhs`.
+//	rhs_scales: The float value(s) used as scale factors when quantizing the original data that `rhs` represents.
+//
+// Must be a scalar Tensor for per-tensor quantization,
+// or 1D Tensor of size `rhs.dim_size(kernel_output_feature_dimension)`, for per-channel quantization.
+//
+//	rhs_zero_points: The int32 value(s) used as zero_point when quantizing original data that `rhs` represents.
+//
+// Same shape condition as `rhs_scales`.
+//
+//	Tout: The type of output Tensor.
+//	padding: string from: `"SAME"`, `"VALID"`, or `"EXPLICIT"`, indicating the type of padding algorithm to use.
+//	rhs_quantization_min_val: The min value of the quantized data stored in `rhs`.
+//
+// For example, if `Trhs` is qint8, this must be set to -127 if narrow range quantized or -128 if not.
+//
+//	rhs_quantization_max_val: The max value of the quantized data stored in `rhs`.
+//
+// For example, if `Trhs` is qint8, this must be set to 127.
+//
+// Returns The output Tensor of `Tout`, same rank as `lhs` and `rhs`.
+// The output data is the non-quantized output data.
+func UniformQuantizedConvolutionHybrid(scope *Scope, lhs tf.Output, rhs tf.Output, rhs_scales tf.Output, rhs_zero_points tf.Output, Tout tf.DataType, padding string, rhs_quantization_min_val int64, rhs_quantization_max_val int64, optional ...UniformQuantizedConvolutionHybridAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"Tout": Tout, "padding": padding, "rhs_quantization_min_val": rhs_quantization_min_val, "rhs_quantization_max_val": rhs_quantization_max_val}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "UniformQuantizedConvolutionHybrid",
+		Input: []tf.Input{
+			lhs, rhs, rhs_scales, rhs_zero_points,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // UniformQuantizedDotAttr is an optional argument to UniformQuantizedDot.
 type UniformQuantizedDotAttr func(optionalAttr)
 
@@ -56058,11 +56267,7 @@ func XlaBroadcastHelper(scope *Scope, lhs tf.Output, rhs tf.Output, broadcast_di
 // experimental flag.
 //
 // This is an experimental op to allow a smooth evolution of jax2tf towards
-// emitting and serializing MHLO directly from JAX. At the moment this op
-// carries a serialized MHLO module, therefore there are no backward-compatibility
-// guarantees, and should not be used for serialization.
-// Eventually, the op will carry a MHLO object, which will have
-// backwards-compatibility guarantees.
+// emitting and serializing StableHLO directly from JAX.
 //
 // The serialized module must return a tuple if and only if the Sout is an empty
 // list or a list with more than 1 elements. The length of Tout and Sout must
@@ -56085,17 +56290,25 @@ func XlaBroadcastHelper(scope *Scope, lhs tf.Output, rhs tf.Output, broadcast_di
 //
 // to the HLO module.
 //
-//	module: A serialized computation, a text representation of mlir.Module.
+//	version: Changes when we change the semantics of the op, to support backwards
+//
+// compatibility. Version 1 carries an MHLO text or bytecode `module`. From
+// version 2, the op carries a StableHLO text or bytecode `module`.
+//
+//	module: A serialized computation, a text or bytecode representation of
+//
+// an mlir.Module.
+//
 //	Sout: List of output tensor shapes.
 //	Tout: List of output tensor data types.
 //	dim_args_spec: the specification for the dimension arguments, one for each
 //
 // dimension argument. In absence of dynamic shapes this list is empty.
-func XlaCallModule(scope *Scope, args []tf.Output, module string, Sout []tf.Shape, Tout []tf.DataType, dim_args_spec []string) (output []tf.Output) {
+func XlaCallModule(scope *Scope, args []tf.Output, version int64, module string, Sout []tf.Shape, Tout []tf.DataType, dim_args_spec []string) (output []tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
-	attrs := map[string]interface{}{"module": module, "Sout": Sout, "Tout": Tout, "dim_args_spec": dim_args_spec}
+	attrs := map[string]interface{}{"version": version, "module": module, "Sout": Sout, "Tout": Tout, "dim_args_spec": dim_args_spec}
 	opspec := tf.OpSpec{
 		Type: "XlaCallModule",
 		Input: []tf.Input{
@@ -56384,7 +56597,7 @@ func XlaCustomCallV2(scope *Scope, operands []tf.Output, call_target_name string
 //
 // is faster when input is large and rank of input is higher than 1.
 //
-// Returns Output tensors whose types is bloat16. If transpose_output is true,
+// Returns Output tensors whose types is bfloat16. If transpose_output is true,
 // output shape is [dn * 4, dn-1, ..., d1, d0]. If transpose_output
 // is false, output shape is [d0,..., dn * 4].
 func XlaDequantize(scope *Scope, input tf.Output, min_range float32, max_range float32, mode string, transpose_output bool) (output tf.Output) {

@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.module import module as module_lib
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -34,12 +35,12 @@ from tensorflow.python.saved_model import save as save_lib
 
 def add_to_multiply(fndef):
   for node in fndef.node_def:
-    if node.name == "x_plus_y":
-      node.name = "x_times_y"
+    if node.name.endswith("x_plus_y"):
+      node.name = node.name.replace("x_plus_y", "x_times_y")
       node.op = "Mul"
     for idx, inp in enumerate(node.input):
-      if inp == "x_plus_y:z:0":
-        node.input[idx] = "x_times_y:z:0"
+      if inp.endswith("x_plus_y:z:0"):
+        node.input[idx] = inp.replace("x_plus_y", "x_times_y")
 
 
 class Model(module_lib.Module):
@@ -55,11 +56,13 @@ class Model(module_lib.Module):
 
 def apply_transform(f, transform_fn):
   """Wrapper to apply a transformation on every traced tf.function."""
+
   @def_function.function
   def wrapped(*args):
     updated_cf = transform.transform_function(
         f, inputs=args, transform_fn=transform_fn)
     return updated_cf(*args)
+
   return wrapped
 
 
@@ -78,6 +81,18 @@ class TransformTest(test.TestCase, parameterized.TestCase):
           testcase_name="transform_and_mlir_pipeline",
           transform_fn=add_to_multiply,
           mlir_pipeline="test-pass"),
+      dict(
+          testcase_name="transform_list",
+          transform_fn=[add_to_multiply],
+          mlir_pipeline=None),
+      dict(
+          testcase_name="mlir_pipeline_list",
+          transform_fn=None,
+          mlir_pipeline=["test-pass"]),
+      dict(
+          testcase_name="transform_list_and_mlir_pipeline_list",
+          transform_fn=[add_to_multiply],
+          mlir_pipeline=["test-pass"]),
   )
   @test_util.run_v2_only
   def test_concrete_function_with(self, transform_fn, mlir_pipeline):
@@ -110,6 +125,25 @@ class TransformTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual(
         f_g(constant_op.constant(2.0), constant_op.constant(3.0)), 5.0)
+
+  @test_util.run_v2_only
+  def test_function_spec(self):
+
+    @def_function.function
+    def f(x, y):
+      return math_ops.add(x, y, name="x_plus_y")
+
+    args = [1, 1]
+    self.assertEqual(f(*args), 2)
+
+    updated_f = transform.transform_function(
+        f, inputs=args, transform_fn=add_to_multiply)
+    self.assertEqual(updated_f(*args), 1)
+
+    self.assertSequenceAlmostEqual(
+        f.get_concrete_function(
+            *args).pretty_printed_signature().split("\n")[1:],
+        updated_f.pretty_printed_signature().split("\n")[1:])
 
   @test_util.run_v2_only
   def test_transform_with_custom_gradients(self):
@@ -152,14 +186,37 @@ class TransformTest(test.TestCase, parameterized.TestCase):
 
       @def_function.function
       def add():
-        return math_ops.add(x, z)
+        i = constant_op.constant(1.0)
+        c = lambda i: math_ops.less(i, 3.0)
+        b = lambda i: (math_ops.add(i, z, name="x_plus_y"))
+        i = control_flow_ops.while_loop_v2(c, b, [i])
+        return i
+
       y = add()
       return math_ops.add(x, y, name="x_plus_y")
 
     one = constant_op.constant(1.0)
-    f = transform.transform_function(
-        f, inputs=[one, one], transform_fn=add_to_multiply)
-    self.assertEqual(f(one, one), 2.0)
+    two = constant_op.constant(2.0)
+    inputs = [one, two]
+
+    # By default only `f` is transformed.
+    updated_f = transform.transform_function(
+        f, inputs=inputs, transform_fn=add_to_multiply)
+    self.assertEqual(updated_f(*inputs), 3.0)  # 1 x (1 + 2) = 3
+
+    # Extract all the functions in `f`'s library that we want to transform.
+    nested_transforms = {}
+    gdef = f.get_concrete_function(*inputs).graph.as_graph_def()
+    for fdef in gdef.library.function:
+      nested_transforms[fdef.signature.name] = add_to_multiply
+
+    # Transform `f` and all of its library functions.
+    updated_f = transform.transform_function(
+        f,
+        inputs=inputs,
+        transform_fn=add_to_multiply,
+        nested_fn_transforms=nested_transforms)
+    self.assertEqual(updated_f(*inputs), 4.0)  # 1 x (1 x 2 x 2) = 4
 
   @test_util.run_v2_only
   def test_save_transform_for_all_signatures(self):
@@ -212,6 +269,7 @@ class TransformTest(test.TestCase, parameterized.TestCase):
             constant_op.constant(1.1, dtypes.float32),
             constant_op.constant(2.0, dtypes.float32),
             constant_op.constant(True, dtypes.bool)), (4.2))
+
 
 if __name__ == "__main__":
   test_pass.RegisterTestPass()

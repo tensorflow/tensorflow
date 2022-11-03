@@ -123,6 +123,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::ConjugateTransposeOp>(),
     TypeID::get<TF::CoshOp>(),
     TypeID::get<TF::CrossOp>(),
+    TypeID::get<TF::CumulativeLogsumexpOp>(),
     TypeID::get<TF::DataFormatDimMapOp>(),
     TypeID::get<TF::DataFormatVecPermuteOp>(),
     TypeID::get<TF::DepthToSpaceOp>(),
@@ -420,6 +421,12 @@ bool IsOpAllowedTf2XlaFallbackAndCreateFunctions(Operation* op) {
   auto abstractOp = op->getRegisteredInfo();
   if (!abstractOp) return false;
   return ops->count(abstractOp->getTypeID());
+}
+
+bool HasTf2XlaFallback(Operation* op) {
+  return IsOpAllowedTf2XlaFallback(op) ||
+         IsOpAllowedTf2XlaFallbackAndCreateFunctions(op) ||
+         IsOpAllowedTf2XlaPreferred(op);
 }
 
 namespace {

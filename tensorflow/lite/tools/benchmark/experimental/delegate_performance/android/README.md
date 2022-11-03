@@ -96,4 +96,50 @@ and `report.json`
 
 #### Accuracy benchmarking
 
-TODO(b/240438534): Add mini-benchmark to the app
+##### Options
+
+**XNNPack delegate provider**
+
+- `use_xnnpack`: `bool` (default=true)
+
+**GPU delegate provider**
+
+- `use_gpu`: `bool` (default=false)
+
+**NNAPI delegate provider**
+
+- `use_nnapi`: `bool` (default=false)
+
+##### Steps
+
+1.  Run the benchmark. Currently the accuracy benchmark only supports parsing
+    arguments for delegate selection.
+
+TODO(b/250886376): allow passing delegate
+    binary that implements stable delegate ABI.
+
+Run the test with the XNNPack delegate (default):
+
+```
+adb shell "am start -S \
+  -n org.tensorflow.lite.benchmark.delegateperformance/org.tensorflow.lite.benchmark.delegateperformance.BenchmarkAccuracyActivity \
+  --esa --args ''"
+```
+
+Run the test with the GPU delegate:
+
+```
+adb shell "am start -S \
+  -n org.tensorflow.lite.benchmark.delegateperformance/org.tensorflow.lite.benchmark.delegateperformance.BenchmarkAccuracyActivity \
+  --esa --args '--use_gpu=true'"
+```
+
+1.  The results will be available in Android logcat , e.g.: {value=2}
+
+TODO(b/250877013): improve performance thresholding and result reporting
+
+```
+adb logcat | grep "tflite"
+
+... tflite  : tflite  :   accuracy: ok
+```

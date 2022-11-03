@@ -6,6 +6,7 @@ load(
     "tf_dtensor_tpu_dependencies",
 )
 load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.bzl", "if_google")
 
 default_visibility = [
     "//tensorflow/dtensor:dtensor-internal",
@@ -190,13 +191,13 @@ tf_kernel_library(
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_base",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_topology_external",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/core/tpu:tpu_configuration",
-        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core/tpu/kernels:tpu_compilation_cache_interface",
         "//tensorflow/core/tpu/kernels:tpu_compilation_cache_local_lookup",
         "//tensorflow/core/tpu/kernels:tpu_compilation_cache_lookup",
@@ -243,6 +244,29 @@ cc_library(
 )
 
 cc_library(
+    name = "default_parallel_executor",
+    srcs = if_google(
+        ["google/default_parallel_executor.cc"],
+        ["default_parallel_executor.cc"],
+    ),
+    hdrs = ["default_parallel_executor.h"],
+    deps = [
+        ":parallel_executor_interface",
+        "//tensorflow/c:tf_status_helper",
+    ] + if_google([
+        # All new dependencies go here as the OSS part has no valid implementation.
+        ":dtensor_device_util",
+        "//learning/infra/mira/distributed/pathways:pathways_parallel_executor",
+    ]),
+)
+
+cc_library(
+    name = "parallel_executor_interface",
+    hdrs = ["parallel_executor.h"],
+    deps = ["//tensorflow/tsl/platform:status"],
+)
+
+cc_library(
     name = "dtensor_device_cc",
     srcs = ["dtensor_device.cc"],
     hdrs = ["dtensor_device.h"],
@@ -257,6 +281,7 @@ cc_library(
         ":small_constant_optimization",
         ":tensor_layout",
         ":tpu_system_interface",
+        ":default_parallel_executor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

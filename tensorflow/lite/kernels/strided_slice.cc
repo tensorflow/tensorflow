@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -70,7 +69,7 @@ struct StridedSliceContext {
 };
 
 StridedSliceParams BuildStridedSliceParams(StridedSliceContext* op_context) {
-  StridedSliceParams op_params;
+  StridedSliceParams op_params{};
 
   // The ellipsis_mask and new_axis_mask in op_params are not used. Those masks
   // are processed here to update begin_mask, end_mask and the index range.
@@ -196,9 +195,9 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
     int32_t stride = op_params.strides[idx];
     TF_LITE_ENSURE_MSG(context, stride != 0, "stride value has to be non-zero");
 
-    int32_t begin = ::tflite::strided_slice::StartForAxis(
+    int32_t begin = ::tflite::strided_slice::StridedSliceStartForAxis(
         op_params, effective_input_shape, idx);
-    int32_t end = ::tflite::strided_slice::StopForAxis(
+    int32_t end = ::tflite::strided_slice::StridedSliceEndForAxis(
         op_params, effective_input_shape, idx, begin);
 
     // When shrinking an axis, the end position does not matter (and can be
@@ -272,43 +271,46 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
   StridedSliceParams op_params = BuildStridedSliceParams(&op_context);
 
-#define TF_LITE_STRIDED_SLICE(data_type)                                 \
-  {                                                                      \
-    if (kernel_type == kGenericOptimized) {                              \
-      optimized_ops::StridedSlice<data_type>(                            \
-          op_params, op_context.effective_input_shape, op_context.input, \
-          GetTensorShape(op_context.output), op_context.output);         \
-    } else {                                                             \
-      reference_ops::StridedSlice<data_type>(                            \
-          op_params, op_context.effective_input_shape, op_context.input, \
-          GetTensorShape(op_context.output), op_context.output);         \
-    }                                                                    \
-  }
-
   switch (op_context.input->type) {
     case kTfLiteFloat32:
-      TF_LITE_STRIDED_SLICE(float);
+      reference_ops::StridedSlice<float>(
+          op_params, op_context.effective_input_shape, op_context.input,
+          GetTensorShape(op_context.output), op_context.output);
       break;
     case kTfLiteInt32:
-      TF_LITE_STRIDED_SLICE(int32_t);
+      reference_ops::StridedSlice<int32_t>(
+          op_params, op_context.effective_input_shape, op_context.input,
+          GetTensorShape(op_context.output), op_context.output);
       break;
     case kTfLiteInt64:
-      TF_LITE_STRIDED_SLICE(int64_t);
+      reference_ops::StridedSlice<int64_t>(
+          op_params, op_context.effective_input_shape, op_context.input,
+          GetTensorShape(op_context.output), op_context.output);
       break;
     case kTfLiteUInt8:
-      TF_LITE_STRIDED_SLICE(uint8_t);
+      reference_ops::StridedSlice<uint8_t>(
+          op_params, op_context.effective_input_shape, op_context.input,
+          GetTensorShape(op_context.output), op_context.output);
       break;
     case kTfLiteInt8:
-      TF_LITE_STRIDED_SLICE(int8_t);
+      reference_ops::StridedSlice<int8_t>(
+          op_params, op_context.effective_input_shape, op_context.input,
+          GetTensorShape(op_context.output), op_context.output);
       break;
     case kTfLiteInt16:
-      TF_LITE_STRIDED_SLICE(int16_t);
+      reference_ops::StridedSlice<int16_t>(
+          op_params, op_context.effective_input_shape, op_context.input,
+          GetTensorShape(op_context.output), op_context.output);
       break;
     case kTfLiteBool:
-      TF_LITE_STRIDED_SLICE(bool);
+      reference_ops::StridedSlice<bool>(
+          op_params, op_context.effective_input_shape, op_context.input,
+          GetTensorShape(op_context.output), op_context.output);
       break;
     case kTfLiteString:
-      TF_LITE_STRIDED_SLICE(string);
+      reference_ops::StridedSlice<string>(
+          op_params, op_context.effective_input_shape, op_context.input,
+          GetTensorShape(op_context.output), op_context.output);
       break;
     default:
       TF_LITE_KERNEL_LOG(context,

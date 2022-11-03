@@ -21,11 +21,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/casts.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 
@@ -296,7 +296,6 @@ StatusOr<Literal> MakeFakeLiteralInternal(
   // literal.
   Shape new_shape = shape;
   new_shape.mutable_layout()->clear_tiles();
-  new_shape.mutable_layout()->set_element_size_in_bits(0);
   Literal literal(new_shape);
 
   int64_t max = std::numeric_limits<int64_t>::max();

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/layout_normalization.h"
 
 #include <algorithm>
+#include <cstring>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -23,6 +24,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -49,6 +51,82 @@ namespace {
 // unnested reductions only.
 class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
  public:
+  explicit LayoutNormalizationVisitor(
+      const CustomCallTransformer& custom_call_transformer = nullptr)
+      : custom_call_transformer_(custom_call_transformer) {}
+
+  // To handle a constant, just give the literal data a new layout.
+  Status HandleConstant(HloInstruction* hlo) override {
+    const Literal& literal = hlo->literal();
+    const Shape& shape = hlo->shape();
+    if (literal.shape().IsTuple()) {
+      // TODO(cheshire): Tuple constants.
+      return OkStatus();
+    }
+
+    Shape normalized_shape = Normalize(hlo->shape());
+
+    Literal new_literal(normalized_shape);
+
+    // TODO(cheshire): Do not duplicate storage.
+    std::memcpy(new_literal.untyped_data(), literal.untyped_data(),
+                literal.size_bytes());
+
+    HloInstruction* normalized = hlo->parent()->AddInstruction(
+        HloInstruction::CreateConstant(std::move(new_literal)));
+    HloInstruction* bc_to_orig = MakeBitcastHlo(normalized, shape);
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    return OkStatus();
+  }
+
+  // Slice is layout-preserving, so handling is analoguous to elementwise unary,
+  // and transposing the elements inside the metadata.
+  Status HandleSlice(HloInstruction* hlo) override {
+    HloInstruction* operand = hlo->mutable_operand(0);
+    const Shape& s = hlo->shape();
+    const Shape& operand_shape = operand->shape();
+    TF_RET_CHECK(s.layout() == operand_shape.layout());
+    TF_ASSIGN_OR_RETURN(HloInstruction * normalized_input,
+                        GetNormalizedInput(operand));
+
+    Shape normalized_w_degen =
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+            operand_shape);
+
+    std::vector<int64_t> layout_as_permutation =
+        ToTransposeDimensions(hlo->shape().layout());
+
+    auto normalize_slice_attr = [&](absl::Span<int64_t const> input) {
+      std::vector<int64_t> v = Permute(input, layout_as_permutation);
+      std::vector<int64_t> out;
+      // Slicing on degenerate dimensions only produces degenerate dimensions,
+      // so these can be safely ignored.
+      for (int i = 0; i < v.size(); i++) {
+        if (normalized_w_degen.dimensions(i) != 1) {
+          out.push_back(v[i]);
+        }
+      }
+      return out;
+    };
+
+    TF_ASSIGN_OR_RETURN(HloInstruction * normalized_slice,
+                        MakeSliceHlo(normalized_input,
+                                     normalize_slice_attr(hlo->slice_starts()),
+                                     normalize_slice_attr(hlo->slice_limits()),
+                                     normalize_slice_attr(hlo->slice_strides()),
+                                     &hlo->metadata()));
+    *normalized_slice->mutable_shape()->mutable_layout() =
+        normalized_input->shape().layout();
+    Shape normalized_shape = Normalize(s);
+
+    // Output of slice might contain degenerate dimensions.
+    HloInstruction* bc_to_normalized =
+        MakeBitcastHlo(normalized_slice, normalized_shape);
+    HloInstruction* bc_to_orig = MakeBitcastHlo(bc_to_normalized, s);
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    return OkStatus();
+  }
+
   // Default action: ensure local postcondition that any input is always a
   // bitcast from canonical layout for any rewrites of the HLO users.
   //
@@ -200,11 +278,11 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto operand = hlo->mutable_operand(0);
     TF_ASSIGN_OR_RETURN(auto normalized_input, GetNormalizedInput(operand));
     auto normalized_shape = Normalize(s);
-    auto orig_br_dimensions =
+    std::vector<int64_t> orig_br_dimensions =
         NoDegenerateDims(hlo->dimensions(), operand->shape(), s);
-    auto layout_as_permutation = ToTransposeDimensions(
+    std::vector<int64_t> layout_as_permutation = ToTransposeDimensions(
         ShapeUtil::DropDegenerateDimensions(operand->shape()).layout());
-    auto orig_output_layout_as_permutation =
+    std::vector<int64_t> orig_output_layout_as_permutation =
         ToTransposeDimensions(ShapeUtil::DropDegenerateDimensions(s).layout());
     std::vector<int64_t> br_dimensions;
     if (!hlo->dimensions().empty()) {
@@ -479,6 +557,19 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  Status HandleCustomCall(HloInstruction* hlo) override {
+    if (custom_call_transformer_) {
+      TF_ASSIGN_OR_RETURN(
+          std::optional<HloInstruction*> transformed_custom_call,
+          custom_call_transformer_(Cast<HloCustomCallInstruction>(hlo)));
+      if (transformed_custom_call) {
+        TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, *transformed_custom_call));
+        return OkStatus();
+      }
+    }
+    return DefaultAction(hlo);
+  }
+
  private:
   bool IsZeroPadding(const PaddingConfig::PaddingConfigDimension& c) {
     return c.edge_padding_high() == 0 && c.edge_padding_low() == 0 &&
@@ -567,6 +658,8 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return ShapeUtil::DropDegenerateDimensions(
         ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(s));
   }
+
+  CustomCallTransformer custom_call_transformer_;
 };
 
 }  // end namespace
@@ -574,7 +667,8 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 StatusOr<bool> LayoutNormalization::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  return LayoutNormalizationVisitor{}.RunOnModule(module, execution_threads);
+  return LayoutNormalizationVisitor{custom_call_transformer_}.RunOnModule(
+      module, execution_threads);
 }
 
 }  // end namespace xla

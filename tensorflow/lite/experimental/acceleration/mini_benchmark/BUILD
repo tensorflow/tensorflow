@@ -22,11 +22,9 @@ load("special_rules.bzl", "jpeg_copts", "libjpeg_deps", "minibenchmark_visibilit
 
 default_visibility_group = [
     "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
-] + minibenchmark_visibility_allowlist()
-
-minibenchmark_visibility_group = default_visibility_group + [
+    "//tensorflow/lite/tools/benchmark:__subpackages__",
     "@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__",
-]
+] + minibenchmark_visibility_allowlist()
 
 package(
     default_visibility = default_visibility_group,
@@ -428,6 +426,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/configuration:delegate_registry",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:constants",
@@ -517,11 +516,12 @@ cc_library(
 # SetBigCoresAffinity function.
 # This allow us to override the SetBigCoresAffinity definition during test.
 # We cannot simply alter the SetBigCoresAffinity behaviour to make it
-# controllabe by tests because the validation code will run in a separate
+# controllable by tests because the validation code will run in a separate
 # process.
 cc_library(
     name = "validator_runner_entrypoint_without_affinity_deps",
     srcs = ["validator_runner_entrypoint.cc"],
+    hdrs = ["validator_runner_entrypoint.h"],
     deps = [
         ":constants",
         ":fb_storage",
@@ -624,8 +624,10 @@ cc_library(
         ":status_codes",
         "@com_google_absl//absl/strings",
         "@flatbuffers//:runtime_cc",
+        "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite:stderr_reporter",
     ] + select({
         clean_dep("//tensorflow:android"): [
             ":embedded_runner_executable",
@@ -661,7 +663,6 @@ cc_library(
         "mini_benchmark.cc",
     ],
     hdrs = ["mini_benchmark.h"],
-    visibility = minibenchmark_visibility_group,
     deps = [
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "@com_google_absl//absl/status:statusor",
@@ -675,7 +676,6 @@ cc_library(
     srcs = [
         "mini_benchmark_implementation.cc",
     ],
-    visibility = minibenchmark_visibility_group,
     deps = [
         ":fb_storage",
         ":mini_benchmark",
@@ -708,7 +708,6 @@ cc_library(
         clean_dep("//tensorflow:android"): ["-ldl"],
         "//conditions:default": [],
     }),
-    visibility = minibenchmark_visibility_group,
     deps = [
         "@com_google_googletest//:gtest",
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
@@ -874,7 +873,10 @@ cc_test(
 cc_binary(
     name = "validator_runner_so_for_tests",
     testonly = 1,
-    srcs = ["validator_runner_entrypoint.cc"],
+    srcs = [
+        "validator_runner_entrypoint.cc",
+        "validator_runner_entrypoint.h",
+    ],
     linkshared = True,
     deps = [
         ":constants",
@@ -1066,14 +1068,14 @@ cc_test(
         "tflite_not_portable_ios",
     ],
     deps = [
+        ":fb_storage",
         ":status_codes",
         ":validator",
-        ":validator_runner",
-        ":validator_runner_entrypoint_without_affinity_deps",
-        "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        # This target is used with dlsym() in the test.
+        ":validator_runner_entrypoint_without_affinity_deps",  # buildcleaner: keep
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
     ],
 )
 

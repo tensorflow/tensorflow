@@ -120,6 +120,7 @@ DECL_CONVERT_OP(StridedSlice);
 DECL_CONVERT_OP(Less);
 DECL_CONVERT_OP(LessEqual);
 DECL_CONVERT_OP(Pad);
+DECL_CONVERT_OP(MirrorPad);
 DECL_CONVERT_OP(ResizeBilinear);
 DECL_CONVERT_OP(ResizeNearestNeighbor);
 DECL_CONVERT_OP(Gather);
@@ -500,6 +501,7 @@ LogicalResult ConvertTFArgMaxOp::matchAndRewrite(
 
   return success();
 }
+
 LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_avgpool_op = cast<TF::AvgPoolOp>(op);
@@ -695,7 +697,7 @@ LogicalResult ConvertTFRankOp::matchAndRewrite(
 
   RankedTensorType rank_type =
       tensorflow::GetTypeFromTFTensorShape({1}, rewriter.getIntegerType(32));
-  auto rank_attr = DenseElementsAttr::get(rank_type, {rank});
+  auto rank_attr = DenseI32ArrayAttr::get(rewriter.getContext(), {rank});
   auto rank_const = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
                                                     rank_type, rank_attr);
 
@@ -726,8 +728,8 @@ LogicalResult ConvertTFShapeOp::matchAndRewrite(
 
   RankedTensorType shape_type = tensorflow::GetTypeFromTFTensorShape(
       {static_cast<int32_t>(shape_arr.size())}, rewriter.getIntegerType(32));
-  auto shape_attr =
-      DenseElementsAttr::get(shape_type, llvm::makeArrayRef(shape_arr));
+  auto shape_attr = DenseI32ArrayAttr::get(rewriter.getContext(),
+                                           llvm::makeArrayRef(shape_arr));
   auto shape_const = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
                                                      shape_type, shape_attr);
 
@@ -798,19 +800,21 @@ LogicalResult ConvertTFFillOp::matchAndRewrite(
 
   RankedTensorType fill_type = tensorflow::GetTypeFromTFTensorShape(
       ArrayRef<int64_t>(dims_vals), value_elem.getType().getElementType());
-  DenseElementsAttr fill_attr;
+  DenseArrayAttr fill_attr;
 
   // Convert to a compatible zero type
   if (value_elem.getType().getElementType().isa<FloatType>()) {
     SmallVector<float> fill_arr(
         total_size,
         value_elem.getValues<FloatAttr>()[0].getValue().convertToFloat());
-    fill_attr = DenseElementsAttr::get(fill_type, llvm::makeArrayRef(fill_arr));
+    fill_attr = DenseF32ArrayAttr::get(rewriter.getContext(),
+                                       llvm::makeArrayRef(fill_arr));
   } else {
     SmallVector<int32_t> fill_arr(
         total_size,
         value_elem.getValues<IntegerAttr>()[0].getValue().getLimitedValue());
-    fill_attr = DenseElementsAttr::get(fill_type, llvm::makeArrayRef(fill_arr));
+    fill_attr = DenseI32ArrayAttr::get(rewriter.getContext(),
+                                       llvm::makeArrayRef(fill_arr));
   }
   auto fill_const_op = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
                                                        fill_type, fill_attr);
@@ -1695,6 +1699,36 @@ LogicalResult ConvertTFPadOp::matchAndRewrite(Operation* op,
   return success();
 }
 
+LogicalResult ConvertTFMirrorPadOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_mirrorpad_op = cast<TF::MirrorPadOp>(op);
+
+  RankedTensorType output_type =
+      tf_mirrorpad_op.getResult().getType().dyn_cast<RankedTensorType>();
+  if (!output_type) {
+    return rewriter.notifyMatchFailure(op, "output type isn't a ranked tensor");
+  }
+
+  TFTFLMirrorPaddingType mode;
+  StringRef tf_mode = tf_mirrorpad_op.mode();
+  if (tf_mode == "REFLECT") {
+    mode = TFTFLMirrorPaddingType::REFLECT;
+  } else if (tf_mode == "SYMMETRIC") {
+    mode = TFTFLMirrorPaddingType::SYMMETRIC;
+  } else {
+    return rewriter.notifyMatchFailure(
+        op, "mode isn't one of REFLECT or SYMMETRIC");
+  }
+
+  llvm::Optional<Value> result =
+      convertMirrorPadCommon(rewriter, op, output_type, tf_mirrorpad_op.input(),
+                             tf_mirrorpad_op.paddings(), mode);
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
+}
+
 LogicalResult ConvertTFResizeBilinearOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_resize_op = cast<TF::ResizeBilinearOp>(op);
@@ -1862,9 +1896,9 @@ LogicalResult ConvertTFSelectV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_sel_op = cast<TF::SelectV2Op>(op);
 
-  llvm::Optional<Value> result =
-      convertSelectOp(rewriter, op, tf_sel_op.getResult(),
-                      tf_sel_op.condition(), tf_sel_op.t(), tf_sel_op.e());
+  llvm::Optional<Value> result = convertSelectOp(
+      rewriter, op, tf_sel_op.getResult(), tf_sel_op.condition(),
+      tf_sel_op.then_value(), tf_sel_op.else_value());
 
   if (!result) return failure();
 
@@ -2382,6 +2416,7 @@ void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns) {
   patterns.add<ConvertTFLessOp>(ctx);
   patterns.add<ConvertTFLessEqualOp>(ctx);
   patterns.add<ConvertTFPadOp>(ctx);
+  patterns.add<ConvertTFMirrorPadOp>(ctx);
   patterns.add<ConvertTFResizeBilinearOp>(ctx);
   patterns.add<ConvertTFResizeNearestNeighborOp>(ctx);
   patterns.add<ConvertTFGatherOp>(ctx);

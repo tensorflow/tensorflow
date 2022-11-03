@@ -50,41 +50,6 @@ struct scalar_arg_op<std::complex<double>> {
 };
 #endif
 
-#if EIGEN_HAS_CXX11_MATH == 0
-template <typename T>
-struct scalar_asinh_op {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a) const {
-    return static_cast<T>(std::asinh(a));
-  }
-};
-template <typename T>
-struct functor_traits<scalar_asinh_op<T>> {
-  enum { Cost = 5 * NumTraits<T>::MulCost, PacketAccess = false };
-};
-
-template <typename T>
-struct scalar_acosh_op {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a) const {
-    return static_cast<T>(std::acosh(a));
-  }
-};
-template <typename T>
-struct functor_traits<scalar_acosh_op<T>> {
-  enum { Cost = 5 * NumTraits<T>::MulCost, PacketAccess = false };
-};
-
-template <typename T>
-struct scalar_atanh_op {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a) const {
-    return static_cast<T>(std::atanh(a));
-  }
-};
-template <typename T>
-struct functor_traits<scalar_atanh_op<T>> {
-  enum { Cost = 5 * NumTraits<T>::MulCost, PacketAccess = false };
-};
-#endif
-
 template <typename Scalar, typename Exponent>
 struct safe_scalar_binary_pow_op {
   static_assert(std::is_integral<Scalar>::value, "Integer type expected");
@@ -1142,31 +1107,8 @@ struct zeta : base<T, Eigen::internal::scalar_zeta_op<T>> {};
 template <typename T>
 struct polygamma : base<T, Eigen::internal::scalar_polygamma_op<T>> {};
 
-template <typename Scalar>
-struct scalar_atan2_op {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
-  operator()(const Scalar& y, const Scalar& x) const {
-#if TENSORFLOW_USE_ROCM
-    return static_cast<Scalar>(::atan2(y, x));
-#else
-    return static_cast<Scalar>(std::atan2(y, x));
-#endif
-  }
-};
-
-// When invoked with Eigen::bfloat16 arguments, `std::atan2` resolves to its
-// double-precision overload. Force the single-precision implementation by
-// explicitly invoking `std::atan2f`.
-template <>
-struct scalar_atan2_op<Eigen::bfloat16> {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Eigen::bfloat16 operator()(
-      const Eigen::bfloat16 y, const Eigen::bfloat16 x) const {
-    return static_cast<Eigen::bfloat16>(::atan2f(y, x));
-  }
-};
-
 template <typename T>
-struct atan2 : base<T, scalar_atan2_op<T>> {};
+struct atan2 : base<T, Eigen::internal::scalar_atan2_op<T, T>> {};
 
 template <typename T>
 struct squared_difference

@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -180,7 +179,7 @@ TensorType CreateTensorType(InferenceContext& context, const ShapeHandle& sh,
                             Type element_type) {
   auto shape = GetShapeFromHandle(context, sh);
   if (shape.has_value())
-    return tensorflow::GetTypeFromTFTensorShape(shape.getValue(), element_type);
+    return GetTypeFromTFTensorShape(shape.getValue(), element_type, {});
   return UnrankedTensorType::get(element_type);
 }
 
@@ -194,7 +193,23 @@ ShapedTypeComponents CreateShapedTypeComponents(InferenceContext& context,
   return ShapedTypeComponents(element_type);
 }
 
+llvm::SmallVector<int64_t> ConvertTFShapeToMlir(
+    llvm::ArrayRef<int64_t> shapes) {
+  return llvm::to_vector(llvm::map_range(shapes, [](int64_t shape) {
+    return shape == InferenceContext::kUnknownDim
+               ? mlir::ShapedType::kDynamicSize
+               : shape;
+  }));
+}
+
 }  // namespace
+
+mlir::RankedTensorType GetTypeFromTFTensorShape(llvm::ArrayRef<int64_t> shape,
+                                                mlir::Type elementType,
+                                                mlir::Attribute encoding) {
+  return mlir::RankedTensorType::get(ConvertTFShapeToMlir(shape), elementType,
+                                     encoding);
+}
 
 LogicalResult InferReturnTypeComponentsForTFOp(
     Optional<Location> location, Operation* op, ValueRange operands,

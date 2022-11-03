@@ -24,7 +24,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -66,6 +66,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
       const xla::HloInstruction* instr);
 
   xla::StatusOr<Operation*> EmitCustomCallOp(const xla::HloInstruction* instr);
+  xla::StatusOr<lmhlo::FusionOp> EmitSoftmax(const xla::HloInstruction* instr);
   xla::StatusOr<lmhlo_gpu::CholeskyOp> EmitCholesky(
       const xla::HloCustomCallInstruction* custom_call);
   xla::StatusOr<Operation*> EmitGemm(

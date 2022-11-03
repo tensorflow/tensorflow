@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
@@ -89,8 +90,11 @@ namespace gpu {
 //   the fusion kinds must match.
 
 class GpuMultiOutputFusion : public HloModulePass {
+  HloCostAnalysis::ShapeSizeFunction shape_size_function_;
+
  public:
-  GpuMultiOutputFusion() = default;
+  explicit GpuMultiOutputFusion(HloCostAnalysis::ShapeSizeFunction f)
+      : shape_size_function_(f) {}
 
   absl::string_view name() const override { return "multi_output_fusion"; }
 
@@ -100,7 +104,8 @@ class GpuMultiOutputFusion : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  bool FuseSiblings(HloInstruction* parent, FusionInfoCache* fusion_info_cache);
+  bool FuseSiblings(HloInstruction* parent, FusionInfoCache* fusion_info_cache,
+                    GpuHloCostAnalysis* cost_analysis);
 
   StatusOr<bool> DoMultiOutputFusion();
 

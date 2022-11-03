@@ -381,11 +381,11 @@ tensorflow::Status GraphExecutor::Run(
   std::sort(sorted_target_node_names.begin(), sorted_target_node_names.end());
 
   // Load the client graph.
-  TF_ASSIGN_OR_RETURN(
-      const LoadedClientGraph& loaded_client_graph,
-      GetOrCreateLoadedClientGraph(
-          sorted_input_names, sorted_input_dtypes, sorted_output_names,
-          sorted_target_node_names, run_options.work_queue));
+  TF_ASSIGN_OR_RETURN(const LoadedClientGraph& loaded_client_graph,
+                      GetOrCreateLoadedClientGraph(
+                          run_options, sorted_input_names, sorted_input_dtypes,
+                          sorted_output_names, sorted_target_node_names,
+                          run_options.work_queue));
 
   const auto* func = loaded_client_graph.bef_file->GetFunction(
       tensorflow::kImportModelDefaultGraphFuncName);
@@ -555,6 +555,7 @@ tensorflow::Status GraphExecutor::InitBef(
 
 StatusOr<std::reference_wrapper<const GraphExecutor::LoadedClientGraph>>
 GraphExecutor::GetOrCreateLoadedClientGraph(
+    const RunOptions& run_options,
     absl::Span<const std::string> input_tensor_names,
     absl::Span<const tensorflow::DataType> input_tensor_dtypes,
     absl::Span<const std::string> output_tensor_names,
@@ -579,6 +580,13 @@ GraphExecutor::GetOrCreateLoadedClientGraph(
   // Cache hit; return immediately.
   const auto iter = loaded_client_graphs_.find(joined_name);
   if (iter != loaded_client_graphs_.end()) return {*iter->second};
+
+  if (run_options.disable_compilation) {
+    return tensorflow::errors::InvalidArgument(
+        absl::StrCat("GraphExecutor: compilation is disabled in execution but "
+                     "the compiled graph is not found for ",
+                     joined_name));
+  }
 
   // Cache miss; populate a `ClientGraph` and load it.
   tensorflow::GraphImportConfig::InputArrays input_nodes;
@@ -613,11 +621,11 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
     absl::Span<const std::string> output_tensor_names,
     absl::Span<const std::string> target_tensor_names,
     absl::Span<tfrt::Value*> outputs) {
-  TF_ASSIGN_OR_RETURN(
-      const LoadedClientGraph& loaded_client_graph,
-      GetOrCreateLoadedClientGraph(input_names, input_dtypes,
-                                   output_tensor_names, target_tensor_names,
-                                   /*work_queue=*/nullptr, graph_name));
+  TF_ASSIGN_OR_RETURN(const LoadedClientGraph& loaded_client_graph,
+                      GetOrCreateLoadedClientGraph(
+                          /*run_options=*/{}, input_names, input_dtypes,
+                          output_tensor_names, target_tensor_names,
+                          /*work_queue=*/nullptr, graph_name));
 
   const auto* func = loaded_client_graph.bef_file->GetFunction(
       tensorflow::kImportModelDefaultGraphFuncName);

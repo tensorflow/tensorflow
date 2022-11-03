@@ -238,8 +238,7 @@ bool IsSupportedOp(Operation& op,
   // compile it ever for performance reasons.
   if (llvm::isa<TF::AssertOp>(op)) return true;
   return !HasStringOperand(op) && !HasStringResult(op) &&
-         (MatchesPattern(op, supported_ops) ||
-          mhlo::IsOpAllowedTf2XlaFallback(&op));
+         (MatchesPattern(op, supported_ops) || mhlo::HasTf2XlaFallback(&op));
 }
 
 // Checks all regions of `op` for captured string operands.

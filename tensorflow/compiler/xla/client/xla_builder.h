@@ -30,17 +30,18 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/hlo/ir/dynamic_parameter_binding.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -94,6 +95,15 @@ struct XlaBuilderFriend {
       const std::optional<Layout>& layout = std::nullopt,
       const std::optional<bool> use_global_device_ids = std::nullopt);
   static XlaOp BuildAllGatherDone(XlaBuilder* builder, const XlaOp operands,
+                                  const Shape& shape);
+
+  static XlaOp BuildAllReduceStart(
+      XlaBuilder* builder, XlaOp operand, const XlaComputation& computation,
+      absl::Span<const ReplicaGroup> replica_groups = {},
+      const std::optional<ChannelHandle>& channel_id = std::nullopt,
+      const std::optional<Shape>& layout = std::nullopt,
+      const std::optional<bool> use_global_device_ids = std::nullopt);
+  static XlaOp BuildAllReduceDone(XlaBuilder* builder, const XlaOp operands,
                                   const Shape& shape);
 
   static XlaOp BuildFusion(XlaBuilder* builder,
@@ -395,7 +405,7 @@ class XlaBuilder {
 
   // A helper function that runs a function that returns a StatusOr<XlaOp> and
   // returns an XlaOp.
-  XlaOp ReportErrorOrReturn(const std::function<StatusOr<XlaOp>()>& op_creator);
+  XlaOp ReportErrorOrReturn(absl::FunctionRef<StatusOr<XlaOp>()> op_creator);
 
   // Returns true if 'operand' is a compile-time constant. A compile-time
   // constant does not depend on any parameters, or on stateful operators such
@@ -818,7 +828,8 @@ class XlaBuilder {
 
   XlaOp CollectivePermute(
       XlaOp operand,
-      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs);
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
   XlaOp ReplicaId();
 
@@ -1082,7 +1093,7 @@ class XlaBuilder {
   // Use a deque so pointers into this are stable, for example the return
   // value of LookUpInstructionByHandle().
   std::deque<HloInstructionProto> instructions_;
-  // An cache for the HloInstructionProto shapes, to avoid recreating Shape
+  // A cache for the HloInstructionProto shapes, to avoid recreating Shape
   // objects from protos and to support the GetShapePtr() API.
   std::vector<std::unique_ptr<Shape>> instruction_shapes_;
 
@@ -1430,7 +1441,8 @@ class XlaBuilder {
                              const std::optional<Layout>& layout);
   friend XlaOp CollectivePermute(
       XlaOp operand,
-      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs);
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id);
   friend XlaOp ReplicaId(XlaBuilder* builder);
   friend XlaOp SelectAndScatter(XlaOp operand, const XlaComputation& select,
                                 absl::Span<const int64_t> window_dimensions,
@@ -1559,6 +1571,21 @@ class XlaBuilder {
   Status CheckOpBuilder(XlaOp op) const;
 
  private:
+  XlaOp AllGatherImpl(XlaOp operand, int64_t all_gather_dimension,
+                      int64_t shard_count,
+                      absl::Span<const ReplicaGroup> replica_groups,
+                      const std::optional<ChannelHandle>& channel_id,
+                      const std::optional<Layout>& layout,
+                      const std::optional<bool> use_global_device_ids,
+                      bool async);
+
+  XlaOp AllReduceImpl(XlaOp operand, const XlaComputation& computation,
+                      absl::Span<const ReplicaGroup> replica_groups,
+                      const std::optional<ChannelHandle>& channel_id,
+                      const std::optional<Shape>& layout,
+                      const std::optional<bool> use_global_device_ids,
+                      bool async);
+
   XlaOp ConditionalImpl(
       XlaOp branch_index,
       absl::Span<const XlaComputation* const> branch_computations,
@@ -2429,7 +2456,8 @@ XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
 // consists of 0(s) with the same shape as the input.
 XlaOp CollectivePermute(
     XlaOp operand,
-    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs);
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
 // Enqueues an operation that returns the replica ID.
 XlaOp ReplicaId(XlaBuilder* builder);

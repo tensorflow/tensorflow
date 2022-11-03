@@ -165,3 +165,13 @@ TfLiteStatus TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
       context, registration, nodes_to_replace, delegate);
   return status;
 }
+
+TfLiteOpaqueTensor* TfLiteOpaqueContextGetOpaqueTensor(
+    const TfLiteOpaqueContext* opaque_context, int index) {
+  // The following casts are safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent, or on
+  // TfLiteTensor and TfLiteOpaqueTensor being equivalent.
+  auto context = reinterpret_cast<const TfLiteContext*>(opaque_context);
+  return reinterpret_cast<TfLiteOpaqueTensor*>(&context->tensors[index]);
+}

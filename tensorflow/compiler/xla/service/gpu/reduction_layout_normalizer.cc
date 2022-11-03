@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
@@ -119,7 +119,7 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
 
       Shape new_operand_shape = ShapeUtil::MakeShape(
           operand_shape.element_type(), new_operand_shape_data);
-      Shape new_reduce_shape = ShapeUtil::MakeShapeWithLayout(
+      Shape new_reduce_shape = ShapeUtil::MakeShapeWithDenseLayout(
           reduce_shape.element_type(), new_reduce_shape_data,
           new_reduce_shape_layout);
 

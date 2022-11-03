@@ -18,6 +18,12 @@ load(
     "cc_test",
 )
 load(
+    "//tensorflow/tsl:tsl.bzl",
+    "tsl_gpu_library",
+    _clean_dep = "clean_dep",
+    _if_cuda_or_rocm = "if_cuda_or_rocm",
+)
+load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",
 )
@@ -29,7 +35,6 @@ load(
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
-    "if_rocm_is_configured",
     "rocm_copts",
 )
 load(
@@ -62,7 +67,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.11.0"
+VERSION = "2.12.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
@@ -71,16 +76,7 @@ two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 # external project.
 workspace_root = Label("//:WORKSPACE").workspace_root or "."
 
-def clean_dep(target):
-    """Returns string to 'target' in @org_tensorflow repository.
-
-    Use this function when referring to targets in the @org_tensorflow
-    repository from macros that may be called from external repositories.
-    """
-
-    # A repo-relative label is resolved relative to the file in which the
-    # Label() call appears, i.e. @org_tensorflow.
-    return str(Label(target))
+clean_dep = _clean_dep
 
 def if_oss(oss_value, google_value = []):
     """Returns one of the arguments based on the non-configurable build env.
@@ -280,6 +276,12 @@ def if_windows_cuda(a, otherwise = []):
         "//conditions:default": otherwise,
     })
 
+def if_not_fuchsia(a):
+    return select({
+        clean_dep("//tensorflow:fuchsia"): [],
+        "//conditions:default": a,
+    })
+
 def if_linux_x86_64(a):
     return select({
         clean_dep("//tensorflow:linux_x86_64"): a,
@@ -351,6 +353,15 @@ def lrt_if_needed():
 
 def get_win_copts(is_external = False):
     WINDOWS_COPTS = [
+        # copybara:uncomment_begin(no MSVC flags in google)
+        # "-DPLATFORM_WINDOWS",
+        # "-DEIGEN_HAS_C99_MATH",
+        # "-DTENSORFLOW_USE_EIGEN_THREADPOOL",
+        # "-DEIGEN_AVOID_STL_ARRAY",
+        # "-Iexternal/gemmlowp",
+        # "-Wno-sign-compare",
+        # "-DNOGDI",
+        # copybara:uncomment_end_and_comment_begin
         "/DPLATFORM_WINDOWS",
         "/DEIGEN_HAS_C99_MATH",
         "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
@@ -367,11 +378,19 @@ def get_win_copts(is_external = False):
         "/DNOGDI",
         # Also see build:windows lines in tensorflow/opensource_only/.bazelrc
         # where we set some other options globally.
+        # copybara:comment_end
     ]
+
     if is_external:
-        return WINDOWS_COPTS + ["/UTF_COMPILE_LIBRARY"]
+        return WINDOWS_COPTS + [if_oss(
+            "/UTF_COMPILE_LIBRARY",
+            "-UTF_COMPILE_LIBRARY",
+        )]
     else:
-        return WINDOWS_COPTS + ["/DTF_COMPILE_LIBRARY"]
+        return WINDOWS_COPTS + [if_oss(
+            "/DTF_COMPILE_LIBRARY",
+            "-DTF_COMPILE_LIBRARY",
+        )]
 
 def tf_copts(
         android_optimization_level_override = "-O2",
@@ -961,6 +980,7 @@ def tf_cc_binary(
         kernels = [],
         per_os_targets = False,  # Generate targets with SHARED_LIBRARY_NAME_PATTERNS
         visibility = None,
+        default_copts = [],
         **kwargs):
     if kernels:
         added_data_deps = tf_binary_dynamic_kernel_dsos()
@@ -979,7 +999,7 @@ def tf_cc_binary(
     for name_os in names:
         cc_binary(
             name = name_os,
-            copts = copts,
+            copts = default_copts + copts,
             srcs = srcs + tf_binary_additional_srcs(),
             deps = deps + tf_binary_dynamic_kernel_deps(kernels) + mkl_dep + if_static(
                 extra_deps = [],
@@ -1233,7 +1253,8 @@ def tf_gen_op_wrapper_py(
         cc_linkopts = lrt_if_needed(),
         api_def_srcs = [],
         compatible_with = [],
-        testonly = False):
+        testonly = False,
+        copts = []):
     _ = require_shape_functions  # Unused.
     if op_whitelist and op_allowlist:
         fail("op_whitelist is deprecated. Only use op_allowlist.")
@@ -1253,7 +1274,7 @@ def tf_gen_op_wrapper_py(
         deps = [str(Label("//tensorflow/core:" + name + "_op_lib"))]
     tf_cc_binary(
         name = tool_name,
-        copts = tf_copts(),
+        copts = copts + tf_copts(),
         linkopts = if_not_windows(["-lm", "-Wl,-ldl"]) + cc_linkopts,
         linkstatic = 1,  # Faster to link this one-time-use binary dynamically
         visibility = [clean_dep("//tensorflow:internal")],
@@ -1392,6 +1413,8 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
+# TODO(jakeharmon): Replace with or implement in terms of tsl_gpu_cc_test, which doesn't add a
+# dependency on core:common_runtime
 def tf_gpu_cc_test(
         name,
         srcs = [],
@@ -1687,7 +1710,7 @@ def tf_gpu_kernel_library(
         hdrs = hdrs,
         copts = copts,
         deps = deps + if_cuda([
-            clean_dep("//tensorflow/stream_executor/cuda:cudart_stub"),
+            clean_dep("//tensorflow/tsl/cuda:cudart_stub"),
         ]) + if_cuda_or_rocm([
             clean_dep("//tensorflow/core:gpu_lib"),
         ]),
@@ -1695,45 +1718,10 @@ def tf_gpu_kernel_library(
         **kwargs
     )
 
-def tf_gpu_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs):
-    """Generate a cc_library with a conditional set of CUDA dependencies.
-
-    When the library is built with --config=cuda:
-
-    - Both deps and cuda_deps are used as dependencies.
-    - The cuda runtime is added as a dependency (if necessary).
-    - The library additionally passes -DGOOGLE_CUDA=1 to the list of copts.
-    - In addition, when the library is also built with TensorRT enabled, it
-        additionally passes -DGOOGLE_TENSORRT=1 to the list of copts.
-
-    Args:
-      cuda_deps: BUILD dependencies which will be linked if and only if:
-        '--config=cuda' is passed to the bazel command line.
-      deps: dependencies which will always be linked.
-      copts: copts always passed to the cc_library.
-      **kwargs: Any other argument to cc_library.
-    """
-    if not deps:
-        deps = []
-    if not cuda_deps:
-        cuda_deps = []
-
-    kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
-    deps = deps + if_cuda_or_rocm(cuda_deps)
-    cc_library(
-        deps = deps + if_cuda([
-            clean_dep("//tensorflow/stream_executor/cuda:cudart_stub"),
-            "@local_config_cuda//cuda:cuda_headers",
-        ]) + if_rocm_is_configured([
-            "@local_config_rocm//rocm:rocm_headers",
-        ]),
-        copts = (copts + if_cuda(["-DGOOGLE_CUDA=1", "-DNV_CUDNN_DISABLE_EXCEPTION"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
-        **kwargs
-    )
+tf_gpu_library = tsl_gpu_library
 
 # terminology changes: saving tf_cuda_* definition for compatibility
-def tf_cuda_library(*args, **kwargs):
-    tf_gpu_library(*args, **kwargs)
+tf_cuda_library = tsl_gpu_library
 
 def tf_kernel_library(
         name,
@@ -3092,6 +3080,23 @@ def pybind_extension_opensource(
 # Export open source version of pybind_extension under base name as well.
 pybind_extension = pybind_extension_opensource
 
+# Note: we cannot add //third_party/tf_runtime:__subpackages__ here,
+# because that builds all of tf_runtime's packages, and some of them
+# are known not to build on big endian systems.
+# See b/148087476 and
+# https://github.com/tensorflow/tensorflow/issues/57844.
+# TODO(b/254083070): remove this definition once the packages move to TSL.
+def tsl_async_value_deps():
+    return [
+        "@tf_runtime//:async_value",
+        "@tf_runtime//:dtype",
+        "@tf_runtime//:support",
+        "@tf_runtime//:concurrent_vector",
+        "@tf_runtime//:ref_count",
+        "@tf_runtime//third_party/llvm_derived:unique_any",
+        "@tf_runtime//third_party/llvm_derived:in_place",
+    ]
+
 def tf_python_pybind_static_deps(testonly = False):
     # TODO(b/146808376): Reduce the dependencies to those that are really needed.
     static_deps = [
@@ -3128,7 +3133,6 @@ def tf_python_pybind_static_deps(testonly = False):
         "@icu//:__subpackages__",
         "@jsoncpp_git//:__subpackages__",
         "@libjpeg_turbo//:__subpackages__",
-        "@libxsmm_archive//:__subpackages__",
         "@llvm-project//:__subpackages__",
         "@llvm_openmp//:__subpackages__",
         "@llvm_terminfo//:__subpackages__",
@@ -3154,10 +3158,10 @@ def tf_python_pybind_static_deps(testonly = False):
         "@snappy//:__subpackages__",
         "@sobol_data//:__subpackages__",
         "@stablehlo//:__subpackages__",
-        "@tf_runtime//:__subpackages__",
         "@upb//:__subpackages__",
         "@zlib//:__subpackages__",
     ]
+    static_deps += tsl_async_value_deps()
     static_deps += [] if not testonly else [
         "@com_google_benchmark//:__subpackages__",
         "@com_google_googletest//:__subpackages__",
@@ -3222,35 +3226,7 @@ def tf_pybind_cc_library_wrapper_opensource(name, deps, visibility = None, **kwa
 # Export open source version of tf_pybind_cc_library_wrapper under base name as well.
 tf_pybind_cc_library_wrapper = tf_pybind_cc_library_wrapper_opensource
 
-def if_cuda_or_rocm(if_true, if_false = []):
-    """Shorthand for select()'ing whether to build for either CUDA or ROCm.
-
-      Returns a select statement which evaluates to
-         if_true if we're building with either CUDA or ROCm enabled.
-         if_false, otherwise.
-
-      Sometimes a target has additional CUDa or ROCm specific dependencies.
-      The `if_cuda` / `if_rocm` functions are used to specify these additional
-      dependencies. For eg, see the `//tensorflow/core/kernels:bias_op` target
-
-      If the same additional dependency is needed for both CUDA and ROCm
-      (for eg. `reduction_ops` dependency for the `bias_op` target above),
-      then specifying that dependency in both `if_cuda` and `if_rocm` will
-      result in both those functions returning a select statement, which contains
-      the same dependency, which then leads to a duplicate dependency bazel error.
-
-      In order to work around this error, any additional dependency that is common
-      to both the CUDA and ROCm platforms, should be specified using this function.
-      Doing so will eliminate the cause of the bazel error (i.e. the  same
-      dependency showing up in two different select statements)
-
-      """
-    return select({
-        "@local_config_cuda//cuda:using_nvcc": if_true,
-        "@local_config_cuda//cuda:using_clang": if_true,
-        "@local_config_rocm//rocm:using_hipcc": if_true,
-        "//conditions:default": if_false,
-    })
+if_cuda_or_rocm = _if_cuda_or_rocm
 
 def tf_monitoring_framework_deps(link_to_tensorflow_framework = True):
     """Get the monitoring libs that will be linked to the tensorflow framework.

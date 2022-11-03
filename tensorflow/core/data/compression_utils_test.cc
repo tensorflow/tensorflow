@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/compression_utils.h"
 
+#include <string>
+#include <vector>
+
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/platform/status_matchers.h"
@@ -21,11 +24,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
-
 namespace {
+
 using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
-}  // namespace
 
 TEST(CompressionUtilsTest, Exceeds4GB) {
   std::vector<Tensor> element = {
@@ -34,6 +36,34 @@ TEST(CompressionUtilsTest, Exceeds4GB) {
   EXPECT_THAT(CompressElement(element, &compressed),
               StatusIs(error::OUT_OF_RANGE,
                        HasSubstr("exceeding the 4GB Snappy limit")));
+}
+
+std::vector<std::vector<Tensor>> TestCases() {
+  return {
+      // Single int64.
+      CreateTensors<int64_t>(TensorShape{1}, {{1}}),
+      // Multiple int64s.
+      CreateTensors<int64_t>(TensorShape{1}, {{1}, {2}}),
+      // Single tstring.
+      CreateTensors<tstring>(TensorShape{1}, {{"a"}, {"b"}}),
+      // Mix of tstring and int64.
+      {CreateTensor<tstring>(TensorShape{1}, {"a"}),
+       CreateTensor<int64_t>(TensorShape{1}, {1})},
+      // Empty.
+      {},
+      // Larger int64.
+      {CreateTensor<int64_t>(TensorShape{128, 128}),
+       CreateTensor<int64_t>(TensorShape{64, 2})},
+      // Variants.
+      {
+          DatasetOpsTestBase::CreateTestVariantTensor(
+              {CreateTensor<int64_t>(TensorShape{3, 1}, {1, 2, 3}),
+               CreateTensor<tstring>(TensorShape{}, {"abc"})}),
+          DatasetOpsTestBase::CreateTestVariantTensor(
+              {CreateTensor<int64_t>(TensorShape{3, 1}, {10, 11, 12}),
+               CreateTensor<tstring>(TensorShape{}, {"xyz"})}),
+      },
+  };
 }
 
 class ParameterizedCompressionUtilsTest
@@ -50,19 +80,27 @@ TEST_P(ParameterizedCompressionUtilsTest, RoundTrip) {
       ExpectEqual(element, round_trip_element, /*compare_order=*/true));
 }
 
-std::vector<std::vector<Tensor>> TestCases() {
-  return {
-      CreateTensors<int64_t>(TensorShape{1}, {{1}}),           // int64
-      CreateTensors<int64_t>(TensorShape{1}, {{1}, {2}}),      // multiple int64
-      CreateTensors<tstring>(TensorShape{1}, {{"a"}, {"b"}}),  // tstring
-      {CreateTensor<tstring>(TensorShape{1}, {"a"}),
-       CreateTensor<int64_t>(TensorShape{1}, {1})},  // mixed tstring/int64
-      {},                                            // empty
-  };
-}
-
 INSTANTIATE_TEST_SUITE_P(Instantiation, ParameterizedCompressionUtilsTest,
                          ::testing::ValuesIn(TestCases()));
 
+class ParameterizedCompressionAndSerializationTest
+    : public DatasetOpsTestBase,
+      public ::testing::WithParamInterface<std::vector<Tensor>> {};
+
+TEST_P(ParameterizedCompressionAndSerializationTest, RoundTrip) {
+  std::vector<Tensor> element = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_tensors,
+                          CompressAndSerialize(element));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Tensor> round_trip_element,
+                          DeserializeAndUncompress(serialized_tensors));
+  TF_EXPECT_OK(
+      ExpectEqual(element, round_trip_element, /*compare_order=*/true));
+}
+
+INSTANTIATE_TEST_SUITE_P(Instantiation,
+                         ParameterizedCompressionAndSerializationTest,
+                         ::testing::ValuesIn(TestCases()));
+
+}  // namespace
 }  // namespace data
 }  // namespace tensorflow

@@ -47,7 +47,7 @@ cc_library(
         "//tensorflow/compiler/xla:service_interface",
         "//tensorflow/compiler/xla:xla_data_cc_grpc_proto",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_util",
     ],
 )
 
@@ -58,9 +58,8 @@ cc_library(
         ":grpc_service",
         "@com_google_absl//absl/strings:str_format",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/util:command_line_flags",
     ] + tf_grpc_cc_dependencies() + if_libtpu(
         if_false = ["//tensorflow/compiler/xla/service:cpu_plugin"],
@@ -88,9 +87,9 @@ tf_cc_test(
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:net",
+        "//tensorflow/tsl/platform:subprocess",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "//tensorflow/tsl/platform:path",
@@ -106,7 +105,7 @@ cc_library(
         ":xla_service_cc_grpc_proto",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_util",
     ] + tf_grpc_cc_dependencies(),
 )
 

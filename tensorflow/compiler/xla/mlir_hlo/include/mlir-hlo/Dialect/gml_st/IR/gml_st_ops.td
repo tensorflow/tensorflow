@@ -18,16 +18,91 @@ limitations under the License.
 #ifndef GML_ST_OPS
 #define GML_ST_OPS
 
+include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/ViewLikeInterface.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
-include "mlir-hlo/Dialect/gml_st/IR/gml_st_set_ops.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td"
 
-def RankedTensorOrVector
-  : AnyTypeOf<[AnyRankedTensor, AnyVector], "", "::mlir::ShapedType">;
+///////////////////////////////////////////////////////////////////////////////
+// Types
+///////////////////////////////////////////////////////////////////////////////
+
+// Base class of all subset types.
+class GMLST_Set<string name> : TypeDef<GmlSt_Dialect, name> { }
+
+def GMLST_TileType : GMLST_Set<"Tile"> {
+  let mnemonic = "tile";
+  let summary = "Type that represents a tile of an index space.";
+  let parameters = (ins ArrayRefParameter<"int64_t">:$shape);
+  let assemblyFormat = "`<` custom<ShapeTypeDimensionsList>($shape) `>`";
+  let extraClassDeclaration = [{
+    unsigned getRank() const { return getShape().size(); }
+    bool hasStaticShape() const {
+      return llvm::none_of(getShape(), ShapedType::isDynamic);
+    }
+    int64_t getNumElements() const {
+      return ShapedType::getNumElements(getShape());
+    }
+  }];
+}
+
+def AnySet : Type<Or<[GMLST_TileType.predicate]>, "subset type">;
+
+def RankedTensorOrVector : AnyTypeOf<[
+  AnyRankedTensor, AnyVectorOfAnyRank
+], "", "::mlir::ShapedType">;
 def RankedTensorOrVectorOrScalar : AnyTypeOf<[
-  AnyRankedTensor, AnyVector, AnyFloat, AnyInteger, AnyComplex
+  AnyRankedTensor, AnyVectorOfAnyRank, AnyFloat, AnyInteger, AnyComplex, Index
 ]>;
+
+///////////////////////////////////////////////////////////////////////////////
+// Ops
+///////////////////////////////////////////////////////////////////////////////
+
+def GMLST_TileOp : GMLST_Op<"tile", [
+    Pure,
+    AttrSizedOperandSegments,
+    OffsetSizeAndStrideOpInterface,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let arguments = (ins Variadic<Index>:$offsets,
+                       Variadic<Index>:$sizes,
+                       Variadic<Index>:$strides,
+                       I64ArrayAttr:$static_offsets,
+                       I64ArrayAttr:$static_sizes,
+                       I64ArrayAttr:$static_strides);
+  let results = (outs GMLST_TileType:$result);
+  let assemblyFormat = [{
+    custom<DynamicIndexList>($offsets, $static_offsets,
+                               "ShapedType::kDynamicStrideOrOffset")
+    custom<DynamicIndexList>($sizes, $static_sizes,
+                               "ShapedType::kDynamicSize")
+    custom<DynamicIndexList>($strides, $static_strides,
+                               "ShapedType::kDynamicStrideOrOffset")
+    attr-dict `:` qualified(type($result))
+  }];
+  let builders = [
+   OpBuilder<(ins "ArrayRef<OpFoldResult>":$offsets,
+      "ArrayRef<OpFoldResult>":$sizes, "ArrayRef<OpFoldResult>":$strides,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
+   OpBuilder<(ins "ArrayRef<OpFoldResult>":$offsets,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
+  ];
+  let extraClassDeclaration = [{
+    /// Return the expected rank of each of the`static_offsets`, `static_sizes`
+    /// and `static_strides` attributes.
+    std::array<unsigned, 3> getArrayAttrMaxRanks() {
+      unsigned rank = getType().cast<TileType>().getRank();
+      return {rank, rank, rank};
+    }
+    /// Return the number of leading operands before the `offsets`, `sizes` and
+    /// and `strides` operands.
+    static unsigned getOffsetSizeAndStrideStartOperandIndex() { return 0; }
+  }];
+  let hasCanonicalizer = 1;
+  let hasVerifier = 1;
+}
 
 def GMLST_MaterializeOp : GMLST_Op<"materialize", [Pure]> {
   let arguments = (ins RankedTensorOrVector:$source, AnySet:$set);
@@ -39,51 +114,8 @@ def GMLST_MaterializeOp : GMLST_Op<"materialize", [Pure]> {
     $source`[` $set `]` attr-dict `:` type($source) `[` type($set) `]`
       `to` type($result)
   }];
-}
 
-def GMLST_OffsetOp : GMLST_Op<"offset", [Pure]> {
-  let summary = [{Returns the offset of a tile in a given dimension}];
-  let description = [{
-    Returns the composed offset of a tile in a given dimension relative to the
-    root space.
-  }];
-  let arguments = (ins AnySet:$subset, Index:$dim);
-  let results = (outs Index:$result);
-  let assemblyFormat = [{
-    $subset `[` $dim `]` attr-dict `:` qualified(type($subset))
-  }];
-  let hasVerifier = 0;
-  let hasFolder = 1;
-}
-
-def GMLST_SizeOp : GMLST_Op<"size", [Pure]> {
-  let summary = [{Returns the size of a tile in a given dimension}];
-  let description = [{
-    Returns the composed size of a tile in a given dimension relative to the
-    root space.
-  }];
-  let arguments = (ins GMLST_TileType:$tile, Index:$dim);
-  let results = (outs Index:$result);
-  let assemblyFormat = [{
-    $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
-  }];
-  let hasVerifier = 0;
-  let hasFolder = 1;
-}
-
-def GMLST_StrideOp : GMLST_Op<"stride", [Pure]> {
-  let summary = [{Returns the stride of a tile in a given dimension}];
-  let description = [{
-    Returns the composed stride of a tile in a given dimension relative to the
-    root space.
-  }];
-  let arguments = (ins GMLST_TileType:$tile, Index:$dim);
-  let results = (outs Index:$result);
-  let assemblyFormat = [{
-    $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
-  }];
-  let hasVerifier = 0;
-  let hasFolder = 1;
+  let hasCanonicalizer = 1;
 }
 
 class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
@@ -172,7 +204,10 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
       "nullptr">:$bodyBuilderFn)>,
   ];
 
-  let extraClassDeclaration = extraBaseClassDeclaration;
+  let extraClassDeclaration = extraBaseClassDeclaration # [{
+    /// Return the destinations for a gml_st.parallel op.
+    ValueRange getLoopLikeOpInits();
+  }];
 }
 
 def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
@@ -272,7 +307,14 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
       return getOperation()->getOpOperand(
         getNumControlOperands() + opResult.getResultNumber());
     }
+
+    /// Return the destinations for a gml_st.for op.
+    ValueRange getLoopLikeOpInits() {
+      return getOutputs();
+    }
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def GMLST_SetYieldOp : GMLST_Op<"set_yield", [Pure, ReturnLike,
@@ -336,7 +378,40 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [Pure, ReturnLike,
       return operand.getOperandNumber() >= getNumUpdates() &&
              operand.getOperandNumber() < getNumUpdates() * 2;
     }
+
+    unsigned getNumDstOperands() { return getNumOperands() - getNumUpdates(); }
   }];
+
+  let hasCanonicalizer = 1;
+}
+
+// TODO(b/253560795): Figure out where this operation shoud live, and how to
+// model it properly.
+def GMLST_DistributeOp : GMLST_Op<"distribute", [Pure,
+      AllElementTypesMatch<["source", "result"]>]> {
+  let summary = "Tile combining operation";
+  let description = [{
+    `gml_st.distribute` is in a sense an inverse operation to
+    `gml_st.materialize`, and a non-terminator version of `gml_st.set_yield`.
+    It takes one tile of a vector per parallel iteration, and returns a larger
+    vector composed of these tiles.
+
+    It is only needed as an intermediate step when flattening gml_st.parallel
+    operations during SIMTfication for GPU, where one `gml_st.distribute`
+    replaces each output of `gml_st.set_yield`. It only works on vectors, since
+    tensor arguments have been bufferized into memrefs by that point in the
+    pipeline. This is also the reason why it does not need a destination
+    argument.
+  }];
+  let arguments = (ins AnyVectorOfAnyRank:$source, AnySet:$set);
+  let results = (outs AnyVectorOfAnyRank:$result);
+
+  let assemblyFormat = [{
+    $source `into` `[` $set `]` attr-dict `:` type($source)
+      `into` type($result) `[` type($set) `]`
+  }];
+
+  let hasVerifier = 0;
 }
 
 #endif // GML_ST_OPS

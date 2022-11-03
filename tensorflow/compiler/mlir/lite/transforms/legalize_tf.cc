@@ -934,7 +934,7 @@ void LegalizeTFPass::runOnOperation() {
 
   ConversionTarget target(*context);
   // It is legal to have TF ops in the graph still which can be
-  // used later or in the case of SELECT were we allow TF ops in the final
+  // used later or in the case of SELECT where we allow TF ops in the final
   // graph.
   target.addLegalOp<mlir::arith::ConstantOp>();
   target.addLegalOp<mlir::func::ConstantOp>();

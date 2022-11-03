@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/util/quantization/uniform_quant_ops_params.h"
 
 namespace tensorflow {
 namespace {
@@ -24,6 +25,22 @@ namespace {
 using shape_inference::DimensionHandle;
 using shape_inference::ShapeHandle;
 using tensorflow::errors::InvalidArgument;
+using tensorflow::errors::Unknown;
+
+// If the rank and all dim sizes are known, return corresponding TensorShape.
+// Otherwise return Unknown error.
+StatusOr<TensorShape> ToTensorShape(ShapeHandle shape_handle, int64_t rank) {
+  TensorShape shape;
+  for (int i = 0; i < rank; ++i) {
+    int64_t dim_size = shape_inference::InferenceContext::Value(
+        shape_inference::InferenceContext::DimKnownRank(shape_handle, i));
+    if (dim_size == shape_inference::InferenceContext::kUnknownDim) {
+      return Unknown("Dim size unknown.");
+    }
+    shape.AddDim(dim_size);
+  }
+  return shape;
+}
 
 Status ScalesZeroPointsShapeValid(shape_inference::InferenceContext* context,
                                   DimensionHandle match_dimension_handle,
@@ -125,6 +142,65 @@ Status DotHybridShape(shape_inference::InferenceContext* context) {
   return OkStatus();
 }
 
+Status ConvolutionHybridShape(shape_inference::InferenceContext* context) {
+  ShapeHandle lhs;
+  TF_RETURN_IF_ERROR(context->WithRankAtLeast(context->input(0), 3, &lhs));
+  ShapeHandle rhs;
+  TF_RETURN_IF_ERROR(context->WithRankAtLeast(context->input(1), 3, &rhs));
+  const int32_t lhs_rank = shape_inference::InferenceContext::Rank(lhs);
+  const int32_t rhs_rank = shape_inference::InferenceContext::Rank(rhs);
+
+  if (lhs_rank == shape_inference::InferenceContext::kUnknownRank &&
+      rhs_rank == shape_inference::InferenceContext::kUnknownRank) {
+    context->set_output(0, context->UnknownShape());
+    return OkStatus();
+  } else if (lhs_rank == shape_inference::InferenceContext::kUnknownRank ||
+             rhs_rank == shape_inference::InferenceContext::kUnknownRank) {
+    context->set_output(
+        0, context->UnknownShapeOfRank(
+               lhs_rank == shape_inference::InferenceContext::kUnknownRank
+                   ? rhs_rank
+                   : lhs_rank));
+    return OkStatus();
+  } else if (lhs_rank != rhs_rank) {
+    return InvalidArgument("lhs and rhs must have same rank.");
+  }
+
+  ShapeHandle rhs_scales;
+  TF_RETURN_IF_ERROR(
+      context->WithRankAtMost(context->input(2), 1, &rhs_scales));
+  ShapeHandle rhs_zero_points;
+  TF_RETURN_IF_ERROR(
+      context->WithRankAtMost(context->input(3), 1, &rhs_zero_points));
+
+  auto lhs_shape = ToTensorShape(lhs, lhs_rank);
+  auto rhs_shape = ToTensorShape(rhs, rhs_rank);
+  if (!lhs_shape.ok() || !rhs_shape.ok()) {
+    context->set_output(0, context->UnknownShapeOfRank(lhs_rank));
+    return OkStatus();
+  }
+
+  UniformQuantizedConvolutionParams convolution_params;
+  TF_RETURN_IF_ERROR(convolution_params.LoadFromAttrs(*context));
+  TF_RETURN_IF_ERROR(convolution_params.ValidateOrFillParamsAndValidateShape(
+      lhs_shape.value(), rhs_shape.value()));
+
+  DimensionHandle rhs_output_feature = context->Dim(
+      rhs,
+      convolution_params.dimension_numbers().kernel_output_feature_dimension());
+  TF_RETURN_IF_ERROR(ScalesZeroPointsShapeValid(context, rhs_output_feature,
+                                                rhs_scales, rhs_zero_points));
+
+  TF_ASSIGN_OR_RETURN(const auto& out_shape,
+                      convolution_params.CalculateOutputShape(
+                          lhs_shape.value(), rhs_shape.value()));
+  ShapeHandle out_shape_handle;
+  TF_RETURN_IF_ERROR(
+      context->MakeShapeFromTensorShape(out_shape, &out_shape_handle));
+  context->set_output(0, out_shape_handle);
+  return OkStatus();
+}
+
 }  // namespace
 
 REGISTER_OP("UniformQuantize")
@@ -204,6 +280,28 @@ REGISTER_OP("UniformQuantizedDotHybrid")
     .Attr("rhs_quantization_min_val: int")
     .Attr("rhs_quantization_max_val: int")
     .SetShapeFn(DotHybridShape);
+
+REGISTER_OP("UniformQuantizedConvolutionHybrid")
+    .Input("lhs: Tlhs")
+    .Input("rhs: Trhs")
+    .Input("rhs_scales: float")
+    .Input("rhs_zero_points: int32")
+    .Output("output: Tout")
+    .Attr("Tlhs: {float}")
+    .Attr("Trhs: {qint8}")
+    .Attr("Tout: {float}")
+    .Attr("window_strides: list(int) = []")
+    .Attr("padding: string")
+    .Attr("explicit_padding: list(int) = []")
+    .Attr("lhs_dilation: list(int) = []")
+    .Attr("rhs_dilation: list(int) = []")
+    .Attr("batch_group_count: int = 1")
+    .Attr("feature_group_count: int = 1")
+    .Attr("dimension_numbers: string = ''")
+    .Attr("rhs_quantization_axis: int = -1")
+    .Attr("rhs_quantization_min_val: int")
+    .Attr("rhs_quantization_max_val: int")
+    .SetShapeFn(ConvolutionHybridShape);
 
 REGISTER_OP("UniformQuantizedClipByValue")
     .Input("operand: T")

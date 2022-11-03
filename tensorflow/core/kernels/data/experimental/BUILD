@@ -80,7 +80,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:rewrite_utils",
@@ -179,7 +178,6 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:compression_utils",
-        "//tensorflow/core/data:dataset_proto_cc",
     ],
 )
 
@@ -225,7 +223,6 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:captured_function",
-        "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data/service:common",

@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #endif
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/tools/hlo_module_loader.h"
@@ -94,8 +94,7 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
                             hlo_module->config(), libdevice_dir));
     std::cout << ptx << std::endl;
 #else
-    return {tensorflow::error::UNIMPLEMENTED,
-            "Feature not yet implemented in ROCm"};
+    return {tsl::error::UNIMPLEMENTED, "Feature not yet implemented in ROCm"};
 #endif
   }
   return xla::OkStatus();

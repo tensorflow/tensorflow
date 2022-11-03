@@ -384,6 +384,24 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %2 : tensor<*xf32>
   }
 
+  // CHECK-LABEL: func @cast_variant_same_shape
+  func.func @cast_variant_same_shape(%arg0: tensor<!tf_type.variant<tensor<2xf32>>>) -> tensor<!tf_type.variant> {
+    // CHECK: Cast
+    // CHECK-SAME: (tensor<!tf_type.variant<tensor<2xf32>>>) -> tensor<!tf_type.variant<tensor<2xf32>>>
+    %0 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<!tf_type.variant<tensor<2xf32>>>) -> tensor<!tf_type.variant>
+    %1 = "tf.Identity"(%0) : (tensor<!tf_type.variant>) -> tensor<!tf_type.variant>
+    func.return %1 : tensor<!tf_type.variant>
+  }
+
+  // CHECK-LABEL: func @cast_variant_to_unranked
+  func.func @cast_variant_to_unranked(%arg0: tensor<!tf_type.variant<tensor<*xf32>>>) -> tensor<*x!tf_type.variant> {
+    // CHECK: Cast
+    // CHECK-SAME: (tensor<!tf_type.variant<tensor<*xf32>>>) -> tensor<!tf_type.variant<tensor<*xf32>>>
+    %0 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<!tf_type.variant<tensor<*xf32>>>) -> tensor<*x!tf_type.variant>
+    %1 = "tf.Identity"(%0) : (tensor<*x!tf_type.variant>) -> tensor<*x!tf_type.variant>
+    func.return %1 : tensor<*x!tf_type.variant>
+  }
+
   // CHECK-LABEL: func @while_variant
   // CHECK-SAME: -> tensor<!tf_type.variant<tensor<16x1xf32>>>
   func.func @while_variant(%arg0: tensor<!tf_type.variant<tensor<16x1xf32>>>) -> tensor<!tf_type.variant> {
@@ -1256,6 +1274,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<?xf32>
   }
 
+  // CHECK-LABEL: func @xla_gather
+  // CHECK-SAME: (%arg0: tensor<1x1x9xi32>, %arg1: tensor<1xi32>) -> tensor<1x1x8xi32>
+  func.func @xla_gather(%arg0: tensor<1x1x9xi32>, %arg1: tensor<1xi32>) -> tensor<*xi32> {
+    %cst = "tf.Const"() {value = dense<[1, 1, 8]> : tensor<3xi32>} : () -> tensor<3xi32>
+    %0 = "tf.XlaGather"(%arg0, %arg1, %cst) {dimension_numbers = "\0A\03\00\01\02\1A\01\02", indices_are_sorted = true} : (tensor<1x1x9xi32>, tensor<1xi32>, tensor<3xi32>) -> tensor<*xi32>
+    func.return %0 : tensor<*xi32>
+  }
+
   // CHECK:      func private @sum_reducer3(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   // CHECK-NEXT:   %0 = "tf.AddV2"(%arg0, %arg1) {device = ""} : (tensor<f32>, tensor<f32>) -> tensor<f32>
   // CHECK-NEXT:   return %0 : tensor<f32>
@@ -1871,5 +1897,12 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK: (tensor<2x3x?x?xf32>, tensor<2x?x5x?xf32>) -> tensor<2x3x5x?xf32>
     %0 = "tf.ReluGrad"(%lhs, %rhs) : (tensor<2x3x?x?xf32>, tensor<2x?x5x?xf32>) -> tensor<?x?x?x?xf32>
     func.return %0 : tensor<?x?x?x?xf32>
+  }
+
+  // CHECK-LABEL: func @test_xla_sharding
+  // CHECK-SAME: (%arg0: tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+  func.func @test_xla_sharding(%arg0: tensor<1x2x3xf32>) -> tensor<*xf32> {
+    %0 = "tf.XlaSharding"(%arg0) : (tensor<1x2x3xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
   }
 }

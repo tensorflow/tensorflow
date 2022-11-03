@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -36,10 +37,12 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 
 namespace mlir {
@@ -145,19 +148,19 @@ Operation *GmlStDialect::materializeConstant(OpBuilder &builder, Attribute attr,
 // MaterializeOp
 //===----------------------------------------------------------------------===//
 
-static FailureOr<Type> inferReturnType(ShapedType sourceType, Type setType) {
+static Type inferReturnType(ShapedType sourceType, Type setType) {
   if (auto tileType = setType.dyn_cast<TileType>()) {
     return sourceType.clone(tileType.getShape(), sourceType.getElementType());
   }
-  return failure();
+  assert(false && "could not infer result type");
+  return {};
 }
 
 void MaterializeOp::build(OpBuilder &builder, OperationState &result,
                           Value source, Value set) {
   auto sourceType = source.getType().cast<ShapedType>();
-  auto resultTypeOr = inferReturnType(sourceType, set.getType());
-  assert(succeeded(resultTypeOr) && "could not infer result type");
-  build(builder, result, *resultTypeOr, source, set);
+  auto resultType = inferReturnType(sourceType, set.getType());
+  build(builder, result, resultType, source, set);
 }
 
 LogicalResult verifyCompatibleExtractedSubset(Operation *op,
@@ -203,8 +206,54 @@ LogicalResult verifyCompatibleExtractedSubset(Operation *op,
 }
 
 LogicalResult MaterializeOp::verify() {
+  // TODO(pifon): Add verification that was removed from TileOp::verify.
   return verifyCompatibleExtractedSubset(getOperation(), getSource().getType(),
                                          getType(), getSet().getType());
+}
+
+namespace {
+/// Cleans up UnrealizedConversionCast sets from materialize ops.
+struct FoldMaterializeUnrealizedConversionCast
+    : public OpRewritePattern<MaterializeOp> {
+  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(MaterializeOp op,
+                                PatternRewriter &rewriter) const override {
+    auto cast = op.getSet().getDefiningOp<UnrealizedConversionCastOp>();
+    if (!cast) return failure();
+
+    auto set = cast.getOperand(0);
+    auto newOp = rewriter.create<MaterializeOp>(
+        op.getLoc(), inferReturnType(op.getSource().getType(), set.getType()),
+        op.getSource(), set);
+    rewriter.replaceOpWithNewOp<tensor::CastOp>(op, op.getType(), newOp);
+    return success();
+  }
+};
+
+/// Folds tensor::CastOp sources into MaterializeOp.
+struct FoldSrcCastIntoMaterialize : public OpRewritePattern<MaterializeOp> {
+  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(MaterializeOp op,
+                                PatternRewriter &rewriter) const override {
+    auto cast = op.getSource().getDefiningOp<tensor::CastOp>();
+    if (!cast) return failure();
+
+    auto src = cast.getSource();
+    auto set = op.getSet();
+    rewriter.replaceOpWithNewOp<MaterializeOp>(
+        op, inferReturnType(src.getType(), set.getType()), src, set);
+    return success();
+  }
+};
+}  // namespace
+
+void MaterializeOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                MLIRContext *context) {
+  results
+      .add<FoldMaterializeUnrealizedConversionCast, FoldSrcCastIntoMaterialize>(
+          context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -667,6 +716,10 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseLoopLikeOp<ParallelOp>(parser, result);
 }
 
+ValueRange ParallelOp::getLoopLikeOpInits() {
+  return getTerminator().getDsts();
+}
+
 //===----------------------------------------------------------------------===//
 // ForOp
 //===----------------------------------------------------------------------===//
@@ -690,8 +743,17 @@ LogicalResult ForOp::verify() {
              << " to match region arg " << index + getNumLoops()
              << " type = " << outputRegionArg.getType();
     }
-    if (getTerminator().getDstOperand(index)->get() != outputRegionArg) {
-      return getTerminator().emitOpError("expected output block argument ")
+    auto terminator = getTerminator();
+    auto numDstOperands = terminator.getNumDstOperands();
+    if (index >= numDstOperands) {
+      const auto *s = index ? "s" : "";
+      return terminator.emitOpError("expected to have at least ")
+             << index + 1 << " destination operand" << s << " (currently "
+             << numDstOperands << ")";
+    }
+
+    if (terminator.getDstOperand(index)->get() != outputRegionArg) {
+      return terminator.emitOpError("expected output block argument ")
              << index << " to match set_yield destination";
     }
   }
@@ -764,6 +826,131 @@ void ForOp::print(OpAsmPrinter &p) {
 
 ParseResult ForOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseLoopLikeOp<ForOp>(parser, result);
+}
+
+namespace {
+// Collapse loop dimensions that perform a single iteration.
+// This is a partial copy of the corresponding pattern from SCF.
+struct CollapseSingleIterationLoops : public OpRewritePattern<ForOp> {
+  using OpRewritePattern<ForOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ForOp op,
+                                PatternRewriter &rewriter) const override {
+    BlockAndValueMapping mapping;
+    // Compute new loop bounds that omit all single-iteration loop dimensions.
+    SmallVector<Value> newLowerBounds, newUpperBounds, newSteps;
+    newLowerBounds.reserve(op.getLowerBound().size());
+    newUpperBounds.reserve(op.getUpperBound().size());
+    newSteps.reserve(op.getStep().size());
+    auto getConstant = [](Value v) -> Optional<int64_t> {
+      auto constant =
+          dyn_cast_or_null<arith::ConstantIndexOp>(v.getDefiningOp());
+      if (constant) return constant.value();
+      return None;
+    };
+    for (auto [lowerBound, upperBound, step, iv] :
+         llvm::zip(op.getLowerBound(), op.getUpperBound(), op.getStep(),
+                   op.getInductionVars())) {
+      // Collect the statically known loop bounds.
+      auto lowerBoundConstant = getConstant(lowerBound);
+      auto upperBoundConstant = getConstant(upperBound);
+      auto stepConstant = getConstant(step);
+      // Replace the loop induction variable by the lower bound if the loop
+      // performs a single iteration. Otherwise, copy the loop bounds.
+      if (lowerBoundConstant && upperBoundConstant && stepConstant &&
+          (*upperBoundConstant - *lowerBoundConstant) > 0 &&
+          (*upperBoundConstant - *lowerBoundConstant) <= *stepConstant) {
+        mapping.map(iv, lowerBound);
+      } else {
+        newLowerBounds.push_back(lowerBound);
+        newUpperBounds.push_back(upperBound);
+        newSteps.push_back(step);
+      }
+    }
+    // Exit if none of the loop dimensions perform a single iteration.
+    if (newLowerBounds.size() == op.getLowerBound().size()) return failure();
+
+    // Replace the parallel loop by lower-dimensional parallel loop.
+    auto newOp = rewriter.create<ForOp>(op.getLoc(), op.getResultTypes(),
+                                        newLowerBounds, newUpperBounds,
+                                        newSteps, op.getOutputs(), nullptr);
+    // Clone the loop body and remap the block arguments of the collapsed loops
+    // (inlining does not support a cancellable block argument mapping).
+    rewriter.cloneRegionBefore(op.getRegion(), newOp.getRegion(),
+                               newOp.getRegion().begin(), mapping);
+    rewriter.replaceOp(op, newOp.getResults());
+    return success();
+  }
+};
+
+/// Folds CastOp of loop outputs into ForOp
+struct RefineForOpShape : public OpRewritePattern<ForOp> {
+  using OpRewritePattern<ForOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ForOp op,
+                                PatternRewriter &rewriter) const override {
+    if (llvm::all_of(op.getOutputs(), [](auto out) {
+          return out.template getDefiningOp<tensor::CastOp>() == nullptr;
+        }))
+      return failure();
+
+    Location loc = op.getLoc();
+    // Scans through output args to find what args are produced by `tensor.cast`
+    // ops. Also cache the info since we are gonna reuse it a lot.
+    SmallVector<Value> newOutputs{op.getOutputs()};
+    SmallVector<Type> newTypes{op.getResultTypes()};
+    SmallVector<tensor::CastOp> castOutputs;
+    for (auto &&[out, type] : llvm::zip(newOutputs, newTypes)) {
+      if (auto cast =
+              castOutputs.emplace_back(out.getDefiningOp<tensor::CastOp>())) {
+        out = cast.getSource();
+        type = out.getType();
+      }
+    }
+
+    auto newFor = rewriter.create<ForOp>(loc, newTypes, op.getLowerBound(),
+                                         op.getUpperBound(), op.getStep(),
+                                         newOutputs, nullptr);
+
+    // Map outputs, insert `tensor.cast` if necessary.
+    BlockAndValueMapping bvm;
+    bvm.map(op.getInductionVars(), newFor.getInductionVars());
+
+    auto innerBuilder = ImplicitLocOpBuilder::atBlockEnd(loc, newFor.getBody());
+    rewriter.setInsertionPointAfter(newFor);
+
+    for (const auto &[oldArg, newArg, cast] :
+         llvm::zip(op.getRegionOutputArgs(), newFor.getRegionOutputArgs(),
+                   castOutputs)) {
+      bvm.map(oldArg,
+              cast ? innerBuilder.create<tensor::CastOp>(cast.getType(), newArg)
+                   : Value(newArg));
+    }
+    // Cast the loop results for downstream uses of the loop if necessary.
+    SmallVector<Value> newResults{newFor.getResults()};
+    for (auto &&[res, cast] : llvm::zip(newResults, castOutputs)) {
+      if (cast) res = rewriter.create<tensor::CastOp>(loc, cast.getType(), res);
+    }
+
+    // Clone loop body.
+    for (auto &o : *(op.getBody())) innerBuilder.clone(o, bvm);
+
+    // Update set_yield destinations to the new type.
+    auto term = cast<SetYieldOp>(newFor.getTerminator());
+    rewriter.updateRootInPlace(term, [&]() {
+      term.getDstsMutable().assign(newFor.getRegionOutputArgs());
+    });
+
+    // Update the original loop by the new loop + CastOp.
+    rewriter.replaceOp(op, newResults);
+    return success();
+  }
+};
+}  // namespace
+
+void ForOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                        MLIRContext *context) {
+  results.add<CollapseSingleIterationLoops, RefineForOpShape>(context);
 }
 
 namespace {
@@ -1306,61 +1493,47 @@ LogicalResult YieldOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// SpaceOp
-//===----------------------------------------------------------------------===//
-
-void SpaceOp::build(OpBuilder &builder, OperationState &result,
-                    ArrayRef<OpFoldResult> sizes,
-                    ArrayRef<NamedAttribute> attrs) {
-  SmallVector<Value> dynamicSizes;
-  SmallVector<int64_t> staticSizes;
-  for (OpFoldResult size : sizes)
-    dispatchIndexOpFoldResult(size, dynamicSizes, staticSizes,
-                              ShapedType::kDynamicSize);
-  build(builder, result, TileType::get(builder.getContext(), staticSizes),
-        dynamicSizes, builder.getI64ArrayAttr(staticSizes));
-  result.addAttributes(attrs);
-}
-
-LogicalResult SpaceOp::inferReturnTypes(
-    MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  SpaceOp::Adaptor adaptor(operands, attributes, regions);
-  SmallVector<int64_t> shape = llvm::to_vector(
-      llvm::map_range(adaptor.getStaticSizes(), [&](const Attribute &val) {
-        return val.cast<IntegerAttr>().getValue().getSExtValue();
-      }));
-  auto resultTy = TileType::get(ctx, shape);
-  inferredReturnTypes.push_back(resultTy);
-  return success();
-}
-
-LogicalResult SpaceOp::verify() {
-  auto resultTy = getType().cast<TileType>();
-  return mlir::verifyListOfOperandsOrIntegers(
-      getOperation(), "size", resultTy.getShape().size(), getStaticSizes(),
-      getDynamicSizes(), ShapedType::isDynamic);
-}
-
-unsigned SpaceOp::getNumDynamicEntriesUpToIdx(unsigned idx) {
-  return std::count_if(getStaticSizes().begin(), getStaticSizes().begin() + idx,
-                       [&](const mlir::Attribute size) {
-                         return mlir::ShapedType::isDynamic(
-                             size.cast<mlir::IntegerAttr>().getInt());
-                       });
-}
-
-mlir::Value SpaceOp::getDynamicSize(unsigned idx) {
-  auto numDynamic = getNumDynamicEntriesUpToIdx(idx);
-  return getDynamicSizes()[numDynamic];
-}
-
-//===----------------------------------------------------------------------===//
 // TileOp
 //===----------------------------------------------------------------------===//
 
-void TileOp::build(OpBuilder &b, OperationState &result, Value superset,
+namespace {
+/// Fold gml_st.tile [%c0] ... into gml_st.tile [0] ...
+/// Adapted from OpWithOffsetSizesAndStridesConstantArgumentFolder, which makes
+/// slightly incompatible assumptions about the op.
+struct FoldConstantsIntoTileType : public OpRewritePattern<TileOp> {
+  using OpRewritePattern<TileOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TileOp op,
+                                PatternRewriter &rewriter) const override {
+    // No constant operand, just return;
+    if (llvm::none_of(op.getOperands(), [](Value operand) {
+          return matchPattern(operand, matchConstantIndex());
+        }))
+      return failure();
+
+    // At least one of offsets/sizes/strides is a new constant.
+    // Form the new list of operands and constant attributes from the existing.
+    SmallVector<OpFoldResult> mixedOffsets(op.getMixedOffsets());
+    SmallVector<OpFoldResult> mixedSizes(op.getMixedSizes());
+    SmallVector<OpFoldResult> mixedStrides(op.getMixedStrides());
+    canonicalizeSubViewPart(mixedOffsets, ShapedType::isDynamicStrideOrOffset);
+    canonicalizeSubViewPart(mixedSizes, ShapedType::isDynamic);
+    canonicalizeSubViewPart(mixedStrides, ShapedType::isDynamicStrideOrOffset);
+
+    // Create the new tile in canonical form.
+    TileOp newOp = rewriter.create<TileOp>(op.getLoc(), mixedOffsets,
+                                           mixedSizes, mixedStrides);
+    // Cast the result back to the original type. This will be folded further
+    // materialize ops.
+    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
+        op, TypeRange{op.getType()}, ValueRange{newOp});
+
+    return success();
+  }
+};
+}  // namespace
+
+void TileOp::build(OpBuilder &b, OperationState &result,
                    ArrayRef<OpFoldResult> offsets, ArrayRef<OpFoldResult> sizes,
                    ArrayRef<OpFoldResult> strides,
                    ArrayRef<NamedAttribute> attrs) {
@@ -1373,10 +1546,19 @@ void TileOp::build(OpBuilder &b, OperationState &result, Value superset,
   dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides,
                              ShapedType::kDynamicStrideOrOffset);
   auto tileType = TileType::get(b.getContext(), staticSizes);
-  build(b, result, tileType, superset, dynamicOffsets, dynamicSizes,
-        dynamicStrides, b.getI64ArrayAttr(staticOffsets),
-        b.getI64ArrayAttr(staticSizes), b.getI64ArrayAttr(staticStrides));
+  build(b, result, tileType, dynamicOffsets, dynamicSizes, dynamicStrides,
+        b.getI64ArrayAttr(staticOffsets), b.getI64ArrayAttr(staticSizes),
+        b.getI64ArrayAttr(staticStrides));
   result.addAttributes(attrs);
+}
+
+void TileOp::build(OpBuilder &b, OperationState &result,
+                   ArrayRef<OpFoldResult> offsets,
+                   ArrayRef<NamedAttribute> attrs) {
+  SmallVector<OpFoldResult> unitSizesAndStrides(offsets.size(),
+                                                b.getIndexAttr(1));
+  return build(b, result, offsets, unitSizesAndStrides, unitSizesAndStrides,
+               attrs);
 }
 
 LogicalResult TileOp::inferReturnTypes(
@@ -1398,8 +1580,8 @@ LogicalResult TileOp::inferReturnTypes(
 }
 
 LogicalResult TileOp::verify() {
-  auto supersetTy = getSuperset().getType().cast<TileType>();
-  auto rank = supersetTy.getShape().size();
+  auto resultType = getType();
+  auto rank = resultType.getRank();
   if (failed(mlir::verifyListOfOperandsOrIntegers(getOperation(), "size", rank,
                                                   getStaticSizes(), getSizes(),
                                                   ShapedType::isDynamic))) {
@@ -1415,7 +1597,7 @@ LogicalResult TileOp::verify() {
           ShapedType::isDynamicStrideOrOffset))) {
     return failure();
   }
-  for (auto it : llvm::zip(supersetTy.getShape(), getStaticOffsets(),
+  for (auto it : llvm::zip(resultType.getShape(), getStaticOffsets(),
                            getStaticSizes(), getStaticStrides())) {
     auto offset =
         std::get<1>(it).dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
@@ -1434,32 +1616,18 @@ LogicalResult TileOp::verify() {
       return emitOpError("expected stride = ")
              << stride << " to be non-negative";
     }
-    auto argSize = std::get<0>(it);
-    // If the argument tile has a dynamic dimension, no additional verification
-    // is possible.
-    if (argSize == ShapedType::kDynamicSize) continue;
-    if (offset >= 0) {
-      if (stride >= 0 && size > 0) {
-        int64_t largestIndex = offset + stride * (size - 1);
-        if (largestIndex >= argSize) {
-          return emitOpError("offset = ")
-                 << offset << " size = " << size << " stride = " << stride
-                 << " causes access out of bounds at " << largestIndex
-                 << " for argument dimension size = " << argSize;
-        }
-      } else if (offset >= argSize) {
-        return emitOpError("offset = ")
-               << offset
-               << " is out of bounds for argument dimension size = " << argSize;
-      }
-    } else if (stride > 0 && size > 0 && stride * (size - 1) >= argSize) {
-      return emitOpError("size = ")
-             << size << " stride = " << stride
-             << " causes access out of bounds for argument dimension size = "
-             << argSize;
+    auto tileSize = std::get<0>(it);
+    if (tileSize != size) {
+      return emitOpError("size arg = ")
+             << size << " does not match tile size = " << tileSize;
     }
   }
   return success();
+}
+
+void TileOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                         MLIRContext *context) {
+  results.add<FoldConstantsIntoTileType>(context);
 }
 
 namespace {
@@ -1549,27 +1717,6 @@ SmallVector<OpFoldResult> composeStrides(
 }
 
 }  // namespace
-
-Value TileOp::compose(OpBuilder &builder) {
-  auto supersetOp =
-      llvm::dyn_cast_or_null<TileOp>(getSuperset().getDefiningOp());
-  if (!supersetOp) return {};
-
-  // Compose offsets with newOffset = supersetOffset + supersetStride *
-  // offset.
-  auto loc = getLoc();
-  auto composedOffsets =
-      composeOffsets(supersetOp.getMixedOffsets(), supersetOp.getMixedStrides(),
-                     getMixedOffsets(), loc, builder);
-
-  // Compose strides with newStride = supersetStride * stride.
-  auto composedStrides = composeStrides(
-      builder, loc, supersetOp.getMixedStrides(), getMixedStrides());
-
-  // Build the composed tile op.
-  return builder.create<TileOp>(loc, supersetOp.getSuperset(), composedOffsets,
-                                getMixedSizes(), composedStrides);
-}
 
 //===----------------------------------------------------------------------===//
 // SetYieldOp
@@ -1711,7 +1858,7 @@ ParseResult SetYieldOp::parse(OpAsmParser &parser, OperationState &result) {
 
   auto parseElt = [&]() -> ParseResult {
     OpAsmParser::UnresolvedOperand src;
-    auto parseResult = parser.parseOptionalOperand(src, false);
+    auto parseResult = parser.parseOptionalOperand(src);
 
     if (!parseResult.has_value()) return success();
     srcs.push_back(src);
@@ -1767,92 +1914,41 @@ ParseResult SetYieldOp::parse(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-//===----------------------------------------------------------------------===//
-// OffsetOp
-//===----------------------------------------------------------------------===//
+namespace {
+/// Folds UnrealizedConversionCast of TileType into SetYieldOp.
+struct FoldTileCastIntoSetYield : public OpRewritePattern<SetYieldOp> {
+  using OpRewritePattern<SetYieldOp>::OpRewritePattern;
 
-OpFoldResult OffsetOp::fold(ArrayRef<Attribute> operands) {
-  auto idxAttr = operands[1].dyn_cast_or_null<IntegerAttr>();
-  if (!idxAttr) return {};
-  int64_t idx = idxAttr.getInt();
-
-  // Case: offset(tile(space))
-  Operation *subsetDef = getSubset().getDefiningOp();
-  if (auto tileOp = llvm::dyn_cast_or_null<TileOp>(subsetDef)) {
-    Operation *supersetDef = tileOp.getSuperset().getDefiningOp();
-
-    // Can only fold locally if the superset is the root space. Otherwise, rely
-    // on subset composition.
-    if (!llvm::isa_and_nonnull<SpaceOp>(supersetDef)) return {};
-
-    return ensureIndexTypeForAttribute(mlir::getMixedStridesOrOffsets(
-        tileOp.getStaticOffsets(), tileOp.getOffsets())[idx]);
+  LogicalResult matchAndRewrite(SetYieldOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!llvm::any_of(op.getSets(), [](auto set) {
+          return set.template getDefiningOp<UnrealizedConversionCastOp>() !=
+                 nullptr;
+        }))
+      return failure();
+    SmallVector<Value> newSrcs{op.getSrcs()};
+    SmallVector<Value> newSets{op.getSets()};
+    for (auto &&[src, set] : llvm::zip(newSrcs, newSets)) {
+      auto cast = set.getDefiningOp<UnrealizedConversionCastOp>();
+      if (!cast) continue;
+      set = cast.getOperand(0);
+      Type castResultType = src.getType();
+      if (auto shapedType = dyn_cast<ShapedType>(castResultType)) {
+        castResultType =
+            shapedType.clone(set.getType().cast<TileType>().getShape(),
+                             shapedType.getElementType());
+        src = rewriter.create<tensor::CastOp>(op.getLoc(), castResultType, src);
+      }
+    }
+    rewriter.replaceOpWithNewOp<SetYieldOp>(op, newSrcs, op.getDsts(), newSets);
+    return success();
   }
+};
+}  // namespace
 
-  // Case: offset(space)
-  if (llvm::isa_and_nonnull<SpaceOp>(subsetDef)) {
-    Builder b(getContext());
-    return b.getIndexAttr(0);
-  }
-
-  return {};
-}
-
-//===----------------------------------------------------------------------===//
-// SizeOp
-//===----------------------------------------------------------------------===//
-
-OpFoldResult SizeOp::fold(ArrayRef<Attribute> operands) {
-  auto idxAttr = operands[1].dyn_cast_or_null<IntegerAttr>();
-  if (!idxAttr) return {};
-  int64_t idx = idxAttr.getInt();
-
-  // Case: size(tile(...))
-  // Note that sizes can also be folded in the presence of nested tiling. There
-  // is no need to check for an immediate root space here.
-  Operation *tileDef = getTile().getDefiningOp();
-  if (auto tileOp = llvm::dyn_cast_or_null<TileOp>(tileDef)) {
-    return ensureIndexTypeForAttribute(tileOp.getMixedSizes()[idx]);
-  }
-
-  // Case: size(space)
-  if (auto spaceOp = llvm::dyn_cast_or_null<SpaceOp>(tileDef)) {
-    return ensureIndexTypeForAttribute(mlir::getMixedSizes(
-        spaceOp.getStaticSizes(), spaceOp.getDynamicSizes())[idx]);
-  }
-
-  return {};
-}
-
-//===----------------------------------------------------------------------===//
-// StrideOp
-//===----------------------------------------------------------------------===//
-
-OpFoldResult StrideOp::fold(ArrayRef<Attribute> operands) {
-  auto idxAttr = operands[1].dyn_cast_or_null<IntegerAttr>();
-  if (!idxAttr) return {};
-  int64_t idx = idxAttr.getInt();
-
-  // Case: offset(tile(space))
-  Operation *subsetDef = getTile().getDefiningOp();
-  if (auto tileOp = llvm::dyn_cast_or_null<TileOp>(subsetDef)) {
-    Operation *supersetDef = tileOp.getSuperset().getDefiningOp();
-
-    // Can only fold locally if the superset is the root space. Otherwise, rely
-    // on subset composition.
-    if (!llvm::isa_and_nonnull<SpaceOp>(supersetDef)) return {};
-
-    return ensureIndexTypeForAttribute(mlir::getMixedStridesOrOffsets(
-        tileOp.getStaticStrides(), tileOp.getStrides())[idx]);
-  }
-
-  // Case: offset(space)
-  if (llvm::isa_and_nonnull<SpaceOp>(subsetDef)) {
-    Builder b(getContext());
-    return b.getIndexAttr(1);
-  }
-
-  return {};
+void SetYieldOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                             MLIRContext *context) {
+  results.add<FoldTileCastIntoSetYield>(context);
 }
 
 }  // namespace gml_st

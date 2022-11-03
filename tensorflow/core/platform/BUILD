@@ -20,7 +20,6 @@ load(
     "tf_kernel_tests_linkstatic",
     "tf_platform_alias",
     "tf_platform_deps",
-    "tf_testing_deps",  # @unused
     "tf_windows_aware_platform_deps",
 )
 load(
@@ -32,6 +31,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_google",
     "if_not_android",
+    "if_not_fuchsia",
     "if_windows",
     "tf_cc_test",
     "tf_cc_tests",
@@ -406,7 +406,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["logging.h"],
     deps = [
-        "//tensorflow/core/platform:types",
+        ":types",
         "//tensorflow/tsl/platform:logging",
     ],
 )
@@ -933,9 +933,6 @@ cc_library(
 
 cc_library(
     name = "retrying_utils",
-    srcs = [
-        "retrying_utils.cc",
-    ],
     hdrs = [
         "retrying_utils.h",
     ],
@@ -943,6 +940,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/tsl/platform:retrying_utils",
     ],
 )
 
@@ -956,34 +954,7 @@ cc_library(
         ":retrying_utils",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_cc_test(
-    name = "retrying_file_system_test",
-    size = "small",
-    srcs = ["retrying_file_system_test.cc"],
-    deps = [
-        ":retrying_file_system",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:str_util",
-    ],
-)
-
-tf_cc_test(
-    name = "retrying_utils_test",
-    size = "small",
-    srcs = ["retrying_utils_test.cc"],
-    deps = [
-        ":retrying_utils",
-        ":str_util",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:retrying_file_system",
     ],
 )
 
@@ -1664,7 +1635,6 @@ filegroup(
         "png.h",
         "protobuf_internal.h",
         "random.h",
-        "subprocess.h",
         "test_benchmark.h",
         "threadpool_options.h",
         "unbounded_work_queue.h",
@@ -1673,7 +1643,9 @@ filegroup(
         "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
         "//tensorflow/tsl/platform:mobile_srcs_only_runtime",
         "//tensorflow/tsl/platform/default:mobile_srcs_only_runtime",
-    ] + tf_google_mobile_srcs_only_runtime(),
+    ] + if_not_fuchsia([
+        "subprocess.h",
+    ]) + tf_google_mobile_srcs_only_runtime(),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
@@ -1718,6 +1690,7 @@ bzl_library(
     name = "build_config_root_bzl",
     srcs = [
         "build_config_root.bzl",
+        "build_config_root.default.bzl",
     ] + tf_platform_alias("build_config_root.bzl"),
     visibility = [
         "//learning/brain/google/xla/tests:__pkg__",
@@ -1729,8 +1702,6 @@ bzl_library(
 
 bzl_library(
     name = "rules_cc_bzl",
-    srcs = [
-        "rules_cc.bzl",
-    ] + tf_platform_alias("rules_cc.bzl"),
-    deps = ["@bazel_skylib//rules:common_settings"],
+    srcs = ["rules_cc.bzl"],
+    deps = tf_platform_alias("rules_cc_bzl"),
 )

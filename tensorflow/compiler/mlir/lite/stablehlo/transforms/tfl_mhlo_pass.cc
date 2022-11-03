@@ -174,13 +174,14 @@ void TflToMhloPass::runOnOperation() {
   fn.walk([&](TFL::CustomOp custom_op) {
     builder.setInsertionPoint(custom_op);
     const uint8_t* option_buf = reinterpret_cast<const uint8_t*>(
-        custom_op.custom_option().getValue().data());
+        custom_op.getCustomOption().getValue().data());
     auto flex_buffer_map =
         flexbuffers::GetRoot(option_buf,
-                             custom_op.custom_option().getValue().size())
+                             custom_op.getCustomOption().getValue().size())
             .AsMap();
     auto attr = ReadAttr(flex_buffer_map, &builder);
-    OperationState op_state(custom_op.getLoc(), custom_op.custom_code().str());
+    OperationState op_state(custom_op.getLoc(),
+                            custom_op.getCustomCode().str());
     op_state.addOperands(custom_op.getOperands());
     llvm::SmallVector<mlir::Type, 4> output_tys;
     for (int i = 0; i < custom_op.getNumResults(); i++) {

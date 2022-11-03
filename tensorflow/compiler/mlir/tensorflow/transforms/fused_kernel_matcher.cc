@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -196,13 +197,12 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
         NamedAttribute(StringAttr::get(context, "epsilon"), epsilon));
 
     if (std::is_same<FusedOpT, _FusedConv2DOp>::value) {
-      SmallVector<Attribute, 4> targs_values;
       // Here TArgs types do not include types of the first two parameters,
       // i.e. the convolution input and the filter. TArgs are parameters for
       // the extras like the bias etc.
-      for (int i = 0; i < operands.size() - 2; ++i) {
-        targs_values.push_back(TypeAttr::get(contraction.T()));
-      }
+      auto attr = TypeAttr::get(getElementTypeOrSelf(contraction.getType()));
+      SmallVector<Attribute, 4> targs_values(operands.size() - 2, attr);
+
       ArrayAttr targs_attr = ArrayAttr::get(context, targs_values);
       attrs.push_back(
           NamedAttribute(StringAttr::get(context, "TArgs"), targs_attr));
@@ -280,11 +280,13 @@ class FuseConv2DBiasAdd
       });
       return false;
     }
+
     // Verify the data type is supported.
-    if (!conv.T().isF32() && !conv.T().isF64()) {
+    Type element_ty = getElementTypeOrSelf(conv.getType());
+    if (!element_ty.isF32() && !element_ty.isF64()) {
       (void)rewriter.notifyMatchFailure(conv, [&](Diagnostic &diag) {
         diag << "supported data types for _FusedConv2D are float and double, "
-             << " but got " << conv.T();
+             << " but got " << element_ty;
       });
       return false;
     }
@@ -318,10 +320,11 @@ class FuseMatMulBiasAdd
   bool AreFuseCompatible(MatMulOp matmul, BiasAddOp bias_add,
                          PatternRewriter &rewriter) const override {
     // FusedMatMul kernel supports limited set of data types.
-    if (!matmul.T().isF32() && !matmul.T().isBF16()) {
+    Type element_ty = getElementTypeOrSelf(matmul.getType());
+    if (!element_ty.isF32() && !element_ty.isBF16()) {
       (void)rewriter.notifyMatchFailure(matmul, [&](Diagnostic &diag) {
         diag << "supported data types for _FusedMatMul are float and bfloat16, "
-             << " but got " << matmul.T();
+             << " but got " << element_ty;
       });
       return false;
     }

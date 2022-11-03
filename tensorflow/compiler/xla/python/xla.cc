@@ -70,6 +70,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/util.h"
 #include "tensorflow/compiler/xla/python/weakref_lru_cache.h"
 #include "tensorflow/compiler/xla/python/xla_compiler.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -184,6 +185,9 @@ PYBIND11_MODULE(xla_extension, m) {
            })
       .def("live_buffers",
            [](const ClientAndPtr<PjRtDevice>& device) {
+             PythonDeprecationWarning(
+                 "Per device live_buffers() is going to be deprecated. Please "
+                 "use the jax.live_arrays() for jax.Arrays instead.");
              return device.client->LiveBuffersOnDevice(device.get());
            })
       .def(
@@ -219,6 +223,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("local_devices", &PyClient::LocalDevices)
       .def("live_buffers", &PyClient::LiveBuffers)
       .def("live_executables", &PyClient::LiveExecutables)
+      .def("live_arrays", &PyClient::LiveArrays)
       .def("process_index", &PyClient::process_index)
       .def("host_id", &PyClient::process_index)
       .def("task_id", &PyClient::process_index)
@@ -318,6 +323,10 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<StreamExecutorGpuDevice, PjRtDevice,
              ClientAndPtr<StreamExecutorGpuDevice>>
       gpu_device(m, "GpuDevice");
+  gpu_device.def_property_readonly(
+      "slice_index", &StreamExecutorGpuDevice::slice_index,
+      "Integer ID of a set of devices connected by "
+      "fast network, e.g., NVLink.");
   m.def(
       "get_gpu_client",
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
@@ -436,6 +445,9 @@ PYBIND11_MODULE(xla_extension, m) {
                &PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens),
            py::arg("arguments"))
       .def("hlo_modules", &PyLoadedExecutable::HloModules)
+      .def("get_output_shardings", &PyLoadedExecutable::GetOutputShardings)
+      .def("get_parameter_shardings",
+           &PyLoadedExecutable::GetParameterShardings)
       .def("keep_alive", &PyLoadedExecutable::KeepAlive)
       .def_property_readonly("traceback", &PyLoadedExecutable::traceback)
       .def_property_readonly("fingerprint",
@@ -477,7 +489,11 @@ PYBIND11_MODULE(xla_extension, m) {
       .def(
           "initialize",
           [](tensorflow::PreemptionSyncManager& manager,
-             DistributedRuntimeClient* client) { manager.Initialize(client); },
+             DistributedRuntimeClient* client) {
+            TF_ASSIGN_OR_RETURN(tsl::CoordinationServiceAgent * agent,
+                                client->GetCoordinationServiceAgent());
+            return manager.Initialize(agent);
+          },
           py::arg("distributed_client"))
       .def("reached_sync_point",
            [](tensorflow::PreemptionSyncManager& manager, int step_counter) {
@@ -629,6 +645,8 @@ PYBIND11_MODULE(xla_extension, m) {
 
   py::class_<PjRtExecutable, std::shared_ptr<PjRtExecutable>>(m, "Executable")
       .def("hlo_modules", &PjRtExecutable::GetHloModules)
+      .def("get_output_shardings", &PjRtExecutable::GetOutputShardings)
+      .def("get_parameter_shardings", &PjRtExecutable::GetParameterShardings)
       .def("get_compiled_memory_stats", &PjRtExecutable::GetCompiledMemoryStats)
       .def("serialize", &PjRtExecutable::SerializeExecutable);
 

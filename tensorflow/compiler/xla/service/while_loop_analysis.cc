@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 
 #include "absl/base/casts.h"
-#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
+#include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"

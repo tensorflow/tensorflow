@@ -17,7 +17,7 @@ import functools
 import traceback
 from tensorflow.python.checkpoint import checkpoint as trackable_util
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
@@ -301,7 +301,7 @@ class Template(trackable.Trackable):
       ValueError: if `name` is None.
     """
     if create_graph_function:
-      self._func = function.defun(func)
+      self._func = def_function.function(func)
     else:
       self._func = func
     self._stacktrace = traceback.format_stack()[:-2]

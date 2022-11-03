@@ -81,6 +81,9 @@ struct CompileOptions {
 
   // Serialize the CompileOptions into a CompileOptionsProto.
   StatusOr<CompileOptionsProto> ToProto() const;
+
+  // Deserialize the CompileOptionsProto into a CompileOptions.
+  static StatusOr<CompileOptions> FromProto(const CompileOptionsProto& proto);
 };
 
 // Static device memory usage for a compiled program.
@@ -116,6 +119,12 @@ class PjRtExecutable {
   // Return an HloModule (optimized) per partition.
   virtual StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const = 0;
+
+  // Returns a list of parameter OpSharding protos.
+  std::optional<std::vector<OpSharding>> GetParameterShardings() const;
+
+  // Returns a list of output OpSharding protos.
+  std::optional<std::vector<OpSharding>> GetOutputShardings() const;
 
   // Return memory stats that allow callers to estimate device memory usage
   // when running this executable.

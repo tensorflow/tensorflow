@@ -703,6 +703,7 @@ tf_cuda_library(
         ":tf_tensor_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal_impl",
+        "//tensorflow/core/lib/gtl:cleanup",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:refcount",

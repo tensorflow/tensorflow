@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel_spec.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/regexp.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 #include "tensorflow/tsl/util/determinism.h"

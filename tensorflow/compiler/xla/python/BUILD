@@ -167,9 +167,9 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/core:lib",
         "//tensorflow/python:bfloat16_lib",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:protobuf",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@pybind11",
@@ -226,7 +226,6 @@ cc_library(
     deps = [
         ":exceptions",
         ":python_ref_manager",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
@@ -331,7 +330,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:transpose",
         "//tensorflow/compiler/xla/service:custom_call_status",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
-        "//tensorflow/core/platform:fingerprint",
+        "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/profiler/lib:traceme",
         "//tensorflow/tsl/platform:fingerprint",
@@ -357,6 +356,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/memory",
@@ -377,7 +377,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:private"],
+    visibility = [":friends"],  # For the functions to access C++ flags/thread-local variables
     deps = [
         ":exceptions",
         ":py_client",
@@ -738,7 +738,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/lib/strings:proto_serialization",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/hash",
@@ -792,6 +791,20 @@ config_setting(
     },
 )
 
+# If this flag is enabled, it sets RPATH on the xla_extension to values that are suitable for
+# finding NVIDIA's CUDA libraries when they are installed as pip packages.
+bool_flag(
+    name = "jax_cuda_pip_rpaths",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "use_jax_cuda_pip_rpaths",
+    flag_values = {
+        ":jax_cuda_pip_rpaths": "True",
+    },
+)
+
 # We cannot nest select and if_cuda_is_configured so we introduce
 # a standalone cc_library target.
 cc_library(
@@ -818,6 +831,16 @@ pybind_extension(
         ":plugin_device_enabled": ["XLA_PYTHON_ENABLE_PLUGIN_DEVICE=1"],
         "//conditions:default": [],
     }),
+    linkopts = select({
+        ":use_jax_cuda_pip_rpaths": [
+            "-Wl,-rpath,$$ORIGIN/../nvidia/cuda_runtime/lib",
+            "-Wl,-rpath,$$ORIGIN/../nvidia/cublas/lib",
+            "-Wl,-rpath,$$ORIGIN/../nvidia/cufft/lib",
+            "-Wl,-rpath,$$ORIGIN/../nvidia/cudnn/lib",
+            "-Wl,-rpath,$$ORIGIN/../nvidia/cusolver/lib",
+        ],
+        "//conditions:default": [],
+    }),
     pytype_deps = [
         "//third_party/py/numpy",
     ],
@@ -830,6 +853,7 @@ pybind_extension(
         ":mlir",
         ":numpy",
         ":ops",
+        ":util",
         ":pmap_lib",
         ":pjit",
         ":weakref_lru_cache",
@@ -863,14 +887,7 @@ pybind_extension(
         "//tensorflow/compiler/xla/pjrt/distributed",
         "//tensorflow/compiler/xla/pjrt/distributed:client",
         "//tensorflow/compiler/xla/pjrt/distributed:service",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
-        # Do NOT remove this dependency. The XLA Python extension must not
-        # depend on any part of TensorFlow at runtime, **including**
-        # libtensorflow_framework.so. The XLA module is deployed self-contained
-        # without any TF dependencies as "jaxlib" on Pypi, and "jaxlib" does
-        # not require Tensorflow.
-        "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
         "//tensorflow/core/distributed_runtime/preemption:preemption_sync_manager",
         "//tensorflow/python:bfloat16_lib",
     ] + select({
