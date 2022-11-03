@@ -46,11 +46,16 @@ std::vector<std::vector<Tensor>> TestCases() {
       CreateTensors<int64_t>(TensorShape{1}, {{1}, {2}}),
       // Single tstring.
       CreateTensors<tstring>(TensorShape{1}, {{"a"}, {"b"}}),
+      // Multiple tstrings.
+      {CreateTensor<tstring>(TensorShape{1, 2}, {"abc", "xyz"}),
+       CreateTensor<tstring>(TensorShape{2, 1}, {"ijk", "mnk"})},
       // Mix of tstring and int64.
       {CreateTensor<tstring>(TensorShape{1}, {"a"}),
        CreateTensor<int64_t>(TensorShape{1}, {1})},
-      // Empty.
+      // Empty element.
       {},
+      // Empty tensor.
+      {CreateTensor<int64_t>(TensorShape{1, 0})},
       // Larger int64.
       {CreateTensor<int64_t>(TensorShape{128, 128}),
        CreateTensor<int64_t>(TensorShape{64, 2})},
