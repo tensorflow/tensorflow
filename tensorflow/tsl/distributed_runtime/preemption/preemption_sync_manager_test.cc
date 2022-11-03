@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/distributed_runtime/preemption/preemption_sync_manager.h"
+#include "tensorflow/tsl/distributed_runtime/preemption/preemption_sync_manager.h"
 
 #include <memory>
 #include <string>
@@ -24,32 +24,32 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
-#include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
-#include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/tsl/distributed_runtime/preemption/preemption_notifier.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 #include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
-using tsl::CoordinationServiceAgent;
-using tsl::CoordinationServiceInterface;
-using tsl::CreateCoordinationServiceAgent;
+using tensorflow::CoordinatedJob;
+using tensorflow::CoordinatedTask;
+using tensorflow::CoordinationServiceConfig;
 
 constexpr char kJobName[] = "test_worker";
 
 // Send fake preemption notices at any time for testing.
-class FakePreemptionNotifier : public tsl::PreemptionNotifier {
+class FakePreemptionNotifier : public PreemptionNotifier {
  public:
-  FakePreemptionNotifier() : tsl::PreemptionNotifier(/*env=*/nullptr) {}
+  FakePreemptionNotifier() : PreemptionNotifier(/*env=*/nullptr) {}
 
   ~FakePreemptionNotifier() override {
     NotifyRegisteredListeners(
@@ -172,7 +172,7 @@ class PreemptionSyncManagerTest : public ::testing::Test {
   std::unique_ptr<CoordinationServiceInterface> coord_service_;
   std::unique_ptr<::grpc::Server> grpc_server_;
   std::unique_ptr<thread::ThreadPool> coord_compute_pool_;
-  std::unique_ptr<tsl::AsyncServiceInterface> coord_rpc_service_;
+  std::unique_ptr<AsyncServiceInterface> coord_rpc_service_;
   std::unique_ptr<Thread> coord_rpc_thread_;
   // Owned by task 1.
   std::unique_ptr<CoordinationServiceAgent> coord_agent_ =
@@ -287,4 +287,4 @@ TEST_F(PreemptionSyncManagerTest, PreemptFastTask) {
 }
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace tsl
