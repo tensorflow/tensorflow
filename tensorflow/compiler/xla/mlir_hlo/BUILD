@@ -1749,8 +1749,8 @@ cc_library(
 
 cc_library(
     name = "thlo_bufferizable_op_interface",
-    srcs = ["thlo/transforms/bufferizable_op_interface_impl.cc"],
-    hdrs = ["thlo/transforms/bufferizable_op_interface_impl.h"],
+    srcs = ["thlo/interfaces/bufferizable_op_interface_impl.cc"],
+    hdrs = ["thlo/interfaces/bufferizable_op_interface_impl.h"],
     includes = [
         ".",
         "include",
@@ -1782,7 +1782,7 @@ gentbl_cc_library(
 cc_library(
     name = "thlo_passes",
     srcs = [
-        "thlo/transforms/legalize_sort.cc",
+        "thlo/transforms/legalize_sort/legalize_sort.cc",
         "thlo/transforms/thlo_passes.h.inc",
     ],
     hdrs = [

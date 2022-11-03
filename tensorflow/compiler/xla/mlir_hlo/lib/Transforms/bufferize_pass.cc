@@ -74,7 +74,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "stablehlo/dialect/ChloOps.h"
 #include "thlo/IR/thlo_ops.h"
-#include "thlo/transforms/bufferizable_op_interface_impl.h"
+#include "thlo/interfaces/bufferizable_op_interface_impl.h"
 
 namespace mlir {
 

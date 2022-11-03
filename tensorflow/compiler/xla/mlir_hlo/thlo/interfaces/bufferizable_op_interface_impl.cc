@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "thlo/transforms/bufferizable_op_interface_impl.h"
+#include "thlo/interfaces/bufferizable_op_interface_impl.h"
 
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
 #include "mlir/Interfaces/DestinationStyleOpInterface.h"
