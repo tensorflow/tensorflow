@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -30,17 +31,10 @@ class GpuPerformanceModelTest : public HloTestBase {
     constexpr int64_t kPointerSize = 8;
     return ShapeUtil::ByteSizeOf(shape, kPointerSize);
   }
-  GpuDeviceInfo device_info_;
+  // The reference times in the test cases below are measured
+  // on A6000 by profiling the execution of the HLOs.
+  GpuDeviceInfo device_info_ = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   GpuPerformanceModelTest() : HloTestBase() {
-    // Values for RTX A6000.
-    // The reference times in the test cases below are measured
-    // on A6000 by profiling the execution of the HLOs.
-    device_info_.shared_memory_per_core = 100 * 1024;
-    device_info_.core_count = 84;
-    device_info_.fpus_per_core = 128;
-    device_info_.memory_bandwidth = (1 << 30) * 768L;
-    device_info_.l2_cache_size = 6 * 1024 * 1024;
-    device_info_.clock_rate_ghz = 1.410;
   }
 };
 

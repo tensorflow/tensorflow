@@ -2325,6 +2325,7 @@ tf_cc_test(
     name = "gpu_performance_model_test",
     srcs = ["gpu_performance_model_test.cc"],
     deps = [
+        ":gpu_device_info_for_tests",
         ":gpu_performance_model",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
