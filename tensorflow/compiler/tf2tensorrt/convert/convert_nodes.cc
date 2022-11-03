@@ -5822,6 +5822,14 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertIdentity,
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertBatchMatMul,
                                   {"BatchMatMul", "BatchMatMulV2"});
 
+static Status SetDeviceInfoInNodes(GraphDef* graph_def, const string& device)
+{
+  for (auto& node : *(graph_def->mutable_node())) {
+      *node.mutable_device() = device;
+  }
+  return OkStatus();
+}
+
 Status ConvertGraphDefToEngine(
     const GraphDef& gdef, OpKernelContext* ctx, TrtPrecisionMode precision_mode,
     int max_batch_size, size_t max_workspace_size_bytes,
@@ -5867,6 +5875,9 @@ Status ConvertGraphDefToEngine(
         DumpGraphDefToFile("before_trt_layout_optimizer_tf_graph", gdef, tftrt_graph_dump_path);
       }
 
+      // Add device information to each node in the graphdef for successful execution
+      // of the layout optimizer
+      TF_RETURN_IF_ERROR(SetDeviceInfoInNodes(&grappler_item.graph, ctx->device()->name()));
 
       // TensorRT API requires the input for convolution to be in NCHW.
       tensorflow::grappler::GenericLayoutOptimizer layout_optimizer("NCHW");
