@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "mlir-hlo/Transforms/gml_st_pipeline.h"
 
-#include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "gml_st/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"

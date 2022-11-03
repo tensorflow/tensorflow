@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef THLO_OPS
 #define THLO_OPS
 
-include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.td"
+include "gml_st/interfaces/tiling_interface.td"
 include "mlir/Dialect/Linalg/IR/LinalgInterfaces.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
