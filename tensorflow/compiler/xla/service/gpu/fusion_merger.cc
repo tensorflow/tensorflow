@@ -254,7 +254,7 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
     TF_CHECK_OK(computation_->Accept(&cost_analysis_.value()));
   }
 
-  for (HloInstruction* user : producer->users()) {
+  for (const HloInstruction* user : producer->users()) {
     if (cost_analysis_->ProducerConsumerMergedTooLarge(*producer, *user)) {
       ++num_fail_inefficient_fusion_emitter_;
       return FusionDecision{} << "if merged with " << user->name()
@@ -263,7 +263,8 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
   }
 
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-      producer, &*cost_analysis_, gpu_device_info_);
+      producer, &*cost_analysis_, gpu_device_info_, producer->users(),
+      /*multi_output=*/false);
   if (t.time_fused > t.time_unfused) {
     ++num_fail_slower_if_fused_;
     return "will execute slower if fused";

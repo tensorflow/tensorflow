@@ -49,7 +49,8 @@ class GpuFusionPipelineTest : public GpuCodegenTest {
     pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
     pipeline.AddPass<FusionMerger>(TestGpuDeviceInfo::RTXA6000DeviceInfo(),
                                    ShapeSizeBytesFunction());
-    pipeline.AddPass<GpuMultiOutputFusion>(ShapeSizeBytesFunction());
+    pipeline.AddPass<GpuMultiOutputFusion>(
+        TestGpuDeviceInfo::RTXA6000DeviceInfo(), ShapeSizeBytesFunction());
 
     RunAndFilecheckHloRewrite(hlo, std::move(pipeline), expected);
   }

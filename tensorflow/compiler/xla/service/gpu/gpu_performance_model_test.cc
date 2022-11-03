@@ -857,7 +857,6 @@ TEST_F(GpuPerformanceModelTest, UnusedParameter) {
       shape, HloInstruction::FusionKind::kLoop, {p0, p1}, subcomp);
   b.AddInstruction(std::move(fusion));
   module->AddEntryComputation(b.Build());
-  VLOG(0) << module->ToString();
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   GpuHloCostAnalysis analysis({shape_size});

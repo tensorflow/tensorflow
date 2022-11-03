@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <vector>
 
 #include "absl/time/time.h"
 
@@ -24,10 +25,11 @@ namespace xla {
 namespace gpu {
 
 /*static*/ struct GpuPerformanceModel::RunTimes
-GpuPerformanceModel::EstimateRunTimes(const HloInstruction* producer,
-                                      const GpuHloCostAnalysis* cost_analysis,
-                                      const GpuDeviceInfo& gpu_device_info) {
-  VLOG(8) << "Producer fusion: " << producer->name();
+GpuPerformanceModel::EstimateRunTimes(
+    const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
+    const GpuDeviceInfo& gpu_device_info,
+    const std::vector<HloInstruction*> fused_users, bool multi_output) {
+  VLOG(8) << "Producer: " << producer->name();
   VLOG(10) << producer->fused_instructions_computation()->ToString();
 
   float memory_bandwidth_bytes_per_second = gpu_device_info.memory_bandwidth;
@@ -50,7 +52,7 @@ GpuPerformanceModel::EstimateRunTimes(const HloInstruction* producer,
   };
 
   absl::Duration producer_input_access_time = absl::ZeroDuration();
-  for (int i = 0; i < producer->fused_parameters().size(); ++i) {
+  for (int i = 0; i < producer->operand_count(); ++i) {
     int64_t p_size_accessed =
         cost_analysis->operand_bytes_accessed(*producer, i);
     float operand_utilization =
@@ -91,13 +93,13 @@ GpuPerformanceModel::EstimateRunTimes(const HloInstruction* producer,
       std::max(compute_time_unfused,
                producer_input_access_time + output_write_time_unfused);
 
-  int64_t consumer_count = producer->user_count();
-  VLOG(8) << "Consumer count: " << consumer_count;
+  int64_t fused_consumer_count = fused_users.size();
+  VLOG(8) << "Consumer count: " << fused_consumer_count;
   float total_producer_utilization = 0;
 
   absl::Duration exec_time_fused = absl::ZeroDuration();
   absl::Duration producer_output_read_time_unfused = absl::ZeroDuration();
-  for (auto u : producer->users()) {
+  for (const HloInstruction* u : fused_users) {
     float utilization_by_this_consumer =
         cost_analysis->operand_utilization(*u, u->operand_index(producer));
     total_producer_utilization += utilization_by_this_consumer;
@@ -112,13 +114,18 @@ GpuPerformanceModel::EstimateRunTimes(const HloInstruction* producer,
   }
   VLOG(8) << "Utilization of producer output: " << total_producer_utilization;
 
-  absl::Duration time_unfused = kKernelLaunchOverhead * (consumer_count + 1) +
-                                exec_time_unfused +
-                                producer_output_read_time_unfused;
+  absl::Duration time_unfused =
+      kKernelLaunchOverhead * (fused_consumer_count + 1) + exec_time_unfused +
+      producer_output_read_time_unfused;
   VLOG(8) << "Unfused time: " << time_unfused;
 
   absl::Duration time_fused =
-      kKernelLaunchOverhead * consumer_count + exec_time_fused;
+      kKernelLaunchOverhead * fused_consumer_count + exec_time_fused;
+  // Multi-output fusion still writes the initial output of the producer.
+  // For now assume that the producer's output does not need to be recomputed.
+  if (multi_output) {
+    time_fused += output_write_time_unfused;
+  }
   VLOG(8) << "Fused time: " << time_fused;
 
   return {time_unfused, time_fused};
