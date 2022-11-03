@@ -1934,6 +1934,7 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
   std::unique_ptr<MPSolver> solver(std::make_unique<MPSolver>("", MPSolver::GLPK_MIXED_INTEGER_PROGRAMMING));
   CHECK(solver);
   solver->MutableObjective()->SetMinimization();
+#if !defined(__APPLE__)
   if (solver->ProblemType() ==
       operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
     // Set random_seed and interleave_search for determinism,
@@ -1941,7 +1942,7 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
     solver->SetSolverSpecificParametersAsString(absl::StrCat(
         "random_seed:1,interleave_search:true,num_workers:", num_workers));
   }
-
+#endif
   // Create variables
   std::vector<std::vector<MPVariable*>> s(N);
   std::vector<std::vector<MPVariable*>> e(num_edges);
@@ -2817,22 +2818,22 @@ void CheckUserShardingPreservation(
       if (preserve_shardings.find(inst->name()) == preserve_shardings.end()) {
         continue;
       }
-        if (!inst->has_sharding()) {
-          LOG(FATAL) << "User sharding is not preserved! Instruction with name "
-                     << inst->name() << " should be: "
-                     << preserve_shardings.at(inst->name())[0].ToString()
-                     << "\nbut it's empty.";
-        } else if (!inst->sharding().IsTuple() &&
-                   preserve_shardings.at(inst->name())[0].ToString() !=
-                       inst->sharding().ToString()) {
-          LOG(FATAL) << "User sharding is not preserved! Instruction with name "
-                     << inst->name() << " should be: "
-                     << preserve_shardings.at(inst->name())[0].ToString()
-                     << "\nbut it's: " << inst->sharding().ToString();
-        } else if (inst->sharding().IsTuple()) {
-          const std::vector<HloSharding>* preserve_shardings_tuple =
-              &preserve_shardings.at(inst->name());
-          for (size_t i = 0; i < inst->shape().tuple_shapes_size(); i++) {
+      if (!inst->has_sharding()) {
+        LOG(FATAL) << "User sharding is not preserved! Instruction with name "
+                   << inst->name() << " should be: "
+                   << preserve_shardings.at(inst->name())[0].ToString()
+                   << "\nbut it's empty.";
+      } else if (!inst->sharding().IsTuple() &&
+                 preserve_shardings.at(inst->name())[0].ToString() !=
+                     inst->sharding().ToString()) {
+        LOG(FATAL) << "User sharding is not preserved! Instruction with name "
+                   << inst->name() << " should be: "
+                   << preserve_shardings.at(inst->name())[0].ToString()
+                   << "\nbut it's: " << inst->sharding().ToString();
+      } else if (inst->sharding().IsTuple()) {
+        const std::vector<HloSharding>* preserve_shardings_tuple =
+            &preserve_shardings.at(inst->name());
+        for (size_t i = 0; i < inst->shape().tuple_shapes_size(); i++) {
           if (preserve_shardings_tuple->at(i).ToString() !=
               inst->sharding().tuple_elements().at(i).ToString()) {
             LOG(FATAL) << "Tuple sharding is not preserved! Instruction "
@@ -2843,8 +2844,8 @@ void CheckUserShardingPreservation(
                        << "\nbut it's: "
                        << inst->sharding().tuple_elements().at(i).ToString();
           }
-          }
         }
+      }
     }
   }
 }
@@ -2858,19 +2859,19 @@ int64_t MemoryBudgetLowerBound(const HloModule& module,
     for (const HloValue* value : liveness_set[t]) {
       size_t tmp;
       if (value->instruction()->shape().IsTuple() && value->index().empty()) {
-          continue;
+        continue;
       }
       Shape shape =
           ShapeUtil::GetSubshape(value->instruction()->shape(), value->index());
       if (value->instruction()->has_sharding()) {
-          tmp = GetShardedInstructionSize(
-              shape, num_devices,
-              !value->index().empty()
-                  ? value->instruction()->sharding().GetSubSharding(
-                        value->instruction()->shape(), value->index())
-                  : value->instruction()->sharding());
+        tmp = GetShardedInstructionSize(
+            shape, num_devices,
+            !value->index().empty()
+                ? value->instruction()->sharding().GetSubSharding(
+                      value->instruction()->shape(), value->index())
+                : value->instruction()->sharding());
       } else {
-          tmp = GetShardedInstructionSize(shape, num_devices);
+        tmp = GetShardedInstructionSize(shape, num_devices);
       }
       memory_usage += tmp;
     }
