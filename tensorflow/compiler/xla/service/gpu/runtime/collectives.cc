@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <string>
 #include <string_view>
+#include <utility>
 
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
@@ -28,6 +30,12 @@ namespace gpu {
 
 using xla::runtime::CustomCall;
 using xla::runtime::Executable;
+
+using mlir::failure;
+using mlir::FailureOr;
+using mlir::LogicalResult;
+using mlir::succeeded;
+using mlir::success;
 
 namespace {
 struct CollectivePermute {
@@ -191,10 +199,250 @@ static bool AllGather(runtime::ExecutionContext* ctx, void** args, void** attrs,
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
+// -------------------------------------------------------------------------- //
+
+JitRtAsyncCollectiveSupport::JitRtAsyncCollectiveSupport(
+    se::Stream* async_comm_stream)
+    : async_comm_stream_(async_comm_stream) {}
+
+Status JitRtCollectiveSupport::MaybeBlockAfterFirstRun(int32_t uid,
+                                                       int32_t device_ordinal,
+                                                       se::Stream* stream) {
+  bool block = [&] {
+    absl::MutexLock lock(&mutex_);
+    return executed_.try_emplace(Key(uid, device_ordinal), true).second;
+  }();
+  return block ? stream->BlockHostUntilDone() : OkStatus();
+}
+
+FailureOr<se::Event> JitRtAsyncCollectiveSupport::PopEvent(
+    int32_t uid, int32_t device_ordinal) {
+  const int64_t key = EventKey(uid, device_ordinal);
+
+  absl::MutexLock lock(&mutex_);
+  auto it = done_events_.find(key);
+  if (it == done_events_.end()) return failure();
+
+  se::Event done_event = std::move(it->second);
+  done_events_.erase(it);
+  return done_event;
+}
+
+LogicalResult JitRtAsyncCollectiveSupport::PushEvent(int32_t uid,
+                                                     int32_t device_ordinal,
+                                                     se::Event done_event) {
+  const int64_t key = EventKey(uid, device_ordinal);
+
+  absl::MutexLock lock(&mutex_);
+  auto result = done_events_.try_emplace(key, std::move(done_event));
+  if (!result.second) return failure();  // done event has not been consumed
+
+  return success();
+}
+// ------------------------------------------------------------------------- //
+
+namespace {
+struct AllReduce {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          JitRtCollectiveSupport* collectives,
+                          CustomCall::RemainingArgs args, int32_t uid,
+                          int64_t group_mode, int64_t op_id,
+                          int64_t reduction_kind,
+                          std::string_view replica_group_offsets,
+                          std::string_view replica_group_values) const;
+  static AllReduce Handler() { return AllReduce(); }
+};
+}  // namespace
+
+absl::Status AllReduce::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
+    int32_t uid, int64_t group_mode, int64_t op_id, int64_t reduction_kind,
+    std::string_view replica_group_offsets,
+    std::string_view replica_group_values) const {
+#if XLA_ENABLE_XCCL
+  VLOG(3) << "Running AllReduce";
+  se::Stream* stream = run_options->stream();
+  NcclExecuteParams params(*run_options, stream);
+
+  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                          replica_group_values);
+  if (failed(comm)) return absl::InternalError("Failed to get NcclComm");
+
+  auto device_buffers = GetDeviceBufferPairs(args);
+  if (failed(device_buffers))
+    return absl::InternalError("Failed to get device buffers");
+
+  auto executed = RunAllReduce(static_cast<ReductionKind>(reduction_kind),
+                               *device_buffers, *stream, **comm);
+  if (!executed.ok()) return ToAbslStatus(executed);
+
+  int32_t device_ordinal = stream->parent()->device_ordinal();
+  auto st = collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream);
+  if (!st.ok()) return ToAbslStatus(st);
+
+  return absl::OkStatus();
+#else   // XLA_ENABLE_XCCL
+  // NCCL disabled.
+  return absl::InternalError("NCCL disabled");
+#endif  // XLA_ENABLE_XCCL
+}
+
+static bool AllReduce(runtime::ExecutionContext* ctx, void** args, void** attrs,
+                      void** rets) {
+  static auto* handler =
+      CustomCall::Bind("xla.gpu.all_reduce")
+          .UserData<const ServiceExecutableRunOptions*>()
+          .UserData<JitRtCollectiveSupport*>()
+          .RemainingArgs()  // args
+          .Attr<int32_t>("uid")
+          .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
+          .Attr<int64_t>("op_id")
+          .Attr<int64_t>("reduction_kind")  // ReductionKind
+          .Attr<std::string_view>("replica_group_offsets")
+          .Attr<std::string_view>("replica_group_values")
+          .To<checks>(AllReduce::Handler())
+          .release();
+
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+// ------------------------------------------------------------------------- //
+
+namespace {
+struct AllReduceStart {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          JitRtAsyncCollectiveSupport* async_collectives,
+                          CustomCall::RemainingArgs args, int64_t group_mode,
+                          int64_t op_id, int64_t reduction_kind,
+                          std::string_view replica_group_offsets,
+                          std::string_view replica_group_values,
+                          int32_t uid) const;
+  static AllReduceStart Handler() { return AllReduceStart(); }
+};
+}  // namespace
+
+absl::Status AllReduceStart::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    JitRtAsyncCollectiveSupport* async_collectives,
+    CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
+    int64_t reduction_kind, std::string_view replica_group_offsets,
+    std::string_view replica_group_values, int32_t uid) const {
+#if XLA_ENABLE_XCCL
+  VLOG(3) << "Running AllReduceStart";
+  se::Stream* stream = run_options->stream();
+  NcclExecuteParams params(*run_options, stream);
+
+  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                          replica_group_values);
+  if (failed(comm)) return absl::InternalError("Failed to get NcclComm");
+
+  auto device_buffers = GetDeviceBufferPairs(args);
+  if (failed(device_buffers))
+    return absl::InternalError("Failed to get device buffers");
+
+  // Wait until compute inputs are ready.
+  async_collectives->async_comm_stream()->ThenWaitFor(params.stream);
+
+  auto executed =
+      RunAllReduce(static_cast<ReductionKind>(reduction_kind), *device_buffers,
+                   *async_collectives->async_comm_stream(), **comm);
+  if (!executed.ok()) return ToAbslStatus(executed);
+
+  // Create an event on the async stream for the completion of the all-reduce.
+  se::Event done_event(async_collectives->async_comm_stream()->parent());
+  if (!done_event.Init()) return absl::InternalError("Failed to create event");
+  async_collectives->async_comm_stream()->ThenRecordEvent(&done_event);
+
+  if (failed(async_collectives->PushEvent(
+          uid, stream->parent()->device_ordinal(), std::move(done_event))))
+    return absl::InternalError("Failed to push event to async collectives");
+
+  return absl::OkStatus();
+#else   // XLA_ENABLE_XCCL
+  return absl::InternalError("NCCL disabled");
+#endif  // XLA_ENABLE_XCCL
+}
+
+static bool AllReduceStart(runtime::ExecutionContext* ctx, void** args,
+                           void** attrs, void** rets) {
+  static auto* handler =
+      CustomCall::Bind("xla.gpu.all_reduce_start")
+          .UserData<const ServiceExecutableRunOptions*>()
+          .UserData<JitRtAsyncCollectiveSupport*>()
+          .RemainingArgs()              // args
+          .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
+          .Attr<int64_t>("op_id")
+          .Attr<int64_t>("reduction_kind")  // ReductionKind
+          .Attr<std::string_view>("replica_group_offsets")
+          .Attr<std::string_view>("replica_group_values")
+          .Attr<int32_t>("uid")
+          .To<checks>(AllReduceStart::Handler())
+          .release();
+
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+// ------------------------------------------------------------------------- //
+
+namespace {
+struct AllReduceDone {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          JitRtCollectiveSupport* collectives,
+                          JitRtAsyncCollectiveSupport* async_collectives,
+                          CustomCall::RemainingArgs args, int32_t uid) const;
+  static AllReduceDone Handler() { return AllReduceDone(); }
+};
+}  // namespace
+
+absl::Status AllReduceDone::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    JitRtCollectiveSupport* collectives,
+    JitRtAsyncCollectiveSupport* async_collectives,
+    CustomCall::RemainingArgs args, int32_t uid) const {
+#if XLA_ENABLE_XCCL
+  VLOG(3) << "Running AllReduceDone";
+  se::Stream* stream = run_options->stream();
+
+  int32_t device_ordinal = stream->parent()->device_ordinal();
+  auto event = async_collectives->PopEvent(uid, device_ordinal);
+  if (failed(event)) return absl::InternalError("Failed to pop event");
+
+  stream->ThenWaitFor(&*event);
+
+  if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
+    return absl::InternalError("Failed to block host");
+
+  return absl::OkStatus();
+#else   // XLA_ENABLE_XCCL
+  return absl::InternalError("NCCL disabled");
+#endif  // XLA_ENABLE_XCCL
+}
+
+static bool AllReduceDone(runtime::ExecutionContext* ctx, void** args,
+                          void** attrs, void** rets) {
+  static auto* handler = CustomCall::Bind("xla.gpu.all_reduce_done")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .UserData<JitRtCollectiveSupport*>()
+                             .UserData<JitRtAsyncCollectiveSupport*>()
+                             .RemainingArgs()  // args
+                             .Attr<int32_t>("uid")
+                             .To<checks>(AllReduceDone::Handler())
+                             .release();
+
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
 void RegisterCollectiveCustomCalls(
     runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
   registry.Register("xla.gpu.all_gather", &xla::gpu::AllGather);
+  registry.Register("xla.gpu.all_reduce", &xla::gpu::AllReduce);
+  registry.Register("xla.gpu.all_reduce_done", &xla::gpu::AllReduceDone);
+  registry.Register("xla.gpu.all_reduce_start", &xla::gpu::AllReduceStart);
 }
 
 }  // namespace gpu

@@ -692,6 +692,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/service:xla_debug_info_manager",
         "//tensorflow/compiler/xla/service/gpu/runtime:kernel_launch",
+        "//tensorflow/compiler/xla/service/gpu/runtime:collectives",
         "//tensorflow/compiler/xla/service/gpu/runtime:cublas_lt_matmul",
         "//tensorflow/compiler/xla/service/gpu/runtime:support",
         "//tensorflow/compiler/xla/service/gpu/runtime:executable",

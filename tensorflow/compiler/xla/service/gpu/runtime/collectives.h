@@ -25,6 +25,7 @@ namespace xla {
 namespace gpu {
 
 class JitRtCollectiveSupport;
+class JitRtAsyncCollectiveSupport;
 
 class JitRtCollectiveSupport {
  public:
@@ -50,6 +51,32 @@ class JitRtCollectiveSupport {
   // rely on unique `uid` assigned to each collective operation by the lowering
   // pass.
   llvm::SmallDenseMap<int64_t, bool> executed_ ABSL_GUARDED_BY(mutex_);
+};
+
+// Support for running async collective operations communicating via events.
+class JitRtAsyncCollectiveSupport {
+ public:
+  explicit JitRtAsyncCollectiveSupport(se::Stream* async_comm_stream);
+
+  mlir::FailureOr<se::Event> PopEvent(int32_t uid, int32_t device_ordinal);
+  mlir::LogicalResult PushEvent(int32_t uid, int32_t device_ordinal,
+                                se::Event done_event);
+
+  ::stream_executor::Stream* async_comm_stream() const {
+    return async_comm_stream_;
+  }
+
+ private:
+  static int64_t EventKey(int32_t uid, int32_t device_ordinal) {
+    return static_cast<int64_t>(uid) << 32 | device_ordinal;
+  }
+
+  mutable absl::Mutex mutex_;
+
+  ::stream_executor::Stream* async_comm_stream_;
+
+  // Store done events for the AllReduceDone to wait on.
+  llvm::SmallDenseMap<int64_t, se::Event> done_events_ ABSL_GUARDED_BY(mutex_);
 };
 
 // Support for running async collective operations communicating via events.
