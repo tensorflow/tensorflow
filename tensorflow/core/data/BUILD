@@ -20,6 +20,8 @@ package(
 exports_files([
     "captured_function.cc",
     "captured_function.h",
+    "compression_utils.cc",
+    "compression_utils.h",
     "dataset_utils.cc",
     "dataset_utils.h",
     "finalization_utils.cc",
@@ -93,10 +95,11 @@ tf_cc_test(
         ":dataset_test_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/tsl/platform:status_matchers",
     ],
 )
 
@@ -326,10 +329,12 @@ cc_library(
     srcs = ["serialization_utils.cc"],
     hdrs = ["serialization_utils.h"],
     deps = [
+        ":compression_utils",
         ":dataset_utils",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/core:status",
     ],
 )

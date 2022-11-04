@@ -19,15 +19,16 @@ limitations under the License.
 
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 TEST(CompressionUtilsTest, Exceeds4GB) {
   std::vector<Tensor> element = {
@@ -83,6 +84,24 @@ TEST_P(ParameterizedCompressionUtilsTest, RoundTrip) {
   TF_ASSERT_OK(UncompressElement(compressed, &round_trip_element));
   TF_EXPECT_OK(
       ExpectEqual(element, round_trip_element, /*compare_order=*/true));
+}
+
+TEST_P(ParameterizedCompressionUtilsTest, CompressedElementVersion) {
+  std::vector<Tensor> element = GetParam();
+  CompressedElement compressed;
+  TF_ASSERT_OK(CompressElement(element, &compressed));
+  EXPECT_EQ(0, compressed.version());
+}
+
+TEST_P(ParameterizedCompressionUtilsTest, VersionMismatch) {
+  std::vector<Tensor> element = GetParam();
+  CompressedElement compressed;
+  TF_ASSERT_OK(CompressElement(element, &compressed));
+
+  compressed.set_version(1);
+  std::vector<Tensor> round_trip_element;
+  EXPECT_THAT(UncompressElement(compressed, &round_trip_element),
+              StatusIs(error::INTERNAL));
 }
 
 INSTANTIATE_TEST_SUITE_P(Instantiation, ParameterizedCompressionUtilsTest,

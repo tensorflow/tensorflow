@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/status.h"
@@ -30,6 +31,14 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace {
+
+// Increment this when making changes to the `CompressedElement` proto. The
+// `UncompressElement` function will determine what to read according to the
+// version.
+constexpr int kCompressedElementVersion = 0;
+
+}  // namespace
 
 class Iov {
  public:
@@ -122,6 +131,7 @@ Status CompressElement(const std::vector<Tensor>& element,
                                       out->mutable_data())) {
     return errors::Internal("Failed to compress using snappy.");
   }
+  out->set_version(kCompressedElementVersion);
   VLOG(3) << "Compressed element from " << iov.NumBytes() << " bytes to "
           << out->data().size() << " bytes";
   return OkStatus();
@@ -129,6 +139,10 @@ Status CompressElement(const std::vector<Tensor>& element,
 
 Status UncompressElement(const CompressedElement& compressed,
                          std::vector<Tensor>* out) {
+  if (compressed.version() != kCompressedElementVersion) {
+    return errors::Internal("Unsupported compressed element version: ",
+                            compressed.version());
+  }
   int num_components = compressed.component_metadata_size();
   out->clear();
   out->reserve(num_components);
@@ -241,6 +255,9 @@ StatusOr<std::vector<Tensor>> DeserializeAndUncompress(
   TF_RETURN_IF_ERROR(UncompressElement(compressed_tensors, &tensors));
   return tensors;
 }
+
+REGISTER_UNARY_VARIANT_DECODE_FUNCTION(CompressedElement,
+                                       "tensorflow.data.CompressedElement");
 
 }  // namespace data
 }  // namespace tensorflow

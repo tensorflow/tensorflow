@@ -1504,6 +1504,7 @@ filegroup(
     name = "portable_all_op_kernels_headers",
     srcs = [
         "//tensorflow/core/data:captured_function.h",
+        "//tensorflow/core/data:compression_utils.h",
         "//tensorflow/core/data:dataset_utils.h",
         "//tensorflow/core/data:finalization_utils.h",
         "//tensorflow/core/data:metric_utils.h",
@@ -1530,6 +1531,7 @@ filegroup(
     srcs = [
         ":portable_all_op_kernels_headers",
         "//tensorflow/core/data:captured_function.cc",
+        "//tensorflow/core/data:compression_utils.cc",
         "//tensorflow/core/data:dataset_utils.cc",
         "//tensorflow/core/data:finalization_utils.cc",
         "//tensorflow/core/data:metric_utils.cc",

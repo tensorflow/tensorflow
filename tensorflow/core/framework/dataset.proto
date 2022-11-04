@@ -33,6 +33,12 @@ message CompressedElement {
   bytes data = 1;
   // Metadata for the components of the element.
   repeated CompressedComponentMetadata component_metadata = 2;
+  // Version of the CompressedElement. CompressedElements may be stored on disk
+  // and read back by later versions of code, so we store a version number to
+  // help readers understand which version they are reading. When you add a new
+  // field to this proto, you need to increment kCompressedElementVersion in
+  // tensorflow/core/data/compression_utils.cc.
+  int32 version = 3;
 }
 
 // An uncompressed dataset element.

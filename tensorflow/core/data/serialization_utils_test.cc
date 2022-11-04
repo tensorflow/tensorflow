@@ -240,6 +240,13 @@ class ParameterizedIteratorStateVariantTest
     decoder.Decode(encoded_data);
     return *decoder.GetData();
   }
+
+  StatusOr<VariantTensorData> DecodeUncompressed(
+      const VariantTensorData& data) const {
+    IteratorStateVariant decoder;
+    decoder.Decode(data);
+    return *decoder.GetData();
+  }
 };
 
 std::vector<std::vector<Tensor>> TestCases() {
@@ -258,6 +265,16 @@ std::vector<std::vector<Tensor>> TestCases() {
 TEST_P(ParameterizedIteratorStateVariantTest, EncodeAndDecode) {
   VariantTensorData data = GetVariantTensorData();
   TF_ASSERT_OK_AND_ASSIGN(VariantTensorData result, EncodeAndDecode(data));
+
+  EXPECT_EQ(result.type_name(), data.type_name());
+  for (int i = 0; i < result.tensors_size(); ++i) {
+    test::ExpectEqual(result.tensors(i), data.tensors(i));
+  }
+}
+
+TEST_P(ParameterizedIteratorStateVariantTest, DecodeUncompressed) {
+  VariantTensorData data = GetVariantTensorData();
+  TF_ASSERT_OK_AND_ASSIGN(VariantTensorData result, DecodeUncompressed(data));
 
   EXPECT_EQ(result.type_name(), data.type_name());
   for (int i = 0; i < result.tensors_size(); ++i) {
