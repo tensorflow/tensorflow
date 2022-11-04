@@ -116,8 +116,8 @@ cc_library(
     ],
     deps = [
         ":traceme_recorder",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/profiler/utils:parse_annotation",
         "//tensorflow/tsl/profiler/utils:tf_op_utils",
         "//tensorflow/tsl/profiler/utils:xplane_builder",
