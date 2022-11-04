@@ -442,7 +442,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/core:framework",
     ],
 )
@@ -475,6 +474,10 @@ cc_library(
     srcs = ["xla_compilation_cache.cc"],
     hdrs = ["xla_compilation_cache.h"],
     copts = tf_copts(),
+    visibility = [
+        ":internal",
+        "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
+    ],
     deps = [
         ":flags",
         ":xla_activity_listener",

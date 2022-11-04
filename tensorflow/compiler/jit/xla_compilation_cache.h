@@ -352,6 +352,11 @@ Status XlaSingleOpToHlo(
     const XlaCompiler::CompileOptions& compile_options,
     XlaCompiler::CompilationResult* compilation_result);
 
+// Generates the ExecutableBuildOptions for compliation from HLO to executable.
+xla::ExecutableBuildOptions GetExecutableBuildOptions(
+    const XlaCompiler::Options& options,
+    const XlaCompiler::CompilationResult& result, int default_device_ordinal);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_XLA_COMPILATION_CACHE_H_

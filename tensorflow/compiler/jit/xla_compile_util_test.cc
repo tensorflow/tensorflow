@@ -43,46 +43,5 @@ TEST_F(OpsTestBase, Basic) {
   EXPECT_EQ(arg.config_proto.ByteSizeLong(), 0);
 }
 
-TEST(GetExecutableOptionTest, Basic) {
-  XlaCompiler::Options options;
-  options.device_ordinal = 0;
-  options.alias_passthrough_params = true;
-  options.detailed_logging = true;
-  XlaCompiler::CompilationResult result;
-  xla::Shape xla_output_shape;
-  result.xla_output_shape = xla_output_shape;
-
-  auto build_option =
-      GetExecutableBuildOptions(options, result, /*default_device_ordinal=*/-1);
-
-  EXPECT_EQ(build_option.device_ordinal(), 0);
-  EXPECT_EQ(build_option.result_layout()->ToString(),
-            xla_output_shape.ToString());
-  EXPECT_EQ(build_option.alias_passthrough_params(), true);
-  EXPECT_EQ(build_option.debug_options().xla_detailed_logging_and_dumping(),
-            true);
-  LOG(ERROR) << build_option.ToString();
-}
-
-TEST(GetExecutableOptionTest, DefaultDeviceOrdinal) {
-  XlaCompiler::Options options;
-  XlaCompiler::CompilationResult result;
-
-  auto build_option =
-      GetExecutableBuildOptions(options, result, /*default_device_ordinal=*/0);
-
-  EXPECT_EQ(build_option.device_ordinal(), 0);
-}
-
-TEST(GetExecutableOptionTest, DeviceOrdinalNotSet) {
-  XlaCompiler::Options options;
-  XlaCompiler::CompilationResult result;
-
-  auto build_option =
-      GetExecutableBuildOptions(options, result, /*default_device_ordinal=*/-1);
-
-  EXPECT_EQ(build_option.device_ordinal(), -1);
-}
-
 }  // namespace
 }  // namespace tensorflow
