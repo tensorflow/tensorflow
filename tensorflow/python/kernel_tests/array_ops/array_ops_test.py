@@ -143,6 +143,7 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
 class BooleanMaskTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
+    super().setUp()
     self.rng = np.random.RandomState(42)
 
   def CheckVersusNumpy(self, ndims_mask, arr_shape, make_mask=None, axis=None):
