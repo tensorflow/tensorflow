@@ -1986,6 +1986,7 @@ tf_cuda_library(
 filegroup(
     name = "gpu_runtime_headers",
     srcs = [
+        "device.h",
         "gpu_device_context.h",
     ],
 )
