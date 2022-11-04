@@ -138,7 +138,7 @@ FusionRewritePattern::FusionRewritePattern(MLIRContext* ctx,
 // per block and a group size that leaves less than half of the threads unused.
 static int64_t getGroupsPerBlock(TensorType type) {
   int64_t reductionDim = type.getShape().back();
-  for (int64_t numGroups = 8; numGroups <= 128; numGroups *= 2) {
+  for (int64_t numGroups = 8; numGroups <= 256; numGroups *= 2) {
     if (reductionDim * numGroups > 128) return numGroups;
   }
   return 8;
