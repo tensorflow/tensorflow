@@ -116,7 +116,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/tsl/platform/cpu_info.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -124,6 +123,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/mem.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/profiler/lib/connected_traceme.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 #include "tensorflow/tsl/profiler/lib/traceme_encode.h"
 
@@ -1361,7 +1361,7 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::ToLiteral(
       std::move(promise),
       /*on_block_start=*/
       []() {
-        tensorflow::profiler::TraceMeProducer traceme(
+        tsl::profiler::TraceMeProducer traceme(
             "PjRtStreamExecutorBuffer::ToLiteral");
         VLOG(1) << "PjRtStreamExecutorBuffer::ToLiteral";
         return PjRtFutureHelpers::ProfilingKeys(
@@ -1369,7 +1369,7 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::ToLiteral(
       },
       /*on_block_end=*/
       [](PjRtFutureHelpers::ProfilingKeys keys) {
-        tensorflow::profiler::TraceMeConsumer traceme(
+        tsl::profiler::TraceMeConsumer traceme(
             "PjRtStreamExecutorBuffer::ToLiteral", keys.traceme_context_id);
       });
 }
@@ -1614,7 +1614,7 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::GetReadyFuture() {
       std::move(definition_promise),
       /*on_block_start=*/
       []() {
-        tensorflow::profiler::TraceMeProducer traceme(
+        tsl::profiler::TraceMeProducer traceme(
             "PjRtStreamExecutorBuffer::Await");
         VLOG(1) << "PjRtStreamExecutorBuffer::Await";
         return PjRtFutureHelpers::ProfilingKeys(
@@ -1622,7 +1622,7 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::GetReadyFuture() {
       },
       /*on_block_end=*/
       [](PjRtFutureHelpers::ProfilingKeys keys) {
-        tensorflow::profiler::TraceMeConsumer traceme(
+        tsl::profiler::TraceMeConsumer traceme(
             "PjRtStreamExecutorBuffer::Await", keys.traceme_context_id);
       });
 }
@@ -1905,9 +1905,9 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
                            ->local_device_state()
                            ->device_ordinal();
   LocalDeviceState* device_state = &(client_->device_state(device_ordinal));
-  tensorflow::profiler::TraceMeConsumer activity(
+  tsl::profiler::TraceMeConsumer activity(
       "PjRtStreamExecutorExecutable::EnqueueExecution",
-      tensorflow::profiler::ContextType::kPjRt, run_id.ToInt());
+      tsl::profiler::ContextType::kPjRt, run_id.ToInt());
   VLOG(3) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
 
@@ -2223,9 +2223,9 @@ PjRtStreamExecutorExecutable::Execute(
   }
 
   RunId run_id;
-  tensorflow::profiler::TraceMeProducer activity(
+  tsl::profiler::TraceMeProducer activity(
       "PjRtStreamExecutorExecutable::Execute",
-      tensorflow::profiler::ContextType::kPjRt, run_id.ToInt());
+      tsl::profiler::ContextType::kPjRt, run_id.ToInt());
 
   const int num_addressable_devices = addressable_devices_.size();
 
