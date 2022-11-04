@@ -14,7 +14,7 @@
 # ==============================================================================
 """Test configs for sparse_to_dense."""
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_scalar_data
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
@@ -63,7 +63,7 @@ def make_sparse_to_dense_tests(options):
       indices.add(generate_index(dense_shape))
     indices = tf.constant(tuple(indices), dtype=parameters["index_dtype"])
     # TODO(renjieliu): Add test for validate_indices case.
-    out = tf.sparse_to_dense(
+    out = tf.compat.v1.sparse_to_dense(
         indices,
         dense_shape,
         value,
