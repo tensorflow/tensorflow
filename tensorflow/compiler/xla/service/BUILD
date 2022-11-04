@@ -5634,6 +5634,8 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_executable",
         "//tensorflow/compiler/xla/pjrt:pjrt_future",
+        "//tensorflow/compiler/xla/service:hlo_module_util",
+        "//tensorflow/compiler/xla/tests:pjrt_client_registry",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:statusor",
     ],
