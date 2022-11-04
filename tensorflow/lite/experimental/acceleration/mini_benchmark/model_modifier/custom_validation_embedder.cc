@@ -78,8 +78,7 @@ void CustomValidationEmbedder::CreateTensorsFrom(
       }
       // Only log as a warning for now, since tensor shape might be unknown.
       if (expected_size != (*buffer_content)[i].size()) {
-        TF_LITE_REPORT_ERROR(
-            error_reporter_,
+        error_reporter_->Report(
             "Unexpected custom input buffer size for tensor %d. "
             "Expected: %d. Actual: %d.",
             i, expected_size, (*buffer_content)[i].size());
@@ -97,8 +96,7 @@ MinibenchmarkStatus CustomValidationEmbedder::BuildModel(
   ModelT main_model_obj;
   main_model.UnPackTo(&main_model_obj);
   if (main_model_obj.subgraphs[0]->inputs.size() != custom_input_.size()) {
-    TF_LITE_REPORT_ERROR(
-        error_reporter_,
+    error_reporter_->Report(
         "Unexpected custom_input size. Expected: %d. Actual: %d.",
         main_model_obj.subgraphs[0]->inputs.size(), custom_input_.size());
     return kMinibenchmarkValidationSubgraphBuildFailed;

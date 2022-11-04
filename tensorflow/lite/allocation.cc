@@ -92,8 +92,7 @@ MemoryAllocation::MemoryAllocation(const void* ptr, size_t num_bytes,
     //
     // Note that 64-bit ARM may also suffer a performance impact, but no crash -
     // that case is not checked.
-    TF_LITE_REPORT_ERROR(error_reporter,
-                         "The supplied buffer is not 4-bytes aligned");
+    error_reporter->Report("The supplied buffer is not 4-bytes aligned");
     buffer_ = nullptr;
     buffer_size_bytes_ = 0;
     return;

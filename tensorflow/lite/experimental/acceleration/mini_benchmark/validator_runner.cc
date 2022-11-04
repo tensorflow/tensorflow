@@ -55,7 +55,7 @@ ValidatorRunner::ValidatorRunner(const ValidatorRunnerOptions& options)
 MinibenchmarkStatus ValidatorRunner::Init() {
   MinibenchmarkStatus status = storage_.Read();
   if (status != kMinibenchmarkSuccess) {
-    TF_LITE_REPORT_ERROR(error_reporter_, "Storage::Read failed");
+    error_reporter_->Report("Storage::Read failed");
     return status;
   }
   return validator_runner_impl_->Init();

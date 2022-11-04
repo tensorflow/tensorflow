@@ -96,8 +96,7 @@ class JNIFlatBufferVerifier : public tflite::TfLiteVerifier {
   bool Verify(const char* data, int length,
               tflite::ErrorReporter* reporter) override {
     if (!VerifyModel(data, length)) {
-      TF_LITE_REPORT_ERROR(reporter,
-                           "The model is not a valid Flatbuffer file");
+      reporter->Report("The model is not a valid Flatbuffer file");
       return false;
     }
     return true;

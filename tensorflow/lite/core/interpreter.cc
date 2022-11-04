@@ -349,10 +349,10 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
             i);
         break;
       case kTfLiteError:
-        TF_LITE_REPORT_ERROR(error_reporter_,
-                             "Failed to apply the default TensorFlow Lite "
-                             "delegate indexed at %zu.",
-                             i);
+        error_reporter_->Report(
+            "Failed to apply the default TensorFlow Lite "
+            "delegate indexed at %zu.",
+            i);
         return kTfLiteError;
       case kTfLiteDelegateError:
         TFLITE_LOG(
@@ -378,10 +378,10 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
             i);
         return kTfLiteUnresolvedOps;
       default:
-        TF_LITE_REPORT_ERROR(error_reporter_,
-                             "Unknown status (%d) after applying the default "
-                             "TensorFlow Lite delegate indexed at %zu.",
-                             status, i);
+        error_reporter_->Report(
+            "Unknown status (%d) after applying the default "
+            "TensorFlow Lite delegate indexed at %zu.",
+            status, i);
         return kTfLiteError;
     }
   }
