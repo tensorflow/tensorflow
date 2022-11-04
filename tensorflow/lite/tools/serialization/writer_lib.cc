@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
@@ -68,6 +69,11 @@ ExportBuffersImpl(flatbuffers::FlatBufferBuilder* fbb,
 TfLiteStatus WriteImpl(const std::string& filename, void* data, size_t size) {
   FILE* fp = fopen(filename.c_str(), "wb");
   if (!fp) return kTfLiteError;
+
+  if (!FLATBUFFERS_LITTLEENDIAN){
+    const tflite::Model* input_model = tflite::GetModel(data);
+    tflite::FlatBufferModel::ByteSwapTFLiteModel(input_model);
+  }
 
   const int result_size = fwrite(data, 1, size, fp);
   fclose(fp);

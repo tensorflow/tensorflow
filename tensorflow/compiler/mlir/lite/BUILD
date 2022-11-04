@@ -890,6 +890,7 @@ tf_native_cc_binary(
     srcs = ["flatbuffer_to_string.cc"],
     deps = [
         "//tensorflow/lite/schema:schema_fbs_with_reflection",
+        ":tensorflow_lite",
         "@flatbuffers",
     ],
 )

@@ -152,6 +152,31 @@ class FlatBufferModel {
       const tflite::Model* caller_owned_model_spec,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
+  /// Byte swap a constant buffer in place.
+  static void ByteSwapBuffer(int8_t tensor_type, size_t buffer_size,
+    uint8_t* buffer);
+
+  /// Byte swap the buffers field of a TFLite Model instance in place.
+  static void ByteSwapTFLiteModel(const tflite::Model* tfl_model);
+
+  /// Byte swap the buffers field of a TFLite ModelT instance in place.
+  static void ByteSwapTFLiteModelT(tflite::ModelT* tfl_modelt);
+
+  /// Convert the TFLite buffers field between LE and BE format in a 
+  /// FlatBufferModel which is not empty and return the converted instance.
+  static std::unique_ptr<FlatBufferModel> ByteConvertModel(
+      std::unique_ptr<FlatBufferModel> model, 
+      ErrorReporter* error_reporter = DefaultErrorReporter());
+
+  /// Byte Swap the TFLite buffers field in a FlatBufferModel and return the
+  /// swapped instance.
+  static std::unique_ptr<FlatBufferModel> ByteSwapFlatBufferModel(
+      std::unique_ptr<FlatBufferModel> model, 
+      ErrorReporter* error_reporter = DefaultErrorReporter());
+  
+  /// Byte Swap the serialized String of a TFLite model in place.
+  static void ByteSwapSerializedModel(std::string* serialized_model);
+
   // Releases memory or unmaps mmaped memory.
   ~FlatBufferModel();
 
