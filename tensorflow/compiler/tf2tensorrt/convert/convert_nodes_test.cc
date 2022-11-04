@@ -5034,8 +5034,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
   };
 
   // Same input is used for all tests.
-  const std::vector<float> ok_input = {1, 2, 3, 4, 5, 6};
-
+  const std::vector<float> ok_input = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
   Status modified_batch_dim_status =
       (trt_mode_ == TrtTestMode::kImplicitBatch)
           ? errors::Unimplemented(
@@ -5712,6 +5711,48 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                      "new_axis_mask is not supported for StridedSlice"),
                  /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{1, 6}},
+      // Test all axes dynamic inputs with shrink_axis_mask
+      TestParams{/*input_dims=*/{1, 3, 2},
+                 /*begin=*/{0, 0, 0},
+                 /*end=*/{0, 0, 3},
+                 /*strides=*/{1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 1, 1}),
+                 /*end_mask=*/get_mask({0, 1, 1}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/1,
+                 /*expected_output_dims=*/{3, 2},
+                 /*expected_output=*/{1, 2, 3, 4, 5, 6},
+                 /*conversion_status=*/modified_batch_dim_status, Status::OK(),
+                 /*partial_input_dims=*/{-1, -1, -1}},
+      // Test dynamic input with shrink_axis_mask along axis=0
+      TestParams{/*input_dims=*/{2, 3, 2},
+                 /*begin=*/{0, 0, 0},
+                 /*end=*/{0, 0, 3},
+                 /*strides=*/{1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 1, 1}),
+                 /*end_mask=*/get_mask({0, 1, 1}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/1,
+                 /*expected_output_dims=*/{3, 2},
+                 /*expected_output=*/{1, 2, 3, 4, 5, 6},
+                 /*conversion_status=*/modified_batch_dim_status, Status::OK(),
+                 /*partial_input_dims=*/{-1, -1, 2}},
+      // Test dynamic input sizes with multiple axes shrinking
+      TestParams{/*input_dims=*/{2, 3, 2},
+                 /*begin=*/{0, 0, 0},
+                 /*end=*/{0, 0, 3},
+                 /*strides=*/{1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 1, 1}),
+                 /*end_mask=*/get_mask({0, 1, 1}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/3,
+                 /*expected_output_dims=*/{2},
+                 /*expected_output=*/{1, 2},
+                 /*conversion_status=*/modified_batch_dim_status, Status::OK(),
+                 /*partial_input_dims=*/{-1, -1, 2}},
   };
 
   int i = 0;
@@ -5737,7 +5778,6 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
         if (p.partial_input_dims.size() > 0) {
           AddTestTensor("input", p.input_dims, tf_type_, ok_input,
                         p.partial_input_dims);
-
         } else {
           AddTestTensor("input", p.input_dims, tf_type_, ok_input,
                         p.input_dims);
