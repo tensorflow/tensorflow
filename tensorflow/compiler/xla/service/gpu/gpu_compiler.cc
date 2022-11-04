@@ -722,8 +722,6 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   pipeline.AddPass<CopyInsertion>(GetCanShareBuffer());
   // To fuse the copy.
   pipeline.AddPass<GpuHorizontalLoopFusion>("copy_");
-  // To remove temporary fused_computation created by GpuHorizontalLoopFusion
-  pipeline.AddPass<HloDCE>();
 
   pipeline.AddPass<GpuSanitizeConstantNames>();
   return pipeline.Run(hlo_module).status();
@@ -791,8 +789,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
                      .VerifyBroadcastDimensionsOrder()
                      .VerifyReshapeIsBitcast(),
                  /*debug_only=*/true);
-
-
 
   // Run conversion again, to catch those matrix multiplications which were not
   // rewritten into cuBLAS calls.
