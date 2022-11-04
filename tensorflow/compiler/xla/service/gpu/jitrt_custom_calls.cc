@@ -508,74 +508,6 @@ static bool CustomCall(runtime::ExecutionContext* ctx, void** args,
 // -------------------------------------------------------------------------- //
 
 namespace {
-struct ReduceScatter {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          JitRtCollectiveSupport* collectives,
-                          CustomCall::RemainingArgs args, int32_t uid,
-                          int64_t group_mode, int64_t op_id,
-                          int64_t reduction_kind,
-                          ArrayRef<int64_t> replica_group_offsets,
-                          ArrayRef<int64_t> replica_group_values) const;
-  static ReduceScatter Handler() { return ReduceScatter(); }
-};
-}  // namespace
-
-absl::Status ReduceScatter::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
-    int32_t uid, int64_t group_mode, int64_t op_id, int64_t reduction_kind,
-    ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values) const {
-#if XLA_ENABLE_XCCL
-  VLOG(3) << "Running ReduceScatter";
-  se::Stream* stream = run_options->stream();
-  NcclExecuteParams params(*run_options, stream);
-
-  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                          replica_group_values);
-  if (failed(comm)) return absl::InternalError("Failed to get NcclComm");
-
-  auto device_buffers = GetDeviceBufferPairs(args);
-  if (failed(device_buffers))
-    return absl::InternalError("Failed to get device buffers");
-
-  auto executed = RunReduceScatter(static_cast<ReductionKind>(reduction_kind),
-                                   *device_buffers, *stream, **comm);
-  if (!executed.ok()) return ToAbslStatus(executed);
-
-  int32_t device_ordinal = stream->parent()->device_ordinal();
-  if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
-    return absl::InternalError("Failed to block host");
-
-  return absl::OkStatus();
-#else   // XLA_ENABLE_XCCL
-  return absl::InternalError("NCCL disabled");
-#endif  // XLA_ENABLE_XCCL
-}
-
-static bool ReduceScatter(runtime::ExecutionContext* ctx, void** args,
-                          void** attrs, void** rets) {
-  static auto* handler =
-      CustomCall::Bind("xla.gpu.reduce_scatter")
-          .UserData<const ServiceExecutableRunOptions*>()
-          .UserData<JitRtCollectiveSupport*>()
-          .RemainingArgs()  // args
-          .Attr<int32_t>("uid")
-          .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
-          .Attr<int64_t>("op_id")
-          .Attr<int64_t>("reduction_kind")  // ReductionKind
-          .Attr<ArrayRef<int64_t>>("replica_group_offsets")
-          .Attr<ArrayRef<int64_t>>("replica_group_values")
-          .To<RuntimeChecks()>(ReduceScatter::Handler())
-          .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
-
-// -------------------------------------------------------------------------- //
-
-namespace {
 struct ReplicaId {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   absl::Status operator()(const ServiceExecutableRunOptions* run_options,
@@ -709,7 +641,6 @@ void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   RegisterMemsetCustomCalls(registry);
 
   // Collective operations.
-  registry.Register("xla.gpu.reduce_scatter", &xla::gpu::ReduceScatter);
   registry.Register("xla.gpu.partition_id", &xla::gpu::PartitionId);
   registry.Register("xla.gpu.replica_id", &xla::gpu::ReplicaId);
 }
