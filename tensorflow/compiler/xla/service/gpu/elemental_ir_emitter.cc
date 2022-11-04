@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/ModRef.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -153,9 +154,11 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
     }
   }
 
-  return EmitDeviceFunctionCall(
-      callee_name, operands, input_types, output_type,
-      {llvm::Attribute::ReadNone, llvm::Attribute::NoUnwind}, b(), name);
+  return EmitDeviceFunctionCall(callee_name, operands, input_types, output_type,
+                                llvm::AttrBuilder(b()->getContext())
+                                    .addMemoryAttr(llvm::MemoryEffects::none())
+                                    .addAttribute(llvm::Attribute::NoUnwind),
+                                b(), name);
 }
 
 llvm_ir::IrArray::Index GpuElementalIrEmitter::GetSourceIndexOfBitcast(
