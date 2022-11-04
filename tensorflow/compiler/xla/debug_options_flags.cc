@@ -230,6 +230,30 @@ static void AllocateFlags() {
         return true;
       };
 
+  auto setter_for_xla_gpu_enable_softmax_fusion = [](bool value) {
+    // It is only possible to enable softmax fusion if
+    // xla_gpu_enable_mlir_lowering is also enabled.
+    if (value && !flag_values->xla_gpu_enable_mlir_lowering()) {
+      LOG(ERROR) << "xla_gpu_enable_softmax_fusion can only be enabled if "
+                    "xla_gpu_enable_mlir_lowering is enabled as well";
+      return false;
+    }
+    flag_values->set_xla_gpu_enable_softmax_fusion(value);
+    return true;
+  };
+
+  auto setter_for_xla_gpu_enable_mlir_lowering = [](bool value) {
+    // It is only possible to disable mlir lowering if
+    // xla_gpu_enable_softmax_fusion is also disabled.
+    if (!value && flag_values->xla_gpu_enable_softmax_fusion()) {
+      LOG(ERROR) << "xla_gpu_enable_mlir_lowering can only be disabled if "
+                    "xla_gpu_enable_softmax_fusion is disabled as well";
+      return false;
+    }
+    flag_values->set_xla_gpu_enable_mlir_lowering(value);
+    return true;
+  };
+
   // Custom "sub-parser" for xla_fuel.  Note that ConsumeFuel does not do any
   // locking on the fuel global variables.  This means that it's
   // illegal/undefined behavior to modify this flag value while the compiler is
@@ -771,14 +795,12 @@ static void AllocateFlags() {
       flag_values->xla_cpu_enable_mlir_lowering(),
       "Enable MLIR-based lowering in XLA:CPU instead of LLVM emitters."));
   flag_objects->push_back(tsl::Flag(
-      "xla_gpu_enable_mlir_lowering",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_mlir_lowering),
+      "xla_gpu_enable_mlir_lowering", setter_for_xla_gpu_enable_mlir_lowering,
       flag_values->xla_gpu_enable_mlir_lowering(),
       "Enable MLIR-based lowering in XLA:GPU instead of LLVM emitters."));
   flag_objects->push_back(tsl::Flag(
-      "xla_gpu_enable_softmax_fusion",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_softmax_fusion),
-      flag_values->xla_gpu_enable_mlir_lowering(),
+      "xla_gpu_enable_softmax_fusion", setter_for_xla_gpu_enable_softmax_fusion,
+      flag_values->xla_gpu_enable_softmax_fusion(),
       "Enable MLIR-based softmax fusion."));
   flag_objects->push_back(
       tsl::Flag("xla_gpu_normalize_layouts",
