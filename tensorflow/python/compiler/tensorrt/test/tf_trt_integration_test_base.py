@@ -341,10 +341,14 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def ExpectedAbsoluteTolerance(self, run_params):
     """The absolute tolerance to compare floating point results."""
-    return 1.e-05 if run_params.precision_mode == "FP32" else 1.e-02
+    if run_params.precision_mode == "INT8":
+      return 3e-1
+    return 1.e-05 if run_params.precision_mode == "FP32" else 2.e-02
 
   def ExpectedRelativeTolerance(self, run_params):
     """The relative tolerance to compare floating point results."""
+    if run_params.precision_mode == "INT8":
+      return 1e-1
     return 1.e-05 if run_params.precision_mode == "FP32" else 1.e-02
 
   def _GetParamsCached(self):
