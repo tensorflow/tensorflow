@@ -222,6 +222,7 @@ cc_library(
         ":traceme",
         ":traceme_encode",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/profiler/lib:connected_traceme",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],

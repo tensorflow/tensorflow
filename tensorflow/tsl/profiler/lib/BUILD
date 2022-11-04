@@ -33,6 +33,7 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "connected_traceme.h",
         "context_types.h",
     ],
     visibility = ["//visibility:public"],
@@ -222,5 +223,18 @@ tf_cc_test(
         "//tensorflow/tsl/platform:test_main",
         "//tensorflow/tsl/profiler/backends/cpu:annotation_stack",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "connected_traceme",
+    hdrs = ["connected_traceme.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":context_types_hdrs",
+        ":traceme",
+        ":traceme_encode",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
