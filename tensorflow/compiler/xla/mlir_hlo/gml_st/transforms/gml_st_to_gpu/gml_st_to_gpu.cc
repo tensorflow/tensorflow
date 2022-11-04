@@ -493,12 +493,14 @@ LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
     return rewriter.create<arith::ConstantOp>(
         loc, rewriter.getI32IntegerAttr(value));
   };
-  Value cWidth = createConstant(width);
+  // Always have all lanes participate. This assumes that the lanes are either
+  // in convergence or that they have exited the kernel.
+  Value cWarpWidth = createConstant(32);
   // Create warp shuffles of increasing offset and interleave with a clone of
   // the accumulate block.
   for (int64_t i = 1; i < width; i *= 2) {
     auto shuffleOp = rewriter.create<gpu::ShuffleOp>(
-        loc, lhs, createConstant(i), cWidth, gpu::ShuffleMode::XOR);
+        loc, lhs, createConstant(i), cWarpWidth, gpu::ShuffleMode::XOR);
     lhs = createCombineOp(loc, lhs, shuffleOp.getShuffleResult(),
                           reductionOp.getKind(), rewriter);
   }
