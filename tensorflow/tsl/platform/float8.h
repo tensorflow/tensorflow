@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_FRAMEWORK_FLOAT8_H_
-#define TENSORFLOW_CORE_FRAMEWORK_FLOAT8_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_FLOAT8_H_
+#define TENSORFLOW_TSL_PLATFORM_FLOAT8_H_
 
 // 8-bit Floating Point Interchange Format, as described by
 //   https://arxiv.org/abs/2209.05433
@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 
-namespace tensorflow {
+namespace tsl {
 
 namespace float8_internal {
 
@@ -37,6 +37,7 @@ class float8_base {
   // Constructor tag to allow constexpr construction from bit representation.
   struct ConstructFromRepTag {};
 
+  constexpr float8_base() : rep_(0) {}
   constexpr float8_base(uint8_t rep, ConstructFromRepTag) : rep_{rep} {}
 
  public:
@@ -85,6 +86,7 @@ class float8_e4m3 : public float8_base<float8_e4m3> {
       : Base(rep, ConstructFromRepTag{}) {}
 
  public:
+  float8_e4m3() : Base() {}
   explicit float8_e4m3(double f64) : float8_e4m3(ConvertFrom(f64)) {}
   explicit float8_e4m3(float f32) : float8_e4m3(ConvertFrom(f32)) {}
   explicit float8_e4m3(Eigen::bfloat16 bf16) : float8_e4m3(ConvertFrom(bf16)) {}
@@ -115,6 +117,7 @@ class float8_e5m2 : public float8_base<float8_e5m2> {
       : Base(rep, ConstructFromRepTag{}) {}
 
  public:
+  float8_e5m2() : Base() {}
   explicit float8_e5m2(double f64) : float8_e5m2(ConvertFrom(f64)) {}
   explicit float8_e5m2(float f32) : float8_e5m2(ConvertFrom(f32)) {}
   explicit float8_e5m2(Eigen::bfloat16 bf16) : float8_e5m2(ConvertFrom(bf16)) {}
@@ -273,19 +276,17 @@ constexpr inline bool isinf(const float8_e5m2& a) {
 using float8_e4m3 = float8_internal::float8_e4m3;
 using float8_e5m2 = float8_internal::float8_e5m2;
 
-}  // namespace tensorflow
+}  // namespace tsl
 
 // Standard-library overrides.  Note that these are picked up by Eigen as well.
 namespace std {
 template <>
-struct numeric_limits<tensorflow::float8_e4m3>
-    : public tensorflow::float8_internal::numeric_limits_float8<
-          tensorflow::float8_e4m3> {};
+struct numeric_limits<tsl::float8_e4m3>
+    : public tsl::float8_internal::numeric_limits_float8<tsl::float8_e4m3> {};
 
 template <>
-struct numeric_limits<tensorflow::float8_e5m2>
-    : public tensorflow::float8_internal::numeric_limits_float8<
-          tensorflow::float8_e5m2> {};
+struct numeric_limits<tsl::float8_e5m2>
+    : public tsl::float8_internal::numeric_limits_float8<tsl::float8_e5m2> {};
 
 }  // namespace std
 
@@ -294,26 +295,26 @@ namespace Eigen {
 namespace numext {
 
 template <>
-EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC tensorflow::float8_e4m3
-bit_cast<tensorflow::float8_e4m3, uint8_t>(const uint8_t& src) {
-  return tensorflow::float8_e4m3::FromRep(src);
+EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC tsl::float8_e4m3
+bit_cast<tsl::float8_e4m3, uint8_t>(const uint8_t& src) {
+  return tsl::float8_e4m3::FromRep(src);
 }
 
 template <>
 EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC uint8_t
-bit_cast<uint8_t, tensorflow::float8_e4m3>(const tensorflow::float8_e4m3& src) {
+bit_cast<uint8_t, tsl::float8_e4m3>(const tsl::float8_e4m3& src) {
   return src.rep();
 }
 
 template <>
-EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC tensorflow::float8_e5m2
-bit_cast<tensorflow::float8_e5m2, uint8_t>(const uint8_t& src) {
-  return tensorflow::float8_e5m2::FromRep(src);
+EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC tsl::float8_e5m2
+bit_cast<tsl::float8_e5m2, uint8_t>(const uint8_t& src) {
+  return tsl::float8_e5m2::FromRep(src);
 }
 
 template <>
 EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC uint8_t
-bit_cast<uint8_t, tensorflow::float8_e5m2>(const tensorflow::float8_e5m2& src) {
+bit_cast<uint8_t, tsl::float8_e5m2>(const tsl::float8_e5m2& src) {
   return src.rep();
 }
 
@@ -322,30 +323,30 @@ bit_cast<uint8_t, tensorflow::float8_e5m2>(const tensorflow::float8_e5m2& src) {
 // Work-around for isinf/isnan issue on aarch64.
 namespace internal {
 template <>
-EIGEN_DEVICE_FUNC inline bool isinf_impl<tensorflow::float8_e4m3>(
-    const tensorflow::float8_e4m3& x) {
-  return tensorflow::float8_internal::isinf(x);
+EIGEN_DEVICE_FUNC inline bool isinf_impl<tsl::float8_e4m3>(
+    const tsl::float8_e4m3& x) {
+  return tsl::float8_internal::isinf(x);
 }
 
 template <>
-EIGEN_DEVICE_FUNC inline bool isinf_impl<tensorflow::float8_e5m2>(
-    const tensorflow::float8_e5m2& x) {
-  return tensorflow::float8_internal::isinf(x);
+EIGEN_DEVICE_FUNC inline bool isinf_impl<tsl::float8_e5m2>(
+    const tsl::float8_e5m2& x) {
+  return tsl::float8_internal::isinf(x);
 }
 
 template <>
-EIGEN_DEVICE_FUNC inline bool isnan_impl<tensorflow::float8_e4m3>(
-    const tensorflow::float8_e4m3& x) {
-  return tensorflow::float8_internal::isnan(x);
+EIGEN_DEVICE_FUNC inline bool isnan_impl<tsl::float8_e4m3>(
+    const tsl::float8_e4m3& x) {
+  return tsl::float8_internal::isnan(x);
 }
 
 template <>
-EIGEN_DEVICE_FUNC inline bool isnan_impl<tensorflow::float8_e5m2>(
-    const tensorflow::float8_e5m2& x) {
-  return tensorflow::float8_internal::isnan(x);
+EIGEN_DEVICE_FUNC inline bool isnan_impl<tsl::float8_e5m2>(
+    const tsl::float8_e5m2& x) {
+  return tsl::float8_internal::isnan(x);
 }
 
 }  // namespace internal
 }  // namespace Eigen
 
-#endif  // TENSORFLOW_CORE_FRAMEWORK_FLOAT8_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_FLOAT8_H_

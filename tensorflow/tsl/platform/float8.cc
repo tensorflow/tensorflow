@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/float8.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <type_traits>
 
-namespace tensorflow {
+namespace tsl {
 namespace float8_internal {
 
 namespace {
@@ -455,4 +455,4 @@ DECLARE_CONVERT(float8_e5m2, float8_e4m3);
 #undef DECLARE_CONVERT
 
 }  // namespace float8_internal
-}  // namespace tensorflow
+}  // namespace tsl

@@ -13,16 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/float8.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 #include <cmath>
 #include <limits>
 #include <string>
 
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
 
 template <typename Float8_>
@@ -344,4 +343,4 @@ TEST(Float8Test, Half_To_Float8E5m2) {
 }
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace tsl

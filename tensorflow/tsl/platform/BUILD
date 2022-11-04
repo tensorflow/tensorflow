@@ -1005,6 +1005,27 @@ cc_library(
 )
 
 cc_library(
+    name = "float8",
+    srcs = ["float8.cc"],
+    hdrs = ["float8.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+tsl_cc_test(
+    name = "float8_test",
+    srcs = ["float8_test.cc"],
+    deps = [
+        ":float8",
+        ":test",
+        ":test_main",
+    ],
+)
+
+cc_library(
     name = "cuda",
     deps = [
         "//tensorflow/tsl/platform/default/build_config:cuda",
