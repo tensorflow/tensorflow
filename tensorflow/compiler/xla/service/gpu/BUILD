@@ -1285,6 +1285,7 @@ tf_cc_test(
     deps = [
         ":softmax_fusion",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service:pattern_matcher",
@@ -1294,6 +1295,7 @@ tf_cc_test(
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/strings",
     ],
 )
 
