@@ -578,7 +578,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu/runtime:cublas_lt_matmul",
         "//tensorflow/compiler/xla/service/gpu/runtime:support",
         "//tensorflow/compiler/xla/service/gpu/runtime:tracing",
-        "//tensorflow/compiler/xla/service/gpu:gpu_conv_runner",
+        ":gpu_conv_runner",
         "//tensorflow/tsl/platform:human_readable_json",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_types_header",

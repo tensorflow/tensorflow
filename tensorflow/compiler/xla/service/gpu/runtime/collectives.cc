@@ -128,9 +128,73 @@ static bool CollectivePermute(runtime::ExecutionContext* ctx, void** args,
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
+namespace {
+struct AllGather {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          JitRtCollectiveSupport* collectives,
+                          CustomCall::RemainingArgs args, int32_t uid,
+                          int64_t group_mode, int64_t op_id,
+                          std::string_view replica_group_offsets,
+                          std::string_view replica_group_values) const;
+  static AllGather Handler() { return AllGather(); }
+};
+}  // namespace
+
+absl::Status AllGather::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
+    int32_t uid, int64_t group_mode, int64_t op_id,
+    std::string_view replica_group_offsets,
+    std::string_view replica_group_values) const {
+#if XLA_ENABLE_XCCL
+  VLOG(3) << "Running AllGather";
+  se::Stream* stream = run_options->stream();
+  NcclExecuteParams params(*run_options, stream);
+
+  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                          replica_group_values);
+  if (failed(comm)) return absl::InternalError("Failed to get NCCL comm");
+
+  auto device_buffers = GetDeviceBufferPairs(args);
+  if (failed(device_buffers))
+    return absl::InternalError("Failed to get device buffers");
+
+  auto st = RunAllGather(*device_buffers, *stream, **comm);
+  if (!st.ok()) return ToAbslStatus(st);
+
+  int32_t device_ordinal = stream->parent()->device_ordinal();
+  st = collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream);
+  if (!st.ok()) return ToAbslStatus(st);
+
+  return absl::OkStatus();
+#else   // XLA_ENABLE_XCCL
+  return absl::InternalError("NCCL diasbled");
+#endif  // XLA_ENABLE_XCCL
+}
+
+static bool AllGather(runtime::ExecutionContext* ctx, void** args, void** attrs,
+                      void** rets) {
+  static auto* handler =
+      CustomCall::Bind("xla.gpu.all_gather")
+          .UserData<const ServiceExecutableRunOptions*>()
+          .UserData<JitRtCollectiveSupport*>()
+          .RemainingArgs()  // args
+          .Attr<int32_t>("uid")
+          .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
+          .Attr<int64_t>("op_id")
+          .Attr<std::string_view>("replica_group_offsets")
+          .Attr<std::string_view>("replica_group_values")
+          .To<checks>(AllGather::Handler())
+          .release();
+
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
 void RegisterCollectiveCustomCalls(
     runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
+  registry.Register("xla.gpu.all_gather", &xla::gpu::AllGather);
 }
 
 }  // namespace gpu

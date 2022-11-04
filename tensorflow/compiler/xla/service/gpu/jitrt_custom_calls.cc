@@ -814,71 +814,6 @@ static bool ReduceScatter(runtime::ExecutionContext* ctx, void** args,
 // -------------------------------------------------------------------------- //
 
 namespace {
-struct AllGather {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          JitRtCollectiveSupport* collectives,
-                          CustomCall::RemainingArgs args, int32_t uid,
-                          int64_t group_mode, int64_t op_id,
-                          ArrayRef<int64_t> replica_group_offsets,
-                          ArrayRef<int64_t> replica_group_values) const;
-  static AllGather Handler() { return AllGather(); }
-};
-}  // namespace
-
-absl::Status AllGather::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
-    int32_t uid, int64_t group_mode, int64_t op_id,
-    ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values) const {
-#if XLA_ENABLE_XCCL
-  VLOG(3) << "Running AllGather";
-  se::Stream* stream = run_options->stream();
-  NcclExecuteParams params(*run_options, stream);
-
-  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                          replica_group_values);
-  if (failed(comm)) return absl::InternalError("Failed to get NCCL comm");
-
-  auto device_buffers = GetDeviceBufferPairs(args);
-  if (failed(device_buffers))
-    return absl::InternalError("Failed to get device buffers");
-
-  auto st = RunAllGather(*device_buffers, *stream, **comm);
-  if (!st.ok()) return ToAbslStatus(st);
-
-  int32_t device_ordinal = stream->parent()->device_ordinal();
-  st = collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream);
-  if (!st.ok()) return ToAbslStatus(st);
-
-  return absl::OkStatus();
-#else   // XLA_ENABLE_XCCL
-  return absl::InternalError("NCCL diasbled");
-#endif  // XLA_ENABLE_XCCL
-}
-
-static bool AllGather(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                      void** rets) {
-  static auto* handler =
-      CustomCall::Bind("xla.gpu.all_gather")
-          .UserData<const ServiceExecutableRunOptions*>()
-          .UserData<JitRtCollectiveSupport*>()
-          .RemainingArgs()  // args
-          .Attr<int32_t>("uid")
-          .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
-          .Attr<int64_t>("op_id")
-          .Attr<ArrayRef<int64_t>>("replica_group_offsets")
-          .Attr<ArrayRef<int64_t>>("replica_group_values")
-          .To<RuntimeChecks()>(AllGather::Handler())
-          .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
-
-// -------------------------------------------------------------------------- //
-
-namespace {
 struct AllToAll {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   absl::Status operator()(const ServiceExecutableRunOptions* run_options,
@@ -1079,7 +1014,6 @@ void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   RegisterMemsetCustomCalls(registry);
 
   // Collective operations.
-  registry.Register("xla.gpu.all_gather", &xla::gpu::AllGather);
   registry.Register("xla.gpu.all_reduce", &xla::gpu::AllReduce);
   registry.Register("xla.gpu.all_reduce_done", &xla::gpu::AllReduceDone);
   registry.Register("xla.gpu.all_reduce_start", &xla::gpu::AllReduceStart);
