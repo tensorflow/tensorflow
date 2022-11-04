@@ -716,6 +716,14 @@ bool SideEffectAnalysisInfo::IsUnknownAccessIndirectlyTrackedByResource(
   return is_tracked;
 }
 
+const llvm::SmallVector<Operation*, 4>&
+SideEffectAnalysisInfo::DirectControlPredecessors(
+    Operation* op) const {
+  auto it = sorted_control_predecessors_.find(op);
+  if (it == sorted_control_predecessors_.end()) return empty_operation_set_;
+  return it->second;
+}
+
 llvm::SmallVector<Operation*, 4>
 SideEffectAnalysisInfo::DirectControlPredecessors(
     Operation* op, llvm::function_ref<bool(Operation*)> filter) const {
@@ -727,6 +735,14 @@ SideEffectAnalysisInfo::DirectControlPredecessors(
     if (!filter || filter(predecessor)) result.push_back(predecessor);
   }
   return result;
+}
+
+const llvm::SmallVector<Operation*, 4>&
+SideEffectAnalysisInfo::DirectControlSuccessors(
+    Operation* op) const {
+  auto it = sorted_control_successors_.find(op);
+  if (it == sorted_control_successors_.end()) return empty_operation_set_;
+  return it->second;
 }
 
 llvm::SmallVector<Operation*, 4>
