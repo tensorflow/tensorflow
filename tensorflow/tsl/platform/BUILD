@@ -4,7 +4,6 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/tsl:tsl.bzl",
@@ -541,7 +540,7 @@ filegroup(
         "threadpool.h",
         "threadpool_interface.h",
         "tracing.h",
-    ] + selects.with_or({
+    ] + select({
         "//tensorflow/tsl:fuchsia": tf_google_mobile_srcs_no_runtime(),
         "//conditions:default": [
             "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
