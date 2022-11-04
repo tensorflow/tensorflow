@@ -471,7 +471,7 @@ static StatusOr<runtime::MemrefDesc> BufferToMemref(
 // runtime signature.
 Status XlaRuntimeCpuExecutable::Execute(
     const std::vector<BufferDesc>& descriptor_table,
-    const runtime::CustomCall::UserData* user_data) {
+    const ExecutableRunOptions* run_options) {
   const runtime::FunctionType& signature = GetExecutable().runtime_signature();
 
   size_t num_arguments = xla_framework_mapping_.inputs.size();
@@ -538,7 +538,10 @@ Status XlaRuntimeCpuExecutable::Execute(
   runtime::NoResultConverter converter;
 
   runtime::Executable::ExecuteOpts opts;
-  opts.custom_call_data = user_data;
+
+  runtime::CustomCall::UserData user_data;
+  user_data.insert(run_options);
+  opts.custom_call_data = &user_data;
 
   // We don't expect to see any async tasks in the XLA Runtime executable.
   opts.async_task_runner =

@@ -72,7 +72,7 @@ class XlaRuntimeCpuExecutable {
         xla_framework_mapping_(xla_framework_mapping) {}
 
   Status Execute(const std::vector<BufferDesc>& descriptor_table,
-                 const runtime::CustomCall::UserData* user_data);
+                 const ExecutableRunOptions* run_options);
 
   runtime::Executable& GetExecutable() {
     if (std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
@@ -150,10 +150,9 @@ class CpuExecutable : public Executable {
 
   bool IsXlaRuntime() const { return xla_runtime_executable_ != nullptr; }
 
-  Status ExecuteXlaRuntime(
-      const std::vector<BufferDesc>& descriptor_table,
-      const runtime::CustomCall::UserData* user_data = nullptr) {
-    return xla_runtime_executable_->Execute(descriptor_table, user_data);
+  Status ExecuteXlaRuntime(const std::vector<BufferDesc>& descriptor_table,
+                           const ExecutableRunOptions* run_options = nullptr) {
+    return xla_runtime_executable_->Execute(descriptor_table, run_options);
   }
 
   StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
