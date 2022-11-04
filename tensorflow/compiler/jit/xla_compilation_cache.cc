@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/jit/xla_compilation_cache.pb.h"
-#include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -327,105 +326,6 @@ static bool ShouldBeMegamorphic(int64_t compile_count,
          execution_count < kMinExecutionsPerCompile * compile_count;
 }
 
-StatusOr<std::unique_ptr<Graph>> CreateGraph(
-    const NodeDef& node_def, absl::Span<const XlaCompiler::Argument> args,
-    absl::Span<const DataType> result_types) {
-  // TODO(b/74182462): We implement this by creating a new dummy Graph including
-  // _Arg nodes, and let CompileGraph walk it. This could be optimized.
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-
-  // First create the actual node we care about computing.
-  TF_ASSIGN_OR_RETURN(Node * main_node, graph->AddNode(node_def));
-
-  // Create dummy _Arg nodes. Link these to `node` and also via a control
-  // dependency edge to the _SOURCE node.
-  for (int64_t i = 0, end = args.size(); i < end; ++i) {
-    Node* node;
-    string arg_name = absl::StrCat("_arg", i);
-    Status status =
-        NodeBuilder(arg_name, FunctionLibraryDefinition::kArgOp)
-            .ControlInput(graph->source_node())
-            .Attr("T", args[i].kind == XlaCompiler::Argument::kResource
-                           ? DT_RESOURCE
-                           : args[i].type)
-            .Attr("index", i)
-            .Finalize(graph.get(), &node);
-    TF_RETURN_IF_ERROR(status);
-    graph->AddEdge(node, 0, main_node, i);
-  }
-
-  // Similarly with return values, create dummy _Retval nodes fed by `node`.
-  for (int64_t i = 0, end = result_types.size(); i < end; ++i) {
-    Node* node;
-    string retval_name = absl::StrCat("_retval", i);
-    Status status = NodeBuilder(retval_name, FunctionLibraryDefinition::kRetOp)
-                        .Input(main_node, i)
-                        .Attr("T", result_types[i])
-                        .Attr("index", i)
-                        .Finalize(graph.get(), &node);
-    TF_RETURN_IF_ERROR(status);
-  }
-  FixupSourceAndSinkEdges(graph.get());
-  return graph;
-}
-
-Status XlaSingleOpToHlo(
-    XlaCompiler* compiler, const XlaCompiler::Options& options,
-    const std::vector<XlaCompiler::Argument>& args,
-    const XlaCompiler::SingleOpCompileArgument& single_op_compile_argument,
-    const XlaCompiler::CompileOptions& compile_options,
-    XlaCompiler::CompilationResult* compilation_result) {
-  const std::vector<DataType>& result_dtypes =
-      single_op_compile_argument.output_dtypes;
-  const NodeDef& node_def = single_op_compile_argument.node_def;
-  TF_ASSIGN_OR_RETURN(
-      auto graph,
-      CreateGraph(node_def, args, single_op_compile_argument.output_dtypes));
-
-  auto compile_with_old_bridge = [&]() {
-    *compilation_result = {};
-    return compiler->CompileGraph(compile_options, node_def.name(),
-                                  std::move(graph), args, compilation_result);
-  };
-
-  const ConfigProto* config = &(single_op_compile_argument.config_proto);
-  auto bridge_rollout = GetMlirBridgeRolloutState(
-      config ? std::optional<ConfigProto>(*config) : std::nullopt);
-  if (bridge_rollout ==
-          ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED ||
-      node_def.op() == "VarIsInitializedOp" ||
-      (bridge_rollout !=
-           ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED &&
-       options.device_type.type_string() != DEVICE_TPU_XLA_JIT)) {
-    return compile_with_old_bridge();
-  }
-
-  GraphDebugInfo debug_info;
-  std::vector<std::string> control_rets;
-  if (result_dtypes.empty()) {
-    control_rets.push_back(node_def.name());
-  }
-
-  bool mlir_enabled = (bridge_rollout ==
-                       ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED);
-  VLOG(1) << "Attempting MLIR bridge."
-          << (mlir_enabled ? " MLIR is explicitly enabled." : "");
-  auto mlir_result = CompileGraphToXlaHlo(
-      *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
-      options.device_type.type_string(), compile_options.use_tuple_arg,
-      /*analyse_graph=*/!mlir_enabled, *options.flib_def, debug_info,
-      options.shape_determination_fns, compilation_result);
-
-  if (mlir_result.ok() || mlir_enabled) {
-    return mlir_result;
-  }
-
-  VLOG(2) << "Failed second phase of the MLIR bridge. Will "
-             "retry with the old bridge. MLIR bridge compilation status: "
-          << mlir_result;
-  return compile_with_old_bridge();
-}
-
 Status XlaCompilationCache::CompileSingleOp(
     const XlaCompiler::Options& options,
     const std::vector<XlaCompiler::Argument>& args, OpKernelContext* ctx,
@@ -472,10 +372,9 @@ Status XlaCompilationCache::CompileStrict(
   entry->compile_state = CompileState::kCompiled;
   entry->compilation_status = [&] {
     if (scope == CompileScope::kOp) {
-      return XlaSingleOpToHlo(&compiler, options, args,
-                              BuildSingleOpCompileArgument(ctx),
-                              compile_options, &entry->compilation_result);
-
+      return compiler.CompileSingleOp(
+          compile_options, XlaCompiler::SingleOpCompileArgument(*ctx), args,
+          &entry->compilation_result);
     } else {
       CHECK(scope == CompileScope::kFunction);  // Crash OK
       return compiler.CompileFunction(compile_options, function, args,

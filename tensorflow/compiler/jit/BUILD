@@ -441,8 +441,9 @@ cc_library(
         "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
     ],
     deps = [
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/core:framework",
+        "//tensorflow/compiler/tf2xla:xla_argument",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core/util:determinism",
     ],
 )
 
@@ -453,6 +454,7 @@ tf_cc_test(
     ],
     deps = [
         ":xla_compile_util",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:fake_input",
         "//tensorflow/core/kernels:identity_op",
@@ -484,7 +486,6 @@ cc_library(
         ":xla_activity_proto_cc",
         ":xla_cluster_util",
         ":xla_compilation_cache_proto_cc",
-        ":xla_compile_util",
         "//tensorflow/compiler/mlir:array_container_utils",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
