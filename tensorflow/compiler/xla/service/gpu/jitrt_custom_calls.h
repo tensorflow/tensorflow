@@ -34,7 +34,6 @@
 namespace xla {
 namespace gpu {
 class JitRtKernelsCache;
-class JitRtGemmConfigCache;
 class JitRtAsyncCollectiveSupport;
 
 // Populate custom calls implementing XLA GPU runtime API.
@@ -47,16 +46,6 @@ void PopulateXlaGpuTypeIdNames(runtime::TypeIDNameRegistry& registry);
 void PopulateLmhloToXlaAttrEncoding(
     runtime::CustomCallAttrEncodingSet& encoding);
 
-class JitRtGemmConfigCache {
- public:
-  const GemmConfig* Get(int64_t uid);
-  const GemmConfig* Set(int64_t uid, GemmConfig config);
-
- private:
-  mutable absl::Mutex mutex_;
-
-  llvm::SmallDenseMap<int64_t, GemmConfig> configs_ ABSL_GUARDED_BY(mutex_);
-};
 
 
 // Support for running async collective operations communicating via events.

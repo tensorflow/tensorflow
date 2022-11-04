@@ -72,6 +72,7 @@ cc_library(
     deps = [
         ":collectives",
         ":conv",
+        ":gemm",
         ":kernel_launch",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
@@ -96,6 +97,23 @@ cc_library(
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu:fft_thunk",
         "//tensorflow/compiler/xla/stream_executor:fft",
+    ],
+)
+
+cc_library(
+    name = "gemm",
+    srcs = ["gemm.cc"],
+    hdrs = ["gemm.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/runtime:logical_result",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service/gpu:matmul_utils",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -213,6 +231,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:matmul_utils",
         "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
+        "@llvm-project//llvm:Support",
     ],
 )
 

@@ -51,6 +51,7 @@
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/io_feed.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memcpy.h"
@@ -208,24 +209,6 @@ static se::DeviceMemoryBase GetDeviceAddress(runtime::FlatMemrefView& memref) {
 
 // -------------------------------------------------------------------------- //
 
-const GemmConfig* JitRtGemmConfigCache::Get(int64_t uid) {
-  absl::MutexLock lock(&mutex_);
-  auto it = configs_.find(uid);
-  if (it != configs_.end()) return &it->second;
-  return nullptr;
-}
-
-const GemmConfig* JitRtGemmConfigCache::Set(int64_t uid, GemmConfig config) {
-  absl::MutexLock lock(&mutex_);
-  auto it = configs_.find(uid);
-  if (it != configs_.end()) return &it->second;
-
-  auto emplaced = configs_.try_emplace(uid, std::move(config));
-  return &emplaced.first->second;
-}
-
-// -------------------------------------------------------------------------- //
-
 JitRtAsyncCollectiveSupport::JitRtAsyncCollectiveSupport(
     se::Stream* async_comm_stream)
     : async_comm_stream_(async_comm_stream) {}
@@ -315,79 +298,6 @@ FailureOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
         GetDeviceAddress(*destination)});
   }
   return device_buffers;
-}
-
-// -------------------------------------------------------------------------- //
-
-namespace {
-struct Gemm {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          const DebugOptions* debug_options,
-                          JitRtGemmConfigCache* configs,
-                          runtime::StridedMemrefView lhs,
-                          runtime::StridedMemrefView rhs,
-                          runtime::StridedMemrefView out, int64_t algorithm,
-                          double alpha_real, double alpha_imag, double beta,
-                          DotDimensionNumbers dot_dims, int64_t uid) const;
-
-  static Gemm Handler() { return Gemm(); }
-};
-}  // namespace
-
-absl::Status Gemm::operator()(const ServiceExecutableRunOptions* run_options,
-                              const DebugOptions* debug_options,
-                              JitRtGemmConfigCache* configs,
-                              runtime::StridedMemrefView lhs,
-                              runtime::StridedMemrefView rhs,
-                              runtime::StridedMemrefView out, int64_t algorithm,
-                              double alpha_real, double alpha_imag, double beta,
-                              DotDimensionNumbers dot_dims, int64_t uid) const {
-  se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
-  se::DeviceMemoryBase rhs_data = GetDeviceAddress(rhs);
-  se::DeviceMemoryBase output_data = GetDeviceAddress(out);
-
-  VLOG(3) << "Running GEMM";
-  se::Stream* stream = run_options->stream();
-
-  // Find the gemm config for this instance of operation based on uid.
-  const GemmConfig* config = configs->Get(uid);
-  if (config == nullptr) {
-    auto cfg = GetGemmConfig(lhs, rhs, out, algorithm, alpha_real, alpha_imag,
-                             beta, dot_dims.lhs_batch, dot_dims.lhs_contract,
-                             dot_dims.rhs_batch, dot_dims.rhs_contract);
-    if (!cfg.ok()) return ToAbslStatus(cfg.status());
-    config = configs->Set(uid, std::move(*cfg));
-  }
-
-  Status executed = [&]() -> Status {
-    return RunGemm(*config, lhs_data, rhs_data, output_data, stream);
-  }();
-
-  if (!executed.ok()) return ToAbslStatus(executed);
-
-  return absl::OkStatus();
-}
-
-static bool Gemm(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                 void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.gemm")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const DebugOptions*>()
-                             .UserData<JitRtGemmConfigCache*>()
-                             .Arg<runtime::StridedMemrefView>()  // lhs
-                             .Arg<runtime::StridedMemrefView>()  // rhs
-                             .Arg<runtime::StridedMemrefView>()  // out
-                             .Attr<int64_t>("algorithm")
-                             .Attr<double>("alpha_real")
-                             .Attr<double>("alpha_imag")
-                             .Attr<double>("beta")
-                             .Attr<DotDimensionNumbers>("dot_dims")
-                             .Attr<int64_t>("uid")
-                             .To<RuntimeChecks()>(Gemm::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1152,8 +1062,8 @@ void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry) {
 
   RegisterFftCustomCalls(registry);
   RegisterCholeskyCustomCalls(registry);
-  registry.Register("xla.gpu.gemm", &xla::gpu::Gemm);
   RegisterCollectiveCustomCalls(registry);
+  RegisterGemmCustomCalls(registry);
 
 #if GOOGLE_CUDA
   RegisterMatmulCustomCalls(registry);

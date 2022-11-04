@@ -13,34 +13,36 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_CUBLAS_LT_MATMUL_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_CUBLAS_LT_MATMUL_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_GEMM_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_GEMM_H_
 
+#include "llvm/ADT/DenseMap.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
-
-#if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
-#endif  // GOOGLE_CUDA
+#include "tensorflow/compiler/xla/runtime/logical_result.h"
+#include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 
 namespace xla {
 namespace gpu {
 
-// Registers XLA Gpu runtime kernel launch custom calls.
-void RegisterMatmulCustomCalls(runtime::DirectCustomCallRegistry& registry);
+class JitRtGemmConfigCache;
+
+class JitRtGemmConfigCache {
+ public:
+  const GemmConfig* Get(int64_t uid);
+  const GemmConfig* Set(int64_t uid, GemmConfig config);
+
+ private:
+  mutable absl::Mutex mutex_;
+
+  llvm::SmallDenseMap<int64_t, GemmConfig> configs_ ABSL_GUARDED_BY(mutex_);
+};
+
+// Registers XLA Gpu runtime Gemm# custom calls.
+void RegisterGemmCustomCalls(runtime::DirectCustomCallRegistry& registry);
 
 }  // namespace gpu
 }  // namespace xla
 
-namespace xla {
-namespace runtime {
-
-#if GOOGLE_CUDA
-XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(
-    stream_executor::cuda::BlasLt::Epilogue);
-#endif  // GOOGLE_CUDA
-
-}  // namespace runtime
-}  // namespace xla
-
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_CUBLAS_LT_MATMUL_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_GEMM_H_
