@@ -1007,7 +1007,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           out_index[output_z_dim] / output_feature_group_size;
 
       const int64_t depthwise_multiplier =
-          batch_group_count > 1 ? output_z_size / input_batch_size : 1;
+          batch_group_count > 1 ? output_z_size / batch_group_count : 1;
       const int64_t batch_group_index =
           out_index[output_z_dim] / depthwise_multiplier;
 
