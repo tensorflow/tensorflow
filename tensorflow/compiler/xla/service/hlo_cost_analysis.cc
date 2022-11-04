@@ -522,7 +522,7 @@ Status HloCostAnalysis::HandleReduceWindow(
             << " reported for reduce-window:\n"
             << reduce_window->ToString();
   }
-  if (input_reuse_is_inefficient()) {
+  if (options_.count_multiple_input_accesses) {
     SetOperandUtilization(0, 1.0 * output_element_count * window_element_count /
                                  input_element_count);
     SetOperandBytesAccessed(
@@ -583,7 +583,7 @@ Status HloCostAnalysis::HandleBitcast(const HloInstruction*) {
 }
 
 Status HloCostAnalysis::HandleBroadcast(const HloInstruction* broadcast) {
-  if (input_reuse_is_inefficient()) {
+  if (options_.count_multiple_input_accesses) {
     SetOperandBytesAccessed(0, ShapeUtil::ElementsIn(broadcast->shape()));
     SetOperandUtilization(
         0, 1.0 * ShapeUtil::ElementsIn(broadcast->shape()) /
@@ -1071,9 +1071,12 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
     if (instr->opcode() == HloOpcode::kConstant &&
         ShapeUtil::ElementsIn(instr->shape()) >
             immediate_constant_max_elements()) {
+      float utilization = hlo_properties_[instr][kUtilizationKey];
+      if (!options_.count_multiple_input_accesses) {
+        utilization = fmax(utilization, 1.0);
+      }
       current_properties_[kBytesAccessedKey] +=
-          GetShapeSize(instr->shape()) *
-          hlo_properties_[instr][kUtilizationKey];
+          GetShapeSize(instr->shape()) * utilization;
     }
   }
 

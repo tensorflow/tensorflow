@@ -29,7 +29,9 @@ class GpuHloCostAnalysisTest : public HloTestBase {
   }
 
  public:
-  HloCostAnalysis::Options options_{ShapeSizeBytesFunction()};
+  HloCostAnalysis::Options options_{ShapeSizeBytesFunction(),
+                                    /*per_second_rates=*/{},
+                                    /*count_multiple_input_accesses=*/true};
   GpuHloCostAnalysis analysis_{options_};
   GpuHloCostAnalysisTest() : HloTestBase() {}
 };
@@ -132,6 +134,38 @@ ENTRY e {
   // Operand + output.
   EXPECT_EQ(analysis_.bytes_accessed(*root), 2 * 10000);
   EXPECT_EQ(analysis_.bytes_accessed(), 2 * 10000);
+}
+
+TEST_F(GpuHloCostAnalysisTest, BroadcastWithoutRepeats) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f {
+  p1 = s8[] parameter(0)
+  c1 = s8[] constant(0)
+  a1 = s8[] add(p1, c1)
+  b1 = s8[10000] broadcast(a1), dimensions={}
+  b2 = s8[10000] broadcast(c1), dimensions={}
+  ROOT r1 = s8[10000] add(b1, b2)
+}
+
+ENTRY e {
+  p0 = s8[] parameter(0)
+  ROOT r0 = s8[10000] fusion(p0), kind=kInput, calls=f
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  options_.count_multiple_input_accesses = false;
+  GpuHloCostAnalysis analysis{options_};
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis));
+
+  EXPECT_EQ(analysis.output_bytes_accessed(*root), 10000);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 1);
+  // Operand + output.
+  EXPECT_EQ(analysis.bytes_accessed(*root), 1 + 10000);
+  EXPECT_EQ(analysis.bytes_accessed(), 1 + 10000);
 }
 
 TEST_F(GpuHloCostAnalysisTest, BroadcastFlops) {

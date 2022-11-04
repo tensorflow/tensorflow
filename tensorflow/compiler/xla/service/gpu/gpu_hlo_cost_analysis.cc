@@ -44,8 +44,11 @@ int64_t GpuHloCostAnalysis::FusionParameterReadBytes(
     const HloInstruction* hlo) const {
   CHECK(hlo->IsFused() && (hlo->opcode() == HloOpcode::kParameter ||
                            hlo->opcode() == HloOpcode::kGetTupleElement));
-  return GetShapeSize(hlo->shape()) *
-         hlo_properties_.at(hlo).at(kUtilizationKey);
+  float utilization = hlo_properties_.at(hlo).at(kUtilizationKey);
+  if (!options_.count_multiple_input_accesses) {
+    utilization = fmax(utilization, 1.0);
+  }
+  return GetShapeSize(hlo->shape()) * utilization;
 }
 
 Status GpuHloCostAnalysis::FusionCalculateUtilizations(

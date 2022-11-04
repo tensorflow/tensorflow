@@ -250,7 +250,10 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
 
   if (!cost_analysis_) {
     VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
-    cost_analysis_.emplace(GpuHloCostAnalysis::Options{shape_size_function_});
+    cost_analysis_.emplace(
+        GpuHloCostAnalysis::Options{shape_size_function_,
+                                    /*per_second_rates=*/{},
+                                    /*count_multiple_input_accesses=*/true});
     TF_CHECK_OK(computation_->Accept(&cost_analysis_.value()));
   }
 

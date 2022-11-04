@@ -317,7 +317,9 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
 StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
   bool changed = false;
   RecomputeReachability();
-  GpuHloCostAnalysis cost_analysis({shape_size_function_});
+  GpuHloCostAnalysis cost_analysis({shape_size_function_,
+                                    /*per_second_rates=*/{},
+                                    /*count_multiple_input_accesses=*/true});
   TF_RETURN_IF_ERROR(computation_->Accept(&cost_analysis));
   std::vector<HloInstruction*> defs_before_uses =
       computation_->MakeInstructionPostOrder();

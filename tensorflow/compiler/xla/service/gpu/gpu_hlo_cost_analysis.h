@@ -61,7 +61,6 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   int64_t FusionParameterReadBytes(const HloInstruction* hlo) const override;
   Status FusionCalculateUtilizations(const HloInstruction* fusion) override;
 
-  bool input_reuse_is_inefficient() const override { return true; }
   size_t immediate_constant_max_elements() const override { return 8; }
 
   bool KeyToCopyFromSubcomputation(absl::string_view key) const override;
