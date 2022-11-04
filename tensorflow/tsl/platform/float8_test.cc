@@ -342,5 +342,44 @@ TEST(Float8Test, Half_To_Float8E5m2) {
             0xBF);
 }
 
+using ::testing::Eq;
+using ::testing::IsTrue;
+MATCHER_P(EqOrIsNaN, other, "") {
+  if (Eigen::numext::isnan(other)) {
+    return ExplainMatchResult(IsTrue(), Eigen::numext::isnan(arg),
+                              result_listener);
+  }
+  return ExplainMatchResult(Eq(other), arg, result_listener);
+}
+
+TYPED_TEST(Float8Test, CallTheOperator) {
+  using Float8 = TypeParam;
+
+  for (int i = 0x00; i <= 0xFF; ++i) {
+    Float8 a = Float8::FromRep(i);
+    for (int j = 0x00; j <= 0xFF; ++j) {
+      Float8 b = Float8::FromRep(j);
+
+      EXPECT_THAT(a + b, EqOrIsNaN(Float8{float{a} + float{b}}));
+      EXPECT_THAT(a - b, EqOrIsNaN(Float8{float{a} - float{b}}));
+      EXPECT_THAT(a * b, EqOrIsNaN(Float8{float{a} * float{b}}));
+      EXPECT_THAT(a / b, EqOrIsNaN(Float8{float{a} / float{b}}));
+
+      Float8 c;
+      EXPECT_THAT((c = a, c += b), EqOrIsNaN(Float8{float{a} + float{b}}));
+      EXPECT_THAT((c = a, c -= b), EqOrIsNaN(Float8{float{a} - float{b}}));
+      EXPECT_THAT((c = a, c *= b), EqOrIsNaN(Float8{float{a} * float{b}}));
+      EXPECT_THAT((c = a, c /= b), EqOrIsNaN(Float8{float{a} / float{b}}));
+
+      EXPECT_EQ(a == b, float{a} == float{b}) << float{a} << " vs " << float{b};
+      EXPECT_EQ(a != b, float{a} != float{b});
+      EXPECT_EQ(a < b, float{a} < float{b});
+      EXPECT_EQ(a <= b, float{a} <= float{b});
+      EXPECT_EQ(a > b, float{a} > float{b});
+      EXPECT_EQ(a >= b, float{a} >= float{b});
+    }
+  }
+}
+
 }  // namespace
 }  // namespace tsl

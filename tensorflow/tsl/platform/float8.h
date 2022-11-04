@@ -44,14 +44,20 @@ class float8_base {
   constexpr uint8_t rep() const { return rep_; }
 
   constexpr Derived operator-() const {
-    return Derived(static_cast<uint8_t>(rep_ ^ 0x80), ConstructFromRepTag{});
+    return Derived(static_cast<uint8_t>(rep() ^ 0x80), ConstructFromRepTag{});
   }
 
   constexpr bool operator==(const Derived& other) const {
     if (Eigen::numext::isnan(derived())) {
       return false;
+    } else if ((rep() & 0x7F) == 0) {
+      return (other.rep() & 0x7F) == 0;
     }
     return rep() == other.rep();
+  }
+
+  constexpr bool operator!=(const Derived& other) const {
+    return !(derived() == other);
   }
 
   constexpr const Derived& derived() const {
@@ -70,6 +76,70 @@ class float8_base {
 
   template <typename To, bool kSaturate = false, bool kTruncate = false>
   static EIGEN_DEVICE_FUNC To ConvertTo(const Derived& from);
+
+  // Operators via float32.
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC Derived
+  operator+(const Derived& other) const {
+    return Derived{float{derived()} + float{other}};
+  }
+
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC Derived
+  operator-(const Derived& other) const {
+    return Derived{float{derived()} - float{other}};
+  }
+
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC Derived
+  operator*(const Derived& other) const {
+    return Derived{float{derived()} * float{other}};
+  }
+
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC Derived
+  operator/(const Derived& other) const {
+    return Derived{float{derived()} / float{other}};
+  }
+
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator<(
+      const Derived& other) const {
+    return float{derived()} < float{other};
+  }
+
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator<=(
+      const Derived& other) const {
+    return float{derived()} <= float{other};
+  }
+
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator>(const Derived& other) {
+    return float{derived()} > float{other};
+  }
+
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator>=(const Derived& other) {
+    return float{derived()} >= float{other};
+  }
+
+  // Compound assignment.
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC Derived& operator+=(
+      const Derived& other) {
+    derived() = derived() + other;
+    return derived();
+  }
+
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC Derived& operator-=(
+      const Derived& other) {
+    derived() = derived() - other;
+    return derived();
+  }
+
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC Derived& operator*=(
+      const Derived& other) {
+    derived() = derived() * other;
+    return derived();
+  }
+
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC Derived& operator/=(
+      const Derived& other) {
+    derived() = derived() / other;
+    return derived();
+  }
 
  private:
   uint8_t rep_;
@@ -101,9 +171,6 @@ class float8_e4m3 : public float8_base<float8_e4m3> {
   explicit operator Eigen::half() const {
     return ConvertTo<Eigen::half>(*this);
   }
-
-  using Base::operator==;
-  using Base::operator-;
 };
 
 class float8_e5m2 : public float8_base<float8_e5m2> {
@@ -132,9 +199,6 @@ class float8_e5m2 : public float8_base<float8_e5m2> {
   explicit operator Eigen::half() const {
     return ConvertTo<Eigen::half>(*this);
   }
-
-  using Base::operator==;
-  using Base::operator-;
 };
 
 // Structures for use in specializing std::numeric_limits.
