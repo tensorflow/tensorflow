@@ -22,11 +22,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/pjrt_client_registry.h"

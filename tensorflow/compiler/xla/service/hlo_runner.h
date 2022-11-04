@@ -23,12 +23,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_runner_interface.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"

@@ -21,9 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/custom_call_sharding_helper.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
