@@ -64,6 +64,7 @@ py_library(
         ":save_ops",
         ":sparse_batch_op",
         ":structured_function",
+        ":window_op",
         ":zip_op",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -183,6 +184,11 @@ py_library(
         "//tensorflow/python/platform",
         "//tensorflow/python/util",
     ],
+)
+
+py_library(
+    name = "window_op",
+    srcs = ["window_op.py"],
 )
 
 py_library(
