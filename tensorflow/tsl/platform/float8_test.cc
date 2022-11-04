@@ -18,6 +18,7 @@ limitations under the License.
 #include <cmath>
 #include <limits>
 #include <string>
+#include <utility>
 
 #include "tensorflow/tsl/platform/test.h"
 
@@ -378,6 +379,43 @@ TYPED_TEST(Float8Test, CallTheOperator) {
       EXPECT_EQ(a > b, float{a} > float{b});
       EXPECT_EQ(a >= b, float{a} >= float{b});
     }
+  }
+}
+
+// Helper utility for prettier test names.
+struct Float8CastTestParamNames {
+  template <typename TypeParam>
+  static std::string GetName(int idx) {
+    using first_type = typename TypeParam::first_type;
+    using second_type = typename TypeParam::second_type;
+    return absl::StrCat(::testing::internal::GetTypeName<first_type>(), "_",
+                        ::testing::internal::GetTypeName<second_type>());
+  }
+};
+
+using Float8CastTypePairs = ::testing::Types<
+    std::pair<float8_e4m3, long double>, std::pair<float8_e4m3, float>,
+    std::pair<float8_e4m3, Eigen::bfloat16>,
+    std::pair<float8_e4m3, Eigen::half>, std::pair<float8_e4m3, bool>,
+    std::pair<float8_e4m3, int32_t>, std::pair<float8_e4m3, int64_t>,
+    std::pair<float8_e5m2, long double>, std::pair<float8_e5m2, float>,
+    std::pair<float8_e5m2, Eigen::bfloat16>,
+    std::pair<float8_e5m2, Eigen::half>, std::pair<float8_e5m2, bool>,
+    std::pair<float8_e5m2, int32_t>, std::pair<float8_e5m2, int64_t> >;
+
+template <typename CastPair>
+class Float8CastTest : public ::testing::Test {};
+TYPED_TEST_SUITE(Float8CastTest, Float8CastTypePairs, Float8CastTestParamNames);
+
+TYPED_TEST(Float8CastTest, CastThroughFloat) {
+  using Float8 = typename TypeParam::first_type;
+  using DestType = typename TypeParam::second_type;
+
+  for (int i = 0x00; i <= 0xFF; ++i) {
+    Float8 f8 = Float8::FromRep(i);
+    DestType dest = static_cast<DestType>(f8);
+    DestType expected = static_cast<DestType>(static_cast<float>(f8));
+    EXPECT_THAT(dest, EqOrIsNaN(expected));
   }
 }
 

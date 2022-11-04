@@ -157,12 +157,21 @@ class float8_e4m3 : public float8_base<float8_e4m3> {
 
  public:
   float8_e4m3() : Base() {}
+
+  template <typename T,
+            typename EnableIf = std::enable_if<std::is_arithmetic<T>::value> >
+  explicit float8_e4m3(T f) : float8_e4m3(ConvertFrom(static_cast<float>(f))) {}
   explicit float8_e4m3(double f64) : float8_e4m3(ConvertFrom(f64)) {}
   explicit float8_e4m3(float f32) : float8_e4m3(ConvertFrom(f32)) {}
   explicit float8_e4m3(Eigen::bfloat16 bf16) : float8_e4m3(ConvertFrom(bf16)) {}
   explicit float8_e4m3(Eigen::half f16) : float8_e4m3(ConvertFrom(f16)) {}
   explicit float8_e4m3(const float8_e5m2& f8) : float8_e4m3(ConvertFrom(f8)) {}
 
+  template <typename T,
+            typename EnableIf = std::enable_if<std::is_arithmetic<T>::value> >
+  explicit operator T() const {
+    return static_cast<T>(static_cast<float>(*this));
+  }
   explicit operator double() const { return ConvertTo<double>(*this); }
   explicit operator float() const { return ConvertTo<float>(*this); }
   explicit operator Eigen::bfloat16() const {
@@ -171,6 +180,7 @@ class float8_e4m3 : public float8_base<float8_e4m3> {
   explicit operator Eigen::half() const {
     return ConvertTo<Eigen::half>(*this);
   }
+  explicit operator bool() const { return (rep() & 0x7F) != 0; }
 };
 
 class float8_e5m2 : public float8_base<float8_e5m2> {
@@ -185,12 +195,21 @@ class float8_e5m2 : public float8_base<float8_e5m2> {
 
  public:
   float8_e5m2() : Base() {}
+
+  template <typename T,
+            typename EnableIf = std::enable_if<std::is_arithmetic<T>::value> >
+  explicit float8_e5m2(T f) : float8_e5m2(ConvertFrom(static_cast<float>(f))) {}
   explicit float8_e5m2(double f64) : float8_e5m2(ConvertFrom(f64)) {}
   explicit float8_e5m2(float f32) : float8_e5m2(ConvertFrom(f32)) {}
   explicit float8_e5m2(Eigen::bfloat16 bf16) : float8_e5m2(ConvertFrom(bf16)) {}
   explicit float8_e5m2(Eigen::half f16) : float8_e5m2(ConvertFrom(f16)) {}
   explicit float8_e5m2(float8_e4m3 f8) : float8_e5m2(ConvertFrom(f8)) {}
 
+  template <typename T,
+            typename EnableIf = std::enable_if<std::is_arithmetic<T>::value> >
+  explicit operator T() const {
+    return static_cast<T>(static_cast<float>(*this));
+  }
   explicit operator double() const { return ConvertTo<double>(*this); }
   explicit operator float() const { return ConvertTo<float>(*this); }
   explicit operator Eigen::bfloat16() const {
@@ -199,6 +218,7 @@ class float8_e5m2 : public float8_base<float8_e5m2> {
   explicit operator Eigen::half() const {
     return ConvertTo<Eigen::half>(*this);
   }
+  explicit operator bool() const { return (rep() & 0x7F) != 0; }
 };
 
 // Structures for use in specializing std::numeric_limits.
