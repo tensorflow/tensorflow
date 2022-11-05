@@ -178,8 +178,9 @@ cc_library(
 tf_proto_library(
     name = "dnn_proto",
     srcs = ["dnn.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = ["//tensorflow/tsl/protobuf:dnn_proto"],
+    exports = ["//tensorflow/tsl/protobuf:dnn_proto"],
 )
 
 cc_library(
@@ -710,6 +711,7 @@ cc_library(
         ":stream_executor_pimpl",
         ":timer",
         "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc_impl",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
     ],
 )
 

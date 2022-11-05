@@ -24,6 +24,19 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "autotuning_proto",
+    srcs = ["autotuning.proto"],
+    make_default_target_header_only = True,
+    protodeps = [":dnn_proto"],
+)
+
+tf_proto_library(
+    name = "dnn_proto",
+    srcs = ["dnn.proto"],
+    make_default_target_header_only = True,
+)
+
+tf_proto_library(
     name = "error_codes_proto_impl",
     srcs = ["error_codes.proto"],
     make_default_target_header_only = True,
@@ -89,9 +102,11 @@ tf_proto_library(
     create_go_proto = False,
     make_default_target_header_only = True,
     protodeps = [
+        ":autotuning_proto",
         ":bfc_memory_map_proto",
         ":coordination_config_proto",
         ":distributed_runtime_payloads_proto",
+        ":dnn_proto",
         ":error_codes_proto_impl",
         ":histogram_proto",
         ":rpc_options_proto",
