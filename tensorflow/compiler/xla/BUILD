@@ -926,7 +926,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:padding",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/hlo/evaluator:hlo_evaluator",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/tsl/lib/math:math_util",
         "//tensorflow/tsl/platform:logging",
@@ -1031,7 +1031,7 @@ tf_cc_test(
     deps =
         [
             ":xla_proto_cc",
-            "//tensorflow/compiler/xla/service:hlo",
+            "//tensorflow/compiler/xla/hlo/ir:hlo",
             "//tensorflow/tsl/platform:logging",
             "//tensorflow/tsl/platform:test",
             "@com_google_absl//absl/container:flat_hash_map",
