@@ -102,11 +102,13 @@ tf_proto_library(
     create_go_proto = False,
     make_default_target_header_only = True,
     protodeps = [
-        ":autotuning_proto",
+        # TODO(tlongeri): Conceptually, these fit into protos_all but adding them currently causes
+        # breakages (and they are not actually used).
+        # ":autotuning_proto",
+        # ":dnn_proto",
         ":bfc_memory_map_proto",
         ":coordination_config_proto",
         ":distributed_runtime_payloads_proto",
-        ":dnn_proto",
         ":error_codes_proto_impl",
         ":histogram_proto",
         ":rpc_options_proto",
