@@ -18,7 +18,6 @@ package_group(
     includes = ["//tensorflow:internal"],
     packages = [
         # copybara:uncomment "//learning/infra/mira/...",
-        "//third_party/auroraml/...",
         "//third_party/australis/...",
         "//third_party/iree/...",
         "//third_party/mira/...",

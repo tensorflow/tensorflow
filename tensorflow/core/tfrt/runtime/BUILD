@@ -11,7 +11,6 @@ package_group(
     name = "friends",
     packages = [
         # Authorized users go here.
-        # copybara:uncomment "//third_party/auroraml/...",
         "//tensorflow/compiler/xla/service/gpu/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/runtime_fallback/...",
