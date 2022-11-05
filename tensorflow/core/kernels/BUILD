@@ -4822,6 +4822,7 @@ cc_library(
         ":sparse_cross_op",
         ":sparse_dense_binary_op_shared",
         ":sparse_fill_empty_rows_op",
+        ":sparse_indices_to_ragged_row_splits_op",
         ":sparse_reduce_op",
         ":sparse_reorder_op",
         ":sparse_reshape_op",
@@ -4871,6 +4872,18 @@ tf_kernel_library(
     deps = SPARSE_DEPS + [":gpu_prim_hdrs"] + if_cuda_or_rocm([
         ":gpu_prim_helpers",
     ]) + if_cuda([
+        "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
+    ]),
+)
+
+tf_kernel_library(
+    name = "sparse_indices_to_ragged_row_splits_op",
+    prefix = "sparse_indices_to_ragged_row_splits_op",
+    deps = SPARSE_DEPS + [
+        "//third_party/eigen3",
+    ] + if_cuda([
         "//tensorflow/core/util:cuda_solvers",
     ]) + if_rocm([
         "//tensorflow/core/util:rocm_solvers",
@@ -6319,6 +6332,7 @@ filegroup(
         "stateless_random_ops_v2.h",
         "sparse_xent_op.h",
         "sparse_fill_empty_rows_op.h",
+        "sparse_indices_to_ragged_row_splits_op.h",
         "sparse_reorder_op.h",
         "sparse_slice_op.h",
         "sparse_tensor_dense_matmul_op.h",
@@ -6614,6 +6628,7 @@ filegroup(
         "sparse_reduce_op.cc",
         "sparse_xent_op.cc",
         "sparse_fill_empty_rows_op.cc",
+        "sparse_indices_to_ragged_row_splits_op.cc",
         "sparse_reorder_op.cc",
         "sparse_reshape_op.cc",
         "sparse_slice_op.cc",

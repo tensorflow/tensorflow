@@ -4,7 +4,7 @@
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
-#include "tensorflow/core/kernels/sparse/sparse_indices_to_ragged_row_splits_op.h"
+#include "tensorflow/core/kernels/sparse_indices_to_ragged_row_splits_op.h"
 
 
 using namespace tensorflow;

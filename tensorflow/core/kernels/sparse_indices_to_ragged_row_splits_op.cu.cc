@@ -2,7 +2,7 @@
 #ifdef GOOGLE_CUDA
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/sparse/sparse_indices_to_ragged_row_splits_op.h"
+#include "tensorflow/core/kernels/sparse_indices_to_ragged_row_splits_op.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_solvers.h"
 
