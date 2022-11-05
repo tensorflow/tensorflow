@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_TYPES_H_
 
 #include "tensorflow/core/platform/bfloat16.h"
+#include "tensorflow/core/platform/float8.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/tsl/platform/types.h"

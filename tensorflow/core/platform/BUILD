@@ -75,6 +75,7 @@ exports_files(
         "env_time.h",
         "file_system.h",
         "file_system_helper.h",
+        "float8.h",
         "host_info.h",
         "human_readable_json.h",
         "init_main.h",
@@ -126,6 +127,15 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/tsl/platform:bfloat16",
+    ],
+)
+
+cc_library(
+    name = "float8",
+    hdrs = ["float8.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/tsl/platform:float8",
     ],
 )
 
@@ -919,6 +929,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":bfloat16",
+        ":float8",
         ":platform",
         ":tstring",
         "//tensorflow/tsl/framework:device_type",
@@ -1362,6 +1373,7 @@ filegroup(
         "file_system.h",
         "file_system_helper.h",
         "fingerprint.h",
+        "float8.h",
         "init_main.h",
         "logger.h",
         "mem.h",
@@ -1444,6 +1456,7 @@ filegroup(
         "byte_order.h",
         "cpu_info.h",
         "dynamic_annotations.h",
+        "float8.h",
         "macros.h",
         "mutex.h",
         "platform.h",
@@ -1462,6 +1475,7 @@ filegroup(
     name = "lib_internal_private_hdrs",
     srcs = [
         "bfloat16.h",
+        "float8.h",
         "raw_coding.h",
         "scanner.h",
         "str_util.h",
@@ -1513,6 +1527,7 @@ filegroup(
     name = "tflite_portable_logging_hdrs",
     srcs = [
         "bfloat16.h",
+        "float8.h",
         "logging.h",
         "macros.h",
         "platform.h",
@@ -1591,6 +1606,7 @@ filegroup(
         "file_statistics.h",
         "file_system.h",
         "file_system_helper.h",
+        "float8.h",
         "hash.h",
         "host_info.h",
         "init_main.h",

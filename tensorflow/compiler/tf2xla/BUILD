@@ -287,6 +287,7 @@ cc_library(
         "//third_party/eigen3",
         "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/platform:bfloat16",
+        "//tensorflow/core/platform:float8",
         "//tensorflow/core/platform:stringpiece",
         # Extra dependencies required for multithreaded runtime objects.
         "//tensorflow/core/platform:blocking_counter",
@@ -313,6 +314,7 @@ cc_library(
 #         "//tensorflow/tsl/platform:byte_order",
 #         "//tensorflow/tsl/platform:cord",
 #         "//tensorflow/tsl/platform:env_time",
+#         "//tensorflow/tsl/platform:float8",
 #         "//tensorflow/tsl/platform:logging",
 #         "//tensorflow/tsl/platform:macros",
 #         "//tensorflow/tsl/platform:mutex",
@@ -337,6 +339,7 @@ cc_library(
 #         "//tensorflow/core/platform:byte_order",
 #         "//tensorflow/core/platform:cord",
 #         "//tensorflow/core/platform:env_time",
+#         "//tensorflow/core/platform:float8",
 #         "//tensorflow/core/platform:logging",
 #         "//tensorflow/core/platform:macros",
 #         "//tensorflow/core/platform:mutex",

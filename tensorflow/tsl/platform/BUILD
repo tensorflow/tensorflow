@@ -967,6 +967,7 @@ cc_library(
     deps = [
         ":platform",
         ":bfloat16",
+        ":float8",
         ":tstring",
     ] + tf_platform_deps("types"),
 )
