@@ -24,7 +24,6 @@ add_mlir_library(MLIRBufferTransforms
   copy_removal.cc
   detensorize_scf_ops.cc
   generic_host_to_llvm.cc
-  inline_fusion_pass.cc
   lower_index_cast_pass.cc
   propagate_static_shapes_to_kernel.cc
   scalarization.cc
