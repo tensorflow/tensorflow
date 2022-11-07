@@ -16,8 +16,11 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
-#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/resource_loader.h"
@@ -31,17 +34,47 @@ namespace {
 TEST(XlaCompileTest, LoadBuiltExecutable) {
   std::string path = tsl::GetDataDependencyFilepath(
       "tensorflow/compiler/xla/service/xla_aot_compile_test_output");
-
   std::string serialized_aot_result;
   TF_ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
-  TF_ASSERT_OK_AND_ASSIGN(auto aot_result,
-                          cpu::CpuXlaRuntimeAotCompilationResult::FromString(
-                              serialized_aot_result));
 
-  cpu::CpuCompiler cpu_compiler;
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          aot_result->LoadExecutable(&cpu_compiler, nullptr));
+  // Get a LocalClient
+  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                          PlatformUtil::GetPlatform("Host"));
+  if (platform->VisibleDeviceCount() <= 0) {
+    EXPECT_TRUE(false) << "CPU platform has no visible devices.";
+  }
+  LocalClientOptions local_client_options;
+  local_client_options.set_platform(platform);
+  TF_ASSERT_OK_AND_ASSIGN(
+      LocalClient * client,
+      ClientLibrary::GetOrCreateLocalClient(local_client_options));
+
+  // Load from AOT result.
+  ExecutableBuildOptions executable_build_options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<LocalExecutable> local_executable,
+      client->Load(serialized_aot_result, executable_build_options));
+
+  // Run loaded excutable.
+  Literal input1 = LiteralUtil::CreateR1<double>({0.0f, 1.0f, 2.0f});
+  Literal input2 = LiteralUtil::CreateR1<double>({1.0f, 2.0f, 4.0f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      ScopedShapedBuffer array1,
+      client->LiteralToShapedBuffer(input1, client->default_device_ordinal()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ScopedShapedBuffer array2,
+      client->LiteralToShapedBuffer(input2, client->default_device_ordinal()));
+  ExecutableRunOptions executable_run_options;
+  executable_run_options.set_allocator(client->backend().memory_allocator());
+  TF_ASSERT_OK_AND_ASSIGN(
+      ScopedShapedBuffer result,
+      local_executable->Run({&array1, &array2}, executable_run_options));
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal output,
+                          client->ShapedBufferToLiteral(result));
+  Literal expected = LiteralUtil::CreateR1<double>({1.0f, 3.0f, 6.0f});
+  EXPECT_EQ(expected, output);
 }
 
 }  // namespace

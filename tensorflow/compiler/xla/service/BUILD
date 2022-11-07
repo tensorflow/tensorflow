@@ -6986,11 +6986,11 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/cpu:cpu_executable",
-        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/util:command_line_flags",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
@@ -7005,14 +7005,19 @@ tf_cc_binary(
 #     mhlo = "xla_aot_compile_test.mlir",
 # )
 #
-# tf_cc_test(
+# xla_test(
 #     name = "xla_aot_compile_test",
 #     srcs = ["xla_aot_compile_test.cc"],
+#     backends = ["cpu"],
 #     data = [
 #         ":xla_aot_compile_test_output",
 #     ],
 #     deps = [
-#         "//tensorflow/compiler/xla:status",
+#         ":platform_util",
+#         "//tensorflow/compiler/xla:executable_run_options",
+#         "//tensorflow/compiler/xla:literal_util",
+#         "//tensorflow/compiler/xla/client:client_library",
+#         "//tensorflow/compiler/xla/client:local_client",
 #         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
 #         "//tensorflow/tsl/lib/core:status_test_util",
 #         "//tensorflow/tsl/platform:env",

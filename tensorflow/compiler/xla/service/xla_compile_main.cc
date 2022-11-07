@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -52,6 +53,7 @@ xla::Status XlaCompileMain(const std::string& mhlo_path,
 
   mlir::DialectRegistry dialects;
   // TODO(b/248362914): Register all required dialects.
+  dialects.insert<mlir::arith::ArithDialect>();
   dialects.insert<mlir::mhlo::MhloDialect>();
   dialects.insert<mlir::func::FuncDialect>();
 
