@@ -49,9 +49,8 @@ inline llvm::Optional<mhlo::ComparisonDirection> mhloComparisonDirection(
       return mhlo::ComparisonDirection::LE;
     case chlo::ComparisonDirection::LT:
       return mhlo::ComparisonDirection::LT;
-    default:
-      return {};
   }
+  return {};
 }
 
 inline llvm::Optional<mhlo::ComparisonType> mhloComparisonType(
@@ -67,9 +66,8 @@ inline llvm::Optional<mhlo::ComparisonType> mhloComparisonType(
       return mhlo::ComparisonType::SIGNED;
     case chlo::ComparisonType::UNSIGNED:
       return mhlo::ComparisonType::UNSIGNED;
-    default:
-      return {};
   }
+  return {};
 }
 
 struct HloCompareAdaptor {

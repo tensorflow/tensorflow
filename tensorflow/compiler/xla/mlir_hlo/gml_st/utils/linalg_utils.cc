@@ -77,7 +77,7 @@ bool isSimpleReduction(Operation *op, int64_t *dimension, Value *operand) {
   // Check uniqueness of reduction dimension and remaining parallel iterator
   // types.
   auto iterTys = genericOp.getIteratorTypes();
-  for (int i = 0; i < iterTys.size(); i++) {
+  for (int i = 0; i < static_cast<int64_t>(iterTys.size()); i++) {
     StringRef expectedTy = i == dim ? getReductionIteratorTypeName()
                                     : getParallelIteratorTypeName();
     StringRef actualTy =

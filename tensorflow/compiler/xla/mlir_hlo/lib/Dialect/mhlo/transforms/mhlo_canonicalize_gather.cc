@@ -65,7 +65,8 @@ Value expandBatchDimension(ImplicitLocOpBuilder& b,
       originalGatherOp.getStartIndices().getType().getShape()};
   // Erase the index vector dimension if it wasn't implicit.
   int64_t indexDim = originalGatherOp.getDimensionNumbers().getIndexVectorDim();
-  if (indexDim < newShape.size()) newShape.erase(newShape.begin() + indexDim);
+  if (indexDim < static_cast<int64_t>(newShape.size()))
+    newShape.erase(newShape.begin() + indexDim);
 
   // `input` has one batch dimension, if we still have one now, there is nothing
   // to do.
@@ -79,7 +80,7 @@ Value expandBatchDimension(ImplicitLocOpBuilder& b,
       RankedTensorType::get(newShape, input.getType().getElementType());
   auto reassociation =
       *getReassociationIndicesForReshape(input.getType(), newType);
-  if (newShape.size() > input.getType().getRank()) {
+  if (static_cast<int64_t>(newShape.size()) > input.getType().getRank()) {
     return b.create<tensor::ExpandShapeOp>(newType, input, reassociation);
   }
   return b.create<tensor::CollapseShapeOp>(newType, input, reassociation);

@@ -48,15 +48,6 @@ namespace mhlo {
 
 namespace {
 
-bool isIotaArray(llvm::ArrayRef<int64_t> array, int expectedSize = -1) {
-  if (expectedSize != -1 && static_cast<int>(array.size()) != expectedSize)
-    return false;
-  for (int64_t i = 0, e = array.size(); i < e; ++i) {
-    if (i != array[i]) return false;
-  }
-  return true;
-}
-
 Value castToIndex(OpBuilder& b, Location loc, TensorType originalType,
                   Value value) {
   Type elementTy = originalType.getElementType();
@@ -235,22 +226,6 @@ struct GatherPattern : public OpConversionPattern<mhlo::GatherOp> {
     return success();
   }
 };
-
-static SmallVector<Value, 8> getReduceOpEmptyTensorDynSizes(
-    OpBuilder& b, Location loc, Value operand, int64_t srcRank,
-    RankedTensorType resultType, ArrayRef<int64_t> reductionDims) {
-  SmallVector<Value, 8> dynShape;
-  for (size_t i = 0, j = 0; i < srcRank; ++i) {
-    if (j < reductionDims.size() && reductionDims[j] == i) {
-      ++j;
-      continue;
-    }
-    size_t resultIndex = i - j;
-    if (!resultType.isDynamicDim(resultIndex)) continue;
-    dynShape.push_back(b.create<tensor::DimOp>(loc, operand, resultIndex));
-  }
-  return dynShape;
-}
 
 bool isInBodyOfThloOp(Operation* op) {
   auto* parentOp = op->getParentRegion()->getParentOp();

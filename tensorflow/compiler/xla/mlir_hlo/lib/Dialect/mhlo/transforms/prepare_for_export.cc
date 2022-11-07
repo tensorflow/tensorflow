@@ -38,11 +38,11 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
-namespace {
 
 #define GEN_PASS_DEF_PREPAREFOREXPORTPASS
 #include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
 
+namespace {
 // Prepare module for export to XLA HLO.
 struct PrepareForExportPass
     : public impl::PrepareForExportPassBase<PrepareForExportPass> {
@@ -161,10 +161,6 @@ void PrepareForExportPass::runOnOperation() {
     if (auto bcastOp = dyn_cast<BroadcastInDimOp>(op))
       return prepareBroadcastInDim(bcastOp);
   });
-}
-
-std::unique_ptr<Pass> createPrepareForExportPass() {
-  return std::make_unique<PrepareForExportPass>();
 }
 
 }  // end namespace mhlo

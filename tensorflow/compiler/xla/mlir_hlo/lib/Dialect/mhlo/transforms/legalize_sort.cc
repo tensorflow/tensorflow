@@ -510,7 +510,7 @@ struct SortOpPattern : public OpRewritePattern<SortOp> {
     forOps.reserve(inputRank - 1);
     ivs.reserve(inputRank - 1);
     for (int64_t i = 0; i < inputRank; ++i) {
-      if (i != op.getDimension()) {
+      if (i != static_cast<int64_t>(op.getDimension())) {
         Value dim = b.create<arith::ConstantIndexOp>(i);
         Value ub = b.create<tensor::DimOp>(firstOperand, dim);
         scf::ForOp& forOp = forOps.emplace_back(

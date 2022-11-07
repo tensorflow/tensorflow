@@ -496,7 +496,7 @@ LogicalResult AsyncStartOp::verify() {
                          << ", but expected: " << calleeType.getNumInputs()
                          << ".";
   }
-  for (int i = 0; i < getOperands().size(); ++i) {
+  for (int i = 0; i < static_cast<int64_t>(getOperands().size()); ++i) {
     if (calleeType.getInput(i) != getOperandTypes()[i]) {
       return emitOpError() << "type mismatch on argument #" << i << " of "
                            << getCalledComputation()
@@ -850,7 +850,8 @@ LogicalResult CustomCallOp::verify() {
     auto operandIndex = alias.getOperandIndex();
     auto operandTupleIndices = alias.getOperandTupleIndices();
 
-    if (operandIndex < 0 || operandIndex >= getInputs().size())
+    if (operandIndex < 0 ||
+        operandIndex >= static_cast<int64_t>(getInputs().size()))
       return emitOpError()
              << "expects operandIndex in the output_operand_alias attribute "
                 "to be in range [0, "
@@ -859,7 +860,8 @@ LogicalResult CustomCallOp::verify() {
     Type operandPart = getOperand(operandIndex).getType();
     for (auto i : operandTupleIndices) {
       if (!operandPart.isa<TupleType>() ||
-          i >= operandPart.cast<TupleType>().size() || i < 0)
+          i >= static_cast<int64_t>(operandPart.cast<TupleType>().size()) ||
+          i < 0)
         return emitOpError()
                << "operand_tuple_indices in the output_operand_alias "
                   "attribute out of bounds";
@@ -870,7 +872,8 @@ LogicalResult CustomCallOp::verify() {
                           : getResult(0).getType();
     for (auto i : outputTupleIndices) {
       if (!outputPart.isa<TupleType>() ||
-          i >= outputPart.cast<TupleType>().size() || i < 0)
+          i >= static_cast<int64_t>(outputPart.cast<TupleType>().size()) ||
+          i < 0)
         return emitOpError()
                << "output_tuple_indices in the output_operand_alias "
                   "attribute out of bounds";
@@ -4479,28 +4482,6 @@ OpFoldResult CopyOp::fold(ArrayRef<Attribute> operands) { return getOperand(); }
 //===----------------------------------------------------------------------===//
 // ReduceWindowOp
 //===----------------------------------------------------------------------===//
-
-namespace {
-// Infer the return-type of ReduceWindowOp.
-SmallVector<TensorType> inferReduceWindowOpReturnType(
-    ArrayRef<TensorType> inputTypes, ArrayRef<TensorType> initTypes,
-    const ArrayRef<hlo::WindowDimension> window) {
-  SmallVector<TensorType> outputTypes;
-  for (size_t i = 0; i < inputTypes.size(); ++i) {
-    if (!inputTypes[i].hasRank()) {
-      outputTypes.push_back(
-          UnrankedTensorType::get(initTypes[i].getElementType()));
-      continue;
-    }
-
-    outputTypes.push_back(RankedTensorType::get(
-        inferWindowOutputShape(inputTypes[i].getShape(), window),
-        initTypes[i].getElementType()));
-  }
-
-  return outputTypes;
-}
-}  // namespace
 
 LogicalResult ReduceWindowOp::inferReturnTypeComponents(
     MLIRContext*, Optional<Location> location, ValueShapeRange operands,

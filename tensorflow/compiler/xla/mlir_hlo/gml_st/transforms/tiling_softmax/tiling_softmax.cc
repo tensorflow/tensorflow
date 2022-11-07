@@ -93,7 +93,8 @@ LogicalResult tilePartialSoftmax(
 
   // Fuse through the bcast reduction chains.
   Value commonTiledSource;
-  for (int64_t i = 0; i < simpleBcastReductions.size(); i++) {
+  for (int64_t i = 0; i < static_cast<int64_t>(simpleBcastReductions.size());
+       i++) {
     if (!simpleBcastReductions[i]) continue;
 
     // Fuse.
@@ -110,7 +111,7 @@ LogicalResult tilePartialSoftmax(
   }
 
   // Also use the common tiled source value for the remaining operands.
-  for (int64_t i = 0; i < simpleBcastReductions.size(); i++) {
+  for (size_t i = 0; i < simpleBcastReductions.size(); i++) {
     if (simpleBcastReductions[i]) continue;
     (*tiledOp)->setOperand(i, commonTiledSource);
   }
@@ -151,7 +152,8 @@ struct TilePartialSoftmaxPattern
               [&](OpBuilder &b, Operation *op) -> SmallVector<Value> {
             Location loc = op->getLoc();
             SmallVector<Value> tileSizeValues;
-            for (int64_t i = 0; i < tileSizes.size(); i++) {
+            for (int64_t i = 0; i < static_cast<int64_t>(tileSizes.size());
+                 i++) {
               // Skip tiling the reduction dimension. By convention, this is a
               // tile size of 0.
               int64_t tileSizeInDim =

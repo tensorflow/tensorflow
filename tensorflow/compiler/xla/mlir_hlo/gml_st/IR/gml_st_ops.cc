@@ -123,18 +123,6 @@ void GmlStDialect::initialize() {
       >();
 }
 
-// Helper function to ensure index types for some attrbutes when folding.
-static OpFoldResult ensureIndexTypeForAttribute(OpFoldResult foldResult) {
-  if (foldResult.is<Attribute>()) {
-    auto attr = foldResult.get<Attribute>().dyn_cast<IntegerAttr>();
-    if (!attr.getType().isa<IndexType>()) {
-      Builder b(attr.getContext());
-      return b.getIndexAttr(attr.getInt());
-    }
-  }
-  return foldResult;
-}
-
 Operation *GmlStDialect::materializeConstant(OpBuilder &builder, Attribute attr,
                                              Type type, Location loc) {
   if (type.isa<IndexType>()) {
@@ -1629,94 +1617,6 @@ void TileOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                          MLIRContext *context) {
   results.add<FoldConstantsIntoTileType>(context);
 }
-
-namespace {
-
-OpFoldResult multiplyOperandsOrIntegers(OpBuilder &builder, Location loc,
-                                        OpFoldResult lhs, OpFoldResult rhs) {
-  // Both operands are static.
-  if (lhs.is<Attribute>() && rhs.is<Attribute>()) {
-    return builder.getI64IntegerAttr(
-        lhs.get<Attribute>().cast<IntegerAttr>().getInt() *
-        rhs.get<Attribute>().cast<IntegerAttr>().getInt());
-  }
-
-  // Exploit commutativity and move static operand to the left (if any).
-  if (rhs.is<Attribute>()) std::swap(lhs, rhs);
-
-  // Create constant if needed.
-  if (lhs.is<Attribute>()) {
-    int64_t lhsInt = lhs.get<Attribute>().cast<IntegerAttr>().getInt();
-
-    // Exploit static operand if possible.
-    if (lhsInt == 0) return lhs;
-    if (lhsInt == 1) return rhs;
-
-    lhs = builder.create<arith::ConstantIndexOp>(loc, lhsInt).getResult();
-  }
-
-  // Multiply.
-  return builder.create<arith::MulIOp>(loc, lhs.get<Value>(), rhs.get<Value>())
-      .getResult();
-}
-
-OpFoldResult addOperandsOrIntegers(OpBuilder &builder, Location loc,
-                                   OpFoldResult lhs, OpFoldResult rhs) {
-  // Both operands are static.
-  if (lhs.is<Attribute>() && rhs.is<Attribute>()) {
-    return builder.getI64IntegerAttr(
-        lhs.get<Attribute>().cast<IntegerAttr>().getInt() +
-        rhs.get<Attribute>().cast<IntegerAttr>().getInt());
-  }
-
-  // Exploit commutativity and move static operand to the left (if any).
-  if (rhs.is<Attribute>()) std::swap(lhs, rhs);
-
-  // Create constant if needed.
-  if (lhs.is<Attribute>()) {
-    int64_t lhsInt = lhs.get<Attribute>().cast<IntegerAttr>().getInt();
-
-    // Exploit static operand if possible.
-    if (lhsInt == 0) return rhs;
-
-    lhs = builder.create<arith::ConstantIndexOp>(loc, lhsInt).getResult();
-  }
-
-  // Add.
-  return builder.create<arith::AddIOp>(loc, lhs.get<Value>(), rhs.get<Value>())
-      .getResult();
-}
-
-// Compose offsets with newOffset = supersetOffset + supersetStride * offset.
-SmallVector<OpFoldResult> composeOffsets(
-    const llvm::SmallVectorImpl<OpFoldResult> &supersetOffsets,
-    const llvm::SmallVectorImpl<OpFoldResult> &supersetStrides,
-    const llvm::SmallVectorImpl<OpFoldResult> &offsets, Location loc,
-    OpBuilder &builder) {
-  SmallVector<OpFoldResult> composedOffsets;
-  for (auto it : llvm::zip(supersetOffsets, supersetStrides, offsets)) {
-    composedOffsets.push_back(addOperandsOrIntegers(
-        builder, loc, std::get<0>(it),
-        multiplyOperandsOrIntegers(builder, loc, std::get<1>(it),
-                                   std::get<2>(it))));
-  }
-  return composedOffsets;
-}
-
-// Compose strides with newStride = supersetStride * stride.
-SmallVector<OpFoldResult> composeStrides(
-    OpBuilder &builder, Location loc,
-    const llvm::SmallVectorImpl<OpFoldResult> &supersetStrides,
-    const llvm::SmallVectorImpl<OpFoldResult> &strides) {
-  SmallVector<OpFoldResult> composedStrides;
-  for (auto it : llvm::zip(supersetStrides, strides)) {
-    composedStrides.push_back(multiplyOperandsOrIntegers(
-        builder, loc, std::get<0>(it), std::get<1>(it)));
-  }
-  return composedStrides;
-}
-
-}  // namespace
 
 //===----------------------------------------------------------------------===//
 // SetYieldOp

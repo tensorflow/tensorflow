@@ -127,7 +127,8 @@ struct CustomCallOpInterface
         }
       }
       llvm::SmallVector<int64_t> resultToTargetResultMapping;
-      for (int i = numArguments; i < bufferArgs.size(); ++i) {
+      for (int32_t i = numArguments;
+           i < static_cast<int64_t>(bufferArgs.size()); ++i) {
         if (bufferArgs[i]) {
           resultToTargetResultMapping.push_back(i - numArguments);
           bufferArgs[nextIndex++] = bufferArgs[i];
