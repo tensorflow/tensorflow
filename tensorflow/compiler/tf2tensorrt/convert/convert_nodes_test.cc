@@ -5723,7 +5723,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/1,
                  /*expected_output_dims=*/{3, 2},
                  /*expected_output=*/{1, 2, 3, 4, 5, 6},
-                 /*conversion_status=*/modified_batch_dim_status, Status::OK(),
+                 /*conversion_status=*/modified_batch_dim_status, OkStatus(),
                  /*partial_input_dims=*/{-1, -1, -1}},
       // Test dynamic input with shrink_axis_mask along axis=0
       TestParams{/*input_dims=*/{2, 3, 2},
@@ -5737,7 +5737,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/1,
                  /*expected_output_dims=*/{3, 2},
                  /*expected_output=*/{1, 2, 3, 4, 5, 6},
-                 /*conversion_status=*/modified_batch_dim_status, Status::OK(),
+                 /*conversion_status=*/modified_batch_dim_status, OkStatus(),
                  /*partial_input_dims=*/{-1, -1, 2}},
       // Test dynamic input sizes with multiple axes shrinking
       TestParams{/*input_dims=*/{2, 3, 2},
@@ -5751,7 +5751,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/3,
                  /*expected_output_dims=*/{2},
                  /*expected_output=*/{1, 2},
-                 /*conversion_status=*/modified_batch_dim_status, Status::OK(),
+                 /*conversion_status=*/modified_batch_dim_status, OkStatus(),
                  /*partial_input_dims=*/{-1, -1, 2}},
   };
 
