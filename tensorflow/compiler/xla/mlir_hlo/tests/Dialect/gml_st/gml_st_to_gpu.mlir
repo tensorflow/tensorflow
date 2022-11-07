@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt %s -split-input-file -verify-diagnostics \
-// RUN:   -gml-st-to-gpu="block-distribution-label=block warp-distribution-label=warp" -cse \
+// RUN:   --gml-st-simtfy="block-distribution-label=block" --gml-st-to-gpu="warp-distribution-label=warp" -cse \
 // RUN: | FileCheck %s
 // We run CSE above to deduplicate constant definitions, which would confuse
 // FileCheck.
@@ -111,10 +111,10 @@ func.func @too_deep_nesting() {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %alloc = memref.alloc() : memref<index>
+  // expected-error@+1 {{failed to simtfy}}
   gml_st.parallel (%arg3) = (%c0) to (%c1) step (%c1) distribution ("block") {
     gml_st.parallel (%arg4) = (%c0) to (%c1) step (%c1) distribution ("warp") {
       gml_st.parallel (%arg5) = (%c0) to (%c1) step (%c1) distribution ("thread") {
-        // expected-error@+1 {{failed to simtfy}}
         gml_st.parallel (%arg6) = (%c0) to (%c1) step (%c1) {
           memref.store %c0, %alloc[] : memref<index>
           gml_st.set_yield
@@ -137,9 +137,9 @@ func.func @mismatched_bounds() {
   %c2 = arith.constant 2 : index
   %alloc1 = memref.alloc() : memref<index>
   %alloc2 = memref.alloc() : memref<index>
+  // expected-error@+1 {{failed to simtfy}}
   gml_st.parallel (%arg3) = (%c0) to (%c1) step (%c1) distribution ("block") {
     gml_st.parallel (%arg4) = (%c0) to (%c1) step (%c1) distribution ("warp") {
-      // expected-error@+1 {{failed to simtfy}}
       gml_st.parallel (%arg5) = (%c0) to (%c1) step (%c1) distribution ("thread") {
         memref.store %c0, %alloc1[] : memref<index>
         gml_st.set_yield
@@ -163,7 +163,7 @@ func.func @mmultple_induction_vars() {
   %c2 = arith.constant 2 : index
   %alloc = memref.alloc() : memref<index>
   // expected-error@+1 {{failed to simtfy}}
-  gml_st.parallel (%arg1, %arg2) = (%c0, %c0) to (%c1, %c1) step (%c1, %c1) {
+  gml_st.parallel (%arg1, %arg2) = (%c0, %c0) to (%c1, %c1) step (%c1, %c1) distribution ("block") {
     memref.store %c0, %alloc[] : memref<index>
     gml_st.set_yield
   }

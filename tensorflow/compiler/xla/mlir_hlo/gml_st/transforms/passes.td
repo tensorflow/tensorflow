@@ -90,20 +90,28 @@ def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {
 
 def GmlStToGpuPass : Pass<"gml-st-to-gpu", "mlir::func::FuncOp"> {
   let summary = "Lower nested `gml_st.parallel` to `gpu.launch`";
-  let dependentDialects = ["::mlir::AffineDialect",
-                           "::mlir::arith::ArithDialect",
-                           "::mlir::gpu::GPUDialect", "::mlir::scf::SCFDialect",
+  let dependentDialects = ["::mlir::gpu::GPUDialect",
                            "::mlir::vector::VectorDialect",
                            "::mlir::memref::MemRefDialect"];
   let options = [
-    Option<"blockDistributionLabel", "block-distribution-label",
-           "std::string", /*default=*/"\"block\"",
-           "Direct children of `gml_st.parallel` loops with this distribution "
-           "type are distributed over blocks.">,
     Option<"warpDistributionLabel", "warp-distribution-label",
            "std::string", /*default=*/"\"warp\"",
            "Direct children of `gml_st.parallel` loops with this distribution "
            "type are distributed over warps.">
+  ];
+}
+
+def GmlStSimtfyPass : Pass<"gml-st-simtfy", "mlir::func::FuncOp"> {
+  let summary = "Lower nested `gml_st.parallel` to `gpu.launch`";
+  let dependentDialects = ["::mlir::AffineDialect",
+                           "::mlir::arith::ArithDialect",
+                           "::mlir::gpu::GPUDialect",
+                           "::mlir::scf::SCFDialect"];
+  let options = [
+    Option<"blockDistributionLabel", "block-distribution-label",
+           "std::string", /*default=*/"\"block\"",
+           "Direct children of `gml_st.parallel` loops with this distribution "
+           "type are distributed over blocks.">
   ];
 }
 

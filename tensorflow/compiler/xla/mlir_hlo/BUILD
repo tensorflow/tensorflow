@@ -1304,6 +1304,7 @@ cc_library(
     srcs = [
         "gml_st/transforms/collapse_materialize_ops/collapse_materialize_ops.cc",
         "gml_st/transforms/fusion/fusion.cc",
+        "gml_st/transforms/gml_st_simtfy/gml_st_simtfy.cc",
         "gml_st/transforms/gml_st_to_gpu/gml_st_to_gpu.cc",
         "gml_st/transforms/gml_st_to_scf/gml_st_to_scf.cc",
         "gml_st/transforms/passes.h.inc",

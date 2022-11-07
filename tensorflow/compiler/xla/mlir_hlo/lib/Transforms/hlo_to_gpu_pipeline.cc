@@ -111,8 +111,10 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
   pm.addPass(createCanonicalizerPass());
 
   // Linalg + GmlSt -> GPU
-  pm.addNestedPass<FuncOp>(gml_st::createGmlStToGpuPass(
-      kBlockDistributionLabel, kWarpDistributionLabel));
+  pm.addNestedPass<FuncOp>(
+      gml_st::createGmlStSimtfyPass(kBlockDistributionLabel));
+  pm.addNestedPass<FuncOp>(
+      gml_st::createGmlStToGpuPass(kWarpDistributionLabel));
   pm.addNestedPass<FuncOp>(gml_st::createGmlStToScfPass());
   pm.addNestedPass<FuncOp>(arith::createArithExpandOpsPass());
   pm.addNestedPass<FuncOp>(createConvertLinalgToLoopsPass());

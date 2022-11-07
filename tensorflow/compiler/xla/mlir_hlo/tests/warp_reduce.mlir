@@ -1,4 +1,5 @@
-// RUN: mlir-hlo-opt -split-input-file -gml-st-to-gpu="block-distribution-label=block warp-distribution-label=warp" %s | FileCheck %s
+// RUN: mlir-hlo-opt -split-input-file -gml-st-simtfy="block-distribution-label=block" \
+// RUN:   -gml-st-to-gpu="warp-distribution-label=warp" %s | FileCheck %s
 
 // CHECK-LABEL: func @vector_reduce
 func.func @vector_reduce(%arg0 : memref<1xf32>) {

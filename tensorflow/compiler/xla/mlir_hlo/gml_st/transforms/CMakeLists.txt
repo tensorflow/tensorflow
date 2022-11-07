@@ -30,6 +30,7 @@ include_directories(BEFORE
 add_mlir_library(GmlStPasses
   collapse_materialize_ops/collapse_materialize_ops.cc
   fusion/fusion.cc
+  gml_st_simtfy/gml_st_simtfy.cc
   gml_st_to_scf/gml_st_to_scf.cc
   gml_st_to_gpu/gml_st_to_gpu.cc
   tiling/tiling.cc
