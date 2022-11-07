@@ -41,6 +41,8 @@ namespace {
 constexpr const char* kWarpDistributionLabel = "warp";
 constexpr const char* kThreadDistributionLabel = "thread";
 
+using OpFoldResults = SmallVector<OpFoldResult>;
+
 // Returns 'count' rounded up to power of two, up to warp size (32).
 static int64_t getGroupSize(int64_t count) {
   constexpr int64_t kWarpSize = 32;
@@ -67,12 +69,13 @@ struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
     }
 
     // Match only cwise `linalg.generic` ops on the shape 1x?.
-    auto genericOpTy =
-        genericOp.getResultTypes().front().dyn_cast<RankedTensorType>();
-    if (!isCwiseGenericOp(genericOp) || !genericOpTy ||
-        genericOpTy.getRank() != 2 || genericOpTy.getDimSize(0) != 1) {
-      return rewriter.notifyMatchFailure(genericOp,
-                                         "not a cwise op on tensor<1x?>");
+    if (!isCwiseGenericOp(genericOp)) {
+      return rewriter.notifyMatchFailure(genericOp, "not element-wise");
+    }
+    Value genericOpResult = genericOp.getResult(0);
+    auto ploopTy = genericOpResult.getType().dyn_cast<RankedTensorType>();
+    if (!ploopTy || ploopTy.getRank() != 2 || ploopTy.getDimSize(0) != 1) {
+      return rewriter.notifyMatchFailure(genericOp, "result no tensor<1x?>");
     }
 
     // Only tile root ops on the warp level.
@@ -82,7 +85,7 @@ struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
     }
 
     // The number of threads per row (power of two, <= kWarpSize).
-    int64_t groupSize = getGroupSize(genericOpTy.getDimSize(1));
+    int64_t groupSize = getGroupSize(ploopTy.getDimSize(1));
 
     // Constants and attributes.
     Location loc = genericOp.getLoc();
@@ -99,13 +102,12 @@ struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
 
     // Create `gml_st.parallel` loop to distribute among lanes.
     Value init = genericOp.getOutputs().front();
-    Value genericOpResult = genericOp.getResults().front();
     Value dimSize =
         rewriter.createOrFold<tensor::DimOp>(loc, genericOpResult, c1);
     Value dimSizePlusWarpSizeMinusOne =
         rewriter.createOrFold<arith::AddIOp>(loc, dimSize, cGroupSizeMinusOne);
     auto ploop = rewriter.create<gml_st::ParallelOp>(
-        loc, genericOpTy, c0, cGroupSize, c1, threadDistrLabel,
+        loc, ploopTy, c0, cGroupSize, c1, threadDistrLabel,
         [&](OpBuilder& b, Location loc, ValueRange ivs) {
           // Compute the lane tile with a stride of `warpSize`. This tile
           // defines the subset of the result that is produced by the lane.
@@ -122,15 +124,13 @@ struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
               b.create<arith::SubIOp>(loc, dimSizePlusWarpSizeMinusOne, laneId),
               cGroupSize);
           Value laneTile = b.createOrFold<gml_st::TileOp>(
-              loc, SmallVector<OpFoldResult>{zeroAttr, laneId},
-              SmallVector<OpFoldResult>{oneAttr, laneTileSize},
-              SmallVector<OpFoldResult>{oneAttr, groupSizeAttr});
+              loc, OpFoldResults{zeroAttr, laneId},
+              OpFoldResults{oneAttr, laneTileSize},
+              OpFoldResults{oneAttr, groupSizeAttr});
+          Value laneInit = b.create<gml_st::MaterializeOp>(loc, init, laneTile);
 
           // Create `gml_st.for` loop to iterate over the lane's tile.
-          Type elemTy = genericOpTy.getElementType();
-          auto sloopTy =
-              RankedTensorType::get({1, ShapedType::kDynamicSize}, elemTy);
-          Value laneInit = b.create<gml_st::MaterializeOp>(loc, init, laneTile);
+          auto sloopTy = ploopTy.clone({1, ShapedType::kDynamicSize});
           auto sloop = b.create<gml_st::ForOp>(
               loc, sloopTy, c0, laneTileSize, c1, laneInit,
               [&](OpBuilder& b, Location loc, ValueRange ivs, ValueRange aggr) {
@@ -140,45 +140,39 @@ struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
                 Value iterTileOffset = b.create<arith::AddIOp>(
                     loc, laneId, b.create<arith::MulIOp>(loc, i, cGroupSize));
                 Value iterTile = b.create<gml_st::TileOp>(
-                    loc, SmallVector<OpFoldResult>{zeroAttr, iterTileOffset},
-                    SmallVector<OpFoldResult>{oneAttr, oneAttr},
-                    SmallVector<OpFoldResult>{oneAttr, oneAttr});
+                    loc, OpFoldResults{zeroAttr, iterTileOffset},
+                    OpFoldResults{oneAttr, oneAttr},
+                    OpFoldResults{oneAttr, oneAttr});
 
                 // Materialize scalar subsets per operand.
                 SmallVector<Value> iterOperands =
                     llvm::to_vector(llvm::map_range(
                         genericOp.getInputs(), [&](Value arg) -> Value {
-                          return b.create<gml_st::MaterializeOp>(loc, elemTy,
-                                                                 arg, iterTile);
+                          return b.create<gml_st::MaterializeOp>(
+                              loc, ploopTy.getElementType(), arg, iterTile);
                         }));
 
                 // Create scalar computation from `linalg.generic` body by (i)
                 // mapping its block arguments to the newly materialized
                 // scalar operands, and (ii) cloning the body.
                 BlockAndValueMapping bvm;
-                for (const auto& [blockArg, iterOperand] : llvm::zip(
-                         genericOp.getBlock()->getArguments(), iterOperands)) {
-                  bvm.map(blockArg, iterOperand);
-                }
-                for (auto& innerop :
+                bvm.map(genericOp.getBlock()->getArguments(), iterOperands);
+                for (auto& innerOp :
                      genericOp.getBody()->without_terminator()) {
-                  rewriter.clone(innerop, bvm);
+                  rewriter.clone(innerOp, bvm);
                 }
 
                 // Yield iteration result.
-                Value iterResult = bvm.lookup(genericOp.getBody()
-                                                  ->getTerminator()
-                                                  ->getOperands()
-                                                  .front());
-                Value iterTileInLaneTile = b.create<gml_st::TileOp>(
-                    loc, SmallVector<OpFoldResult>{zeroAttr, i},
-                    SmallVector<OpFoldResult>{oneAttr, oneAttr},
-                    SmallVector<OpFoldResult>{oneAttr, oneAttr});
+                Value iterResult = bvm.lookup(
+                    genericOp.getBody()->getTerminator()->getOperand(0));
+                Value iterTileInLaneTile =
+                    b.create<gml_st::TileOp>(loc, OpFoldResults{zeroAttr, i},
+                                             OpFoldResults{oneAttr, oneAttr},
+                                             OpFoldResults{oneAttr, oneAttr});
                 b.create<gml_st::SetYieldOp>(loc, iterResult, aggr,
                                              iterTileInLaneTile);
               });
-          b.create<gml_st::SetYieldOp>(loc, sloop.getResults().front(), init,
-                                       laneTile);
+          b.create<gml_st::SetYieldOp>(loc, sloop.getResult(0), init, laneTile);
         });
 
     rewriter.replaceOp(genericOp, ploop.getResults());
@@ -240,22 +234,19 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
 
     // Create warp-sized partial reduction result tensor.
     Value warpResult = rewriter.create<tensor::EmptyOp>(
-        loc, SmallVector<OpFoldResult>{oneAttr, groupSizeAttr}, scalarTy);
-    Value initTile =
-        rewriter.create<TileOp>(loc, SmallVector<OpFoldResult>{zeroAttr});
+        loc, OpFoldResults{oneAttr, groupSizeAttr}, scalarTy);
+    Value initTile = rewriter.create<TileOp>(loc, OpFoldResults{zeroAttr});
     Value initMaterialized =
         rewriter.create<MaterializeOp>(loc, scalarTy, init, initTile);
     warpResult =
         rewriter.create<linalg::FillOp>(loc, initMaterialized, warpResult)
-            .getResults()
-            .front();
+            .getResult(0);
 
     // Create gml_st.parallel finalizing the partial result.
     auto parallelOpBodyBuilderFn = [&](OpBuilder& b, Location loc,
                                        ValueRange ivs) {
       Value laneId = ivs.front();
-      Value laneTile =
-          b.create<TileOp>(loc, SmallVector<OpFoldResult>{zeroAttr, laneId});
+      Value laneTile = b.create<TileOp>(loc, OpFoldResults{zeroAttr, laneId});
       Value laneResult = b.create<MaterializeOp>(loc, warpResult, laneTile);
 
       // Create gml_st.for sequentially reducing parts of the row.
@@ -271,8 +262,8 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
             b.create<MaterializeOp>(loc, scalarTy, operand, operandTile);
 
         // Materialize intermediate result.
-        Value iterationTile = rewriter.create<TileOp>(
-            loc, SmallVector<OpFoldResult>{zeroAttr, zeroAttr});
+        Value iterationTile =
+            rewriter.create<TileOp>(loc, OpFoldResults{zeroAttr, zeroAttr});
         Value iterationResult = rewriter.create<MaterializeOp>(
             loc, scalarTy, laneAcc, iterationTile);
 
@@ -283,8 +274,8 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
         for (Operation& inner : genericOp.getBody()->without_terminator()) {
           rewriter.clone(inner, bvm);
         }
-        iterationResult = bvm.lookup(
-            genericOp.getBody()->getTerminator()->getOperands().front());
+        iterationResult =
+            bvm.lookup(genericOp.getBody()->getTerminator()->getOperand(0));
 
         b.create<gml_st::SetYieldOp>(loc, iterationResult, laneAcc,
                                      iterationTile);
@@ -292,8 +283,7 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
       laneResult = b.create<gml_st::ForOp>(loc, laneResult.getType(), laneId,
                                            reductionDimSize, cGroupSize,
                                            laneResult, forOpBodyBuilderFn)
-                       .getResults()
-                       .front();
+                       .getResult(0);
 
       b.create<gml_st::SetYieldOp>(loc, laneResult, warpResult, laneTile);
     };
@@ -301,8 +291,7 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
                      .create<gml_st::ParallelOp>(
                          loc, warpResult.getType(), c0, cGroupSize, c1,
                          threadDistrLabel, parallelOpBodyBuilderFn)
-                     .getResults()
-                     .front();
+                     .getResult(0);
 
     // Change existing linalg.generic to warp-reduce the partial results.
     rewriter.updateRootInPlace(genericOp, [&] {
@@ -353,7 +342,7 @@ struct TilingGPUWarpPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingGPUWarpPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createTilingGpuWarpPass() {
   return std::make_unique<TilingGPUWarpPass>();
 }
 

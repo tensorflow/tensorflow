@@ -72,7 +72,7 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
         /*distribute=*/true, warpTileDim, kWarpDistributionLabel));
 
     // GPU-specific tiling for ops on the warp level.
-    pm.addNestedPass<FuncOp>(gml_st::createTilingGPUWarpPass());
+    pm.addNestedPass<FuncOp>(gml_st::createTilingGpuWarpPass());
     pm.addNestedPass<FuncOp>(createScalarizationPass());
 
     pm.addNestedPass<FuncOp>(gml_st::createVectorizeGmlStLoopsPass(

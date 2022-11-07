@@ -57,7 +57,7 @@ def TilingCwisePass : Pass<"gml-tiling-cwise", "mlir::func::FuncOp"> {
 
 def TilingGPUWarpPass : Pass<"gml-tiling-gpu-warp", "mlir::func::FuncOp"> {
   let summary = "Tile warp-level ops for GPU";
-  let constructor = "::mlir::gml_st::createTilingGPUWarpPass()";
+  let constructor = "::mlir::gml_st::createTilingGpuWarpPass()";
   let dependentDialects = ["::mlir::gml_st::GmlStDialect",
                            "::mlir::arith::ArithDialect"];
 }

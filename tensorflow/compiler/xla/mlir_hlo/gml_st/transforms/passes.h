@@ -49,7 +49,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass(
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass();
 
 /// Pass to tile warp-level ops on GPU.
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingGPUWarpPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createTilingGpuWarpPass();
 
 /// Pass to match, tile, and fuse softmax implementations.
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass(
