@@ -61,6 +61,8 @@ This release contains contributions from many people at Google, as well as:
 
 * `StatusOr::ConsumeValueOrDie` and `StatusOr::ValueOrDie`, both deprecated in
   TF 2.10 has been removed.
+* `Status::OK` static constructor has been removed. Use `OkStatus()` or
+  `Status()` (backward compatible) instead.
 
 
 ## Breaking Changes
