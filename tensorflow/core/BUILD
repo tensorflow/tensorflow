@@ -1455,6 +1455,7 @@ cc_library(
     }) +
     # The TF proto implementations that we will statically link here.
     [
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc_impl",
         "//tensorflow/core/profiler:profiler_options_proto_cc_impl",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl",

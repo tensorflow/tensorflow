@@ -59,16 +59,16 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const absl::string_view exported_names_str,
          const absl::string_view tags,
          const absl::string_view quant_opts_serialized) {
-        const std::string graph_def_serialized =
+        const std::string exported_model_serialized =
             tensorflow::quantization::QuantizeQatModel(saved_model_path,
                                                        exported_names_str, tags,
-                                                       quant_opts_serialized)
-                .first;
+                                                       quant_opts_serialized);
 
-        return py::bytes(graph_def_serialized);
+        return py::bytes(exported_model_serialized);
       },
       R"pbdoc(
-      Returns serialized GraphDef of a TF model.
+      Returns serialized ExportedModel that contains the quantized model's
+      GraphDef and metadata.
     )pbdoc");
   m.def(
       "quantize_ptq_dynamic_range",
@@ -76,16 +76,16 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const absl::string_view exported_names_str,
          const absl::string_view tags,
          const absl::string_view quant_opts_serialized) {
-        const std::string graph_def_serialized =
+        const std::string exported_model_serialized =
             tensorflow::quantization::QuantizePtqDynamicRange(
                 saved_model_path, exported_names_str, tags,
-                quant_opts_serialized)
-                .first;
+                quant_opts_serialized);
 
-        return py::bytes(graph_def_serialized);
+        return py::bytes(exported_model_serialized);
       },
       R"pbdoc(
-      Returns serialized GraphDef of a TF model.
+      Returns serialized ExportedModel that contains the quantized model's
+      GraphDef and metadata.
     )pbdoc");
   m.def(
       "quantize_ptq_model_pre_calibration",
@@ -93,15 +93,16 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const absl::string_view exported_names_str,
          const absl::string_view tags,
          const absl::string_view quant_opts_serialized) {
-        const auto [graph_def_serialized, init_node_name] =
+        const std::string exported_model_serialized =
             tensorflow::quantization::QuantizePtqModelPreCalibration(
                 saved_model_path, exported_names_str, tags,
                 quant_opts_serialized);
 
-        return std::make_pair(py::bytes(graph_def_serialized), init_node_name);
+        return py::bytes(exported_model_serialized);
       },
       R"pbdoc(
-      Returns serialized GraphDef of a TF model.
+      Returns serialized ExportedModel that contains the model's GraphDef and
+      metadata. The GraphDef contains extra ops required for calibration.
     )pbdoc");
   m.def(
       "quantize_ptq_model_post_calibration",
@@ -109,14 +110,15 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const absl::string_view exported_names_str,
          const absl::string_view tags,
          const absl::string_view quant_opts_serialized) {
-        const auto [graph_def_serialized, init_node_name] =
+        const std::string exported_model_serialized =
             tensorflow::quantization::QuantizePtqModelPostCalibration(
                 saved_model_path, exported_names_str, tags,
                 quant_opts_serialized);
 
-        return std::make_pair(py::bytes(graph_def_serialized), init_node_name);
+        return py::bytes(exported_model_serialized);
       },
       R"pbdoc(
-      Returns serialized GraphDef of a TF model.
+      Returns serialized ExportedModel that contains the quantized model's
+      GraphDef and metadata.
     )pbdoc");
 }

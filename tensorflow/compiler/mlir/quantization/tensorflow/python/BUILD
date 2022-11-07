@@ -45,6 +45,7 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/quantization/tensorflow:constants",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_passes",
@@ -90,6 +91,7 @@ tf_python_pybind_extension(
     # All deps must be header-only.
     deps = [
         ":quantize_model_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
@@ -112,6 +114,7 @@ pytype_strict_library(
     deps = [
         ":pywrap_quantize_model",
         ":representative_dataset",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
