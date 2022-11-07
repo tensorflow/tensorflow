@@ -32,7 +32,7 @@ cc_library(
         ":conv_emitter_transforms",
         "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:window_util",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_type_conversion_util",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
