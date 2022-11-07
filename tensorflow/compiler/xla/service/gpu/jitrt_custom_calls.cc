@@ -209,58 +209,6 @@ static se::DeviceMemoryBase GetDeviceAddress(runtime::FlatMemrefView& memref) {
 
 // -------------------------------------------------------------------------- //
 
-#if XLA_ENABLE_XCCL
-FailureOr<NcclComm::Lock> GetNcclComm(const NcclExecuteParams& params,
-                                      int64_t group_mode, int64_t op_id,
-                                      ArrayRef<int64_t> replica_group_offsets,
-                                      ArrayRef<int64_t> replica_group_values) {
-  // TODO(b/233930690): Pass the attribute below as a nested array.
-  // Pass an array of arrays using two vectors; one specifying all the values
-  // and another specifying the (ending) offsets of each array in the other
-  // vector. Example: [ [10, 20, 30, 40], [50, 60], [70, 80, 90] ] turns into
-  // offsets=[4, 6, 9] values=[10, 20, 30, 40, 50, 60, 70, 80, 90].
-  std::vector<ReplicaGroup> replica_groups;
-  int i = 0;
-  for (int64_t replica_group_end : replica_group_offsets) {
-    ReplicaGroup replica_group;
-    while (i < replica_group_end)
-      replica_group.add_replica_ids(replica_group_values[i++]);
-    replica_groups.push_back(replica_group);
-  }
-
-  auto comm =
-      LockNcclComm(params, replica_groups,
-                   static_cast<CollectiveOpGroupMode>(group_mode), op_id);
-  if (comm.ok()) return std::move(comm.value());
-  return failure();
-}
-#endif  // XLA_ENABLE_XCCL
-
-FailureOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
-    CustomCall::RemainingArgs& args) {
-  // Add MemRef arguments as buffer arguments.
-  const int buffer_pairs = args.size() / 2;
-  std::vector<DeviceBufferPair> device_buffers;
-  device_buffers.reserve(buffer_pairs);
-  for (int i = 0; i < buffer_pairs; ++i) {
-    auto source = args.get<runtime::StridedMemrefView>(i);
-    auto destination = args.get<runtime::StridedMemrefView>(i + buffer_pairs);
-    if (failed(source) || failed(destination)) {
-      // Unsupported argument type.
-      return failure();
-    }
-
-    int element_count = 1;
-    for (int size : source->sizes) element_count *= size;
-    device_buffers.emplace_back(DeviceBufferPair{
-        source->dtype, element_count, GetDeviceAddress(*source),
-        GetDeviceAddress(*destination)});
-  }
-  return device_buffers;
-}
-
-// -------------------------------------------------------------------------- //
-
 namespace {
 
 // TODO(ezhulenev): Today XLA represents TriangularSolve as a "classic" XLA
