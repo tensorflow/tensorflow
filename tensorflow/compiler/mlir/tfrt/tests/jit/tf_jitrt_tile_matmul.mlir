@@ -19,14 +19,32 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?x
 // CHECK-SAME:      %[[LHS:.*]]: tensor<?x?xf32>, %[[RHS:.*]]: tensor<?x?xf32>)
 
 // CHECK-DAG:     %[[C0:.*]] = arith.constant 0 : index
+// CHECK:         %[[INIT:.*]] = tensor.empty
 
-// CHECK:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
+// CHECK:         %[[MAIN_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]]) to (%[[IUB:.*]], %[[JUB:.*]]) step
+// CHECK:           %[[MAIN_SLICE:.*]] = gml_st.materialize %[[INIT]]
+// CHECK:           %[[MAIN_FILL:.*]] = linalg.fill{{.*}}outs(%[[MAIN_SLICE]]
+// CHECK:           %[[MAIN_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) to (%[[KUB:.*]]) {{.*}} outs ({{.*}} = %[[MAIN_FILL]]:
+// CHECK:             %[[MAIN_PAR_MAIN_FOR_MATMUL:.*]] = linalg.matmul
+// CHECK-NEXT:        gml_st.set_yield %[[MAIN_PAR_MAIN_FOR_MATMUL]]
 
-// CHECK:           %[[FILL:.*]] = linalg.fill
-// CHECK:           %[[FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]])
-// CHECK-SAME:          outs (%[[OUT_SUB_ARG:.*]] = %[[FILL]]:
+// CHECK:           %[[REM_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[KUB]]) {{.*}} outs ({{.*}} = %[[MAIN_FOR]]:
+// CHECK:             %[[MAIN_PAR_REM_FOR_MATMUL:.*]] = linalg.matmul
+// CHECK-NEXT:        gml_st.set_yield %[[MAIN_PAR_REM_FOR_MATMUL]]
+// CHECK:           gml_st.set_yield %[[REM_FOR]]
 
-// CHECK:             %[[MATMUL:.*]] = linalg.matmul
+// CHECK:         %[[REM_LHS_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[IUB]], %[[C0]])
+// CHECK:           %[[REM_LHS_SLICE:.*]] = gml_st.materialize %[[MAIN_PAR]]
+// CHECK:           %[[REM_LHS_FILL:.*]] = linalg.fill{{.*}}outs(%[[REM_LHS_SLICE]]
+// CHECK:           %[[REM_LHS_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) {{.*}} outs ({{.*}} = %[[REM_LHS_FILL]]:
+// CHECK:             %[[REM_LHS_PAR_MATMUL:.*]] = linalg.matmul
+// CHECK-NEXT:        gml_st.set_yield %[[REM_LHS_PAR_MATMUL]]
+// CHECK:           gml_st.set_yield %[[REM_LHS_FOR]]
 
-// CHECK-NEXT:        gml_st.set_yield %[[MATMUL]]
-// CHECK:           gml_st.set_yield %[[FOR]]
+// CHECK:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[JUB]])
+// CHECK:           %[[REM_RHS_SLICE:.*]] = gml_st.materialize %[[REM_LHS_PAR]]
+// CHECK:           %[[REM_RHS_FILL:.*]] = linalg.fill{{.*}}outs(%[[REM_RHS_SLICE]]
+// CHECK:           %[[REM_RHS_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) {{.*}} outs ({{.*}} = %[[REM_RHS_FILL]]:
+// CHECK:             %[[REM_RHS_PAR_MATMUL:.*]] = linalg.matmul
+// CHECK-NEXT:        gml_st.set_yield %[[REM_RHS_PAR_MATMUL]]
+// CHECK:           gml_st.set_yield %[[REM_RHS_FOR]]

@@ -52,8 +52,6 @@ struct MatmulTransformPattern
     : public OpInterfaceRewritePattern<TilingInterface> {
   using OpInterfaceRewritePattern<TilingInterface>::OpInterfaceRewritePattern;
 
-  MatmulTransformPattern() = default;
-
   explicit MatmulTransformPattern(MLIRContext *context,
                                   int64_t lhsParallelDimTileSize = 2,
                                   int64_t rhsParallelDimTileSize = 4,
@@ -74,9 +72,8 @@ struct MatmulTransformPattern
     // First level tiling: parallel dimensions.
     SmallVector<int64_t> parallelDimsTileSizes{lhsParallelDimTileSize,
                                                rhsParallelDimTileSize, 0};
-    auto tilingParallelDimsResult =
-        tileMatmul(rewriter, matmul, parallelDimsTileSizes,
-                   /*distribute=*/true);
+    auto tilingParallelDimsResult = tileMatmul(
+        rewriter, matmul, parallelDimsTileSizes, /*distribute=*/true);
     if (failed(tilingParallelDimsResult)) return failure();
 
     // Update the results if tiling succeeded.
@@ -107,6 +104,18 @@ struct MatmulTransformPattern
     }
 
     setTransformationAttr(rewriter, matmul);
+
+    // Peel parallel loops.
+    if (auto loop =
+            dyn_cast_or_null<ParallelOp>(tilingParallelDimsResult->loop)) {
+      peelAllLoops(loop, rewriter);
+    }
+
+    // Peel reduction loop inside the main parallel loop.
+    if (auto loop = dyn_cast_or_null<ForOp>(tilingReductionDimsResult->loop)) {
+      peelAllLoops(loop, rewriter);
+    }
+
     return success();
   }
 
