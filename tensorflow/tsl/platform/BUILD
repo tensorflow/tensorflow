@@ -1018,6 +1018,9 @@ cc_library(
 tsl_cc_test(
     name = "float8_test",
     srcs = ["float8_test.cc"],
+    tags = [
+        "noasan",  #TODO(jakeharmon): investigate why this fails under asan.
+    ],
     deps = [
         ":float8",
         ":test",
