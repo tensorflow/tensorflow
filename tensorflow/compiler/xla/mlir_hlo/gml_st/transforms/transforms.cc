@@ -327,14 +327,14 @@ LogicalResult peelAndCanonicalizeGmlStLoopImpl(RewriterBase &rewriter,
 template <typename LoopTy>
 void peelAllLoopsImpl(LoopTy loop, mlir::PatternRewriter &rewriter) {
   auto trueAttr = rewriter.getBoolAttr(true);
-  loop->setAttr(kWasPeeledAttr, trueAttr);
+  loop->setAttr(kPeeledMarker, trueAttr);
   for (int peeledIdx = loop.getNumLoops() - 1; peeledIdx >= 0; peeledIdx--) {
     LoopTy peel;
     // Mark the new loop if one was created.
     if (peelAndCanonicalizeGmlStLoopImpl<LoopTy>(rewriter, loop, peeledIdx,
                                                  peel)
             .succeeded())
-      peel->setAttr(kWasPeeledAttr, trueAttr);
+      peel->setAttr(kPeeledMarker, trueAttr);
   }
 }
 }  // namespace

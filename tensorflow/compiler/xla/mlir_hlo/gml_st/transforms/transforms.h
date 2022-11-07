@@ -30,10 +30,10 @@ struct LinalgTilingOptions;
 namespace mlir {
 namespace gml_st {
 
-constexpr llvm::StringRef kTransformMarker =
-    "__internal_transformation_marker__";
+constexpr llvm::StringRef kTransformedMarker =
+    "__internal_transformed_marker__";
 
-constexpr llvm::StringRef kWasPeeledAttr = "PeelStLoopsPeeledAttr";
+constexpr llvm::StringRef kPeeledMarker = "__internal_peeled_marker__";
 
 bool isZero(Value v);
 
@@ -89,13 +89,14 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOp(
 
 // Sets the attribute to the `op` that indicates that the op was transformed.
 void setTransformationAttr(OpBuilder &b, Operation *op,
-                           StringRef name = kTransformMarker);
+                           StringRef name = kTransformedMarker);
 
 // Removes the attribute that indicates that it was transformed.
-void removeTransformationAttr(Operation *op, StringRef name = kTransformMarker);
+void removeTransformationAttr(Operation *op,
+                              StringRef name = kTransformedMarker);
 
 // Checks if `op` has the attribute that indicates that it was transformed.
-bool hasTransformationAttr(Operation *op, StringRef name = kTransformMarker);
+bool hasTransformationAttr(Operation *op, StringRef name = kTransformedMarker);
 
 // Checks if `op` has the matching label attribute.
 bool hasMatchingLabel(Operation *op, StringRef label);
