@@ -33,8 +33,6 @@ class TensorOrMemrefOf<list<Type> allowedTypes> :
 def THLO_Dialect : Dialect {
   let name = "thlo";
   let cppNamespace = "::mlir::thlo";
-
-  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 class THLO_Op<string mnemonic, list<Trait> traits> :

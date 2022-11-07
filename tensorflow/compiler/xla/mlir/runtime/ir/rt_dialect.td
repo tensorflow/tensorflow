@@ -38,8 +38,6 @@ def RuntimeDialect : Dialect {
 
   let cppNamespace = "::xla::runtime";
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
-
   let useDefaultTypePrinterParser = 1;
 
   let useDefaultAttributePrinterParser = 1;
