@@ -98,13 +98,14 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
 /*static*/ bool NcclCollectivePermuteThunk::CanImplement(
     mlir::lmhlo::CollectivePermuteOp op) {
   const Shape shape = GetShape(op.getOperand());
-  return IsTypeSupportedByNccl(shape.element_type(), Thunk::kCollectivePermute);
+  return IsTypeSupportedByNccl(shape.element_type(),
+                               Thunk::kNcclCollectivePermute);
 }
 
 NcclCollectivePermuteThunk::NcclCollectivePermuteThunk(
     ThunkInfo thunk_info, mlir::lmhlo::CollectivePermuteOp op,
     int64_t replica_count, int64_t partition_count, const Buffer& buffer)
-    : NcclCollectiveThunk(Thunk::kCollectivePermute, thunk_info),
+    : NcclCollectiveThunk(Thunk::kNcclCollectivePermute, thunk_info),
       config_(
           GetNcclCollectivePermuteConfig(op, replica_count, partition_count)),
       buffer_(buffer) {}
@@ -184,7 +185,7 @@ Status RunCollectivePermute(
 
   TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
                       ToNcclDataTypeAndCountMultiplier(
-                          buffer.element_type, Thunk::kCollectivePermute));
+                          buffer.element_type, Thunk::kNcclCollectivePermute));
   ncclDataType_t dtype = dtype_and_multiplier.first;
   int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
 
