@@ -1042,15 +1042,9 @@ cc_library(
 cc_library(
     name = "private_static_dep",
     visibility = ["//visibility:private"],
-<<<<<<< HEAD
-    deps = if_cuda_is_configured(if_static(
-        ["//tensorflow/compiler/xla/stream_executor/cuda:all_runtime"],
-    )),
-=======
     deps = if_static(
         [":gpu_all_runtime"],
     ),
->>>>>>> google_upstream/master
 )
 
 tf_cuda_library(

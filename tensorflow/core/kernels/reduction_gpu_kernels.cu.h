@@ -182,13 +182,8 @@ struct DividesBy<float, T> {
 
   __host__ __device__ explicit DividesBy(uint64 divisor) : divisor(1.0f/divisor) {}
 
-<<<<<<< HEAD
-  __host__ __device__ Eigen::half operator()(const float& x) const {
-    return Eigen::half(x * divisor);
-=======
   __host__ __device__ T operator()(const float& x) const {
     return T(x / divisor);
->>>>>>> google_upstream/master
   }
 };
 
@@ -1364,7 +1359,7 @@ void ReduceMeanWithFloatAccumulationImpl(
     OpKernelContext* ctx, OUT_T out, IN_T in,
     const ReductionAxes& reduction_axes,
     const functor::MeanReducer<T>& reducer) {
-  float divisor = 1.f;
+  uint64 divisor = 1;
   if (out.rank() == 0)
     divisor = in.size();
   else if (out.rank() == 1 && in.rank() == 2 && reduction_axes[0] == 0)
@@ -1398,38 +1393,7 @@ struct ReduceFunctor<GPUDevice, functor::MeanReducer<Eigen::half>> {
   static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
                      const ReductionAxes& reduction_axes,
                      const functor::MeanReducer<Eigen::half>& reducer) {
-<<<<<<< HEAD
-    uint64 divisor = 1;
-    if (out.rank() == 0)
-      divisor = in.size();
-    else if (out.rank() == 1 && in.rank() == 2 && reduction_axes[0] == 0)
-      divisor = in.dimension(0);
-    else if (out.rank() == 1 && in.rank() == 2 && reduction_axes[0] == 1)
-      divisor = in.dimension(1);
-    else if (out.rank() == 1 && in.rank() == 3 && reduction_axes[0] == 0 &&
-             reduction_axes[1] == 2)
-      divisor = in.dimension(0) * in.dimension(2);
-    else if (out.rank() == 2 && in.rank() == 3 && reduction_axes[0] == 1)
-      divisor = in.dimension(1);
-    DividesBy<float, Eigen::half> div_op(divisor);
-
-    typedef gpuprim::TransformInputIterator<float, HalfToFloat, Eigen::half*>
-        inputIterType;
-    inputIterType input_itr((Eigen::half*)in.data(), HalfToFloat());
-
-    typedef TransformOutputIterator<Eigen::half, float,
-                                    DividesBy<float, Eigen::half>>
-        outputIterType;
-    outputIterType itr((Eigen::half*)out.data(), div_op);
-
-    ReduceImpl<float, gpuprim::Sum, outputIterType, inputIterType,
-               ReductionAxes>(ctx, itr, input_itr, in.rank(), in.dimension(0),
-                              in.rank() >= 2 ? in.dimension(1) : 1,
-                              in.rank() >= 3 ? in.dimension(2) : 1, out.rank(),
-                              reduction_axes, gpuprim::Sum());
-=======
     ReduceMeanWithFloatAccumulationImpl(ctx, out, in, reduction_axes, reducer);
->>>>>>> google_upstream/master
   }
 
   template <typename OUT_T>

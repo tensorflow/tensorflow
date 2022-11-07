@@ -29,13 +29,10 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/generic_layout_optimizer_transposer.h"
 #include "tensorflow/core/grappler/optimizers/generic_layout_optimizer_transposer_factory.h"
 #include "tensorflow/core/lib/core/errors.h"
-<<<<<<< HEAD
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 #if TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_dnn.h"
 #endif
-=======
-#include "tensorflow/core/platform/tensor_float_32_utils.h"
->>>>>>> google_upstream/master
 
 namespace tensorflow {
 namespace grappler {

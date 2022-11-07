@@ -1168,16 +1168,10 @@ cc_library(
         "//tensorflow/core/grappler/clusters:cluster",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-<<<<<<< HEAD
-    ] + if_rocm_is_configured([
-	 "//tensorflow/core/platform:stream_executor",
-    ])
-=======
     ] + if_static(
         ["//tensorflow/core/platform:tensor_float_32_utils"],
         ["//tensorflow/core/platform:tensor_float_32_hdr_lib"],
     ),
->>>>>>> google_upstream/master
 )
 
 tf_cuda_cc_test(
