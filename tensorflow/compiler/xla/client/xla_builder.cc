@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -4095,7 +4096,15 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
     *instr.mutable_metadata() = metadata_;
   }
   if (sharding_) {
-    *instr.mutable_sharding() = *sharding_;
+    // Normalize tuple sharding and fail the call if the sharding is not valid.
+    Shape shape(instr.shape());
+    TF_ASSIGN_OR_RETURN(HloSharding sharding,
+                        HloSharding::FromProto(*sharding_));
+    if (shape.IsTuple() && !sharding.IsTuple()) {
+      sharding = HloSharding::SingleTuple(shape, sharding);
+    }
+    TF_RETURN_IF_ERROR(sharding.Validate(shape));
+    *instr.mutable_sharding() = sharding.ToProto();
   }
   *instr.mutable_frontend_attributes() = frontend_attributes_;
 
