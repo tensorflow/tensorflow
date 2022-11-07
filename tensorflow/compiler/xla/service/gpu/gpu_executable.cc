@@ -184,7 +184,7 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
 namespace {
 
 Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
-                           uint64_t start_micros, se::Stream* stream_to_sync);
+                           uint64_t start_nanos, se::Stream* stream_to_sync);
 
 Status ExecuteThunks(const std::string& module_name,
                      const ThunkSequence& thunk_sequence,
@@ -197,7 +197,7 @@ Status ExecuteThunks(const std::string& module_name,
   StatusOr<StreamPool::Ptr> async_comms_stream =
       run_options->BorrowStream(executor->device_ordinal());
 
-  uint64_t start_micros = tsl::Env::Default()->NowMicros();
+  uint64_t start_nanos = tsl::Env::Default()->NowNanos();
 
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
@@ -217,12 +217,12 @@ Status ExecuteThunks(const std::string& module_name,
         async_comms_stream.ok() ? async_comms_stream->get() : nullptr};
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
   }
-  return MaybeSyncAndProfile(run_options, start_micros,
+  return MaybeSyncAndProfile(run_options, start_nanos,
                              block_host_until_done ? main_stream : nullptr);
 }
 
 Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
-                           uint64_t start_micros,
+                           uint64_t start_nanos,
                            se::Stream* stream_to_sync = nullptr) {
   // Make sure kernels are completed before deallocating temporary buffers or
   // the profiler state.
@@ -240,11 +240,11 @@ Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
   // FinishExecution() blocks until main_stream has completed if profiling is
   // enabled; we therefore do not need to defer profile collection onto a
   // stream.
-  uint64_t end_micros = tsl::Env::Default()->NowMicros();
+  uint64_t end_nanos = tsl::Env::Default()->NowNanos();
 
   if (run_options->run_options().execution_profile()) {
     ExecutionProfile* profile = run_options->run_options().execution_profile();
-    const double nanoseconds = (end_micros - start_micros) * 1000.0;
+    const double nanoseconds = end_nanos - start_nanos;
     profile->set_compute_time_ns(std::max(nanoseconds, 1.0));
   }
 
@@ -447,7 +447,7 @@ static Status ExecuteXlaRuntime(const std::string& module_name,
                                 const BufferAllocations& buffer_allocations,
                                 const BufferAllocation* temp_buffer,
                                 bool block_host_until_done) {
-  uint64_t start_micros = tsl::Env::Default()->NowMicros();
+  uint64_t start_nanos = tsl::Env::Default()->NowNanos();
 
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
@@ -460,7 +460,7 @@ static Status ExecuteXlaRuntime(const std::string& module_name,
   if (!executed.ok()) return executed;
 
   return MaybeSyncAndProfile(
-      run_options, start_micros,
+      run_options, start_nanos,
       block_host_until_done ? run_options->stream() : nullptr);
 }
 
