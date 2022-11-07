@@ -4534,6 +4534,51 @@ Operation* ReduceWindowOp::getReductionOp(int resultIndex) {
   return nullptr;
 }
 
+bool isSplatZero(SplatElementsAttr attr) {
+  if (!attr) return false;
+  if (attr.getElementType().isa<FloatType>()) {
+    return attr.getSplatValue<APFloat>().isZero();
+  }
+  if (attr.getElementType().isa<IntegerType>()) {
+    return attr.getSplatValue<APInt>().isZero();
+  }
+  return false;
+}
+
+LogicalResult ReduceWindowOp::fold(ArrayRef<Attribute> operands,
+                                   SmallVectorImpl<OpFoldResult>& results) {
+  const auto emptyOrAllEq = [](const Optional<DenseIntElementsAttr> opt,
+                               const int64_t n) {
+    return !opt.has_value() ||
+           (opt->isSplat() && opt->getSplatValue<IntegerAttr>().getInt() == n);
+  };
+  const auto isSumReductionBody = [](mlir::Region& body) {
+    if (body.getNumArguments() != 2) return false;
+    auto returnOp = dyn_cast_or_null<ReturnOp>(body.back().getTerminator());
+    if (!returnOp || returnOp.getNumOperands() != 1) return false;
+    auto addOp = returnOp.getOperand(0).getDefiningOp<AddOp>();
+    if (!addOp) return false;
+    return (addOp.getLhs() == body.getArgument(0) &&
+            addOp.getRhs() == body.getArgument(1)) ||
+           (addOp.getLhs() == body.getArgument(1) &&
+            addOp.getRhs() == body.getArgument(0));
+  };
+
+  // Fold no-op single input sum reduction.
+  if (getInputs().size() == 1 &&
+      isSplatZero(operands[1].dyn_cast_or_null<SplatElementsAttr>()) &&
+      emptyOrAllEq(getWindowDimensionsAttr(), 1) &&
+      emptyOrAllEq(getWindowStrides(), 1) &&
+      emptyOrAllEq(getBaseDilations(), 1) &&
+      emptyOrAllEq(getWindowDilations(), 1) && emptyOrAllEq(getPadding(), 0) &&
+      isSumReductionBody(getBody())) {
+    results.push_back(getInputs()[0]);
+    return success();
+  }
+
+  return failure();
+}
+
 //===----------------------------------------------------------------------===//
 // ReducePrecisionOp
 //===----------------------------------------------------------------------===//
@@ -6243,17 +6288,6 @@ BINARY_FOLDER(DivOp, Divide)
 BINARY_FOLDER(RemOp, Remainder)
 BINARY_FOLDER(MaxOp, Max)
 BINARY_FOLDER(MinOp, Min)
-
-bool isSplatZero(SplatElementsAttr attr) {
-  if (!attr) return false;
-  if (attr.getElementType().isa<FloatType>()) {
-    return attr.getSplatValue<APFloat>().isZero();
-  }
-  if (attr.getElementType().isa<IntegerType>()) {
-    return attr.getSplatValue<APInt>().isZero();
-  }
-  return false;
-}
 
 OpFoldResult AddOp::fold(ArrayRef<Attribute> attrs) {
   // Handle special case where one operand is 0:  x + 0 => x

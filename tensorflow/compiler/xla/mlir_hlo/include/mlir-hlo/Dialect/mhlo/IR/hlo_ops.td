@@ -2794,6 +2794,7 @@ def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
   ];
 
   let hasCustomHLOConverter = 1;
+  let hasFolder = 1;
   // TODO(hinsu): Implement custom printer and parser.
 
   let extraClassDeclaration = [{
