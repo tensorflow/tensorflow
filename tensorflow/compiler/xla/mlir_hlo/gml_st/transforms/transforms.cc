@@ -323,7 +323,33 @@ LogicalResult peelAndCanonicalizeGmlStLoopImpl(RewriterBase &rewriter,
   result = remainderLoop;
   return success();
 }
+
+template <typename LoopTy>
+void peelAllLoopsImpl(LoopTy loop, mlir::PatternRewriter &rewriter) {
+  auto trueAttr = rewriter.getBoolAttr(true);
+  loop->setAttr(kWasPeeledAttr, trueAttr);
+  for (int peeledIdx = loop.getNumLoops() - 1; peeledIdx >= 0; peeledIdx--) {
+    LoopTy peel;
+    // Mark the new loop if one was created.
+    if (peelAndCanonicalizeGmlStLoopImpl<LoopTy>(rewriter, loop, peeledIdx,
+                                                 peel)
+            .succeeded())
+      peel->setAttr(kWasPeeledAttr, trueAttr);
+  }
+}
 }  // namespace
+
+void peelAllLoops(LoopOp loop, mlir::PatternRewriter &rewriter) {
+  peelAllLoopsImpl<LoopOp>(loop, rewriter);
+}
+
+void peelAllLoops(ForOp loop, mlir::PatternRewriter &rewriter) {
+  peelAllLoopsImpl<ForOp>(loop, rewriter);
+}
+
+void peelAllLoops(ParallelOp loop, mlir::PatternRewriter &rewriter) {
+  peelAllLoopsImpl<ParallelOp>(loop, rewriter);
+}
 
 LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
                                            LoopOp loopOp, int64_t idx,
@@ -332,16 +358,16 @@ LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
                                                   result);
 }
 
+LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter, ForOp loopOp,
+                                           int64_t idx, ForOp &result) {
+  return peelAndCanonicalizeGmlStLoopImpl<ForOp>(rewriter, loopOp, idx, result);
+}
+
 LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
                                            ParallelOp loopOp, int64_t idx,
                                            ParallelOp &result) {
   return peelAndCanonicalizeGmlStLoopImpl<ParallelOp>(rewriter, loopOp, idx,
                                                       result);
-}
-
-LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter, ForOp loopOp,
-                                           int64_t idx, ForOp &result) {
-  return peelAndCanonicalizeGmlStLoopImpl<ForOp>(rewriter, loopOp, idx, result);
 }
 
 FailureOr<linalg::TiledLinalgOp> tileLinalgOp(
@@ -366,19 +392,16 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOp(
   return tileLinalgOpImpl(b, op, tileSizeVector, options);
 }
 
-constexpr llvm::StringLiteral kTransformMarker =
-    "__internal_transformation_marker__";
-
-void setTransformationAttr(mlir::OpBuilder &b, Operation *op) {
-  op->setAttr(kTransformMarker, b.getBoolAttr(true));
+void setTransformationAttr(mlir::OpBuilder &b, Operation *op, StringRef name) {
+  op->setAttr(name, b.getBoolAttr(true));
 }
 
-void removeTransformationAttr(Operation *op) {
-  op->removeAttr(kTransformMarker);
+void removeTransformationAttr(Operation *op, StringRef name) {
+  op->removeAttr(name);
 }
 
-bool hasTransformationAttr(Operation *op) {
-  auto marker = op->getAttr(kTransformMarker);
+bool hasTransformationAttr(Operation *op, StringRef name) {
+  auto marker = op->getAttr(name);
   if (!marker) return false;
   return marker && marker.cast<BoolAttr>().getValue();
 }

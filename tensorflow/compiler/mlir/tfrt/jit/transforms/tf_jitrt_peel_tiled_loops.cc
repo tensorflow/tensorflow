@@ -32,8 +32,6 @@ namespace {
 #define GEN_PASS_DEF_PEELTILEDLOOPS
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
-constexpr llvm::StringRef kWasPeeledAttr = "PeelStLoopsPeeledAttr";
-
 using mlir::gml_st::ForOp;
 using mlir::gml_st::LoopOp;
 using mlir::gml_st::ParallelOp;
@@ -44,18 +42,9 @@ struct PeelGmlStLoop : public mlir::OpRewritePattern<LoopTy> {
 
   mlir::LogicalResult matchAndRewrite(
       LoopTy loop, mlir::PatternRewriter &rewriter) const override {
-    if (loop->hasAttr(kWasPeeledAttr)) return mlir::failure();
-    auto true_attr = mlir::BoolAttr::get(rewriter.getContext(), true);
-    loop->setAttr(kWasPeeledAttr, true_attr);
-    for (int peeled_idx = loop.getNumLoops() - 1; peeled_idx >= 0;
-         peeled_idx--) {
-      LoopTy peel;
-      // Mark the new loop if one was created
-      if (mlir::gml_st::peelAndCanonicalizeGmlStLoop(rewriter, loop, peeled_idx,
-                                                     peel)
-              .succeeded())
-        peel->setAttr(kWasPeeledAttr, true_attr);
-    }
+    if (hasTransformationAttr(loop, mlir::gml_st::kWasPeeledAttr))
+      return mlir::failure();
+    peelAllLoops(loop, rewriter);
     return mlir::success();
   }
 };
@@ -82,13 +71,13 @@ struct PeelTiledLoopsPass
     (void)applyPatternsAndFoldGreedily(func_op, std::move(loop_peeling));
 
     func_op->walk([&](LoopOp op) {
-      if (op->hasAttr(kWasPeeledAttr)) op->removeAttr(kWasPeeledAttr);
+      removeTransformationAttr(op, mlir::gml_st::kWasPeeledAttr);
     });
     func_op->walk([&](ParallelOp op) {
-      if (op->hasAttr(kWasPeeledAttr)) op->removeAttr(kWasPeeledAttr);
+      removeTransformationAttr(op, mlir::gml_st::kWasPeeledAttr);
     });
     func_op->walk([&](ForOp op) {
-      if (op->hasAttr(kWasPeeledAttr)) op->removeAttr(kWasPeeledAttr);
+      removeTransformationAttr(op, mlir::gml_st::kWasPeeledAttr);
     });
   }
 };

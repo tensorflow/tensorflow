@@ -30,6 +30,11 @@ struct LinalgTilingOptions;
 namespace mlir {
 namespace gml_st {
 
+constexpr llvm::StringRef kTransformMarker =
+    "__internal_transformation_marker__";
+
+constexpr llvm::StringRef kWasPeeledAttr = "PeelStLoopsPeeledAttr";
+
 bool isZero(Value v);
 
 /// Rewrite a gml_st::LoopOp/ParallelOp/ForOp with bounds/step that potentially
@@ -38,8 +43,14 @@ bool isZero(Value v);
 /// gml_st::LoopOp/ParallelOp/ForOp for the last (partial) iteration (if any).
 /// This transformation is called "loop peeling".
 ///
+/// This function peels all loops in the loop nest by calling
+/// peelAndCanonicalizeGmlStLoop.
+void peelAllLoops(LoopOp loop, mlir::PatternRewriter &rewriter);
+void peelAllLoops(ForOp loop, mlir::PatternRewriter &rewriter);
+void peelAllLoops(ParallelOp loop, mlir::PatternRewriter &rewriter);
+
 /// This function peels the `idx`-th loop of the
-/// gml_st::LoopOp/ParallelOp/ForOp. To tile all loops in the loop nest, this
+/// gml_st::LoopOp/ParallelOp/ForOp. To peel all loops in the loop nest, this
 /// function must be called multiple times.
 ///
 /// After loop peeling, this function tries to simplify/canonicalize affine.min
@@ -60,11 +71,11 @@ bool isZero(Value v);
 LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
                                            LoopOp loopOp, int64_t idx,
                                            LoopOp &result);
+LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter, ForOp loopOp,
+                                           int64_t idx, ForOp &result);
 LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
                                            ParallelOp loopOp, int64_t idx,
                                            ParallelOp &result);
-LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter, ForOp loopOp,
-                                           int64_t idx, ForOp &result);
 
 /// Perform standalone tiling of a single LinalgOp by `tileSizes`.
 /// An empty vector is interpreted as the identity permutation and the
@@ -77,13 +88,14 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOp(
     const linalg::LinalgTilingOptions &options);
 
 // Sets the attribute to the `op` that indicates that the op was transformed.
-void setTransformationAttr(OpBuilder &b, Operation *op);
+void setTransformationAttr(OpBuilder &b, Operation *op,
+                           StringRef name = kTransformMarker);
 
 // Removes the attribute that indicates that it was transformed.
-void removeTransformationAttr(Operation *op);
+void removeTransformationAttr(Operation *op, StringRef name = kTransformMarker);
 
 // Checks if `op` has the attribute that indicates that it was transformed.
-bool hasTransformationAttr(Operation *op);
+bool hasTransformationAttr(Operation *op, StringRef name = kTransformMarker);
 
 // Checks if `op` has the matching label attribute.
 bool hasMatchingLabel(Operation *op, StringRef label);
