@@ -43,7 +43,7 @@ def createFastMathNone : NativeCodeCall<
 
 
 // Unary Lowering Patterns.
-def : Pat<(HLO_CeilOp HLO_FpTensor:$i), (Math_CeilOp $i)>;
+def : Pat<(HLO_CeilOp HLO_FpTensor:$i), (Math_CeilOp $i, (createFastMathNone ))>;
 
 // Binary Lowering Patterns.
 def : Pat<(HLO_AndOp HLO_IntTensor:$l, HLO_IntTensor:$r),
