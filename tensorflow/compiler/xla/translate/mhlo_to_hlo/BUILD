@@ -35,7 +35,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
     ],
 )
 
@@ -72,10 +72,10 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/client/lib:quantize",
         "//tensorflow/compiler/xla/client/lib:slicing",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/mlir/utils:error_util",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
         "//tensorflow/compiler/xla/stream_executor/lib",
