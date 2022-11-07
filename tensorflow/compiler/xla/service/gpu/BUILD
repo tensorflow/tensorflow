@@ -932,7 +932,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/tsl/util/proto:proto_utils",
         "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
@@ -944,6 +943,7 @@ cc_library(
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logger",
         "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/protobuf:autotuning_proto_cc",
     ]),
 )
 
@@ -1015,10 +1015,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/tsl/platform:logger",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:numbers",
+        "//tensorflow/tsl/protobuf:autotuning_proto_cc",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
         "//tensorflow/tsl/util/proto:proto_utils",
@@ -2266,12 +2266,12 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:kernel_spec",
-        "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/tsl/platform:cuda_libdevice_path",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:regexp",
         "//tensorflow/tsl/profiler/lib:traceme",
+        "//tensorflow/tsl/protobuf:autotuning_proto_cc",
         "//tensorflow/tsl/util:determinism_for_kernels",
         "//tensorflow/tsl/util:env_var",
         "//tensorflow/tsl/util/proto:proto_utils",
@@ -2535,7 +2535,7 @@ tf_proto_library(
     protodeps = [
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
-        "//tensorflow/core/protobuf:autotuning_proto",
+        "//tensorflow/tsl/protobuf:autotuning_proto",
     ],
 )
 
@@ -2547,7 +2547,7 @@ cc_library(
         ":gpu_autotuning_proto_cc",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/core/protobuf:autotuning_proto_cc",
+        "//tensorflow/tsl/protobuf:autotuning_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
