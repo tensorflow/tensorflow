@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/interfaces/bufferizable_op_interface_impl.h"
+#include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"

@@ -1219,6 +1219,7 @@ cc_library(
     ],
     deps = [
         ":gml_st_bufferizable_op_interface",
+        ":gml_st_passes",
         ":gml_st_test_passes_inc_gen",
         ":gml_st_transforms",
         "@llvm-project//mlir:AffineDialect",
@@ -1307,6 +1308,7 @@ cc_library(
         "gml_st/transforms/gml_st_to_gpu/gml_st_to_gpu.cc",
         "gml_st/transforms/gml_st_to_scf/gml_st_to_scf.cc",
         "gml_st/transforms/passes.h.inc",
+        "gml_st/transforms/peeling/peeling.cc",
         "gml_st/transforms/tiling/tiling.cc",
         "gml_st/transforms/tiling_cwise/tiling_cwise.cc",
         "gml_st/transforms/tiling_gpu_warp/tiling_gpu_warp.cc",
@@ -1322,6 +1324,7 @@ cc_library(
     hdrs = [
         "gml_st/transforms/fusion/fusion.h",
         "gml_st/transforms/passes.h",
+        "gml_st/transforms/peeling/peeling.h",
         "gml_st/transforms/rewriters.h",
         "gml_st/transforms/tiling/tiling.h",
         "gml_st/utils/linalg_utils.h",
@@ -1360,6 +1363,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFTransforms",
+        "@llvm-project//mlir:SCFUtils",
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:ShapeTransforms",
         "@llvm-project//mlir:Support",
