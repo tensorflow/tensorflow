@@ -20,6 +20,22 @@ namespace tensorflow {
 // Use type aliases compatible with MLIR type names.
 using f32 = float;
 
+static const char* mlir_input_static = R"(
+func.func @matmul(%arg0: tensor<64x64xf32>,
+             %arg1: tensor<64x64xf32>) -> tensor<64x64xf32> {
+    %0 = "tf.MatMul"(%arg0, %arg1) {
+           transpose_a = false,
+           transpose_b = false
+         } : (tensor<64x64xf32>, tensor<64x64xf32>) -> tensor<64x64xf32>
+    func.return %0 : tensor<64x64xf32>
+  }
+)";
+
+BM_TFMlir(MatMul_static, mlir_input_static, "matmul", f32)
+    ->ArgNames({"m", "k", "n", "tiled_m", "tiled_n", "tiled_k"})
+    ->Args({64, 64, 64, 8, 8, 8});
+BM_Eigen(MatMul_static, f32)->ArgNames({"m", "k", "n"})->Args({64, 64, 64});
+
 static const char* mlir_input = R"(
 func.func @matmul(%arg0: tensor<?x?xf32>,
              %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
