@@ -3418,13 +3418,6 @@ dnn::DataType GetConvAccumulatorType(dnn::DataType data_type) {
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
 namespace {
-cudnnBackendHeurMode_t GetCudnnFrontendHeurMode() {
-#if CUDNN_VERSION >= 8300
-  return CUDNN_HEUR_MODE_B;
-#else
-  return CUDNN_HEUR_MODE_INSTANT;
-#endif  // CUDNN_VERSION >= 8300
-}
 
 cudnnBackendDescriptorType_t GetCudnnConvolutionType(
     dnn::ConvolutionKind kind) {
@@ -4748,60 +4741,12 @@ port::Status CreateOpRunners(
         /*disable_tensor_core*/ !IsTensorMathEnabled(stream, input_type));
   };
 
-  if (!use_fallback) {
-    // In theory, mode GetCudnnFrontendHeurMode() is supposed to fall back to
-    // HEUR_MODE_INSTANT if it can't find any working engines. But there's a
-    // known cudnn issue where it doesn't when dealing with runtime compiled
-    // fusion engines. So we do it manually here.
-    // TODO(kaixih@nvidia): remove this when the cudnn fixes it.
-    cudnn_frontend::EngineHeuristics heuristics = [&] {
-      auto heuristics = cudnn_frontend::EngineHeuristicsBuilder()
-                            .setOperationGraph(*op_graph)
-                            .setHeurMode(GetCudnnFrontendHeurMode())
-                            .build();
-      if (heuristics.get_status() == CUDNN_STATUS_SUCCESS) return heuristics;
-      return cudnn_frontend::EngineHeuristicsBuilder()
-          .setOperationGraph(*op_graph)
-          .setHeurMode(CUDNN_HEUR_MODE_INSTANT)
-          .build();
-    }();
-    RETURN_MSG_IF_CUDNN_ERROR(heuristics);
-
-    // cuDNN frontend sneakily puts error messages on the object and returns
-    // partially-initialized results when there's an error; make sure to check
-    // them.
-    int64_t engine_count = heuristics.getEngineConfigCount();
-    RETURN_MSG_IF_CUDNN_ERROR(heuristics);
-    auto& heuristics_configs = heuristics.getEngineConfig(engine_count);
-    RETURN_MSG_IF_CUDNN_ERROR(heuristics);
-    VLOG(4) << "\nHeuristics engine configs size: "
-            << heuristics_configs.size();
-
-    cudnn_frontend::filter(heuristics_configs, filtered_configs,
-                           generic_filter_fn);
-  } else {
-#if CUDNN_VERSION < 8300
-    auto fallback = cudnn_frontend::EngineFallbackListBuilder()
-                        .setOperationGraph(*op_graph)
-                        .setOperation(GetCudnnConvolutionType(kind))
-                        .build();
-    RETURN_MSG_IF_CUDNN_ERROR(fallback);
-    auto& fallback_configs = fallback.getFallbackList();
-#else
-    auto fallback = cudnn_frontend::EngineHeuristicsBuilder()
-                        .setOperationGraph(*op_graph)
-                        .setHeurMode(CUDNN_HEUR_MODE_FALLBACK)
-                        .build();
-    RETURN_MSG_IF_CUDNN_ERROR(fallback);
-    int64_t engine_count = fallback.getEngineConfigCount();
-    RETURN_MSG_IF_CUDNN_ERROR(fallback);
-    auto& fallback_configs = fallback.getEngineConfig(engine_count);
-    RETURN_MSG_IF_CUDNN_ERROR(fallback);
-#endif
-    VLOG(4) << "\nFallback engine configs size: " << fallback_configs.size();
-
-    cudnn_frontend::filter(fallback_configs, filtered_configs,
-                           generic_filter_fn);
+  std::array<std::string, 1> heur_mode = {use_fallback ? "heuristics_fallback"
+                                                       : "heuristics_mode_b"};
+  std::vector<cudnnStatus_t> ret = cudnn_frontend::get_heuristics_list(
+      heur_mode, *op_graph, generic_filter_fn, filtered_configs);
+  for (auto status : ret) {
+    RETURN_IF_CUDNN_ERROR(status);
   }
   VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
