@@ -203,9 +203,9 @@ class SavedModelImpl final : public SavedModel {
   //
   // If `options.maybe_load_from_mla` is true, tries opening `saved_model_dir`
   // as an MLA. If it's not an MLA, uses it as a normal SavedModel directory.
-  static std::unique_ptr<SavedModel> LoadSavedModel(
+  static tensorflow::StatusOr<std::unique_ptr<SavedModel>> LoadSavedModel(
       Options options, absl::string_view saved_model_dir,
-      const std::unordered_set<std::string>& tags, tensorflow::Status* status);
+      const std::unordered_set<std::string>& tags);
 
   SavedModelImpl(
       Options options, tensorflow::MetaGraphDef meta_graph_def,
@@ -270,7 +270,8 @@ class SavedModelImpl final : public SavedModel {
   // Returns the loading result given the signature names.
   tensorflow::StatusOr<
       std::reference_wrapper<const SavedModelImpl::LoadingResult>>
-  GetOrCreateLoadingResult(absl::Span<const std::string> names)
+  GetOrCreateLoadingResult(const RunOptions& run_options,
+                           absl::Span<const std::string> names)
       TF_LOCKS_EXCLUDED(loading_result_cache_mu_);
 
   // Runs `func` with the given inputs, and outputs the result.

@@ -29,7 +29,7 @@ import argparse
 import os
 import sys
 
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 
 from tensorflow.lite.testing import generate_examples_lib
 from tensorflow.lite.testing import mlir_convert
@@ -155,4 +155,4 @@ if __name__ == "__main__":
           "Usage: %s <path out> <zip file to generate>")
     exit(1)
   else:
-    tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+    tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

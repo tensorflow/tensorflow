@@ -13,7 +13,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Support",
-        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:async_value",
     ],
 )
 

@@ -49,6 +49,7 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
+#include "mlir-hlo/Dialect/mhlo/IR/mhlo_bytecode.h"
 #include "mlir-hlo/utils/convert_op_folder.h"
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -5249,24 +5250,9 @@ OpFoldResult SelectOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
-// simplify select(not(%pred), true_value, false_value) => select(%pred,
-// false_value, true_value)
-static LogicalResult selectCanonicalization(SelectOp selectOp,
-                                            PatternRewriter& rewriter) {
-  auto notOp = selectOp.getPred().getDefiningOp<NotOp>();
-  if (!notOp) {
-    return failure();
-  }
-  std::array<Value, 3> newOperands = {notOp.getOperand(), selectOp.getOnFalse(),
-                                      selectOp.getOnTrue()};
-  rewriter.updateRootInPlace(
-      selectOp, [&]() { selectOp.getOperation()->setOperands(newOperands); });
-  return success();
-}
-
 void SelectOp::getCanonicalizationPatterns(RewritePatternSet& results,
-                                           MLIRContext* /*context*/) {
-  results.add(&selectCanonicalization);
+                                           MLIRContext* context) {
+  results.add<FusePredNegIntoSelect, FuseBroadcastedPredNegIntoSelect>(context);
 }
 
 // Makes it such that a SelectOp that is a non-root operation in a DRR infers
@@ -7993,6 +7979,8 @@ using mlir::hlo::printSelectOpType;
 using mlir::hlo::parseSelectOpType;
 using mlir::hlo::printTupleOpType;
 using mlir::hlo::parseTupleOpType;
+using mlir::hlo::printExponentMantissa;
+using mlir::hlo::parseExponentMantissa;
 // clang-format on
 
 #define GET_OP_CLASSES
@@ -8049,6 +8037,7 @@ MhloDialect::MhloDialect(MLIRContext* context)
       >();
   addInterfaces<HLOBoundedDialectInterface>();
   addInterfaces<HLOInlinerInterface>();
+  addBytecodeInterface(this);
   addTypes<TokenType, AsyncBundleType>();
   addAttributes<
 #define GET_ATTRDEF_LIST

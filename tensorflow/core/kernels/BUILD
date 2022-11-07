@@ -1269,6 +1269,7 @@ tf_kernel_library(
     gpu_srcs = [
         "tile_functor.h",
         "tile_functor_gpu.h",
+        "tile_functor_gpu_bfloat16.cu.cc",
         "tile_functor_gpu_bool.cu.cc",
         "tile_functor_gpu_complex64.cu.cc",
         "tile_functor_gpu_complex128.cu.cc",
@@ -6933,7 +6934,6 @@ filegroup(
             "debug_ops.*",
             "mutex_ops.*",
             "batch_kernels.*",
-            "regex_replace_op.cc",
             "string_lower_op.cc",  # Requires ICU for unicode.
             "string_upper_op.cc",  # Requires ICU for unicode.
             "unicode_ops.cc",

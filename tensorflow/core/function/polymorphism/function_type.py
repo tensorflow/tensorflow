@@ -39,6 +39,9 @@ class Parameter(inspect.Parameter):
           " is optional and its kind must be one of {POSITIONAL_ONLY, " +
           "KEYWORD_ONLY, POSITIONAL_OR_KEYWORD}. Got: " + str(kind))
 
+    if type_constraint and kind in [self.VAR_POSITIONAL, self.VAR_KEYWORD]:
+      raise TypeError("Variable args/kwargs can not have type constraints.")
+
     if not isinstance(type_constraint, (trace.TraceType, type(None))):
       raise TypeError(
           "Type constraints can only be an instance of a TraceType but got " +

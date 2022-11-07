@@ -102,7 +102,7 @@ class Executor {
     ScopedStepContainer* step_container = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
     thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr;
-    CoordinationServiceAgent* coordination_service_agent = nullptr;
+    tsl::CoordinationServiceAgent* coordination_service_agent = nullptr;
     int64_t start_time_usecs = 0;
     // The deadline for the kernel to complete by. Empty if unspecified.
     absl::optional<absl::Time> deadline;

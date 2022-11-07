@@ -82,7 +82,7 @@ allocate and deallocate buffers.
 
 `GpuCompiler` takes the optimized HLO and `BufferAssignment`, and convert them
 to the MLIR dialect
-[`LMHLO`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.td).
+[`LMHLO`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.td).
 
 The `LMHLO` dialect is a graph consists of `LMHLO` ops. `LMHLO` ops are
 buffer-based and sequentially ordered. The sequential order reflects the

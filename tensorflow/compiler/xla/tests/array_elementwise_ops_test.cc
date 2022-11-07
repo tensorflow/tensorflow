@@ -211,11 +211,11 @@ XLA_TEST_F(ArrayElementwiseOpTest, IsFiniteScalarF32) {
   IsFinite(ConstantR0<float>(&builder, kNonCanonicalNaN));
   ComputeAndCompareR0<bool>(&builder, false, {});
 
-  const float inf = std::numeric_limits<float>::infinity();
-  IsFinite(ConstantR0<float>(&builder, inf));
+  const float kInf = std::numeric_limits<float>::infinity();
+  IsFinite(ConstantR0<float>(&builder, kInf));
   ComputeAndCompareR0<bool>(&builder, false, {});
 
-  IsFinite(ConstantR0<float>(&builder, -inf));
+  IsFinite(ConstantR0<float>(&builder, -kInf));
   ComputeAndCompareR0<bool>(&builder, false, {});
 
   IsFinite(ConstantR0<float>(&builder, 0.0f));
@@ -224,10 +224,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, IsFiniteScalarF32) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, IsFiniteR1F32s) {
   XlaBuilder builder(TestName());
-  const float inf = std::numeric_limits<float>::infinity();
+  const float kInf = std::numeric_limits<float>::infinity();
   EXPECT_TRUE(std::isnan(kNonCanonicalNaN));
-  auto a = ConstantR1<float>(&builder,
-                             {{NAN, 7.0f, kNonCanonicalNaN, -1.0f, inf, -inf}});
+  auto a = ConstantR1<float>(
+      &builder, {{NAN, 7.0f, kNonCanonicalNaN, -1.0f, kInf, -kInf}});
   IsFinite(a);
 
   ComputeAndCompareR1<bool>(&builder, {false, true, false, true, false, false},
@@ -538,9 +538,9 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantZeroElementF32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantF64s) {
-  auto inf = std::numeric_limits<double>::infinity();
-  auto nan = std::numeric_limits<double>::quiet_NaN();
-  std::array<double, 7> vals{0.0, 0.1, 1.0, 2.0, 1e20, nan, inf};
+  auto kInf = std::numeric_limits<double>::infinity();
+  auto kNaN = std::numeric_limits<double>::quiet_NaN();
+  std::array<double, 7> vals{0.0, 0.1, 1.0, 2.0, 1e20, kNaN, kInf};
   std::vector<double> a_vals;
   std::vector<double> b_vals;
   a_vals.reserve(vals.size() * vals.size());
@@ -1307,10 +1307,11 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareGeF32sTO) {
   // For portability, need to represent NAN using the following call.
   // The C++ standard does not specify if quiet_NaN() sets the sign bit of
   // its result. The call to std::fabs will ensure that it is not set.
-  auto nan = std::fabs(std::numeric_limits<float>::quiet_NaN());
+  auto kNaN = std::fabs(std::numeric_limits<float>::quiet_NaN());
   auto lhs =
-      ConstantR1<float>(&builder, {-2.5f, 25.5f, 2.25f, nan, 6.0f, 6.0f});
-  auto rhs = ConstantR1<float>(&builder, {10.0f, 5.0f, 1.0f, 10.0f, nan, -nan});
+      ConstantR1<float>(&builder, {-2.5f, 25.5f, 2.25f, kNaN, 6.0f, 6.0f});
+  auto rhs =
+      ConstantR1<float>(&builder, {10.0f, 5.0f, 1.0f, 10.0f, kNaN, -kNaN});
   GeTotalOrder(lhs, rhs);
 
   ComputeAndCompareR1<bool>(&builder, {false, true, true, true, false, true},
@@ -1578,7 +1579,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowF32s) {
   // std::pow.
   //  auto min = std::numeric_limits<float>::min();
   //  auto max = std::numeric_limits<float>::max();
-  auto inf = std::numeric_limits<float>::infinity();
+  auto kInf = std::numeric_limits<float>::infinity();
   auto qnan = std::numeric_limits<float>::quiet_NaN();
   auto eps = std::numeric_limits<float>::epsilon();
 
@@ -1586,7 +1587,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowF32s) {
   std::vector<float> xs;
   std::tie(xs, ys) = AllSignedPairs<float>(
       {0.0f, 1e-23, eps, 0.1f, 1.0f / 3.0f, 2.0f / 3.0f, 0.5f, 1.0f, 1.0f + eps,
-       2.0f, 3.0f, M_PI, 1e6 + 0.1, 1e23, inf, qnan});
+       2.0f, 3.0f, M_PI, 1e6 + 0.1, 1e23, kInf, qnan});
   auto lhs = ConstantR1<float>(&builder, xs);
   auto rhs = ConstantR1<float>(&builder, ys);
   Pow(lhs, rhs);
@@ -1637,33 +1638,44 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowZeroElementF32s) {
 
 // Some Pow cases that can be implemented more efficiently.
 XLA_TEST_F(ArrayElementwiseOpTest, PowSpecialF32) {
-  XlaBuilder b(TestName());
+  constexpr float kInf = std::numeric_limits<float>::infinity();
+  constexpr float kQNaN = std::numeric_limits<float>::quiet_NaN();
+  constexpr float kOneThird = 1.0f / 3.0f;
+  std::vector<float> values = {-0.0f, 0.0f,  1.0f,  2.0f, -M_PI,
+                               M_PI,  -4.0f, -kInf, kInf, kQNaN};
+  std::vector<float> exponents = {-0.0f,
+                                  0.0f,
+                                  -0.25f,
+                                  0.25f,
+                                  -kOneThird,
+                                  kOneThird,
+                                  -0.5f,
+                                  0.5f,
+                                  -2 * kOneThird,
+                                  2 * kOneThird,
+                                  -1.0f,
+                                  1.0f,
+                                  -1.25f,
+                                  1.25f,
+                                  -1.0f - kOneThird,
+                                  1.0f + kOneThird,
+                                  -1.5f,
+                                  1.5f,
+                                  -1.75f,
+                                  1.75f,
+                                  -2.0f,
+                                  2.0f,
+                                  42 + 0.5 - kOneThird + 0.25,
+                                  -kInf,
+                                  kInf,
+                                  kQNaN};
 
-  std::vector<float> values = {1.0f, 2.0f, 3.2f, -4.0f};
-  std::vector<float> exponents = {0.0f, 1.0f,  2.0f,  0.5f,  0.25f,
-                                  1.5f, -1.0f, -0.5f, -0.25f};
-
-  Literal param_literal = LiteralUtil::CreateR1<float>(values);
-  std::unique_ptr<GlobalData> param_data =
-      client_->TransferToServer(param_literal).value();
-
-  auto sum = ConstantR0<float>(&b, 0.0f);
-  auto param = Parameter(&b, 0, param_literal.shape(), "param");
   for (float exponent : exponents) {
-    sum = Add(sum, Pow(param, ConstantR0<float>(&b, exponent)));
+    XlaBuilder b(TestName());
+    LOG(ERROR) << "************* exponent = " << exponent;
+    Pow(ConstantR1<float>(&b, values), ConstantR0<float>(&b, exponent));
+    ComputeAndCompare(&b, {}, error_spec_);
   }
-
-  std::vector<float> expected;
-  expected.reserve(values.size());
-  for (auto value : values) {
-    float sum = 0.0f;
-    for (float exponent : exponents) {
-      sum += std::pow(value, exponent);
-    }
-    expected.push_back(sum);
-  }
-
-  ComputeAndCompareR1<float>(&b, expected, {param_data.get()}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, PowOfExpF32) {
@@ -2408,20 +2420,36 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddParameterToConstantF32s) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, CosF32s) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<float>(&builder, {3.14159f, 0.0f, 1.570796f, -0.78539f});
+  auto kInf = std::numeric_limits<float>::infinity();
+  auto kQNaN = std::numeric_limits<float>::quiet_NaN();
+  // Test a variety of values of both signs that stress trigonometric range
+  // reduction, as well as numbers that fall in different quadrants.
+  // Also test IEEE special values {+/-0, +/-Inf, NaN}; for the latter two
+  // Cos(x) should return NaN.
+  auto a = ConstantR1<float>(
+      &builder,
+      {-1.9938988e-28, 1.9938988e-28, -1e20f, 1e20f, -3.14159f, 3.14159f, -0.0f,
+       0.0f, -1.570796f, 1.570796f, -0.78539f, 0.78539f, -kInf, kInf, kQNaN});
   Cos(a);
 
-  ComputeAndCompareR1<float>(&builder, {-1.0f, 1.0f, 0.0f, 0.707107f}, {},
-                             error_spec_);
+  ComputeAndCompare(&builder, {}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, SinF32s) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<float>(&builder, {3.14159f, 0.0f, 1.570796f, -0.78539f});
+  auto kInf = std::numeric_limits<float>::infinity();
+  auto kQNaN = std::numeric_limits<float>::quiet_NaN();
+  // Test a variety of values of both signs that stress trigonometric range
+  // reduction, as well as numbers that fall in different quadrants.
+  // Also test IEEE special values {+/-0, +/-Inf, NaN}; for the latter two
+  // Sin(x) should return NaN.
+  auto a = ConstantR1<float>(
+      &builder,
+      {-1.9938988e-28, 1.9938988e-28, -1e20f, 1e20f, -3.14159f, 3.14159f, -0.0f,
+       0.0f, -1.570796f, 1.570796f, -0.78539f, 0.78539f, -kInf, kInf, kQNaN});
   Sin(a);
 
-  ComputeAndCompareR1<float>(&builder, {0.0f, 0.0f, 1.0f, -0.707107f}, {},
-                             error_spec_);
+  ComputeAndCompare(&builder, {}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, RealF64s) {
@@ -2442,11 +2470,11 @@ XLA_TEST_F(ArrayElementwiseOpTest, ImagF64s) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, Atan2F32s) {
   XlaBuilder builder(TestName());
-  auto inf = std::numeric_limits<float>::infinity();
+  auto kInf = std::numeric_limits<float>::infinity();
   std::vector<float> ys;
   std::vector<float> xs;
-  const auto _ys = {+0.0f, -0.0f, inf, -inf, 5.0f, -3.0f, 2.0f, -8.0f, 1.0f};
-  const auto _xs = {+0.0f, -0.0f, inf, -inf, 6.0f, -4.0f, 2.0f, 8.0f};
+  const auto _ys = {+0.0f, -0.0f, kInf, -kInf, 5.0f, -3.0f, 2.0f, -8.0f, 1.0f};
+  const auto _xs = {+0.0f, -0.0f, kInf, -kInf, 6.0f, -4.0f, 2.0f, 8.0f};
   const auto n = _ys.size() * _xs.size();
   ys.reserve(n);
   xs.reserve(n);
@@ -2465,12 +2493,12 @@ XLA_TEST_F(ArrayElementwiseOpTest, Atan2F32s) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, Atan2F64s) {
   XlaBuilder builder(TestName());
-  auto inf = std::numeric_limits<double>::infinity();
+  auto kInf = std::numeric_limits<double>::infinity();
   auto qnan = std::numeric_limits<double>::quiet_NaN();
   std::vector<double> ys;
   std::vector<double> xs;
   std::tie(xs, ys) =
-      AllSignedPairs<double>({0.0, 0.1, 0.9, 1.0, 1.1, M_PI, 1e6, qnan, inf});
+      AllSignedPairs<double>({0.0, 0.1, 0.9, 1.0, 1.1, M_PI, 1e6, qnan, kInf});
   auto y = ConstantR1<double>(&builder, ys);
   auto x = ConstantR1<double>(&builder, xs);
   Atan2(y, x);
@@ -2480,11 +2508,11 @@ XLA_TEST_F(ArrayElementwiseOpTest, Atan2F64s) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, Atan2C64s) {
   XlaBuilder builder(TestName());
-  auto inf = std::numeric_limits<float>::infinity();
+  auto kInf = std::numeric_limits<float>::infinity();
   std::vector<std::complex<float>> ys;
   std::vector<std::complex<float>> xs;
-  const auto _ys = {+0.0f, -0.0f, inf, -inf, 5.0f, -3.0f, 2.0f, -8.0f, 1.0f};
-  const auto _xs = {+0.0f, -0.0f, inf, -inf, 6.0f, -4.0f, 2.0f, 8.0f};
+  const auto _ys = {+0.0f, -0.0f, kInf, -kInf, 5.0f, -3.0f, 2.0f, -8.0f, 1.0f};
+  const auto _xs = {+0.0f, -0.0f, kInf, -kInf, 6.0f, -4.0f, 2.0f, 8.0f};
   const auto n = _ys.size() * _xs.size();
   ys.reserve(n);
   xs.reserve(n);
@@ -2503,10 +2531,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, Atan2C64s) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, TanhF32s) {
   XlaBuilder builder(TestName());
-  auto inf = std::numeric_limits<float>::infinity();
-  auto nan = std::numeric_limits<float>::quiet_NaN();
+  auto kInf = std::numeric_limits<float>::infinity();
+  auto kNaN = std::numeric_limits<float>::quiet_NaN();
   auto a = ConstantR1<float>(
-      &builder, {-inf, -2.5f, 3.14f, -0.0f, 0.0f, 2.25f, inf, nan});
+      &builder, {-kInf, -2.5f, 3.14f, -0.0f, 0.0f, 2.25f, kInf, kNaN});
 
   Tanh(a);
 
@@ -2517,10 +2545,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, TanhF32s) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, TanhF64s) {
   XlaBuilder builder(TestName());
-  auto inf = std::numeric_limits<double>::infinity();
-  auto nan = std::numeric_limits<double>::quiet_NaN();
+  auto kInf = std::numeric_limits<double>::infinity();
+  auto kNaN = std::numeric_limits<double>::quiet_NaN();
   auto a = ConstantR1<double>(&builder,
-                              {-inf, -2.5, 3.14, -0.0, 0.0, 2.25, inf, nan});
+                              {-kInf, -2.5, 3.14, -0.0, 0.0, 2.25, kInf, kNaN});
 
   Tanh(a);
 

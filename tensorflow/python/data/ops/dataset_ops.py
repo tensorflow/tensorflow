@@ -1255,7 +1255,10 @@ class DatasetV2(
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    return ZipDataset(datasets, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops -> zip_op ->
+    # dataset_ops).
+    from tensorflow.python.data.ops import zip_op  # pylint: disable=g-import-not-at-top
+    return zip_op.zip(datasets, name)
 
   def concatenate(self, dataset, name=None):
     """Creates a `Dataset` by concatenating the given dataset with this dataset.
@@ -2177,6 +2180,53 @@ class DatasetV2(
     return ragged_batch_op.ragged_batch(self, batch_size, drop_remainder,
                                         row_splits_dtype, name)
 
+  def sparse_batch(self, batch_size, row_shape, name=None):
+    """Combines consecutive elements into `tf.sparse.SparseTensor`s.
+
+    Like `Dataset.padded_batch()`, this transformation combines multiple
+    consecutive elements of the dataset, which might have different
+    shapes, into a single element. The resulting element has three
+    components (`indices`, `values`, and `dense_shape`), which
+    comprise a `tf.sparse.SparseTensor` that represents the same data. The
+    `row_shape` represents the dense shape of each row in the
+    resulting `tf.sparse.SparseTensor`, to which the effective batch size is
+    prepended. For example:
+
+    ```python
+    # NOTE: The following examples use `{ ... }` to represent the
+    # contents of a dataset.
+    a = { ['a', 'b', 'c'], ['a', 'b'], ['a', 'b', 'c', 'd'] }
+
+    a.apply(tf.data.experimental.dense_to_sparse_batch(
+        batch_size=2, row_shape=[6])) ==
+    {
+        ([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1]],  # indices
+         ['a', 'b', 'c', 'a', 'b'],                 # values
+         [2, 6]),                                   # dense_shape
+        ([[0, 0], [0, 1], [0, 2], [0, 3]],
+         ['a', 'b', 'c', 'd'],
+         [1, 6])
+    }
+    ```
+
+    Args:
+      batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+        consecutive elements of this dataset to combine in a single batch.
+      row_shape: A `tf.TensorShape` or `tf.int64` vector tensor-like object
+        representing the equivalent dense shape of a row in the resulting
+        `tf.sparse.SparseTensor`. Each element of this dataset must have the
+        same rank as `row_shape`, and must have size less than or equal to
+        `row_shape` in each dimension.
+      name: (Optional.) A string indicating a name for the `tf.data` operation.
+
+    Returns:
+      A new `Dataset` with the transformation applied as described above.
+    """
+    # Loaded lazily due to a circular dependency (dataset_ops ->
+    # sparse_batch_op -> dataset_ops).
+    from tensorflow.python.data.ops import sparse_batch_op  # pylint: disable=g-import-not-at-top
+    return sparse_batch_op.sparse_batch(self, batch_size, row_shape, name)
+
   def map(self,
           map_func,
           num_parallel_calls=None,
@@ -2734,9 +2784,12 @@ name=None))
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    if shift is None:
-      shift = size
-    return WindowDataset(self, size, shift, stride, drop_remainder, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops -> window_op ->
+    # dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import window_op
+    return window_op._window(self, size, shift, stride, drop_remainder, name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def reduce(self, initial_state, reduce_func, name=None):
     """Reduces the input dataset to a single element.
@@ -4984,40 +5037,6 @@ class _GeneratorDataset(DatasetSource):
     return "Dataset.from_generator()"
 
 
-class ZipDataset(DatasetV2):
-  """A `Dataset` that zips its inputs together."""
-
-  def __init__(self, datasets, name=None):
-    """See `Dataset.zip()` for details."""
-    for ds in nest.flatten(datasets):
-      if not isinstance(ds, DatasetV2):
-        if isinstance(ds, list):
-          raise TypeError("Invalid `datasets`. `datasets` is expected to be a "
-                          "(nested) structure of `tf.data.Dataset` objects. "
-                          "Python `list` is not supported and you should use "
-                          "`tuple` instead.")
-        else:
-          raise TypeError(f"Invalid `datasets`. `datasets` is expected to be a "
-                          f"(nested) structure of `tf.data.Dataset` objects "
-                          f"but encountered object of type {type(ds)}.")
-    self._datasets = datasets
-    self._structure = nest.pack_sequence_as(
-        self._datasets,
-        [ds.element_spec for ds in nest.flatten(self._datasets)])
-    self._name = name
-    variant_tensor = gen_dataset_ops.zip_dataset(
-        [ds._variant_tensor for ds in nest.flatten(self._datasets)],
-        **self._common_args)
-    super(ZipDataset, self).__init__(variant_tensor)
-
-  def _inputs(self):
-    return nest.flatten(self._datasets)
-
-  @property
-  def element_spec(self):
-    return self._structure
-
-
 class ConcatenateDataset(DatasetV2):
   """A `Dataset` that concatenates its input with given dataset."""
 
@@ -5493,49 +5512,6 @@ class PrefetchDataset(UnaryUnchangedStructureDataset):
           slack_period=slack_period,
           **self._common_args)
     super(PrefetchDataset, self).__init__(input_dataset, variant_tensor)
-
-
-class WindowDataset(UnaryDataset):
-  """A dataset that creates window datasets from the input elements."""
-
-  def __init__(self,
-               input_dataset,
-               size,
-               shift,
-               stride,
-               drop_remainder,
-               name=None):
-    """See `window()` for more details."""
-    self._input_dataset = input_dataset
-    self._size = ops.convert_to_tensor(size, dtype=dtypes.int64, name="size")
-    self._shift = ops.convert_to_tensor(shift, dtype=dtypes.int64, name="shift")
-    self._stride = ops.convert_to_tensor(
-        stride, dtype=dtypes.int64, name="stride")
-    self._drop_remainder = ops.convert_to_tensor(
-        drop_remainder, dtype=dtypes.bool, name="drop_remainder")
-    self._structure = nest.pack_sequence_as(
-        get_legacy_output_classes(input_dataset), [
-            DatasetSpec(  # pylint: disable=g-complex-comprehension
-                structure.convert_legacy_structure(
-                    output_type, output_shape, output_class))
-            for output_class, output_shape, output_type in zip(
-                nest.flatten(get_legacy_output_classes(input_dataset)),
-                nest.flatten(get_legacy_output_shapes(input_dataset)),
-                nest.flatten(get_legacy_output_types(input_dataset)))
-        ])
-    self._name = name
-    variant_tensor = gen_dataset_ops.window_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        size=self._size,
-        shift=self._shift,
-        stride=self._stride,
-        drop_remainder=self._drop_remainder,
-        **self._common_args)
-    super(WindowDataset, self).__init__(input_dataset, variant_tensor)
-
-  @property
-  def element_spec(self):
-    return self._structure
 
 
 class _OptionsDataset(UnaryUnchangedStructureDataset):

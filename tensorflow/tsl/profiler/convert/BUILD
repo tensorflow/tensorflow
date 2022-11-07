@@ -13,6 +13,10 @@ package(
 cc_library(
     name = "xla_op_utils",
     hdrs = ["xla_op_utils.h"],
+    visibility = [
+        "//tensorflow/compiler/xla/backends/profiler:__subpackages__",
+        "//tensorflow/core/profiler:internal",
+    ],
     deps = ["@com_google_absl//absl/strings"],
 )
 
@@ -33,8 +37,8 @@ cc_library(
     hdrs = ["post_process_single_host_xplane.h"],
     copts = tf_profiler_copts(),
     deps = [
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/profiler/utils:xplane_schema",
         "//tensorflow/tsl/profiler/utils:xplane_utils",
     ],

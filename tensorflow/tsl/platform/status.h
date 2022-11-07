@@ -96,14 +96,6 @@ class Status {
   Status& operator=(Status&& s) noexcept;
 #endif  // SWIG
 
-  // Prefer using OkStatus().
-#ifndef SWIG
-  ABSL_DEPRECATED(
-      "Use `OkStatus()` (preferred) or `Status()` (which is backward "
-      "compatible with TF v2.9 and lower) instead.")
-#endif
-  static Status OK() { return Status(); }
-
   /// Returns true iff the status indicates success.
   bool ok() const { return (state_ == nullptr); }
 

@@ -405,6 +405,7 @@ cc_library(
         # We reuse VariableInfo in TFRT's implementation of TpuExecuteOp.
         "//learning/brain/tfrt/tf_tpu:__pkg__",
         "//learning/brain/tfrt/tpu_common:__pkg__",
+        "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
     ],
     deps = [
         ":common",
@@ -437,10 +438,12 @@ cc_library(
     hdrs = ["xla_compile_util.h"],
     visibility = [
         ":internal",
+        "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
     ],
     deps = [
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/core:framework",
+        "//tensorflow/compiler/tf2xla:xla_argument",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core/util:determinism",
     ],
 )
 
@@ -451,6 +454,7 @@ tf_cc_test(
     ],
     deps = [
         ":xla_compile_util",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:fake_input",
         "//tensorflow/core/kernels:identity_op",
@@ -472,13 +476,16 @@ cc_library(
     srcs = ["xla_compilation_cache.cc"],
     hdrs = ["xla_compilation_cache.h"],
     copts = tf_copts(),
+    visibility = [
+        ":internal",
+        "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
+    ],
     deps = [
         ":flags",
         ":xla_activity_listener",
         ":xla_activity_proto_cc",
         ":xla_cluster_util",
         ":xla_compilation_cache_proto_cc",
-        ":xla_compile_util",
         "//tensorflow/compiler/mlir:array_container_utils",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",

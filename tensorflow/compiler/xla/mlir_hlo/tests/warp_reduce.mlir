@@ -1,4 +1,5 @@
-// RUN: mlir-hlo-opt -split-input-file -gml-st-to-gpu %s | FileCheck %s
+// RUN: mlir-hlo-opt -split-input-file -gml-st-simtfy="block-distribution-label=block" \
+// RUN:   -gml-st-to-gpu="warp-distribution-label=warp" %s | FileCheck %s
 
 // CHECK-LABEL: func @vector_reduce
 func.func @vector_reduce(%arg0 : memref<1xf32>) {
@@ -25,12 +26,40 @@ func.func @vector_reduce(%arg0 : memref<1xf32>) {
   // CHECK: %[[SUM:.*]] = vector.broadcast %[[Y5]]
   %dist = gml_st.distribute %bcast into[%tile]
     : vector<1xf32> into vector<1x32xf32>[!gml_st.tile<1>]
-  %sum = vector.multi_reduction <add>, %dist, %init [1]
+  %sum = vector.multi_reduction <add>, %dist, %init
+    {"gml-st-distribution-label" = "warp"} [1]
     : vector<1x32xf32> to vector<1xf32>
   // CHECK: vector.transfer_write %[[SUM]], %arg0[%c0]
   vector.transfer_write %sum, %arg0[%c0] : vector<1xf32>, memref<1xf32>
 
   func.return
+}
+
+// -----
+
+// CHECK-LABEL: func @vector_reduce_small
+func.func @vector_reduce_small() -> vector<1xf32> {
+
+  %cst = arith.constant 1.0 : f32
+  %init = vector.broadcast %cst : f32 to vector<1xf32>
+  %lane = gpu.lane_id
+  %tile = gml_st.tile [%lane] [1] [1] : !gml_st.tile<1>
+  %dist = gml_st.distribute %init into[%tile]
+    : vector<1xf32> into vector<1x4xf32>[!gml_st.tile<1>]
+
+  // CHECK: %[[CST:.*]] = arith.constant 1.0
+  // CHECK: %[[Y0:.*]], %{{.*}} = gpu.shuffle xor %[[CST]], %c1
+  // CHECK: %[[X1:.*]] = arith.addf %[[Y0]], %[[CST]]
+  // CHECK: %[[Y1:.*]], %{{.*}} = gpu.shuffle xor %[[X1]], %c2
+  // CHECK: %[[X2:.*]] = arith.addf %[[X1]], %[[Y1]]
+  // CHECK: %[[Y2:.*]] = arith.addf %[[X2]], %[[CST]]
+  // CHECK: %[[SUM:.*]] = vector.broadcast %[[Y2]]
+  %sum = vector.multi_reduction <add>, %dist, %init
+    {"gml-st-distribution-label" = "warp"} [1]
+    : vector<1x4xf32> to vector<1xf32>
+
+  // CHECK: return %[[SUM]]
+  func.return %sum : vector<1xf32>
 }
 
 // -----
@@ -47,15 +76,16 @@ func.func @gpu_launch() -> memref<64xf32> {
   %cst = arith.constant dense<0.0> : vector<1xf32>
   %0 = memref.alloc() : memref<64xf32>
   // CHECK: gpu.launch
-  gml_st.parallel (%arg1) = (%c0) to (%c64) step (%c4) {
+  gml_st.parallel (%arg1) = (%c0) to (%c64) step (%c4) distribution ("block") {
     %1 = memref.subview %0[%arg1] [4] [1]
       : memref<64xf32> to memref<4xf32, #stride1>
-    gml_st.parallel (%arg2) = (%c0) to (%c4) step (%c1) {
+    gml_st.parallel (%arg2) = (%c0) to (%c4) step (%c1) distribution ("warp") {
       %2 = memref.subview %1[%arg2] [1] [1]
         : memref<4xf32, #stride1> to memref<1xf32, #stride1>
 
       %init = vector.broadcast %cst : vector<1xf32> to vector<1x32xf32>
-      %3 = gml_st.parallel (%arg3) = (%c0) to (%c32) step (%c1) {
+      %3 = gml_st.parallel (%arg3) = (%c0) to (%c32) step (%c1)
+          distribution ("thread") {
         %tile = gml_st.tile [0, %arg3] [1, 1] [1, 1] : !gml_st.tile<1x1>
         %elem = arith.constant dense<1.0> : vector<1x1xf32>
         gml_st.set_yield %elem into %init[%tile]
@@ -73,3 +103,17 @@ func.func @gpu_launch() -> memref<64xf32> {
   }
   return %0 : memref<64xf32>
 }
+
+// -----
+
+func.func @transform_only_warp_level_multi_reduction(%in: vector<4x10xi32>)
+    -> i32 {
+  %acc = arith.constant 0 : i32
+  %result = vector.multi_reduction <add>, %in, %acc
+    {"gml-st-distribution-level" = "not-warp"} [0, 1] : vector<4x10xi32> to i32
+  func.return %result : i32
+}
+
+// CHECK-LABEL: @transform_only_warp_level_multi_reduction
+// CHECK: vector.multi_reduction <add>, %[[IN:.*]], %[[ACC:.*]]
+// CHECK-SAME {"gml-st-distribution-level" = "not-warp"} [0, 1]

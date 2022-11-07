@@ -118,7 +118,7 @@ class GrpcServer : public ServerInterface {
   Status UpdateServerDef(const ServerDef& server_def) override;
   // Pass coordination service agent instance to server's RPC handler
   Status SetCoordinationServiceAgentInstance(
-      CoordinationServiceAgent* agent) override;
+      tsl::CoordinationServiceAgent* agent) override;
   // TODO(hanyangtay): Remove this method once gRPC server clean shutdown is
   // supported.
   Status StopCoordinationService() override;

@@ -53,6 +53,10 @@ class GraphInfo {
   // be between 0 and num_execution_nodes().
   virtual const TfLiteNode& node(size_t index) const = 0;
 
+  // Returns a node registration given its index which is expected to be between
+  // 0 and num_nodes().
+  virtual const TfLiteRegistration& registration(size_t index) const = 0;
+
   // Returns an implementation-specific node index which may be different from
   // execution-plan index.
   // Expected to be between 0 and num_total_nodes().

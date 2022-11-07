@@ -19,7 +19,6 @@ package_group(
     packages = [
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/mlir/...",
-        "//third_party/auroraml/...",
         "//third_party/iree/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/lite/python/...",

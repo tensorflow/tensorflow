@@ -220,6 +220,57 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.product(
       ({
+          'input_signature': (tensor_spec.TensorSpec(shape=None),
+                              tensor_spec.TensorSpec(shape=None),
+                              tensor_spec.TensorSpec(shape=None)),
+          'type_constraint': (tensor_spec.TensorSpec(shape=None),
+                              tensor_spec.TensorSpec(shape=None),
+                              tensor_spec.TensorSpec(shape=None))
+      }, {
+          'input_signature': ([
+              tensor_spec.TensorSpec(shape=None),
+              tensor_spec.TensorSpec(shape=None)
+          ], tensor_spec.TensorSpec(shape=None),
+                              tensor_spec.TensorSpec(shape=None)),
+          'type_constraint': (trace_type.from_value([
+              tensor_spec.TensorSpec(shape=None),
+              tensor_spec.TensorSpec(shape=None)
+          ], trace_type.InternalTracingContext(is_legacy_signature=True)),
+                              tensor_spec.TensorSpec(shape=None),
+                              tensor_spec.TensorSpec(shape=None))
+      }),
+      decorator=(dummy_tf_decorator, transparent_decorator),
+  )
+  def test_varargs(self, input_signature, type_constraint, decorator):
+
+    @decorator
+    def foo(*my_var_args):  # pylint: disable=unused-argument
+      pass
+
+    spec = function_spec.FunctionSpec.from_function_and_signature(
+        foo, input_signature)
+    self.assertEqual(
+        tuple(spec.fullargspec),
+        ([], 'my_var_args', None, None, [], None, {}))
+    self.assertEqual(spec.is_method, False)
+    self.assertEqual(spec.input_signature, input_signature)
+    self.assertEqual(spec.default_values, {})
+    self.assertEqual(
+        spec.function_type,
+        function_type_lib.FunctionType([
+            function_type_lib.Parameter(
+                'my_var_args_0', function_type_lib.Parameter.POSITIONAL_ONLY,
+                False, type_constraint[0]),
+            function_type_lib.Parameter(
+                'my_var_args_1', function_type_lib.Parameter.POSITIONAL_ONLY,
+                False, type_constraint[1]),
+            function_type_lib.Parameter(
+                'my_var_args_2', function_type_lib.Parameter.POSITIONAL_ONLY,
+                False, type_constraint[2])
+        ]))
+
+  @parameterized.product(
+      ({
           'input_signature': None,
           'type_constraint': (None, None, None)
       }, {

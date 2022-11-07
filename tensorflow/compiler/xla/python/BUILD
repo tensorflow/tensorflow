@@ -247,8 +247,8 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core/profiler:protos_all_cc",
         "//tensorflow/tsl/platform:protobuf",
+        "//tensorflow/tsl/profiler/protobuf:profile_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@pybind11",
     ],
@@ -419,8 +419,8 @@ cc_library(
     deps = [
         ":status_casters",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:custom_call_sharding_helper",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_sharding_util",
         "//tensorflow/compiler/xla/service/spmd:spmd_partitioner",
         "@com_google_absl//absl/cleanup",
@@ -729,9 +729,9 @@ cc_library(
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_parser",
@@ -888,7 +888,7 @@ pybind_extension(
         "//tensorflow/compiler/xla/pjrt/distributed:client",
         "//tensorflow/compiler/xla/pjrt/distributed:service",
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/core/distributed_runtime/preemption:preemption_sync_manager",
+        "//tensorflow/tsl/distributed_runtime/preemption:preemption_sync_manager",
         "//tensorflow/python:bfloat16_lib",
     ] + select({
         ":gpu_enabled": [
@@ -912,24 +912,4 @@ pybind_extension(
         ],
         "//conditions:default": [],
     }),
-)
-
-cc_library(
-    name = "bfloat16_lib",
-    srcs = [
-        "bfloat16.cc",
-        "float8_e4m3b11.cc",
-    ],
-    hdrs = [
-        "bfloat16.h",
-        "float8_e4m3b11.h",
-    ],
-    deps = [
-        ":numpy",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:types",
-        "//third_party/eigen3",
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
-        "@com_google_absl//absl/strings",
-    ],
 )

@@ -867,11 +867,12 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
     // TF::MulOp is used to fold the constant.
     // TODO(b/139192933): switch to the TFL constant folding
     auto new_filter =
-        rewriter.create<TF::MulOp>(mul_op.getLoc(), filter, new_const_val).z();
+        rewriter.create<TF::MulOp>(mul_op.getLoc(), filter, new_const_val)
+            .getZ();
     // If bias isn't None, it needs to be multiplied as well.
     if (!bias.getType().isa<NoneType>()) {
-      bias =
-          rewriter.create<TF::MulOp>(mul_op.getLoc(), bias, constant_val).z();
+      bias = rewriter.create<TF::MulOp>(mul_op.getLoc(), bias, constant_val)
+                 .getZ();
     }
 
     auto fc = rewriter.create<TFL::FullyConnectedOp>(
@@ -978,7 +979,7 @@ struct FuseAffinOpAndMulWithQDQs : public OpRewritePattern<TFL::MulOp> {
     // Rewrite filter constant. Since the folder of TFL::MulOp couldn't
     // broadcast the operands, TF::MulOp is used to fold the constant.
     auto new_filter =
-        rewriter.create<TF::MulOp>(loc, filter, broadcasted_gamma).z();
+        rewriter.create<TF::MulOp>(loc, filter, broadcasted_gamma).getZ();
     // Update the scale in the quantize op.
     auto new_qtype = RescaleQtype(q_op.getQtype(), gamma_cst);
     if (!new_qtype) return failure();

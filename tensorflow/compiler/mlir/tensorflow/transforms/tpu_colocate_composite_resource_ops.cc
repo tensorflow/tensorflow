@@ -82,7 +82,8 @@ llvm::SmallVector<Operation*, 4> GetResourceOpsUsingCompositeArgsInReplicate(
       // Account for pass-through identity ops.
       if (auto pass_through_identity =
               llvm::dyn_cast<TF::IdentityOp>(resource_user)) {
-        for (auto identity_user : pass_through_identity.output().getUsers()) {
+        for (auto identity_user :
+             pass_through_identity.getOutput().getUsers()) {
           new_resource_users.emplace_back(identity_user);
         }
       }

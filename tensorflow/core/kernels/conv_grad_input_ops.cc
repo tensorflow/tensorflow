@@ -212,6 +212,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       << "Negative row or col paddings: (" << common_padding_rows << ", "
       << common_padding_cols << ")";
 
+<<<<<<< HEAD
   // The Tensor Core in NVIDIA Volta+ GPUs supports efficient convolution with
   // fp16 in NHWC data layout. AMD Matrix Cores on MI100 and MI200 also allow 
   // for efficient FP16 NHWC convolutions. In all other configurations it's more 
@@ -220,6 +221,10 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                                (stream->GetCudaComputeCapability().IsAtLeast(
                                    se::CudaComputeCapability::VOLTA) ||
 				UseNhwcLayoutForConvOnRocm(stream));
+=======
+  const bool compute_in_nhwc =
+      ComputeInNhwcEnabled(DataTypeToEnum<T>::value, stream);
+>>>>>>> google_upstream/master
 
   // We only do one directional conversion: NHWC->NCHW. We never convert in the
   // other direction. Grappler layout optimizer selects the preferred layout and

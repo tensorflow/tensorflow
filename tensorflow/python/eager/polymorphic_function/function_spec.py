@@ -15,6 +15,8 @@
 """Defines an input type specification for tf.function."""
 
 import functools
+import inspect
+from typing import Any, Dict
 import weakref
 
 import numpy as np
@@ -39,12 +41,50 @@ from tensorflow.python.util import tf_inspect
 BOUND_VALUE = object()
 
 
+def to_fullargspec(function_type: function_type_lib.FunctionType,
+                   default_values: Dict[str, Any]) -> inspect.FullArgSpec:
+  """Generates backwards compatible FullArgSpec from FunctionType."""
+  args = []
+  varargs = None
+  varkw = None
+  defaults = []
+  kwonlyargs = []
+  kwonlydefaults = {}
+
+  for parameter in function_type.parameters.values():
+    if parameter.kind in [
+        inspect.Parameter.POSITIONAL_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD
+    ]:
+      args.append(parameter.name)
+      if parameter.default is not inspect.Parameter.empty:
+        defaults.append(default_values[parameter.name])
+    elif parameter.kind is inspect.Parameter.KEYWORD_ONLY:
+      kwonlyargs.append(parameter.name)
+      if parameter.default is not inspect.Parameter.empty:
+        kwonlydefaults[parameter.name] = default_values[parameter.name]
+    elif parameter.kind is inspect.Parameter.VAR_POSITIONAL:
+      varargs = parameter.name
+    elif parameter.kind is inspect.Parameter.VAR_KEYWORD:
+      varkw = parameter.name
+
+  return inspect.FullArgSpec(
+      args,
+      varargs,
+      varkw,
+      tuple(defaults) if defaults else None,
+      kwonlyargs,
+      kwonlydefaults if kwonlydefaults else None,
+      annotations={})
+
+
 # TODO(b/214462107): Clean up and migrate to core/function when unblocked.
 class FunctionSpec(object):
   """Specification of how to bind arguments to a function."""
 
   @classmethod
-  def from_function_and_signature(cls, python_function,
+  def from_function_and_signature(cls,
+                                  python_function,
                                   input_signature,
                                   is_pure=False,
                                   jit_compile=None):
@@ -54,7 +94,7 @@ class FunctionSpec(object):
       python_function: a function to inspect
       input_signature: a signature of the function (None, if variable)
       is_pure: if True all input arguments (including variables and constants)
-      will be converted to tensors and no variable changes allowed.
+        will be converted to tensors and no variable changes allowed.
       jit_compile: see `tf.function`
 
     Returns:
@@ -63,9 +103,12 @@ class FunctionSpec(object):
     _validate_signature(input_signature)
     _validate_python_function(python_function, input_signature)
 
-    fullargspec = tf_inspect.getfullargspec(python_function)
-    # Checks if the `fullargspec` contains self or cls as its first argument.
+    fullargspec = to_fullargspec(
+        function_type_lib.FunctionType.from_callable(python_function),
+        function_type_lib.FunctionType.get_default_values(python_function))
     is_method = tf_inspect.isanytargetmethod(python_function)
+    if (is_method and (not fullargspec.args or fullargspec.args[0] != "self")):
+      fullargspec.args.insert(0, "self")
 
     # Get the function's name.  Remove functools.partial wrappers if necessary.
     while isinstance(python_function, functools.partial):
@@ -134,8 +177,8 @@ class FunctionSpec(object):
       self._input_signature = None
     else:
       self._input_signature = tuple(input_signature)
-      self._flat_input_signature = tuple(nest.flatten(input_signature,
-                                                      expand_composites=True))
+      self._flat_input_signature = tuple(
+          nest.flatten(input_signature, expand_composites=True))
     self.validate_input_signature_with_argspec()
     self._default_values = self._make_default_values()
     self._function_type = self._make_function_type()
@@ -197,26 +240,55 @@ class FunctionSpec(object):
                                       False, None))
 
     # Annotate with Type Constraints if needed.
+    # TODO(fmuham): Move this logic to function_type_lib.
     if self.input_signature:
-      scanned_index = 0
-      for i, param in enumerate(parameters):
-        if (param.name != "self" and
-            param.kind != function_type_lib.Parameter.VAR_POSITIONAL and
-            param.kind != function_type_lib.Parameter.VAR_KEYWORD):
-          if scanned_index < len(self.input_signature):
-            type_constraint = trace_type.from_value(
-                self.input_signature[scanned_index],
-                trace_type.InternalTracingContext(is_legacy_signature=True))
-            parameters[i] = function_type_lib.Parameter(param.name, param.kind,
-                                                        param.optional,
-                                                        type_constraint)
-            scanned_index += 1
+      context = trace_type.InternalTracingContext(is_legacy_signature=True)
+      constraints = [
+          trace_type.from_value(c, context) for c in self.input_signature
+      ]
+      annotated_parameters = []
+
+      has_var_pos = any(p.kind is p.VAR_POSITIONAL for p in parameters)
+      for param in parameters:
+        # VAR_POSITIONAL does not allow POSITIONAL_OR_KEYWORD args.
+        sanitized_kind = (
+            param.POSITIONAL_ONLY if has_var_pos and
+            param.kind is param.POSITIONAL_OR_KEYWORD else param.kind)
+
+        if param.name == "self":
+          # Type constraints do not apply on them.
+          annotated_parameters.append(
+              function_type_lib.Parameter("self", sanitized_kind,
+                                          param.optional, None))
+
+        elif param.kind is param.VAR_KEYWORD:
+          # Disabled when input_signature is specified.
+          continue
+
+        elif param.kind is param.VAR_POSITIONAL:
+          # Convert into Positional Only args based on length of constraints.
+          for i in range(len(constraints)):
+            annotated_parameters.append(
+                function_type_lib.Parameter(
+                    param.name + "_" + str(i),
+                    function_type_lib.Parameter.POSITIONAL_ONLY, False,
+                    constraints.pop(0)))
+
+        elif (param.kind in [
+            param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD,
+            param.KEYWORD_ONLY
+        ]):
+          if constraints:
+            annotated_parameters.append(
+                function_type_lib.Parameter(param.name, sanitized_kind,
+                                            param.optional, constraints.pop(0)))
           elif param.name in self.default_values:
             type_constraint = trace_type.from_value(
                 self.default_values[param.name])
-            parameters[i] = function_type_lib.Parameter(param.name, param.kind,
-                                                        param.optional,
-                                                        type_constraint)
+            annotated_parameters.append(
+                function_type_lib.Parameter(param.name, sanitized_kind,
+                                            param.optional, type_constraint))
+        parameters = annotated_parameters
 
     return function_type_lib.FunctionType(parameters)
 
@@ -303,8 +375,7 @@ class FunctionSpec(object):
         required_arg_len = arg_names_len - default_arg_len - unbound_self_arg
         # The input signature must cover all required function arguments.
         if arglen < required_arg_len:
-          missing_tensor_specs = self.arg_names[
-              arglen:required_arg_len]
+          missing_tensor_specs = self.arg_names[arglen:required_arg_len]
           raise TypeError(
               f"The decorated tf.function has {required_arg_len} "
               f"required argument(s), but tf.function was only passed an "
@@ -498,8 +569,10 @@ def _validate_signature(signature):
 
   if any(not isinstance(arg, tensor_spec.TensorSpec)
          for arg in nest.flatten(signature, expand_composites=True)):
-    bad_args = [arg for arg in nest.flatten(signature, expand_composites=True)
-                if not isinstance(arg, tensor_spec.TensorSpec)]
+    bad_args = [
+        arg for arg in nest.flatten(signature, expand_composites=True)
+        if not isinstance(arg, tensor_spec.TensorSpec)
+    ]
     raise TypeError("input_signature must be a possibly nested sequence of "
                     f"TensorSpec objects, got invalid args {bad_args} with "
                     f"types {list(six.moves.map(type, bad_args))}.")
@@ -550,8 +623,7 @@ def _deterministic_dict_values(dictionary):
 
 def _convert_variables_to_tensors(args, kwargs):
   args = [_to_tensor_or_tensor_spec(x) for x in args]
-  kwargs = {kw: _to_tensor_or_tensor_spec(x)
-            for kw, x in kwargs.items()}
+  kwargs = {kw: _to_tensor_or_tensor_spec(x) for kw, x in kwargs.items()}
   return tuple(args), kwargs
 
 
@@ -581,13 +653,10 @@ def _convert_numpy_inputs(inputs):
       filtered_flat_inputs.append(flat_inputs[index])
       need_packing = True
   if need_packing:
-    return (
-        nest.pack_sequence_as(
-            structure=inputs,
-            flat_sequence=nest.flatten(flat_inputs, expand_composites=True),
-            expand_composites=True),
-        flat_inputs,
-        filtered_flat_inputs)
+    return (nest.pack_sequence_as(
+        structure=inputs,
+        flat_sequence=nest.flatten(flat_inputs, expand_composites=True),
+        expand_composites=True), flat_inputs, filtered_flat_inputs)
   else:
     return inputs, flat_inputs, filtered_flat_inputs
 
@@ -612,8 +681,8 @@ def convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
                      f"{format_error_message(inputs, input_signature)}.")
 
   need_packing = False
-  for index, (value, spec) in enumerate(zip(flatten_inputs,
-                                            flat_input_signature)):
+  for index, (value,
+              spec) in enumerate(zip(flatten_inputs, flat_input_signature)):
     if (isinstance(spec, tensor_spec.TensorSpec) and
         not isinstance(value, tensor_spec.TensorSpec) and
         not _pywrap_utils.IsTensor(value)):
@@ -627,9 +696,8 @@ def convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
                          "tensors:\n"
                          f"{format_error_message(inputs, input_signature)}.")
 
-  if any(not spec.is_compatible_with(other) for spec, other in zip(
-      flat_input_signature,
-      flatten_inputs)):
+  if any(not spec.is_compatible_with(other)
+         for spec, other in zip(flat_input_signature, flatten_inputs)):
     raise ValueError("Python inputs incompatible with input_signature:\n"
                      f"{format_error_message(inputs, input_signature)}.")
 

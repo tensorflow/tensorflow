@@ -35,6 +35,8 @@ REGISTER8(BinaryOp, GPU, "Sub", functor::sub, float, Eigen::half, double, int64,
           complex64, complex128, uint32, uint64);
 #endif
 
+REGISTER(BinaryOp, GPU, "Sub", functor::sub, bfloat16);
+
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.

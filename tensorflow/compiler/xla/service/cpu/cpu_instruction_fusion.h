@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_INSTRUCTION_FUSION_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 
 namespace xla {

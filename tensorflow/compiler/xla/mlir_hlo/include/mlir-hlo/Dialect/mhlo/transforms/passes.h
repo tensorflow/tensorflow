@@ -86,7 +86,8 @@ createLegalizeHloShapeOpsToStandardPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToTHLOPass();
 
 /// Lowers from HLO dialect to Linalg dialect.
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeHloToLinalgPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeHloToLinalgPass(
+    bool enablePrimitiveOps = false);
 
 /// Lowers from HLO dialects dim operations.
 std::unique_ptr<OperationPass<func::FuncOp>>

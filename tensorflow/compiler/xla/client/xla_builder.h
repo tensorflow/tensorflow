@@ -30,21 +30,20 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/hlo/ir/dynamic_parameter_binding.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/stacktrace.h"
 
@@ -360,7 +359,7 @@ class XlaBuilder {
   //
   // This will copy the needed ops/computations to the subgraph.
   StatusOr<XlaComputation> BuildConstantSubGraph(
-      XlaOp root_op, bool dynamic_dimension_is_uint_max = false);
+      XlaOp root_op, bool dynamic_dimension_is_minus_one = false);
 
   // Returns the first error that was encountered while building the
   // computation. When an error is encountered, by default we return a vacuous
@@ -404,7 +403,7 @@ class XlaBuilder {
 
   // A helper function that runs a function that returns a StatusOr<XlaOp> and
   // returns an XlaOp.
-  XlaOp ReportErrorOrReturn(const std::function<StatusOr<XlaOp>()>& op_creator);
+  XlaOp ReportErrorOrReturn(absl::FunctionRef<StatusOr<XlaOp>()> op_creator);
 
   // Returns true if 'operand' is a compile-time constant. A compile-time
   // constant does not depend on any parameters, or on stateful operators such
@@ -2214,7 +2213,7 @@ XlaOp CustomCallWithComputation(
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
         output_operand_aliasing = {},
     const Literal* literal = nullptr,
-    CustomCallSchedule = CustomCallSchedule::SCHEDULE_NONE,
+    CustomCallSchedule schedule = CustomCallSchedule::SCHEDULE_NONE,
     CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
 
 // Overload which constructs a custom call with fixed layouts. The operands will

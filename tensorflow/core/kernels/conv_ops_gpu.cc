@@ -23,13 +23,38 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
 #include "tensorflow/core/kernels/autotune_conv_impl.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
+
+bool ComputeInNhwcEnabled(DataType data_type, se::Stream* stream,
+                          bool use_4d_tensor) {
+#if GOOGLE_CUDA
+  // Tensor Core supports efficient convolution with fp16 for NVIDIA Volta+
+  // GPUs and tf32 for Ampere+ GPUs in NHWC data layout. In all other
+  // configurations it's more efficient to run computation in NCHW data format.
+  bool use_nhwc_tf32 = data_type == DT_FLOAT &&
+                       stream->GetCudaComputeCapability().IsAtLeast(
+                           se::CudaComputeCapability::AMPERE) &&
+                       tensorflow::tensor_float_32_execution_enabled();
+  bool use_nhwc_fp16 =
+      data_type == DT_HALF && stream->GetCudaComputeCapability().IsAtLeast(
+                                  se::CudaComputeCapability::VOLTA);
+  if (use_4d_tensor) {
+    return use_nhwc_fp16 || use_nhwc_tf32;
+  }
+  return CUDNN_VERSION >= 8000 && (use_nhwc_fp16 || use_nhwc_tf32);
+#else
+  // fast NHWC implementation is a CUDA only feature
+  return false;
+#endif  // GOOGLE_CUDA
+}
 
 // Finds the best convolution algorithm for the given ConvLaunch (cuda
 // convolution on the stream) and parameters, by running all possible

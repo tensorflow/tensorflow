@@ -21,6 +21,9 @@ include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 
 def HasSameType : Constraint<CPred<"$0.getType() == $1.getType()">>;
 
+// Checks if the value has only one user.
+def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
+
 // Canonicalization patterns.
 
 def DynamicBroadcastToOwnShape_1 : Pat<
@@ -70,3 +73,18 @@ def EliminateIdentityReshape : Pat<
   (HLO_ReshapeOp:$res $src),
   (replaceWithValue $src),
   [(HasSameType $res, $src)]>;
+
+// select(not(p), t, f) => select(p, f, t)
+def FusePredNegIntoSelect : Pat<
+  (HLO_SelectOp (HLO_NotOp $pred), $on_true, $on_false),
+  (HLO_SelectOp $pred, $on_false, $on_true)>;
+
+// select(broadcast(not(p)), t, f) => select(broadcast(p), f, t)
+def FuseBroadcastedPredNegIntoSelect : Pat<
+  (HLO_SelectOp
+    (HLO_BroadcastInDimOp:$b (HLO_NotOp $pred), $broadcast_dimensions),
+    $on_true, $on_false),
+  (HLO_SelectOp
+    (HLO_BroadcastInDimOp $pred, $broadcast_dimensions, (returnType $b)),
+    $on_false, $on_true),
+  [(HasOneUse $b)]>;

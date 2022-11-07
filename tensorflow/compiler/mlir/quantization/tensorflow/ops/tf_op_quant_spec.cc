@@ -30,7 +30,7 @@ std::unique_ptr<OpQuantSpec> GetTFOpQuantSpec(Operation* op) {
   auto spec = std::make_unique<OpQuantSpec>();
   if (auto call_op = dyn_cast<TF::PartitionedCallOp>(op)) {
     StringRef function_name =
-        call_op.fAttr().cast<FlatSymbolRefAttr>().getValue();
+        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
     if (!function_name.startswith("composite_")) {
       return spec;
     }

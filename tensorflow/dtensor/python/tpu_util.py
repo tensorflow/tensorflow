@@ -23,7 +23,6 @@ import numpy as np
 from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import gen_dtensor_ops
-from tensorflow.dtensor.python import heartbeat
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -279,13 +278,6 @@ def initialize_tpu_system():
                   + "messages above to see whether that's the case. \nIf so, "
                   + "consider to restart the job or try another machine.")
     raise e
-
-  # Optionally exchange heartbeats between workers every minute.
-  if config.num_clients() > 1 and config.heartbeat_enabled():
-    logging.info(
-        "Starting DTensor heartbeat service exchanging signals every 10 minutes"
-    )
-    heartbeat.start(period=180)
 
   # Clear out the eager context caches since the memory is invalid now.
   logging.info("Clearing out eager caches")

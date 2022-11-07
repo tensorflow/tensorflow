@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/call_register.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_model.h"
@@ -86,6 +87,15 @@ TEST_F(CustomValidationEmbedderTest, BuildValidationModelSucceed) {
 TEST_F(CustomValidationEmbedderTest, BuildValidationModelTooManyInput) {
   int batch_size = 5;
   CustomValidationEmbedder embedder(batch_size, {{}, {}});
+
+  FlatBufferBuilder fbb;
+  EXPECT_EQ(
+      embedder.BuildModel(*plain_model_loader_->GetModel()->GetModel(), fbb),
+      kMinibenchmarkValidationSubgraphBuildFailed);
+}
+
+TEST_F(CustomValidationEmbedderTest, BuildValidationModelInvalidBufferSize) {
+  CustomValidationEmbedder embedder(2, {std::vector<uint8_t>(2, 2)});
 
   FlatBufferBuilder fbb;
   EXPECT_EQ(

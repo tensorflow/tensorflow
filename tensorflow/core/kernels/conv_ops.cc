@@ -819,6 +819,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     return;
   }
 
+<<<<<<< HEAD
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Tensor Core (NVIDIA Volta+ GPUs) supports efficient convolution with fp16
   // in NHWC data layout. AMD MI100+ also allows for efficient FP16 NHWC 
@@ -832,6 +833,11 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   // fast NHWC implementation is a CUDA/ROCM only feature
   const bool compute_in_nhwc = false;
 #endif
+=======
+  const bool compute_in_nhwc =
+      ComputeInNhwcEnabled(DataTypeToEnum<T>::value, stream);
+  // fast NHWC implementation is a CUDA only feature
+>>>>>>> google_upstream/master
 
   // We only do one directional conversion: NHWC->NCHW. We never convert in the
   // other direction. Grappler layout optimizer selects preferred layout and

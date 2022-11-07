@@ -2419,7 +2419,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
     crash_analysis::RemoveReportData(flib_crash_handle);
   });
 
-  VLOG(1) << "Importing: "
+  VLOG(2) << "Importing: "
           << ::tensorflow::DumpGraphToFile("tf_mlir_importer_base", graph,
                                            &flib_def);
 
@@ -2522,7 +2522,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
                           : mlir::func::FuncOp::Visibility::Private;
     function.setVisibility(visibility);
   }
-  VLOG(1) << "Imported: "
+  VLOG(2) << "Imported: "
           << tensorflow::DumpMlirOpToFile("tf_mlir_imported_base",
                                           module.get());
   return module;

@@ -24,7 +24,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -522,6 +522,18 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
   int64_t batch_size = output_layout.batch_size;
 
   if (!algorithm) algorithm = config.algorithm;
+
+  if ((output_layout.dtype == F16 || output_layout.dtype == BF16 ||
+       output_layout.dtype == F32 || output_layout.dtype == F64 ||
+       output_layout.dtype == C64 || output_layout.dtype == C128) &&
+      (lhs_layout.dtype != output_layout.dtype ||
+       rhs_layout.dtype != output_layout.dtype)) {
+    return InternalError(
+        "GEMM lhs type(%s) and rhs type(%s) must match output type(%s)",
+        primitive_util::LowercasePrimitiveTypeName(lhs_layout.dtype),
+        primitive_util::LowercasePrimitiveTypeName(rhs_layout.dtype),
+        primitive_util::LowercasePrimitiveTypeName(output_layout.dtype));
+  }
 
   switch (output_layout.dtype) {
     case S32:

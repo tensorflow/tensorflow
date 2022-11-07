@@ -1848,7 +1848,7 @@ Status EagerKernelExecute(
   // device. We don't call it now because it is an unneeded overhead (it
   // acquires a lock) and we can't recover from errors anyway.
   ScopedStepContainer* container = ctx->StepContainer();
-  CoordinationServiceAgent* coord_agent = nullptr;
+  tsl::CoordinationServiceAgent* coord_agent = nullptr;
 #if !defined(IS_MOBILE_PLATFORM)
   if (ctx->GetDistributedManager() != nullptr)
     coord_agent = ctx->GetDistributedManager()->GetCoordinationServiceAgent();
@@ -2056,7 +2056,7 @@ void EagerKernelExecuteAsync(
     done(s);
     return;
   }
-  CoordinationServiceAgent* coord_agent = nullptr;
+  tsl::CoordinationServiceAgent* coord_agent = nullptr;
 #if !defined(IS_MOBILE_PLATFORM)
   if (ctx->GetDistributedManager() != nullptr)
     coord_agent = ctx->GetDistributedManager()->GetCoordinationServiceAgent();

@@ -21,7 +21,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CASTING_UTILS_H_

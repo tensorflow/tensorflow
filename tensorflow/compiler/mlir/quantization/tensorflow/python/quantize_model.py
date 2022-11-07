@@ -28,6 +28,7 @@ from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model as quantize_model_wrapper
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
+from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -601,13 +602,16 @@ def _run_static_range_qat(
     The static-range quantized graph.
   """
   logging.info('Running static-range quantization for QAT model.')
-  graph_def_serialized = (
+  exported_model_serialized = (
       quantize_model_wrapper.quantize_qat_model(saved_model_path,
                                                 ','.join(signature_def_keys),
                                                 ','.join(tags),
                                                 quant_opts.SerializeToString()))
 
-  return graph_pb2.GraphDef.FromString(graph_def_serialized)
+  exported_model = exported_model_pb2.ExportedModel.FromString(
+      exported_model_serialized)
+
+  return exported_model.graph_def
 
 
 def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
@@ -701,16 +705,18 @@ def _run_static_range_ptq(
     initialize resources (e.g. hash tables) when a SavedModel is loaded.
   """
   logging.info('Running post-training quantization pre-calibration step.')
-  graph_def_serialized, init_node_name = (
+  exported_model_serialized = (
       quantize_model_wrapper.quantize_ptq_model_pre_calibration(
           saved_model_path, ','.join(signature_def_keys), ','.join(tags),
           quant_opts.SerializeToString()))
 
-  graph_def = graph_pb2.GraphDef.FromString(graph_def_serialized)
+  exported_model = exported_model_pb2.ExportedModel.FromString(
+      exported_model_serialized)
 
   float_model_dir = tempfile.mkdtemp()
   v1_builder = builder.SavedModelBuilder(float_model_dir)
 
+  graph_def = exported_model.graph_def
   with session.Session(graph=ops.Graph()) as sess:
     for function_def in graph_def.library.function:
       for node_def in function_def.node_def:
@@ -729,7 +735,7 @@ def _run_static_range_ptq(
         sess,
         tags,
         signature_def_map=signature_def_map,
-        main_op=_find_op(working_graph, init_node_name))
+        main_op=_find_op(working_graph, exported_model.init_node_name))
 
   v1_builder.save()
 
@@ -753,7 +759,7 @@ def _run_static_range_ptq(
         sess,
         tags,
         signature_def_map=signature_def_map,
-        main_op=_find_op(working_graph, init_node_name))
+        main_op=_find_op(working_graph, exported_model.init_node_name))
 
   v1_builder.save()
 
@@ -761,14 +767,16 @@ def _run_static_range_ptq(
                                                        signature_def_keys, tags)
 
   logging.info('Running post-training quantization post-calibration step.')
-  graph_def_serialized, init_node_name = (
+  exported_model_serialized = (
       quantize_model_wrapper.quantize_ptq_model_post_calibration(
           calibrated_model_dir, ','.join(signature_def_keys), ','.join(tags),
           quant_opts.SerializeToString()))
 
-  graph_def = graph_pb2.GraphDef.FromString(graph_def_serialized)
+  exported_model = exported_model_pb2.ExportedModel.FromString(
+      exported_model_serialized)
 
-  return graph_def, signature_def_map, init_node_name
+  return (exported_model.graph_def, signature_def_map,
+          exported_model.init_node_name)
 
 
 def _save_model_v1(graph_def: graph_pb2.GraphDef,
@@ -942,17 +950,18 @@ def _dynamic_range_quantize(
         _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS)
 
   # Apply post-training dynamic range quantization to the model.
-  graph_def_serialized = (
+  exported_model_serialized = (
       quantize_model_wrapper.quantize_ptq_dynamic_range(
           saved_model_path, ','.join(signature_keys), ','.join(tags),
           quantization_options.SerializeToString()))
 
-  graph_def = graph_pb2.GraphDef.FromString(graph_def_serialized)
+  exported_model = exported_model_pb2.ExportedModel.FromString(
+      exported_model_serialized)
   signature_def_map = _get_signatures_from_saved_model(saved_model_path,
                                                        signature_keys, tags)
 
   _save_model_v1(
-      graph_def,
+      exported_model.graph_def,
       output_directory,
       signature_def_map,
       tags={tag_constants.SERVING})

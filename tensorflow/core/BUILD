@@ -1461,13 +1461,16 @@ cc_library(
     }) +
     # The TF proto implementations that we will statically link here.
     [
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc_impl",
         "//tensorflow/core/profiler:profiler_options_proto_cc_impl",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl",
         "//tensorflow/core/protobuf:autotuning_proto_cc_impl",
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl",
         "//tensorflow/core:protos_all_cc_impl",
+        "//tensorflow/tsl/protobuf:autotuning_proto_cc_impl",
         "//tensorflow/tsl/protobuf:protos_all_cc_impl",
+        "//tensorflow/compiler/xla:xla_proto_cc_impl",
         "//tensorflow/compiler/xla:xla_data_proto_cc_impl",
         "//tensorflow/compiler/xla/service:hlo_proto_cc_impl",
     ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps(),

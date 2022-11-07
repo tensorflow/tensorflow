@@ -15,17 +15,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 
+#include <complex>
+#include <functional>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -1444,6 +1447,16 @@ TEST_F(XlaBuilderTest, ComplexAbsConstant) {
   EXPECT_IS_OK(analyzed.status());
   EXPECT_EQ(analyzed->GetValue().value().shape().element_type(),
             PrimitiveType::F32);
+}
+
+TEST_F(XlaBuilderTest, OutfeedDummyTupleSharding) {
+  XlaBuilder b(TestName());
+  XlaOp value = ConstantR1<int32_t>(&b, {0});
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, /* dimensions= */ {1},
+                                                    /* minor_to_major= */ {0});
+  Outfeed(value, shape, "");
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  EXPECT_FALSE(module->entry_computation()->root_instruction()->has_sharding());
 }
 
 }  // namespace

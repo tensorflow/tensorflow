@@ -468,6 +468,33 @@ tf_proto_library(
 # )
 # copybara:uncomment_end
 
+# OSS only: This target is header-only. Link `exported_model_proto_impl` only to
+# `libtensorflow_framework.so` via `lib_internal_impl`. Do NOT link
+# `exported_model_proto_impl` directly unless the target does not link
+# `libtensorflow_framework.so`.
+tf_proto_library(
+    name = "exported_model_proto",
+    srcs = ["exported_model.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    protodeps = [
+        "//tensorflow/core:protos_all",
+    ],
+    visibility = [
+        ":internal_visibility_allowlist_package",
+        # To be visible from `lib_internal_impl`.
+        "//tensorflow/core:__pkg__",
+    ],
+)
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "exported_model_py_pb2",
+#     api_version = 2,
+#     deps = [":exported_model_proto"],
+# )
+# copybara:uncomment_end
+
 tf_cc_binary(
     name = "tf-quant-opt",
     srcs = ["passes/tf_quant_opt.cc"],

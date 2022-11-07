@@ -1373,6 +1373,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
 )
 
@@ -2001,6 +2002,7 @@ tf_cuda_library(
 filegroup(
     name = "gpu_runtime_headers",
     srcs = [
+        "device.h",
         "gpu_device_context.h",
     ],
 )

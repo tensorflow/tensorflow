@@ -27,13 +27,12 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/async_collective_creator.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 
@@ -523,6 +522,100 @@ ENTRY %module {
                                         new_instruction_sequence, "ag1"),
             GetOpcodeIndexUsingMetaData(HloOpcode::kAllGatherDone,
                                         new_instruction_sequence, "ag1"));
+}
+
+TEST_F(LatencyHidingSchedulerTest, AllReduceAsyncBalance) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+%add {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %a = f32[] add(p0, p1)
+}
+
+ENTRY %module {
+  %constant.19 = u32[] constant(0)
+  %replica_id = u32[]{:T(128)} replica-id()
+  %convert = f32[]{:T(128)} convert(u32[]{:T(128)} %replica_id)
+  %color_operand.1 = f32[2,8,256,256]{3,2,1,0:T(8,128)} broadcast(
+    f32[]{:T(128)} %convert), dimensions={}
+  %color_operand.2 = f32[2,8,256,256]{3,2,1,0:T(8,128)} broadcast(
+    f32[]{:T(128)} %convert), dimensions={}
+  %ar-start = f32[2,8,256,256] all-reduce-start(
+    f32[2,8,256,256] %color_operand.1), replica_groups={{0,1}}, to_apply=%add,
+    metadata={op_type="AllReduce" op_name="ar0"}
+  %ar-start.2 = f32[2,8,256,256] all-reduce-start(
+    f32[2,8,256,256] %color_operand.2), replica_groups={{0,1}}, to_apply=%add,
+    metadata={op_type="AllReduce" op_name="ar1"}
+  %ar-done = f32[2,8,256,256] all-reduce-done(
+    f32[2,8,256,256] %ar-start),
+    metadata={op_type="AllReduce" op_name="ar0"}
+  %ar-done-bc = f32[16,256,256] bitcast(f32[2,8,256,256] %ar-done),
+    metadata={op_type="Bitcast" op_name="ar0"}
+  %ar-done.2 = f32[2,8,256,256] all-reduce-done(
+    f32[2,8,256,256] %ar-start.2),
+    metadata={op_type="AllReduce" op_name="ar1"}
+  %ar-done-bc.2 = f32[16,256,256] bitcast(f32[2,8,256,256] %ar-done.2),
+    metadata={op_type="Bitcast" op_name="ar1"}
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[16,64,256]{2,1,0} parameter(1)
+  p2 = f32[16,256,256]{2,1,0} parameter(2)
+  p3 = f32[16,256,256]{2,1,0} parameter(3)
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb,
+    metadata={op_type="AllReduce" op_name="c0"}
+  c1 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb,
+    metadata={op_type="AllReduce" op_name="c1"}
+  a2 = f32[16,256,256]{2,1,0} add(c1, c0)
+  ROOT t = (f32[16,256,256], f32[16,256,256], f32[16,256,256]) tuple(a2, %ar-done-bc.2, %ar-done-bc)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  std::vector<HloInstruction*> original_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+
+  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  // We expect that the scheduling would look like this:
+  //   %ar-start = all-reduce-start()
+  //   %c0 = convolution()
+  //   %ar-done = all-reduce-done()
+  //   %ar-start.2 = all-reduce-start()
+  //   %c1 = convolution()
+  //   %ar-done.2 = f32[2,8,256,256]{3,2,1,0} all-reduce-done()
+  // This means that the all-reduces are balanced over the two convolutions
+  // rather than being unbalanced (one of the two all-reduces overlaps with
+  // both the convolutons and the other with nothing).
+  EXPECT_LT(GetOpcodeIndexUsingMetaData(HloOpcode::kConvolution,
+                                        new_instruction_sequence, "c0"),
+            GetOpcodeIndexUsingMetaData(HloOpcode::kAllReduceDone,
+                                        new_instruction_sequence, "ar0"));
+  EXPECT_GT(GetOpcodeIndexUsingMetaData(HloOpcode::kConvolution,
+                                        new_instruction_sequence, "c0"),
+            GetOpcodeIndexUsingMetaData(HloOpcode::kAllReduceStart,
+                                        new_instruction_sequence, "ar0"));
+  EXPECT_LT(GetOpcodeIndexUsingMetaData(HloOpcode::kConvolution,
+                                        new_instruction_sequence, "c1"),
+            GetOpcodeIndexUsingMetaData(HloOpcode::kAllReduceDone,
+                                        new_instruction_sequence, "ar1"));
+  EXPECT_GT(GetOpcodeIndexUsingMetaData(HloOpcode::kConvolution,
+                                        new_instruction_sequence, "c1"),
+            GetOpcodeIndexUsingMetaData(HloOpcode::kAllReduceStart,
+                                        new_instruction_sequence, "ar1"));
 }
 
 TEST_F(LatencyHidingSchedulerTest, WhileLoopAliasingBug) {

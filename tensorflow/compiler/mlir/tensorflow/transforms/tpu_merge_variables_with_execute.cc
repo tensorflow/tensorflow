@@ -181,7 +181,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
         read_op->getParentRegion() != execute_parent->getParentRegion())
       continue;
 
-    auto resource = read_op.resource();
+    auto resource = read_op.getResource();
     if (check_device) {
       // TODO(lyandy): Wrap resource ops in tf_device.launch.
       if (auto* resource_op = resource.getDefiningOp()) {
@@ -230,12 +230,13 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
            first_read->getIterator(), execute_parent->getIterator()))) {
     if (auto read_op = llvm::dyn_cast<TF::ReadVariableOp>(&op)) {
       VLOG(2) << "Processing read op " << debugString(op);
-      auto info_it = var_access_info.per_resource_info.find(read_op.resource());
+      auto info_it =
+          var_access_info.per_resource_info.find(read_op.getResource());
       bool is_merge_candidate =
           info_it != var_access_info.per_resource_info.end();
 
       if (is_merge_candidate &&
-          !IsResourceSafeForMerge(read_op.resource(), resource_analysis_info,
+          !IsResourceSafeForMerge(read_op.getResource(), resource_analysis_info,
                                   var_access_info, resource_ids,
                                   previous_unknown_resource_access)) {
         VLOG(2) << "  removing op from merge candidates";
@@ -272,7 +273,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
 
     auto assign_op = llvm::dyn_cast<TF::AssignVariableOp>(*result.user_begin());
     if (!assign_op) continue;
-    auto resource = assign_op.resource();
+    auto resource = assign_op.getResource();
     auto it = var_access_info.per_resource_info.find(resource);
     if (it == var_access_info.per_resource_info.end()) continue;
     auto& info = it->getSecond();
@@ -307,14 +308,15 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
         bool is_merge_candidate = true;
         if (all_assigns.count(assign_op) == 0) is_merge_candidate = false;
         auto info_it =
-            var_access_info.per_resource_info.find(assign_op.resource());
+            var_access_info.per_resource_info.find(assign_op.getResource());
         if (info_it == var_access_info.per_resource_info.end())
           is_merge_candidate = false;
 
         if (is_merge_candidate &&
-            !IsResourceSafeForMerge(
-                assign_op.resource(), resource_analysis_info, var_access_info,
-                resource_ids, previous_unknown_resource_access)) {
+            !IsResourceSafeForMerge(assign_op.getResource(),
+                                    resource_analysis_info, var_access_info,
+                                    resource_ids,
+                                    previous_unknown_resource_access)) {
           VLOG(2) << "  removing op from merge candidates";
           output_merged[info_it->second.execute_output_index] = false;
           info_it->second.execute_output_index = -1;

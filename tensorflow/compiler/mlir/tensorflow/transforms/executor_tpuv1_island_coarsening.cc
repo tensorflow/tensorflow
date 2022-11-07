@@ -592,8 +592,8 @@ void EraseIdentityWithNoReplicationInfo(Block& graph_body) {
       llvm::Optional<llvm::StringRef> cluster_name = GetTpuClusterName(&op);
       if (cluster_name.hasValue()) continue;
       if (auto identity_op = llvm::dyn_cast_or_null<TF::IdentityOp>(op)) {
-        auto identity_input = identity_op.input();
-        auto output = identity_op.output();
+        auto identity_input = identity_op.getInput();
+        auto output = identity_op.getOutput();
         output.replaceAllUsesWith(identity_input);
         identity_op.erase();
       }

@@ -30,6 +30,8 @@ using protobuf::TextFormat;
 
 constexpr int32_t kInt8Min = std::numeric_limits<int8_t>::min();
 constexpr int32_t kInt8Max = std::numeric_limits<int8_t>::max();
+constexpr int32_t kInt32Min = std::numeric_limits<int32_t>::min();
+constexpr int32_t kInt32Max = std::numeric_limits<int32_t>::max();
 
 template <typename T>
 std::vector<T> Arange(int start, int stop, int step = 1) {
@@ -47,6 +49,804 @@ std::vector<T> Arange(int start, int stop, int step = 1) {
 class UniformQuantizedConvolutionTest : public OpsTestBase {
  protected:
 };
+
+TEST_F(UniformQuantizedConvolutionTest, PerTensorQuantizedDefaultAttrs) {
+  TF_ASSERT_OK(NodeDefBuilder("test", "UniformQuantizedConvolution")
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("Tin", DT_QINT8)
+                   .Attr("Tout", DT_QINT32)
+                   .Attr("lhs_quantization_min_val", kInt8Min)
+                   .Attr("lhs_quantization_max_val", kInt8Max)
+                   .Attr("rhs_quantization_min_val", kInt8Min)
+                   .Attr("rhs_quantization_max_val", kInt8Max)
+                   .Attr("output_quantization_min_val", kInt32Min)
+                   .Attr("output_quantization_max_val", kInt32Max)
+                   .Attr("padding", "VALID")
+                   .Finalize(node_def()));
+  // Uses default Attrs (and default conv_params settings).
+  //
+  // batch_group_count = 1
+  // feature_group_count = 1
+  // strides = [1, 1]
+  // dimension_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
+  // lhs_dilation = [1, 1]
+  // rhs_dilation = [1, 1]
+  TF_ASSERT_OK(InitOp());
+
+  // lhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({2, 2, 3, 4}), Arange<qint8>(-24, 24));
+  // rhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({3, 2, 2, 3}), Arange<qint8>(-18, 18));
+  // lhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {1});
+  // rhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {2});
+  // output scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {3.0});
+  AddInputFromArray<int32>(TensorShape({}), {3});
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3, 2, 2}));
+  // Dequantized output [(output - 3) * 3.0] should be equal to
+  // conv([(lhs - 1) * 2.0], [(rhs - 2) * 2.0])
+  test::FillValues<qint32>(
+      &expected, {4062,  3830,  3134,  2902,  990,   950,   830,   790,
+                  -2082, -1930, -1474, -1322, -1506, -1738, -2434, -2666,
+                  30,    -10,   -130,  -170,  1566,  1718,  2174,  2326});
+  test::ExpectTensorEqual<qint32>(expected, *GetOutput(0));
+}
+
+TEST_F(UniformQuantizedConvolutionTest, PerTensorQuantizedSetStrides) {
+  TF_ASSERT_OK(NodeDefBuilder("test", "UniformQuantizedConvolution")
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("Tin", DT_QINT8)
+                   .Attr("Tout", DT_QINT32)
+                   .Attr("lhs_quantization_min_val", kInt8Min)
+                   .Attr("lhs_quantization_max_val", kInt8Max)
+                   .Attr("rhs_quantization_min_val", kInt8Min)
+                   .Attr("rhs_quantization_max_val", kInt8Max)
+                   .Attr("output_quantization_min_val", kInt32Min)
+                   .Attr("output_quantization_max_val", kInt32Max)
+                   .Attr("padding", "VALID")
+                   .Attr("window_strides", {2, 3})
+                   .Finalize(node_def()));
+  // dimension_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
+  // batch_group_count = 1
+  // feature_group_count = 1
+  // lhs_dilation = [1, 1]
+  // rhs_dilation = [1, 1]
+  TF_ASSERT_OK(InitOp());
+
+  // lhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({2, 2, 3, 4}), Arange<qint8>(-24, 24));
+  // rhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({3, 2, 2, 3}), Arange<qint8>(-18, 18));
+  // lhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {1});
+  // rhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {2});
+  // output scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {3.0});
+  AddInputFromArray<int32>(TensorShape({}), {3});
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3, 1, 1}));
+  // Dequantized output [(output - 3) * 3.0] should be equal to
+  // conv([(lhs - 1) * 2.0], [(rhs - 2) * 2.0])
+  test::FillValues<qint32>(&expected, {4062, 990, -2082, -1506, 30, 1566});
+  test::ExpectTensorEqual<qint32>(expected, *GetOutput(0));
+}
+
+TEST_F(UniformQuantizedConvolutionTest, PerTensorQuantizedSetExplicitPadding) {
+  TF_ASSERT_OK(NodeDefBuilder("test", "UniformQuantizedConvolution")
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("Tin", DT_QINT8)
+                   .Attr("Tout", DT_QINT32)
+                   .Attr("lhs_quantization_min_val", kInt8Min)
+                   .Attr("lhs_quantization_max_val", kInt8Max)
+                   .Attr("rhs_quantization_min_val", kInt8Min)
+                   .Attr("rhs_quantization_max_val", kInt8Max)
+                   .Attr("output_quantization_min_val", kInt32Min)
+                   .Attr("output_quantization_max_val", kInt32Max)
+                   .Attr("padding", "EXPLICIT")
+                   .Attr("explicit_padding", {0, 1, 1, 2})
+                   .Finalize(node_def()));
+  // strides = [1, 1]
+  // dimension_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
+  // batch_group_count = 1
+  // feature_group_count = 1
+  // lhs_dilation = [1, 1]
+  // rhs_dilation = [1, 1]
+  TF_ASSERT_OK(InitOp());
+
+  // lhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({2, 2, 3, 4}), Arange<qint8>(-24, 24));
+  // rhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({3, 2, 2, 3}), Arange<qint8>(-18, 18));
+  // lhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {1});
+  // rhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {2});
+  // output scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {3.0});
+  AddInputFromArray<int32>(TensorShape({}), {3});
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3, 3, 5}));
+  // Dequantized output [(output - 3) * 3.0] should be equal to
+  // conv([(lhs - 1) * 2.0], [(rhs - 2) * 2.0])
+  test::FillValues<qint32>(
+      &expected,
+      {2694,  4062,  3830,  2550,  1272,  2096,  3134,  2902,  1910,  942,
+       968,   1432,  1304,  848,   414,   582,   990,   950,   694,   376,
+       496,   830,   790,   566,   302,   296,   472,   440,   304,   158,
+       -1530, -2082, -1930, -1162, -520,  -1104, -1474, -1322, -778,  -338,
+       -376,  -488,  -424,  -240,  -98,   -890,  -1506, -1738, -1290, -712,
+       -1488, -2434, -2666, -1930, -1042, -1016, -1640, -1768, -1264, -674,
+       70,    30,    -10,   -74,   -72,   -16,   -130,  -170,  -202,  -146,
+       -152,  -296,  -328,  -272,  -162,  1030,  1566,  1718,  1142,  568,
+       1456,  2174,  2326,  1526,  750,   712,   1048,  1112,  720,   350});
+  test::ExpectTensorEqual<qint32>(expected, *GetOutput(0));
+}
+
+TEST_F(UniformQuantizedConvolutionTest, PerTensorQuantizedSetDimensionNumbers) {
+  UniformQuantizedConvolutionDimensionNumbersAttr dimension_numbers;
+  ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
+                                            input_batch_dimension: 1
+                                            input_feature_dimension: 3
+                                            input_spatial_dimensions: 2
+                                            input_spatial_dimensions: 0
+                                            kernel_output_feature_dimension: 2
+                                            kernel_input_feature_dimension: 1
+                                            kernel_spatial_dimensions: 0
+                                            kernel_spatial_dimensions: 3
+                                            output_batch_dimension: 2
+                                            output_feature_dimension: 1
+                                            output_spatial_dimensions: 3
+                                            output_spatial_dimensions: 0
+                                          )pb",
+                                          &dimension_numbers));
+  TF_ASSERT_OK(
+      NodeDefBuilder("test", "UniformQuantizedConvolution")
+          .Input(FakeInput(DT_QINT8))
+          .Input(FakeInput(DT_QINT8))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Attr("Tin", DT_QINT8)
+          .Attr("Tout", DT_QINT32)
+          .Attr("lhs_quantization_min_val", kInt8Min)
+          .Attr("lhs_quantization_max_val", kInt8Max)
+          .Attr("rhs_quantization_min_val", kInt8Min)
+          .Attr("rhs_quantization_max_val", kInt8Max)
+          .Attr("output_quantization_min_val", kInt32Min)
+          .Attr("output_quantization_max_val", kInt32Max)
+          .Attr("padding", "VALID")
+          .Attr("dimension_numbers", dimension_numbers.SerializeAsString())
+          .Finalize(node_def()));
+  // strides = [1, 1]
+  // batch_group_count = 1
+  // feature_group_count = 1
+  // lhs_dilation = [1, 1]
+  // rhs_dilation = [1, 1]
+  TF_ASSERT_OK(InitOp());
+
+  // lhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({4, 2, 3, 2}), Arange<qint8>(-24, 24));
+  // rhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({2, 2, 3, 3}), Arange<qint8>(-18, 18));
+  // lhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {1});
+  // rhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {2});
+  // output scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {3.0});
+  AddInputFromArray<int32>(TensorShape({}), {3});
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3, 2, 2}));
+  // Dequantized output [(output - 3) * 3.0] should be equal to
+  // conv([(lhs - 1) * 2.0], [(rhs - 2) * 2.0])
+  test::FillValues<qint32>(
+      &expected,
+      {1323, 1147, 795,  619,  771, 691, 531, 451, 219, 235, 267, 283,
+       267,  91,   -261, -437, 291, 211, 51,  -29, 315, 331, 363, 379});
+  test::ExpectTensorEqual<qint32>(expected, *GetOutput(0));
+}
+
+TEST_F(UniformQuantizedConvolutionTest,
+       PerTensorQuantizedSetFeatureGroupCount) {
+  TF_ASSERT_OK(NodeDefBuilder("test", "UniformQuantizedConvolution")
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("Tin", DT_QINT8)
+                   .Attr("Tout", DT_QINT32)
+                   .Attr("lhs_quantization_min_val", kInt8Min)
+                   .Attr("lhs_quantization_max_val", kInt8Max)
+                   .Attr("rhs_quantization_min_val", kInt8Min)
+                   .Attr("rhs_quantization_max_val", kInt8Max)
+                   .Attr("output_quantization_min_val", kInt32Min)
+                   .Attr("output_quantization_max_val", kInt32Max)
+                   .Attr("padding", "VALID")
+                   .Attr("feature_group_count", 2)
+                   .Finalize(node_def()));
+  // dimension_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
+  // batch_group_count = 1
+  // strides = [1, 1]
+  // lhs_dilation = [1, 1]
+  // rhs_dilation = [1, 1]
+  TF_ASSERT_OK(InitOp());
+
+  // lhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({2, 4, 3, 4}), Arange<qint8>(-48, 48));
+  // rhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({4, 2, 2, 3}), Arange<qint8>(-24, 24));
+  // lhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {1});
+  // rhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {2});
+  // output scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {3.0});
+  AddInputFromArray<int32>(TensorShape({}), {3});
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QINT32, TensorShape({2, 4, 2, 2}));
+  // Dequantized output [(output - 3) * 3.0] should be equal to
+  // conv([(lhs - 1) * 2.0], [(rhs - 2) * 2.0])
+  test::FillValues<qint32>(
+      &expected, {13470, 13142, 12158, 11830, 5790,  5654,  5246,  5110,
+                  -546,  -490,  -322,  -266,  -3618, -3370, -2626, -2378,
+                  -2274, -2602, -3586, -3914, -738,  -874,  -1282, -1418,
+                  2142,  2198,  2366,  2422,  8286,  8534,  9278,  9526});
+  test::ExpectTensorEqual<qint32>(expected, *GetOutput(0));
+}
+
+TEST_F(UniformQuantizedConvolutionTest, PerTensorQuantizedSetBatchGroupCount) {
+  TF_ASSERT_OK(NodeDefBuilder("test", "UniformQuantizedConvolution")
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("Tin", DT_QINT8)
+                   .Attr("Tout", DT_QINT32)
+                   .Attr("lhs_quantization_min_val", kInt8Min)
+                   .Attr("lhs_quantization_max_val", kInt8Max)
+                   .Attr("rhs_quantization_min_val", kInt8Min)
+                   .Attr("rhs_quantization_max_val", kInt8Max)
+                   .Attr("output_quantization_min_val", kInt32Min)
+                   .Attr("output_quantization_max_val", kInt32Max)
+                   .Attr("padding", "VALID")
+                   .Attr("batch_group_count", 2)
+                   .Finalize(node_def()));
+  // strides = [1, 1]
+  // dimension_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
+  // feature_group_count = 1
+  // lhs_dilation = [1, 1]
+  // rhs_dilation = [1, 1]
+  TF_ASSERT_OK(InitOp());
+
+  // lhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({4, 2, 3, 4}), Arange<qint8>(-48, 48));
+  // rhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({4, 2, 2, 3}), Arange<qint8>(-24, 24));
+  // lhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {1});
+  // rhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {2});
+  // output scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {3.0});
+  AddInputFromArray<int32>(TensorShape({}), {3});
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QINT32, TensorShape({2, 4, 2, 2}));
+  // Dequantized output [(output - 3) * 3.0] should be equal to
+  // conv([(lhs - 1) * 2.0], [(rhs - 2) * 2.0])
+  test::FillValues<qint32>(
+      &expected,
+      {13470, 13142, 12158, 11830, 5790, 5654, 5246, 5110, 798,  854,  1022,
+       1078,  2334,  2582,  3326,  3574, 5598, 5270, 4286, 3958, 2526, 2390,
+       1982,  1846,  2142,  2198,  2366, 2422, 8286, 8534, 9278, 9526});
+  test::ExpectTensorEqual<qint32>(expected, *GetOutput(0));
+}
+
+TEST_F(UniformQuantizedConvolutionTest, PerTensorQuantizedSetLhsDilation) {
+  TF_ASSERT_OK(NodeDefBuilder("test", "UniformQuantizedConvolution")
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("Tin", DT_QINT8)
+                   .Attr("Tout", DT_QINT32)
+                   .Attr("lhs_quantization_min_val", kInt8Min)
+                   .Attr("lhs_quantization_max_val", kInt8Max)
+                   .Attr("rhs_quantization_min_val", kInt8Min)
+                   .Attr("rhs_quantization_max_val", kInt8Max)
+                   .Attr("output_quantization_min_val", kInt32Min)
+                   .Attr("output_quantization_max_val", kInt32Max)
+                   .Attr("padding", "VALID")
+                   .Attr("lhs_dilation", {2, 2})
+                   .Finalize(node_def()));
+  // dimension_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
+  // strides = [1, 1]
+  // batch_group_count = 1
+  // feature_group_count = 1
+  // rhs_dilation = [1, 1]
+  TF_ASSERT_OK(InitOp());
+
+  // lhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({2, 2, 3, 4}), Arange<qint8>(-24, 24));
+  // rhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({3, 2, 2, 3}), Arange<qint8>(-18, 18));
+  // lhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {1});
+  // rhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {2});
+  // output scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {3.0});
+  AddInputFromArray<int32>(TensorShape({}), {3});
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3, 4, 5}));
+  // Dequantized output [(output - 3) * 3.0] should be equal to
+  // conv([(lhs - 1) * 2.0], [(rhs - 2) * 2.0])
+  test::FillValues<qint32>(
+      &expected,
+      {1680, 819,  1595, 776,  1510, 1107, 536,  1038, 502,  968,  1339, 648,
+       1254, 606,  1168, 830,  398,  760,  363,  691,  496,  243,  475,  232,
+       454,  179,  88,   174,  86,   168,  411,  200,  390,  190,  368,  158,
+       78,   152,  75,   147,  -688, -333, -645, -312, -602, -749, -360, -690,
+       -330, -632, -517, -248, -474, -226, -432, -514, -242, -456, -213, -397,
+       -368, -205, -453, -248, -538, -557, -296, -626, -330, -696, -709, -376,
+       -794, -418, -880, -834, -434, -904, -469, -973, -16,  -13,  -37,  -24,
+       -58,  51,   24,   46,   22,   40,   -101, -56,  -122, -66,  -144, 30,
+       14,   24,   11,   19,   336,  179,  379,  200,  422,  659,  344,  718,
+       374,  776,  507,  264,  550,  286,  592,  894,  462,  952,  491,  1011});
+  test::ExpectTensorEqual<qint32>(expected, *GetOutput(0));
+}
+
+TEST_F(UniformQuantizedConvolutionTest, PerTensorQuantizedSetRhsDilation) {
+  TF_ASSERT_OK(NodeDefBuilder("test", "UniformQuantizedConvolution")
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("Tin", DT_QINT8)
+                   .Attr("Tout", DT_QINT32)
+                   .Attr("lhs_quantization_min_val", kInt8Min)
+                   .Attr("lhs_quantization_max_val", kInt8Max)
+                   .Attr("rhs_quantization_min_val", kInt8Min)
+                   .Attr("rhs_quantization_max_val", kInt8Max)
+                   .Attr("output_quantization_min_val", kInt32Min)
+                   .Attr("output_quantization_max_val", kInt32Max)
+                   .Attr("padding", "VALID")
+                   .Attr("rhs_dilation", {2, 2})
+                   .Finalize(node_def()));
+  // dimension_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
+  // strides = [1, 1]
+  // batch_group_count = 1
+  // feature_group_count = 1
+  // lhs_dilation = [1, 1]
+  TF_ASSERT_OK(InitOp());
+
+  // lhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({2, 2, 4, 5}), Arange<qint8>(-40, 40));
+  // rhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({3, 2, 2, 3}), Arange<qint8>(-18, 18));
+  // lhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {1});
+  // rhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {2});
+  // output scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {3.0});
+  AddInputFromArray<int32>(TensorShape({}), {3});
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3, 2, 1}));
+  // Dequantized output [(output - 3) * 3.0] should be equal to
+  // conv([(lhs - 1) * 2.0], [(rhs - 2) * 2.0])
+  test::FillValues<qint32>(&expected, {6192, 5032, 1584, 1384, -3024, -2264,
+                                       -3088, -4248, -16, -216, 3056, 3816});
+  test::ExpectTensorEqual<qint32>(expected, *GetOutput(0));
+}
+
+TEST_F(UniformQuantizedConvolutionTest, PerChannelQuantizedDefaultAttrs) {
+  TF_ASSERT_OK(NodeDefBuilder("test", "UniformQuantizedConvolution")
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("Tin", DT_QINT8)
+                   .Attr("Tout", DT_QINT32)
+                   .Attr("rhs_quantization_axis", 0)
+                   .Attr("lhs_quantization_min_val", kInt8Min)
+                   .Attr("lhs_quantization_max_val", kInt8Max)
+                   .Attr("rhs_quantization_min_val", kInt8Min)
+                   .Attr("rhs_quantization_max_val", kInt8Max)
+                   .Attr("output_quantization_min_val", kInt32Min)
+                   .Attr("output_quantization_max_val", kInt32Max)
+                   .Attr("padding", "VALID")
+                   .Finalize(node_def()));
+  // Uses default Attrs (and default conv_params settings).
+  //
+  // batch_group_count = 1
+  // feature_group_count = 1
+  // strides = [1, 1]
+  // dimension_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
+  // lhs_dilation = [1, 1]
+  // rhs_dilation = [1, 1]
+  TF_ASSERT_OK(InitOp());
+
+  // lhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({2, 2, 3, 4}), Arange<qint8>(-24, 24));
+  // rhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({3, 2, 2, 3}), Arange<qint8>(-18, 18));
+  // lhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {1});
+  // rhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({3}), {2.0, 4.0, 2.0});
+  AddInputFromArray<int32>(TensorShape({3}), {2, 4, 2});
+  // output scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {3.0});
+  AddInputFromArray<int32>(TensorShape({}), {3});
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3, 2, 2}));
+  // Dequantized output [(output - 3) * 3.0] should be equal to
+  // conv([(lhs - 1) * 2.0], Per-channel-dequantized-rhs)
+  test::FillValues<qint32>(
+      &expected, {4062,  3830,  3134,  2902,  3000,  2856,  2424,  2280,
+                  -2082, -1930, -1474, -1322, -1506, -1738, -2434, -2666,
+                  -456,  -600,  -1032, -1176, 1566,  1718,  2174,  2326});
+  test::ExpectTensorEqual<qint32>(expected, *GetOutput(0));
+}
+
+TEST_F(UniformQuantizedConvolutionTest,
+       PerChannelQuantizedRhsAndOutputDefaultAttrs) {
+  TF_ASSERT_OK(NodeDefBuilder("test", "UniformQuantizedConvolution")
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("Tin", DT_QINT8)
+                   .Attr("Tout", DT_QINT32)
+                   .Attr("rhs_quantization_axis", 0)
+                   .Attr("output_quantization_axis", 1)
+                   .Attr("lhs_quantization_min_val", kInt8Min)
+                   .Attr("lhs_quantization_max_val", kInt8Max)
+                   .Attr("rhs_quantization_min_val", kInt8Min)
+                   .Attr("rhs_quantization_max_val", kInt8Max)
+                   .Attr("output_quantization_min_val", kInt32Min)
+                   .Attr("output_quantization_max_val", kInt32Max)
+                   .Attr("padding", "VALID")
+                   .Finalize(node_def()));
+  // Uses default Attrs (and default conv_params settings).
+  //
+  // batch_group_count = 1
+  // feature_group_count = 1
+  // strides = [1, 1]
+  // dimension_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
+  // lhs_dilation = [1, 1]
+  // rhs_dilation = [1, 1]
+  TF_ASSERT_OK(InitOp());
+
+  // lhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({2, 2, 3, 4}), Arange<qint8>(-24, 24));
+  // rhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({3, 2, 2, 3}), Arange<qint8>(-18, 18));
+  // lhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {1});
+  // rhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({3}), {2.0, 4.0, 2.0});
+  AddInputFromArray<int32>(TensorShape({3}), {2, 4, 2});
+  // output scales and zero_points.
+  AddInputFromArray<float>(TensorShape({3}), {3.0, 2.0, 1.0});
+  AddInputFromArray<int32>(TensorShape({3}), {3, 2, 1});
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3, 2, 2}));
+  // Dequantized output [(output - 3) * 3.0] should be equal to
+  // conv([(lhs - 1) * 2.0], Per-channel-dequantized-rhs)
+  test::FillValues<qint32>(
+      &expected, {4062,  3830,  3134,  2902,  4498,  4282,  3634,  3418,
+                  -6255, -5799, -4431, -3975, -1506, -1738, -2434, -2666,
+                  -686,  -902,  -1550, -1766, 4689,  5145,  6513,  6969});
+  test::ExpectTensorEqual<qint32>(expected, *GetOutput(0));
+}
+
+TEST_F(UniformQuantizedConvolutionTest, PerChannelQuantizedTFConv2DLikeConfig) {
+  // Like TF Conv2D Default (data_format=NHWC),
+  // dimension_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
+  UniformQuantizedConvolutionDimensionNumbersAttr dimension_numbers;
+  ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
+                                            input_batch_dimension: 0
+                                            input_feature_dimension: 3
+                                            input_spatial_dimensions: 1
+                                            input_spatial_dimensions: 2
+                                            kernel_output_feature_dimension: 3
+                                            kernel_input_feature_dimension: 2
+                                            kernel_spatial_dimensions: 0
+                                            kernel_spatial_dimensions: 1
+                                            output_batch_dimension: 0
+                                            output_feature_dimension: 3
+                                            output_spatial_dimensions: 1
+                                            output_spatial_dimensions: 2
+                                          )pb",
+                                          &dimension_numbers));
+  TF_ASSERT_OK(
+      NodeDefBuilder("test", "UniformQuantizedConvolution")
+          .Input(FakeInput(DT_QINT8))
+          .Input(FakeInput(DT_QINT8))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Attr("Tin", DT_QINT8)
+          .Attr("Tout", DT_QINT32)
+          .Attr("rhs_quantization_axis", 3)
+          .Attr("lhs_quantization_min_val", kInt8Min)
+          .Attr("lhs_quantization_max_val", kInt8Max)
+          .Attr("rhs_quantization_min_val", kInt8Min)
+          .Attr("rhs_quantization_max_val", kInt8Max)
+          .Attr("output_quantization_min_val", kInt32Min)
+          .Attr("output_quantization_max_val", kInt32Max)
+          .Attr("padding", "VALID")
+          .Attr("dimension_numbers", dimension_numbers.SerializeAsString())
+          .Finalize(node_def()));
+  // strides = [1, 1]
+  // batch_group_count = 1
+  // feature_group_count = 1
+  // lhs_dilation = [1, 1]
+  // rhs_dilation = [1, 1]
+  TF_ASSERT_OK(InitOp());
+
+  // lhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({2, 3, 4, 2}), Arange<qint8>(-24, 24));
+  // rhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({2, 3, 2, 3}), Arange<qint8>(-18, 18));
+  // lhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {1});
+  // rhs scales and zero_points.
+  // AddInputFromArray<float>(TensorShape({}), {2.0});
+  // AddInputFromArray<int32>(TensorShape({}), {2});
+  AddInputFromArray<float>(TensorShape({3}), {2.0, 4.0, 2.0});
+  AddInputFromArray<int32>(TensorShape({3}), {2, 4, 2});
+  // output scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {3.0});
+  AddInputFromArray<int32>(TensorShape({}), {3});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_QINT32, TensorShape({2, 2, 2, 3}));
+  // Dequantized output [(output - 3) * 3.0] should be equal to
+  // conv([(lhs - 1) * 2.0], Per-channel-dequantized-rhs)
+  test::FillValues<qint32>(
+      &expected,
+      {1755, 4099, 1163, 1643, 3811, 1115, 1307, 2947, 971, 1195, 2659, 923,
+       411,  643,  587,  299,  355,  539,  -37,  -509, 395, -149, -797, 347});
+  test::ExpectTensorEqual<qint32>(expected, *GetOutput(0));
+}
+
+TEST_F(UniformQuantizedConvolutionTest,
+       PerChannelQuantizedTFDepthwiseConv2DLikeConfig) {
+  // Like TF DepthwiseConv2D Default (data_format=NHWC),
+  // dimension_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
+  // And set feature_group_count to input feature dimension size.
+  UniformQuantizedConvolutionDimensionNumbersAttr dimension_numbers;
+  ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
+                                            input_batch_dimension: 0
+                                            input_feature_dimension: 3
+                                            input_spatial_dimensions: 1
+                                            input_spatial_dimensions: 2
+                                            kernel_output_feature_dimension: 3
+                                            kernel_input_feature_dimension: 2
+                                            kernel_spatial_dimensions: 0
+                                            kernel_spatial_dimensions: 1
+                                            output_batch_dimension: 0
+                                            output_feature_dimension: 3
+                                            output_spatial_dimensions: 1
+                                            output_spatial_dimensions: 2
+                                          )pb",
+                                          &dimension_numbers));
+  TF_ASSERT_OK(
+      NodeDefBuilder("test", "UniformQuantizedConvolution")
+          .Input(FakeInput(DT_QINT8))
+          .Input(FakeInput(DT_QINT8))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Attr("Tin", DT_QINT8)
+          .Attr("Tout", DT_QINT32)
+          .Attr("rhs_quantization_axis", 3)
+          .Attr("lhs_quantization_min_val", kInt8Min)
+          .Attr("lhs_quantization_max_val", kInt8Max)
+          .Attr("rhs_quantization_min_val", kInt8Min)
+          .Attr("rhs_quantization_max_val", kInt8Max)
+          .Attr("output_quantization_min_val", kInt32Min)
+          .Attr("output_quantization_max_val", kInt32Max)
+          .Attr("padding", "VALID")
+          .Attr("feature_group_count", 2)
+          .Attr("dimension_numbers", dimension_numbers.SerializeAsString())
+          .Finalize(node_def()));
+  // strides = [1, 1]
+  // batch_group_count = 1
+  // lhs_dilation = [1, 1]
+  // rhs_dilation = [1, 1]
+  TF_ASSERT_OK(InitOp());
+
+  // lhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({2, 3, 4, 2}), Arange<qint8>(-24, 24));
+  // rhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({2, 3, 1, 2}), Arange<qint8>(-6, 6));
+  // lhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {1});
+  // rhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({2}), {2.0, 4.0});
+  AddInputFromArray<int32>(TensorShape({2}), {2, 4});
+  // output scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {3.0});
+  AddInputFromArray<int32>(TensorShape({}), {3});
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QINT32, TensorShape({2, 2, 2, 2}));
+  // Dequantized output [(output - 3) * 3.0] should be equal to
+  // conv([(lhs - 1) * 2.0], Per-channel-dequantized-rhs)
+  test::FillValues<qint32>(
+      &expected, {576, 1390, 528, 1262, 384, 878, 336, 750, 0, -146, -48, -274,
+                  -192, -658, -240, -786});
+  test::ExpectTensorEqual<qint32>(expected, *GetOutput(0));
+}
+
+TEST_F(UniformQuantizedConvolutionTest, PerChannelQuantizedTFConv3DLikeConfig) {
+  // Like TF Conv3D Default (data_format=NDHWC),
+  // dimension_numbers = [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f]
+  UniformQuantizedConvolutionDimensionNumbersAttr dimension_numbers;
+  ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
+                                            input_batch_dimension: 0
+                                            input_feature_dimension: 4
+                                            input_spatial_dimensions: 1
+                                            input_spatial_dimensions: 2
+                                            input_spatial_dimensions: 3
+                                            kernel_output_feature_dimension: 4
+                                            kernel_input_feature_dimension: 3
+                                            kernel_spatial_dimensions: 0
+                                            kernel_spatial_dimensions: 1
+                                            kernel_spatial_dimensions: 2
+                                            output_batch_dimension: 0
+                                            output_feature_dimension: 4
+                                            output_spatial_dimensions: 1
+                                            output_spatial_dimensions: 2
+                                            output_spatial_dimensions: 3
+                                          )pb",
+                                          &dimension_numbers));
+  TF_ASSERT_OK(
+      NodeDefBuilder("test", "UniformQuantizedConvolution")
+          .Input(FakeInput(DT_QINT8))
+          .Input(FakeInput(DT_QINT8))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Attr("Tin", DT_QINT8)
+          .Attr("Tout", DT_QINT32)
+          .Attr("rhs_quantization_axis", 4)
+          .Attr("lhs_quantization_min_val", kInt8Min)
+          .Attr("lhs_quantization_max_val", kInt8Max)
+          .Attr("rhs_quantization_min_val", kInt8Min)
+          .Attr("rhs_quantization_max_val", kInt8Max)
+          .Attr("output_quantization_min_val", kInt32Min)
+          .Attr("output_quantization_max_val", kInt32Max)
+          .Attr("padding", "VALID")
+          .Attr("dimension_numbers", dimension_numbers.SerializeAsString())
+          .Finalize(node_def()));
+  // strides = [1, 1, 1]
+  // batch_group_count = 1
+  // feature_group_count = 1
+  // lhs_dilation = [1, 1, 1]
+  // rhs_dilation = [1, 1, 1]
+  TF_ASSERT_OK(InitOp());
+
+  // lhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({2, 3, 4, 2, 2}),
+                           Arange<qint8>(-50, 46));
+  // rhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({2, 3, 2, 2, 2}),
+                           Arange<qint8>(-24, 24));
+  // lhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {1});
+  // rhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({2}), {2.0, 4.0});
+  AddInputFromArray<int32>(TensorShape({2}), {2, 4});
+  // output scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {3.0});
+  AddInputFromArray<int32>(TensorShape({}), {3});
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QINT32, TensorShape({2, 2, 2, 1, 2}));
+  // Dequantized output [(output - 3) * 3.0] should be equal to
+  // conv([(lhs - 1) * 2.0], Per-channel-dequantized-rhs)
+  test::FillValues<qint32>(
+      &expected, {7438, 17272, 7054, 16248, 5902, 13176, 5518, 12152, 2830,
+                  4984, 2446, 3960, 1294, 888, 910, -136});
+  test::ExpectTensorEqual<qint32>(expected, *GetOutput(0));
+}
 
 TEST_F(UniformQuantizedConvolutionTest, HybridPerTensorQuantizedDefaultAttrs) {
   TF_ASSERT_OK(NodeDefBuilder("test", "UniformQuantizedConvolutionHybrid")

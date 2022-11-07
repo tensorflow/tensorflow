@@ -1518,8 +1518,9 @@ std::string LiteralBase::ToStringWithLayoutOneline() const {
 }
 
 void LiteralBase::EachCellAsString(
-    const std::function<void(absl::Span<const int64_t> indices,
-                             const std::string& value)>& per_cell) const {
+    absl::FunctionRef<void(absl::Span<const int64_t> indices,
+                           const std::string& value)>
+        per_cell) const {
   if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }

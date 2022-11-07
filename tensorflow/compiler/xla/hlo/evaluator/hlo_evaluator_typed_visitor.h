@@ -36,11 +36,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -909,8 +909,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
     Literal result(result_shape);
 
-    TF_RETURN_IF_ERROR(
-        result.Populate<ReturnT>([&](absl::Span<const int64_t> out_index) {
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+        [&](absl::Span<const int64_t> out_index, int) {
           std::vector<int64_t> from_index(out_index.begin(), out_index.end());
           for (const int64_t dim : reverse_dimensions) {
             from_index[dim] = result_shape.dimensions(dim) - 1 - out_index[dim];
@@ -1007,7 +1007,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           out_index[output_z_dim] / output_feature_group_size;
 
       const int64_t depthwise_multiplier =
-          batch_group_count > 1 ? output_z_size / input_batch_size : 1;
+          batch_group_count > 1 ? output_z_size / batch_group_count : 1;
       const int64_t batch_group_index =
           out_index[output_z_dim] / depthwise_multiplier;
 
@@ -1421,8 +1421,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     ReturnT scalar =
         parent_->GetEvaluatedLiteralFor(pad->operand(1)).Get<ReturnT>({});
     Literal result(pad->shape());
-    TF_RETURN_IF_ERROR(result.Populate<ReturnT>(
-        [&scalar](absl::Span<const int64_t> multi_index) { return scalar; }));
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+        [&scalar](absl::Span<const int64_t> multi_index, int) {
+          return scalar;
+        }));
 
     const Literal& evaluated_operand =
         parent_->GetEvaluatedLiteralFor(pad->operand(0));
@@ -1968,7 +1970,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     const int64_t rank = operand->shape().rank();
     const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
-    auto func = [&](absl::Span<const int64_t> out_index) {
+    auto func = [&](absl::Span<const int64_t> out_index, int) {
       DimensionVector operand_index(rank);
       for (int64_t i = 0; i < rank; ++i) {
         operand_index[i] =
@@ -1978,7 +1980,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     };
 
     Literal result(shape);
-    TF_RETURN_IF_ERROR(result.Populate<ReturnT>(func));
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(func));
     parent_->evaluated_[slice] = std::move(result);
     return OkStatus();
   }
@@ -2494,8 +2496,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     Literal result(shape);
 
-    TF_RETURN_IF_ERROR(
-        result.Populate<ReturnT>([&](absl::Span<const int64_t> multi_index) {
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+        [&](absl::Span<const int64_t> multi_index, int) {
           return ConvertBinaryFunction(binary_op)(
               lhs_literal.Get<ReturnT>(multi_index),
               rhs_literal.Get<ReturnT>(multi_index));
@@ -2521,8 +2523,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     Literal result(shape);
 
-    TF_RETURN_IF_ERROR(
-        result.Populate<ReturnT>([&](absl::Span<const int64_t> multi_index) {
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+        [&](absl::Span<const int64_t> multi_index, int) {
           return ternary_op(lhs_literal.Get<LhsType>(multi_index),
                             rhs_literal.Get<RhsType>(multi_index),
                             ehs_literal.Get<EhsType>(multi_index));

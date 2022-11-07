@@ -83,9 +83,13 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
                                         expected_dims.end(), 0);
                               return instr->dimensions() == expected_dims;
                             }))
-                 // The root operation should be an elementwise binary op.
+                 // The root operation should be an elementwise binary op of
+                 // rank 2.
+                 // TODO(frgossen): Relax the rank 2 constraint when the
+                 // pipeline can handle it.
                  .WithPredicate([](const HloInstruction* instr) {
-                   return instr->IsElementwiseBinary();
+                   return instr->IsElementwiseBinary() &&
+                          instr->shape().rank() == 2;
                  }))) {
     return false;
   }

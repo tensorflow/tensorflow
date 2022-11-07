@@ -4679,3 +4679,39 @@ func.func @testSetStaticDimensionBounds(%arg0: tensor<?x?xi32>, %arg1: tensor<4x
   %dyn_arg0 = "tf.SetStaticDimensionBounds" (%arg0, %arg1) :(tensor<?x?xi32>, tensor<4xi32>) -> tensor<?x?xi32>
   func.return %dyn_arg0 : tensor<?x?xi32>
 }
+
+// Following tests are for LegacyCall symbol use verifier.
+
+// -----
+
+// Tests that valid symbol use does not produce any error.
+func.func @valid_symbol_use(%arg0: tensor<i32>) -> () {
+  "tf.LegacyCall"(%arg0) {f = @call_func} : (tensor<i32>) -> (tensor<i32>)
+  func.return
+}
+
+func.func @call_func(%arg0: tensor<i32>) -> tensor<i32> {
+  func.return %arg0 : tensor<i32>
+}
+
+// -----
+
+// Tests that undefined call function produces error.
+func.func @test_undefined_function() -> () {
+  // expected-error @below {{'f' attribute refers to an undefined function: undefined_func}}
+  "tf.LegacyCall"() {f = @undefined_func} : () -> ()
+  func.return
+}
+
+// -----
+
+// Tests that argument count mismatch produces error.
+func.func @test_arg_count_mismatch(%arg0: tensor<i32>) -> () {
+  // expected-error @below {{argument count mismatch: 'args' has 1 argument(s), but 'call_func' expects 2}}
+  "tf.LegacyCall"(%arg0) {f = @call_func} : (tensor<i32>) -> tensor<i32>
+  func.return
+}
+
+func.func @call_func(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+  func.return %arg0 : tensor<f32>
+}

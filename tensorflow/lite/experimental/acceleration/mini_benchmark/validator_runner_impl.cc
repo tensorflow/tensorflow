@@ -58,35 +58,35 @@ std::unique_ptr<FlatBufferBuilder> CopyModel(
 
 MinibenchmarkStatus ValidatorRunnerImpl::Init() {
   if (storage_path_.empty()) {
-    TF_LITE_REPORT_ERROR(error_reporter_, "storage_path is empty.");
+    error_reporter_->Report("storage_path is empty.");
     return kMinibenchmarkPreconditionNotMet;
   }
   if (data_directory_path_.empty()) {
-    TF_LITE_REPORT_ERROR(error_reporter_, "data_directory_path is empty.");
+    error_reporter_->Report("data_directory_path is empty.");
     return kMinibenchmarkPreconditionNotMet;
   }
   if (benchmark_evaluator_ == nullptr) {
-    TF_LITE_REPORT_ERROR(error_reporter_, "benchmark_evaluator is null.");
+    error_reporter_->Report("benchmark_evaluator is null.");
     return kMinibenchmarkPreconditionNotMet;
   }
   MinibenchmarkStatus status = storage_.Read();
   if (status != kMinibenchmarkSuccess) {
-    TF_LITE_REPORT_ERROR(error_reporter_, "Storage::Read failed");
+    error_reporter_->Report("Storage::Read failed");
     return status;
   }
 
   std::unique_ptr<ModelLoader> model_loader =
       CreateModelLoaderFromPath(fd_or_model_path_);
   if (!model_loader) {
-    TF_LITE_REPORT_ERROR(error_reporter_, "Failed to parse model path.");
+    error_reporter_->Report("Failed to parse model path.");
     return kMinibenchmarkPreconditionNotMet;
   }
 
   // Check that the model can be loaded from disk.
   status = model_loader->Init();
   if (status != kMinibenchmarkSuccess) {
-    TF_LITE_REPORT_ERROR(error_reporter_, "Could not load model: %d",
-                         static_cast<int>(status));
+    error_reporter_->Report("Could not load model: %d",
+                            static_cast<int>(status));
     return status;
   }
 
@@ -95,17 +95,16 @@ MinibenchmarkStatus ValidatorRunnerImpl::Init() {
     status = custom_validation_embedder_->BuildModel(
         *model_loader->GetModel()->GetModel(), *model_with_custom_input_);
     if (status != kMinibenchmarkSuccess) {
-      TF_LITE_REPORT_ERROR(error_reporter_,
-                           "Failed to embed golden input to model: %d",
-                           static_cast<int>(status));
+      error_reporter_->Report("Failed to embed golden input to model: %d",
+                              static_cast<int>(status));
       return status;
     }
   }
 
   status = nnapi_helper_.Load();
   if (status != kMinibenchmarkSuccess) {
-    TF_LITE_REPORT_ERROR(error_reporter_, "Failed to load NNAPI SL: %d",
-                         static_cast<int>(status));
+    error_reporter_->Report("Failed to load NNAPI SL: %d",
+                            static_cast<int>(status));
     return status;
   }
 
@@ -120,8 +119,8 @@ MinibenchmarkStatus ValidatorRunnerImpl::Init() {
                              timeout_ms_, error_reporter_);
   status = check_runner.Init();
   if (status != kMinibenchmarkSuccess) {
-    TF_LITE_REPORT_ERROR(error_reporter_, "Runner::Init returned %d",
-                         static_cast<int>(status));
+    error_reporter_->Report("Runner::Init returned %d",
+                            static_cast<int>(status));
     return status;
   }
   return kMinibenchmarkSuccess;
@@ -244,8 +243,8 @@ MinibenchmarkStatus
 ValidatorRunnerImpl::ValidationEntrypointHelper::Validate() {
 #ifndef _WIN32
   if (!LoadEntrypoint()) {
-    TF_LITE_REPORT_ERROR(error_reporter_, "Could not load symbol '%s': '%s'",
-                         validation_entrypoint_name_.c_str(), dlerror());
+    error_reporter_->Report("Could not load symbol '%s': '%s'",
+                            validation_entrypoint_name_.c_str(), dlerror());
     return kMinibenchmarkValidationEntrypointSymbolNotFound;
   }
   return kMinibenchmarkSuccess;

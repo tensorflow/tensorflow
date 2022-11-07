@@ -4,7 +4,6 @@ load(
     "//tensorflow/core/profiler/builds/oss:build_config.bzl",
     _tf_profiler_alias = "tf_profiler_alias",
     _tf_profiler_pybind_cc_library_wrapper = "tf_profiler_pybind_cc_library_wrapper",
-    _tf_profiler_xla_proto_header = "tf_profiler_xla_proto_header",
 )
 load(
     "//tensorflow/tsl/profiler/builds:build_config.bzl",
@@ -12,7 +11,6 @@ load(
 )
 
 tf_profiler_alias = _tf_profiler_alias
-tf_profiler_xla_proto_header = _tf_profiler_xla_proto_header
 tf_profiler_pybind_cc_library_wrapper = _tf_profiler_pybind_cc_library_wrapper
 tf_profiler_copts = _tf_profiler_copts
 

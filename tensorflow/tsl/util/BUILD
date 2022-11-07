@@ -247,7 +247,7 @@ cc_library(
     ],
     copts = tsl_copts(),
     visibility = [
-        "//tensorflow:internal",
+        "//tensorflow/tsl:internal",
     ],
 )
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -24,8 +25,8 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -2312,6 +2313,34 @@ ENTRY test {
   ROOT root = f32[10,10]{1,0:D(D,C)#(u64)*(u32)S(42)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))} parameter(0)
 })",
 },
+
+{
+"SparseCOO",
+R"(HloModule test
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(C+,S)} parameter(0)
+})",
+R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(C+,S)})->f32[10,10]{1,0:D(C+,S)}}
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(C+,S)} parameter(0)
+})",
+},
+
+{
+"SparseCOOUnordered",
+R"(HloModule test
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(C+~,S~)} parameter(0)
+})",
+R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(C+~,S~)})->f32[10,10]{1,0:D(C+~,S~)}}
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(C+~,S~)} parameter(0)
+})",
+},
 });
   // clang-format on
 }
@@ -3870,6 +3899,17 @@ TEST_F(HloParserTest, ParseDynamicTuple) {
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseInvalidDimLevel) {
+  constexpr std::string_view shape_string = "f32[123]{0:D(D+~)}";
+  StatusOr<Shape> result = ParseShape(shape_string);
+  ASSERT_THAT(
+      result.status(),
+      tsl::testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          testing::HasSubstr(
+              "invalid DimLevelType/unique/ordered combination in shape")));
 }
 
 TEST_F(HloParserTest, NegativeParameterNumber) {

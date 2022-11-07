@@ -29,9 +29,10 @@ namespace spmd {
 StatusOr<HloInstruction*> PartitionConvolution(
     PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
     const HloSharding& output_sharding, const DotConvDimsMapping& dims_mapping,
-    const std::function<StatusOr<HloInstruction*>(
-        HloInstruction*, HloInstruction*, SpmdBuilder*,
-        const Window& conv_window)>& create_sharded_conv,
+    absl::FunctionRef<StatusOr<HloInstruction*>(HloInstruction*,
+                                                HloInstruction*, SpmdBuilder*,
+                                                const Window& conv_window)>
+        create_sharded_conv,
     const Window& conv_window, HloInstruction* original_hlo,
     int64_t num_partitions, const SpmdPartitionerOptions& options,
     HloInstruction* partition_id, HloModule* module, SpmdBuilder* b);

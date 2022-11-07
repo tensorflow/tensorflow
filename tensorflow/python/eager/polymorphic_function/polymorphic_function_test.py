@@ -635,7 +635,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return 1.0
 
     with self.assertRaisesRegex(
-        TypeError, r'could not be represented through the generic tracing'):
+        TypeError, r'Could not generate a generic TraceType'):
       f(set([]))
 
   def testBasicGraphMode(self):

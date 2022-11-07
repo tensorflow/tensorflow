@@ -24,7 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/dynamic_annotations.h"
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/tests/testlib_pipeline.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/tests/testlib_pipeline.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"

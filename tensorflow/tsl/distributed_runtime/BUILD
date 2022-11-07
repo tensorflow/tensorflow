@@ -9,7 +9,7 @@ load(
 
 package(
     default_visibility = [
-        "//tensorflow:internal",
+        "//tensorflow/tsl:internal",
     ],
     licenses = ["notice"],
 )

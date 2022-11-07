@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
+#include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "stablehlo/dialect/StablehloOps.h"
@@ -140,9 +143,16 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
     // have features that either haven't been proposed to StableHLO yet
     // or aren't planned to be proposed to StableHLO.
     // The check below makes sure we only proceed for supported ops.
-    if constexpr (std::is_same<HloOpTy, mhlo::CollectivePermuteOp>::value) {
-      // StableHLO does not support channel handles on CollectivePermute.
-      if (hloOp.getChannelHandle()) return failure();
+    if constexpr (std::is_same<HloOpTy, mhlo::ConvolutionOp>::value) {
+      // StableHLO convolution doesn't support "unknown" dimensions.
+      // This is an esoteric feature of MHLO convolutions, and it's different
+      // from the notion of dynamic dimensions. For more context, here's the
+      // commit which introduced it:
+      // https://github.com/tensorflow/mlir-hlo/commit/4d6dc3163c1c9289d86455d9f4de5711465c50fb
+      // This feature isn't supported in HLO and doesn't have documentation, so
+      // we may end up removing it from MHLO as well.
+      auto dimensionNumbers = debugString(hloOp.getDimensionNumbers());
+      if (dimensionNumbers.find('?') != std::string::npos) return failure();
     }
     if constexpr (std::is_same<HloOpTy, mhlo::CustomCallOp>::value) {
       // Added to MHLO per feature request from JAX.

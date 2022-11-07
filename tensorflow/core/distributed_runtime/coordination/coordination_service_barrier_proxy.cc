@@ -22,10 +22,10 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 
 namespace tensorflow {
 
@@ -90,7 +90,7 @@ size_t BarrierProxyManager::size() const {
   return barriers_.size();
 }
 
-Status BarrierProxyManager::Wait(CoordinationServiceAgent* agent,
+Status BarrierProxyManager::Wait(tsl::CoordinationServiceAgent* agent,
                                  const std::vector<CoordinatedTask>& tasks,
                                  int num_local_threads, absl::string_view key,
                                  absl::Duration timeout) {

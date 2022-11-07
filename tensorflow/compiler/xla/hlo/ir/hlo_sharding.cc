@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -545,7 +546,7 @@ int64_t HloSharding::GetUniqueDevice() const {
 }
 
 Status HloSharding::ValidateTuple(const Shape& shape,
-                                  int64_t num_devices) const {
+                                  std::optional<int64_t> num_devices) const {
   if (!shape.IsTuple()) {
     return tsl::errors::InvalidArgument(
         StrCat("Sharding is tuple-shaped but validation shape is not."));
@@ -573,7 +574,8 @@ Status HloSharding::ValidateTuple(const Shape& shape,
   return OkStatus();
 }
 
-Status HloSharding::Validate(const Shape& shape, int64_t num_devices) const {
+Status HloSharding::Validate(const Shape& shape,
+                             std::optional<int64_t> num_devices) const {
   if (shape.IsToken()) {
     return OkStatus();
   }
@@ -588,7 +590,7 @@ Status HloSharding::Validate(const Shape& shape, int64_t num_devices) const {
 }
 
 Status HloSharding::ValidateNonTuple(const Shape& shape,
-                                     int64_t num_devices) const {
+                                     std::optional<int64_t> num_devices) const {
   if (shape.IsTuple()) {
     return tsl::errors::InvalidArgument(
         StrCat("Validation shape is a tuple but sharding is not."));
@@ -597,40 +599,42 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
     return OkStatus();
   }
 
-  // All tile assignments must be less than the number of available cores and
+  // All tile assignments must be less than the number of available devices and
   // unique.
-  Status status = OkStatus();
-  absl::flat_hash_set<int64_t> seen_cores;
-  tile_assignment_.Each([&](absl::Span<const int64_t> indices, int32_t core) {
-    // Don't overwrite a bad status, so we report the first error.
-    if (status.ok()) {
-      if (core >= num_devices) {
-        status = tsl::errors::InvalidArgument(
-            StrCat("core ", core, " > ", num_devices, " in tile assignment"));
-      } else if (seen_cores.contains(core)) {
-        status = tsl::errors::InvalidArgument(
-            StrCat("core ", core, " is not unique in tile assignment"));
-      }
-      seen_cores.insert(core);
-    }
-  });
-  if (!status.ok()) {
-    return status;
-  }
+  absl::flat_hash_set<int64_t> seen_devices;
+  Status status = tile_assignment_.EachStatus(
+      [&num_devices, &seen_devices](absl::Span<const int64_t> /*indices*/,
+                                    int32_t device) {
+        if (num_devices.has_value() && device >= *num_devices) {
+          return tsl::errors::InvalidArgument(
+              StrCat("device ", device, " > num_devices (", *num_devices,
+                     ") in tile assignment"));
+        } else if (seen_devices.contains(device)) {
+          return tsl::errors::InvalidArgument(
+              StrCat("device ", device, " is not unique in tile assignment"));
+        }
+        seen_devices.insert(device);
+        return OkStatus();
+      });
+  TF_RETURN_IF_ERROR(status);
 
   if (IsTileMaximal() || IsManual()) {
     return OkStatus();
   }
 
-  // The tile assignment tensor must have the same rank as the input, or input
-  // rank + 1 for replicate_on_last_tile_dim_.
-  if (shape.rank() + (replicate_on_last_tile_dim_ ? 1 : 0) +
-          subgroup_types_.size() !=
-      tile_assignment_.num_dimensions()) {
+  // The tile assignment tensor must have the same rank as the tiled data rank.
+  if (shape.rank() != TiledDataRank()) {
     return tsl::errors::InvalidArgument(
-        "Number of tile assignment dimensions is different to the input rank. "
+        "Number of tile assignment dimensions (excluding subgroups) is "
+        "different than the input rank. "
         "sharding=",
         ToString(), ", input_shape=", ShapeUtil::HumanString(shape));
+  }
+
+  // All devices should be seen in the tile assignment.
+  if (num_devices.has_value() && seen_devices.size() != *num_devices) {
+    return tsl::errors::InvalidArgument("tile_assignment should have ",
+                                        *num_devices, " devices");
   }
 
   // The correct constructor has to be used to create tile maximal shardings.

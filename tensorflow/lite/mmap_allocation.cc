@@ -46,15 +46,14 @@ MMAPAllocation::MMAPAllocation(const char* filename,
                                ErrorReporter* error_reporter)
     : MMAPAllocation(error_reporter, open(filename, O_RDONLY)) {
   if (mmap_fd_ == -1) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Could not open '%s'.", filename);
+    error_reporter->Report("Could not open '%s'.", filename);
   }
 }
 
 MMAPAllocation::MMAPAllocation(int fd, ErrorReporter* error_reporter)
     : MMAPAllocation(error_reporter, dup(fd)) {
   if (mmap_fd_ == -1) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Failed to dup '%d' file descriptor.",
-                         fd);
+    error_reporter->Report("Failed to dup '%d' file descriptor.", fd);
   }
 }
 
@@ -62,8 +61,7 @@ MMAPAllocation::MMAPAllocation(int fd, size_t offset, size_t length,
                                ErrorReporter* error_reporter)
     : MMAPAllocation(error_reporter, dup(fd), offset, length) {
   if (mmap_fd_ == -1) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Failed to dup '%d' file descriptor.",
-                         fd);
+    error_reporter->Report("Failed to dup '%d' file descriptor.", fd);
   }
 }
 
@@ -91,10 +89,10 @@ MMAPAllocation::MMAPAllocation(ErrorReporter* error_reporter, int owned_fd,
 
   size_t file_size = GetFdSizeBytes(mmap_fd_);
   if (length + offset > file_size) {
-    TF_LITE_REPORT_ERROR(error_reporter,
-                         "Asked to mmap '%d' bytes from fd '%d' at offset "
-                         "'%d'. This is over the length of file '%d'.",
-                         length, mmap_fd_, offset, file_size);
+    error_reporter->Report(
+        "Asked to mmap '%d' bytes from fd '%d' at offset "
+        "'%d'. This is over the length of file '%d'.",
+        length, mmap_fd_, offset, file_size);
     return;
   }
 
@@ -102,9 +100,9 @@ MMAPAllocation::MMAPAllocation(ErrorReporter* error_reporter, int owned_fd,
       mmap(nullptr, /*__len=*/length + offset_in_buffer_, PROT_READ, MAP_SHARED,
            mmap_fd_, /*__offset=*/offset - offset_in_buffer_);
   if (mmapped_buffer_ == MAP_FAILED) {
-    TF_LITE_REPORT_ERROR(error_reporter,
-                         "Mmap of '%d' at offset '%d' failed with error '%d'.",
-                         mmap_fd_, offset, errno);
+    error_reporter->Report(
+        "Mmap of '%d' at offset '%d' failed with error '%d'.", mmap_fd_, offset,
+        errno);
     return;
   }
 }

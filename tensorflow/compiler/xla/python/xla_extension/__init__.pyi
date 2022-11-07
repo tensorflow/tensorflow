@@ -324,7 +324,7 @@ class Device:
   def __getattr__(self, name: str) -> Any: ...
 
 class GpuDevice(Device):
-  pass
+  slice_index: int
 
 class TpuDevice(Device):
   pass

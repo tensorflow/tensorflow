@@ -79,7 +79,7 @@ class FuseTpuCompileAndExecutePass
     mlir::OpBuilder builder(&func.getBody());
 
     for (auto exec_op : tpu_execute_ops) {
-      auto compile_cache_entry = exec_op.key();
+      auto compile_cache_entry = exec_op.getKey();
       auto compile_op = ::llvm::dyn_cast<mlir::TF::_TPUCompileMlirOp>(
           compile_cache_entry.getDefiningOp());
       if (!compile_op) {
@@ -97,20 +97,20 @@ class FuseTpuCompileAndExecutePass
       llvm::SmallVector<int> static_shaped_operand_indices_attr;
       llvm::SmallVector<mlir::Value> static_shape_tensors;
       llvm::SmallVector<mlir::Value> exec_op_args;
-      exec_op_args.resize(exec_op.args().size());
+      exec_op_args.resize(exec_op.getArgs().size());
 
       auto &static_shaped_operands =
           exec_to_static_shaped_operands_map[exec_op];
-      for (int i = 0; i < exec_op.args().size(); ++i) {
+      for (int i = 0; i < exec_op.getArgs().size(); ++i) {
         auto iter = static_shaped_operands.find(i);
         if (iter != static_shaped_operands.end()) {
           static_shaped_operand_indices_attr.push_back(iter->first);
-          static_shape_tensors.push_back(iter->second.static_shape());
-          exec_op_args[i] = iter->second.input();
+          static_shape_tensors.push_back(iter->second.getStaticShape());
+          exec_op_args[i] = iter->second.getInput();
           // The first operand is the input tensor, while the second operand is
           // the static shape tensor, hence the drop_back here.
           iter->second->replaceAllUsesWith(
-              mlir::ValueRange({iter->second.input()}));
+              mlir::ValueRange({iter->second.getInput()}));
           iter->second->erase();
         } else {
           exec_op_args[i] = exec_op->getOperand(i);
@@ -126,12 +126,13 @@ class FuseTpuCompileAndExecutePass
               exec_op.getLoc(), output_types, exec_op_args,
               static_shape_tensors,
               builder.getI32ArrayAttr(static_shaped_operand_indices_attr),
-              compile_op.mlir_module(), compile_op.metadata(), producer_name);
+              compile_op.getMlirModule(), compile_op.getMetadata(),
+              producer_name);
 
-      exec_op.replaceAllUsesWith(compile_and_execute_op.results());
-      for (auto program_result : compile_op.program()) {
+      exec_op.replaceAllUsesWith(compile_and_execute_op.getResults());
+      for (auto program_result : compile_op.getProgram()) {
         program_result.replaceAllUsesWith(
-            compile_and_execute_op.rendezvous_key_base());
+            compile_and_execute_op.getRendezvousKeyBase());
       }
 
       assert(exec_op.use_empty());

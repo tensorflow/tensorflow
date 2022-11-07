@@ -291,6 +291,13 @@ Status SpecializeType(const AttrSlice& attrs, const OpDef& op_def,
     map.emplace(attr.first, &attr.second);
   }
 
+  // Add default values (if defined) for any attributes not already specified
+  for (const auto& attr_def : op_def.attr()) {
+    if (attr_def.has_default_value() && !attrs.Find(attr_def.name())) {
+      map.emplace(attr_def.name(), &attr_def.default_value());
+    }
+  }
+
   int nargs = op_def.output_arg_size();
   for (int i = 0; i < nargs; i++) {
     auto& t = *(target.add_args());

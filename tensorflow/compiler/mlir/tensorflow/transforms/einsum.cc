@@ -629,7 +629,7 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
                                    PatternRewriter& rewriter) {
   if (!dnums.lhs.empty() || !dnums.rhs.empty()) return failure();
 
-  auto inputs = op.inputs();
+  auto inputs = op.getInputs();
   if (inputs.size() != 2) return failure();
   Value lhs = inputs.front();
   Value rhs = inputs.back();
@@ -712,7 +712,8 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
   // dynamic dimension is always supported. If there are two or more dynamic
   // dimensions, it is supported if they only exist in a single component
   // among: L0,...,Ln R0,...,Rn or C0,...,Cn.
-  if (const auto dnums_or = GetEinsumDimensionNumbers(op.equation(), lhs, rhs))
+  if (const auto dnums_or =
+          GetEinsumDimensionNumbers(op.getEquation(), lhs, rhs))
     return rewriteToBatchMatmul(op, dnums_or.getValue(), rewriter);
   return rewriter.notifyMatchFailure(op, "unsupported einsum lowering");
 }

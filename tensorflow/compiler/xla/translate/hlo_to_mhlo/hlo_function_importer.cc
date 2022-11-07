@@ -31,15 +31,15 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
@@ -1080,6 +1080,11 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           .getOperation();
     }
     case HloOpcode::kCopyStart: {
+      auto copy_start_instruction = Cast<HloCopyStartInstruction>(instruction);
+      if (copy_start_instruction->is_cross_program_prefetch()) {
+        attributes.push_back(builder_->getNamedAttr("is_cross_program_prefetch",
+                                                    builder_->getUnitAttr()));
+      }
       return ImportOldStyleAsyncStart<mlir::mhlo::CopyOp>(
           attributes, operands, loc, result_type, func_builder, "copy_",
           [](auto) { return ::tsl::OkStatus(); });

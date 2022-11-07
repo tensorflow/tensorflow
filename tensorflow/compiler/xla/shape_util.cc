@@ -90,6 +90,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
+    absl::Span<const bool> dim_unique, absl::Span<const bool> dim_ordered,
     absl::Span<const Tile> tiles, PrimitiveType index_primitive_type,
     PrimitiveType pointer_primitive_type, int64_t memory_space,
     std::optional<Shape> physical_shape) {
@@ -105,8 +106,9 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   TF_ASSIGN_OR_RETURN(Shape shape,
                       ShapeUtil::MakeValidatedShape(element_type, dimensions));
   *shape.mutable_layout() = LayoutUtil::MakeLayout(
-      minor_to_major, dim_level_types, tiles, index_primitive_type,
-      pointer_primitive_type, memory_space, std::move(physical_shape));
+      minor_to_major, dim_level_types, dim_unique, dim_ordered, tiles,
+      index_primitive_type, pointer_primitive_type, memory_space,
+      std::move(physical_shape));
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
   return shape;
 }
@@ -300,7 +302,8 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
     absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
     int64_t memory_space) {
   auto ret = MakeShapeWithLayoutInternal(
-      element_type, dimensions, minor_to_major, /*dim_level_types=*/{}, tiles,
+      element_type, dimensions, minor_to_major, /*dim_level_types=*/{},
+      /*dim_unique=*/{}, /*dim_ordered=*/{}, tiles,
       /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
       /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID, memory_space,
       /*physical_shape=*/std::nullopt);
@@ -312,12 +315,13 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
+    absl::Span<const bool> dim_unique, absl::Span<const bool> dim_ordered,
     PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
     int64_t memory_space, std::optional<Shape> physical_shape) {
   auto ret = MakeShapeWithLayoutInternal(
-      element_type, dimensions, minor_to_major, dim_level_types, /*tiles=*/{},
-      index_primitive_type, pointer_primitive_type, memory_space,
-      std::move(physical_shape));
+      element_type, dimensions, minor_to_major, dim_level_types, dim_unique,
+      dim_ordered, /*tiles=*/{}, index_primitive_type, pointer_primitive_type,
+      memory_space, std::move(physical_shape));
   if (!ret.ok()) LOG(ERROR) << ret.status();
   return ret.value();
 }
@@ -1698,18 +1702,34 @@ ShapeUtil::DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
     absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
     const ForEachParallelVisitorFunction& visitor_function) {
   // The parallel version of ForEachIndexInternal can never fail.
-  CHECK(ForEachIndexInternalParallel(shape, base, count, incr, visitor_function)
-            .ok());
+  CHECK(
+      ForEachIndexParallelWithStatus(shape, base, count, incr, visitor_function)
+          .ok());
+}
+
+/* static */ Status ShapeUtil::ForEachIndexParallelWithStatus(
+    const Shape& shape, absl::Span<const int64_t> base,
+    absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
+    const ForEachParallelVisitorFunction& visitor_function) {
+  // The parallel version of ForEachIndexInternal can never fail.
+  return ForEachIndexInternalParallel(shape, base, count, incr,
+                                      visitor_function);
 }
 
 /* static */ void ShapeUtil::ForEachIndexParallel(
     const Shape& shape,
     const ForEachParallelVisitorFunction& visitor_function) {
+  CHECK(ForEachIndexParallelWithStatus(shape, visitor_function).ok());
+}
+
+/* static */ Status ShapeUtil::ForEachIndexParallelWithStatus(
+    const Shape& shape,
+    const ForEachParallelVisitorFunction& visitor_function) {
   std::vector<int64_t> base(shape.dimensions_size());
   std::vector<int64_t> incr(shape.dimensions_size(), 1);
-  return ForEachIndexParallel(shape, base,
-                              /*count=*/shape.dimensions(), incr,
-                              visitor_function);
+  return ForEachIndexParallelWithStatus(shape, base,
+                                        /*count=*/shape.dimensions(), incr,
+                                        visitor_function);
 }
 
 /* static */ Status ShapeUtil::ForEachIndexInternal(
@@ -1800,7 +1820,7 @@ struct ParallelState {
 }
 
 /* static */ Shape ShapeUtil::FilterDimensions(
-    const std::function<bool(int64_t)>& p, Shape shape) {
+    absl::FunctionRef<bool(int64_t)> p, Shape shape) {
   CHECK(shape.IsArray());
   std::vector<int64_t> dims_to_delete;
   for (int64_t i = shape.dimensions().size() - 1; i >= 0; --i) {

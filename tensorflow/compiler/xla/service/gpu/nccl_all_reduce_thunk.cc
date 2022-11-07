@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 
+#include <array>
 #include <chrono>  // NOLINT (required by TF interfaces)
 #include <cstdlib>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,11 +27,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
-#include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 #if XLA_ENABLE_XCCL
@@ -57,7 +56,8 @@ Status RunAllReduce(ReductionKind reduction_kind,
     void* recv_buffer = buffer.destination_buffer.opaque();
 
     TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                        ToNcclDataTypeAndCountMultiplier(buffer.element_type));
+                        ToNcclDataTypeAndCountMultiplier(
+                            buffer.element_type, Thunk::kNcclAllReduce));
     ncclDataType_t dtype = dtype_and_multiplier.first;
     int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
 
@@ -81,10 +81,10 @@ Status RunAllReduce(ReductionKind reduction_kind,
 
 namespace {
 
-bool IsValidOperand(mlir::Value operand) {
+bool IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op) {
   Shape shape = TypeToShape(operand.getType());
   return LayoutUtil::IsDenseArray(shape) &&
-         IsTypeSupportedByNccl(shape.element_type());
+         IsTypeSupportedByNccl(shape.element_type(), reduction_op);
 }
 
 // Generally, the reduction op should be the only operation in the block, except
@@ -138,8 +138,11 @@ StatusOr<mlir::Operation*> FindReductionOp(mlir::Block& block) {
 namespace impl {
 
 template <typename OpT>
-bool CanImplement(OpT op) {
-  return absl::c_all_of(op.getInputs(), IsValidOperand) &&
+bool CanImplement(OpT op, Thunk::Kind reduction_op) {
+  return absl::c_all_of(op.getInputs(),
+                        [reduction_op](mlir::Value operand) {
+                          return IsValidOperand(operand, reduction_op);
+                        }) &&
          NcclAllReduceThunkBase::MatchAllReduceComputation(op.getComputation())
              .has_value();
 }
@@ -230,7 +233,7 @@ NcclAllReduceThunk::NcclAllReduceThunk(ThunkInfo thunk_info,
                              impl::GetNcclAllReduceConfig(op), buffers) {}
 
 bool NcclAllReduceThunk::CanImplement(mlir::lmhlo::AllReduceOp op) {
-  return impl::CanImplement(op);
+  return impl::CanImplement(op, Thunk::kNcclAllReduce);
 }
 
 bool NcclAllReduceThunk::IsDegenerate(mlir::lmhlo::AllReduceOp op,
@@ -267,7 +270,7 @@ NcclAllReduceStartThunk::NcclAllReduceStartThunk(
 
 bool NcclAllReduceStartThunk::CanImplement(
     mlir::lmhlo_gpu::AllReduceStartOp op) {
-  return impl::CanImplement(op);
+  return impl::CanImplement(op, Thunk::kNcclAllReduceStart);
 }
 
 bool NcclAllReduceStartThunk::IsDegenerate(mlir::lmhlo_gpu::AllReduceStartOp op,
@@ -342,7 +345,7 @@ NcclReduceScatterThunk::NcclReduceScatterThunk(
 
 /*static*/ bool NcclReduceScatterThunk::CanImplement(
     mlir::lmhlo::ReduceScatterOp op) {
-  return impl::CanImplement(op);
+  return impl::CanImplement(op, Thunk::kNcclReduceScatter);
 }
 
 /*static*/ bool NcclReduceScatterThunk::IsDegenerate(
@@ -388,7 +391,8 @@ Status RunReduceScatter(ReductionKind reduction_kind,
     void* recv_buffer = buffer.destination_buffer.opaque();
 
     TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                        ToNcclDataTypeAndCountMultiplier(buffer.element_type));
+                        ToNcclDataTypeAndCountMultiplier(
+                            buffer.element_type, Thunk::kNcclReduceScatter));
     ncclDataType_t dtype = dtype_and_multiplier.first;
     int element_count = buffer.element_count * dtype_and_multiplier.second;
 

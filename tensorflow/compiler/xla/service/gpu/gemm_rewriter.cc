@@ -354,7 +354,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                          HloInstruction **broadcast) {
     TF_RET_CHECK(slice_or_bitcast->user_count() == 1);
     TF_RET_CHECK((*broadcast)->user_count() == 1);
-    TF_RET_CHECK((*binary)->IsRoot() || (*binary)->user_count() == 1);
 
     // Re-broadcast the operand of broadcast to the shape of the GEMM.
     HloInstruction *gemm = slice_or_bitcast->mutable_operand(0);

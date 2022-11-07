@@ -676,9 +676,9 @@ def tf_additional_all_protos():
 def tf_protos_all():
     return if_static(
         extra_deps = [
-            clean_dep("//tensorflow/core/protobuf:autotuning_proto_cc_impl"),
             clean_dep("//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl"),
             clean_dep("//tensorflow/core:protos_all_cc_impl"),
+            clean_dep("//tensorflow/tsl/protobuf:autotuning_proto_cc_impl"),
             clean_dep("//tensorflow/tsl/protobuf:protos_all_cc_impl"),
         ],
         otherwise = [clean_dep("//tensorflow/core:protos_all_cc")],
@@ -790,6 +790,7 @@ def tsl_cc_test(
                 clean_dep("@com_google_protobuf//:protobuf"),
                 "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc_impl",
                 "//tensorflow/tsl/protobuf:histogram_proto_cc_impl",
+                "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc_impl",
             ],
         ),
         **kwargs

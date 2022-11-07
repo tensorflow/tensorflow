@@ -178,7 +178,7 @@ LogicalResult ComputeResourceDevicesInComputation(func::FuncOp func_op,
       // Record VarHandleOp's device attribute.
       StringRef device_attr = GetDeviceAttr(op);
       if (device_attr.empty()) return WalkResult::advance();
-      auto res = AddResourceDeviceAndEmitError(var_handle.resource(),
+      auto res = AddResourceDeviceAndEmitError(var_handle.getResource(),
                                                device_attr, op, result);
       if (failed(res)) return WalkResult::interrupt();
     } else if (auto identity = dyn_cast<IdentityOp>(op)) {
@@ -286,7 +286,7 @@ void ResourceDeviceInference::runOnOperation() {
           return WalkResult::interrupt();
       } else if (auto if_op = dyn_cast<IfOp>(op)) {
         if (failed(propagate_operands_to_callee_arguments(
-                if_op, if_op.input(),
+                if_op, if_op.getInput(),
                 {if_op.then_function(), if_op.else_function()}, func_res)))
           return WalkResult::interrupt();
       } else if (auto call = dyn_cast<CallOpInterface>(op)) {

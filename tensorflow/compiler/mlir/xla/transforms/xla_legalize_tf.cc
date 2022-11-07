@@ -106,17 +106,17 @@ class ConvertUniformQuantizedDotHybridOp
                                 PatternRewriter &rewriter) const override {
     // Check whether the rhs operand has constant op.
     TF::TensorProtoAttr tensor_proto_attr;
-    if (!matchPattern(op.rhs(), m_Constant(&tensor_proto_attr)))
+    if (!matchPattern(op.getRhs(), m_Constant(&tensor_proto_attr)))
       return failure();
 
     // Check whether the rhs_scales operand has constant op.
     DenseFPElementsAttr rhs_scales;
-    if (!matchPattern(op.rhs_scales(), m_Constant(&rhs_scales)))
+    if (!matchPattern(op.getRhsScales(), m_Constant(&rhs_scales)))
       return failure();
 
     // Check whether the rhs_zero_points operand has constant op.
     DenseIntElementsAttr rhs_zero_points;
-    if (!matchPattern(op.rhs_zero_points(), m_Constant(&rhs_zero_points)))
+    if (!matchPattern(op.getRhsZeroPoints(), m_Constant(&rhs_zero_points)))
       return failure();
 
     // Invalid quantization parameter.
@@ -126,9 +126,9 @@ class ConvertUniformQuantizedDotHybridOp
     // Uniform Quantized type for the rhs.
     IntegerType storage_type = rewriter.getIntegerType(8);
     FloatType expressed_type = rewriter.getF32Type();
-    int64_t storage_type_min = op.rhs_quantization_min_val();
-    int64_t storage_type_max = op.rhs_quantization_max_val();
-    int32_t quantized_dimension = op.rhs_quantization_axis();
+    int64_t storage_type_min = op.getRhsQuantizationMinVal();
+    int64_t storage_type_max = op.getRhsQuantizationMaxVal();
+    int32_t quantized_dimension = op.getRhsQuantizationAxis();
     const unsigned flags = mlir::quant::QuantizationFlags::Signed;
 
     // Currently, PTQ supports per-tensor quantization, for now.
@@ -141,7 +141,7 @@ class ConvertUniformQuantizedDotHybridOp
         storage_type_max);
 
     Type rhs_type = GetSameShapeTensorType(
-        op.rhs().getType().cast<TensorType>(), rhs_elem_ty);
+        op.getRhs().getType().cast<TensorType>(), rhs_elem_ty);
 
     llvm::StringRef mangled_tensor = tensor_proto_attr.getValue();
     absl::string_view tensor_view(mangled_tensor.data(), mangled_tensor.size());
@@ -164,8 +164,8 @@ class ConvertUniformQuantizedDotHybridOp
         GetSameShapeTensorType(rhs_type.cast<TensorType>(), storage_type),
         llvm::makeArrayRef(arr.data(), arr.size())));
 
-    Value lhs = op.lhs();
-    rewriter.setInsertionPointAfterValue(op.rhs());
+    Value lhs = op.getLhs();
+    rewriter.setInsertionPointAfterValue(op.getRhs());
     Value rhs = rewriter.create<mhlo::ConstantOp>(rewriter.getUnknownLoc(),
                                                   rhs_type, dense_attr);
 

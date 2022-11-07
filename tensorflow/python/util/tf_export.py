@@ -411,7 +411,7 @@ class api_export(object):  # pylint: disable=invalid-name
 
 def kwarg_only(f):
   """A wrapper that throws away all non-kwarg arguments."""
-  f_argspec = tf_inspect.getargspec(f)
+  f_argspec = tf_inspect.getfullargspec(f)
 
   def wrapper(*args, **kwargs):
     if args:
@@ -421,7 +421,8 @@ def kwarg_only(f):
           .format(f=f.__name__, kwargs=f_argspec.args))
     return f(**kwargs)
 
-  return tf_decorator.make_decorator(f, wrapper, decorator_argspec=f_argspec)
+  return tf_decorator.make_decorator(
+      f, wrapper, decorator_argspec=f_argspec)
 
 
 tf_export = functools.partial(api_export, api_name=TENSORFLOW_API_NAME)

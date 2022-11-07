@@ -19,14 +19,14 @@ limitations under the License.
 #include <functional>
 #include <string>
 
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 
 namespace tensorflow {
 
@@ -95,7 +95,7 @@ class SessionMgr {
   // Provides access to the coordination service. This method should only be
   // called after the agent has been initialized during session creation, or an
   // invalid nullptr is returned. Note: the agent is thread-safe and mutable.
-  CoordinationServiceAgent* GetCoordinationServiceAgent();
+  tsl::CoordinationServiceAgent* GetCoordinationServiceAgent();
 
   static std::string WorkerNameFromServerDef(const ServerDef& server_def);
 
@@ -127,8 +127,8 @@ class SessionMgr {
 
   std::unique_ptr<WorkerCacheInterface> default_worker_cache_;
   std::shared_ptr<WorkerSession> legacy_session_;
-  std::unique_ptr<CoordinationServiceInterface> coordination_service_;
-  std::unique_ptr<CoordinationServiceAgent> coordination_service_agent_;
+  std::unique_ptr<tsl::CoordinationServiceInterface> coordination_service_;
+  std::unique_ptr<tsl::CoordinationServiceAgent> coordination_service_agent_;
 
   bool is_logging_active_ = false;
 

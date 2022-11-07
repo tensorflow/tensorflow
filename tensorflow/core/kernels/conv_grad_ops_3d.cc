@@ -1406,13 +1406,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         << "Negative paddings: (" << padding_rows << ", " << padding_cols
         << ", " << padding_planes << ")";
 
-#if GOOGLE_CUDA
-    const bool compute_in_nhwc =
-        CUDNN_VERSION >= 8000 && DataTypeToEnum<T>::value == DT_HALF;
-#else
-    // fast NDHWC implementation is a CUDA only feature
-    const bool compute_in_nhwc = false;
-#endif
+    const bool compute_in_nhwc = ComputeInNhwcEnabled(
+        DataTypeToEnum<T>::value, stream, /*use_4d_tensor=*/false);
     const TensorFormat compute_data_format =
         (compute_in_nhwc && data_format_ == FORMAT_NHWC) ? FORMAT_NHWC
                                                          : FORMAT_NCHW;
@@ -1803,8 +1798,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         << ", " << padding_planes << ")";
 
 #if GOOGLE_CUDA
-    const bool compute_in_nhwc =
-        CUDNN_VERSION >= 8000 && DataTypeToEnum<T>::value == DT_HALF;
+    const bool compute_in_nhwc = ComputeInNhwcEnabled(
+        DataTypeToEnum<T>::value, stream, /*use_4d_tensor=*/false);
 #else
     // fast NDHWC implementation is a CUDA only feature
     const bool compute_in_nhwc = false;

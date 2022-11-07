@@ -127,8 +127,7 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
   return true;
 }
 
-Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions,
-                           se::CudaComputeCapability cuda_compute_capability) {
+Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions) {
   if (reduction_dimensions.is_row_reduction) {
     int64_t tile_z = std::min(reduction_dimensions.dimensions[0],
                               BatchedReductionRaceFreeBound());
@@ -627,8 +626,8 @@ Shape GetShape(mlir::Value value) {
   return {};
 }
 
-bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
-                         const Vector3& reduction_tiling) {
+bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions) {
+  Vector3 reduction_tiling = GetReductionTiling(reduction_dimensions);
   return (reduction_dimensions.is_row_reduction &&
           reduction_dimensions.dimensions[2] <=
               MinThreadsXRowReduction() * reduction_tiling[2] &&

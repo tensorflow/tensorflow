@@ -30,7 +30,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -460,7 +459,7 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
         "n/a",
         experimental_is_anonymous=is_anonymous)
 
-    @function.defun()
+    @def_function.function
     def lookup_table_func(k):
       return table.lookup(k)
 
@@ -475,7 +474,7 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     keys = constant_op.constant([0, 1, 2], dtypes.int32)
     values = constant_op.constant(["brain", "salad", "surgery"])
 
-    @function.defun()
+    @def_function.function
     def lookup_table_func(k):
       table = self.getHashTable()(
           lookup_ops.KeyValueTensorInitializer(keys, values),

@@ -23,8 +23,8 @@ limitations under the License.
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/tsl/platform/rocm_rocdl_path.h"
 #endif
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"

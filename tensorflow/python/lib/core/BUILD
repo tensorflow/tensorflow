@@ -61,7 +61,6 @@ tf_python_pybind_extension(
     srcs = ["bfloat16_wrapper.cc"],
     hdrs = ["bfloat16.h"],
     deps = [
-        "//tensorflow/compiler/xla/python:bfloat16_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],

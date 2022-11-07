@@ -20,8 +20,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/tsl/platform/status.h"
 
 namespace xla {

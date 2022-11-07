@@ -139,7 +139,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE(),
              /* min_version = */ 1,
-             /* max_version = */ 5);
+             /* max_version = */ 6);
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN(),
              /* min_version = */ 1,
              /* max_version = */ 3);
@@ -206,7 +206,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_NEG, Register_NEG());
   AddBuiltin(BuiltinOperator_SELECT, Register_SELECT(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_SELECT_V2, Register_SELECT_V2());
   AddBuiltin(BuiltinOperator_SLICE, Register_SLICE(),
              /* min_version = */ 1,

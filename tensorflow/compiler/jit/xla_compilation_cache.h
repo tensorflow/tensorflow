@@ -338,19 +338,10 @@ class XlaCompilationCache : public ResourceBase {
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompilationCache);
 };
 
-// Creates a single-node graph using the specified node_def as the only op apart
-// from the arg and retval nodes.
-StatusOr<std::unique_ptr<Graph>> CreateGraph(
-    const NodeDef& node_def, absl::Span<const XlaCompiler::Argument> args,
-    absl::Span<const DataType> result_types);
-
-// Use XlaCompiler to compile a single op into HLO.
-Status XlaSingleOpToHlo(
-    XlaCompiler* compiler, const XlaCompiler::Options& options,
-    const std::vector<XlaCompiler::Argument>& args,
-    const XlaCompiler::SingleOpCompileArgument& single_op_compile_argument,
-    const XlaCompiler::CompileOptions& compile_options,
-    XlaCompiler::CompilationResult* compilation_result);
+// Generates the ExecutableBuildOptions for compliation from HLO to executable.
+xla::ExecutableBuildOptions GetExecutableBuildOptions(
+    const XlaCompiler::Options& options,
+    const XlaCompiler::CompilationResult& result, int default_device_ordinal);
 
 }  // namespace tensorflow
 

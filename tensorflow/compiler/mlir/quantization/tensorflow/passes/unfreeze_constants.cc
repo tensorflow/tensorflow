@@ -255,11 +255,11 @@ void CreateAssignVariableOps(
     // Assign the ConstOp to each VarHandleOp. These will be used to save the
     // variable values to the checkpoint.
     auto const_op_copy =
-        builder.create<TF::ConstOp>(const_op.getLoc(), const_op.value());
+        builder.create<TF::ConstOp>(const_op.getLoc(), const_op.getValue());
 
     builder.create<TF::AssignVariableOp>(const_op.getLoc(),
                                          /*resource=*/var_handle_op,
-                                         /*value=*/const_op_copy.output());
+                                         /*value=*/const_op_copy.getOutput());
   }
 }
 

@@ -99,7 +99,7 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
     // remove.
     // TODO(jpienaar): Remove once recusive side-effects are supported.
     if (op.use_empty() &&
-        (op.is_stateless() ||
+        (op.getIsStateless() ||
          (IsSideEffectFree(then_func) && IsSideEffectFree(else_func)))) {
       rewriter.eraseOp(op.getOperation());
       return success();
@@ -107,7 +107,7 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
 
     // Extract the constant cond value.
     DenseElementsAttr cond;
-    if (!matchPattern(op.cond(), m_Constant(&cond))) return failure();
+    if (!matchPattern(op.getCond(), m_Constant(&cond))) return failure();
 
     // TODO(hinsu): Handle constants that are not scalar booleans.
     auto cond_type = cond.getType().dyn_cast<RankedTensorType>();

@@ -174,10 +174,7 @@ class Exhaustive32BitOrLessUnaryTest
     : public ExhaustiveUnaryTest<T>,
       public ::testing::WithParamInterface<std::pair<int64_t, int64_t>> {
  public:
-  // Sets error parameters appropriately for testing sin/cos.
-  void SetParamsForSinCos();
-
-  // Sets error parameters appropriately for testing sin/cos.
+  // Sets error parameters appropriately for testing tan.
   void SetParamsForTan();
 
  protected:
@@ -338,6 +335,7 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Expm1, {
 // pow(x, 0.5), but this is not true for x == -inf.
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(DISABLED_ON_GPU_ROCM(PowOneHalf), {
   EvaluateOp fn = +[](float x) { return std::pow(x, 0.5f); };
+<<<<<<< HEAD
   // TODO(b/123837116): Enable the test for all values after fixing the bug.
   if (platform_ != "Host" && platform_ != "CUDA" && platform_ != "ROCM") {
     fn = +[](float x) {
@@ -347,6 +345,8 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(DISABLED_ON_GPU_ROCM(PowOneHalf), {
       return std::pow(x, 0.5f);
     };
   }
+=======
+>>>>>>> google_upstream/master
   Run([](XlaOp x) { return Pow(x, ScalarLike(x, 0.5)); }, fn);
 })
 
@@ -474,33 +474,17 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Tanh, {
   Run(Tanh, std::tanh, error_spec_gen);
 })
 
-template <PrimitiveType T>
-void Exhaustive32BitOrLessUnaryTest<T>::SetParamsForSinCos() {
-  if (this->platform_ == "Host" || this->platform_ == "CUDA") {
-    return;
-  }
+UNARY_TEST_F32(Cos, { Run(Cos, std::cos); })
 
-  // Non CPU/GPU targets may have used the Cody-Waite range reduction technique
-  // and will not provide meaningful results for sin/cos/tan if magnitudes
-  // exceed 2**p.
-  const int kFirstWrongVal = 1 << 16;
-  if (T == F32) {
-    this->known_incorrect_fn_ = [](int64_t v) {
-      float f = BitCast<float>(static_cast<uint32_t>(v));
-      return std::abs(f) > kFirstWrongVal;
-    };
-  } else if (T == BF16) {
-    this->known_incorrect_fn_ = [](int64_t v) {
-      float f = static_cast<float>(BitCast<bfloat16>(static_cast<uint16_t>(v)));
-      return std::abs(f) > kFirstWrongVal;
-    };
-  } else if (T == F16) {
-    this->known_incorrect_fn_ = [](int64_t v) {
-      float f = static_cast<float>(BitCast<half>(static_cast<uint16_t>(v)));
-      return std::abs(f) > kFirstWrongVal;
-    };
-  }
-}
+UNARY_TEST_F16(Cos, { Run(Cos, std::cos); })
+
+UNARY_TEST_BF16(Cos, { Run(Cos, std::cos); })
+
+UNARY_TEST_F32(Sin, { Run(Sin, std::sin); })
+
+UNARY_TEST_F16(Sin, { Run(Sin, std::sin); })
+
+UNARY_TEST_BF16(Sin, { Run(Sin, std::sin); })
 
 template <PrimitiveType T>
 void Exhaustive32BitOrLessUnaryTest<T>::SetParamsForTan() {
@@ -528,42 +512,6 @@ void Exhaustive32BitOrLessUnaryTest<T>::SetParamsForTan() {
     };
   }
 }
-
-UNARY_TEST_F32(Cos, {
-  SetParamsForSinCos();
-  Run(
-      Cos, std::cos, +[](NativeT) {
-        return ErrorSpec{0.001, 0.001};
-      });
-})
-
-UNARY_TEST_F16(Cos, {
-  SetParamsForSinCos();
-  Run(Cos, std::cos);
-})
-
-UNARY_TEST_BF16(Cos, {
-  SetParamsForSinCos();
-  Run(Cos, std::cos);
-})
-
-UNARY_TEST_F32(Sin, {
-  SetParamsForSinCos();
-  Run(
-      Sin, std::sin, +[](NativeT) {
-        return ErrorSpec{0.001, 0.001};
-      });
-})
-
-UNARY_TEST_F16(Sin, {
-  SetParamsForSinCos();
-  Run(Sin, std::sin);
-})
-
-UNARY_TEST_BF16(Sin, {
-  SetParamsForSinCos();
-  Run(Sin, std::sin);
-})
 
 UNARY_TEST_F32(Tan, {
   SetParamsForTan();

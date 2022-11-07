@@ -540,10 +540,12 @@ func.func @op_count_leading_zeros(%arg0: tensor<i32>) -> tensor<i32> {
 
 func.func @op_collective_permute(%arg0: tensor<16x8xf32>) -> tensor<16x8xf32> {
   //               CHECK: "stablehlo.collective_permute"(%arg0) {
+  //          CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>,
   // CHECK-SAME{LITERAL}:   source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>
   //          CHECK-SAME: } : (tensor<16x8xf32>) -> tensor<16x8xf32>
   %0 = "mhlo.collective_permute"(%arg0) {
-    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>
+    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>,
+    channel_handle = #mhlo.channel_handle<handle = 0, type = 0>
   } : (tensor<16x8xf32>) -> tensor<16x8xf32>
   func.return %0 : tensor<16x8xf32>
 }
@@ -605,10 +607,10 @@ func.func @op_convert(%arg0: tensor<i32>) -> tensor<f32> {
 }
 // CHECK-LABEL: "op_convert"
 
-func.func @op_convolution(%arg0: tensor<1x8x8x32x207xf32>, %arg1: tensor<3x3x32x207x16xf32>) -> tensor<32x1x8x8x16xf32> {
+func.func @op_convolution(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32> {
   //      CHECK: "stablehlo.convolution"(%arg0, %arg1) {
   // CHECK-SAME:   batch_group_count = 1 : i64,
-  // CHECK-SAME:   dimension_numbers = #stablehlo.conv<[b, 0, 1, ?, f]x[0, 1, ?, i, o]->[?, b, 0, 1, f]>,
+  // CHECK-SAME:   dimension_numbers = #stablehlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>,
   // CHECK-SAME:   feature_group_count = 1 : i64,
   // CHECK-SAME:   lhs_dilation = dense<1> : tensor<2xi64>,
   // CHECK-SAME:   padding = dense<1> : tensor<2x2xi64>,
@@ -616,19 +618,19 @@ func.func @op_convolution(%arg0: tensor<1x8x8x32x207xf32>, %arg1: tensor<3x3x32x
   // CHECK-SAME:   rhs_dilation = dense<1> : tensor<2xi64>,
   // CHECK-SAME:   window_reversal = dense<false> : tensor<2xi1>,
   // CHECK-SAME:   window_strides = dense<1> : tensor<2xi64>
-  // CHECK-SAME: } : (tensor<1x8x8x32x207xf32>, tensor<3x3x32x207x16xf32>) -> tensor<32x1x8x8x16xf32>
+  // CHECK-SAME: } : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   %0 = "mhlo.convolution"(%arg0, %arg1) {
     window_strides = dense<1> : tensor<2xi64>,
     padding = dense<1> : tensor<2x2xi64>,
     lhs_dilation = dense<1> : tensor<2xi64>,
     rhs_dilation = dense<1> : tensor<2xi64>,
     window_reversal = dense<false> : tensor<2xi1>,
-    dimension_numbers = #mhlo.conv<[b, 0, 1, ?, f]x[0, 1, ?, i, o]->[?, b, 0, 1, f]>,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>,
     feature_group_count = 1 : i64,
     batch_group_count = 1 : i64,
     precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
-  } : (tensor<1x8x8x32x207xf32>, tensor<3x3x32x207x16xf32>) -> tensor<32x1x8x8x16xf32>
-  func.return %0 : tensor<32x1x8x8x16xf32>
+  } : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
+  func.return %0 : tensor<1x8x8x16xf32>
 }
 // CHECK-LABEL: "op_convolution"
 
@@ -749,10 +751,10 @@ func.func @op_dynamic_broadcast_in_dim(%arg0: tensor<?xf32>, %arg1: tensor<2xind
 }
 // CHECK-LABEL: "op_dynamic_broadcast_in_dim"
 
-func.func @op_dynamic_conv(%arg0: tensor<1x8x8x32x207xf32>, %arg1: tensor<3x3x32x207x16xf32>, %arg2: tensor<4xi32>) -> tensor<32x1x?x?x16xf32> {
+func.func @op_dynamic_conv(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>, %arg2: tensor<4xi32>) -> tensor<1x?x?x16xf32> {
   //      CHECK: "stablehlo.dynamic_conv"(%arg0, %arg1, %arg2) {
   // CHECK-SAME:   batch_group_count = 1 : i64,
-  // CHECK-SAME:   dimension_numbers = #stablehlo.conv<[b, 0, 1, ?, f]x[0, 1, ?, i, o]->[?, b, 0, 1, f]>,
+  // CHECK-SAME:   dimension_numbers = #stablehlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>,
   // CHECK-SAME:   feature_group_count = 1 : i64,
   // CHECK-SAME:   lhs_dilation = dense<1> : tensor<2xi64>,
   // CHECK-SAME:   padding = dense<1> : tensor<2x2xi64>,
@@ -760,19 +762,19 @@ func.func @op_dynamic_conv(%arg0: tensor<1x8x8x32x207xf32>, %arg1: tensor<3x3x32
   // CHECK-SAME:   rhs_dilation = dense<1> : tensor<2xi64>,
   // CHECK-SAME:   window_reversal = dense<false> : tensor<2xi1>,
   // CHECK-SAME:   window_strides = dense<1> : tensor<2xi64>
-  // CHECK-SAME: } : (tensor<1x8x8x32x207xf32>, tensor<3x3x32x207x16xf32>, tensor<4xi32>) -> tensor<32x1x?x?x16xf32>
+  // CHECK-SAME: } : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>, tensor<4xi32>) -> tensor<1x?x?x16xf32>
   %0 = "mhlo.dynamic_conv"(%arg0, %arg1, %arg2) {
     window_strides = dense<1> : tensor<2xi64>,
     padding = dense<1> : tensor<2x2xi64>,
     lhs_dilation = dense<1> : tensor<2xi64>,
     rhs_dilation = dense<1> : tensor<2xi64>,
     window_reversal = dense<false> : tensor<2xi1>,
-    dimension_numbers = #mhlo.conv<[b, 0, 1, ?, f]x[0, 1, ?, i, o]->[?, b, 0, 1, f]>,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>,
     feature_group_count = 1 : i64,
     batch_group_count = 1 : i64,
     precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
-  } : (tensor<1x8x8x32x207xf32>, tensor<3x3x32x207x16xf32>, tensor<4xi32>) -> tensor<32x1x?x?x16xf32>
-  func.return %0 : tensor<32x1x?x?x16xf32>
+  } : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>, tensor<4xi32>) -> tensor<1x?x?x16xf32>
+  func.return %0 : tensor<1x?x?x16xf32>
 }
 // CHECK-LABEL: "op_dynamic_conv"
 
@@ -1870,22 +1872,29 @@ func.func @op_bitcast(%arg0: tensor<i32>) -> tensor<f32> {
 
 // -----
 
-func.func @op_collective_permute_channel(%arg0: tensor<16x8xf32>) -> tensor<16x8xf32> {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.collective_permute' that was explicitly marked illegal}}
-  %0 = "mhlo.collective_permute"(%arg0) {
-    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>,
-    channel_handle = #mhlo.channel_handle<handle = 0, type = 0>
-  } : (tensor<16x8xf32>) -> tensor<16x8xf32>
-  func.return %0 : tensor<16x8xf32>
-}
-
-// -----
-
 func.func @op_copy(%arg0: tensor<f32>) -> tensor<f32> {
   // mhlo.copy is immediately folded away at the first opportunity,
   // so it doesn't seem to be possible to capture it in FileCheck tests.
   %0 = "mhlo.copy"(%arg0) : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
+}
+
+// -----
+
+func.func @op_convolution_unknown_dimension_numbers(%arg0: tensor<1x8x8x32x207xf32>, %arg1: tensor<3x3x32x207x16xf32>) -> tensor<32x1x8x8x16xf32> {
+  // expected-error@+1 {{failed to legalize operation 'mhlo.convolution' that was explicitly marked illegal}}
+  %0 = "mhlo.convolution"(%arg0, %arg1) {
+    window_strides = dense<1> : tensor<2xi64>,
+    padding = dense<1> : tensor<2x2xi64>,
+    lhs_dilation = dense<1> : tensor<2xi64>,
+    rhs_dilation = dense<1> : tensor<2xi64>,
+    window_reversal = dense<false> : tensor<2xi1>,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, ?, f]x[0, 1, ?, i, o]->[?, b, 0, 1, f]>,
+    feature_group_count = 1 : i64,
+    batch_group_count = 1 : i64,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
+  } : (tensor<1x8x8x32x207xf32>, tensor<3x3x32x207x16xf32>) -> tensor<32x1x8x8x16xf32>
+  func.return %0 : tensor<32x1x8x8x16xf32>
 }
 
 // -----
