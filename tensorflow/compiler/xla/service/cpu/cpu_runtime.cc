@@ -503,6 +503,12 @@ class CpuAllReduceRendezvous
         case xla::U8:
           DoAllReduce<xla::U8>(participant);
           break;
+        case xla::S16:
+          DoAllReduce<xla::S16>(participant);
+          break;
+        case xla::U16:
+          DoAllReduce<xla::U16>(participant);
+          break;
         case xla::S32:
           DoAllReduce<xla::S32>(participant);
           break;
