@@ -23,6 +23,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/service/global_device_id.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
@@ -629,6 +631,92 @@ static bool ReduceScatter(runtime::ExecutionContext* ctx, void** args,
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
+namespace {
+struct ReplicaId {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          runtime::FlatMemrefView result) const;
+  static ReplicaId Handler() { return ReplicaId(); }
+};
+}  // namespace
+
+absl::Status ReplicaId::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    runtime::FlatMemrefView result) const {
+  VLOG(3) << "Running ReplicaId";
+  se::Stream* stream = run_options->stream();
+  NcclExecuteParams params(*run_options, stream);
+
+  StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
+  if (!global_device_id.ok()) return ToAbslStatus(global_device_id.status());
+
+  StatusOr<DeviceAssignment::LogicalID> logical_id =
+      params.device_assn->LogicalIdForDevice(global_device_id.value());
+  if (!logical_id.ok()) return ToAbslStatus(logical_id.status());
+
+  se::DeviceMemoryBase result_data = GetDeviceAddress(result);
+  params.stream->ThenMemset32(&result_data, logical_id.value().replica_id,
+                              /*size=*/4);
+
+  return absl::OkStatus();
+}
+
+static bool ReplicaId(runtime::ExecutionContext* ctx, void** args, void** attrs,
+                      void** rets) {
+  static auto* handler = CustomCall::Bind("xla.gpu.replica_id")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .Arg<runtime::FlatMemrefView>()  // result
+                             .To<checks>(ReplicaId::Handler())
+                             .release();
+
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+// -------------------------------------------------------------------------- //
+
+namespace {
+struct PartitionId {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          runtime::FlatMemrefView result) const;
+  static PartitionId Handler() { return PartitionId(); }
+};
+}  // namespace
+
+absl::Status PartitionId::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    runtime::FlatMemrefView result) const {
+  VLOG(3) << "Running PartitionId";
+  se::Stream* stream = run_options->stream();
+  NcclExecuteParams params(*run_options, stream);
+
+  StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
+  if (!global_device_id.ok()) return ToAbslStatus(global_device_id.status());
+
+  StatusOr<DeviceAssignment::LogicalID> logical_id =
+      params.device_assn->LogicalIdForDevice(global_device_id.value());
+  if (!logical_id.ok()) return ToAbslStatus(logical_id.status());
+
+  se::DeviceMemoryBase result_data = GetDeviceAddress(result);
+  params.stream->ThenMemset32(&result_data, logical_id.value().computation_id,
+                              /*size=*/4);
+
+  return absl::OkStatus();
+}
+
+static bool PartitionId(runtime::ExecutionContext* ctx, void** args,
+                        void** attrs, void** rets) {
+  static auto* handler = CustomCall::Bind("xla.gpu.partition_id")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .Arg<runtime::FlatMemrefView>()  // result
+                             .To<checks>(PartitionId::Handler())
+                             .release();
+
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+// -------------------------------------------------------------------------- //
+
 void RegisterCollectiveCustomCalls(
     runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
@@ -638,6 +726,8 @@ void RegisterCollectiveCustomCalls(
   registry.Register("xla.gpu.all_reduce_start", &xla::gpu::AllReduceStart);
   registry.Register("xla.gpu.all_to_all", &xla::gpu::AllToAll);
   registry.Register("xla.gpu.reduce_scatter", &xla::gpu::ReduceScatter);
+  registry.Register("xla.gpu.partition_id", &xla::gpu::PartitionId);
+  registry.Register("xla.gpu.replica_id", &xla::gpu::ReplicaId);
 }
 
 }  // namespace gpu
