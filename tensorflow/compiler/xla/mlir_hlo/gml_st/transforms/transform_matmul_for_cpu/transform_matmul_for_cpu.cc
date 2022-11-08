@@ -109,7 +109,16 @@ struct MatmulTransformPattern
     // Peel parallel loops.
     if (auto loop =
             dyn_cast_or_null<ParallelOp>(tilingParallelDimsResult->loop)) {
-      peelAllLoops(loop, rewriter);
+      auto peelingResult = peelAllLoops(loop, rewriter);
+      // Mark all for loops inside remainder parallel loops as peeled to prevent
+      // downstream peeling pass from peeling them.
+      for (auto *remParLoop : peelingResult) {
+        remParLoop->walk([&](Operation *childOp) {
+          if (isa<ForOp>(childOp)) {
+            setTransformationAttr(rewriter, childOp, kPeeledMarker);
+          }
+        });
+      }
     }
 
     // Peel reduction loop inside the main parallel loop.

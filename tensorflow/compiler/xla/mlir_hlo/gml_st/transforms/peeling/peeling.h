@@ -20,10 +20,13 @@ limitations under the License.
 #include <string>
 
 #include "gml_st/IR/gml_st_ops.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/PatternMatch.h"
 
 namespace mlir {
 namespace gml_st {
+
+using PeelingResult = SmallVector<Operation *>;
 
 constexpr llvm::StringRef kPeeledMarker = "__internal_peeled_marker__";
 
@@ -33,17 +36,18 @@ constexpr llvm::StringRef kPeeledMarker = "__internal_peeled_marker__";
 /// gml_st::LoopOp/ParallelOp/ForOp for the last (partial) iteration (if any).
 /// This transformation is called "loop peeling".
 ///
-/// This function peels all loops in the loop nest by calling
-/// peelAndCanonicalizeGmlStLoop.
-void peelAllLoops(LoopOp loop, mlir::PatternRewriter &rewriter);
-void peelAllLoops(ForOp loop, mlir::PatternRewriter &rewriter);
-void peelAllLoops(ParallelOp loop, mlir::PatternRewriter &rewriter);
+/// These functions peel all loops in the loop nest by calling
+/// peelAndCanonicalizeGmlStLoop. Additionally, they mark all loops (main and
+/// remainder loops) as peeled, so the same loop is not rewritten a second time.
+PeelingResult peelAllLoops(LoopOp loop, mlir::PatternRewriter &rewriter);
+PeelingResult peelAllLoops(ForOp loop, mlir::PatternRewriter &rewriter);
+PeelingResult peelAllLoops(ParallelOp loop, mlir::PatternRewriter &rewriter);
 
-/// This function peels the `idx`-th loop of the
-/// gml_st::LoopOp/ParallelOp/ForOp. To peel all loops in the loop nest, this
-/// function must be called multiple times.
+/// These functions peel the `idx`-th loop of the
+/// gml_st::LoopOp/ParallelOp/ForOp. To peel all loops in the loop nest, these
+/// functions must be called multiple times.
 ///
-/// After loop peeling, this function tries to simplify/canonicalize affine.min
+/// After loop peeling, these functions try to simplify/canonicalize affine.min
 /// and affine.max ops in the body of the two gml_st::LoopOp/ParallelOp/ForOps.
 /// For more details, refer to `mlir::scf::peelAndCanonicalizeForLoop`.
 ///
@@ -53,11 +57,14 @@ void peelAllLoops(ParallelOp loop, mlir::PatternRewriter &rewriter);
 /// * Loop bounds and step size are static, and step already divides the
 ///   iteration space evenly.
 ///
-/// Note: This function rewrites the given gml_st::LoopOp/ParallelOp/ForOp
-/// in-place and clones the gml_st::LoopOp/ParallelOp/ForOp operation for the
-/// last iteration. It replaces all uses of the unpeeled
+/// Note: These functions rewrite the given gml_st::LoopOp/ParallelOp/ForOp
+/// in-place and clone the gml_st::LoopOp/ParallelOp/ForOp operation for the
+/// last iteration. They replace all uses of the unpeeled
 /// gml_st::LoopOp/ParallelOp/ForOp with the results of the newly generated
 /// gml_st::LoopOp/ParallelOp/ForOp.
+///
+/// Note: These functions do not mark the loops as peeled. This should be
+/// handled by the caller.
 LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
                                            LoopOp loopOp, int64_t idx,
                                            LoopOp &result);

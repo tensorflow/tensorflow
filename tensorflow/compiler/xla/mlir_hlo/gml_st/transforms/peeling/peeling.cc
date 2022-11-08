@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
+#include "gml_st/transforms/transforms.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
@@ -137,6 +138,8 @@ void rewriteAffineOpAfterPeeling(RewriterBase &rewriter, Operation *mainLoop,
   });
 }
 
+// TODO(vuson) make this return the peeled loop instead, to simplify the
+// interface.
 template <typename LoopTy>
 LogicalResult peelAndCanonicalizeGmlStLoopImpl(RewriterBase &rewriter,
                                                LoopTy loopOp, int64_t idx,
@@ -165,30 +168,35 @@ LogicalResult peelAndCanonicalizeGmlStLoopImpl(RewriterBase &rewriter,
 }
 
 template <typename LoopTy>
-void peelAllLoopsImpl(LoopTy loop, mlir::PatternRewriter &rewriter) {
-  auto trueAttr = rewriter.getBoolAttr(true);
-  loop->setAttr(kPeeledMarker, trueAttr);
+PeelingResult peelAllLoopsImpl(LoopTy loop, mlir::PatternRewriter &rewriter) {
+  setTransformationAttr(rewriter, loop, kPeeledMarker);
+  PeelingResult peelingResult;
+  // TODO(vuson) change this to iterate from 0, as this makes people raise
+  // eyebrowns for nothing.
   for (int peeledIdx = loop.getNumLoops() - 1; peeledIdx >= 0; peeledIdx--) {
     LoopTy peel;
     // Mark the new loop if one was created.
     if (peelAndCanonicalizeGmlStLoopImpl<LoopTy>(rewriter, loop, peeledIdx,
                                                  peel)
-            .succeeded())
-      peel->setAttr(kPeeledMarker, trueAttr);
+            .succeeded()) {
+      setTransformationAttr(rewriter, peel, kPeeledMarker);
+      peelingResult.push_back(peel);
+    }
   }
+  return peelingResult;
 }
 }  // namespace
 
-void peelAllLoops(LoopOp loop, mlir::PatternRewriter &rewriter) {
-  peelAllLoopsImpl<LoopOp>(loop, rewriter);
+PeelingResult peelAllLoops(LoopOp loop, mlir::PatternRewriter &rewriter) {
+  return peelAllLoopsImpl<LoopOp>(loop, rewriter);
 }
 
-void peelAllLoops(ForOp loop, mlir::PatternRewriter &rewriter) {
-  peelAllLoopsImpl<ForOp>(loop, rewriter);
+PeelingResult peelAllLoops(ForOp loop, mlir::PatternRewriter &rewriter) {
+  return peelAllLoopsImpl<ForOp>(loop, rewriter);
 }
 
-void peelAllLoops(ParallelOp loop, mlir::PatternRewriter &rewriter) {
-  peelAllLoopsImpl<ParallelOp>(loop, rewriter);
+PeelingResult peelAllLoops(ParallelOp loop, mlir::PatternRewriter &rewriter) {
+  return peelAllLoopsImpl<ParallelOp>(loop, rewriter);
 }
 
 LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,

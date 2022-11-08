@@ -45,8 +45,7 @@ struct PeelGmlStLoop : public mlir::OpRewritePattern<LoopTy> {
       LoopTy loop, mlir::PatternRewriter &rewriter) const override {
     if (hasTransformationAttr(loop, mlir::gml_st::kPeeledMarker))
       return mlir::failure();
-    peelAllLoops(loop, rewriter);
-    return mlir::success();
+    return mlir::failure(peelAllLoops(loop, rewriter).empty());
   }
 };
 
