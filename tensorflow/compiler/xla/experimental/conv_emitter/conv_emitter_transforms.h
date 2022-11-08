@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_TRANSFORMS_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_TRANSFORMS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_TRANSFORMS_H_
+#define TENSORFLOW_COMPILER_XLA_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_TRANSFORMS_H_
 
 #include "absl/types/span.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
@@ -99,4 +99,4 @@ void SinkPerfectlyNestedLoops(llvm::MutableArrayRef<mlir::AffineForOp> loops,
 }  // namespace experimental
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_TRANSFORMS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_TRANSFORMS_H_
