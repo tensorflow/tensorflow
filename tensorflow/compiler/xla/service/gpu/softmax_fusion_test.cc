@@ -72,6 +72,45 @@ ENTRY main {
                   m::Broadcast(m::Reduce(m::Parameter(0), m::Constant())))));
 }
 
+// Currently disabled because we cannot enable matching cases that would crash
+// the mlir pipeline.
+// TODO(akuegel): Enable this test when the check that the number of rows is !=
+// 1 is removed.
+TEST_F(SoftmaxFusionTest, DISABLED_SingleSoftmaxPatternWithReshape) {
+  const std::string& hlo_string = R"(
+
+HloModule softmax
+
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+
+ENTRY main {
+  param_0 = f32[1,128]{1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[1]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  reshape = f32[] reshape(reduce)
+  broadcast = f32[1,128]{1,0} broadcast(reshape), dimensions={}
+  ROOT subtract = f32[1,128]{1,0} subtract(param_0, broadcast)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  SoftmaxFusion fusion;
+  EXPECT_TRUE(fusion.Run(module.get()).value());
+  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+  VLOG(2) << module->ToString();
+  auto* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, GmockMatch(m::CustomCall(m::Parameter(0))));
+  ASSERT_TRUE(root->has_to_apply());
+  // Assert that the softmax computation has exactly the softmax pattern.
+  ASSERT_THAT(root->to_apply()->root_instruction(),
+              GmockMatch(m::Subtract(m::Parameter(0),
+                                     m::Broadcast(m::Reshape(m::Reduce(
+                                         m::Parameter(0), m::Constant()))))));
+}
+
 TEST_F(SoftmaxFusionTest, SoftmaxPatternWithExtraStuff) {
   const std::string& hlo_string = R"(
 
@@ -609,19 +648,20 @@ std::string TestDataToString(
 
 INSTANTIATE_TEST_SUITE_P(
     SoftmaxFusionTestSuite, SoftmaxFusionEnd2EndTest,
-    ::testing::ValuesIn({std::make_tuple(0, 10),    std::make_tuple(10, 0),
-                         std::make_tuple(1, 10),    std::make_tuple(10, 1),
-                         std::make_tuple(2, 10),    std::make_tuple(10, 2),
-                         std::make_tuple(32, 2),    std::make_tuple(32, 3),
-                         std::make_tuple(32, 4),    std::make_tuple(32, 5),
-                         std::make_tuple(32, 6),    std::make_tuple(32, 7),
-                         std::make_tuple(32, 8),    std::make_tuple(32, 9),
-                         std::make_tuple(32, 10),   std::make_tuple(32, 11),
-                         std::make_tuple(32, 12),   std::make_tuple(32, 13),
-                         std::make_tuple(32, 14),   std::make_tuple(32, 15),
-                         std::make_tuple(32, 16),   std::make_tuple(32, 17),
-                         std::make_tuple(32, 18),   std::make_tuple(127, 125),
-                         std::make_tuple(128, 128), std::make_tuple(0, 0)}),
+    ::testing::ValuesIn(
+        {std::make_tuple(0, 10), std::make_tuple(10, 0), std::make_tuple(1, 10),
+         std::make_tuple(10, 1),  // For this shape, the reduces/broadcasts will
+                                  // be simplified away.
+         std::make_tuple(2, 10), std::make_tuple(10, 2), std::make_tuple(32, 2),
+         std::make_tuple(32, 3), std::make_tuple(32, 4), std::make_tuple(32, 5),
+         std::make_tuple(32, 6), std::make_tuple(32, 7), std::make_tuple(32, 8),
+         std::make_tuple(32, 9), std::make_tuple(32, 10),
+         std::make_tuple(32, 11), std::make_tuple(32, 12),
+         std::make_tuple(32, 13), std::make_tuple(32, 14),
+         std::make_tuple(32, 15), std::make_tuple(32, 16),
+         std::make_tuple(32, 17), std::make_tuple(32, 18),
+         std::make_tuple(127, 125), std::make_tuple(128, 128),
+         std::make_tuple(0, 0)}),
     TestDataToString);
 
 }  // anonymous namespace

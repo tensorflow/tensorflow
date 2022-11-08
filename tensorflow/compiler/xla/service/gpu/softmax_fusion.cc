@@ -55,46 +55,77 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
 
   HloInstruction* root;
   HloInstruction* broadcast;
+  HloInstruction* reduce_or_reshape;
   HloInstruction* reduce;
-  HloInstruction* producer;
   if (!Match(instr,
              m::Op(&root)
                  .WithOperand(
-                     1, m::Broadcast(
-                            &broadcast,
-                            m::Reduce(&reduce, m::Op(&producer), m::Constant())
-                                .WithOneUse()
-                                // The reduction should reduce the last
-                                // dimension of the operand shape.
-                                .WithPredicate([](const HloInstruction* instr) {
-                                  return instr->dimensions().size() == 1 &&
-                                         instr->dimensions()[0] ==
-                                             instr->shape().rank();
-                                }))
-                            .WithOneUse()
-                            // The broadcast should "undo" the reduction.
-                            .WithPredicate([](const HloInstruction* instr) {
-                              int64_t rank = instr->shape().rank();
-                              if (rank < 1) {
-                                return false;
-                              }
-                              std::vector<int64_t> expected_dims(rank - 1);
-                              std::iota(expected_dims.begin(),
-                                        expected_dims.end(), 0);
-                              return instr->dimensions() == expected_dims;
-                            }))
+                     1, m::Broadcast(&broadcast,
+                                     m::Op(&reduce_or_reshape).WithOneUse())
+                            .WithOneUse())
                  // The root operation should be an elementwise binary op of
                  // rank 2.
                  // TODO(frgossen): Relax the rank 2 constraint when the
                  // pipeline can handle it.
                  .WithPredicate([](const HloInstruction* instr) {
                    return instr->IsElementwiseBinary() &&
-                          instr->shape().rank() == 2;
+                          instr->shape().rank() == 2 &&
+                          // Currently crashes the pipeline.
+                          instr->shape().dimensions(0) != 1;
                  }))) {
     return false;
   }
+  reduce = reduce_or_reshape;
+  if (reduce_or_reshape->opcode() == HloOpcode::kReshape) {
+    // Check that the reshape only removes 1-sized dimensions.
+    auto descr =
+        reduce_or_reshape->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
+    if (!descr.has_value() || !descr->inserted_dimensions.empty()) {
+      return false;
+    }
+    reduce = reduce_or_reshape->mutable_operand(0);
+    if (reduce->user_count() != 1) {
+      return false;
+    }
+  }
+  // The reduction should reduce the last dimension of the operand shape.
+  if (reduce->opcode() != HloOpcode::kReduce ||
+      reduce->dimensions().size() != 1 ||
+      reduce->dimensions()[0] != reduce->shape().rank()) {
+    return false;
+  }
+
+  // The broadcast dimensions should be sorted.
+  if (!std::is_sorted(broadcast->dimensions().begin(),
+                      broadcast->dimensions().end())) {
+    return false;
+  }
+  // The broadcast should "undo" the reduction. Therefore, the non-broadcasted
+  // dimensions should be the last dimension and 1-sized dimensions.
+  int64_t rank = broadcast->shape().rank();
+  if (rank < 1) {
+    return false;
+  }
+  int64_t pos = 0;
+  for (int64_t i = 0; i < rank; ++i) {
+    if (pos < broadcast->dimensions().size() &&
+        broadcast->dimensions()[pos] == i) {
+      // The last dimension should not be broadcasted from the operand.
+      if (i == rank - 1) {
+        return false;
+      }
+      ++pos;
+    } else if (i < rank - 1 && broadcast->shape().dimensions(i) != 1) {
+      return false;
+    }
+  }
+
+  HloInstruction* producer = reduce->mutable_operand(0);
+
   bool has_major_to_minor_layout =
       LayoutUtil::IsMonotonicWithDim0Major(root->shape().layout()) &&
+      LayoutUtil::IsMonotonicWithDim0Major(
+          reduce_or_reshape->shape().layout()) &&
       LayoutUtil::IsMonotonicWithDim0Major(reduce->shape().layout()) &&
       LayoutUtil::IsMonotonicWithDim0Major(broadcast->shape().layout()) &&
       LayoutUtil::IsMonotonicWithDim0Major(reduce->shape().layout()) &&
@@ -129,9 +160,12 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
 
 HloInstruction* SoftmaxProducer(HloInstruction* softmax_root) {
   // The softmax producer is found by going up the chain
-  // -> broadcast -> reduce -> producer
-  return softmax_root->mutable_operand(1)->mutable_operand(0)->mutable_operand(
-      0);
+  // -> broadcast -> (reshape) -> reduce -> producer
+  auto reduce_or_reshape = softmax_root->mutable_operand(1)->mutable_operand(0);
+  if (reduce_or_reshape->opcode() == HloOpcode::kReduce) {
+    return reduce_or_reshape->mutable_operand(0);
+  }
+  return reduce_or_reshape->mutable_operand(0)->mutable_operand(0);
 }
 
 Status ReplaceSoftmaxWithCustomCall(HloInstruction* root,
