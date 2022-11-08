@@ -24,7 +24,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
     ] + if_not_android([
         ":profiler_session",
         "//tensorflow/core/profiler/convert:xplane_to_step_stats",
@@ -43,9 +43,9 @@ cc_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
     ] + if_not_android([
         ":profiler_interface",
         ":profiler_lock",
@@ -69,7 +69,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
         "@com_google_absl//absl/memory",
     ] + if_not_android([
         "//tensorflow/core:lib_internal",
@@ -88,7 +88,7 @@ cc_library(
     hdrs = ["profiler_factory.h"],
     deps = [
         ":profiler_interface",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tensorflow/tsl/profiler/lib:profiler_factory",
     ] + if_static([
         ":profiler_factory_impl",
@@ -108,9 +108,9 @@ cc_library(
         ":profiler_controller",
         ":profiler_interface",
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/tsl/profiler/lib:profiler_factory",
         "//tensorflow/tsl/profiler/lib:profiler_factory_impl",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
     ],
     alwayslink = True,
 )

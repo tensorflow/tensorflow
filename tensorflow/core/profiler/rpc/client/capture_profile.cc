@@ -28,12 +28,12 @@ limitations under the License.
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/profiler_analysis.pb.h"
-#include "tensorflow/core/profiler/profiler_options.pb.h"
-#include "tensorflow/core/profiler/profiler_service.pb.h"
 #include "tensorflow/core/profiler/rpc/client/profiler_client.h"
 #include "tensorflow/core/profiler/rpc/client/remote_profiler_session_manager.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
+#include "tensorflow/tsl/profiler/protobuf/profiler_analysis.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/profiler_options.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/profiler_service.pb.h"
 
 namespace tensorflow {
 namespace profiler {

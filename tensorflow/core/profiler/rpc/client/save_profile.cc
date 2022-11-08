@@ -34,9 +34,9 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/profiler_service.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/file_system_utils.h"
+#include "tensorflow/tsl/profiler/protobuf/profiler_service.pb.h"
 
 // Windows.h #defines ERROR, but it is also used in
 // tensorflow/core/util/event.proto
@@ -46,7 +46,6 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 namespace {
-
 
 constexpr char kProtoTraceFileName[] = "trace";
 constexpr char kTfStatsHelperSuffix[] = "tf_stats_helper_result";

@@ -64,7 +64,7 @@ cc_library(
     ],
     deps = [
         ":profiler_interface",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
     ] + if_static([
         ":profiler_factory_impl",
     ]),
@@ -83,9 +83,9 @@ cc_library(
     ],
     deps = [
         ":profiler_interface",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/profiler/lib:profiler_controller",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
     ],
     alwayslink = True,
 )

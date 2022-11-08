@@ -686,9 +686,9 @@ def tf_protos_all():
 
 def tf_protos_profiler_service():
     return [
-        clean_dep("//tensorflow/core/profiler:profiler_analysis_proto_cc_impl"),
-        clean_dep("//tensorflow/core/profiler:profiler_service_proto_cc_impl"),
-        clean_dep("//tensorflow/core/profiler:profiler_service_monitor_result_proto_cc_impl"),
+        clean_dep("//tensorflow/tsl/profiler/protobuf:profiler_analysis_proto_cc_impl"),
+        clean_dep("//tensorflow/tsl/profiler/protobuf:profiler_service_proto_cc_impl"),
+        clean_dep("//tensorflow/tsl/profiler/protobuf:profiler_service_monitor_result_proto_cc_impl"),
     ]
 
 def tf_protos_grappler_impl():
