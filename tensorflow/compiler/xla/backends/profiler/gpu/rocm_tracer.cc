@@ -1013,7 +1013,12 @@ tsl::Status RocmActivityCallbackImpl::operator()(const char* begin,
     }
 
     RETURN_IF_ROCTRACER_ERROR(static_cast<roctracer_status_t>(
-        roctracer_next_record(record, &record)));
+#if TF_ROCM_VERSION >= 50300
+          se::wrap::roctracer_next_record(record, &record)
+#else
+          roctracer_next_record(record, &record)
+#endif
+	  ));
   }
 
   return tsl::OkStatus();
@@ -1486,7 +1491,11 @@ void RocmTracer::ActivityCallbackHandler(const char* begin, const char* end) {
     while (record < end_record) {
       DumpActivityRecord(record,
                          "activity_tracing_enabled_ is false. Dropped!");
+#if TF_ROCM_VERSION >= 50300
+      se::wrap::roctracer_next_record(record, &record);
+#else
       roctracer_next_record(record, &record);
+#endif
     }
     VLOG(3) << "Dropped Activity Records End";
   }
