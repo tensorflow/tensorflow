@@ -49,7 +49,6 @@ limitations under the License.
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
@@ -924,57 +923,6 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       filter_backprop->tensor<T, 4>());
 }
 
-template <>
-void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, Eigen::bfloat16>::
-operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
-           const Tensor& out_backprop, const Tensor& input, int row_dilation,
-           int col_dilation, int row_stride, int col_stride,
-           const Padding& padding,
-           const std::vector<int64_t>& explicit_paddings,
-           Tensor* filter_backprop, TensorFormat data_format) {
-  // Performant bfloat16 operations are supported for Ampere+ GPUs. For
-  // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
-  auto* stream = ctx->op_device_context()->stream();
-  const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-      se::CudaComputeCapability::AMPERE);
-  Tensor casted_input = input;
-  Tensor casted_out_backprop = out_backprop;
-  Tensor casted_filter_backprop = *filter_backprop;
-
-  if (cast_to_float) {
-    const GPUDevice& device = ctx->eigen_device<GPUDevice>();
-    functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
-    OP_REQUIRES_OK(ctx,
-                   ctx->allocate_temp(DT_FLOAT, input.shape(), &casted_input));
-    cast(device, casted_input.template flat<float>(),
-         input.template flat<Eigen::bfloat16>());
-
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, out_backprop.shape(),
-                                           &casted_out_backprop));
-    cast(device, casted_out_backprop.template flat<float>(),
-         out_backprop.template flat<Eigen::bfloat16>());
-
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, filter_backprop->shape(),
-                                           &casted_filter_backprop));
-
-    LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, float>()(
-        ctx, use_cudnn, cudnn_use_autotune, casted_out_backprop, casted_input,
-        row_dilation, col_dilation, row_stride, col_stride, padding,
-        explicit_paddings, &casted_filter_backprop, data_format);
-
-    functor::CastFunctor<GPUDevice, Eigen::bfloat16, float> cast_back;
-    const Tensor& casted_filter_backprop_const = casted_filter_backprop;
-    cast_back(device, filter_backprop->template flat<Eigen::bfloat16>(),
-              casted_filter_backprop_const.template flat<float>());
-    return;
-  }
-
-  LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, Eigen::bfloat16>()(
-      ctx, use_cudnn, cudnn_use_autotune, casted_out_backprop, casted_input,
-      row_dilation, col_dilation, row_stride, col_stride, padding,
-      explicit_paddings, &casted_filter_backprop, data_format);
-}
-
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                             \
@@ -995,7 +943,6 @@ namespace functor {
 
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(Eigen::half);
-DECLARE_GPU_SPEC(Eigen::bfloat16);
 DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
@@ -1015,11 +962,6 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
                             .TypeConstraint<Eigen::half>("T")
                             .HostMemory("filter_sizes"),
                         Conv2DBackpropFilterOp<GPUDevice, Eigen::half>);
-REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<Eigen::bfloat16>("T")
-                            .HostMemory("filter_sizes"),
-                        Conv2DBackpropFilterOp<GPUDevice, Eigen::bfloat16>);
 
 // To be used inside depthwise_conv_grad_op.cc.
 // TODO(reedwm): Move this and the definition to depthwise_conv_grad_op.cc.

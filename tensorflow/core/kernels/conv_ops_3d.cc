@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
@@ -348,7 +347,6 @@ struct LaunchConvOp<GPUDevice, T> {
 
     const bool compute_in_nhwc = ComputeInNhwcEnabled(
         DataTypeToEnum<T>::value, stream, /*use_4d_tensor=*/false);
-
     const TensorFormat compute_data_format =
         (compute_in_nhwc && data_format == FORMAT_NHWC) ? FORMAT_NHWC
                                                         : FORMAT_NCHW;
@@ -529,55 +527,6 @@ struct LaunchConvOp<GPUDevice, T> {
   }
 };
 
-template <>
-struct LaunchConvOp<GPUDevice, Eigen::bfloat16> {
-  static void launch(OpKernelContext* ctx, bool cudnn_use_autotune,
-                     const Tensor& input_param, const Tensor& filter,
-                     const std::array<int64, 3>& dilations,
-                     const std::array<int64, 3>& strides, const Padding padding,
-                     TensorFormat data_format, Tensor* output) {
-    // Performant bfloat16 operations are supported for Ampere+ GPUs. For
-    // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
-    auto* stream = ctx->op_device_context()->stream();
-    const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-        se::CudaComputeCapability::AMPERE);
-    Tensor casted_input = input_param;
-    Tensor casted_filter = filter;
-    Tensor casted_out = *output;
-
-    if (cast_to_float) {
-      const GPUDevice& device = ctx->eigen_device<GPUDevice>();
-      functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
-      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, input_param.shape(),
-                                             &casted_input));
-      cast(device, casted_input.template flat<float>(),
-           input_param.template flat<Eigen::bfloat16>());
-
-      OP_REQUIRES_OK(
-          ctx, ctx->allocate_temp(DT_FLOAT, filter.shape(), &casted_filter));
-      cast(device, casted_filter.template flat<float>(),
-           filter.template flat<Eigen::bfloat16>());
-
-      OP_REQUIRES_OK(
-          ctx, ctx->allocate_temp(DT_FLOAT, output->shape(), &casted_out));
-
-      LaunchConvOp<GPUDevice, float>::launch(
-          ctx, cudnn_use_autotune, casted_input, casted_filter, dilations,
-          strides, padding, data_format, &casted_out);
-
-      functor::CastFunctor<GPUDevice, Eigen::bfloat16, float> cast_back;
-      const Tensor& casted_out_const = casted_out;
-      cast_back(device, output->template flat<Eigen::bfloat16>(),
-                casted_out_const.template flat<float>());
-      return;
-    }
-
-    LaunchConvOp<GPUDevice, Eigen::bfloat16>::launch(
-        ctx, cudnn_use_autotune, casted_input, casted_filter, dilations,
-        strides, padding, data_format, &casted_out);
-  }
-};
-
 // Forward declarations of the functor specializations for GPU.
 // This ensures that the custom implementation is used instead of the default
 // Eigen one (which is used for CPU).
@@ -610,7 +559,6 @@ namespace functor {
       typename TTypes<T, 5>::Tensor out);
 
 DECLARE_GPU_SPEC(Eigen::half);
-DECLARE_GPU_SPEC(Eigen::bfloat16);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
@@ -621,9 +569,6 @@ DECLARE_GPU_SPEC(double);
 REGISTER_KERNEL_BUILDER(
     Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
     Conv3DOp<GPUDevice, Eigen::half>);
-REGISTER_KERNEL_BUILDER(
-    Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<Eigen::bfloat16>("T"),
-    Conv3DOp<GPUDevice, Eigen::bfloat16>);
 REGISTER_KERNEL_BUILDER(
     Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     Conv3DOp<GPUDevice, float>);

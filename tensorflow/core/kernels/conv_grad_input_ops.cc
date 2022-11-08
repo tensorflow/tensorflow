@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -433,56 +432,6 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   }
 }
 
-template <>
-void LaunchConv2DBackpropInputOp<GPUDevice, Eigen::bfloat16>::operator()(
-    OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
-    const Tensor& out_backprop, const Tensor& filter, int row_dilation,
-    int col_dilation, int row_stride, int col_stride, const Padding& padding,
-    const std::vector<int64_t>& explicit_paddings, Tensor* in_backprop,
-    TensorFormat data_format) {
-  // Performant bfloat16 operations are supported for Ampere+ GPUs. For
-  // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
-  auto* stream = ctx->op_device_context()->stream();
-  const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-      se::CudaComputeCapability::AMPERE);
-  Tensor casted_out_backprop = out_backprop;
-  Tensor casted_filter = filter;
-  Tensor casted_in_backprop = *in_backprop;
-
-  if (cast_to_float) {
-    const GPUDevice& device = ctx->eigen_device<GPUDevice>();
-    functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, out_backprop.shape(),
-                                           &casted_out_backprop));
-    cast(device, casted_out_backprop.template flat<float>(),
-         out_backprop.template flat<Eigen::bfloat16>());
-
-    OP_REQUIRES_OK(
-        ctx, ctx->allocate_temp(DT_FLOAT, filter.shape(), &casted_filter));
-    cast(device, casted_filter.template flat<float>(),
-         filter.template flat<Eigen::bfloat16>());
-
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, in_backprop->shape(),
-                                           &casted_in_backprop));
-
-    LaunchConv2DBackpropInputOp<Eigen::GpuDevice, float>()(
-        ctx, use_cudnn, cudnn_use_autotune, casted_out_backprop, casted_filter,
-        row_dilation, col_dilation, row_stride, col_stride, padding,
-        explicit_paddings, &casted_in_backprop, data_format);
-
-    functor::CastFunctor<GPUDevice, Eigen::bfloat16, float> cast_back;
-    const Tensor& casted_in_backprop_const = casted_in_backprop;
-    cast_back(device, in_backprop->template flat<Eigen::bfloat16>(),
-              casted_in_backprop_const.template flat<float>());
-    return;
-  }
-
-  LaunchConv2DBackpropInputOp<Eigen::GpuDevice, Eigen::bfloat16>()(
-      ctx, use_cudnn, cudnn_use_autotune, casted_out_backprop, casted_filter,
-      row_dilation, col_dilation, row_stride, col_stride, padding,
-      explicit_paddings, &casted_in_backprop, data_format);
-}
-
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                             \
@@ -503,7 +452,6 @@ namespace functor {
 
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(Eigen::half);
-DECLARE_GPU_SPEC(Eigen::bfloat16);
 DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 
@@ -545,11 +493,6 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
                             .TypeConstraint<Eigen::half>("T")
                             .HostMemory("input_sizes"),
                         Conv2DBackpropInputOp<GPUDevice, Eigen::half>);
-REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<Eigen::bfloat16>("T")
-                            .HostMemory("input_sizes"),
-                        Conv2DBackpropInputOp<GPUDevice, Eigen::bfloat16>);
 REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
