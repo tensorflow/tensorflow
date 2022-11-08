@@ -194,6 +194,9 @@ static Status CreateHloXlaPipeline(
     pm.addPass(mlir::mhlo::CreateOutlineWithXLAFrameworkPass());
   }
   pm.addPass(mlir::createInlinerPass());
+  if (!options.sparse_bufferization) {
+    pm.addNestedPass<mlir::func::FuncOp>(createAllocToAllocaPass());
+  }
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createBufferDeallocationPass());
 
