@@ -861,6 +861,16 @@ The output shape has these dimensions, in this order:
 *   `spatial_dims`: One value for each valid placement of the convolutional
     window.
 
+<div style="width:95%; margin:-5px; margin-bottom:-60px; margin-top:-20px;">
+<img style="width:100%" src="./images/batch_group_counts.svg">
+</div>
+
+The figure above shows how `batch_group_count` field works. Effectively, we
+slice each lhs batch into `batch_group_count` groups, and do the same for the
+output features. Then, for each of these groups we do pairwise convolutions and
+concatenate the output along the output feature dimension. The operational
+semantics of all the other dimensions (feature and spatial) remain the same.
+
 The valid placements of the convolutional window are determined by the strides
 and the size of the base area after padding.
 
