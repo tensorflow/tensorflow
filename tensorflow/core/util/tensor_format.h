@@ -594,7 +594,7 @@ inline Status ShapeFromFormatWithStatus(TensorFormat dst_format,
                                         TensorShape *shape) {
   if (src_format == dst_format) {
     *shape = src_shape;
-    return Status::OK();
+    return OkStatus();
   }
 
   const int64_t batch = GetTensorDim(src_shape, src_format, 'N');

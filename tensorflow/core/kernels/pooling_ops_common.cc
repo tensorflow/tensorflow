@@ -209,7 +209,7 @@ Status PoolParameters::forward_output_shape(TensorShape *shape) {
     *shape = TensorShape(
         {tensor_in_batch, tensor_in_rows, tensor_in_cols, out_depth});
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
