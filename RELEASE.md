@@ -1,3 +1,7 @@
+# Release 2.9.3
+
+<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+
 # Release 2.9.2
 
 This releases introduces several vulnerability fixes:
