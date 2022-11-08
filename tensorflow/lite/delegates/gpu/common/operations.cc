@@ -36,11 +36,13 @@ Padding2D& Padding2D::operator=(const Padding2D& value) {
   return *this;
 }
 
-bool Padding2D::operator==(const Padding2D& value) {
+bool Padding2D::operator==(const Padding2D& value) const {
   return this->prepended == value.prepended && this->appended == value.appended;
 }
 
-bool Padding2D::operator!=(const Padding2D& value) { return !(*this == value); }
+bool Padding2D::operator!=(const Padding2D& value) const {
+  return !(*this == value);
+}
 
 Padding2D& Padding2D::operator-(const Padding2D& value) {
   prepended.h -= value.prepended.h;
