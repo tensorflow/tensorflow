@@ -54,6 +54,15 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "topology_proto",
+    srcs = ["topology.proto"],
+    cc_api_version = 2,
+    visibility = [
+        ":friends",
+    ],
+)
+
+tf_proto_library(
     name = "input_pipeline_proto",
     srcs = ["input_pipeline.proto"],
     cc_api_version = 2,
@@ -126,6 +135,7 @@ tf_proto_library(
     srcs = ["op_stats.proto"],
     cc_api_version = 2,
     protodeps = [
+        ":topology_proto",
         ":diagnostics_proto",
         ":kernel_stats_proto",
         ":op_metrics_proto",
