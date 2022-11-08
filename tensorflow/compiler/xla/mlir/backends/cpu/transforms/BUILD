@@ -28,7 +28,6 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
-        "alloc_to_alloca.cc",
         "lmhlo_to_cpu_runtime.cc",
         "xla_abi_legalization.cc",
     ],

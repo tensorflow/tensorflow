@@ -35,7 +35,7 @@ def ConvertLmhloToCpuRuntimePass :
 
 def LegalizeXlaAbiPass :
     Pass<"xla-legalize-abi", "mlir::ModuleOp"> {
-  let summary = "Converts layouts and data formats at ABI boundaries";
+  let summary = "Convers layouts and data formats at ABI boundaries";
 
   let description = [{
       Converts layouts defined in entry_computation_layout to the default
@@ -49,24 +49,6 @@ def LegalizeXlaAbiPass :
   ];
 
   let constructor = "createXlaAbiLegalizationPass()";
-}
-
-def AllocToAllocaPass :
-    Pass<"xla-alloc-to-alloca", "mlir::func::FuncOp"> {
-  let summary = "Moves memref allocations to the stack";
-
-  let description = [{
-      Converts small memref.allocs at the top level of functions to
-      memref.allocas.
-
-      Should be run immediately before BufferDeallocation.
-  }];
-
-  let dependentDialects = [
-      "mlir::func::FuncDialect", "mlir::memref::MemRefDialect"
-  ];
-
-  let constructor = "createAllocToAllocaPass()";
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_CPU_PASSES_TD_

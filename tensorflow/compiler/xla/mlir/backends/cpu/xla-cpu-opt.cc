@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
-#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
@@ -40,8 +38,7 @@ int main(int argc, char **argv) {
   mlir::stablehlo::registerAllDialects(registry);
   registry.insert<mlir::func::FuncDialect, mlir::lmhlo::LmhloDialect,
                   mlir::gml_st::GmlStDialect, mlir::thlo::THLODialect,
-                  mlir::linalg::LinalgDialect, mlir::tensor::TensorDialect,
-                  mlir::memref::MemRefDialect, mlir::scf::SCFDialect>();
+                  mlir::linalg::LinalgDialect, mlir::tensor::TensorDialect>();
 
   xla::cpu::registerCpuTransformsPasses();
 
