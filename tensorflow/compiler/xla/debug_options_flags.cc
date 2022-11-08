@@ -72,7 +72,11 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   // TODO(b/241801928): Remove this flag and legacy cublas support once cublasLt
   // is fully supported
+#if GOOGLE_CUDA
   opts.set_xla_gpu_enable_cublaslt(true);
+#else
+  opts.set_xla_gpu_enable_cublaslt(false);
+#endif
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
