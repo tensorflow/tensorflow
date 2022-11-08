@@ -1,7 +1,7 @@
 // TODO(b/255935104): Merge this with hlo_to_gpu_pipeline.mlir once we've
 // unified the softmax and elementwise paths.
 // RUN: mlir-hlo-opt --split-input-file %s \
-// RUN:   --hlo-to-gpu-pipeline="block-tile=8 warp-tile=1 experimental-softmax=true" -cse \
+// RUN:   --hlo-to-gpu-pipeline="block-tile=8 warp-tile=1 experimental-softmax=true" \
 // RUN: | FileCheck %s
 
 // CHECK:       gpu.container_module
