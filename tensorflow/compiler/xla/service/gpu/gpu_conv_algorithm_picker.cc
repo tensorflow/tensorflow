@@ -1022,7 +1022,8 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnComputation(
 StatusOr<bool> GpuConvAlgorithmPicker::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_SCOPED_LOGGING_TIMER("GpuConvAlgorithmPicker");
+  XLA_SCOPED_LOGGING_TIMER(
+      absl::StrCat("GpuConvAlgorithmPicker for ", module->name()));
 
   if (module->config().debug_options().xla_gpu_autotune_level() == 0) {
     VLOG(2) << "Convolution auto-tuning disabled, GpuConvAlgorithmPicker "

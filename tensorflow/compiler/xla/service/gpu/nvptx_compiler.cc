@@ -345,8 +345,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   std::string ptx;
   if (!(debug_module &&
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
-    XLA_SCOPED_LOGGING_TIMER(
-        "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
+    XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+        "NVPTXCompiler::CompileTargetBinary - CompileToPtx for ",
+        (debug_module != nullptr ? debug_module->name() : "(unknown")));
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
     TF_ASSIGN_OR_RETURN(ptx, nvptx::CompileToPtx(selected_module, gpu_version,
                                                  module_config, libdevice_dir));
@@ -359,7 +360,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
 
   std::vector<uint8_t> cubin = CompileGpuAsmOrGetCachedResult(
       stream_exec, ptx, std::get<se::CudaComputeCapability>(gpu_version),
-      module_config, relocatable);
+      module_config,
+      (debug_module != nullptr ? debug_module->name() : "(unknown)"),
+      relocatable);
 
   return std::pair<std::string, std::vector<uint8_t>>(std::move(ptx),
                                                       std::move(cubin));
@@ -368,8 +371,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
 std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     se::StreamExecutor* stream_exec, const std::string& ptx,
     se::CudaComputeCapability cc, const HloModuleConfig& hlo_module_config,
-    bool relocatable) {
-  XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompileGpuAsmOrGetCachedResult");
+    absl::string_view module_name, bool relocatable) {
+  XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+      "NVPTXCompiler::CompileGpuAsmOrGetCachedResult for ", module_name));
   tsl::profiler::TraceMe activity("PTX->CUBIN",
                                   tsl::profiler::TraceMeLevel::kInfo);
   bool inserted;

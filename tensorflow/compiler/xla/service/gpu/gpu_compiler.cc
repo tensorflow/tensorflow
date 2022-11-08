@@ -853,7 +853,8 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
-  XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
+  XLA_SCOPED_LOGGING_TIMER(
+      absl::StrCat("GpuCompiler::RunHloPasses for ", module->name()));
   uint64_t start_usecs = tsl::Env::Default()->NowMicros();
   tsl::profiler::TraceMe activity(
       [&] { return absl::StrCat("HLO Transforms:", module->name()); },
@@ -1109,7 +1110,8 @@ static Status CompileModuleToLlvmIrImpl(
       IrEmitterUnnested::Create(hlo_module->config(), &ir_emitter_context));
 
   {
-    XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - IR emission");
+    XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+        "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
 
     TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.getBody()));
 
@@ -1174,8 +1176,9 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
           llvm::Module* llvm_module, bool relocatable,
           std::optional<int> shard_number) -> StatusOr<BackendCompileResult> {
     {
-      XLA_SCOPED_LOGGING_TIMER(
-          "GpuCompiler::RunBackend - Running LLVM verifier");
+      XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+          "GpuCompiler::RunBackend - Running LLVM verifier for ",
+          (debug_module != nullptr ? debug_module->name() : "(unknown)")));
 
       llvm_module->getContext().setDiagnosticHandlerCallBack(
           NullDiagnosticHandler, nullptr);
@@ -1396,7 +1399,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
   VLOG(1) << "Starting to compile HLO module " << module->name();
-  XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend");
+  XLA_SCOPED_LOGGING_TIMER(
+      absl::StrCat("GpuCompiler::RunBackend for", module->name()));
   std::string slow_compilation_msg =
       absl::StrCat("Compiling module ", module->name());
   auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
