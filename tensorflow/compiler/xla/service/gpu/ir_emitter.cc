@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/ModRef.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
@@ -526,7 +527,7 @@ void IrEmitter::EmitAMDGPUAtomicAdd(llvm::Value* output_address,
             .getCallee());
 
     callee->addFnAttr(llvm::Attribute::NoUnwind);
-    callee->addFnAttr(llvm::Attribute::ArgMemOnly);
+    callee->setMemoryEffects(llvm::MemoryEffects::argMemOnly());
 
     b_.CreateCall(callee, {output_ptr, source});//llvm_ir::AsArrayRef(operands));
     return;
