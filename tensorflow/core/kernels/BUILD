@@ -4058,6 +4058,7 @@ tf_kernel_library(
     ],
     prefix = "conv_ops",
     deps = [
+        ":cast_op",
         ":conv_grad_shape_utils",
         ":conv_2d",
         ":conv_3d",
