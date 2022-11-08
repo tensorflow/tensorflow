@@ -3222,7 +3222,7 @@ REGISTER_OP("_ROCmFusedConvolutionBiasActivation")
             ") and bias dimension (", bias_dim_val, ") do not match.");
       }
 
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
     Computes a fused kernel which implements:
@@ -3276,7 +3276,7 @@ REGISTER_OP("_ROCmFusedBatchNormActivationInference")
       TF_RETURN_IF_ERROR(c->ReplaceDim(x, channel_dim_index, channel_dim, &y));
       c->set_output(0, y);
 
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
     Computes a fused kernel which implements:
@@ -3336,7 +3336,7 @@ REGISTER_OP("_ROCmFusedBatchNormActivationForward")
       c->set_output(3, vector_shape);
       c->set_output(4, vector_shape);
 
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
     Computes a fused kernel which implements:
@@ -3400,7 +3400,7 @@ REGISTER_OP("_ROCmFusedBatchNormActivationBackward")
       c->set_output(1, vector_shape);
       c->set_output(2, vector_shape);
 
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
     Computes a fused kernel which implements:
@@ -3439,7 +3439,7 @@ REGISTER_OP("_ROCmFusedAddRelu")
         c->set_output(0, z);
       }
 
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
     Computes a fused kernel which implements:
@@ -3469,7 +3469,7 @@ REGISTER_OP("_ROCmFusedAddNReluGrad")
 
       c->set_output(0, out);
 
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
     Computes a fused kernel which implements:

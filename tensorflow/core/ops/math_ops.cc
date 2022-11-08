@@ -597,7 +597,7 @@ Status BroadcastFMAOpOutputShapeImpl(InferenceContext* c, int n) {
 
   c->set_output(0, out);
   VLOG(1) << c->DebugString(out);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BroadcastFMAOpOutputShape(InferenceContext* c) {
