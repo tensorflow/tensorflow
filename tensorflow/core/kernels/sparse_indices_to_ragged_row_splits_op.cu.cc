@@ -1,15 +1,33 @@
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
-#ifdef GOOGLE_CUDA
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/kernels/sparse_indices_to_ragged_row_splits_op.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_solvers.h"
 
-using namespace tensorflow;
+namespace tensorflow {
 
 using GPUDevice = Eigen::GpuDevice;
 
+namespace functor {
+
+namespace {
 
 template <typename IndexType>
 __global__ void SparseIndicesToRaggedRowSplitsKernel(
@@ -85,50 +103,59 @@ __global__ void SparseIndicesToRaggedRowSplitsKernel(
     }
 }
 
+} // namespace
+
 template <typename IndexType>
-Status SparseIndicesToRaggedRowSplitsFunctor<GPUDevice, IndexType>::operator()(
-        OpKernelContext* context,
-        const GPUDevice& d,
-        int num_nonzero, // total number of nonzero values in tensor
-        bool validate_ragged_right,
-        const IndexType* indices_flat_2d, // array of length 2*num_nonzero
-        const IndexType* dense_shape,
-        int32_t* invalid_flag
-        ){
-    // copy number of rows to host in order to allocate row_splits tensor with correct size
-    ScratchSpace<IndexType> dense_row_count(context, 1, /*on_host=*/true);
-    cudaMemcpy(dense_row_count.mutable_data(), dense_shape, sizeof(*dense_row_count.data()), cudaMemcpyDeviceToHost);
-    IndexType num_rows = *dense_row_count.data();
-    Tensor* output;
-    TF_RETURN_IF_ERROR(context, context->allocate_output("row_splits", TensorShape({num_rows + 1}), &output));
-    IndexType* row_splits = output->flat<IndexType>().data();
+struct SparseIndicesToRaggedRowSplitsFunctor<GPUDevice, IndexType> {
+    Status operator()(
+            OpKernelContext* context,
+            //const GPUDevice& d,
+            int num_nonzero, // total number of nonzero values in tensor
+            bool validate_ragged_right,
+            const IndexType* indices_flat_2d, // array of length 2*num_nonzero
+            const IndexType* dense_shape,
+            int32_t* invalid_flag
+            ){
+        // copy number of rows to host in order to allocate row_splits tensor with correct size
+        ScratchSpace<IndexType> dense_row_count(context, 1, /*on_host=*/true);
+        cudaMemcpy(dense_row_count.mutable_data(), dense_shape, sizeof(*dense_row_count.data()), cudaMemcpyDeviceToHost);
+        IndexType num_rows = *dense_row_count.data();
+        Tensor* output;
+        TF_RETURN_IF_ERROR(context, context->allocate_output("row_splits", TensorShape({num_rows + 1}), &output));
+        IndexType* row_splits = output->flat<IndexType>().data();
 
-    int splits = num_rows / 2;
-    if (splits > (num_nonzero / 10)) {
-        splits = (num_nonzero / 10);
+        int splits = num_rows / 2;
+        if (splits > (num_nonzero / 10)) {
+            splits = (num_nonzero / 10);
+        }
+        if (splits < 1) {
+            splits = 1;
+        }
+
+        const GPUDevice& d = context->eigen_gpu_device();
+        GpuLaunchConfig config = GetGpuLaunchConfig(splits, d);
+        int block_count = config.block_count;
+        int thread_per_block = config.thread_per_block;
+
+        TF_CHECK_OK(GpuLaunchKernel(
+                    SparseIndicesToRaggedRowSplitsKernel<IndexType>,
+                    block_count, thread_per_block, 0, d.stream(),
+                    num_nonzero,
+                    validate_ragged_right,
+                    indices_flat_2d,
+                    dense_shape,
+                    row_splits,
+                    invalid_flag
+        ));
+        return Status::OK();
     }
-    if (splits < 1) {
-        splits = 1;
-    }
-
-    GpuLaunchConfig config = GetGpuLaunchConfig(splits, d);
-    int block_count = config.block_count;
-    int thread_per_block = config.thread_per_block;
-
-    TF_CHECK_OK(GpuLaunchKernel(
-                SparseIndicesToRaggedRowSplitsKernel<IndexType>,
-                block_count, thread_per_block, 0, d.stream(),
-                num_nonzero,
-                validate_ragged_right,
-                indices_flat_2d,
-                dense_shape,
-                row_splits,
-                invalid_flag
-    ));
-    return Status::OK();
 };
 
 template struct SparseIndicesToRaggedRowSplitsFunctor<GPUDevice, int32>;
 template struct SparseIndicesToRaggedRowSplitsFunctor<GPUDevice, int64>;
 
-#endif  // GOOGLE_CUDA
+} // namespace functor
+
+} // namespace tensorflow
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

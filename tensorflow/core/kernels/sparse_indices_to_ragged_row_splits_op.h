@@ -1,48 +1,40 @@
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
-#ifndef GEN_ROW_SPLITS_H_
-#define GEN_ROW_SPLITS_H_
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-#ifdef GOOGLE_CUDA
-#define EIGEN_USE_GPU
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#ifndef TENSORFLOW_CORE_KERNELS_SPARSE_INDICES_TO_RAGGED_ROW_SPLITS_OP_H_
+#define TENSORFLOW_CORE_KERNELS_SPARSE_INDICES_TO_RAGGED_ROW_SPLITS_OP_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
+namespace tensorflow {
 
+namespace functor {
 
-using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
-
-#if GOOGLE_CUDA
 template <typename Device, typename IndexType>
 struct SparseIndicesToRaggedRowSplitsFunctor {
-    tensorflow::Status operator()(
-        tensorflow::OpKernelContext* context,
-        const Device& d,
-        int num_nonzero,
-        bool validate_ragged_right,
-        const IndexType* indices_flat_2d,
-        const IndexType* dense_shape,
-        int32_t* invalid_flag
-    );
+  tensorflow::Status operator()(OpKernelContext* context,
+                                int num_nonzero,
+                                bool validate_ragged_right,
+                                const IndexType* indices_flat_2d,
+                                const IndexType* dense_shape,
+                                int32_t* invalid_flag);
 };
 
-template <typename IndexType>
-struct SparseIndicesToRaggedRowSplitsFunctor<GPUDevice, IndexType> {
-    tensorflow::Status operator()(
-        tensorflow::OpKernelContext* context,
-        const GPUDevice& d,
-        int num_nonzero,
-        bool validate_ragged_right,
-        const IndexType* indices_flat_2d,
-        const IndexType* dense_shape,
-        int32_t* invalid_flag
-    );
-};
+}  // namespace functor
 
-#endif
-#endif
+}  // namespace tensorflow
 
-#endif
-
-
+#endif  // TENSORFLOW_CORE_KERNELS_SPARSE_INDICES_TO_RAGGED_ROW_SPLITS_OP_H_

@@ -1,23 +1,34 @@
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-
 #include "tensorflow/core/kernels/sparse_indices_to_ragged_row_splits_op.h"
 
-
-using namespace tensorflow;
+namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
 
+namespace functor {
 
 template <typename IndexType>
 struct SparseIndicesToRaggedRowSplitsFunctor<CPUDevice, IndexType> {
     Status operator()(
             OpKernelContext* context,
-            const CPUDevice& d,
             int num_nonzero, // total number of nonzero values in tensor
             bool validate_ragged_right, // enable validation of input tensor format
             const IndexType* indices_flat_2d, // array of length 2*num_nonzero
@@ -73,6 +84,8 @@ struct SparseIndicesToRaggedRowSplitsFunctor<CPUDevice, IndexType> {
     }
 };
 
+} // namespace functor
+
 template <typename Device, typename IndexType>
 class SparseIndicesToRaggedRowSplitsOp : public OpKernel {
     private:
@@ -93,9 +106,9 @@ class SparseIndicesToRaggedRowSplitsOp : public OpKernel {
             OP_REQUIRES_OK(context, context->allocate_output("invalid_flag", TensorShape({}), &output_invalid));
 
             OP_REQUIRES_OK(context,
-                    SparseIndicesToRaggedRowSplitsFunctor<Device, IndexType>()(
+                    functor::SparseIndicesToRaggedRowSplitsFunctor<Device, IndexType>()(
                         context,
-                        context->eigen_device<Device>(),
+                        //context->eigen_device<Device>(),
                         num_nonzero,
                         validate_ragged_right,
                         indices.flat<IndexType>().data(),
@@ -105,15 +118,6 @@ class SparseIndicesToRaggedRowSplitsOp : public OpKernel {
       }
 };
 
-#ifdef GOOGLE_CUDA
-#define REGISTER_GPU(IndexType) \
-  REGISTER_KERNEL_BUILDER( \
-      Name("SparseIndicesToRaggedRowSplits").Device(DEVICE_GPU).TypeConstraint<IndexType>("IndexType"), \
-      SparseIndicesToRaggedRowSplitsOp<GPUDevice, IndexType>);
-REGISTER_GPU(int32);
-REGISTER_GPU(int64);
-#undef REGISTER_GPU
-
 #define REGISTER_CPU(IndexType) \
   REGISTER_KERNEL_BUILDER( \
       Name("SparseIndicesToRaggedRowSplits").Device(DEVICE_CPU).TypeConstraint<IndexType>("IndexType"), \
@@ -122,6 +126,18 @@ REGISTER_CPU(int32);
 REGISTER_CPU(int64);
 #undef REGISTER_CPU
 
-#endif  // GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+using GPUDevice = Eigen::GpuDevice;
 
+#define REGISTER_GPU(IndexType) \
+  REGISTER_KERNEL_BUILDER( \
+      Name("SparseIndicesToRaggedRowSplits").Device(DEVICE_GPU).TypeConstraint<IndexType>("IndexType"), \
+      SparseIndicesToRaggedRowSplitsOp<GPUDevice, IndexType>);
+REGISTER_GPU(int32);
+REGISTER_GPU(int64);
+#undef REGISTER_GPU
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+} // namespace tensorflow
