@@ -609,18 +609,19 @@ std::string TestDataToString(
 
 INSTANTIATE_TEST_SUITE_P(
     SoftmaxFusionTestSuite, SoftmaxFusionEnd2EndTest,
-    ::testing::ValuesIn({std::make_tuple(1, 10),   std::make_tuple(10, 1),
-                         std::make_tuple(2, 10),   std::make_tuple(10, 2),
-                         std::make_tuple(32, 2),   std::make_tuple(32, 3),
-                         std::make_tuple(32, 4),   std::make_tuple(32, 5),
-                         std::make_tuple(32, 6),   std::make_tuple(32, 7),
-                         std::make_tuple(32, 8),   std::make_tuple(32, 9),
-                         std::make_tuple(32, 10),  std::make_tuple(32, 11),
-                         std::make_tuple(32, 12),  std::make_tuple(32, 13),
-                         std::make_tuple(32, 14),  std::make_tuple(32, 15),
-                         std::make_tuple(32, 16),  std::make_tuple(32, 17),
-                         std::make_tuple(32, 18),  std::make_tuple(127, 125),
-                         std::make_tuple(128, 128)}),
+    ::testing::ValuesIn({std::make_tuple(0, 10),    std::make_tuple(10, 0),
+                         std::make_tuple(1, 10),    std::make_tuple(10, 1),
+                         std::make_tuple(2, 10),    std::make_tuple(10, 2),
+                         std::make_tuple(32, 2),    std::make_tuple(32, 3),
+                         std::make_tuple(32, 4),    std::make_tuple(32, 5),
+                         std::make_tuple(32, 6),    std::make_tuple(32, 7),
+                         std::make_tuple(32, 8),    std::make_tuple(32, 9),
+                         std::make_tuple(32, 10),   std::make_tuple(32, 11),
+                         std::make_tuple(32, 12),   std::make_tuple(32, 13),
+                         std::make_tuple(32, 14),   std::make_tuple(32, 15),
+                         std::make_tuple(32, 16),   std::make_tuple(32, 17),
+                         std::make_tuple(32, 18),   std::make_tuple(127, 125),
+                         std::make_tuple(128, 128), std::make_tuple(0, 0)}),
     TestDataToString);
 
 }  // anonymous namespace
