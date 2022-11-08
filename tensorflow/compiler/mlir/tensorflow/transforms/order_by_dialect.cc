@@ -16,11 +16,13 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <queue>
+#include <utility>
 #include <vector>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/topological_sort.h"
@@ -37,8 +39,6 @@ std::vector<Operation*> groupOperationsByDialect(Block& block);
 // Reorder operations so that consecutive ops stay in the same dialect, as far
 // as possible. This is to optimize the op order for the group-by-dialect pass,
 // which factors consecutive same-dialect ops into functions.
-// TODO(kramm): This pass needs to become aware of side-effects between ops
-// of different dialects.
 class OrderByDialectPass
     : public impl::OrderByDialectPassBase<OrderByDialectPass> {
  public:
@@ -52,19 +52,38 @@ int DialectOrdering(Operation* predecessor, Operation* op) {
 }
 
 void OrderByDialectPass::runOnOperation() {
-  getOperation().walk([](Operation* function) {
-    for (Region& region : function->getRegions()) {
-      for (Block& block : region.getBlocks()) {
-        if (block.empty()) continue;
-        auto ops = SortBlockTopologically(block, DialectOrdering);
-        // Replace the block with the reordered block.
-        for (Operation* op : ops) {
-          op->remove();
-          block.push_back(op);
+  ModuleOp module = getOperation();
+  for (func::FuncOp func : module.getOps<func::FuncOp>()) {
+    std::vector<std::pair<Operation*, Operation*>> side_effect_data;
+    const detail::SideEffectAnalysisInfo* info = nullptr;
+    auto extra_dependencies =
+        [&](Operation* op,
+            bool incoming) -> llvm::SmallVector<Operation*, 4> const& {
+      return incoming ? info->DirectControlPredecessors(op)
+                      : info->DirectControlSuccessors(op);
+    };
+    // Some tests have recursive calls and other shenanigans, so allow
+    // them to skip side effect analysis.
+    if (!func->hasAttr("ignore_side_effects_for_testing")) {
+      info =
+          &getAnalysis<mlir::TF::SideEffectAnalysis>().GetAnalysisForFunc(func);
+    }
+    func->walk([&](Operation* function) {
+      for (Region& region : function->getRegions()) {
+        for (Block& block : region.getBlocks()) {
+          if (block.empty()) continue;
+          auto ops = SortBlockTopologically(
+              block, DialectOrdering,
+              info ? extra_dependencies : no_extra_dependencies);
+          // Replace the block with the reordered block.
+          for (Operation* op : ops) {
+            op->remove();
+            block.push_back(op);
+          }
         }
       }
-    }
-  });
+    });
+  }
 }
 
 }  // namespace
