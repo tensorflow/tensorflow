@@ -139,8 +139,8 @@ Status FixupPassThroughDomainLinks(const DomainMetadata::Domain& domain,
   return OkStatus();
 }
 
-// For tuple shardings if every element have the same sharsing then we want to
-// treat them as single element sharsings to insert less domain separation as a
+// For tuple shardings if every element have the same sharding then we want to
+// treat them as single element shardings to insert less domain separation as a
 // domain can prevent some optimizations and we want to minimize that from
 // happening.
 std::shared_ptr<const HloSharding> CloneShardingForDomain(
