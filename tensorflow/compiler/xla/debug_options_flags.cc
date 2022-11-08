@@ -72,11 +72,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   // TODO(b/241801928): Remove this flag and legacy cublas support once cublasLt
   // is fully supported
-#if GOOGLE_CUDA
-  opts.set_xla_gpu_enable_cublaslt(true);
-#else
   opts.set_xla_gpu_enable_cublaslt(false);
-#endif
 
   // TODO(b/258036887): Remove this flag once CUDA Graphs are fully supported.
   opts.set_xla_gpu_enable_cuda_graphs(false);
