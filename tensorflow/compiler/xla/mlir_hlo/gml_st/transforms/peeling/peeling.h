@@ -65,15 +65,13 @@ PeelingResult peelAllLoops(ParallelOp loop, mlir::PatternRewriter &rewriter);
 ///
 /// Note: These functions do not mark the loops as peeled. This should be
 /// handled by the caller.
-LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
-                                           LoopOp loopOp, int64_t idx,
-                                           LoopOp &result);
-LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter, ForOp loopOp,
-                                           int64_t idx, ForOp &result);
-LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
-                                           ParallelOp loopOp, int64_t idx,
-                                           ParallelOp &result);
-
+FailureOr<LoopOp> peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
+                                               LoopOp loopOp, int64_t idx);
+FailureOr<ForOp> peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
+                                              ForOp loopOp, int64_t idx);
+FailureOr<ParallelOp> peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
+                                                   ParallelOp loopOp,
+                                                   int64_t idx);
 }  // namespace gml_st
 }  // namespace mlir
 
