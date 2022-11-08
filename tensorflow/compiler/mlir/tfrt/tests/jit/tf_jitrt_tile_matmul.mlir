@@ -1,6 +1,10 @@
 // RUN: tf-tfrt-opt %s -split-input-file \
 // RUN:   -xla-cpu-transform-matmul="tile-sizes=8,4,2" \
-// RUN: | FileCheck %s
+// RUN: | FileCheck %s --check-prefix=MARKED
+
+// RUN: tf-tfrt-opt %s -split-input-file \
+// RUN:   -xla-cpu-transform-matmul="tile-sizes=8,4,2" \
+// RUN: | FileCheck %s --check-prefix=PEELED
 
 func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
                   -> tensor<?x?xf32> {
@@ -16,42 +20,57 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
   return %4 : tensor<?x?xf32>
 }
 
-// CHECK-LABEL: func @matmul(
-// CHECK-SAME:      %[[LHS:.*]]: tensor<?x?xf32>, %[[RHS:.*]]: tensor<?x?xf32>)
+// PEELED-LABEL: func @matmul(
+// PEELED-SAME:      %[[LHS:.*]]: tensor<?x?xf32>, %[[RHS:.*]]: tensor<?x?xf32>)
 
-// CHECK-DAG:     %[[C0:.*]] = arith.constant 0 : index
-// CHECK:         %[[INIT:.*]] = tensor.empty
+// PEELED-DAG:     %[[C0:.*]] = arith.constant 0 : index
+// PEELED:         %[[INIT:.*]] = tensor.empty
 
-// CHECK:         %[[MAIN_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]]) to (%[[IUB:.*]], %[[JUB:.*]]) step
-// CHECK:           %[[MAIN_SLICE:.*]] = gml_st.materialize %[[INIT]]
-// CHECK:           %[[MAIN_FILL:.*]] = linalg.fill{{.*}}outs(%[[MAIN_SLICE]]
-// CHECK:           %[[MAIN_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) to (%[[KUB:.*]]) {{.*}} outs ({{.*}} = %[[MAIN_FILL]]:
-// CHECK:             %[[MAIN_PAR_MAIN_FOR_MATMUL:.*]] = linalg.matmul
-// CHECK-NEXT:        gml_st.set_yield %[[MAIN_PAR_MAIN_FOR_MATMUL]]
-// CHECK-NEXT:      } {__internal_peeled_marker__ = true}
-// CHECK:           %[[REM_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[KUB]]) {{.*}} outs ({{.*}} = %[[MAIN_FOR]]:
-// CHECK:             %[[MAIN_PAR_REM_FOR_MATMUL:.*]] = linalg.matmul
-// CHECK-NEXT:        gml_st.set_yield %[[MAIN_PAR_REM_FOR_MATMUL]]
-// CHECK-NEXT:      } {__internal_peeled_marker__ = true}
-// CHECK-NEXT:      gml_st.set_yield %[[REM_FOR]]
-// CHECK-NEXT:    } {__internal_peeled_marker__ = true}
+// PEELED:         %[[MAIN_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]]) to (%[[IUB:.*]], %[[JUB:.*]]) step
+// PEELED:           %[[MAIN_SLICE:.*]] = gml_st.materialize %[[INIT]]
+// PEELED:           %[[MAIN_FILL:.*]] = linalg.fill{{.*}}outs(%[[MAIN_SLICE]]
+// PEELED:           %[[MAIN_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) to (%[[KUB:.*]]) {{.*}} outs ({{.*}} = %[[MAIN_FILL]]:
+// PEELED:             %[[MAIN_PAR_MAIN_FOR_MATMUL:.*]] = linalg.matmul
+// PEELED-NEXT:        gml_st.set_yield %[[MAIN_PAR_MAIN_FOR_MATMUL]]
+// PEELED:           %[[REM_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[KUB]]) {{.*}} outs ({{.*}} = %[[MAIN_FOR]]:
+// PEELED:             %[[MAIN_PAR_REM_FOR_MATMUL:.*]] = linalg.matmul
+// PEELED-NEXT:        gml_st.set_yield %[[MAIN_PAR_REM_FOR_MATMUL]]
+// PEELED:           gml_st.set_yield %[[REM_FOR]]
 
-// CHECK:         %[[REM_LHS_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[IUB]], %[[C0]])
-// CHECK:           %[[REM_LHS_SLICE:.*]] = gml_st.materialize %[[MAIN_PAR]]
-// CHECK:           %[[REM_LHS_FILL:.*]] = linalg.fill{{.*}}outs(%[[REM_LHS_SLICE]]
-// CHECK:           %[[REM_LHS_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) {{.*}} outs ({{.*}} = %[[REM_LHS_FILL]]:
-// CHECK:             %[[REM_LHS_PAR_MATMUL:.*]] = linalg.matmul
-// CHECK-NEXT:        gml_st.set_yield %[[REM_LHS_PAR_MATMUL]]
-// CHECK-NEXT:      } {__internal_peeled_marker__ = true}
-// CHECK-NEXT:      gml_st.set_yield %[[REM_LHS_FOR]]
-// CHECK-NEXT:    } {__internal_peeled_marker__ = true}
+// PEELED:         %[[REM_RHS_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[JUB]])
+// PEELED:           %[[REM_RHS_SLICE:.*]] = gml_st.materialize %[[MAIN_PAR]]
+// PEELED:           %[[REM_RHS_FILL:.*]] = linalg.fill{{.*}}outs(%[[REM_RHS_SLICE]]
+// PEELED:           %[[REM_RHS_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) {{.*}} outs ({{.*}} = %[[REM_RHS_FILL]]:
+// PEELED:             %[[REM_RHS_PAR_MATMUL:.*]] = linalg.matmul
+// PEELED-NEXT:        gml_st.set_yield %[[REM_RHS_PAR_MATMUL]]
+// PEELED:           gml_st.set_yield %[[REM_RHS_FOR]]
 
-// CHECK:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[JUB]])
-// CHECK:           %[[REM_RHS_SLICE:.*]] = gml_st.materialize %[[REM_LHS_PAR]]
-// CHECK:           %[[REM_RHS_FILL:.*]] = linalg.fill{{.*}}outs(%[[REM_RHS_SLICE]]
-// CHECK:           %[[REM_RHS_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) {{.*}} outs ({{.*}} = %[[REM_RHS_FILL]]:
-// CHECK:             %[[REM_RHS_PAR_MATMUL:.*]] = linalg.matmul
-// CHECK-NEXT:        gml_st.set_yield %[[REM_RHS_PAR_MATMUL]]
-// CHECK-NEXT:      } {__internal_peeled_marker__ = true}
-// CHECK-NEXT:      gml_st.set_yield %[[REM_RHS_FOR]]
-// CHECK-NEXT:    } {__internal_peeled_marker__ = true}
+// PEELED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[IUB]], %[[C0]])
+// PEELED:           %[[REM_LHS_SLICE:.*]] = gml_st.materialize %[[REM_RHS_PAR]]
+// PEELED:           %[[REM_LHS_FILL:.*]] = linalg.fill{{.*}}outs(%[[REM_LHS_SLICE]]
+// PEELED:           %[[REM_LHS_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) {{.*}} outs ({{.*}} = %[[REM_LHS_FILL]]:
+// PEELED:             %[[REM_LHS_PAR_MATMUL:.*]] = linalg.matmul
+// PEELED-NEXT:        gml_st.set_yield %[[REM_LHS_PAR_MATMUL]]
+// PEELED:           gml_st.set_yield %[[REM_LHS_FOR]]
+
+// -----
+
+// MARKED-LABEL: func @matmul(
+
+// MARKED:         %[[C0:.*]] = arith.constant 0 : index
+// MARKED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]]) to (%[[IUB:.*]], %[[JUB:.*]]) step
+// MARKED:           gml_st.for (%[[K:.*]]) = (%[[C0]]) to (%[[KUB:.*]]) step
+// MARKED:           } {__internal_peeled_marker__ = true}
+// MARKED:           gml_st.for (%[[K:.*]]) = (%[[KUB]])
+// MARKED:           } {__internal_peeled_marker__ = true}
+// MARKED:         } {__internal_peeled_marker__ = true}
+
+// MARKED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[JUB]])
+// MARKED:           gml_st.for (%[[K:.*]]) = (%[[C0]])
+// MARKED:           } {__internal_peeled_marker__ = true}
+// MARKED:         } {__internal_peeled_marker__ = true}
+
+// MARKED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[IUB]], %[[C0]])
+// MARKED:           gml_st.for (%[[K:.*]]) = (%[[C0]])
+// MARKED:           } {__internal_peeled_marker__ = true}
+// MARKED:         } {__internal_peeled_marker__ = true}

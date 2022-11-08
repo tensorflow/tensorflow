@@ -171,9 +171,7 @@ template <typename LoopTy>
 PeelingResult peelAllLoopsImpl(LoopTy loop, mlir::PatternRewriter &rewriter) {
   setTransformationAttr(rewriter, loop, kPeeledMarker);
   PeelingResult peelingResult;
-  // TODO(vuson) change this to iterate from 0, as this makes people raise
-  // eyebrowns for nothing.
-  for (int peeledIdx = loop.getNumLoops() - 1; peeledIdx >= 0; peeledIdx--) {
+  for (unsigned peeledIdx = 0; peeledIdx < loop.getNumLoops(); ++peeledIdx) {
     LoopTy peel;
     // Mark the new loop if one was created.
     if (peelAndCanonicalizeGmlStLoopImpl<LoopTy>(rewriter, loop, peeledIdx,
