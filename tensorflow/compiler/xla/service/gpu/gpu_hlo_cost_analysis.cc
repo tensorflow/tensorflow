@@ -46,7 +46,7 @@ int64_t GpuHloCostAnalysis::FusionParameterReadBytes(
                            hlo->opcode() == HloOpcode::kGetTupleElement));
   float utilization = hlo_properties_.at(hlo).at(kUtilizationKey);
   if (!options_.count_multiple_input_accesses) {
-    utilization = fmax(utilization, 1.0);
+    utilization = fmin(utilization, 1.0);
   }
   return GetShapeSize(hlo->shape()) * utilization;
 }
