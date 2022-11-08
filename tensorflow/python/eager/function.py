@@ -41,5 +41,4 @@ from tensorflow.python.eager.polymorphic_function.monomorphic_function import _f
 
 # TODO(b/244360686): Remove in favor of tf.function.
 # QUARANTINED - Defun API
-from tensorflow.python.eager.polymorphic_function.quarantine import defun
 from tensorflow.python.eager.polymorphic_function.quarantine import defun_with_attributes
