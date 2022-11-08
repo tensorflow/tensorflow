@@ -157,6 +157,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/stable_sort_expander.h"
+#include "tensorflow/compiler/xla/service/stochastic_convert_decomposer.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
@@ -434,6 +435,8 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<CallInliner>();
 
     pipeline.AddPass<DotDecomposer>();
+
+    pipeline.AddPass<StochasticConvertDecomposer>();
 
     pipeline.AddPass<Convolution4DExpander>();
 

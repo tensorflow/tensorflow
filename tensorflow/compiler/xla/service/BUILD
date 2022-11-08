@@ -6943,6 +6943,39 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "stochastic_convert_decomposer",
+    srcs = ["stochastic_convert_decomposer.cc"],
+    hdrs = ["stochastic_convert_decomposer.h"],
+    deps = [
+        ":hlo",
+        ":hlo_creation_utils",
+        ":hlo_pass",
+        ":shape_inference",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:statusor",
+    ],
+)
+
+tf_cc_test(
+    name = "stochastic_convert_decomposer_test",
+    srcs = ["stochastic_convert_decomposer_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_matchers",
+        ":hlo_parser",
+        ":stochastic_convert_decomposer",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
 tf_cc_test(
     name = "gather_simplifier_test",
     srcs = ["gather_simplifier_test.cc"],
