@@ -71,7 +71,7 @@ def total_function_cache(defined):
   return defined._list_all_concrete_functions()  # pylint: disable=protected-access
 
 
-# TODO(b/244360686): Do not delete these tests, migrate to use tf.function or
+# TODO(b/258247871): Do not delete these tests, migrate to use tf.function or
 # TracingCompiler.
 class DefunTest(test.TestCase, parameterized.TestCase):
 

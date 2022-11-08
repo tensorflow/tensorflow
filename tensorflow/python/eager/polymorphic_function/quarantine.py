@@ -22,7 +22,7 @@ from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 
 
-# TODO(b/244360686): Remove in favor of tf.function.
+# TODO(b/258247871): Remove in favor of tf.function.
 @tf_export("__internal__.function.defun_with_attributes", v1=[])
 def defun_with_attributes(func=None,
                           input_signature=None,
