@@ -229,7 +229,7 @@ cc_library(
 tf_cc_test(
     name = "gpu_device_info_test",
     srcs = ["gpu_device_info_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
     deps = [
         ":gpu_device_info_for_tests",
         "//tensorflow/compiler/xla/stream_executor:device_description",
