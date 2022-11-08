@@ -906,14 +906,18 @@ StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
 static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
                                    llvm::StringRef entry_function_name,
                                    llvm::ArrayRef<int64_t> buffer_sizes,
-                                   ThunkSequence* thunk_sequence) {
+                                   ThunkSequence* thunk_sequence,
+                                   const DebugOptions& debug_options) {
   if (!module) {
     return InternalError("No MLIR module to lower.");
   }
 
   mlir::PassManager pm(module.getContext(),
                        mlir::PassManager::Nesting::Implicit);
-  populateXlaGpuRuntimePasses(pm, thunk_sequence);
+
+  GpuPipelineOpts opts;
+  opts.enable_cuda_graphs = debug_options.xla_gpu_enable_cuda_graphs();
+  populateXlaGpuRuntimePasses(pm, thunk_sequence, opts);
 
   if (pm.run(module).failed()) {
     return InternalError("Failed to lower LMHLO to Gpu runtime custom calls.");
@@ -940,7 +944,8 @@ static StatusOr<OwnedGpuRuntimeProgram> LowerToJitRt(
   // Lower LMHLO operations to the JitRt compatible custom calls.
   TF_RETURN_IF_ERROR(LowerToXlaGpuRuntime(
       mlir_module, {entry_function_name.data(), entry_function_name.size()},
-      buffer_sizes, thunk_sequence.get()));
+      buffer_sizes, thunk_sequence.get(),
+      hlo_module->config().debug_options()));
   // Serialize module to pass it to GpuExecutable for compilation.
   std::string serialized_module;
   llvm::raw_string_ostream os(serialized_module);
