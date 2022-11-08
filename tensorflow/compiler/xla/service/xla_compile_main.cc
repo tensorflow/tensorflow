@@ -42,11 +42,25 @@ const char kUsageHeader[] =
     "resulting in an AotCompilationResult compiled for CPU.\n"
     "A typical invocation looks like this:\n"
     "\n"
-    "   $ xla_compile --mhlo_file=mymhlo.mlir--output_file=output"
+    "   $ xla_compile --mhlo_file=mymhlo.mlir --output_file=output "
+    "--platform=cpu"
     "\n";
 
+StatusOr<std::string> AotCompileCpuExecutable(
+    std::unique_ptr<HloModule> hlo_module) {
+  cpu::CpuCompiler cpu_compiler;
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<cpu::CpuExecutable> cpu_executable,
+      cpu_compiler.CompileXlaRuntimeCpuExecutable(std::move(hlo_module)));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
+                      cpu_compiler.Export(cpu_executable.get()));
+  TF_ASSIGN_OR_RETURN(std::string result, aot_result->SerializeAsString());
+  return result;
+}
+
 xla::Status XlaCompileMain(const std::string& mhlo_path,
-                           const std::string& output_path) {
+                           const std::string& output_path,
+                           const std::string& platform) {
   std::string mhlo_string;
   TF_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), mhlo_path, &mhlo_string));
@@ -77,13 +91,12 @@ xla::Status XlaCompileMain(const std::string& mhlo_path,
   // Run AOT compilation.
   // TODO(b/248362914): Currently only CPU is supported. Need to support all
   // backends.
-  cpu::CpuCompiler cpu_compiler;
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<cpu::CpuExecutable> cpu_executable,
-      cpu_compiler.CompileXlaRuntimeCpuExecutable(std::move(hlo_module)));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
-                      cpu_compiler.Export(cpu_executable.get()));
-  TF_ASSIGN_OR_RETURN(std::string result, aot_result->SerializeAsString());
+  std::string result;
+  if (platform == "cpu") {
+    TF_ASSIGN_OR_RETURN(result, AotCompileCpuExecutable(std::move(hlo_module)));
+  } else {
+    return Unimplemented("platform %s not supported", platform);
+  }
 
   TF_RETURN_IF_ERROR(
       tsl::WriteStringToFile(tsl::Env::Default(), output_path, result));
@@ -98,9 +111,12 @@ xla::Status XlaCompileMain(const std::string& mhlo_path,
 int main(int argc, char* argv[]) {
   std::string mhlo_path;
   std::string output_path;
+  std::string platform;
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("mhlo_file", &mhlo_path, "The path to MHLO file"),
       tsl::Flag("output_file", &output_path, "The path to the output file"),
+      tsl::Flag("platform", &platform,
+                "The platform on which the built executable runs"),
   };
 
   tsl::string usage = xla::xla_compile::kUsageHeader;
@@ -115,7 +131,8 @@ int main(int argc, char* argv[]) {
 
   tsl::port::InitMain(usage.c_str(), &argc, &argv);
 
-  xla::Status result = xla::xla_compile::XlaCompileMain(mhlo_path, output_path);
+  xla::Status result =
+      xla::xla_compile::XlaCompileMain(mhlo_path, output_path, platform);
   CHECK(result.ok());
   return 0;
 }

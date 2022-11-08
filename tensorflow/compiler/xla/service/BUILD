@@ -7001,8 +7001,9 @@ tf_cc_binary(
 # copybara:uncomment_begin
 # # A simple test of xla_aot_compile which generates an output file from an mhlo file.
 # xla_aot_compile(
-#     name = "xla_aot_compile_test_output",
+#     name = "xla_aot_compile_test_cpu_executable",
 #     mhlo = "xla_aot_compile_test.mlir",
+#     platform = "cpu",
 # )
 #
 # xla_test(
@@ -7010,7 +7011,7 @@ tf_cc_binary(
 #     srcs = ["xla_aot_compile_test.cc"],
 #     backends = ["cpu"],
 #     data = [
-#         ":xla_aot_compile_test_output",
+#         ":xla_aot_compile_test_cpu_executable",
 #     ],
 #     deps = [
 #         ":platform_util",

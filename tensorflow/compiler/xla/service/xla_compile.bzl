@@ -16,12 +16,14 @@ xla_aot_compile(
 
 def xla_aot_compile(
         name,
-        mhlo):
+        mhlo,
+        platform):
     """Runs xla_compile to compile a MHLO module into an AotCompilationResult for CPU
 
     Args:
         name: The name of the build rule.
         mhlo: The MHLO file to compile.
+        platform: The platform on which the built executable runs
     """
 
     # Run xla_compile to generate the file containing an AotCompilationResult.
@@ -33,7 +35,8 @@ def xla_aot_compile(
         outs = [name],
         cmd = ("$(location " + xla_compile_tool + ")" +
                " --mhlo_file=$(location " + mhlo + ")" +
-               " --output_file=$(location " + name + ")"),
+               " --output_file=$(location " + name + ")" +
+               " --platform=" + platform),
         tools = [xla_compile_tool],
     )
 

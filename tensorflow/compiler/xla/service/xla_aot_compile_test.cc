@@ -31,9 +31,9 @@ namespace xla {
 namespace xla_compile {
 namespace {
 
-TEST(XlaCompileTest, LoadBuiltExecutable) {
+TEST(XlaCompileTest, LoadCpuExecutable) {
   std::string path = tsl::GetDataDependencyFilepath(
-      "tensorflow/compiler/xla/service/xla_aot_compile_test_output");
+      "tensorflow/compiler/xla/service/xla_aot_compile_test_cpu_executable");
   std::string serialized_aot_result;
   TF_ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
