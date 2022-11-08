@@ -17,7 +17,7 @@ limitations under the License.
 /// written in a combination of LLVM and NVVM dialects.
 
 #include "gml_st/transforms/passes.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mhlo/transforms/passes.h"
 #include "mlir-hlo/Transforms/gpu_passes.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"

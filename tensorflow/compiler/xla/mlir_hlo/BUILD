@@ -8,7 +8,7 @@ package(
 )
 
 exports_files([
-    "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
+    "mhlo/IR/hlo_ops.td",
     "lhlo/IR/lhlo_ops.td",
 ])
 
@@ -17,14 +17,17 @@ exports_files(["python/MlirHloModule.cc"])
 
 filegroup(
     name = "hlo_ops_td_filegroup",
-    srcs = glob(["include/mlir-hlo/Dialect/mhlo/IR/*.td"]),
+    srcs = glob(["mhlo/IR/*.td"]),
 )
 
 td_library(
     name = "hlo_ops_td_files",
-    srcs = glob(["include/mlir-hlo/Dialect/mhlo/IR/*.td"]),
+    srcs = glob(["mhlo/IR/*.td"]),
     compatible_with = get_compatible_with_cloud(),
-    includes = ["include"],
+    includes = [
+        ".",
+        "include",
+    ],
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
@@ -45,18 +48,17 @@ td_library(
 gentbl_cc_library(
     name = "mhlo_pass_inc_gen",
     compatible_with = get_compatible_with_cloud(),
-    strip_include_prefix = "include",
     tbl_outs = [
         (
             [
                 "-gen-pass-decls",
                 "-name=AllMhlo",
             ],
-            "include/mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc",
+            "mhlo/transforms/mhlo_passes.h.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.td",
+    td_file = "mhlo/transforms/mhlo_passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
 )
 
@@ -80,19 +82,19 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "hlo_ops_inc_gen",
     compatible_with = get_compatible_with_cloud(),
-    strip_include_prefix = "include",
+    strip_include_prefix = "mhlo/IR/",
     tbl_outs = [
         (
             ["-gen-op-decls"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc",
+            "mhlo/IR/hlo_ops.h.inc",
         ),
         (
             ["-gen-op-defs"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc",
+            "mhlo/IR/hlo_ops.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
+    td_file = "mhlo/IR/hlo_ops.td",
     deps = [":hlo_ops_td_files"],
 )
 
@@ -102,15 +104,15 @@ gentbl_cc_library(
     tbl_outs = [
         (
             ["-gen-attrdef-decls"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.h.inc",
+            "mhlo/IR/hlo_ops_attrs.h.inc",
         ),
         (
             ["-gen-attrdef-defs"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.cc.inc",
+            "mhlo/IR/hlo_ops_attrs.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
+    td_file = "mhlo/IR/hlo_ops.td",
     deps = [":hlo_ops_td_files"],
 )
 
@@ -120,15 +122,15 @@ gentbl_cc_library(
     tbl_outs = [
         (
             ["-gen-enum-decls"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_enums.h.inc",
+            "mhlo/IR/hlo_ops_enums.h.inc",
         ),
         (
             ["-gen-enum-defs"],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_enums.cc.inc",
+            "mhlo/IR/hlo_ops_enums.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
+    td_file = "mhlo/IR/hlo_ops.td",
     deps = [":hlo_ops_td_files"],
 )
 
@@ -141,33 +143,33 @@ gentbl_cc_library(
                 "-gen-typedef-decls",
                 "--typedefs-dialect=mhlo",
             ],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_typedefs.h.inc",
+            "mhlo/IR/hlo_ops_typedefs.h.inc",
         ),
         (
             [
                 "-gen-typedef-defs",
                 "--typedefs-dialect=mhlo",
             ],
-            "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_typedefs.cc.inc",
+            "mhlo/IR/hlo_ops_typedefs.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
+    td_file = "mhlo/IR/hlo_ops.td",
     deps = [":hlo_ops_td_files"],
 )
 
 gentbl_cc_library(
     name = "hlo_ops_pattern_inc_gen",
     compatible_with = get_compatible_with_cloud(),
-    strip_include_prefix = "lib/Dialect/mhlo/IR/",
+    strip_include_prefix = "mhlo/IR/",
     tbl_outs = [
         (
             ["-gen-rewriters"],
-            "lib/Dialect/mhlo/IR/hlo_patterns.cc.inc",
+            "mhlo/IR/hlo_patterns.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "lib/Dialect/mhlo/IR/hlo_patterns.td",
+    td_file = "mhlo/IR/hlo_patterns.td",
     deps = [
         ":hlo_ops_td_files",
         "@llvm-project//mlir:FuncTdFiles",
@@ -278,7 +280,7 @@ gentbl_filegroup(
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
+    td_file = "mhlo/IR/hlo_ops.td",
     deps = [":hlo_ops_td_files"],
 )
 
@@ -301,9 +303,12 @@ gentbl_filegroup(
 
 cc_library(
     name = "hlo_ops_common",
-    srcs = ["lib/Dialect/mhlo/IR/hlo_ops_common.cc"],
-    hdrs = ["include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"],
-    includes = ["include"],
+    srcs = ["mhlo/IR/hlo_ops_common.cc"],
+    hdrs = ["mhlo/IR/hlo_ops_common.h"],
+    includes = [
+        ".",
+        "include",
+    ],
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -347,15 +352,14 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "canonicalize_inc_gen",
     compatible_with = get_compatible_with_cloud(),
-    strip_include_prefix = "lib/Dialect/mhlo/IR/",
     tbl_outs = [
         (
             ["-gen-rewriters"],
-            "lib/Dialect/mhlo/IR/mhlo_canonicalize.inc",
+            "mhlo/IR/mhlo_canonicalize.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "lib/Dialect/mhlo/IR/mhlo_canonicalize.td",
+    td_file = "mhlo/IR/mhlo_canonicalize.td",
     deps = [":hlo_ops_td_files"],
 )
 
@@ -431,24 +435,27 @@ cc_library(
 cc_library(
     name = "mlir_hlo",
     srcs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.h.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_enums.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_enums.h.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_typedefs.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_typedefs.h.inc",
-        "lib/Dialect/mhlo/IR/hlo_ops.cc",
-        "lib/Dialect/mhlo/IR/mhlo_bytecode.cc",
         "lib/utils/hlo_utils.cc",
+        "mhlo/IR/hlo_ops.cc",
+        "mhlo/IR/hlo_ops.cc.inc",
+        "mhlo/IR/hlo_ops.h.inc",
+        "mhlo/IR/hlo_ops_attrs.cc.inc",
+        "mhlo/IR/hlo_ops_attrs.h.inc",
+        "mhlo/IR/hlo_ops_enums.cc.inc",
+        "mhlo/IR/hlo_ops_enums.h.inc",
+        "mhlo/IR/hlo_ops_typedefs.cc.inc",
+        "mhlo/IR/hlo_ops_typedefs.h.inc",
+        "mhlo/IR/mhlo_bytecode.cc",
     ],
     hdrs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h",
-        "include/mlir-hlo/Dialect/mhlo/IR/mhlo_bytecode.h",
         "include/mlir-hlo/utils/hlo_utils.h",
+        "mhlo/IR/hlo_ops.h",
+        "mhlo/IR/mhlo_bytecode.h",
     ],
-    includes = ["include"],
+    includes = [
+        ".",
+        "include",
+    ],
     deps = [
         ":canonicalize_inc_gen",
         ":convert_op_folder",
@@ -566,8 +573,8 @@ cc_library(
 
 cc_library(
     name = "hlo_dialect_registration",
-    srcs = ["lib/Dialect/mhlo/IR/init.cc"],
-    hdrs = ["include/mlir-hlo/Dialect/mhlo/IR/register.h"],
+    srcs = ["mhlo/IR/init.cc"],
+    hdrs = ["mhlo/IR/register.h"],
     deps = [
         ":mlir_hlo",
         "@llvm-project//mlir:IR",
@@ -580,59 +587,62 @@ cc_library(
 cc_library(
     name = "mhlo_passes",
     srcs = [
-        "include/mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc",
-        "lib/Dialect/mhlo/transforms/broadcast_propagation.cc",
-        "lib/Dialect/mhlo/transforms/chlo_legalize_to_hlo_pass.cc",
-        "lib/Dialect/mhlo/transforms/collapse_elementwise_map.cc",
-        "lib/Dialect/mhlo/transforms/constraint_fusion_pass.cc",
-        "lib/Dialect/mhlo/transforms/convert_to_signless_pass.cc",
-        "lib/Dialect/mhlo/transforms/expand_hlo_tuples.cc",
-        "lib/Dialect/mhlo/transforms/generated_legalize_to_standard.inc",
-        "lib/Dialect/mhlo/transforms/generated_lower_complex.inc",
-        "lib/Dialect/mhlo/transforms/group_reduction_dimensions.cc",
-        "lib/Dialect/mhlo/transforms/hlo_legalize_shape_ops_to_standard.cc",
-        "lib/Dialect/mhlo/transforms/hlo_legalize_to_arithmetic.cc",
-        "lib/Dialect/mhlo/transforms/hlo_legalize_to_lhlo.cc",
-        "lib/Dialect/mhlo/transforms/hlo_legalize_to_memref.cc",
-        "lib/Dialect/mhlo/transforms/hlo_legalize_to_stablehlo_pass.cc",
-        "lib/Dialect/mhlo/transforms/legalize_control_flow.cc",
-        "lib/Dialect/mhlo/transforms/legalize_einsum_to_dot_general.cc",
-        "lib/Dialect/mhlo/transforms/legalize_gather_to_torch_index_select.cc",
-        "lib/Dialect/mhlo/transforms/legalize_mhlo_to_thlo.cc",
-        "lib/Dialect/mhlo/transforms/legalize_shape_computations.cc",
-        "lib/Dialect/mhlo/transforms/legalize_sort.cc",
-        "lib/Dialect/mhlo/transforms/legalize_to_linalg.cc",
-        "lib/Dialect/mhlo/transforms/legalize_to_standard.cc",
-        "lib/Dialect/mhlo/transforms/legalize_trigonometric_to_approximation.cc",
-        "lib/Dialect/mhlo/transforms/lower_complex.cc",
-        "lib/Dialect/mhlo/transforms/lower_general_dot.cc",
-        "lib/Dialect/mhlo/transforms/materialize_broadcasts.cc",
-        "lib/Dialect/mhlo/transforms/materialize_broadcasts_pass.cc",
-        "lib/Dialect/mhlo/transforms/merge_assuming_ops.cc",
-        "lib/Dialect/mhlo/transforms/mhlo_canonicalize_gather.cc",
-        "lib/Dialect/mhlo/transforms/mhlo_canonicalize_reduction.cc",
-        "lib/Dialect/mhlo/transforms/mhlo_canonicalize_scatter.cc",
-        "lib/Dialect/mhlo/transforms/mhlo_flatten_tuple.cc",
-        "lib/Dialect/mhlo/transforms/optimize_mhlo.cc",
-        "lib/Dialect/mhlo/transforms/optimize_mhlo_pass.cc",
-        "lib/Dialect/mhlo/transforms/prepare_for_export.cc",
-        "lib/Dialect/mhlo/transforms/rank_specialization.cc",
-        "lib/Dialect/mhlo/transforms/restrict_max_rank.cc",
-        "lib/Dialect/mhlo/transforms/shape_reification_pass.cc",
-        "lib/Dialect/mhlo/transforms/sink_constants_to_control_flow.cc",
-        "lib/Dialect/mhlo/transforms/sparse_chlo_legalize_to_linalg.cc",
-        "lib/Dialect/mhlo/transforms/sparse_rewriting.cc",
-        "lib/Dialect/mhlo/transforms/stablehlo_legalize_to_hlo_pass.cc",
-        "lib/Dialect/mhlo/transforms/test_infer_shaped_type_pass.cc",
-        "lib/Dialect/mhlo/transforms/unfuse_batch_norm_pass.cc",
+        "mhlo/transforms/broadcast_propagation/broadcast_propagation.cc",
+        "mhlo/transforms/chlo_legalize_to_hlo/chlo_legalize_to_hlo_pass.cc",
+        "mhlo/transforms/collapse_elementwise_map/collapse_elementwise_map.cc",
+        "mhlo/transforms/constraint_fusion/constraint_fusion_pass.cc",
+        "mhlo/transforms/convert_to_signless/convert_to_signless_pass.cc",
+        "mhlo/transforms/expand_hlo_tuples/expand_hlo_tuples.cc",
+        "mhlo/transforms/group_reduction_dimensions/group_reduction_dimensions.cc",
+        "mhlo/transforms/hlo_legalize_shape_ops_to_standard/hlo_legalize_shape_ops_to_standard.cc",
+        "mhlo/transforms/hlo_legalize_to_arithmetic/hlo_legalize_to_arithmetic.cc",
+        "mhlo/transforms/hlo_legalize_to_lhlo/hlo_legalize_to_lhlo.cc",
+        "mhlo/transforms/hlo_legalize_to_memref/hlo_legalize_to_memref.cc",
+        "mhlo/transforms/hlo_legalize_to_stablehlo/hlo_legalize_to_stablehlo_pass.cc",
+        "mhlo/transforms/legalize_control_flow/legalize_control_flow.cc",
+        "mhlo/transforms/legalize_einsum_to_dot_general/legalize_einsum_to_dot_general.cc",
+        "mhlo/transforms/legalize_gather_to_torch_index_select/legalize_gather_to_torch_index_select.cc",
+        "mhlo/transforms/legalize_mhlo_to_thlo/legalize_mhlo_to_thlo.cc",
+        "mhlo/transforms/legalize_shape_computations/legalize_shape_computations.cc",
+        "mhlo/transforms/legalize_sort/legalize_sort.cc",
+        "mhlo/transforms/legalize_to_linalg/legalize_to_linalg.cc",
+        "mhlo/transforms/legalize_to_standard/generated_legalize_to_standard.inc",
+        "mhlo/transforms/legalize_to_standard/legalize_to_standard.cc",
+        "mhlo/transforms/legalize_trigonometric_to_approximation/legalize_trigonometric_to_approximation.cc",
+        "mhlo/transforms/lower_complex/generated_lower_complex.inc",
+        "mhlo/transforms/lower_complex/lower_complex.cc",
+        "mhlo/transforms/lower_general_dot/lower_general_dot.cc",
+        "mhlo/transforms/materialize_broadcasts/materialize_broadcasts.cc",
+        "mhlo/transforms/materialize_broadcasts/materialize_broadcasts_pass.cc",
+        "mhlo/transforms/merge_assuming_ops/merge_assuming_ops.cc",
+        "mhlo/transforms/mhlo_canonicalize_gather/mhlo_canonicalize_gather.cc",
+        "mhlo/transforms/mhlo_canonicalize_reduction/mhlo_canonicalize_reduction.cc",
+        "mhlo/transforms/mhlo_canonicalize_scatter/mhlo_canonicalize_scatter.cc",
+        "mhlo/transforms/mhlo_flatten_tuple/mhlo_flatten_tuple.cc",
+        "mhlo/transforms/mhlo_passes.h.inc",
+        "mhlo/transforms/optimize_mhlo/optimize_mhlo.cc",
+        "mhlo/transforms/optimize_mhlo/optimize_mhlo_pass.cc",
+        "mhlo/transforms/prepare_for_export/prepare_for_export.cc",
+        "mhlo/transforms/rank_specialization/rank_specialization.cc",
+        "mhlo/transforms/restrict_max_rank/restrict_max_rank.cc",
+        "mhlo/transforms/shape_reification/shape_reification_pass.cc",
+        "mhlo/transforms/sink_constants_to_control_flow/sink_constants_to_control_flow.cc",
+        "mhlo/transforms/sparse_chlo_legalize_to_linalg/sparse_chlo_legalize_to_linalg.cc",
+        "mhlo/transforms/sparse_rewriting/sparse_rewriting.cc",
+        "mhlo/transforms/stablehlo_legalize_to_hlo/stablehlo_legalize_to_hlo_pass.cc",
+        "mhlo/transforms/test_infer_shaped_type/test_infer_shaped_type_pass.cc",
+        "mhlo/transforms/unfuse_batch_norm/unfuse_batch_norm_pass.cc",
     ],
     hdrs = [
-        "include/mlir-hlo/Dialect/mhlo/transforms/bufferizable_op_interface_impl.h",
-        "include/mlir-hlo/Dialect/mhlo/transforms/legalize_to_linalg_utils.h",
-        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
-        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+        "mhlo/interfaces/bufferizable_op_interface_impl.h",
+        "mhlo/transforms/passes.h",
+        "mhlo/transforms/rewriters.h",
+        "mhlo/utils/legalize_to_linalg_utils.h",
     ],
-    includes = ["include"],
+    includes = [
+        ".",
+        "include",
+    ],
     deps = [
         ":chlo_legalize_to_hlo",
         ":gml_st_bufferizable_op_interface",
@@ -685,8 +695,8 @@ cc_library(
 
 cc_library(
     name = "type_conversion",
-    srcs = ["lib/Dialect/mhlo/transforms/type_conversion.cc"],
-    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"],
+    srcs = ["mhlo/utils/type_conversion.cc"],
+    hdrs = ["mhlo/utils/type_conversion.h"],
     includes = ["include"],
     deps = [
         ":mlir_hlo",
@@ -719,7 +729,7 @@ cc_library(
 
 cc_library(
     name = "map_mhlo_to_scalar_op",
-    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"],
+    hdrs = ["mhlo/transforms/map_mhlo_to_scalar_op.h"],
     deps = [
         ":mlir_hlo",
         "@llvm-project//llvm:Support",
@@ -734,7 +744,7 @@ cc_library(
 
 cc_library(
     name = "map_chlo_to_hlo_op",
-    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/map_chlo_to_hlo_op.h"],
+    hdrs = ["mhlo/transforms/map_chlo_to_hlo_op.h"],
     deps = [
         ":mlir_hlo",
         "@llvm-project//mlir:IR",
@@ -762,7 +772,7 @@ cc_library(
 
 cc_library(
     name = "map_stablehlo_to_hlo_op",
-    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/map_stablehlo_to_hlo_op.h"],
+    hdrs = ["mhlo/transforms/map_stablehlo_to_hlo_op.h"],
     deps = [
         ":mlir_hlo",
         "@llvm-project//mlir:IR",
@@ -853,8 +863,8 @@ cc_library(
 
 cc_library(
     name = "legalize_to_linalg_utils",
-    srcs = ["lib/Dialect/mhlo/transforms/legalize_to_linalg_utils.cc"],
-    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/legalize_to_linalg_utils.h"],
+    srcs = ["mhlo/utils/legalize_to_linalg_utils.cc"],
+    hdrs = ["mhlo/utils/legalize_to_linalg_utils.h"],
     deps = [
         ":map_mhlo_to_scalar_op",
         ":mlir_hlo",
@@ -879,8 +889,8 @@ cc_library(
 
 cc_library(
     name = "mhlo_scatter_gather_utils",
-    srcs = ["lib/Dialect/mhlo/transforms/mhlo_scatter_gather_utils.cc"],
-    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/mhlo_scatter_gather_utils.h"],
+    srcs = ["mhlo/utils/mhlo_scatter_gather_utils.cc"],
+    hdrs = ["mhlo/utils/mhlo_scatter_gather_utils.h"],
     deps = [
         ":mlir_hlo",
         "@llvm-project//mlir:DialectUtils",
@@ -891,15 +901,15 @@ cc_library(
 gentbl_cc_library(
     name = "legalize_to_standard_inc_gen",
     compatible_with = get_compatible_with_cloud(),
-    strip_include_prefix = "lib/Dialect/mhlo/transforms/",
+    strip_include_prefix = "mhlo/transforms/",
     tbl_outs = [
         (
             ["-gen-rewriters"],
-            "lib/Dialect/mhlo/transforms/generated_legalize_to_standard.inc",
+            "mhlo/transforms/legalize_to_standard/generated_legalize_to_standard.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "lib/Dialect/mhlo/transforms/legalize_to_standard_patterns.td",
+    td_file = "mhlo/transforms/legalize_to_standard/legalize_to_standard_patterns.td",
     deps = [
         ":hlo_ops_td_files",
         "@llvm-project//mlir:ArithOpsTdFiles",
@@ -911,15 +921,15 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "lower_complex_inc_gen",
     compatible_with = get_compatible_with_cloud(),
-    strip_include_prefix = "lib/Dialect/mhlo/transforms/",
+    strip_include_prefix = "mhlo/transforms/",
     tbl_outs = [
         (
             ["-gen-rewriters"],
-            "lib/Dialect/mhlo/transforms/generated_lower_complex.inc",
+            "mhlo/transforms/lower_complex/generated_lower_complex.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "lib/Dialect/mhlo/transforms/lower_complex_patterns.td",
+    td_file = "mhlo/transforms/lower_complex/lower_complex_patterns.td",
     deps = [
         ":hlo_ops_td_files",
         "@llvm-project//mlir:FuncTdFiles",
@@ -928,8 +938,8 @@ gentbl_cc_library(
 
 cc_library(
     name = "unfuse_batch_norm",
-    srcs = ["lib/Dialect/mhlo/transforms/unfuse_batch_norm.cc"],
-    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"],
+    srcs = ["mhlo/transforms/unfuse_batch_norm/unfuse_batch_norm.cc"],
+    hdrs = ["mhlo/transforms/rewriters.h"],
     deps = [
         ":mlir_hlo",
         "@llvm-project//llvm:Support",
@@ -944,8 +954,8 @@ cc_library(
 
 cc_library(
     name = "chlo_legalize_to_hlo",
-    srcs = ["lib/Dialect/mhlo/transforms/chlo_legalize_to_hlo.cc"],
-    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"],
+    srcs = ["mhlo/transforms/chlo_legalize_to_hlo/chlo_legalize_to_hlo.cc"],
+    hdrs = ["mhlo/transforms/rewriters.h"],
     deps = [
         ":chlo_legalize_to_hlo_inc_gen",
         ":map_chlo_to_hlo_op",
@@ -966,22 +976,22 @@ cc_library(
 gentbl_cc_library(
     name = "chlo_legalize_to_hlo_inc_gen",
     compatible_with = get_compatible_with_cloud(),
-    strip_include_prefix = "lib/Dialect/mhlo/transforms/",
+    strip_include_prefix = "mhlo/transforms/",
     tbl_outs = [
         (
             ["-gen-rewriters"],
-            "lib/Dialect/mhlo/transforms/generated_chlo_legalize_to_hlo.inc",
+            "mhlo/transforms/chlo_legalize_to_hlo/generated_chlo_legalize_to_hlo.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "lib/Dialect/mhlo/transforms/chlo_legalize_to_hlo_patterns.td",
+    td_file = "mhlo/transforms/chlo_legalize_to_hlo/chlo_legalize_to_hlo_patterns.td",
     deps = [":hlo_ops_td_files"],
 )
 
 cc_library(
     name = "hlo_legalize_to_stablehlo",
-    srcs = ["lib/Dialect/mhlo/transforms/hlo_legalize_to_stablehlo.cc"],
-    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"],
+    srcs = ["mhlo/transforms/hlo_legalize_to_stablehlo/hlo_legalize_to_stablehlo.cc"],
+    hdrs = ["mhlo/transforms/rewriters.h"],
     deps = [
         ":map_stablehlo_to_hlo_op",
         ":mlir_hlo",
@@ -996,8 +1006,8 @@ cc_library(
 
 cc_library(
     name = "stablehlo_legalize_to_hlo",
-    srcs = ["lib/Dialect/mhlo/transforms/stablehlo_legalize_to_hlo.cc"],
-    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"],
+    srcs = ["mhlo/transforms/stablehlo_legalize_to_hlo/stablehlo_legalize_to_hlo.cc"],
+    hdrs = ["mhlo/transforms/rewriters.h"],
     deps = [
         ":map_stablehlo_to_hlo_op",
         ":mlir_hlo",
@@ -1022,9 +1032,9 @@ cc_library(
     ],
     hdrs = [
         "gml_st/transforms/passes.h",
-        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
         "include/mlir-hlo/Transforms/passes.h",
         "lhlo/transforms/passes.h",
+        "mhlo/transforms/passes.h",
         "thlo/transforms/passes.h",
     ],
     deps = [

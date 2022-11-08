@@ -15,8 +15,8 @@ limitations under the License.
 
 #include <utility>
 
+#include "mhlo/IR/hlo_ops.h"
 #include "mhlo_tosa/Transforms/passes.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "mlir/IR/BuiltinAttributes.h"

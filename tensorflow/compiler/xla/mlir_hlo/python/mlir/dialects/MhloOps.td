@@ -19,6 +19,6 @@ limitations under the License.
 #define PYTHON_BINDINGS_MHLO_OPS
 
 include "mlir/Bindings/Python/Attributes.td"
-include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
+include "mhlo/IR/hlo_ops.td"
 
 #endif

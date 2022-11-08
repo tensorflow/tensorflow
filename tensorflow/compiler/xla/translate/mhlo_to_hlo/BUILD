@@ -110,7 +110,7 @@ gentbl_cc_library(
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [([], "operator_writers.inc")],
     tblgen = ":operator_writer_gen",
-    td_file = "//tensorflow/compiler/xla/mlir_hlo:include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
+    td_file = "//tensorflow/compiler/xla/mlir_hlo:mhlo/IR/hlo_ops.td",
     deps = [
         "//tensorflow/compiler/xla/mlir_hlo:hlo_ops_td_files",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",

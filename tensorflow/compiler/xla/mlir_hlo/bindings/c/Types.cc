@@ -12,7 +12,7 @@ limitations under the License.
 
 #include "bindings/c/Types.h"
 
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mhlo/IR/hlo_ops.h"
 #include "mlir/CAPI/IR.h"
 
 MlirType mlirMhloTokenTypeGet(MlirContext ctx) {
