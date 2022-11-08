@@ -497,7 +497,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core/platform:statusor",
