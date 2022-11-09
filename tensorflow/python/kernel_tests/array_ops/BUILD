@@ -610,6 +610,9 @@ cuda_py_test(
     name = "split_op_test",
     size = "medium",
     srcs = ["split_op_test.py"],
+    tags = [
+        "no_oss",  # TODO(b/258503209): Disable the test.
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
