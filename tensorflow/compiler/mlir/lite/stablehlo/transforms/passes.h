@@ -28,6 +28,9 @@ namespace odml {
 // ops.
 std::unique_ptr<Pass> createUnfuseBatchNormPass();
 
+// Creates a pass which fuses MHLO binary element-wise ops and convolution op.
+std::unique_ptr<Pass> createFuseConvolutionPass();
+
 }  // namespace odml
 }  // namespace mlir
 
