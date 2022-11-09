@@ -1,7 +1,7 @@
 load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
 
 package(
     default_visibility = [
@@ -66,7 +66,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "timespan_test",
     srcs = ["timespan_test.cc"],
     deps = [
@@ -88,7 +88,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "tf_op_utils_test",
     size = "small",
     srcs = ["tf_op_utils_test.cc"],
@@ -157,7 +157,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "xplane_builder_test",
     size = "small",
     srcs = ["xplane_builder_test.cc"],
@@ -208,7 +208,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "xplane_utils_test",
     srcs = ["xplane_utils_test.cc"],
     deps = [
@@ -251,7 +251,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "parse_annotation_test",
     srcs = ["parse_annotation_test.cc"],
     deps = [
@@ -306,7 +306,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "group_events_test",
     srcs = ["group_events_test.cc"],
     deps = [
@@ -337,7 +337,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "tpu_xplane_utils_test",
     srcs = ["tpu_xplane_utils_test.cc"],
     deps = [

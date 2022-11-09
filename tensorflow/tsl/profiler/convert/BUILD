@@ -2,7 +2,7 @@ load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//tensorflow/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
@@ -20,7 +20,7 @@ cc_library(
     deps = ["@com_google_absl//absl/strings"],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "xla_op_utils_test",
     size = "small",
     srcs = ["xla_op_utils_test.cc"],

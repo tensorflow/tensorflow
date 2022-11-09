@@ -1,7 +1,8 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
-load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cc_test")
+load("//tensorflow/tsl:tsl.bzl", "if_not_android")
+load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
 load(
     "//tensorflow/tsl/profiler/builds:build_config.bzl",
     "tf_profiler_copts",
@@ -90,18 +91,18 @@ cc_library(
     alwayslink = True,
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "profiler_factory_test",
     srcs = ["profiler_factory_test.cc"],
     deps = [
         ":profiler_factory",
         ":profiler_factory_impl",
         ":profiler_interface",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/memory",
     ],
@@ -136,7 +137,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "profiler_lock_test",
     srcs = ["profiler_lock_test.cc"],
     deps = [
@@ -157,7 +158,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "traceme_encode_test",
     srcs = ["traceme_encode_test.cc"],
     deps = [
@@ -212,7 +213,7 @@ cc_library(
     ]),
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "scoped_annotation_test",
     size = "small",
     srcs = ["scoped_annotation_test.cc"],
@@ -223,6 +224,7 @@ tf_cc_test(
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
         "//tensorflow/tsl/profiler/backends/cpu:annotation_stack",
+        "//tensorflow/tsl/profiler/backends/cpu:annotation_stack_impl",
         "@com_google_absl//absl/strings",
     ],
 )
