@@ -423,25 +423,6 @@ llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
   return b->CreateAnd(is_thread0, is_block0);
 }
 
-bool IsFusedReductionOutputConsistent(const HloInstruction* inst,
-                                      const HloInstruction* first_reduce) {
-  if (IsReductionFromOrToContiguousDimensions(*inst)) {
-    // Shapes, layouts and dimensions must be the same for all reduces
-    // inside of this fusion.
-    return ShapeUtil::EqualIgnoringElementType(first_reduce->shape(),
-                                               inst->shape()) &&
-           ShapeUtil::EqualIgnoringElementType(
-               first_reduce->operand(0)->shape(), inst->operand(0)->shape()) &&
-           ShapeUtil::EqualIgnoringElementType(
-               first_reduce->operand(1)->shape(), inst->operand(1)->shape()) &&
-           first_reduce->dimensions() == inst->dimensions();
-  }
-  return ShapeUtil::CompatibleIgnoringElementType(
-             first_reduce->operand(0)->shape(), inst->shape()) &&
-         LayoutUtil::Equal(first_reduce->operand(0)->shape().layout(),
-                           inst->shape().layout());
-}
-
 // Given an LMHLO op, returns the operand index of the first output operand.
 //
 // Notice that an operand alised to an output isn't an output, even though in
