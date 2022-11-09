@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/service/cpu/hlo_xla_runtime_pipeline.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
 #include "tensorflow/core/ir/types/dialect.h"
 
@@ -45,6 +46,7 @@ int main(int argc, char **argv) {
   mlir::registerAllDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
   mlir::stablehlo::registerAllDialects(registry);
+  xla::cpu::RegisterHloXlaRuntimePipelineDialects(registry);
   registry.insert<mlir::xla_framework::XLAFrameworkDialect,
                   mlir::TF::TensorFlowDialect, mlir::tf_type::TFTypeDialect>();
   return failed(

@@ -360,7 +360,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/compiler/xla/service:cpu_plugin",
-        "//tensorflow/compiler/xla/service/cpu:hlo_xla_runtime_pipeline",  # buildcleaner: keep
+        "//tensorflow/compiler/xla/service/cpu:hlo_xla_runtime_pipeline",
         "//tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla",  # buildcleaner: keep
         "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//mlir:AllPassesAndDialects",
@@ -386,6 +386,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service/cpu:hlo_xla_runtime_pipeline",
         "//tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla",  # buildcleaner: keep
         "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//mlir:AllPassesAndDialects",
