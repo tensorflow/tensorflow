@@ -212,6 +212,7 @@ cc_library(
         "@llvm-project//mlir:ToLLVMIRTranslation",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/service/cpu/runtime:custom_call",
+        "//tensorflow/compiler/xla/service/cpu/runtime:xfeed",
         "//tensorflow/compiler/xla/service:stochastic_convert_decomposer",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
         "//tensorflow/compiler/xla/mlir_hlo:transforms_passes",

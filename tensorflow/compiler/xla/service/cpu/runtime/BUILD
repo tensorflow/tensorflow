@@ -28,3 +28,18 @@ cc_library(
         "@llvm-project//mlir:Support",
     ],
 )
+
+cc_library(
+    name = "xfeed",
+    srcs = ["xfeed.cc"],
+    hdrs = ["xfeed.h"],
+    deps = [
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service/cpu:cpu_runtime",
+        "@llvm-project//mlir:Support",
+    ],
+)
