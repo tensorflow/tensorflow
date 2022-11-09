@@ -355,7 +355,6 @@ xla_py_proto_library(
 
 cc_library(
     name = "run_hlo_module_lib",
-    testonly = True,
     srcs = ["run_hlo_module.cc"],
     hdrs = ["run_hlo_module.h"],
     deps = [
