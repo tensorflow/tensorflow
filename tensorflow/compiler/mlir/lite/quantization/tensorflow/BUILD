@@ -13,6 +13,7 @@ package_group(
     name = "friends",
     packages = [
         "//learning/brain/mobile/model_optimization/...",
+        "//platforms/darwinn/compiler/tools/tac/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/mlir/lite/...",
     ],
