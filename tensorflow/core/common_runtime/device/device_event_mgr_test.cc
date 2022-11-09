@@ -150,7 +150,8 @@ class GPUDeviceTestHelper {
     gpu_.reset(reinterpret_cast<BaseGPUDevice*>(device_.release()));
     gpu_allocator_ = GPUProcessState::singleton()->GetGPUAllocator(
         GPUOptions(), TfDeviceId(0), memory_limit, /*peer_gpu_ids=*/{});
-    host_allocator_ = GPUProcessState::singleton()->GetGpuHostAllocator(0);
+    host_allocator_ = GPUProcessState::singleton()->GetGpuHostAllocator(
+        /*options=*/{}, /*numa_node=*/0);
   }
 
   BaseGPUDevice* gpu() { return gpu_.get(); }
