@@ -1100,6 +1100,7 @@ tf_cc_shared_library(
         "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core/profiler:profiler_impl",
         "//tensorflow/core/util:determinism",  # Must be linked and exported to libtensorflow_framework.so.
+        "//tensorflow/core/data:captured_function",
         "//tensorflow/lite/kernels/shim:tf_kernel_shim",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
     ] + tf_additional_binary_deps(),
