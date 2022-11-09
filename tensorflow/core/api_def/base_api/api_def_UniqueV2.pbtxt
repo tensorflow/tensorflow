@@ -42,10 +42,10 @@ For example:
 
 >>> x = tf.constant([1, 1, 2, 4, 4, 4, 7, 8, 8])
 >>> y, idx = tf.raw_ops.UniqueV2(x=x, axis=[0])
->>> print(y)
->>> print(idx)
-<tf.Tensor([1 2 4 7 8], shape=(5,), dtype=int32)>
-<tf.Tensor([0 0 1 2 2 2 3 4 4], shape=(9,), dtype=int32)>
+>>> y
+<tf.Tensor: shape=(5,), dtype=int32, numpy=array([1, 2, 4, 7, 8], dtype=int32)>
+>>> idx
+<tf.Tensor: shape=(9,), dtype=int32, numpy=array([0, 0, 1, 2, 2, 2, 3, 4, 4], dtype=int32)>
 
 For an `2-D` tensor `x` with `axis = 0`:
 
@@ -53,12 +53,12 @@ For an `2-D` tensor `x` with `axis = 0`:
 ...                 [1, 0, 0],
 ...                 [2, 0, 0]])
 >>> y, idx = tf.raw_ops.UniqueV2(x=x, axis=[0])
->>> print(y)
->>> print(idx)
-<tf.Tensor(
-[[1 0 0]
- [2 0 0]], shape=(2, 3), dtype=int32)>
-<tf.Tensor([0 0 1], shape=(3,), dtype=int32)>
+>>> y
+<tf.Tensor: shape=(2, 3), dtype=int32, numpy=
+    array([[1, 0, 0],
+    [2, 0, 0]], dtype=int32)>
+>>> idx
+<tf.Tensor: shape=(3,), dtype=int32, numpy=array([0, 0, 1], dtype=int32)>
 
 For an `2-D` tensor `x` with `axis = 1`:
 
@@ -66,13 +66,13 @@ For an `2-D` tensor `x` with `axis = 1`:
 ...                [1, 0, 0],
 ...                [2, 0, 0]])
 >>> y, idx = tf.raw_ops.UniqueV2(x=x, axis=[1])
->>> print(y)
->>> print(idx)
-<tf.Tensor(
-[[1 0]
- [1 0]
- [2 0]], shape=(3, 2), dtype=int32)>
-<tf.Tensor([0 1 1], shape=(3,), dtype=int32)>
+>>> y
+<tf.Tensor: shape=(3, 2), dtype=int32, numpy=
+  array([[1, 0],
+        [1, 0],
+        [2, 0]], dtype=int32)>
+>>> idx
+<tf.Tensor: shape=(3,), dtype=int32, numpy=array([0, 1, 1], dtype=int32)>
 
 END
 }
