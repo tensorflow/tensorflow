@@ -90,6 +90,7 @@ class TfLiteSubgraphExecute : public OpKernel {
 
     // Resize input tensors if necessary.
     ResizeInputTensor(ctx, subgraph_selected);
+    SetCustomAllocatorsForInputTensors(ctx, subgraph_selected);
 
     if (tfl_tensors_need_allocation_) {
       OP_REQUIRES(ctx, subgraph_selected.AllocateTensors() == kTfLiteOk,
@@ -108,6 +109,40 @@ class TfLiteSubgraphExecute : public OpKernel {
   }
 
  private:
+  // Sets custom allocators for all input tensors which are not Resources,
+  // Variants or Strings. This means that these tensors can share the same
+  // memory as the TF tensors, reducing memcpys and memory usage.
+  void SetCustomAllocatorsForInputTensors(OpKernelContext* ctx,
+                                          tflite::Subgraph& subgraph_selected) {
+    for (int i = 0; i < subgraph_selected.inputs().size(); ++i) {
+      TfLiteTensor* subgraph_input =
+          subgraph_selected.tensor(subgraph_selected.inputs()[i]);
+      if (tflite::IsResourceOrVariant(subgraph_input)) {
+        continue;
+      }
+      if (subgraph_input->type == kTfLiteString) {
+        continue;
+      }
+      if (subgraph_input->allocation_type != kTfLiteArenaRw &&
+          subgraph_input->allocation_type != kTfLiteArenaRwPersistent &&
+          subgraph_input->allocation_type != kTfLiteCustom) {
+        continue;
+      }
+      const Tensor& tf_tensor = ctx->input(i + 1);
+      TfLiteCustomAllocation allocation{tf_tensor.data(),
+                                        tf_tensor.AllocatedBytes()};
+      OP_REQUIRES(ctx,
+                  subgraph_selected.SetCustomAllocationForTensor(
+                      subgraph_selected.inputs()[i], allocation,
+                      // Using kTfLiteCustomAllocationFlagsSkipAlignCheck is
+                      // safe as the pointer comes from TensorFlow.
+                      kTfLiteCustomAllocationFlagsSkipAlignCheck) == kTfLiteOk,
+                  errors::Internal(
+                      "Failed to set custom allocation for input tensor %d",
+                      subgraph_selected.inputs()[i]));
+    }
+  }
+
   void ResizeInputTensor(OpKernelContext* ctx,
                          tflite::Subgraph& subgraph_selected) {
     for (int i = 0; i < subgraph_selected.inputs().size(); ++i) {
@@ -189,7 +224,7 @@ class TfLiteSubgraphExecute : public OpKernel {
         }
       } else if (subgraph_input->type == kTfLiteVariant) {
         InitializeVariantOrResource(tf_tensor, subgraph_input);
-      } else {
+      } else if (subgraph_input->allocation_type != kTfLiteCustom) {
         tensorflow::StringPiece tensor_data = tf_tensor.tensor_data();
         OP_REQUIRES(ctx, subgraph_input->bytes == tensor_data.size(),
                     errors::Internal("tensor size doesn't match"));
