@@ -355,5 +355,102 @@ class SendTPUEmbeddingGradientsOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("XlaSendTPUEmbeddingGradients").AllowVariantTypes(),
                 SendTPUEmbeddingGradientsOp);
 
+// This TensorFlow op splits xla tuple to index and value tensors
+class SplitXLATupleToTensorsOp : public XlaOpKernel {
+ public:
+  explicit SplitXLATupleToTensorsOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    OP_REQUIRES(ctx, ctx->num_inputs() == 1,
+                errors::InvalidArgument(
+                    "SplitXLATupleToTensorsOp must have 1 input but gets ",
+                    ctx->num_inputs()));
+    const xla::XlaOp& input_tuple = ctx->Input(0);
+    xla::XlaBuilder* builder = ctx->builder();
+
+    StatusOr<xla::Shape> tuple_shape = builder->GetShape(input_tuple);
+    OP_REQUIRES_OK(ctx, tuple_shape.status());
+
+    int tuple_shapes_size = tuple_shape->tuple_shapes_size();
+    OP_REQUIRES(ctx, tuple_shapes_size % 2 == 0,
+                errors::InvalidArgument("Input tuple size must be even."));
+    int output_size = tuple_shapes_size / 2;
+
+    std::vector<xla::XlaOp> indices_vec, values_vec;
+    indices_vec.reserve(output_size);
+    values_vec.reserve(output_size);
+
+    for (int i = 0; i < tuple_shapes_size - 1; i = i + 2) {
+      indices_vec.push_back(xla::GetTupleElement(input_tuple, i));
+      values_vec.push_back(xla::GetTupleElement(input_tuple, i + 1));
+    }
+    // Convert std::vector to XlaOp
+    xla::XlaOp indices = xla::ConcatInDim(builder, indices_vec, 0);
+    xla::XlaOp values = xla::ConcatInDim(builder, values_vec, 0);
+    // output the indices array and value array.
+    ctx->SetOutput(0, indices);
+    ctx->SetOutput(1, values);
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(SplitXLATupleToTensorsOp);
+};
+
+REGISTER_XLA_OP(Name("SplitXLATupleToTensors").AllowVariantTypes(),
+                SplitXLATupleToTensorsOp);
+
+// This TensorFlow op merges index and value tensors into xla tuple
+class InterleaveTensorsToXLATupleOp : public XlaOpKernel {
+ public:
+  explicit InterleaveTensorsToXLATupleOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    OP_REQUIRES(ctx, ctx->num_inputs() == 2,
+                errors::InvalidArgument(
+                    "InterleaveTensorsToXLATupleOp expects 2 inputs, but gets ",
+                    ctx->num_inputs()));
+
+    xla::XlaOp indices = ctx->Input(0);
+    StatusOr<xla::Shape> indices_shape = ctx->builder()->GetShape(indices);
+    OP_REQUIRES_OK(ctx, indices_shape.status());
+    OP_REQUIRES(ctx, indices_shape->rank() == 1,
+                errors::InvalidArgument("Rank of indices must be 1, but gets",
+                                        indices_shape->rank()));
+
+    xla::XlaOp values = ctx->Input(1);
+    StatusOr<xla::Shape> values_shape = ctx->builder()->GetShape(values);
+    OP_REQUIRES_OK(ctx, values_shape.status());
+    OP_REQUIRES(ctx, indices_shape->rank() == 1,
+                errors::InvalidArgument("Expects rank of value is 1, but gets ",
+                                        indices_shape->rank()));
+    OP_REQUIRES(ctx,
+                indices_shape->dimensions(0) == values_shape->dimensions(0),
+                errors::InvalidArgument(
+                    "Lengths of indices and values must be same, but length of "
+                    "indices  = ",
+                    indices_shape->dimensions(0),
+                    "length of values = ", values_shape->dimensions(0)));
+
+    std::vector<xla::XlaOp> output_vec;
+    output_vec.reserve(2 * indices_shape->dimensions(0));
+    // Interleave elements of indices and values as output tuple.
+    for (int i = 0; i < indices_shape->dimensions(0); ++i) {
+      output_vec.push_back(xla::Slice(indices, {i}, {i + 1}, {1}));
+      output_vec.push_back(xla::Slice(values, {i}, {i + 1}, {1}));
+    }
+
+    xla::XlaOp output_tuple = xla::Tuple(ctx->builder(), output_vec);
+    ctx->SetOutput(0, output_tuple);
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(InterleaveTensorsToXLATupleOp);
+};
+
+REGISTER_XLA_OP(Name("InterleaveTensorsToXLATuple").AllowVariantTypes(),
+                InterleaveTensorsToXLATupleOp);
+
 }  // anonymous namespace
 }  // namespace tensorflow

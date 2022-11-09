@@ -448,4 +448,31 @@ REGISTER_OP("XlaRecvTPUEmbeddingDeduplicationData")
     .SetIsStateful()
     .SetShapeFn(tensorflow::shape_inference::ScalarShape);
 
+REGISTER_OP("SplitXLATupleToTensors")
+    .Input("input: variant")
+    .Output("indices: indices_type")
+    .Output("values: values_type")
+    .Attr("indices_type: {int32, int64} = DT_INT32")
+    .Attr("values_type: {half, bfloat16, float, int32, uint32, int64}")
+    .Attr("output_shape: shape")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      PartialTensorShape shapes_attr;
+      TF_RETURN_IF_ERROR(c->GetAttr("output_shape", &shapes_attr));
+      shape_inference::ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shapes_attr, &s));
+      VLOG(3) << "ConvertTupleToTensor.shape_inference out: "
+              << c->DebugString(s);
+      c->set_output(0, s);
+      c->set_output(1, s);
+      return OkStatus();
+    });
+
+REGISTER_OP("InterleaveTensorsToXLATuple")
+    .Input("indices: indices_type")
+    .Input("values: values_type")
+    .Output("output: variant")
+    .Attr("indices_type: {int32, int64} = DT_INT32")
+    .Attr("values_type: {half, bfloat16, float, int32, uint32, int64}")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
+
 }  // namespace tensorflow
