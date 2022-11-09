@@ -236,7 +236,7 @@ class XlaCompiler {
   Status CompileSingleOp(
       const CompileOptions& options,
       const SingleOpCompileArgument& single_op_compile_argument,
-      const std::vector<Argument>& args, CompilationResult* result);
+      absl::Span<const Argument> args, CompilationResult* result);
 
   // Compiles a tensorflow::Graph into an xla::XlaComputation.
   // Similar to CompileFunction, but takes a Graph as input rather than a

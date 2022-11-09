@@ -732,8 +732,7 @@ std::vector<std::string> GetValidControlRets(
 Status XlaCompiler::CompileSingleOp(
     const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::SingleOpCompileArgument& single_op_compile_argument,
-    const std::vector<XlaCompiler::Argument>& args,
-    XlaCompiler::CompilationResult* result) {
+    absl::Span<const Argument> args, XlaCompiler::CompilationResult* result) {
   const std::vector<DataType>& result_dtypes =
       single_op_compile_argument.output_dtypes;
   const NodeDef& node_def = single_op_compile_argument.node_def;

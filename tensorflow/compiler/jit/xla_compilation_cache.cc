@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/tf_graph_to_hlo_compiler.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
@@ -368,19 +369,16 @@ Status XlaCompilationCache::CompileStrict(
   tensorflow::Env* env = tensorflow::Env::Default();
   const uint64 compile_start_us = env->NowMicros();
 
-  XlaCompiler compiler(options);
+  TfGraphToHloCompiler compiler(options);
   entry->compile_state = CompileState::kCompiled;
-  entry->compilation_status = [&] {
-    if (scope == CompileScope::kOp) {
-      return compiler.CompileSingleOp(
-          compile_options, XlaCompiler::SingleOpCompileArgument(*ctx), args,
-          &entry->compilation_result);
-    } else {
-      CHECK(scope == CompileScope::kFunction);  // Crash OK
-      return compiler.CompileFunction(compile_options, function, args,
-                                      &entry->compilation_result);
-    }
-  }();
+  if (scope == CompileScope::kOp) {
+    entry->compilation_status = compiler.CompileSingleOp(
+        compile_options, ctx, args, &entry->compilation_result);
+  } else {
+    CHECK(scope == CompileScope::kFunction);  // Crash OK
+    entry->compilation_status = compiler.Compile(
+        compile_options, function, args, &entry->compilation_result);
+  }
   TF_RETURN_IF_ERROR(entry->compilation_status);
   TF_RET_CHECK(entry->executable.get() == nullptr);
   TF_RET_CHECK(entry->compilation_result.computation != nullptr);
