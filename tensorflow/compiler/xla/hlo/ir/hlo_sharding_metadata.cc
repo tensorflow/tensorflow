@@ -128,7 +128,7 @@ Status FixupPassThroughDomainLinks(const DomainMetadata::Domain& domain,
     HloInstruction* gte = pass_through.operand->parent()->AddInstruction(
         HloInstruction::CreateGetTupleElement(pass_through.operand->shape(),
                                               tuple, 0));
-    gte->set_sharding(sharding);
+    gte->set_sharding(sharding.NormalizeTupleSharding(gte->shape()));
     if (pass_through.user != nullptr) {
       TF_RETURN_IF_ERROR(
           pass_through.operand->ReplaceUseWith(pass_through.user, gte));

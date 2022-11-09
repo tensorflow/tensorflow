@@ -4100,9 +4100,7 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
     Shape shape(instr.shape());
     TF_ASSIGN_OR_RETURN(HloSharding sharding,
                         HloSharding::FromProto(*sharding_));
-    if (shape.IsTuple() && !sharding.IsTuple()) {
-      sharding = HloSharding::SingleTuple(shape, sharding);
-    }
+    sharding = sharding.NormalizeTupleSharding(shape);
     TF_RETURN_IF_ERROR(sharding.Validate(shape));
     *instr.mutable_sharding() = sharding.ToProto();
   }
