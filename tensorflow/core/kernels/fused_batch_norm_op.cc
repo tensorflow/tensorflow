@@ -794,10 +794,10 @@ struct FusedBatchNormImplGPU {
     //   from
     //       FusedBatchNormV3, i.e. use_reserved_space is true.
     const bool fast_nhwc_batch_norm =
-        !is_training ||
-        (BatchnormSpatialPersistentEnabled() &&
-          (DataTypeToEnum<T>::value == DT_HALF || DataTypeToEnum<T>::value == DT_BFLOAT16)
-          && use_reserved_space);
+        !is_training || (BatchnormSpatialPersistentEnabled() &&
+                         (DataTypeToEnum<T>::value == DT_HALF ||
+                          DataTypeToEnum<T>::value == DT_BFLOAT16) &&
+                         use_reserved_space);
 #else
     // fast NHWC implementation is a CUDA only feature
     const bool fast_nhwc_batch_norm = false;
@@ -1003,7 +1003,11 @@ struct FusedBatchNorm<GPUDevice, T, U, is_training> {
                   Tensor* batch_mean, Tensor* batch_var, Tensor* saved_mean,
                   Tensor* saved_inv_var, TensorFormat tensor_format,
                   bool use_reserved_space) {
-    FusedBatchNormImplGPU<T, U, is_training>()(context, x, scale, offset, estimated_mean, estimated_variance, side_input, epsilon, exponential_avg_factor, activation_mode, y, batch_mean, batch_var, saved_mean,saved_inv_var, tensor_format, use_reserved_space);
+    FusedBatchNormImplGPU<T, U, is_training>()(
+        context, x, scale, offset, estimated_mean, estimated_variance,
+        side_input, epsilon, exponential_avg_factor, activation_mode, y,
+        batch_mean, batch_var, saved_mean, saved_inv_var, tensor_format,
+        use_reserved_space);
   }
 };
 
@@ -1021,7 +1025,8 @@ struct FusedBatchNorm<GPUDevice, Eigen::bfloat16, float, is_training> {
     // Performant bfloat16 operations are supported for Ampere+ GPUs. For
     // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
     auto* stream = context->op_device_context()->stream();
-    const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::AMPERE);
+    const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
+        se::CudaComputeCapability::AMPERE);
     if (cast_to_float) {
       Tensor casted_x = x;
       Tensor casted_side_input;
@@ -1029,20 +1034,26 @@ struct FusedBatchNorm<GPUDevice, Eigen::bfloat16, float, is_training> {
 
       const GPUDevice& device = context->eigen_device<GPUDevice>();
       functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
-      OP_REQUIRES_OK(context, context->allocate_temp(DT_FLOAT, x.shape(),
-                                             &casted_x));
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DT_FLOAT, x.shape(), &casted_x));
       cast(device, casted_x.template flat<float>(),
            x.template flat<Eigen::bfloat16>());
       if (side_input != nullptr) {
-        OP_REQUIRES_OK(
-            context, context->allocate_temp(DT_FLOAT, side_input->shape(), &casted_side_input));
+        OP_REQUIRES_OK(context,
+                       context->allocate_temp(DT_FLOAT, side_input->shape(),
+                                              &casted_side_input));
         cast(device, casted_side_input.template flat<float>(),
-            side_input->template flat<Eigen::bfloat16>());
+             side_input->template flat<Eigen::bfloat16>());
       }
-      OP_REQUIRES_OK(
-          context, context->allocate_temp(DT_FLOAT, y->shape(), &casted_y));
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DT_FLOAT, y->shape(), &casted_y));
 
-      FusedBatchNormImplGPU<float, float, is_training>()(context, casted_x, scale, offset, estimated_mean, estimated_variance, (side_input != nullptr) ? &casted_side_input : nullptr, epsilon, exponential_avg_factor, activation_mode, &casted_y, batch_mean, batch_var, saved_mean,saved_inv_var, tensor_format, use_reserved_space);
+      FusedBatchNormImplGPU<float, float, is_training>()(
+          context, casted_x, scale, offset, estimated_mean, estimated_variance,
+          (side_input != nullptr) ? &casted_side_input : nullptr, epsilon,
+          exponential_avg_factor, activation_mode, &casted_y, batch_mean,
+          batch_var, saved_mean, saved_inv_var, tensor_format,
+          use_reserved_space);
       functor::CastFunctor<GPUDevice, Eigen::bfloat16, float> cast_back;
       const Tensor& casted_y_const = casted_y;
       cast_back(device, y->template flat<Eigen::bfloat16>(),
@@ -1050,7 +1061,11 @@ struct FusedBatchNorm<GPUDevice, Eigen::bfloat16, float, is_training> {
       return;
     }
 
-    FusedBatchNormImplGPU<Eigen::bfloat16, float, is_training>()(context, x, scale, offset, estimated_mean, estimated_variance, side_input, epsilon, exponential_avg_factor, activation_mode, y, batch_mean, batch_var, saved_mean,saved_inv_var, tensor_format, use_reserved_space);
+    FusedBatchNormImplGPU<Eigen::bfloat16, float, is_training>()(
+        context, x, scale, offset, estimated_mean, estimated_variance,
+        side_input, epsilon, exponential_avg_factor, activation_mode, y,
+        batch_mean, batch_var, saved_mean, saved_inv_var, tensor_format,
+        use_reserved_space);
   }
 };
 
@@ -1076,9 +1091,11 @@ struct FusedBatchNormGradImplGPU {
     // Check if cuDNN batch normalization has a fast NHWC implementation:
     //   (1) Tensorflow enabled batchnorm spatial persistence, and
     //       FusedBatchNormGradV3 passed non-null reserve space and allocator.
-    const bool fast_nhwc_batch_norm = BatchnormSpatialPersistentEnabled() &&
-                                      (DataTypeToEnum<T>::value == DT_HALF || DataTypeToEnum<T>::value == DT_BFLOAT16) &&
-                                      use_reserved_space;
+    const bool fast_nhwc_batch_norm =
+        BatchnormSpatialPersistentEnabled() &&
+        (DataTypeToEnum<T>::value == DT_HALF ||
+         DataTypeToEnum<T>::value == DT_BFLOAT16) &&
+        use_reserved_space;
 #else
     // fast NHWC implementation is a CUDA only feature
     const bool fast_nhwc_batch_norm = false;
@@ -1246,13 +1263,10 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
                   Tensor* x_backprop, Tensor* scale_backprop,
                   Tensor* offset_backprop, Tensor* side_input_backprop,
                   bool use_reserved_space, TensorFormat tensor_format) {
-    FusedBatchNormGradImplGPU<T, U>()(context, y_backprop,x, scale, offset,
-                  mean, inv_variance,
-                  y, epsilon,
-                  activation_mode,
-                  x_backprop, scale_backprop,
-                  offset_backprop,side_input_backprop,
-                  use_reserved_space, tensor_format);
+    FusedBatchNormGradImplGPU<T, U>()(
+        context, y_backprop, x, scale, offset, mean, inv_variance, y, epsilon,
+        activation_mode, x_backprop, scale_backprop, offset_backprop,
+        side_input_backprop, use_reserved_space, tensor_format);
   }
 };
 
@@ -1269,7 +1283,8 @@ struct FusedBatchNormGrad<GPUDevice, Eigen::bfloat16, float> {
     // Performant bfloat16 operations are supported for Ampere+ GPUs. For
     // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
     auto* stream = context->op_device_context()->stream();
-    const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::AMPERE);
+    const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
+        se::CudaComputeCapability::AMPERE);
     if (cast_to_float) {
       Tensor casted_y_backprop = y_backprop;
       Tensor casted_x = x;
@@ -1279,31 +1294,37 @@ struct FusedBatchNormGrad<GPUDevice, Eigen::bfloat16, float> {
 
       const GPUDevice& device = context->eigen_device<GPUDevice>();
       functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
-      OP_REQUIRES_OK(context, context->allocate_temp(DT_FLOAT, y_backprop.shape(), &casted_y_backprop));
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DT_FLOAT, y_backprop.shape(),
+                                            &casted_y_backprop));
       cast(device, casted_y_backprop.template flat<float>(),
            y_backprop.template flat<Eigen::bfloat16>());
-      OP_REQUIRES_OK(context, context->allocate_temp(DT_FLOAT, x.shape(), &casted_x));
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DT_FLOAT, x.shape(), &casted_x));
       cast(device, casted_x.template flat<float>(),
            x.template flat<Eigen::bfloat16>());
       if (y != nullptr) {
-        OP_REQUIRES_OK(context, context->allocate_temp(DT_FLOAT, y->shape(), &casted_y));
+        OP_REQUIRES_OK(context,
+                       context->allocate_temp(DT_FLOAT, y->shape(), &casted_y));
         cast(device, casted_y.template flat<float>(),
-            y->template flat<Eigen::bfloat16>());
-      }
-      
-      OP_REQUIRES_OK(
-          context, context->allocate_temp(DT_FLOAT, x_backprop->shape(), &casted_x_backprop));
-      if (side_input_backprop != nullptr) {
-        OP_REQUIRES_OK(
-            context, context->allocate_temp(DT_FLOAT, side_input_backprop->shape(), &casted_side_input_backprop));
+             y->template flat<Eigen::bfloat16>());
       }
 
-      FusedBatchNormGradImplGPU<float, float>()(context, casted_y_backprop, casted_x, scale, offset,
-          mean, inv_variance,
-          (y != nullptr) ? &casted_y : nullptr, epsilon,
-          activation_mode,
-          &casted_x_backprop, scale_backprop,
-          offset_backprop, (side_input_backprop != nullptr) ? &casted_side_input_backprop : nullptr,
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DT_FLOAT, x_backprop->shape(),
+                                            &casted_x_backprop));
+      if (side_input_backprop != nullptr) {
+        OP_REQUIRES_OK(context, context->allocate_temp(
+                                    DT_FLOAT, side_input_backprop->shape(),
+                                    &casted_side_input_backprop));
+      }
+
+      FusedBatchNormGradImplGPU<float, float>()(
+          context, casted_y_backprop, casted_x, scale, offset, mean,
+          inv_variance, (y != nullptr) ? &casted_y : nullptr, epsilon,
+          activation_mode, &casted_x_backprop, scale_backprop, offset_backprop,
+          (side_input_backprop != nullptr) ? &casted_side_input_backprop
+                                           : nullptr,
           use_reserved_space, tensor_format);
 
       functor::CastFunctor<GPUDevice, Eigen::bfloat16, float> cast_back;
@@ -1311,20 +1332,18 @@ struct FusedBatchNormGrad<GPUDevice, Eigen::bfloat16, float> {
       cast_back(device, x_backprop->template flat<Eigen::bfloat16>(),
                 casted_x_backprop_const.template flat<float>());
       if (side_input_backprop != nullptr) {
-        const Tensor& casted_side_input_backprop_const = casted_side_input_backprop;
+        const Tensor& casted_side_input_backprop_const =
+            casted_side_input_backprop;
         cast_back(device, side_input_backprop->template flat<Eigen::bfloat16>(),
                   casted_side_input_backprop_const.template flat<float>());
       }
       return;
     }
 
-    FusedBatchNormGradImplGPU<Eigen::bfloat16, float>()(context, y_backprop, x, scale, offset,
-              mean, inv_variance,
-              y, epsilon,
-              activation_mode,
-              x_backprop, scale_backprop,
-              offset_backprop, side_input_backprop,
-              use_reserved_space, tensor_format);
+    FusedBatchNormGradImplGPU<Eigen::bfloat16, float>()(
+        context, y_backprop, x, scale, offset, mean, inv_variance, y, epsilon,
+        activation_mode, x_backprop, scale_backprop, offset_backprop,
+        side_input_backprop, use_reserved_space, tensor_format);
   }
 };
 
@@ -1937,11 +1956,12 @@ REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV2")
                             .TypeConstraint<float>("U"),
                         FusedBatchNormGradOp<GPUDevice, Eigen::half, float>);
 
-REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV2")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<Eigen::bfloat16>("T")
-                            .TypeConstraint<float>("U"),
-                        FusedBatchNormGradOp<GPUDevice, Eigen::bfloat16, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("FusedBatchNormGradV2")
+        .Device(DEVICE_GPU)
+        .TypeConstraint<Eigen::bfloat16>("T")
+        .TypeConstraint<float>("U"),
+    FusedBatchNormGradOp<GPUDevice, Eigen::bfloat16, float>);
 
 REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV3")
                             .Device(DEVICE_GPU)
@@ -1997,11 +2017,12 @@ REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV3")
                             .TypeConstraint<float>("U"),
                         FusedBatchNormGradOpV3<GPUDevice, Eigen::half, float>);
 
-REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV3")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<Eigen::bfloat16>("T")
-                            .TypeConstraint<float>("U"),
-                        FusedBatchNormGradOpV3<GPUDevice, Eigen::bfloat16, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("FusedBatchNormGradV3")
+        .Device(DEVICE_GPU)
+        .TypeConstraint<Eigen::bfloat16>("T")
+        .TypeConstraint<float>("U"),
+    FusedBatchNormGradOpV3<GPUDevice, Eigen::bfloat16, float>);
 
 REGISTER_KERNEL_BUILDER(Name("_FusedBatchNormGradEx")
                             .Device(DEVICE_GPU)
@@ -2009,11 +2030,12 @@ REGISTER_KERNEL_BUILDER(Name("_FusedBatchNormGradEx")
                             .TypeConstraint<float>("U"),
                         FusedBatchNormGradOpEx<GPUDevice, Eigen::half, float>);
 
-REGISTER_KERNEL_BUILDER(Name("_FusedBatchNormGradEx")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<Eigen::bfloat16>("T")
-                            .TypeConstraint<float>("U"),
-                        FusedBatchNormGradOpEx<GPUDevice, Eigen::bfloat16, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("_FusedBatchNormGradEx")
+        .Device(DEVICE_GPU)
+        .TypeConstraint<Eigen::bfloat16>("T")
+        .TypeConstraint<float>("U"),
+    FusedBatchNormGradOpEx<GPUDevice, Eigen::bfloat16, float>);
 
 #endif
 
