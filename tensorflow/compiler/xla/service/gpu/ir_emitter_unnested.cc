@@ -4920,7 +4920,7 @@ Status IrEmitterUnnested::EmitUnnestedReduction(
   }
   TF_ASSIGN_OR_RETURN(
       std::vector<llvm_ir::IrArray> ir_arrays,
-      BuildKernelThunk(fusion, Thunk::ThunkInfo(fusion), launch_dimensions));
+      BuildKernelThunk(fusion, GetThunkInfo(fusion), launch_dimensions));
 
   FusedIrEmitter fused_emitter(elemental_emitter_);
   CHECK_LT(fused_computation->num_parameters(), ir_arrays.size());
