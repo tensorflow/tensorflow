@@ -36,7 +36,8 @@ void PopulateLowerToMlProgramAndHloPipeline(mlir::OpPassManager& pm) {
   // Remove unused global tensors, or make then immutable if possible.
   pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
 
-  pm.addPass(mlir::TFDevice::CreateDecomposeResourceOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::TFDevice::CreateDecomposeResourceOpsPass());
   pm.addPass(mlir::TF::CreateNameAnonymousIteratorsPass());
 
   // This will add regions to IfOp/WhileOp (turning them into IfRegionOp
@@ -50,7 +51,8 @@ void PopulateLowerToMlProgramAndHloPipeline(mlir::OpPassManager& pm) {
   pm.addPass(mlir::tf_saved_model::CreateStripSavedModuleMetadataPass());
 
   pm.addPass(mlir::TF::CreateRemoveUnusedArgumentsPass());
-  pm.addPass(mlir::TF::CreateRemoveUnusedWhileResultsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::TF::CreateRemoveUnusedWhileResultsPass());
 
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -73,7 +75,6 @@ void PopulateLowerToMlProgramAndHloPipeline(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createCanonicalizerPass());
 
   pm.addPass(mlir::TF::CreateOrderByDialectPass());
-  pm.addPass(mlir::TF::CreateGroupByDialectPass());
 
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
 }
