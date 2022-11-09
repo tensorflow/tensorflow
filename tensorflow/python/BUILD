@@ -4767,4 +4767,16 @@ py_library(
 #     api_version = 2,
 #     deps = [":protos_all"],
 # )
+#
+# # Special build rule for jax2tf.
+# # TODO(b/239052279): remove once TF->TFLite dependency cycle is resolved
+# py_library(
+#     name = "jax2tf_support",
+#     visibility = ["//third_party/py/jax/experimental/jax2tf:__subpackages__"],
+#     deps = [
+#         "//tensorflow/python/dlpack",
+#         "//tensorflow/python/ops/ragged:ragged_array_ops",
+#         "//tensorflow/python/saved_model",
+#     ],
+# )
 # copybara:uncomment_end
