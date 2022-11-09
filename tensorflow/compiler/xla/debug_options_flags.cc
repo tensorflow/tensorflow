@@ -42,6 +42,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_multi_thread_eigen(true);
   opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
   opts.set_xla_gpu_asm_extra_flags("");
+  opts.set_xla_gpu_use_runtime_fusion(true);
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
   opts.set_xla_dump_hlo_as_html(false);
   opts.set_xla_dump_fusion_visualization(false);
@@ -661,6 +662,11 @@ static void AllocateFlags() {
       flag_values->xla_gpu_algorithm_denylist_path(),
       "An AlgorithmDenylist text proto file as a denylist of convolutions to "
       "avoid to use."));
+  flag_objects->push_back(
+      tsl::Flag("xla_gpu_use_runtime_fusion",
+                bool_setter_for(&DebugOptions::set_xla_gpu_use_runtime_fusion),
+                flag_values->xla_gpu_use_runtime_fusion(),
+                "For using cuDNN runtime compiled fusion kernels."));
   flag_objects->push_back(tsl::Flag(
       "xla_tpu_detect_nan",
       bool_setter_for(&DebugOptions::set_xla_tpu_detect_nan),

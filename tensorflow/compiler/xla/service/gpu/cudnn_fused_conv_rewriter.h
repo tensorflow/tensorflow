@@ -94,6 +94,9 @@ namespace gpu {
 // pass returns an error -- cudnn will not be able to run it.
 class CudnnFusedConvRewriter : public HloModulePass {
  public:
+  explicit CudnnFusedConvRewriter(se::CudaComputeCapability cc)
+      : compute_capability_(cc) {}
+
   absl::string_view name() const override {
     return "cudnn-fused-convolution-rewriter";
   }
@@ -102,6 +105,9 @@ class CudnnFusedConvRewriter : public HloModulePass {
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  const se::CudaComputeCapability compute_capability_;
 };
 
 }  // namespace gpu
