@@ -86,6 +86,11 @@ class HloRunnerPjRt : public HloRunnerInterface {
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) override;
 
+  StatusOr<std::vector<Literal>> ExecuteReplicated(
+      Executable* executable,
+      const HloRunnerInterface::ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment, ExecutionProfile* profile = nullptr);
+
   absl::string_view Name() const override;
 
  private:
@@ -94,8 +99,20 @@ class HloRunnerPjRt : public HloRunnerInterface {
   std::vector<PjRtBuffer*> BufferVecToPointerVec(
       const std::vector<std::unique_ptr<PjRtBuffer>>& buffer);
 
+  std::vector<std::vector<PjRtBuffer*>> BufferMatToPointerMat(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>& buffer);
+
   StatusOr<CompileOptions> GenerateDefaultCompileOptions(HloModule* module,
                                                          bool run_hlo_passes);
+
+  StatusOr<std::vector<Literal>> ExecuteReplicatedImpl(
+      std::function<StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>(
+          absl::Span<const std::vector<PjRtBuffer*>>&)>
+          execution_helper,
+      std::function<int64_t(int64_t)> argument_count_provider,
+      std::function<const Literal*(int64_t, int64_t)> argument_provider,
+      const ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment);
 };
 
 }  // namespace xla
