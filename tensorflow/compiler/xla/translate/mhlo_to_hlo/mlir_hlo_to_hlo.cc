@@ -222,14 +222,23 @@ static std::vector<xla::Shape> ConvertTypesToShapesWithLayout(
   for (auto type_and_layout : llvm::zip(value_types, layouts)) {
     mlir::Type type = std::get<0>(type_and_layout);
     mlir::Attribute layout = std::get<1>(type_and_layout);
-    assert(!type.isa<mlir::TupleType>() &&
-           "Exporting layout for tuples is not implemented yet");
-    shapes_with_layout.emplace_back(xla::TypeToShape(type));
-    auto& shape = shapes_with_layout.back();
-    shape.mutable_layout()->clear_minor_to_major();
-    for (auto l : layout.cast<mlir::DenseIntElementsAttr>()) {
-      shape.mutable_layout()->mutable_minor_to_major()->push_back(
-          l.getSExtValue());
+
+    if (type.isa<mlir::TensorType>()) {
+      shapes_with_layout.emplace_back(xla::TypeToShape(type));
+      auto& shape = shapes_with_layout.back();
+      shape.mutable_layout()->clear_minor_to_major();
+      for (auto l : layout.cast<mlir::DenseIntElementsAttr>()) {
+        shape.mutable_layout()->mutable_minor_to_major()->push_back(
+            l.getSExtValue());
+      }
+    } else if (type.isa<mlir::mhlo::TokenType>()) {
+      assert(mlir::cast<mlir::DenseElementsAttr>(layout).empty() &&
+             "Invalid layout for token type");
+      shapes_with_layout.emplace_back(xla::TypeToShape(type));
+    } else {
+      assert(!type.isa<mlir::TupleType>() &&
+             "Exporting layout for tuples is not implemented yet");
+      assert(false && "Exporting unknown type with layout");
     }
   }
   return shapes_with_layout;
