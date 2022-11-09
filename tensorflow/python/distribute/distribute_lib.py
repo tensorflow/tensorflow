@@ -3178,12 +3178,12 @@ class ReplicaContextBase(object):
   def all_reduce(self, reduce_op, value, options=None):
     """All-reduces `value` across all replicas.
 
-    strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-    def step_fn():
-      ctx = tf.distribute.get_replica_context()
-      value = tf.identity(1.)
-      return ctx.all_reduce(tf.distribute.ReduceOp.SUM, value)
-    strategy.experimental_local_results(strategy.run(step_fn))
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+    >>> def step_fn():
+    ...   ctx = tf.distribute.get_replica_context()
+    ...   value = tf.identity(1.)
+    ...   return ctx.all_reduce(tf.distribute.ReduceOp.SUM, value)
+    >>> strategy.experimental_local_results(strategy.run(step_fn))
     (<tf.Tensor: shape=(), dtype=float32, numpy=2.0>,
      <tf.Tensor: shape=(), dtype=float32, numpy=2.0>)
 
@@ -3192,13 +3192,13 @@ class ReplicaContextBase(object):
     to indicate the desired batching behavior, e.g. batch the values into
     multiple packs so that they can better overlap with computations.
 
-    strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-    def step_fn():
-      ctx = tf.distribute.get_replica_context()
-      value1 = tf.identity(1.)
-      value2 = tf.identity(2.)
-      return ctx.all_reduce(tf.distribute.ReduceOp.SUM, [value1, value2])
-    strategy.experimental_local_results(strategy.run(step_fn))
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+    >>> def step_fn():
+    ...   ctx = tf.distribute.get_replica_context()
+    ...   value1 = tf.identity(1.)
+    ...   value2 = tf.identity(2.)
+    ...   return ctx.all_reduce(tf.distribute.ReduceOp.SUM, [value1, value2])
+    >>> strategy.experimental_local_results(strategy.run(step_fn))
     ([<tf.Tensor: shape=(), dtype=float32, numpy=2.0>,
     <tf.Tensor: shape=(), dtype=float32, numpy=4.0>],
     [<tf.Tensor: shape=(), dtype=float32, numpy=2.0>,
