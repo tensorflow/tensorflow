@@ -1029,6 +1029,11 @@ TEST(OpVersionTest, VersioningAbsTest) {
       .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+  fake_op_sig = {};
+  fake_op_sig.op = BuiltinOperator_ABS;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
 }
 TEST(OpVersionTest, VersioningSignTest) {
   // Default.

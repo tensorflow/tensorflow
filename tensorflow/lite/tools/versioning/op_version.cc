@@ -439,6 +439,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_ABS:
+      // Version 5 supports int32
+      if (op_sig.inputs.at(0).type == kTfLiteInt32) {
+        return 5;
+      }
       if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return op_sig.ext_options.abs.input_quantized ? 3 : 4;
       }
