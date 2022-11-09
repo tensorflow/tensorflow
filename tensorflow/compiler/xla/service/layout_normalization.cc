@@ -73,7 +73,8 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
                 literal.size_bytes());
 
     HloInstruction* normalized = hlo->parent()->AddInstruction(
-        HloInstruction::CreateConstant(std::move(new_literal)));
+        HloInstruction::CreateConstant(std::move(new_literal)),
+        &hlo->metadata());
     HloInstruction* bc_to_orig = MakeBitcastHlo(normalized, shape);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     return OkStatus();
@@ -292,8 +293,8 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
       d = FindIndex(orig_output_layout_as_permutation, d);
     }
     absl::c_sort(br_dimensions);
-    auto normalized_broadcast =
-        MakeBroadcastHlo(normalized_input, br_dimensions, normalized_shape);
+    auto normalized_broadcast = MakeBroadcastHlo(
+        normalized_input, br_dimensions, normalized_shape, &hlo->metadata());
     VLOG(3) << "Generated broadcast: " << normalized_broadcast->ToString();
     auto bc_to_orig = MakeBitcastHlo(normalized_broadcast, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
@@ -324,15 +325,19 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     PrimitiveType to_element_type = s.element_type();
     HloInstruction* new_unary;
     if (hlo->opcode() == HloOpcode::kConvert) {
-      new_unary = MakeConvertToHlo(normalized_input, to_element_type);
+      new_unary =
+          MakeConvertToHlo(normalized_input, to_element_type, &hlo->metadata());
     } else if (hlo->opcode() == HloOpcode::kReducePrecision) {
-      new_unary = MakeReducePrecisionHlo(normalized_input, hlo->exponent_bits(),
-                                         hlo->mantissa_bits());
+      new_unary =
+          MakeReducePrecisionHlo(normalized_input, hlo->exponent_bits(),
+                                 hlo->mantissa_bits(), &hlo->metadata());
     } else if (hlo->opcode() == HloOpcode::kBitcastConvert) {
-      new_unary = MakeBitcastConvertToHlo(normalized_input, to_element_type);
+      new_unary = MakeBitcastConvertToHlo(normalized_input, to_element_type,
+                                          &hlo->metadata());
     } else {
-      TF_ASSIGN_OR_RETURN(new_unary,
-                          MakeUnaryHlo(hlo->opcode(), normalized_input));
+      TF_ASSIGN_OR_RETURN(
+          new_unary,
+          MakeUnaryHlo(hlo->opcode(), normalized_input, &hlo->metadata()));
     }
     auto bc_to_orig = MakeBitcastHlo(new_unary, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
@@ -365,9 +370,11 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     HloInstruction* new_binary;
     if (hlo->opcode() == HloOpcode::kCompare) {
       TF_ASSIGN_OR_RETURN(new_binary,
-                          MakeCompareHlo(hlo->comparison_direction(), a0, b0));
+                          MakeCompareHlo(hlo->comparison_direction(), a0, b0,
+                                         &hlo->metadata()));
     } else {
-      TF_ASSIGN_OR_RETURN(new_binary, MakeBinaryHlo(hlo->opcode(), a0, b0));
+      TF_ASSIGN_OR_RETURN(
+          new_binary, MakeBinaryHlo(hlo->opcode(), a0, b0, &hlo->metadata()));
     }
     auto bc_to_orig = MakeBitcastHlo(new_binary, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
@@ -444,7 +451,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
       auto bc_to_orig = MakeBitcastHlo(normalized_transpose, s);
       TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     } else {
-      auto bc_to_orig = MakeBitcastHlo(a0, s);
+      auto bc_to_orig = MakeBitcastHlo(a0, s, &hlo->metadata());
       TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     }
     return OkStatus();
