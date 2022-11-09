@@ -1,13 +1,5 @@
 # Release 2.12.0
 
-*   `tf.keras`:
-
-    *   Added `jit_compile` as a settable property to `tf.keras.Model`.
-    *   Added `synchronized` optional parameter to `layers.BatchNormalization`.
-    *   Added deprecation warning to
-        `layers.experimental.SyncBatchNormalization` and suggested to use
-        `layers.BatchNormalization` with `synchronized=True` instead.
-
 # Breaking Changes
 
 * <DOCUMENT BREAKING CHANGES HERE>
@@ -32,9 +24,11 @@
         layer. The layer now accepts a new boolean argument `sparse`. If
         `sparse` is set to True, the layer returns a SparseTensor instead of a
         dense Tensor. Defaults to False.
-
-*   `tf.keras`:
-
+    *   Added `jit_compile` as a settable property to `tf.keras.Model`.
+    *   Added `synchronized` optional parameter to `layers.BatchNormalization`.
+    *   Added deprecation warning to
+        `layers.experimental.SyncBatchNormalization` and suggested to use
+        `layers.BatchNormalization` with `synchronized=True` instead.
     *   Updated `tf.keras.layers.BatchNormalization` to support masking of the
         inputs when computing the mean and variance.
 
