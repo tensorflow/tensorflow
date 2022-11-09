@@ -12,8 +12,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CONSTANT_SPLITTER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CONSTANT_SPLITTER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_HLO_TRANSFORMS_HLO_CONSTANT_SPLITTER_H_
+#define TENSORFLOW_COMPILER_XLA_HLO_TRANSFORMS_HLO_CONSTANT_SPLITTER_H_
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
@@ -43,4 +43,4 @@ class HloConstantSplitter : public HloModulePass {
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CONSTANT_SPLITTER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_HLO_TRANSFORMS_HLO_CONSTANT_SPLITTER_H_
