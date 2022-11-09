@@ -253,8 +253,7 @@ bool MayPreventVectorization(mlir::Operation* op) {
 // Computes the maximum valid unroll factor for a given instruction.
 int ComputeMaxUnrollFactor(mlir::Type type,
                            const HloModuleConfig& hlo_module_config) {
-  int max_unroll_factor =
-      hlo_module_config.debug_options().xla_gpu_max_kernel_unroll_factor();
+  constexpr int kMaxUnrollFactor = 4;
 
   // Find the largest possible power of two to unroll by.
   // TODO(kramerb): Make this smarter.
@@ -263,7 +262,7 @@ int ComputeMaxUnrollFactor(mlir::Type type,
   int64_t num_elements = std::accumulate(
       shaped_type.getShape().begin(), shaped_type.getShape().end(), int64_t{1},
       std::multiplies<int64_t>());
-  for (int i = max_unroll_factor; i > 1; i /= 2) {
+  for (int i = kMaxUnrollFactor; i > 1; i /= 2) {
     if (num_elements % i == 0) {
       return i;
     }

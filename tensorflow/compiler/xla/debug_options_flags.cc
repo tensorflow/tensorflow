@@ -57,7 +57,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_use_acl(true);
 #endif
   opts.set_xla_cpu_use_xla_runtime(false);
-  opts.set_xla_gpu_max_kernel_unroll_factor(4);
 
   opts.set_xla_cpu_enable_fast_math(false);
   // Disable forms of fast math that have caused users problems in the past.
@@ -431,11 +430,6 @@ static void AllocateFlags() {
       flag_values->xla_gpu_ftz(),
       "If true, flush-to-zero semantics are enabled in the code generated for "
       "GPUs."));
-  flag_objects->push_back(tsl::Flag(
-      "xla_gpu_max_kernel_unroll_factor",
-      int32_setter_for(&DebugOptions::set_xla_gpu_max_kernel_unroll_factor),
-      flag_values->xla_gpu_max_kernel_unroll_factor(),
-      "Specify the maximum kernel unroll factor for the GPU backend."));
   flag_objects->push_back(tsl::Flag(
       "xla_gpu_ptx_file", setter_for_xla_gpu_ptx_file, "",
       "If non-empty, specifies a file containing ptx to use. The filename "
