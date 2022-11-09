@@ -183,7 +183,7 @@ struct DividesBy<float, T> {
   __host__ __device__ explicit DividesBy(uint64 divisor) : divisor(1.0f/divisor) {}
 
   __host__ __device__ T operator()(const float& x) const {
-    return T(x / divisor);
+    return T(x * divisor);
   }
 };
 
