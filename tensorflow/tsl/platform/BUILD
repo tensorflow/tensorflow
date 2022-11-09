@@ -1658,6 +1658,7 @@ tsl_cc_test(
         ":test",
         ":test_main",
         ":types",
+        "@com_google_absl//absl/strings",
     ],
 )
 

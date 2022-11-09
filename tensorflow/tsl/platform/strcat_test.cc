@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/tsl/platform/stringprintf.h"
 #include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/platform/types.h"
@@ -74,6 +75,44 @@ TEST(StrCat, Floats) {
   EXPECT_EQ(answer, "01.5");
   answer = StrCat(s, bf);
   EXPECT_EQ(answer, "01.5");
+}
+
+TEST(StrCat, Nulls) {
+  string result;
+  // When passed to StrCat the below will produce a NULL data pointer
+  absl::string_view v;
+
+  string strs[] = {"Hello", "Cruel", "World"};
+
+  result = StrCat(v);
+  EXPECT_EQ(result, "");
+
+  result = StrCat(strs[0], v);
+  EXPECT_EQ(result, "Hello");
+
+  result = StrCat(v, strs[0]);
+  EXPECT_EQ(result, "Hello");
+
+  result = StrCat(v, strs[0], strs[1]);
+  EXPECT_EQ(result, "HelloCruel");
+
+  result = StrCat(strs[0], v, strs[1]);
+  EXPECT_EQ(result, "HelloCruel");
+
+  result = StrCat(strs[0], strs[1], v);
+  EXPECT_EQ(result, "HelloCruel");
+
+  result = StrCat(v, strs[0], strs[1], strs[2]);
+  EXPECT_EQ(result, "HelloCruelWorld");
+
+  result = StrCat(strs[0], v, strs[1], strs[2]);
+  EXPECT_EQ(result, "HelloCruelWorld");
+
+  result = StrCat(strs[0], strs[1], v, strs[2]);
+  EXPECT_EQ(result, "HelloCruelWorld");
+
+  result = StrCat(strs[0], strs[1], strs[2], v);
+  EXPECT_EQ(result, "HelloCruelWorld");
 }
 
 TEST(StrCat, Basics) {
