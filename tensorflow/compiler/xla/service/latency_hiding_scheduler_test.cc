@@ -2344,4 +2344,100 @@ ENTRY entry {
             GetIndex(new_instruction_sequence, "while"));
 }
 
+TEST_F(LatencyHidingSchedulerTest, AllToAllAsyncBalance) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+async_computation {
+  p = f32[2,8,256,256] parameter(0)
+  ROOT ata = f32[2,8,256,256] all-to-all(p), dimensions={0}, replica_groups={{0,1}}
+}
+
+async_computation.2 {
+  p.2 = f32[2,8,256,256] parameter(0)
+  ROOT ata.1 = f32[2,8,256,256] all-to-all(p.2), dimensions={0}, replica_groups={{0,1}}
+}
+
+
+ENTRY %module {
+  %constant.19 = u32[] constant(0)
+  %replica_id = u32[]{:T(128)} replica-id()
+  %convert = f32[]{:T(128)} convert(u32[]{:T(128)} %replica_id)
+  %color_operand.1 = f32[2,8,256,256]{3,2,1,0} broadcast(
+    f32[]{:T(128)} %convert), dimensions={}
+  %color_operand.2 = f32[2,8,256,256]{3,2,1,0} broadcast(
+    f32[]{:T(128)} %convert), dimensions={}
+  %ata-start = ((f32[2,8,256,256]), f32[2,8,256,256], u32[], u32[]) async-start(
+    f32[2,8,256,256] %color_operand.1), calls=async_computation,
+    metadata={op_type="AllToAll" op_name="ata0"}
+  %ata-start.2 = ((f32[2,8,256,256]), f32[2,8,256,256], u32[], u32[]) async-start(
+    f32[2,8,256,256] %color_operand.2), calls=async_computation.2,
+    metadata={op_type="AllToAll" op_name="ata1"}
+  %ata-done = f32[2,8,256,256] async-done(%ata-start), calls=async_computation,
+    metadata={op_type="AllToAll" op_name="ata0"}
+  %ata-done-bc = f32[16,256,256] bitcast(f32[2,8,256,256] %ata-done),
+    metadata={op_type="Bitcast" op_name="ata0"}
+  %ata-done.2 = f32[2,8,256,256] async-done(%ata-start.2), calls=async_computation.2,
+    metadata={op_type="AllToAll" op_name="ata1"}
+  %ata-done-bc.2 = f32[16,256,256] bitcast(f32[2,8,256,256] %ata-done.2),
+    metadata={op_type="Bitcast" op_name="ata1"}
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[16,64,256]{2,1,0} parameter(1)
+  p2 = f32[16,256,256]{2,1,0} parameter(2)
+  p3 = f32[16,256,256]{2,1,0} parameter(3)
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb,
+    metadata={op_type="AllToAll" op_name="c0"}
+  c1 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb,
+    metadata={op_type="AllToAll" op_name="c1"}
+  a2 = f32[16,256,256]{2,1,0} add(c1, c0)
+  ROOT t = (f32[16,256,256], f32[16,256,256], f32[16,256,256]) tuple(a2, %ata-done-bc.2, %ata-done-bc)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  std::vector<HloInstruction*> original_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+
+  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  // We expect that the scheduling would look like this:
+  //   %ar-start = async-start()
+  //   %c0 = convolution()
+  //   %ar-done = async-done()
+  //   %ar-start.2 = all-reduce-start()
+  //   %c1 = convolution()
+  //   %ar-done.2 = f32[2,8,256,256]{3,2,1,0} async-done()
+  // This means that the asyncs are balanced over the two convolutions
+  // rather than being unbalanced (one of the two asyncs overlaps with
+  // both the convolutons and the other with nothing).
+  EXPECT_LT(GetOpcodeIndexUsingMetaData(HloOpcode::kConvolution,
+                                        new_instruction_sequence, "c0"),
+            GetOpcodeIndexUsingMetaData(HloOpcode::kAsyncDone,
+                                        new_instruction_sequence, "ata0"));
+  EXPECT_GT(GetOpcodeIndexUsingMetaData(HloOpcode::kConvolution,
+                                        new_instruction_sequence, "c0"),
+            GetOpcodeIndexUsingMetaData(HloOpcode::kAsyncStart,
+                                        new_instruction_sequence, "ata0"));
+  EXPECT_LT(GetOpcodeIndexUsingMetaData(HloOpcode::kConvolution,
+                                        new_instruction_sequence, "c1"),
+            GetOpcodeIndexUsingMetaData(HloOpcode::kAsyncDone,
+                                        new_instruction_sequence, "ata1"));
+  EXPECT_GT(GetOpcodeIndexUsingMetaData(HloOpcode::kConvolution,
+                                        new_instruction_sequence, "c1"),
+            GetOpcodeIndexUsingMetaData(HloOpcode::kAsyncStart,
+                                        new_instruction_sequence, "ata1"));
+}
+
 }  // namespace xla
