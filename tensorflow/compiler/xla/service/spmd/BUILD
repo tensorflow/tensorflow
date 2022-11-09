@@ -190,3 +190,31 @@ tf_cc_test(
         "//tensorflow/tsl/platform:test",
     ],
 )
+
+cc_library(
+    name = "collective_permute_motion",
+    srcs = ["collective_permute_motion.cc"],
+    hdrs = ["collective_permute_motion.h"],
+    deps = [
+        "//tensorflow/compiler/xla:comparison_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:while_loop_analysis",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "collective_permute_motion_test",
+    srcs = ["collective_permute_motion_test.cc"],
+    deps = [
+        ":collective_permute_motion",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
