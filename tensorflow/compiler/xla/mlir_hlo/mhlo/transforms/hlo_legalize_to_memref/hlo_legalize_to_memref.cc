@@ -418,8 +418,7 @@ struct DynamicBroadcastInDimOpInterface
 struct HloLegalizeToMemrefPass
     : public impl::HloLegalizeToMemrefPassBase<HloLegalizeToMemrefPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<bufferization::BufferizationDialect, memref::MemRefDialect,
-                    mhlo::MhloDialect, lmhlo::LmhloDialect>();
+    registry.insert<mhlo::MhloDialect>();
     registerBufferizableOpInterfaceExternalModels(registry);
   }
 
@@ -445,6 +444,10 @@ void registerBufferizableOpInterfaceExternalModels(DialectRegistry &registry) {
     DynamicReshapeOp::attachInterface<DynamicReshapeOpInterface>(*ctx);
     DynamicBroadcastInDimOp::attachInterface<DynamicBroadcastInDimOpInterface>(
         *ctx);
+
+    // Load additional dialects of which ops may get created.
+    ctx->loadDialect<arith::ArithDialect, bufferization::BufferizationDialect,
+                     lmhlo::LmhloDialect, memref::MemRefDialect>();
   });
 }
 
