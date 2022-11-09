@@ -49,7 +49,7 @@ from tensorflow.python.util import nest
             strategy_combinations.mirrored_strategy_with_one_cpu,
             strategy_combinations.mirrored_strategy_with_one_gpu,
             strategy_combinations.mirrored_strategy_with_two_gpus,
-            strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+            strategy_combinations.mirrored_strategy_with_two_cpus,
             strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
             strategy_combinations.multi_worker_mirrored_2x2_gpu,
             strategy_combinations.multi_worker_mirrored_2x1_cpu,
