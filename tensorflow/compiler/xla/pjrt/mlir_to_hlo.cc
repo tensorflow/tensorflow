@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -77,6 +78,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
   context.loadDialect<mlir::mhlo::MhloDialect>();
   context.loadDialect<mlir::chlo::ChloDialect>();
   context.loadDialect<mlir::sparse_tensor::SparseTensorDialect>();
+  context.loadDialect<mlir::stablehlo::StablehloDialect>();
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   module = mlir::parseSourceString<mlir::ModuleOp>(
       llvm::StringRef(mlir_module_str.data(), mlir_module_str.size()),

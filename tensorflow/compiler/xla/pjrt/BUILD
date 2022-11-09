@@ -476,6 +476,7 @@ cc_library(
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:chlo_ops",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
