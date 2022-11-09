@@ -109,7 +109,7 @@ class Parameter(inspect.Parameter):
     return hash((self.name, self.kind, self.optional, self.type_constraint))
 
   def __repr__(self):
-    return ("Parameter(name=" + self.name + ", kind" + str(self.kind) +
+    return ("Parameter(name=" + self.name + ", kind=" + str(self.kind) +
             ", optional=" + repr(self.optional) + ", type_constraint=" +
             repr(self.type_constraint) + ")")
 
@@ -119,7 +119,7 @@ class Parameter(inspect.Parameter):
 
 
 class FunctionType(inspect.Signature):
-  """Represents the parameters of a polymorphic function."""
+  """Represents the signature of a polymorphic/monomorphic function."""
 
   def __init__(self,
                parameters: Sequence[inspect.Parameter],
@@ -253,6 +253,30 @@ class FunctionType(inspect.Signature):
             f"captures={self.captures})")
 
 
+# TODO(fmuham): Raise warning here when load-bearing.
+# In future, replace warning with exception.
+def sanitize_arg_name(name: str) -> str:
+  """Sanitizes Spec names. Matches Graph Node and Python naming conventions.
+
+  Without sanitization, names that are not legal Python parameter names can be
+  set which makes it challenging to represent callables supporting the named
+  calling capability.
+
+  Args:
+    name: The name to sanitize.
+
+  Returns:
+    A string that meets Python parameter conventions.
+  """
+  # Lower case and replace non-alphanumeric chars with '_'
+  swapped = "".join([c if c.isalnum() else "_" for c in name.lower()])
+
+  if swapped[0].isalpha():
+    return swapped
+  else:
+    return "arg_" + swapped
+
+
 # TODO(fmuham): Consider forcing kind to be always POSITIONAL_OR_KEYWORD.
 def _make_validated_mono_param(name, value, kind, type_context, poly_type):
   """Generates and validates a parameter for Monomorphic FunctionType."""
@@ -266,38 +290,66 @@ def _make_validated_mono_param(name, value, kind, type_context, poly_type):
 
 
 def canonicalize_to_monomorphic(
-    args: Tuple[Any, ...], kwargs: Dict[Any,
-                                        Any], polymorphic_type: FunctionType,
-    monomorphic_type_context: trace_type.InternalTracingContext
-) -> Tuple[inspect.BoundArguments, FunctionType]:
+    args: Tuple[Any, ...], kwargs: Dict[Any, Any], default_values: Dict[Any,
+                                                                        Any],
+    captures: Dict[Any, Any], polymorphic_type: FunctionType
+) -> Tuple[inspect.BoundArguments, FunctionType,
+           trace_type.InternalTracingContext]:
   """Converts polymorphic parameters to monomorphic and associated type."""
   poly_bound_arguments = polymorphic_type.bind(*args, **kwargs)
+  poly_bound_arguments.apply_defaults()
+
+  # Inject Default Values.
+  default_values_injected = poly_bound_arguments.arguments
+  for name, value in default_values_injected.items():
+    if value is CAPTURED_DEFAULT_VALUE:
+      default_values_injected[name] = default_values[name]
+  poly_bound_arguments = inspect.BoundArguments(poly_bound_arguments.signature,
+                                                default_values_injected)
+
   parameters = []
+  type_context = trace_type.InternalTracingContext()
+  has_var_positional = any(p.kind is Parameter.VAR_POSITIONAL
+                           for p in polymorphic_type.parameters.values())
 
   for name, arg in poly_bound_arguments.arguments.items():
     poly_parameter = polymorphic_type.parameters[name]
-    if poly_parameter.kind is Parameter.VAR_POSITIONAL:
+    if (has_var_positional and
+        poly_parameter.kind is Parameter.POSITIONAL_OR_KEYWORD):
+      # If there is a VAR_POSITIONAL, all POSITIONAL_OR_KEYWORD become
+      # POSITIONAL_ONLY.
+      parameters.append(
+          _make_validated_mono_param(name, arg, Parameter.POSITIONAL_ONLY,
+                                     type_context,
+                                     poly_parameter.type_constraint))
+
+    elif poly_parameter.kind is Parameter.VAR_POSITIONAL:
+      # Unbundle VAR_POSITIONAL into individual POSITIONAL_ONLY args.
       for i, value in enumerate(arg):
         parameters.append(
             _make_validated_mono_param(f"{poly_parameter.name}_{i}", value,
-                                       Parameter.POSITIONAL_ONLY,
-                                       monomorphic_type_context,
+                                       Parameter.POSITIONAL_ONLY, type_context,
                                        poly_parameter.type_constraint))
+
     elif poly_parameter.kind is Parameter.VAR_KEYWORD:
+      # Unbundle VAR_KEYWORD into individual KEYWORD_ONLY args.
       for kwarg_name, kwarg_value in arg.items():
         parameters.append(
             _make_validated_mono_param(kwarg_name, kwarg_value,
-                                       Parameter.KEYWORD_ONLY,
-                                       monomorphic_type_context,
+                                       Parameter.KEYWORD_ONLY, type_context,
                                        poly_parameter.type_constraint))
     else:
       parameters.append(
           _make_validated_mono_param(name, arg, poly_parameter.kind,
-                                     monomorphic_type_context,
+                                     type_context,
                                      poly_parameter.type_constraint))
 
-  monomorphic_function_type = FunctionType(parameters)
+  capture_types = collections.OrderedDict()
+  for name, value in captures.items():
+    capture_types[name] = trace_type.from_value(value, type_context)
+
+  monomorphic_function_type = FunctionType(parameters, capture_types)
   mono_bound_arguments = monomorphic_function_type.bind(
       *poly_bound_arguments.args, **poly_bound_arguments.kwargs)
 
-  return mono_bound_arguments, monomorphic_function_type
+  return mono_bound_arguments, monomorphic_function_type, type_context

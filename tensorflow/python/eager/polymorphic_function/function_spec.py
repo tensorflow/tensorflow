@@ -16,7 +16,7 @@
 
 import functools
 import inspect
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 import weakref
 
 import numpy as np
@@ -216,7 +216,7 @@ class FunctionSpec(object):
       # TODO(b/249802365): Add sanitization warning when load-bearing.
       parameters.append(
           function_type_lib.Parameter(
-              tensor_spec.sanitize_spec_name(arg), arg_kind, arg
+              function_type_lib.sanitize_arg_name(arg), arg_kind, arg
               in self.default_values, None))
 
     if self.fullargspec.varargs is not None:
@@ -229,7 +229,7 @@ class FunctionSpec(object):
       # TODO(b/249802365): Add sanitization warning when load-bearing.
       parameters.append(
           function_type_lib.Parameter(
-              tensor_spec.sanitize_spec_name(kwarg),
+              function_type_lib.sanitize_arg_name(kwarg),
               function_type_lib.Parameter.KEYWORD_ONLY, kwarg
               in self.default_values, None))
 
@@ -340,6 +340,31 @@ class FunctionSpec(object):
   @property
   def varkw_name(self):
     return self._fullargspec.varkw
+
+  def make_canonicalized_monomorphic_type(
+      self,
+      args: Any,
+      kwargs: Any,
+      captures: Any = None,
+  ) -> Tuple[function_type_lib.FunctionType,
+             trace_type.WeakrefDeletionObserver]:
+    """Generates function type given the function arguments."""
+    if captures is None:
+      captures = dict()
+
+    # TODO(fmuham): canonicalize_function_inputs removes self arg.
+    if self.is_method:
+      args = (None, *args)
+
+    kwargs = {
+        function_type_lib.sanitize_arg_name(name): value
+        for name, value in kwargs.items()
+    }
+
+    _, function_type, type_context = function_type_lib.canonicalize_to_monomorphic(
+        args, kwargs, self.default_values, captures, self.function_type)
+
+    return function_type, type_context.deletion_observer
 
   def signature_summary(self, default_values=False):
     """Returns a string summarizing this function's signature.
