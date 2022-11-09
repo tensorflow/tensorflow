@@ -95,7 +95,7 @@ class BatchNormalizationTest(test.TestCase):
     # An atol value of 1e-3 is too small for float16's, because some adjacent
     # float16 values that y_val can take are greater than 1e-3 apart, e.g.
     # 2.16602 and 2.16797.
-    atol = 2e-3 if x_dtype == np.float16 else 1e-3
+    atol = 2e-3 if x_dtype in [np.float16, dtypes.bfloat16.as_numpy_dtype] else 1e-3
     self.assertAllClose(y_ref, y_val, atol=atol)
 
   def _running_mean(self, old_mean, new_val, factor):
@@ -177,12 +177,16 @@ class BatchNormalizationTest(test.TestCase):
                                                     old_mean_val, old_var_val,
                                                     exponential_avg_factor,
                                                     epsilon, data_format)
-    y_atol = 2e-3 if x_dtype == np.float16 else 1e-3
+    y_atol = 1e-3
+    if x_dtype == np.float16:
+      y_atol = 2e-3
+    elif x_dtype == dtypes.bfloat16.as_numpy_dtype:
+      y_atol = 1e-2
     self.assertAllClose(y_ref, y_val, atol=y_atol)
     self.assertAllClose(mean_ref, mean_val, atol=1e-3)
     self.assertAllClose(var_ref, var_val, atol=1e-3)
 
-  def _compute_gradient_error_float16(self, x, x32, x_shape, y, y32, y_shape):
+  def _compute_gradient_error_float16(self, x, x32, x_shape, y, y32, y_shape, dtype):
     """Computes the gradient error for float16 inputs and/or outputs.
 
     This returns the same value as gradient_checker.compute_gradient_error. The
@@ -204,7 +208,7 @@ class BatchNormalizationTest(test.TestCase):
       The maximum error in between the two Jacobians, as in
       gradient_checker.compute_gradient_error.
     """
-    x_init_val = np.random.random_sample(x_shape).astype(np.float16)
+    x_init_val = np.random.random_sample(x_shape).astype(dtype)
     x32_init_val = x_init_val.astype(np.float32)
 
     # TODO(reedwm): Do not perform the unnecessary computations in
@@ -252,7 +256,7 @@ class BatchNormalizationTest(test.TestCase):
           exponential_avg_factor=exponential_avg_factor,
           data_format=data_format,
           is_training=is_training)
-      if x_dtype != np.float16:
+      if x_dtype not in [np.float16, dtypes.bfloat16.as_numpy_dtype]:
         err_x = gradient_checker.compute_gradient_error(x, x_shape, y, x_shape)
         err_scale = gradient_checker.compute_gradient_error(
             scale, scale_shape, y, x_shape)
@@ -270,13 +274,17 @@ class BatchNormalizationTest(test.TestCase):
             exponential_avg_factor=exponential_avg_factor,
             is_training=is_training)
         err_x = self._compute_gradient_error_float16(x, x32, x_shape, y, y32,
-                                                     x_shape)
+                                                     x_shape, x_dtype)
         err_scale = self._compute_gradient_error_float16(
-            scale, scale, scale_shape, y, y32, x_shape)
+            scale, scale, scale_shape, y, y32, x_shape, x_dtype)
         err_offset = self._compute_gradient_error_float16(
-            offset, offset, scale_shape, y, y32, x_shape)
+            offset, offset, scale_shape, y, y32, x_shape, x_dtype)
 
-    x_err_tolerance = 2e-3 if x_dtype == np.float16 else 1e-3
+    x_err_tolerance = 1e-3
+    if x_dtype == np.float16:
+      x_err_tolerance = 2e-3
+    elif dtypes.bfloat16.as_numpy_dtype:
+      x_err_tolerance = 2e-2
     scale_err_tolerance = 1e-3
     self.assertLess(err_x, x_err_tolerance)
     self.assertLess(err_scale, scale_err_tolerance)
@@ -331,7 +339,7 @@ class BatchNormalizationTest(test.TestCase):
         for grad_val, grad_internal_val in zip(grad_vals, grad_internal_vals):
           self.assertAllClose(grad_val, grad_internal_val, atol=err_tolerance)
 
-      if x_dtype != np.float16:
+      if x_dtype not in [np.float16, dtypes.bfloat16.as_numpy_dtype]:
         err_grad_grad_y_1 = gradient_checker.compute_gradient_error(
             grad_y, x_shape, grad_x, x_shape)
         err_grad_grad_y_2 = gradient_checker.compute_gradient_error(
@@ -363,20 +371,20 @@ class BatchNormalizationTest(test.TestCase):
         grad_x32, grad_scale32, grad_offset32 = gradients_impl.gradients(
             y32, [x32, scale, offset], grad_y32)
         err_grad_grad_y_1 = self._compute_gradient_error_float16(
-            grad_y, grad_y32, x_shape, grad_x, grad_x32, x_shape)
+            grad_y, grad_y32, x_shape, grad_x, grad_x32, x_shape, x_dtype)
         err_grad_grad_y_2 = self._compute_gradient_error_float16(
-            grad_y, grad_y32, x_shape, grad_scale, grad_scale32, scale_shape)
+            grad_y, grad_y32, x_shape, grad_scale, grad_scale32, scale_shape, x_dtype)
         err_grad_grad_y_3 = self._compute_gradient_error_float16(
-            grad_y, grad_y32, x_shape, grad_offset, grad_offset32, scale_shape)
+            grad_y, grad_y32, x_shape, grad_offset, grad_offset32, scale_shape, x_dtype)
         # In freeze mode, grad_x is not a function of x.
         if is_training:
           err_grad_x_1 = self._compute_gradient_error_float16(
-              x, x32, x_shape, grad_x, grad_x32, x_shape)
+              x, x32, x_shape, grad_x, grad_x32, x_shape, x_dtype)
         err_grad_x_2 = self._compute_gradient_error_float16(
-            x, x32, x_shape, grad_scale, grad_scale32, scale_shape)
+            x, x32, x_shape, grad_scale, grad_scale32, scale_shape, x_dtype)
 
         err_grad_scale = self._compute_gradient_error_float16(
-            scale, scale, scale_shape, grad_x, grad_x32, x_shape)
+            scale, scale, scale_shape, grad_x, grad_x32, x_shape, x_dtype)
 
     self.assertLess(err_grad_grad_y_1, err_tolerance)
     self.assertLess(err_grad_grad_y_2, err_tolerance)
@@ -396,8 +404,10 @@ class BatchNormalizationTest(test.TestCase):
     if test.is_gpu_available(cuda_only=True) and not cpu_only:
       use_gpu_vals += [True]
     factors = [1.0, 0.6]
-    for dtype in [np.float16, np.float32]:
+    for dtype in [dtypes.bfloat16.as_numpy_dtype]: #[np.float16, np.float32, dtypes.bfloat16.as_numpy_dtype]:
       for use_gpu in use_gpu_vals:
+        if dtype == dtypes.bfloat16.as_numpy_dtype and not use_gpu:
+         continue
         for data_format in data_format_list:
           if data_format == 'NHWC' or data_format == 'NDHWC':
             scale_shape = x_shape[-1:]
