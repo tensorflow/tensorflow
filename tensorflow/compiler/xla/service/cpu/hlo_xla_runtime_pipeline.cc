@@ -237,18 +237,17 @@ Status CreateDefaultHloXlaRuntimePipeline(xla::runtime::PassManager& passes) {
   return CreateHloXlaPipeline(*passes, options);
 }
 
-void RegisterHloXlaRuntimePipelineDialects(
-    xla::runtime::DialectRegistry& dialects) {
-  mlir::arith::registerBufferizableOpInterfaceExternalModels(*dialects);
+void RegisterHloXlaRuntimePipelineDialects(mlir::DialectRegistry& dialects) {
+  mlir::arith::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
-      *dialects);
-  mlir::gml_st::registerBufferizableOpInterfaceExternalModels(*dialects);
-  mlir::linalg::registerBufferizableOpInterfaceExternalModels(*dialects);
-  mlir::mhlo::registerBufferizableOpInterfaceExternalModels(*dialects);
-  mlir::scf::registerBufferizableOpInterfaceExternalModels(*dialects);
-  mlir::shape::registerBufferizableOpInterfaceExternalModels(*dialects);
-  mlir::tensor::registerBufferizableOpInterfaceExternalModels(*dialects);
-  mlir::vector::registerBufferizableOpInterfaceExternalModels(*dialects);
+      dialects);
+  mlir::gml_st::registerBufferizableOpInterfaceExternalModels(dialects);
+  mlir::linalg::registerBufferizableOpInterfaceExternalModels(dialects);
+  mlir::mhlo::registerBufferizableOpInterfaceExternalModels(dialects);
+  mlir::scf::registerBufferizableOpInterfaceExternalModels(dialects);
+  mlir::shape::registerBufferizableOpInterfaceExternalModels(dialects);
+  mlir::tensor::registerBufferizableOpInterfaceExternalModels(dialects);
+  mlir::vector::registerBufferizableOpInterfaceExternalModels(dialects);
 }
 
 static mlir::PassPipelineRegistration<> hlo_xla_runtime_pipeline(

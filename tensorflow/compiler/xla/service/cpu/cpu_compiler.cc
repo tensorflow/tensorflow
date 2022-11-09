@@ -332,7 +332,7 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions() {
       [](xla::runtime::DialectRegistry& dialects) {
         dialects->insert<mlir::mhlo::MhloDialect, mlir::lmhlo::LmhloDialect>();
         runtime::RegisterDefaultXlaCpuRuntimeDialects(dialects);
-        RegisterHloXlaRuntimePipelineDialects(dialects);
+        RegisterHloXlaRuntimePipelineDialects(*dialects);
       };
   opts.compiler.symbols_binding =
       runtime::ToSymbolsBinding(PopulateXlaCpuCustomCall);
