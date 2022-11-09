@@ -282,7 +282,8 @@ def byte_swap_tflite_buffer(tflite_model, from_endiness, to_endiness):
     tflite_model: TFLite flatbuffer in a byte array of from_endiness format.
 
   Returns:
-    TFLite flatbuffer in a bytes array, after being byte swapped to to_endiness format.
+    TFLite flatbuffer in a bytes array, after being byte swapped to to_endiness
+    format.
 
   """
   if tflite_model is None:
