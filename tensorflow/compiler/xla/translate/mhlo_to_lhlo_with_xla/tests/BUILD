@@ -31,9 +31,9 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "//tensorflow/compiler/mlir:tf-mlir-translate",
-        "//tensorflow/compiler/mlir/xla:xla-opt",
-        "//tensorflow/compiler/mlir/xla:xla-opt-gpu",
+        "//tensorflow/compiler/xla/translate:xla-translate",
+        "//tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla:xla-translate-gpu-opt",
+        "//tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla:xla-translate-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
     ],

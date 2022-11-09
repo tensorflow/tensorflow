@@ -1,4 +1,4 @@
-// RUN: xla-opt -xla-hlo-to-lhlo-with-xla %s | FILECHECK_OPTS="" FileCheck --enable-var-scope %s
+// RUN: xla-translate-opt -xla-hlo-to-lhlo-with-xla %s | FILECHECK_OPTS="" FileCheck --enable-var-scope %s
 
 // Current allocation will lead to one buffer argument for the "value" and
 // another one for the output, an no returned values.

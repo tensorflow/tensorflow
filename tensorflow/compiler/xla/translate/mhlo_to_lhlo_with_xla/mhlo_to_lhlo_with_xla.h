@@ -13,24 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MHLO_TO_LHLO_WITH_XLA_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MHLO_TO_LHLO_WITH_XLA_H_
+#ifndef TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_LHLO_WITH_XLA_MHLO_TO_LHLO_WITH_XLA_H_
+#define TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_LHLO_WITH_XLA_MHLO_TO_LHLO_WITH_XLA_H_
 
 #include "absl/types/optional.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace mlir {
 
@@ -45,73 +42,73 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
 
   LhloDialectEmitter(const xla::BufferAssignment& assignment,
                      const xla::HloComputation& computation, ModuleOp module)
-      : assignment_(std::move(assignment)),
+      : assignment_(assignment),
         computation_(computation),
         module_(module),
         builder_(module.getContext()),
         i8_type_(builder_.getIntegerType(8)) {}
 
-  xla::StatusOr<mlir::Operation*> EmitOp(const xla::HloInstruction* instr);
+  tsl::StatusOr<mlir::Operation*> EmitOp(const xla::HloInstruction* instr);
 
-  static xla::StatusOr<mhlo::ScatterDimensionNumbersAttr>
+  static tsl::StatusOr<mhlo::ScatterDimensionNumbersAttr>
   GetScatterDimensionNumbers(const xla::HloInstruction* instr,
                              mlir::MLIRContext* context);
 
  private:
-  xla::StatusOr<lmhlo::SortOp> EmitSortOp(const xla::HloInstruction* instr);
-  xla::StatusOr<lmhlo::FusionOp> EmitFusionOp(const xla::HloInstruction* instr);
-  xla::StatusOr<lmhlo::ScatterOp> EmitScatterOp(
+  tsl::StatusOr<lmhlo::SortOp> EmitSortOp(const xla::HloInstruction* instr);
+  tsl::StatusOr<lmhlo::FusionOp> EmitFusionOp(const xla::HloInstruction* instr);
+  tsl::StatusOr<lmhlo::ScatterOp> EmitScatterOp(
       const xla::HloInstruction* instr);
-  xla::StatusOr<lmhlo::SelectAndScatterOp> EmitSelectAndScatterOp(
+  tsl::StatusOr<lmhlo::SelectAndScatterOp> EmitSelectAndScatterOp(
       const xla::HloInstruction* instr);
 
-  xla::StatusOr<Operation*> EmitCustomCallOp(const xla::HloInstruction* instr);
-  xla::StatusOr<lmhlo::FusionOp> EmitSoftmax(const xla::HloInstruction* instr);
-  xla::StatusOr<lmhlo_gpu::CholeskyOp> EmitCholesky(
+  tsl::StatusOr<Operation*> EmitCustomCallOp(const xla::HloInstruction* instr);
+  tsl::StatusOr<lmhlo::FusionOp> EmitSoftmax(const xla::HloInstruction* instr);
+  tsl::StatusOr<lmhlo_gpu::CholeskyOp> EmitCholesky(
       const xla::HloCustomCallInstruction* custom_call);
-  xla::StatusOr<Operation*> EmitGemm(
+  tsl::StatusOr<Operation*> EmitGemm(
       const xla::HloCustomCallInstruction* custom_call);
-  xla::StatusOr<Operation*> EmitCublasLtMatmul(
+  tsl::StatusOr<Operation*> EmitCublasLtMatmul(
       const xla::HloCustomCallInstruction* custom_call);
-  xla::StatusOr<Operation*> EmitDnnConvolution(
+  tsl::StatusOr<Operation*> EmitDnnConvolution(
       const xla::HloCustomCallInstruction* custom_call);
-  xla::StatusOr<Operation*> EmitDnnBatchNorm(
+  tsl::StatusOr<Operation*> EmitDnnBatchNorm(
       const xla::HloCustomCallInstruction* custom_call);
 
-  xla::StatusOr<memref::GetGlobalOp> EmitConstant(
+  tsl::StatusOr<memref::GetGlobalOp> EmitConstant(
       const xla::HloInstruction* instr);
 
-  xla::StatusOr<lmhlo::InfeedOp> EmitInfeedOp(const xla::HloInstruction* instr);
-  xla::StatusOr<lmhlo::OutfeedOp> EmitOutfeedOp(
+  tsl::StatusOr<lmhlo::InfeedOp> EmitInfeedOp(const xla::HloInstruction* instr);
+  tsl::StatusOr<lmhlo::OutfeedOp> EmitOutfeedOp(
       const xla::HloInstruction* instr);
 
-  xla::StatusOr<lmhlo::AllToAllOp> EmitAllToAllOp(
+  tsl::StatusOr<lmhlo::AllToAllOp> EmitAllToAllOp(
       const xla::HloInstruction* instr);
-  xla::StatusOr<lmhlo::AllGatherOp> EmitAllGatherOp(
+  tsl::StatusOr<lmhlo::AllGatherOp> EmitAllGatherOp(
       const xla::HloInstruction* instr);
-  xla::StatusOr<lmhlo::AllReduceOp> EmitAllReduceOp(
+  tsl::StatusOr<lmhlo::AllReduceOp> EmitAllReduceOp(
       const xla::HloInstruction* instr);
-  xla::StatusOr<lmhlo_gpu::AllReduceStartOp> EmitAllReduceStartOp(
+  tsl::StatusOr<lmhlo_gpu::AllReduceStartOp> EmitAllReduceStartOp(
       const xla::HloInstruction* instr);
-  xla::StatusOr<lmhlo_gpu::AllReduceDoneOp> EmitAllReduceDoneOp(
+  tsl::StatusOr<lmhlo_gpu::AllReduceDoneOp> EmitAllReduceDoneOp(
       const xla::HloInstruction* instr);
-  xla::StatusOr<lmhlo::ReduceScatterOp> EmitReduceScatterOp(
+  tsl::StatusOr<lmhlo::ReduceScatterOp> EmitReduceScatterOp(
       const xla::HloInstruction* instr);
-  xla::StatusOr<lmhlo::CollectivePermuteOp> EmitCollectivePermuteOp(
+  tsl::StatusOr<lmhlo::CollectivePermuteOp> EmitCollectivePermuteOp(
       const xla::HloInstruction* instr);
 
-  xla::StatusOr<lmhlo::RngGetAndUpdateStateOp> EmitRngGetAndUpdateStateOp(
+  tsl::StatusOr<lmhlo::RngGetAndUpdateStateOp> EmitRngGetAndUpdateStateOp(
       const xla::HloInstruction* instr);
-  xla::StatusOr<lmhlo::FftOp> EmitFftOp(const xla::HloInstruction* instr);
-  xla::StatusOr<lmhlo::TriangularSolveOp> EmitTriangularSolveOp(
+  tsl::StatusOr<lmhlo::FftOp> EmitFftOp(const xla::HloInstruction* instr);
+  tsl::StatusOr<lmhlo::TriangularSolveOp> EmitTriangularSolveOp(
       const xla::HloInstruction* instr);
-  xla::StatusOr<Operation*> EmitBitcast(const xla::HloInstruction* instr);
+  tsl::StatusOr<Operation*> EmitBitcast(const xla::HloInstruction* instr);
 
-  xla::StatusOr<lmhlo::CaseOp> EmitCaseOp(const xla::HloInstruction* instr);
+  tsl::StatusOr<lmhlo::CaseOp> EmitCaseOp(const xla::HloInstruction* instr);
 
-  xla::StatusOr<lmhlo::WhileOp> EmitWhileOp(const xla::HloInstruction* instr);
+  tsl::StatusOr<lmhlo::WhileOp> EmitWhileOp(const xla::HloInstruction* instr);
 
-  xla::Status ImportAsLmhloRegion(xla::HloComputation* computation,
+  tsl::Status ImportAsLmhloRegion(xla::HloComputation* computation,
                                   mlir::Region* region);
 
   // Since LMHLO dialect does not define token types, this enum controls how
@@ -128,14 +125,14 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   // operands of the instruction are converted to MLIR. The function returns the
   // actual number of operands and results generated for MLIR in `num_arguments`
   // and `num_results`.
-  xla::Status CreateOperands(const xla::HloInstruction* instr,
+  tsl::Status CreateOperands(const xla::HloInstruction* instr,
                              std::optional<int64_t> num_operands,
                              TokenLoweringMode token_mode,
                              SmallVectorImpl<Value>& operands,
                              size_t& num_arguments, size_t& num_results);
 
   template <typename OpType>
-  xla::StatusOr<OpType> CreateOpWithoutAttrs(
+  tsl::StatusOr<OpType> CreateOpWithoutAttrs(
       const xla::HloInstruction* instr,
       std::optional<int64_t> num_operands = std::nullopt) {
     size_t unused;
@@ -143,7 +140,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   }
 
   template <typename OpType>
-  xla::StatusOr<OpType> CreateOpWithoutAttrs(
+  tsl::StatusOr<OpType> CreateOpWithoutAttrs(
       const xla::HloInstruction* instr, size_t& num_arguments,
       size_t& num_results, std::optional<int64_t> num_operands = std::nullopt);
 
@@ -151,11 +148,11 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   OpType CreateOpWithoutAttrs(const xla::HloInstruction* instr,
                               ValueRange operands);
 
-  xla::StatusOr<mlir::Operation*> CreateOpInFusion(
+  tsl::StatusOr<mlir::Operation*> CreateOpInFusion(
       const xla::HloInstruction* instr, ValueRange buffer_operands,
       size_t num_arguments, size_t num_results);
 
-  xla::StatusOr<mlir::Operation*> CreateOpInFusion(
+  tsl::StatusOr<mlir::Operation*> CreateOpInFusion(
       const xla::HloInstruction* instr);
 
   template <typename T>
@@ -207,11 +204,11 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
       const xla::ShapeIndex& result_subset = {},
       TokenLoweringMode token_mode = TokenLoweringMode::kFailToLower);
 
-  xla::StatusOr<Value> GetOrCreateArrayView(
+  tsl::StatusOr<Value> GetOrCreateArrayView(
       const xla::HloInstruction* instr, const xla::Shape& current_shape,
       const xla::ShapeIndex& current_shape_index);
 
-  xla::StatusOr<Value> RewriteFusionOperand(const xla::HloInstruction* root,
+  tsl::StatusOr<Value> RewriteFusionOperand(const xla::HloInstruction* root,
                                             const xla::Shape& shape,
                                             xla::ShapeIndex* shape_index,
                                             OpBuilder* b, Location loc);
@@ -288,4 +285,4 @@ void RegisterMhloToLhloWithXlaPass();
 
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MHLO_TO_LHLO_WITH_XLA_H_
+#endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_LHLO_WITH_XLA_MHLO_TO_LHLO_WITH_XLA_H_

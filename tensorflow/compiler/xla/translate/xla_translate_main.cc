@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/ToolUtilities.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
+#include "tensorflow/tsl/platform/init_main.h"
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> input_filename(llvm::cl::Positional,
@@ -48,6 +49,8 @@ static llvm::cl::opt<bool> splitInputFile(
 
 int main(int argc, char** argv) {
   llvm::InitLLVM y(argc, argv);
+  int dummyArgc = 1;
+  tsl::port::InitMain(argv[0], &dummyArgc, &argv);
 
   // Add flags for all the registered translations.
   llvm::cl::opt<const mlir::TranslateFunction*, false, mlir::TranslationParser>
