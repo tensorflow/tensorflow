@@ -19,6 +19,7 @@ cuda_py_test(
     tags = [
         "noasan",  # times out
         "optonly",  # times out
+        "no_oss",  # TODO(b/258503209): Disable the test.
     ],
     deps = [
         "//tensorflow/python:array_ops",
