@@ -294,7 +294,6 @@ cc_library(
     ],
     deps = [
         ":drop_savedmodel_semantics",
-        ":fuse_convolution_pass",
         ":rename_entrypoint_to_main",
         ":smuggle_disallowed_ops",
         ":tf_mhlo",
@@ -370,30 +369,6 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
-    name = "fuse_convolution_pass",
-    srcs = [
-        "transforms/fuse_convolution_pass.cc",
-    ],
-    hdrs = [
-        "transforms/passes.h",
-    ],
-    copts = [
-        "-Ithird_party",
-    ],
-    deps = [
-        "//tensorflow/compiler/mlir/lite:validators",
-        "//tensorflow/compiler/xla/mlir_hlo",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Dialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
-)
-
 tf_cc_binary(
     name = "odml_to_stablehlo",
     srcs = [
@@ -440,7 +415,6 @@ tf_cc_binary(
     testonly = True,
     tags = ["hostonly"],
     deps = [
-        ":fuse_convolution_pass",
         ":mhlo_tfl",
         ":tf_mhlo",
         ":tf_mhlo_tfl",
