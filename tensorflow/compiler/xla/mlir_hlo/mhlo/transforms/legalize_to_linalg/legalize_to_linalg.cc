@@ -690,6 +690,31 @@ class BroadcastConverter
   }
 };
 
+class BroadcastOpToBroadcastConverter
+    : public OpConversionPattern<mhlo::BroadcastOp> {
+  using OpConversionPattern<mhlo::BroadcastOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::BroadcastOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    auto resultTy = typeConverter->convertType(op.getType()).cast<ShapedType>();
+
+    int64_t inputRank = op.getOperand().getType().getRank();
+    int64_t numPrependedDims = op.getBroadcastSizes().size();
+    SmallVector<int64_t> dimensions = llvm::to_vector(
+        llvm::seq<int64_t>(numPrependedDims, numPrependedDims + inputRank));
+
+    auto loc = op.getLoc();
+    Value emptyTensor =
+        getEmptyTensorFor(rewriter, loc, resultTy, op, adaptor.getOperands());
+
+    rewriter.replaceOpWithNewOp<linalg::BroadcastOp>(
+        op, op.getOperand(), emptyTensor, dimensions,
+        linalg::getPrunedAttributeList(op));
+    return success();
+  }
+};
+
 class HloBroadcastInDimConverter
     : public DataMovementOpConverter<HloBroadcastInDimConverter,
                                      mhlo::BroadcastInDimOp> {
@@ -3729,7 +3754,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
   // clang-format off
   patterns->add<
       BitcastConvertConverter,
-      BroadcastConverter<mhlo::BroadcastOp>, ConcatenateConverter,
+      ConcatenateConverter,
       ConstConverterTensor, HloDynamicBroadcastInDimConverter,
       HloBroadcastInDimConverter, IotaConverter<mhlo::IotaOp>,
       EinsumToLinalgConverter,
@@ -3751,6 +3776,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
 
   if (enablePrimitiveOps) {
     patterns->add<
+      BroadcastOpToBroadcastConverter,
       MapOpToMapConverter,
       PointwiseToLinalgMapConverter<mhlo::AbsOp>,
       PointwiseToLinalgMapConverter<mhlo::AddOp>,
@@ -3804,6 +3830,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
     >(typeConverter, context);
   } else {
     patterns->add<
+      BroadcastConverter<mhlo::BroadcastOp>,
       MapOpToGenericConverter,
       PointwiseToLinalgConverter<mhlo::AbsOp>,
       PointwiseToLinalgConverter<mhlo::AddOp>,
