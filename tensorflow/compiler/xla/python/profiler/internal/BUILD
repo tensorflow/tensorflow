@@ -37,3 +37,20 @@ cc_library(
     ],
     alwayslink = True,
 )
+
+cc_library(
+    name = "traceme_wrapper",
+    hdrs = ["traceme_wrapper.h"],
+    copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/compiler/xla/python:__pkg__",
+        "//tensorflow/python/profiler/internal:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/lib:traceme_for_pybind",
+        "@com_google_absl//absl/strings",
+        "@pybind11",
+    ],
+)

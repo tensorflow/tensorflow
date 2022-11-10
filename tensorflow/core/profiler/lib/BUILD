@@ -166,12 +166,6 @@ tf_cuda_library(
     alwayslink = True,
 )
 
-tf_profiler_pybind_cc_library_wrapper(
-    name = "traceme_for_pybind",
-    actual = ":traceme",
-    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
-)
-
 cc_library(
     name = "traceme",
     hdrs = ["traceme.h"],

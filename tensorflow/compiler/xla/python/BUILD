@@ -647,13 +647,13 @@ cc_library(
     deps = [
         ":types",
         "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla/python/profiler/internal:traceme_wrapper",
         "//tensorflow/core/profiler/backends/cpu:python_tracer",
         "//tensorflow/core/profiler/lib:profiler_backends",
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/rpc:profiler_server_impl",
         "//tensorflow/core/profiler/rpc/client:capture_profile",
         "//tensorflow/core/profiler/rpc/client:profiler_client",
-        "//tensorflow/python/profiler/internal:traceme_wrapper",
         "@pybind11",
     ],
 )

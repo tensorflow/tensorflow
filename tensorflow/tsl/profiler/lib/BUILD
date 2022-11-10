@@ -6,6 +6,7 @@ load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
 load(
     "//tensorflow/tsl/profiler/builds:build_config.bzl",
     "tf_profiler_copts",
+    "tf_profiler_pybind_cc_library_wrapper",
 )
 
 cc_library(
@@ -168,6 +169,12 @@ tsl_cc_test(
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
     ],
+)
+
+tf_profiler_pybind_cc_library_wrapper(
+    name = "traceme_for_pybind",
+    actual = ":traceme",
+    visibility = ["//tensorflow/compiler/xla/python/profiler/internal:__pkg__"],
 )
 
 cc_library(

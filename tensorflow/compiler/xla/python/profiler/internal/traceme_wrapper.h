@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_PYTHON_PROFILER_INTERNAL_TRACEME_WRAPPER_H_
-#define TENSORFLOW_PYTHON_PROFILER_INTERNAL_TRACEME_WRAPPER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_PROFILER_INTERNAL_TRACEME_WRAPPER_H_
+#define TENSORFLOW_COMPILER_XLA_PYTHON_PROFILER_INTERNAL_TRACEME_WRAPPER_H_
 
 #include <string>
 #include <utility>
@@ -21,11 +21,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "pybind11/pytypes.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
-namespace tensorflow {
+namespace xla {
 namespace profiler {
 
 // Wraps TraceMe with an interface that takes python types.
@@ -58,7 +58,7 @@ class TraceMeWrapper {
 
   void Stop() { traceme_.Stop(); }
 
-  static bool IsEnabled() { return tensorflow::profiler::TraceMe::Active(); }
+  static bool IsEnabled() { return tsl::profiler::TraceMe::Active(); }
 
  private:
   // Converts kwargs to strings and appends them to name encoded as TraceMe
@@ -80,10 +80,10 @@ class TraceMeWrapper {
     return std::string(pybind11::str(handle));
   }
 
-  tensorflow::profiler::TraceMe traceme_;
+  tsl::profiler::TraceMe traceme_;
 };
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace xla
 
-#endif  // TENSORFLOW_PYTHON_PROFILER_INTERNAL_TRACEME_WRAPPER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_PROFILER_INTERNAL_TRACEME_WRAPPER_H_
