@@ -76,6 +76,21 @@ def TilingSoftmaxPass : Pass<"gml-tiling-softmax", "mlir::func::FuncOp"> {
   ];
 }
 
+def CollapseShapePass : Pass<"gml-collapse-shape", "mlir::func::FuncOp"> {
+  let summary = "Collapse dimensions of bcasts, reductions, and cwise ops";
+  let description = [{
+    Pass to collapse dimensions of bcasts, reductions, and cwise ops. A given
+    number of trailing dimensions remains untouched while the remaining leading
+    dimensions will be collapsed where possible.
+  }];
+  let options = [
+    Option<"retainTrailingDims", "retain-trailing-dims", "int64_t",
+           /*default=*/"0",
+           "Number of trailing dimensions that will not be collapsed.">,
+  ];
+  let dependentDialects = ["::mlir::tensor::TensorDialect"];
+}
+
 def CollapseMaterializeOpsPass : Pass<"gml-collapse-materialize-ops",
     "mlir::func::FuncOp"> {
   let summary = "Collapse (or uncollapse) materialize operations.";

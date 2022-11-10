@@ -57,6 +57,11 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass(
     StringRef distributionLabel = "");
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass();
 
+// Pass to collapse dimensions of bcasts, reductions, and cwise ops.
+std::unique_ptr<OperationPass<func::FuncOp>> createCollapseShapePass();
+std::unique_ptr<OperationPass<func::FuncOp>> createCollapseShapePass(
+    const CollapseShapePassOptions &options);
+
 /// Pass to collapse (or uncollapse) materialize operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createCollapseMaterializeOpsPass();
 
