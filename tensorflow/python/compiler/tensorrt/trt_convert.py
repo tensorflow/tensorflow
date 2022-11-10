@@ -30,6 +30,8 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.compiler.tensorrt import utils as trt_utils
+from tensorflow.python.compiler.tensorrt.lazy_utils import LazyObj
+from tensorflow.python.compiler.tensorrt.types import TrtVersion
 from tensorflow.python.eager import context
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import convert_to_constants
@@ -108,15 +110,23 @@ class TrtPrecisionMode(object):
     return precisions + [p.lower() for p in precisions]
 
 
-# Use a large enough number as the default max_workspace_size for TRT engines,
-# so it can produce reasonable performance results with the default.
-# For TRT >= 8.4, the recommendation is MAX_INT.
-if (_pywrap_py_utils.is_tensorrt_enabled() and
-    trt_utils.is_loaded_tensorrt_version_greater_equal(8, 4, 0)):
-  # We must use `sys.maxsize - 512` to avoid overflow during casting.
-  DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = sys.maxsize - 512
-else:
-  DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30  # 1,073,741,824
+def _get_default_max_trt_workspace_size():
+  # Use a large enough number as the default max_workspace_size for TRT engines,
+  # so it can produce reasonable performance results with the default.
+  # For TRT >= 8.4, the recommendation is MAX_INT.
+  if (
+      _pywrap_py_utils.is_tensorrt_enabled() and
+      trt_utils.is_loaded_tensorrt_version_greater_equal(8, 4, 0)
+  ):
+    # We must use `sys.maxsize - 512` to avoid overflow during casting.
+    return sys.maxsize - 512
+  else:
+    return 1 << 30  # 1,073,741,824
+
+
+DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = LazyObj(int)(
+    _get_default_max_trt_workspace_size)
+
 
 PROFILE_STRATEGY_RANGE = "Range"
 PROFILE_STRATEGY_OPTIMAL = "Optimal"
@@ -228,23 +238,21 @@ def _check_trt_version_compatibility():
         "Windows support is provided experimentally. No guarantee is made "
         "regarding functionality or engineering support. Use at your own risk.")
 
-  linked_version = _pywrap_py_utils.get_linked_tensorrt_version()
-  loaded_version = _pywrap_py_utils.get_loaded_tensorrt_version()
+  linked_version = TrtVersion(_pywrap_py_utils.get_linked_tensorrt_version())
+  loaded_version = TrtVersion(_pywrap_py_utils.get_loaded_tensorrt_version())
 
   logging.info("Linked TensorRT version: %s", str(linked_version))
   logging.info("Loaded TensorRT version: %s", str(loaded_version))
 
   def raise_trt_version_deprecated(version_type, trt_version):
-    assert version_type in [
-        "linked", "loaded"
-    ], ("Incorrect value received for version_type: %s. Accepted: ['linked', "
-        "'loaded']") % version_type
+    assert version_type in ["linked", "loaded"], (
+        f"Incorrect value received for version_type: {version_type}. "
+        "Accepted: ['linked', 'loaded']"
+    )
 
     logging.error(
-        "The {version_type} version of TensorRT: `{trt_version}` has now "
-        "been removed. Please upgrade to TensorRT 7 or more recent.".format(
-            version_type=version_type,
-            trt_version=trt_utils.version_tuple_to_string(trt_version)))
+        f"The {version_type} version of TensorRT: `{trt_version}` has now "
+        "been removed. Please upgrade to TensorRT 7 or more recent.")
 
     raise RuntimeError("Incompatible %s TensorRT versions" % version_type)
 
@@ -254,8 +262,8 @@ def _check_trt_version_compatibility():
   if not trt_utils.is_loaded_tensorrt_version_greater_equal(7, 0, 0):
     raise_trt_version_deprecated("loaded", loaded_version)
 
-  if (loaded_version[0] != linked_version[0] or
-      not trt_utils.is_loaded_tensorrt_version_greater_equal(*linked_version)):
+  if (loaded_version.major != linked_version.major or
+      linked_version > loaded_version):
     logging.error(
         "Loaded TensorRT %s but linked TensorFlow against TensorRT %s. A few "
         "requirements must be met:\n"
@@ -263,16 +271,15 @@ def _check_trt_version_compatibility():
         "compilation and runtime.\n"
         "\t-TensorRT does not support forward compatibility. The loaded "
         "version has to be equal or more recent than the linked version.",
-        trt_utils.version_tuple_to_string(loaded_version),
-        trt_utils.version_tuple_to_string(linked_version))
+        loaded_version,
+        linked_version)
     raise RuntimeError("Incompatible TensorRT major version")
 
   elif loaded_version != linked_version:
     logging.info(
         "Loaded TensorRT %s and linked TensorFlow against TensorRT %s. This is "
         "supported because TensorRT minor/patch upgrades are backward "
-        "compatible.", trt_utils.version_tuple_to_string(loaded_version),
-        trt_utils.version_tuple_to_string(linked_version))
+        "compatible.", loaded_version, linked_version)
 
 
 def _get_tensorrt_rewriter_config(conversion_params,

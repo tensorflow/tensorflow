@@ -18,7 +18,7 @@ import collections
 import os
 import re
 
-from packaging import version
+from tensorflow.python.compiler.tensorrt.types import TrtVersion
 
 from tensorflow.compiler.tf2tensorrt import _pywrap_py_utils
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -51,17 +51,9 @@ def disable_non_trt_optimizers_in_rewriter_config(rewriter_config):
   rewriter_config.shape_optimization = off
 
 
-def version_tuple_to_string(ver_tuple):
-  assert isinstance(ver_tuple, tuple)
-  assert len(ver_tuple) == 3
-
-  ver_tuple = [str(x) for x in ver_tuple]
-  return ".".join(ver_tuple)
-
-
 def _is_tensorrt_version_greater_equal(trt_ver, target_ver):
-  trt_ver = version.Version(version_tuple_to_string(trt_ver))
-  target_ver = version.Version(version_tuple_to_string(target_ver))
+  trt_ver = TrtVersion(trt_ver)
+  target_ver = TrtVersion(target_ver)
 
   return trt_ver >= target_ver
 

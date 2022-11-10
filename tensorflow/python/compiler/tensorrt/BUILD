@@ -31,7 +31,9 @@ py_library(
 py_library(
     name = "trt_convert_py",
     srcs = [
+        "lazy_utils.py",
         "trt_convert.py",
+        "types.py",
         "utils.py",
     ],
     srcs_version = "PY3",
