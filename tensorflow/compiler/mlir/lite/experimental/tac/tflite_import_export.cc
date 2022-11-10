@@ -75,8 +75,10 @@ void AttachCostPerDevice(mlir::ModuleOp module,
 absl::StatusOr<OwningOpRef<mlir::ModuleOp>> TfLiteImporter::Import() {
   source_mgr_handler_ = std::make_unique<mlir::SourceMgrDiagnosticHandler>(
       source_mgr_, &context_);
-  return ImportFlatbufferOrMlir(options_.file_name, options_.input_mlir,
-                                &source_mgr_, &context_);
+  return ImportFlatbufferOrMlir(
+      options_.file_name, options_.input_mlir,
+      /*experimental_prune_unreachable_nodes_unconditionally=*/true,
+      &source_mgr_, &context_);
 }
 
 //////////// Exporter ////////////
