@@ -151,12 +151,15 @@ class TfLiteSubgraphExecute : public OpKernel {
       TfLiteTensor* subgraph_input =
           subgraph_selected.tensor(subgraph_selected.inputs()[i]);
 
-      bool need_resize = false;
-      for (int dim = 0; dim < tf_tensor.shape().dims(); dim++) {
-        if (tf_tensor.shape().dim_size(dim) !=
-            subgraph_input->dims->data[dim]) {
-          need_resize = true;
-          break;
+      // Always resize for unranked tensors.
+      bool need_resize = (subgraph_input->dims->size == 0);
+      if (!need_resize) {
+        for (int dim = 0; dim < tf_tensor.shape().dims(); dim++) {
+          if (tf_tensor.shape().dim_size(dim) !=
+              subgraph_input->dims->data[dim]) {
+            need_resize = true;
+            break;
+          }
         }
       }
       if (need_resize) {
