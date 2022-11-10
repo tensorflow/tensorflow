@@ -149,6 +149,7 @@ cuda_py_test(
     shard_count = 2,
     tags = [
         "optonly",  # flaky timeouts unless optimized
+        "no_oss",  # TODO(b/258503209): Disable the test. 
     ],
     deps = [
         "//tensorflow/python:array_ops",

@@ -159,6 +159,7 @@ tf_py_test(
     tags = [
         "no_windows",
         "nomac",
+        "no_oss",  # TODO(b/258503209): Disable the test.
     ],
     deps = [
         ":client_testlib",

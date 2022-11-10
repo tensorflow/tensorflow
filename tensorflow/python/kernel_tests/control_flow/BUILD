@@ -181,6 +181,7 @@ cuda_py_test(
     name = "scan_ops_test",
     size = "medium",
     srcs = ["scan_ops_test.py"],
+    tags = ["no_oss"], # TODO(b/258503209): Disable the test. 
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
