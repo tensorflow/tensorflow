@@ -141,8 +141,9 @@ cuda_py_test(
     name = "concat_op_test",
     size = "medium",
     srcs = ["concat_op_test.py"],
-    tags = ["no_windows",  # b/126916429
-            "no_oss",  # TODO(b/258503209): Disable the test.
+    tags = [
+        "no_windows",  # b/126916429
+        "no_oss",  # TODO(b/258503209): Disable the test.
     ],
     xla_tags = [
         "no_cuda_asan",  # times out
