@@ -53,7 +53,8 @@ SmallVector<StringRef, 3> getNParallelLoopsAttrs(unsigned nParallelLoops) {
 
 Value getEmptySparseTensor(OpBuilder& b, Location loc, ShapedType type,
                            ArrayRef<Value> dynSizes) {
-  return b.create<bufferization::AllocTensorOp>(loc, type, dynSizes,
+  return b.create<bufferization::AllocTensorOp>(loc, type.cast<TensorType>(),
+                                                dynSizes,
                                                 /*copy=*/Value(),
                                                 /*memory_space=*/IntegerAttr());
 }
