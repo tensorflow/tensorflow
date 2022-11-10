@@ -508,6 +508,7 @@ TF_CALL_LAPACK_TYPES(CSRMV_INSTANCE);
 
 #else
 
+#if CUDA_VERSION < 12000
 template <typename Scalar>
 static inline Status CsrmvExImpl(cudaDataType_t dtype, OpKernelContext* context,
                                  cusparseHandle_t cusparse_handle,
@@ -546,6 +547,7 @@ static inline Status CsrmvExImpl(cudaDataType_t dtype, OpKernelContext* context,
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyMatDescr(descrA));
   return OkStatus();
 }
+#endif  // CUDA_VERSION < 12000
 
 template <typename Scalar>
 static inline Status SpMVImpl(cudaDataType_t dtype, OpKernelContext* context,
@@ -569,10 +571,16 @@ static inline Status SpMVImpl(cudaDataType_t dtype, OpKernelContext* context,
       cusparseCreateDnVec(&vecX, sizeX, const_cast<Scalar*>(x), dtype));
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateDnVec(&vecY, sizeY, y, dtype));
 
+#if CUDA_VERSION >= 12000
+  cusparseSpMVAlg_t algo = CUSPARSE_SPMV_CSR_ALG1;
+#else
+  cusparseSpMVAlg_t algo = CUSPARSE_CSRMV_ALG1;
+#endif
+
   size_t bufferSize;
-  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpMV_bufferSize(
-      cusparse_handle, transA, alpha_host, matA, vecX, beta_host, vecY, dtype,
-      CUSPARSE_CSRMV_ALG1, &bufferSize));
+  TF_RETURN_IF_GPUSPARSE_ERROR(
+      cusparseSpMV_bufferSize(cusparse_handle, transA, alpha_host, matA, vecX,
+                              beta_host, vecY, dtype, algo, &bufferSize));
 
   Tensor buffer;
   TF_RETURN_IF_ERROR(context->allocate_temp(
@@ -580,9 +588,9 @@ static inline Status SpMVImpl(cudaDataType_t dtype, OpKernelContext* context,
   auto pBuffer = buffer.flat<int8>();
   DCHECK(pBuffer.data() != nullptr);
 
-  TF_RETURN_IF_GPUSPARSE_ERROR(
-      cusparseSpMV(cusparse_handle, transA, alpha_host, matA, vecX, beta_host,
-                   vecY, dtype, CUSPARSE_CSRMV_ALG1, pBuffer.data()));
+  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpMV(cusparse_handle, transA, alpha_host,
+                                            matA, vecX, beta_host, vecY, dtype,
+                                            algo, pBuffer.data()));
 
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnVec(vecY));
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnVec(vecX));
@@ -590,6 +598,7 @@ static inline Status SpMVImpl(cudaDataType_t dtype, OpKernelContext* context,
   return OkStatus();
 }
 
+#if CUDA_VERSION < 12000
 #define CSRMV_INSTANCE(Scalar, cudaDataType)                                   \
   template <>                                                                  \
   Status GpuSparse::Csrmv<Scalar>(                                             \
@@ -608,6 +617,20 @@ static inline Status SpMVImpl(cudaDataType_t dtype, OpKernelContext* context,
                       csrSortedColIndA, x, beta_host, y);                      \
     }                                                                          \
   }
+#else
+#define CSRMV_INSTANCE(Scalar, cudaDataType)                                  \
+  template <>                                                                 \
+  Status GpuSparse::Csrmv<Scalar>(                                            \
+      cusparseOperation_t transA, int m, int n, int nnz,                      \
+      const Scalar* alpha_host, const Scalar* csrSortedValA,                  \
+      const int* csrSortedRowPtrA, const int* csrSortedColIndA,               \
+      const Scalar* x, const Scalar* beta_host, Scalar* y) const {            \
+    DCHECK(initialized_);                                                     \
+    return SpMVImpl(cudaDataType, context_, *gpusparse_handle_, transA, m, n, \
+                    nnz, alpha_host, csrSortedValA, csrSortedRowPtrA,         \
+                    csrSortedColIndA, x, beta_host, y);                       \
+  }
+#endif  // CUDA_VERSION < 12000
 
 TF_CALL_CUSPARSE_DTYPES(CSRMV_INSTANCE);
 
