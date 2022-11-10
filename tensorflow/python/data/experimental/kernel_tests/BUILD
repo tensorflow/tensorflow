@@ -211,6 +211,7 @@ tf_py_test(
     size = "small",
     srcs = ["group_by_reducer_test.py"],
     shard_count = 12,
+    tags = ["no_oss"], # TODO(b/258503209): Disable the test. 
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
