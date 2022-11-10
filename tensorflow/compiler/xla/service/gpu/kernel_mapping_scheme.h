@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_KERNEL_MAPPING_SCHEME_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_KERNEL_MAPPING_SCHEME_H_
 
+#include <string>
+
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Value.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -55,7 +57,9 @@ class TilingScheme {
         indexing_order_(indexing_order),
         vector_size_(vector_size),
         thread_id_virtual_scaling_(scaling_factor) {
-    CHECK_EQ(tile_sizes[2] % vector_size_, 0);
+    CHECK_EQ(tile_sizes[2] % vector_size_, 0)
+        << "tile sizes = " << absl::StrJoin(tile_sizes, ", ")
+        << "; vector size = " << vector_size_;
   }
 
   static std::string IndexingOrderToString(IndexingOrder order) {

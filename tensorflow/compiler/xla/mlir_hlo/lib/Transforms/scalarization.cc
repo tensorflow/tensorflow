@@ -16,8 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
+#include "gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "thlo/IR/thlo_ops.h"
 
 namespace mlir {
 namespace {
@@ -259,7 +259,8 @@ struct ScalarizeGatherOp : public OpRewritePattern<thlo::GatherOp> {
 
   LogicalResult matchAndRewrite(thlo::GatherOp gatherOp,
                                 PatternRewriter &rewriter) const override {
-    ImplicitLocOpBuilder b(gatherOp.getLoc(), rewriter);
+    Location loc = gatherOp.getLoc();
+    ImplicitLocOpBuilder b(loc, rewriter);
     auto startIndices = extractStartIndices(b, gatherOp.getStartIndices());
     if (!startIndices) return failure();
 
@@ -267,15 +268,15 @@ struct ScalarizeGatherOp : public OpRewritePattern<thlo::GatherOp> {
     ShapedType initTy = init.getType();
     int64_t initRank = initTy.getRank();
     SmallVector<OpFoldResult> initDimSizes =
-        tensor::getMixedSizes(rewriter, gatherOp.getLoc(), init);
+        tensor::getMixedSizes(b, loc, init);
     SmallVector<Value> initDimSizeValues =
-        getValueOrCreateConstantIndexOp(b, gatherOp.getLoc(), initDimSizes);
+        getValueOrCreateConstantIndexOp(b, loc, initDimSizes);
 
     IntegerAttr oneAttr = b.getI64IntegerAttr(1);
 
     TypedValue<ShapedType> operand = gatherOp.getOperand();
-    SmallVector<Value> operandSizes =
-        tensor::createDimValues(rewriter, gatherOp.getLoc(), operand);
+    auto operandSizes = getValueOrCreateConstantIndexOp(
+        b, loc, tensor::createDimValues(b, loc, operand));
 
     Value zero = b.create<arith::ConstantIndexOp>(0);
     Value one = b.create<arith::ConstantIndexOp>(1);

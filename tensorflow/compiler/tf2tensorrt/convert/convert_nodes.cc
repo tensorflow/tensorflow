@@ -212,7 +212,7 @@ void GetOutputProperties(const grappler::GraphProperties& graph_properties,
     *dtype = out_shape.dtype();
     *shape = out_shape.shape();
   } else {
-    LOG(INFO) << "Unknown output shape" << node->name();
+    LOG(INFO) << "Unknown output shape at node: " << node->name();
     *dtype = node->output_type(out_port);
   }
 }
@@ -1291,8 +1291,51 @@ Status Converter::BuildCudaEngine(
   }
 
 #if IS_TRT_VERSION_GE(8, 0, 0, 0)
-  builder_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
-  VLOG(1) << "Setting sparsity for TensorRT8!";
+  enum class SparseComputeMode { DISABLED, ENABLED, SIMULATED };
+
+  static SparseComputeMode sparse_compute_mode = []() {
+    SparseComputeMode _sparse_compute_mode;
+    int64 _sparse_mode;
+    /*TF_TRT_SPARSE_MODE environment variable controls if sparse compute is
+    enabled. It also allows to simulate the performance benefits of training a
+    model with sparse compute in mind.
+    Possible Values:
+    - 1 [Default]: Sparse compute is enabled if the model was trained with
+    sparse weights. Otherwise it has no effect.
+    - < 1: Sparse compute is explicitly disabled regardless on how the model was
+    trained.
+    - > 1: Sparse compute is forced. This mode is only to be used for
+    benchmarking or debugging purpose. This feature artificially introduces a
+    sparse weight pattern compatible with Sparse TensorCores introduced in
+    NVIDIA Ampere GPU architecture. As a side effect, it will completely corrupt
+    the numerical values of the computation. Therefore shall only be used to
+    evaluate the benefit of using sparse computation for inference.*/
+    TF_CHECK_OK(tensorflow::ReadInt64FromEnvVar("TF_TRT_SPARSE_MODE",
+                                                /*default_val=*/1,
+                                                &_sparse_mode));
+
+    string sparse_log_msg = "[TF-TRT] Sparse compute capability: ";
+    if (_sparse_mode == 1) {
+      sparse_log_msg = StrCat(sparse_log_msg, "enabled.");
+      _sparse_compute_mode = SparseComputeMode::ENABLED;
+    } else if (_sparse_mode < 1) {
+      sparse_log_msg = StrCat(sparse_log_msg, "disabled.");
+      _sparse_compute_mode = SparseComputeMode::DISABLED;
+    } else {
+      sparse_log_msg = StrCat(
+          sparse_log_msg, "simulated.",
+          "It shall only be used for sparse computing benchmark and debug.");
+      _sparse_compute_mode = SparseComputeMode::SIMULATED;
+    }
+    LOG(INFO) << sparse_log_msg;
+
+    return _sparse_compute_mode;
+  }();
+
+  if (sparse_compute_mode == SparseComputeMode::ENABLED ||
+      sparse_compute_mode == SparseComputeMode::SIMULATED) {
+    builder_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
+  }
 #endif
 
   if (tensorflow::tensor_float_32_execution_enabled()) {
@@ -1354,6 +1397,23 @@ Status Converter::BuildCudaEngine(
       "Precision:", precision_mode_str, ", ", "Calibration:", use_calibration_,
       ", ", "Max-Batch-Size:", max_batch_size, ", ",
       "Max-Workspace-Size:", max_workspace_size_bytes);
+
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+  trt_network_name = StrCat(trt_network_name, ", Sparse Compute: ");
+
+  switch (sparse_compute_mode) {
+    case SparseComputeMode::SIMULATED:
+      trt_network_name = StrCat(trt_network_name, "Simulated");
+      break;
+    case SparseComputeMode::ENABLED:
+      trt_network_name = StrCat(trt_network_name, "Enabled");
+      break;
+    case SparseComputeMode::DISABLED:
+      trt_network_name = StrCat(trt_network_name, "Disabled");
+      break;
+  }
+#endif
+
   VLOG(1) << "Setting TensorRT network name to " << trt_network_name;
   network()->setName(trt_network_name.c_str());
 
@@ -2038,7 +2098,11 @@ Status ConvertConv2DHelper(const OpConverterParams* params, int group,
   if (params->use_explicit_precision) {
     TRT_ENSURE(inputs.at(1).is_tensor());
 
-    conv_layer->setInput(1, *inputs.at(1).tensor()->trt_tensor());
+    nvinfer1::IShuffleLayer* layer = params->converter->network()->addShuffle(
+        *inputs.at(1).tensor()->trt_tensor());
+    layer->setFirstTranspose({3, 2, 0, 1});
+    layer->setReshapeDimensions({4, {0, 0, 0, 0}});
+    conv_layer->setInput(1, *layer->getOutput(0));
   }
 
   params->converter->SetLayerName(conv_layer, node_def, "conv");
@@ -6110,6 +6174,15 @@ bool OutputEdgeValidator::operator()(const Edge* out_edge) const {
     return false;
   }
   return true;
+}
+
+ITensorProxyPtr TRT_TensorOrWeights::as_tensor(
+    const OpConverterParams* params) {
+  if (is_tensor()) {
+    return tensor();
+  } else {
+    return params->converter->CreateConstantLayer(weights(), GetTrtDims());
+  }
 }
 
 std::string unexpected_type_error_msg(nvinfer1::DataType type_being_checked,

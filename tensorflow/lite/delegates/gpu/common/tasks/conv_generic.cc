@@ -304,7 +304,9 @@ void ConvGeneric::GenerateCode(const GpuInfo& gpu_info) {
   if (gpu_info.IsMali()) {
     compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
   }
-  if (conv_params_.IsPrivateMemBroadcast() && gpu_info.IsCL20OrHigher()) {
+  if (conv_params_.IsPrivateMemBroadcast() &&
+      (gpu_info.IsCL20OrHigher() ||
+       gpu_info.opencl_info.platform_version.find("clvk"))) {
     compiler_options_.push_back(CompilerOptions::kCl20);
   }
   bool kernel_is_trivial =

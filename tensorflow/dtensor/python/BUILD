@@ -58,7 +58,9 @@ pytype_strict_library(
     srcs = ["config.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:device",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -76,10 +78,9 @@ pytype_strict_library(
     name = "layout",
     srcs = ["layout.py"],
     deps = [
-        ":gen_dtensor_ops",
+        ":config",
         "//tensorflow/dtensor/proto:layout_proto_py_pb2",
         "//tensorflow/python:_pywrap_dtensor_device",
-        "//tensorflow/python:config",
         "//tensorflow/python:device",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/util:tf_export",
@@ -237,11 +238,9 @@ pytype_strict_library(
         "//tensorflow/python/eager:function",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:tfrt_utils",
         "//tensorflow/python/tpu:topology",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-        "@absl_py//absl/flags",
         "@absl_py//absl/logging",
     ],
 )

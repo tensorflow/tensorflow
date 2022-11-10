@@ -6,7 +6,7 @@ load(
 
 package(
     default_visibility = [
-        "//learning/brain/google/monitoring:__pkg__",
+        "//learning/brain/google/monitoring:__subpackages__",
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
         # tensorflow/core/platform:monitoring depends on this package
@@ -20,6 +20,7 @@ package(
         "//tensorflow/core/lib/monitoring:__subpackages__",
         "//tensorflow/compiler/xla/service:__subpackages__",
         "//tensorflow/tsl/framework:__subpackages__",
+        "//tensorflow/tsl/distributed_runtime:__subpackages__",
     ],
     licenses = ["notice"],
 )

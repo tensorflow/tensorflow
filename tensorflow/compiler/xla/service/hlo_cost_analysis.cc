@@ -20,11 +20,11 @@ limitations under the License.
 #include <memory>
 
 #include "absl/algorithm/container.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -89,6 +89,30 @@ Status HloCostAnalysis::Postprocess(const HloInstruction* hlo) {
     properties_sum_[property.first] += property.second;
   }
 
+  return OkStatus();
+}
+
+Status HloCostAnalysis::RemoveInstruction(HloInstruction* instruction) {
+  // Subtract the previously calculated properties of the instruction
+  // from HLO graph's total properties_sum_ if instruction was analyzed before.
+  auto it = hlo_properties_.find(instruction);
+  if (it != hlo_properties_.end()) {
+    current_properties_ = it->second;
+    for (const auto& property : current_properties_) {
+      properties_sum_[property.first] -= property.second;
+    }
+    hlo_properties_.erase(instruction);
+  }
+  return OkStatus();
+}
+
+Status HloCostAnalysis::RevisitInstruction(HloInstruction* instruction) {
+  TF_RETURN_IF_ERROR(RemoveInstruction(instruction));
+  // Now do Preprocess() -> Visit() -> Postprocess() for the instruction same
+  // way it is done during the complete analysis.
+  TF_RETURN_IF_ERROR(Preprocess(instruction));
+  TF_RETURN_IF_ERROR(instruction->Visit(this));
+  TF_RETURN_IF_ERROR(Postprocess(instruction));
   return OkStatus();
 }
 
@@ -402,8 +426,7 @@ Status HloCostAnalysis::HandleMap(const HloInstruction* map) {
   // Compute the cost of all elements for this Map operation.
   const int64_t element_count = ShapeUtil::ElementsIn(map->shape());
   for (const auto& property : sub_properties) {
-    if (!absl::StartsWith(property.first, kBytesAccessedKey) &&
-        !absl::StartsWith(property.first, kUtilizationKey)) {
+    if (KeyToCopyFromSubcomputation(property.first)) {
       current_properties_[property.first] = property.second * element_count;
     }
   }
@@ -427,8 +450,7 @@ Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
   int64_t reduction_count =
       ShapeUtil::ElementsIn(arg->shape()) - ShapeUtil::ElementsIn(output_shape);
   for (const auto& property : sub_properties) {
-    if (!absl::StartsWith(property.first, kBytesAccessedKey) &&
-        !absl::StartsWith(property.first, kUtilizationKey)) {
+    if (KeyToCopyFromSubcomputation(property.first)) {
       current_properties_[property.first] = property.second * reduction_count;
     }
   }
@@ -500,7 +522,7 @@ Status HloCostAnalysis::HandleReduceWindow(
             << " reported for reduce-window:\n"
             << reduce_window->ToString();
   }
-  if (input_reuse_is_inefficient()) {
+  if (options_.count_multiple_input_accesses) {
     SetOperandUtilization(0, 1.0 * output_element_count * window_element_count /
                                  input_element_count);
     SetOperandBytesAccessed(
@@ -510,8 +532,7 @@ Status HloCostAnalysis::HandleReduceWindow(
   }
 
   for (const auto& property : sub_properties) {
-    if (!absl::StartsWith(property.first, kBytesAccessedKey) &&
-        !absl::StartsWith(property.first, kUtilizationKey)) {
+    if (KeyToCopyFromSubcomputation(property.first)) {
       current_properties_[property.first] = property.second * reduction_count;
     }
   }
@@ -539,14 +560,12 @@ Status HloCostAnalysis::HandleSelectAndScatter(
   const int64_t select_count =
       source_element_count * (window_element_count - 1);
   for (const auto& property : select_properties) {
-    if (!absl::StartsWith(property.first, kBytesAccessedKey) &&
-        !absl::StartsWith(property.first, kUtilizationKey)) {
+    if (KeyToCopyFromSubcomputation(property.first)) {
       current_properties_[property.first] += property.second * select_count;
     }
   }
   for (const auto& property : scatter_properties) {
-    if (!absl::StartsWith(property.first, kBytesAccessedKey) &&
-        !absl::StartsWith(property.first, kUtilizationKey)) {
+    if (KeyToCopyFromSubcomputation(property.first)) {
       current_properties_[property.first] +=
           property.second * source_element_count;
     }
@@ -564,7 +583,7 @@ Status HloCostAnalysis::HandleBitcast(const HloInstruction*) {
 }
 
 Status HloCostAnalysis::HandleBroadcast(const HloInstruction* broadcast) {
-  if (input_reuse_is_inefficient()) {
+  if (options_.count_multiple_input_accesses) {
     SetOperandBytesAccessed(0, ShapeUtil::ElementsIn(broadcast->shape()));
     SetOperandUtilization(
         0, 1.0 * ShapeUtil::ElementsIn(broadcast->shape()) /
@@ -1052,9 +1071,12 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
     if (instr->opcode() == HloOpcode::kConstant &&
         ShapeUtil::ElementsIn(instr->shape()) >
             immediate_constant_max_elements()) {
+      float utilization = hlo_properties_[instr][kUtilizationKey];
+      if (!options_.count_multiple_input_accesses) {
+        utilization = fmax(utilization, 1.0);
+      }
       current_properties_[kBytesAccessedKey] +=
-          GetShapeSize(instr->shape()) *
-          hlo_properties_[instr][kUtilizationKey];
+          GetShapeSize(instr->shape()) * utilization;
     }
   }
 
@@ -1206,8 +1228,7 @@ Status HloCostAnalysis::HandleScatter(const HloInstruction* hlo) {
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
                       ProcessSubcomputation(scatter->to_apply()));
   for (const auto& property : sub_properties) {
-    if (!absl::StartsWith(property.first, kBytesAccessedKey) &&
-        !absl::StartsWith(property.first, kUtilizationKey)) {
+    if (KeyToCopyFromSubcomputation(property.first)) {
       current_properties_[property.first] = property.second * element_count;
     }
   }
@@ -1376,6 +1397,11 @@ void HloCostAnalysis::SetOutputBytesAccessed(ShapeIndex index, float value) {
 /*static*/ std::string HloCostAnalysis::GetOutputBytesAccessedKey(
     ShapeIndex index) {
   return absl::StrCat(kBytesAccessedKey, " output ", index.ToString());
+}
+
+bool HloCostAnalysis::KeyToCopyFromSubcomputation(absl::string_view key) const {
+  return !absl::StartsWith(key, kBytesAccessedKey) &&
+         !absl::StartsWith(key, kUtilizationKey);
 }
 
 }  // namespace xla

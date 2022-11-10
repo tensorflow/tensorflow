@@ -35,7 +35,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
     ],
 )
 
@@ -44,7 +44,6 @@ cc_library(
     srcs = ["location_exporter.cc"],
     hdrs = ["location_exporter.h"],
     deps = [
-        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -73,10 +72,10 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/client/lib:quantize",
         "//tensorflow/compiler/xla/client/lib:slicing",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/mlir/utils:error_util",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
         "//tensorflow/compiler/xla/stream_executor/lib",
@@ -111,7 +110,7 @@ gentbl_cc_library(
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [([], "operator_writers.inc")],
     tblgen = ":operator_writer_gen",
-    td_file = "//tensorflow/compiler/xla/mlir_hlo:include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
+    td_file = "//tensorflow/compiler/xla/mlir_hlo:mhlo/IR/hlo_ops.td",
     deps = [
         "//tensorflow/compiler/xla/mlir_hlo:hlo_ops_td_files",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",

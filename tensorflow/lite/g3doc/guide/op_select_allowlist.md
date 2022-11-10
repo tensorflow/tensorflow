@@ -589,6 +589,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.StackV2`
 *   `raw_ops.StatelessMultinomial`
 *   `raw_ops.StatelessRandomGammaV2`
+*   `raw_ops.StatelessRandomGammaV3`
 *   `raw_ops.StatelessRandomGetAlg`
 *   `raw_ops.StatelessRandomGetKeyCounter`
 *   `raw_ops.StatelessRandomGetKeyCounterAlg`

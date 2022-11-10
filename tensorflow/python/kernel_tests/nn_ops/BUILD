@@ -651,6 +651,7 @@ cuda_py_test(
 cuda_py_test(
     name = "xent_op_d9m_test",
     size = "medium",
+    timeout = "long",
     srcs = ["xent_op_d9m_test.py"],
     tags = [
         "no_windows",  # Flaky on Windows CPU: https://github.com/tensorflow/tensorflow/issues/55827

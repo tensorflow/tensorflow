@@ -21,7 +21,7 @@ include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/Dialect/Tensor/IR/TensorOps.td"
 include "stablehlo/dialect/ChloOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
-include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
+include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.td"
 
 def SignedIntTensor : TensorOf<[I1, I8, I16, I32, I64]>;
 def UnsignedIntTensor : TensorOf<[UI8, UI16, UI32, UI64]>;
@@ -499,7 +499,7 @@ def : Pattern<
 //===----------------------------------------------------------------------===//
 
 def UnpackStartingIndices: NativeCodeCall<
-  "UnpackTensorAlongZeroDim($0.getLoc(), $1, &$_builder).output()">;
+  "UnpackTensorAlongZeroDim($0.getLoc(), $1, &$_builder).getOutput()">;
 
 def CanBeTranslatedToDynamicSlice : Constraint<CPred<
   "CanBeTranslatedToDynamicSlice($0, $1, $2.cast<DenseIntElementsAttr>())">>;
@@ -648,9 +648,9 @@ class HLO_RngDistributionValue<string enumStr> :
 def : Pat<(TF_RandomUniformOp:$old $shape, $seed, $seed2),
           (HLO_RngOp
             (HLO_ConstantOp
-              (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 0.0)">)),
+              (NativeCodeCall<"$_builder.getFloatAttr(old.getDtype(), 0.0)">)),
             (HLO_ConstantOp
-              (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 1.0)">)),
+              (NativeCodeCall<"$_builder.getFloatAttr(old.getDtype(), 1.0)">)),
             (CastValueToI64 $old, $shape),
             HLO_RngDistributionValue<"UNIFORM">),
           [(IsShapedTensor $shape)]>;
@@ -658,9 +658,9 @@ def : Pat<(TF_RandomUniformOp:$old $shape, $seed, $seed2),
 def : Pat<(TF_RandomStandardNormalOp:$old $shape, $seed, $seed2),
           (HLO_RngOp
             (HLO_ConstantOp
-              (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 0.0)">)),
+              (NativeCodeCall<"$_builder.getFloatAttr(old.getDtype(), 0.0)">)),
             (HLO_ConstantOp
-              (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 1.0)">)),
+              (NativeCodeCall<"$_builder.getFloatAttr(old.getDtype(), 1.0)">)),
             (CastValueToI64 $old, $shape),
             HLO_RngDistributionValue<"NORMAL">),
           [(IsShapedTensor $shape)]>;

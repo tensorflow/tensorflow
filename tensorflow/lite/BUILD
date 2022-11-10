@@ -159,6 +159,7 @@ cc_library(
     copts = tflite_copts_warnings(),
     deps = [
         ":graph_info",
+        ":kernel_api",
         ":memory_planner",
         ":simple_memory_arena",
         ":util",
@@ -175,6 +176,7 @@ cc_library(
     copts = tflite_copts_warnings() + ["-DTF_LITE_TENSORFLOW_PROFILER"],
     deps = [
         ":graph_info",
+        ":kernel_api",
         ":memory_planner",
         ":simple_memory_arena_with_profiler",
         ":util",
@@ -193,6 +195,7 @@ cc_test(
         ":arena_planner_with_profiler",
         ":graph_info",
         "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
@@ -782,6 +785,25 @@ cc_library(
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
     ],
     alwayslink = 1,
+)
+
+# Enables calling xnnpack impl directly from TFLite kernels.
+config_setting(
+    name = "tflite_kernel_use_xnnpack_false",
+    define_values = {"tflite_kernel_use_xnnpack": "false"},
+)
+
+cc_library(
+    name = "tflite_kernel_use_xnnpack_optional",
+    compatible_with = get_compatible_with_portable(),
+    defines = select({
+        ":tflite_kernel_use_xnnpack_false": [],
+        "//tensorflow:macos": [],
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": [
+            "TFLITE_KERNEL_USE_XNNPACK",
+        ],
+    }),
 )
 
 # Enables applying XNNPACK delegate for float models in TFLite runtime.

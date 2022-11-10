@@ -322,7 +322,7 @@ std::unique_ptr<CallGraph> CallGraph::Build(const HloModule* module) {
 }
 
 Status CallGraph::VisitNodesInternal(
-    const VisitorFunction& visitor_func, const CallGraphNode& node,
+    VisitorFunction visitor_func, const CallGraphNode& node,
     absl::flat_hash_set<const CallGraphNode*>* visited) const {
   auto pair = visited->insert(&node);
   if (!pair.second) {
@@ -338,7 +338,7 @@ Status CallGraph::VisitNodesInternal(
   return visitor_func(node);
 }
 
-Status CallGraph::VisitNodes(const VisitorFunction& visitor_func,
+Status CallGraph::VisitNodes(VisitorFunction visitor_func,
                              bool visit_unreachable_nodes) const {
   absl::flat_hash_set<const CallGraphNode*> visited;
   if (visit_unreachable_nodes) {

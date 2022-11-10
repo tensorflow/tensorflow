@@ -1,13 +1,14 @@
 load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
 
 cc_library(
     name = "traceme_recorder",
     hdrs = ["traceme_recorder.h"],
     copts = tf_profiler_copts(),
     visibility = [
+        "//tensorflow/compiler/xla/backends/profiler:friends",
         "//tensorflow/core/profiler:internal",
         "//tensorflow/tsl/profiler:internal",
     ],
@@ -30,6 +31,7 @@ cc_library(
     hdrs = ["traceme_recorder.h"],
     copts = tf_profiler_copts(),
     visibility = [
+        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/profiler:__pkg__",
         "//tensorflow/core/profiler/backends/cpu:__pkg__",
         "//tensorflow/python:__pkg__",
@@ -48,11 +50,12 @@ cc_library(
     alwayslink = True,
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "traceme_recorder_test",
     srcs = ["traceme_recorder_test.cc"],
     deps = [
         ":traceme_recorder",
+        ":traceme_recorder_impl",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:logging",
@@ -62,6 +65,7 @@ tf_cc_test(
         "//tensorflow/tsl/platform:types",
         "//tensorflow/tsl/profiler/utils:math_utils",
         "//tensorflow/tsl/profiler/utils:time_utils",
+        "//tensorflow/tsl/profiler/utils:time_utils_impl",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
@@ -93,6 +97,7 @@ cc_library(
     visibility = [
         "//tensorflow/core/profiler/backends/cpu:__pkg__",
         "//tensorflow/tsl/profiler:__pkg__",
+        "//tensorflow/tsl/profiler/lib:__pkg__",
     ],
     deps = [
         "//tensorflow/tsl/platform:macros",
@@ -108,13 +113,14 @@ cc_library(
     hdrs = ["host_tracer_utils.h"],
     copts = tf_profiler_copts(),
     visibility = [
+        "//tensorflow/compiler/xla/backends/profiler:friends",
         "//tensorflow/core/profiler:internal",
         "//tensorflow/tsl/profiler:internal",
     ],
     deps = [
         ":traceme_recorder",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/profiler/utils:parse_annotation",
         "//tensorflow/tsl/profiler/utils:tf_op_utils",
         "//tensorflow/tsl/profiler/utils:xplane_builder",

@@ -6,8 +6,6 @@ load(
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_additional_all_protos",
-    "tf_proto_library",
     "tf_protos_all",
 )
 
@@ -22,6 +20,8 @@ package(
 exports_files([
     "captured_function.cc",
     "captured_function.h",
+    "compression_utils.cc",
+    "compression_utils.h",
     "dataset_utils.cc",
     "dataset_utils.h",
     "finalization_utils.cc",
@@ -61,7 +61,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/kernels:variable_ops",
         "//tensorflow/core/profiler/lib:traceme",
     ] + if_not_mobile([
         "//tensorflow/core/grappler:grappler_item",
@@ -74,7 +73,6 @@ cc_library(
     srcs = ["compression_utils.cc"],
     hdrs = ["compression_utils.h"],
     deps = [
-        ":dataset_proto_cc",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -94,20 +92,14 @@ tf_cc_test(
     deps = [
         ":compression_utils",
         ":dataset_test_base",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/tsl/platform:status_matchers",
     ],
-)
-
-tf_proto_library(
-    name = "dataset_proto",
-    srcs = ["dataset.proto"],
-    cc_api_version = 2,
-    protodeps = tf_additional_all_protos(),
 )
 
 cc_library(
@@ -161,6 +153,7 @@ tf_cc_test(
     size = "small",
     srcs = ["dataset_utils_test.cc"],
     deps = [
+        ":compression_utils",
         ":dataset_test_base",
         ":dataset_utils",
         ":serialization_utils",
@@ -170,6 +163,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:str_util",
+        "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/util:determinism_test_util",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -334,10 +328,12 @@ cc_library(
     srcs = ["serialization_utils.cc"],
     hdrs = ["serialization_utils.h"],
     deps = [
+        ":compression_utils",
         ":dataset_utils",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/core:status",
     ],
 )
@@ -357,8 +353,10 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime:device_factory",
+        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:str_util",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )

@@ -297,6 +297,7 @@ cc_library(
         ":rename_entrypoint_to_main",
         ":smuggle_disallowed_ops",
         ":tf_mhlo",
+        ":unfuse_batch_norm_pass",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
@@ -343,6 +344,29 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
     ],
+)
+
+cc_library(
+    name = "unfuse_batch_norm_pass",
+    srcs = [
+        "transforms/unfuse_batch_norm_pass.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
 )
 
 tf_cc_binary(
@@ -396,6 +420,7 @@ tf_cc_binary(
         ":tf_mhlo_tfl",
         ":tf_poly",
         ":tfl_mhlo",
+        ":unfuse_batch_norm_pass",
         "//tensorflow/compiler/mlir:passes",
         "//tensorflow/compiler/mlir:tf_mlir_opt_main",
     ],

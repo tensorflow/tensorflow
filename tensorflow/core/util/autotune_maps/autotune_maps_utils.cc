@@ -39,8 +39,6 @@ using ::stream_executor::gpu::GpuDriver;
 StatusOr<string> DeviceIdToIdentifierHelper(int device_id) {
   GpuDeviceHandle device;
   TF_RETURN_IF_ERROR(GpuDriver::GetDevice(device_id, &device));
-  std::string device_name;
-  TF_RETURN_IF_ERROR(GpuDriver::GetDeviceName(device, &device_name));
   int cc_major;
   int cc_minor;
   TF_RETURN_IF_ERROR(
@@ -53,8 +51,34 @@ StatusOr<string> DeviceIdToIdentifierHelper(int device_id) {
 
   TF_ASSIGN_OR_RETURN(int core_count,
                       GpuDriver::GetMultiprocessorCount(device));
-  return absl::StrFormat("%s sm_%d.%d with %dB RAM and %d cores", device_name,
-                         cc_major, cc_minor, device_memory_size, core_count);
+
+  int sm_clock_khz = 0;
+  int mem_clock_khz = 0;
+  int l2_cache_bytes = 0;
+#if GOOGLE_CUDA
+  TF_ASSIGN_OR_RETURN(
+      sm_clock_khz,
+      GpuDriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_CLOCK_RATE, device));
+  TF_ASSIGN_OR_RETURN(mem_clock_khz,
+                      GpuDriver::GetDeviceAttribute(
+                          CU_DEVICE_ATTRIBUTE_MEMORY_CLOCK_RATE, device));
+  TF_ASSIGN_OR_RETURN(
+      l2_cache_bytes,
+      GpuDriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_L2_CACHE_SIZE, device));
+#endif
+
+  // It would be better to use the PCI device ID or some other truly unique
+  // identifier for the GPU model.  But getting this requires using NVML or
+  // other hacks, which we don't have access to in OSS TensorFlow.
+  //
+  // Alternatively you might be tempted to use GpuDriver::GetDeviceName as a
+  // unique identifier, but this is not stable across driver versions.
+  //
+  // For now, this identifier is good enough.
+  return absl::StrFormat(
+      "sm_%d.%d with %dB RAM, %d cores, %dKHz clock, %dKHz mem clock, %dB L2$",
+      cc_major, cc_minor, device_memory_size, core_count, sm_clock_khz,
+      mem_clock_khz, l2_cache_bytes);
 }
 
 }  // namespace

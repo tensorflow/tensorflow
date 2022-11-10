@@ -7,7 +7,6 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 package(
     default_visibility = [
         ":friends",
-        "//tensorflow:__pkg__",
     ],
     licenses = ["notice"],
 )

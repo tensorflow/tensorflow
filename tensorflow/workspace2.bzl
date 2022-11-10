@@ -133,9 +133,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "5a4636d6882f424b807c16335e8e6ac07d597affb7066073abe250e76951188d",
-        strip_prefix = "XNNPACK-93b9f902393b3a164d4bb44fcd210ca4d612e68f",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/93b9f902393b3a164d4bb44fcd210ca4d612e68f.zip"),
+        sha256 = "ca3a5316b8161214f8f22a578fb638f1fccd0585eee40301363ffd026310379a",
+        strip_prefix = "XNNPACK-a50369c0fdd15f0f35b1a91c964644327a88d480",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/a50369c0fdd15f0f35b1a91c964644327a88d480.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -171,9 +171,9 @@ def _tf_repositories():
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "6ca6e7d4affdff59c749865d6d0428c849968b0873a1d1b849f56d7be624f27b",
-        strip_prefix = "cudnn-frontend-0.7.1",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.7.1.zip"),
+        sha256 = "3c7b842cd67989810955b220fa1116e7e2ed10660a8cfb632118146a64992c30",
+        strip_prefix = "cudnn-frontend-0.7.3",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.7.3.zip"),
     )
 
     tf_http_archive(
@@ -187,9 +187,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "fc2b617ec8dbe907bb10853ea47c46f7acd8817bc4012748623d911aca43afbb",
-        strip_prefix = "oneDNN-2.7",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v2.7.tar.gz"),
+        sha256 = "dc2b9bc851cd8d5a6c4622f7dc215bdb6b32349962875f8bf55cceed45a4c449",
+        strip_prefix = "oneDNN-2.7.1",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v2.7.1.tar.gz"),
     )
 
     tf_http_archive(
@@ -295,19 +295,19 @@ def _tf_repositories():
         name = "png",
         build_file = "//third_party:png.BUILD",
         patch_file = ["//third_party:png_fix_rpi.patch"],
-        sha256 = "ca74a0dace179a8422187671aee97dd3892b53e168627145271cad5b5ac81307",
-        strip_prefix = "libpng-1.6.37",
+        sha256 = "d4160037fa5d09fa7cff555037f2a7f2fefc99ca01e21723b19bfcda33015234",
+        strip_prefix = "libpng-1.6.38",
         system_build_file = "//third_party/systemlibs:png.BUILD",
-        urls = tf_mirror_urls("https://github.com/glennrp/libpng/archive/v1.6.37.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/glennrp/libpng/archive/v1.6.38.tar.gz"),
     )
 
     tf_http_archive(
         name = "org_sqlite",
         build_file = "//third_party:sqlite.BUILD",
-        sha256 = "87775784f8b22d0d0f1d7811870d39feaa7896319c7c20b849a4181c5a50609b",
-        strip_prefix = "sqlite-amalgamation-3390200",
+        sha256 = "9c99955b21d2374f3a385d67a1f64cbacb1d4130947473d25c77ad609c03b4cd",
+        strip_prefix = "sqlite-amalgamation-3390400",
         system_build_file = "//third_party/systemlibs:sqlite.BUILD",
-        urls = tf_mirror_urls("https://www.sqlite.org/2022/sqlite-amalgamation-3390200.zip"),
+        urls = tf_mirror_urls("https://www.sqlite.org/2022/sqlite-amalgamation-3390400.zip"),
     )
 
     tf_http_archive(
@@ -494,10 +494,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "78a06f918bd5fde3c4573ef4f9806f56372b32ec1829c9ec474799eeee641c27",
-        strip_prefix = "curl-7.85.0",
+        sha256 = "3dfdd39ba95e18847965cd3051ea6d22586609d9011d91df7bc5521288987a82",
+        strip_prefix = "curl-7.86.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.85.0.tar.gz"),
+        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.86.0.tar.gz"),
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
@@ -574,7 +574,7 @@ def _tf_repositories():
         sha256 = "b3a24de97a8fdbc835b9833169501030b8977031bcb54b3b3ac13740f846ab30",
         strip_prefix = "zlib-1.2.13",
         system_build_file = "//third_party/systemlibs:zlib.BUILD",
-        urls = tf_mirror_urls("https://zlib.net/zlib-1.2.13.tar.gz"),
+        urls = tf_mirror_urls("https://zlib.net/fossils/zlib-1.2.13.tar.gz"),
     )
 
     # LINT.IfChange

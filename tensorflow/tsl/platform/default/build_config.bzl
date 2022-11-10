@@ -55,6 +55,7 @@ def pyx_library(
         srcs = [],
         testonly = None,
         srcs_version = "PY3",
+        copts = [],
         **kwargs):
     """Compiles a group of .pyx / .pxd / .py files.
 
@@ -71,6 +72,7 @@ def pyx_library(
       srcs: .py, .pyx, or .pxd files to either compile or pass through.
       testonly: If True, the target can only be used with tests.
       srcs_version: Version of python source files.
+      copts: List of copts to pass to cc rules.
       **kwargs: Extra keyword arguments passed to the py_library.
     """
 
@@ -112,6 +114,7 @@ def pyx_library(
             deps = cc_deps + ["@org_tensorflow//third_party/python_runtime:headers"],
             linkshared = 1,
             testonly = testonly,
+            copts = copts,
         )
         shared_objects.append(shared_object_name)
 
@@ -673,25 +676,19 @@ def tf_additional_all_protos():
 def tf_protos_all():
     return if_static(
         extra_deps = [
-            clean_dep("//tensorflow/core/protobuf:autotuning_proto_cc_impl"),
             clean_dep("//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl"),
             clean_dep("//tensorflow/core:protos_all_cc_impl"),
+            clean_dep("//tensorflow/tsl/protobuf:autotuning_proto_cc_impl"),
             clean_dep("//tensorflow/tsl/protobuf:protos_all_cc_impl"),
         ],
         otherwise = [clean_dep("//tensorflow/core:protos_all_cc")],
     )
 
-def tf_protos_profiler_impl():
-    return [
-        clean_dep("//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl"),
-        clean_dep("//tensorflow/core/profiler:profiler_options_proto_cc_impl"),
-    ]
-
 def tf_protos_profiler_service():
     return [
-        clean_dep("//tensorflow/core/profiler:profiler_analysis_proto_cc_impl"),
-        clean_dep("//tensorflow/core/profiler:profiler_service_proto_cc_impl"),
-        clean_dep("//tensorflow/core/profiler:profiler_service_monitor_result_proto_cc_impl"),
+        clean_dep("//tensorflow/tsl/profiler/protobuf:profiler_analysis_proto_cc_impl"),
+        clean_dep("//tensorflow/tsl/profiler/protobuf:profiler_service_proto_cc_impl"),
+        clean_dep("//tensorflow/tsl/profiler/protobuf:profiler_service_monitor_result_proto_cc_impl"),
     ]
 
 def tf_protos_grappler_impl():
@@ -733,7 +730,7 @@ def tf_additional_core_deps():
         clean_dep("//tensorflow/tsl:ios"): [],
         clean_dep("//tensorflow/tsl:linux_s390x"): [],
         "//conditions:default": [
-            "//tensorflow/core/platform/cloud:gcs_file_system",
+            "//tensorflow/tsl/platform/cloud:gcs_file_system",
         ],
     })
 
@@ -791,8 +788,12 @@ def tsl_cc_test(
             [],
             [
                 clean_dep("@com_google_protobuf//:protobuf"),
+                # TODO(ddunleavy) remove these and add proto deps to tests
+                # granularly
                 "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc_impl",
                 "//tensorflow/tsl/protobuf:histogram_proto_cc_impl",
+                "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc_impl",
+                "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc_impl",
             ],
         ),
         **kwargs

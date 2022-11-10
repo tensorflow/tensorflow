@@ -138,6 +138,52 @@ TEST_F(GraphExecutorTest, Extend) {
               ::testing::ElementsAreArray({2}));
 }
 
+TEST_F(GraphExecutorTest, DisableCompilation) {
+  GraphDef graph_def;
+  TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  GraphExecutor::Options options(runtime.get());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create(
+          CreateDefaultSessionOptions(options), graph_def.library()));
+  tfrt::tpu::TpuModelResource tpu_model_resource;
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_executor,
+      GraphExecutor::Create(std::move(options), *fallback_state,
+                            &tpu_model_resource, graph_def));
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<std::pair<std::string, tensorflow::Tensor>> inputs;
+  inputs.push_back({"input", CreateTfTensor<int32_t>(
+                                 /*shape=*/{1, 3}, /*data=*/{1, 1, 1})});
+
+  std::vector<tensorflow::Tensor> outputs;
+
+  GraphExecutor::RunOptions run_options;
+  run_options.disable_compilation = true;
+
+  auto status = graph_executor->Run(run_options, inputs,
+                                    /*output_tensor_names=*/{"rank"},
+                                    /*target_tensor_names=*/{}, &outputs);
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      ::testing::HasSubstr("GraphExecutor: compilation is disabled in "
+                           "execution but the compiled graph is not found"));
+
+  run_options.disable_compilation = false;
+  TF_ASSERT_OK(graph_executor->Run(run_options, inputs,
+                                   /*output_tensor_names=*/{"rank"},
+                                   /*target_tensor_names=*/{}, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              ::testing::ElementsAreArray({2}));
+}
+
 TEST_F(GraphExecutorTest, SyncExecute) {
   GraphDef graph_def;
   TF_ASSERT_OK(GetSimpleGraphDef(graph_def));

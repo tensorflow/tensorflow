@@ -84,6 +84,9 @@ extern "C" void PyArray_tp_dealloc(PyObject* self) {
 
   GetPyArrayStorageFromObject(obj)->~PyArray_Storage();
 
+  PyObject*& dict = *_PyObject_GetDictPtr(self);
+  Py_CLEAR(dict);
+
   tp->tp_free(self);
   Py_DECREF(tp);
 }
@@ -166,6 +169,11 @@ void PyArray::PyInit(py::object self, py::object aval, py::object sharding,
   if (!skip_checks) {
     py_array.CheckAndRearrange();
   }
+}
+
+void PyArray::PyInit(py::object self, DisableFastpath) {
+  Construct(reinterpret_cast<PyArrayObject*>(self.ptr()),
+            PyArray_Storage::DisableFastpath());
 }
 
 PyArray::PyArray(py::object aval, bool weak_type, py::dtype dtype,
@@ -282,6 +290,9 @@ py::handle PyArray::Storage::AsHandle() {
 
 PyArray::Storage::~PyArray_Storage() {
   CHECK(PyGILState_Check());
+  if (!fastpath_enabled) {
+    return;
+  }
   if (py_client->arrays_ == this) {
     py_client->arrays_ = next;
   }
@@ -372,6 +383,12 @@ Status PyArray::RegisterTypes(py::module& m) {
       },
       py::is_method(type), py::arg("aval"), py::arg("sharding"),
       py::arg("arrays"), py::arg("committed"), py::arg("_skip_checks") = false);
+  // TODO(yashkatariya): remove this once the transition completes.
+  type.attr("_init_with_fastpath_disabled") = py::cpp_function(
+      [](py::object self) {
+        PyArray::PyInit(self, PyArray::DisableFastpath());
+      },
+      py::is_method(type));
   type.attr("_sharding") = jax::property_readonly(&PyArray::sharding);
   type.attr("aval") = jax::property(&PyArray::aval, &PyArray::set_aval);
   type.attr("_arrays") = jax::property(&PyArray::arrays, &PyArray::set_arrays);

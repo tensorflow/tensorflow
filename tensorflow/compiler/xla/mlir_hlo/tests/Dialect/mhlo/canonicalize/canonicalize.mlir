@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -pass-pipeline='func.func(canonicalize)' | FileCheck %s
+// RUN: mlir-hlo-opt %s -pass-pipeline='builtin.module(func.func(canonicalize))' | FileCheck %s
 
 // CHECK-LABEL: add_fold
 func.func @add_fold() -> tensor<4xi64> {
@@ -812,7 +812,7 @@ func.func @broadcast_in_dim_constant_fold_complex() -> tensor<1x64x224x224xcompl
 // CHECK-LABEL: @complex_expand_fold
 func.func @complex_expand_fold(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>) {
   %0 = "mhlo.complex"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> (tensor<4xcomplex<f32>>)
-  %1 = mhlo.real(%0) : (tensor<4xcomplex<f32>>) -> (tensor<4xf32>)
+  %1 = mhlo.real %0 : (tensor<4xcomplex<f32>>) -> (tensor<4xf32>)
   %2 = "mhlo.imag"(%0) : (tensor<4xcomplex<f32>>) -> (tensor<4xf32>)
   // CHECK: return %arg0, %arg1
   func.return %1, %2 : tensor<4xf32>, tensor<4xf32>
@@ -820,7 +820,7 @@ func.func @complex_expand_fold(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> (t
 
 // CHECK-LABEL: @complex_collapse_fold
 func.func @complex_collapse_fold(%arg0: tensor<4xcomplex<f32>>) -> tensor<4xcomplex<f32>> {
-  %0 = mhlo.real(%arg0) : (tensor<4xcomplex<f32>>) -> (tensor<4xf32>)
+  %0 = mhlo.real %arg0 : (tensor<4xcomplex<f32>>) -> (tensor<4xf32>)
   %1 = "mhlo.imag"(%arg0) : (tensor<4xcomplex<f32>>) -> (tensor<4xf32>)
   %2 = "mhlo.complex"(%0, %1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xcomplex<f32>>
   // CHECK: return %arg0
@@ -960,9 +960,9 @@ func.func @shape_of_dynamic_reshape(%arg0: tensor<*xf32>, %shape: tensor<2xindex
 // CHECK-SAME: [[ARG0:%[a-zA-Z0-9]+]]
 func.func @dynamic_reshape_rank_1_to_rank_1(%arg0: tensor<?xcomplex<f32>>,
     %shape: tensor<?xindex>) -> tensor<?xf32> {
-  // CHECK: [[RES:%[a-zA-Z0-9]+]] = mhlo.real([[ARG0]]) : (tensor<?xcomplex<f32>>) -> tensor<?xf32>
+  // CHECK: [[RES:%[a-zA-Z0-9]+]] = mhlo.real [[ARG0]] : (tensor<?xcomplex<f32>>) -> tensor<?xf32>
   // CHECK: return [[RES]]
-  %0 = mhlo.real(%arg0): (tensor<?xcomplex<f32>>) -> tensor<?xf32>
+  %0 = mhlo.real %arg0: (tensor<?xcomplex<f32>>) -> tensor<?xf32>
   %1 = shape.shape_of %arg0 : tensor<?xcomplex<f32>> -> tensor<1xindex>
   %2 = shape.num_elements %1 : tensor<1xindex> -> index
   %3 = tensor.from_elements %2 : tensor<1xindex>
@@ -1138,6 +1138,16 @@ func.func @fold_compare_bools_true_eq(%arg : tensor<i1>) -> tensor<i1> {
   %1 = mhlo.constant dense<true> : tensor<i1>
   // CHECK: return %arg
   %2 = "mhlo.compare"(%arg, %1) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  func.return %2 : tensor<i1>
+}
+
+// CHECK-LABEL: compare_i1_as_unsigned
+func.func @compare_i1_as_unsigned(%arg : tensor<i1>) -> tensor<i1> {
+  %true = mhlo.constant dense<true> : tensor<i1>
+  %false = mhlo.constant dense<false> : tensor<i1>
+  // CHECK: %[[FALSE:.*]] = mhlo.constant dense<false>
+  // CHECK: return %[[FALSE]]
+  %2 = "mhlo.compare"(%true, %false) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i1>, tensor<i1>) -> tensor<i1>
   func.return %2 : tensor<i1>
 }
 
@@ -1447,14 +1457,25 @@ func.func @fold_select_vector(%arg0 : tensor<4xf32>, %arg1 : tensor<4xf32>) -> t
 }
 
 // CHECK-LABEL: func @simplify_not_as_select_pred(
-// CHECK-SAME: [[ARGV0:%[a-zA-Z0-9_]+]]: tensor<4xi1>
-// CHECK-SAME: [[ARGV1:%[a-zA-Z0-9_]+]]: tensor<4xf32>
-// CHECK-SAME: [[ARGV2:%[a-zA-Z0-9_]+]]: tensor<4xf32>
 func.func @simplify_not_as_select_pred(%arg0 : tensor<4xi1>, %arg1 : tensor<4xf32>, %arg2 : tensor<4xf32>) -> tensor<4xf32> {
   %0 = "mhlo.not"(%arg0) : (tensor<4xi1>) -> tensor<4xi1>
   %1 = "mhlo.select"(%0, %arg1, %arg2) : (tensor<4xi1>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  // CHECK: "mhlo.select"([[ARGV0]], [[ARGV2]], [[ARGV1]])
   func.return %1 : tensor<4xf32>
+
+  // CHECK: %[[R:.*]] = mhlo.select %arg0, %arg2, %arg1
+  // CHECK: return %[[R]]
+}
+
+// CHECK-LABEL: func @simplify_broadcasted_not_as_select_pred(
+func.func @simplify_broadcasted_not_as_select_pred(%arg0 : tensor<1xi1>, %arg1 : tensor<4xf32>, %arg2 : tensor<4xf32>) -> tensor<4xf32> {
+  %0 = "mhlo.not"(%arg0) : (tensor<1xi1>) -> tensor<1xi1>
+  %1 = "mhlo.broadcast_in_dim"(%0) {broadcast_dimensions = dense<[0]> : tensor<1xi64> } : (tensor<1xi1>) -> tensor<4xi1>
+  %2 = "mhlo.select"(%1, %arg1, %arg2) : (tensor<4xi1>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  func.return %2 : tensor<4xf32>
+
+  // CHECK: %[[B:.*]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xi1>) -> tensor<4xi1>
+  // CHECK: %[[R:.*]] = mhlo.select %[[B]], %arg2, %arg1
+  // CHECK: return %[[R]]
 }
 
 // CHECK-LABEL: gather_to_slice
@@ -2593,4 +2614,21 @@ func.func @simplify_dynamic_gather(%arg0: tensor<375682x256xf16>, %arg1: tensor<
   // CHECK: %[[RET:.+]] = "mhlo.gather"(%arg0, %arg1) {dimension_numbers = #mhlo.gather<offset_dims = [2], collapsed_slice_dims = [0], start_index_map = [0], index_vector_dim = 2>, indices_are_sorted = false, slice_sizes = dense<[1, 256]> : tensor<2xi64>} : (tensor<375682x256xf16>, tensor<16x64xi64>) -> tensor<16x64x256xf16>
   // CHECK: return %[[RET]]
   return %1 : tensor<16x64x256xf16>
+}
+
+// CHECK-LABEL: @fold_reduce_window
+func.func @fold_reduce_window(%arg0: tensor<1x1x20xf32>) -> tensor<1x1x20xf32> {
+  %cst_0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %r = "mhlo.reduce_window"(%arg0, %cst_0) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %s = mhlo.add %arg1, %arg2 : tensor<f32>
+    mhlo.return %s : tensor<f32>
+  }) {
+    padding = dense<0> : tensor<3x2xi64>,
+    window_dimensions = dense<1> : tensor<3xi64>,
+    window_strides = dense<1> : tensor<3xi64>
+  } : (tensor<1x1x20xf32>, tensor<f32>) -> tensor<1x1x20xf32>
+  func.return %r : tensor<1x1x20xf32>
+
+  // CHECK: return %arg0 : tensor<1x1x20xf32>
 }

@@ -14,7 +14,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        ":gce_util",
+        ":failure_handling_util",
         "//tensorflow/python:lib",
         "//tensorflow/python:variables",
         "//tensorflow/python/checkpoint",
@@ -34,9 +34,9 @@ py_library(
 )
 
 py_library(
-    name = "gce_util",
+    name = "failure_handling_util",
     srcs = [
-        "gce_util.py",
+        "failure_handling_util.py",
     ],
     srcs_version = "PY3",
     deps = [
@@ -82,7 +82,7 @@ tf_py_test(
     ],
     deps = [
         ":failure_handling_lib",
-        ":gce_util",
+        ":failure_handling_util",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",

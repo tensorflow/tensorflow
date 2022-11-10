@@ -18,9 +18,9 @@ limitations under the License.
 #include <stddef.h>
 
 #include <cstdint>
+#include <optional>
 
 #include "absl/types/optional.h"
-#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/libtftpu.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
@@ -625,6 +625,8 @@ TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_WriteParameters(
 TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_ReadParameters(
     TpuEmbeddingEngineParameters* params, TF_Status* status);
 
+typedef struct TF_Tensor TF_Tensor;
+
 typedef struct TpuEmbeddingEngine_EnqueueTensorBatch_Params {
   int32_t struct_size;
   void* priv;
@@ -666,9 +668,10 @@ typedef struct TpuEmbeddingEngine_RecvActivationsComputation_Params {
   int32_t struct_size;
   void* priv;
 
-  size_t config_string_size;
+  TpuSerializedProto tpu_embedding_config;
   XLA_Shape* deduplication_data_shape;
   const XLA_TpuMeshState* tpu_mesh_state;
+  TpuSerializedProto* op_sharding;
 
   // out
   TpuSerializedProto* xla_computation;
@@ -683,7 +686,9 @@ typedef struct
   int32_t struct_size;
   void* priv;
 
+  TpuSerializedProto tpu_embedding_config;
   const XLA_TpuMeshState* tpu_mesh_state;
+  TpuSerializedProto* op_sharding;
   // out
   TpuSerializedProto* xla_computation;
   TF_Status* status;
@@ -699,10 +704,12 @@ typedef struct TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation_Params {
   void* priv;
 
   int32_t num_inputs;
+  TpuSerializedProto tpu_embedding_config;
   const XLA_TpuMeshState* tpu_mesh_state;
   XLA_Shape* learning_rate_tuple_shape;
   XLA_Shape* deduplication_data_shape;
   XLA_Shape* gradient_tuple_shape;
+  TpuSerializedProto* op_sharding;
   // out
   TpuSerializedProto* xla_computation;
   TF_Status* status;

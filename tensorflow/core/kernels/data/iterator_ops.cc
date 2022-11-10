@@ -246,83 +246,6 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
 
 namespace {
 
-// Wrapper for encoding/decoding the iterator state stored in a Variant tensor.
-// The get() method returns an VariantTensorData object which contains all the
-// state needed to restore a single iterator.
-//
-// Usage example:
-//
-// Encoding:
-//
-//   Tensor t(DT_VARIANT, TensorShape({}));
-//   t->scalar<Variant>()() = IteratorStateVariant();
-//
-// Encode() sets the type_name of the VariantTensorData object to
-// IteratorStateVariant::TypeName().
-//
-// Decoding:
-//
-//   Variant v = <VariantTensorDataProto object>;
-//   DecodeUnaryVariant(&v);
-//   IteratorStateVariant* wrapper = v.get<IteratorStateVariant>();
-//   IteratorStateReader reader({wrapper->GetData()});
-//   iterator_resource->Restore(ctx, &reader);
-//
-// The type_name of the VariantTensorData object to be decoded must
-// match IteratorStateVariant::TypeName().
-class IteratorStateVariant {
- public:
-  IteratorStateVariant() : data_(nullptr) {}
-  IteratorStateVariant(const IteratorStateVariant& other) : data_(nullptr) {
-    if (other.data_) {
-      Decode(*other.data_);
-    }
-  }
-  IteratorStateVariant& operator=(IteratorStateVariant&& other) = default;
-  IteratorStateVariant& operator=(const IteratorStateVariant& other) = delete;
-
-  // Initializes `this` from a VariantTensorData object.
-  Status InitializeFromVariantData(std::unique_ptr<VariantTensorData> d) {
-    data_ = std::move(d);
-    return OkStatus();
-  }
-
-  string TypeName() const { return kIteratorVariantTypeName; }
-  void Encode(VariantTensorData* data) const { *data = *data_; }
-  bool Decode(VariantTensorData data) {
-    if (data.type_name() != TypeName()) {
-      return false;
-    }
-    auto tensor_data = std::make_unique<VariantTensorData>();
-    std::swap(*tensor_data, data);
-    data_ = std::move(tensor_data);
-    return true;
-  }
-
-  // Returns a borrowed pointer to the underlying VariantTensorData.
-  const VariantTensorData* GetData() const { return data_.get(); }
-
-  string DebugString() const {
-    if (data_) {
-      return strings::StrCat("IteratorStateVariant<", data_->DebugString(),
-                             ">");
-    } else {
-      return strings::StrCat("IteratorStateVariant<empty>");
-    }
-  }
-
- private:
-  std::unique_ptr<VariantTensorData> data_;
-};
-
-// Register the reader class in the global variant decode_fn registry
-// so that a Variant containing a serialized representation of iterator state
-// can be decoded using DecodeUnaryVariant. If we don't do this we will need
-// to manually decode the returned Variant using MaybeDecodeAndCopy in
-// DeserializeIteratorOp which is not recommended.
-REGISTER_UNARY_VARIANT_DECODE_FUNCTION(IteratorStateVariant,
-                                       kIteratorVariantTypeName);
-
 // A helper class that uses a list of IteratorStateVariant objects to represent
 // the state for an iterator resource. It exposes methods that help with
 // saving and restoring of this state. Sample usage
@@ -339,7 +262,7 @@ REGISTER_UNARY_VARIANT_DECODE_FUNCTION(IteratorStateVariant,
 //   iterator_resource->Restore(ctx, reader);
 class IteratorVariantSerializer {
  public:
-  IteratorVariantSerializer() {}
+  IteratorVariantSerializer() = default;
 
   // Calls `Save` on the iterator_resource to build up the list of
   // IteratorStateVariant objects.
@@ -634,6 +557,7 @@ class ToSingleElementOp : public AsyncOpKernel {
         profiler::kInfo);
     tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                    ctx->op_kernel().type_string());
+    metrics::RecordTFDataFetchOp("ToSingleElementOp");
     DatasetBase* dataset;
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
 
@@ -897,6 +821,7 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
       profiler::kInfo);
   tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                  ctx->op_kernel().type_string());
+  metrics::RecordTFDataFetchOp("IteratorGetNextOp");
   IteratorResource* iterator;
   TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
   core::ScopedUnref unref_iterator(iterator);
@@ -937,6 +862,7 @@ Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
       profiler::kInfo);
   tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                  ctx->op_kernel().type_string());
+  metrics::RecordTFDataFetchOp("IteratorGetNextAsOptionalOp");
   IteratorResource* iterator;
   TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
   core::ScopedUnref unref_iterator(iterator);
@@ -1180,6 +1106,5 @@ REGISTER_KERNEL_BUILDER(Name("DeserializeIterator").Device(DEVICE_CPU),
                         DeserializeIteratorOp);
 
 }  // namespace
-
 }  // namespace data
 }  // namespace tensorflow

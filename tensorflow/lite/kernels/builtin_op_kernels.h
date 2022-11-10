@@ -17,6 +17,6 @@ limitations under the License.
 
 /// For documentation, see
 /// third_party/tensorflow/lite/core/kernels/builtin_op_kernels.h.
-#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
+#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_LITE_KERNELS_BUILTIN_OP_KERNELS_H_

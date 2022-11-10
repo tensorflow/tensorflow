@@ -149,10 +149,10 @@ void PinOpsWithSideEffectsPass::runOnOperation() {
     builder.setInsertionPointToEnd(&region.front());
     Operation *inner_op = builder.clone(*op);
     builder.create<YieldOp>(loc, inner_op->getResults());
-    outer_op.body().takeBody(region);
+    outer_op.getBody().takeBody(region);
     // Careful: We can't use outer_op.getResults(), because that also includes
     // the control token.
-    op->replaceAllUsesWith(outer_op.outputs());
+    op->replaceAllUsesWith(outer_op.getOutputs());
     op->erase();
     // Control token is last result of outer_op.
     control_tokens.assign(1, outer_op.getResults().back());

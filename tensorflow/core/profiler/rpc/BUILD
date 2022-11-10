@@ -48,12 +48,13 @@ cc_library(
         "//tensorflow/core/profiler/rpc/client:save_profile",
         "//tensorflow/core/profiler/utils:time_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler:profiler_service_proto_cc",
-        "//tensorflow/core/profiler:profiler_service_cc_grpc_proto",
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:file_system_utils",
         "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/tsl/profiler/protobuf:profiler_service_proto_cc",
+        "//tensorflow/tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -69,7 +70,6 @@ cc_library(
     hdrs = ["profiler_server.h"],
     copts = tf_profiler_copts(),
     visibility = [
-        "//tensorflow:__pkg__",
         "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/core/profiler:internal",
         "//tensorflow/python:__pkg__",
@@ -79,7 +79,7 @@ cc_library(
         ":profiler_service_impl",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler:profiler_service_cc_grpc_proto",
+        "//tensorflow/tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = True,
 )

@@ -1,25 +1,34 @@
 load("//tensorflow:pytype.default.bzl", "pytype_library", "pytype_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud", "tf_py_test", "tf_python_pybind_extension")
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+)
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "get_compatible_with_cloud",
+    "tf_py_test",
+    "tf_python_pybind_extension",
+)
 
 package(
     default_visibility = [
-        "//tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
         "//tensorflow/python:__subpackages__",
     ],
     licenses = ["notice"],
 )
 
+# Do NOT directly depend on `quantize_model_cc_impl` unless it is necessary
+# (i.e. undefined symbol). See the comments in `quantize_model_cc`.
 cc_library(
-    name = "quantize_model_lib",
-    srcs = [
-        "quantize_model.cc",
-    ],
-    hdrs = [
-        "quantize_model.h",
-    ],
+    name = "quantize_model_cc_impl",
+    srcs = ["quantize_model.cc"],
+    hdrs = ["quantize_model.h"],
     compatible_with = get_compatible_with_cloud(),
+    visibility = [
+        # Directly linked to `lib_pywrap_tensorflow_internal.so`.
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -36,10 +45,13 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/quantization/tensorflow:constants",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op_and_kernels",
+        # Required for CustomAggregator op registration.
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
@@ -54,69 +66,42 @@ cc_library(
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/tsl/platform:path",
-    ] + if_static(
-        extra_deps = [
-            "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        ],
-        otherwise = [
-            "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc_headers_only",
-        ],
-    ),
-    alwayslink = True,
+    ],
 )
 
+# OSS: This is a header-only target. The implementation target `quantize_model_cc_impl` is
+# directly linked to `lib_pywrap_tensorflow_internal.so`, so in most use cases of python-
+# exported symbols depending directly on `quantize_model_cc_impl` should be unnecessary.
+# Using the header-only target will help avoid the ODR violation.
 cc_library(
     name = "quantize_model_cc",
+    hdrs = ["quantize_model.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = if_static([":quantize_model_cc_impl"]),
+)
+
+# Exports python symbols via pybind11.
+tf_python_pybind_extension(
+    name = "pywrap_quantize_model",
     srcs = [
+        "pywrap_quantize_model.cc",
         "quantize_model_wrapper.cc",
+        "quantize_model_wrapper.h",  # Private header.
     ],
-    hdrs = [
-        "quantize_model_wrapper.h",
-    ],
-    copts = ["-fexceptions"],
-    features = [
-        "-use_header_modules",  # Required for pybind11
-        "-parse_headers",
-    ],
-    visibility = [
-        "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
-        "//tensorflow/python:__subpackages__",
-    ],
+    # All deps must be header-only.
     deps = [
-        ":quantize_model_lib",
+        ":quantize_model_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op_and_kernels",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@pybind11",
     ],
-    alwayslink = True,
-)
-
-tf_python_pybind_extension(
-    name = "pywrap_quantize_model",
-    srcs = [
-        "pywrap_quantize_model.cc",
-    ],
-    hdrs = [
-        "quantize_model_wrapper.h",
-    ],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@pybind11",
-        "//third_party/python_runtime:headers",
-        "//tensorflow/python/lib/core:pybind11_lib",
-    ] + if_static(
-        extra_deps = [
-            "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        ],
-        otherwise = [
-            "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc_headers_only",
-        ],
-    ),
 )
 
 pytype_strict_library(
@@ -129,6 +114,7 @@ pytype_strict_library(
     deps = [
         ":pywrap_quantize_model",
         ":representative_dataset",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",

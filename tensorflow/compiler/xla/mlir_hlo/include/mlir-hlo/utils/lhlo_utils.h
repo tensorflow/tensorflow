@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef MLIR_HLO_UTILS_LHLO_UTILS_H
 #define MLIR_HLO_UTILS_LHLO_UTILS_H
 
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
+#include "mhlo/IR/hlo_ops_common.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"

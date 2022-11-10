@@ -11,9 +11,6 @@ exports_files([
     "subgraph.h",
 ])
 
-# WARNING: Deps of :headers and :private_headers must be the same.
-# If you update deps of :headers, then make the same update to :private_headers.
-# LINT.IfChange(headers)
 cc_library(
     name = "headers",
     hdrs = [
@@ -41,7 +38,6 @@ cc_library(
         "//tensorflow/lite/profiling:root_profiler",
     ],
 )
-# LINT.ThenChange(:private_headers)
 
 # This target is only for use by the 'tflite_custom_c_library' build macro
 # and should not be used anywhere other than in the implementation of that build macro.
@@ -52,37 +48,14 @@ cc_library(
 # it and subsequently depend on it, which would be bad. Using a separate :private_headers target
 # ensures that the only use of the unwantedly-"public" target is inside the
 # 'tflite_custom_c_library' itself, where it is less likely to get copied into third party code.
-# WARNING: Deps of :private_headers and :headers must be the same.
-# If you update deps of :private_headers, then make the same update to :headers.
-# LINT.IfChange(private_headers)
-cc_library(
+alias(
     name = "private_headers",
-    hdrs = [
-        "interpreter.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
+    actual = ":headers",
+    tags = ["avoid_dep"],
     visibility = [
         "//visibility:public",
     ],
-    deps = [
-        ":subgraph",
-        "//tensorflow/lite:allocation",
-        "//tensorflow/lite:external_cpu_backend_context",
-        "//tensorflow/lite:interpreter_options_header",
-        "//tensorflow/lite:signature_runner",
-        "//tensorflow/lite:stderr_reporter",
-        "//tensorflow/lite:string",
-        "//tensorflow/lite:type_to_tflitetype",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/core/api:error_reporter",
-        "//tensorflow/lite/experimental/remat:metadata_util",
-        "//tensorflow/lite/experimental/resource",
-        "//tensorflow/lite/internal:signature_def",
-        "//tensorflow/lite/profiling:root_profiler",
-    ],
 )
-# LINT.ThenChange(:headers)
 
 # The public target for the C++ API excluding experimental APIs.
 # TODO(ahentz): investigate dependency on gemm_support requiring usage of tf_copts.
@@ -391,11 +364,6 @@ cc_test(
     ],
 )
 
-# WARNING: Deps of :create_op_resolver_header and :private_create_op_resolver_header must
-# be the same.
-# If you update deps of :create_op_resolver_header, then make the same update
-# to :private_create_op_resolver_header.
-# LINT.IfChange(create_op_resolver_header)
 cc_library(
     name = "create_op_resolver_header",
     hdrs = [
@@ -410,7 +378,6 @@ cc_library(
         "//tensorflow/lite:op_resolver",
     ],
 )
-# LINT.ThenChange(:private_create_op_resolver_header)
 
 # This target is only for use by the "tflite_custom_c_library" and "tflite_custom_cc_library" build
 # macro and should not be used anywhere other than in the implementation of that build macro.
@@ -422,26 +389,14 @@ cc_library(
 # :private_create_op_resolver_header target ensures that the only use of the unwantedly-"public"
 # target is inside the "tflite_custom_c_library" itself, where it is less likely to get copied into
 # third party code.
-# WARNING: Deps of :private_create_op_resolver_header and :create_op_resolver_header must
-# be the same.
-# If you update deps of :private_create_op_resolver_header, then make the same update
-# to :create_op_resolver_header.
-# LINT.IfChange(private_create_op_resolver_header)
-cc_library(
+alias(
     name = "private_create_op_resolver_header",
-    hdrs = [
-        "create_op_resolver.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
+    actual = ":create_op_resolver_header",
+    tags = ["avoid_dep"],
     visibility = [
         "//visibility:public",
     ],
-    deps = [
-        "//tensorflow/lite:mutable_op_resolver",
-        "//tensorflow/lite:op_resolver",
-    ],
 )
-# LINT.ThenChange(:create_op_resolver_header)
 
 cc_library(
     name = "macros",

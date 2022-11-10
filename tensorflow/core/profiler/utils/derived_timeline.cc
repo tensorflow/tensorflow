@@ -408,6 +408,7 @@ void DeriveLinesFromStats(XPlane* device_trace) {
     std::optional<absl::string_view> tf_op_name;
     std::optional<absl::string_view> source_info;
     std::optional<uint64_t> group_id;
+    std::optional<uint64_t> is_async;
     auto for_each_stat = [&](const XStatVisitor& stat) {
       if (stat.Type() == StatType::kTfOp) {
         tf_op_name = stat.StrOrRefValue();
@@ -415,10 +416,14 @@ void DeriveLinesFromStats(XPlane* device_trace) {
         group_id = stat.IntOrUintValue();
       } else if (stat.Type() == StatType::kSourceInfo) {
         source_info = stat.StrOrRefValue();
+      } else if (stat.Type() == StatType::kIsAsync) {
+        is_async = stat.IntOrUintValue();
       }
     };
     event.Metadata().ForEachStat(for_each_stat);
     event.ForEachStat(for_each_stat);
+
+    if (is_async && *is_async) continue;  // Disregard asynchronous events.
 
     if (tf_op_name && !tf_op_name->empty()) {
       ProcessTfOpEvent(*tf_op_name, event_span, group_id, plane_builder,

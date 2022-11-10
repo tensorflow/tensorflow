@@ -32,11 +32,11 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "mlir/Parser/Parser.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -470,7 +470,8 @@ static StatusOr<runtime::MemrefDesc> BufferToMemref(
 // converted to MemrefDesc's according to the corresponding operands in the
 // runtime signature.
 Status XlaRuntimeCpuExecutable::Execute(
-    const std::vector<BufferDesc>& descriptor_table) {
+    const std::vector<BufferDesc>& descriptor_table,
+    const ExecutableRunOptions* run_options) {
   const runtime::FunctionType& signature = GetExecutable().runtime_signature();
 
   size_t num_arguments = xla_framework_mapping_.inputs.size();
@@ -537,6 +538,10 @@ Status XlaRuntimeCpuExecutable::Execute(
   runtime::NoResultConverter converter;
 
   runtime::Executable::ExecuteOpts opts;
+
+  runtime::CustomCall::UserData user_data;
+  user_data.insert(run_options);
+  opts.custom_call_data = &user_data;
 
   // We don't expect to see any async tasks in the XLA Runtime executable.
   opts.async_task_runner =

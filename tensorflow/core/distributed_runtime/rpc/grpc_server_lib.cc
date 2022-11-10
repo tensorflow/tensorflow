@@ -498,7 +498,7 @@ Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
 // TODO(haoyuzhang): Remove this method once we have a mechanism to directly set
 // field inside the RPC coordination service handler.
 Status GrpcServer::SetCoordinationServiceAgentInstance(
-    CoordinationServiceAgent* agent) {
+    tsl::CoordinationServiceAgent* agent) {
   auto* coord_service =
       static_cast<GrpcCoordinationServiceImpl*>(coordination_service_);
   coord_service->SetCoordinationServiceAgentInstance(agent);

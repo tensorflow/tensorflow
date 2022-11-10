@@ -55,6 +55,9 @@ class NVPTXCompiler : public GpuCompiler {
       const HloModule* debug_module) override;
 
  private:
+  StatusOr<bool> CanUseLinkModules(
+      const HloModuleConfig& module_config) override;
+
   StatusOr<std::vector<uint8_t>> LinkModules(
       se::StreamExecutor* stream_exec,
       std::vector<std::vector<uint8_t>> modules) override;
@@ -76,7 +79,7 @@ class NVPTXCompiler : public GpuCompiler {
   std::vector<uint8_t> CompileGpuAsmOrGetCachedResult(
       se::StreamExecutor* stream_exec, const std::string& ptx,
       se::CudaComputeCapability cc, const HloModuleConfig& hlo_module_config,
-      bool relocatable);
+      absl::string_view module_name, bool relocatable);
 
   // The compilation_cache_ map is a cache from {ptx string, cc_major, cc_minor}
   // -> cubin so we don't recompile the same ptx twice.  This is important for

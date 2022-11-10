@@ -313,6 +313,7 @@ filegroup(
         "tensor_shape.cc",
         "tensor_shape.h",
         "tensor_types.h",
+        "tensor_util.h",
         "tracking_allocator.h",
         "type_index.h",
         "type_traits.h",
@@ -619,31 +620,6 @@ cc_library(
 )
 
 cc_library(
-    name = "float8",
-    srcs = ["float8.cc"],
-    hdrs = ["float8.h"],
-    visibility = [
-        "//tensorflow/core:__subpackages__",
-        "//tensorflow/security/fuzzing:__subpackages__",
-    ],
-    deps = [
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
-tf_cc_test(
-    name = "float8_test",
-    srcs = ["float8_test.cc"],
-    deps = [
-        ":float8",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:test_benchmark",
-    ],
-)
-
-cc_library(
     name = "numeric_types",
     hdrs = ["numeric_types.h"],
     visibility = [
@@ -799,6 +775,7 @@ tf_cuda_library(
         "log_memory.h",
         "register_types.h",
         "tensor.h",
+        "tensor_util.h",
         "typed_allocator.h",
         "types.h",
         "variant.h",
@@ -825,6 +802,7 @@ tf_cuda_library(
         ":tensor_description_proto_cc",
         ":tensor_proto_cc",
         ":tensor_shape",
+        ":tensor_shape_proto_cc",
         ":tensor_types",
         ":type_index",
         ":type_traits",
@@ -852,6 +830,7 @@ tf_cuda_library(
         "//tensorflow/core/public:version",
         "//tensorflow/core/util:managed_stack_trace",
         "//tensorflow/tsl/framework:device_type",
+        "//tensorflow/tsl/util:byte_swap_array",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -948,14 +927,13 @@ cc_library(
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/core:stringpiece",
         "//tensorflow/core/lib/gtl:map_util",
-        "//tensorflow/core/lib/hash",
         "//tensorflow/core/lib/strings:proto_serialization",
         "//tensorflow/core/lib/strings:scanner",
-        "//tensorflow/core/lib/strings:str_util",
-        "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -1077,19 +1055,17 @@ cc_library(
         ":full_type_util",
         ":op_def_builder",
         ":op_def_util",
+        "//tensorflow/core:core_stringpiece",
         "//tensorflow/core/framework/registration",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/gtl:map_util",
-        "//tensorflow/core/lib/strings:str_util",
-        "//tensorflow/core/lib/strings:strcat",
-        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:platform_port",
-        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -1788,6 +1764,18 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "dataset_proto",
+    srcs = ["dataset.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    protodeps = [
+        ":tensor_proto",
+        ":tensor_shape_proto",
+        ":types_proto",
+    ],
+)
+
+tf_proto_library(
     name = "dataset_metadata_proto",
     srcs = ["dataset_metadata.proto"],
     cc_api_version = 2,
@@ -1805,6 +1793,17 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "optimized_function_graph_proto",
+    srcs = ["optimized_function_graph.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    protodeps = [
+        ":types_proto",
+        ":graph_proto",
+    ],
+)
+
+tf_proto_library(
     name = "protos_all",
     cc_api_version = 2,
     make_default_target_header_only = True,
@@ -1813,6 +1812,7 @@ tf_proto_library(
         ":api_def_proto",
         ":attr_value_proto",
         ":cost_graph_proto",
+        ":dataset_proto",
         ":dataset_metadata_proto",
         ":dataset_options_proto",
         ":device_attributes_proto",

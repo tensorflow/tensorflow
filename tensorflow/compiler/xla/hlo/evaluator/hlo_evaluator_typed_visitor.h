@@ -29,6 +29,7 @@ limitations under the License.
 #include <random>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
@@ -36,13 +37,15 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -847,8 +850,18 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   }
 
   Status HandleStochasticConvert(HloInstruction* stochastic_convert) override {
-    // TODO(b/232442915): Add support for stochastic convert.
-    return UnsupportedTypeError(stochastic_convert);
+    const HloInstruction* operand = stochastic_convert->operand(0);
+    const HloInstruction* random = stochastic_convert->operand(1);
+    const Shape& result_shape = stochastic_convert->shape();
+    TF_RET_CHECK(ShapeUtil::SameDimensions(operand->shape(), random->shape()));
+    TF_RET_CHECK(ShapeUtil::SameDimensions(operand->shape(), result_shape));
+
+    const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
+    const Literal& random_literal = parent_->GetEvaluatedLiteralFor(random);
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[stochastic_convert],
+        StochasticConvertOp(operand_literal, random_literal, result_shape));
+    return OkStatus();
   }
 
   Status HandleClamp(HloInstruction* clamp) override {
@@ -909,8 +922,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
     Literal result(result_shape);
 
-    TF_RETURN_IF_ERROR(
-        result.Populate<ReturnT>([&](absl::Span<const int64_t> out_index) {
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+        [&](absl::Span<const int64_t> out_index, int) {
           std::vector<int64_t> from_index(out_index.begin(), out_index.end());
           for (const int64_t dim : reverse_dimensions) {
             from_index[dim] = result_shape.dimensions(dim) - 1 - out_index[dim];
@@ -1007,7 +1020,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           out_index[output_z_dim] / output_feature_group_size;
 
       const int64_t depthwise_multiplier =
-          batch_group_count > 1 ? output_z_size / input_batch_size : 1;
+          batch_group_count > 1 ? output_z_size / batch_group_count : 1;
       const int64_t batch_group_index =
           out_index[output_z_dim] / depthwise_multiplier;
 
@@ -1421,8 +1434,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     ReturnT scalar =
         parent_->GetEvaluatedLiteralFor(pad->operand(1)).Get<ReturnT>({});
     Literal result(pad->shape());
-    TF_RETURN_IF_ERROR(result.Populate<ReturnT>(
-        [&scalar](absl::Span<const int64_t> multi_index) { return scalar; }));
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+        [&scalar](absl::Span<const int64_t> multi_index, int) {
+          return scalar;
+        }));
 
     const Literal& evaluated_operand =
         parent_->GetEvaluatedLiteralFor(pad->operand(0));
@@ -1968,7 +1983,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     const int64_t rank = operand->shape().rank();
     const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
-    auto func = [&](absl::Span<const int64_t> out_index) {
+    auto func = [&](absl::Span<const int64_t> out_index, int) {
       DimensionVector operand_index(rank);
       for (int64_t i = 0; i < rank; ++i) {
         operand_index[i] =
@@ -1978,7 +1993,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     };
 
     Literal result(shape);
-    TF_RETURN_IF_ERROR(result.Populate<ReturnT>(func));
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(func));
     parent_->evaluated_[slice] = std::move(result);
     return OkStatus();
   }
@@ -2494,8 +2509,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     Literal result(shape);
 
-    TF_RETURN_IF_ERROR(
-        result.Populate<ReturnT>([&](absl::Span<const int64_t> multi_index) {
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+        [&](absl::Span<const int64_t> multi_index, int) {
           return ConvertBinaryFunction(binary_op)(
               lhs_literal.Get<ReturnT>(multi_index),
               rhs_literal.Get<ReturnT>(multi_index));
@@ -2521,14 +2536,139 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     Literal result(shape);
 
-    TF_RETURN_IF_ERROR(
-        result.Populate<ReturnT>([&](absl::Span<const int64_t> multi_index) {
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+        [&](absl::Span<const int64_t> multi_index, int) {
           return ternary_op(lhs_literal.Get<LhsType>(multi_index),
                             rhs_literal.Get<RhsType>(multi_index),
                             ehs_literal.Get<EhsType>(multi_index));
         }));
 
     return std::move(result);
+  }
+
+  template <typename Fp, typename Uint, typename ResultT>
+  StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
+                                        const Literal& random_literal,
+                                        const Shape& result_shape) {
+    std::function<ResultT(Fp, Uint)> stochastic_convert_op =
+        [](Fp operand, Uint random) -> ResultT {
+      bool is_negative = ToSignMagnitude(operand) < 0;
+      if (Eigen::numext::isinf(operand)) {
+        return is_negative ? std::numeric_limits<ResultT>::min()
+                           : std::numeric_limits<ResultT>::max();
+      }
+      if (Eigen::numext::isnan(operand)) {
+        return static_cast<ResultT>(0);
+      }
+      if (operand >= std::numeric_limits<ResultT>::max()) {
+        return std::numeric_limits<ResultT>::max();
+      }
+      if (operand <= std::numeric_limits<ResultT>::min()) {
+        return std::numeric_limits<ResultT>::min();
+      }
+
+      operand = Eigen::numext::abs(operand);
+
+      // Gets the integral piece of the floating point input.
+      auto truncated = static_cast<ResultT>(operand);
+
+      // Removes the integral piece to obtain the fractional piece.
+      Fp fractional = operand - static_cast<Fp>(truncated);
+      if (fractional == 0) {
+        // No rounding necessary.
+        return is_negative ? -truncated : truncated;
+      }
+
+      // Compares fractional values against unsigned random values by
+      // normalizing random values into [0, 1): fractional vs. (random /
+      // random_max). This equals to comparing (fractional * random_max) vs.
+      // random.
+      auto fixed_fractional = static_cast<Uint>(std::ldexp(
+          static_cast<double>(fractional), std::numeric_limits<Uint>::digits));
+
+      // Rounds the integer output up if the fractional pieces is larger than
+      // the input random number.
+      if (random < fixed_fractional) {
+        // This only happens when the operand is in the (min, -max) range and
+        // should be rounded to min.
+        if (truncated == std::numeric_limits<ResultT>::max()) {
+          return std::numeric_limits<ResultT>::min();
+        }
+        truncated++;
+      }
+      return is_negative ? -truncated : truncated;
+    };
+
+    Literal result(result_shape);
+    TF_RETURN_IF_ERROR(
+        result.Populate<ResultT>([&](absl::Span<const int64_t> multi_index) {
+          return stochastic_convert_op(operand_literal.Get<Fp>(multi_index),
+                                       random_literal.Get<Uint>(multi_index));
+        }));
+    return std::move(result);
+  }
+
+  // Converts from primitive types to native types.
+  template <PrimitiveType operand_type, PrimitiveType random_type,
+            PrimitiveType result_type>
+  StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
+                                        const Literal& random_literal,
+                                        const Shape& result_shape) {
+    return StochasticConvertOp<
+        typename primitive_util::PrimitiveTypeToNative<operand_type>::type,
+        typename primitive_util::PrimitiveTypeToNative<random_type>::type,
+        typename primitive_util::PrimitiveTypeToNative<result_type>::type>(
+        operand_literal, random_literal, result_shape);
+  }
+
+  // Evaluates all possible paths of converting to different integers.
+  template <PrimitiveType operand_type, PrimitiveType random_type>
+  StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
+                                        const Literal& random_literal,
+                                        const Shape& result_shape) {
+    switch (result_shape.element_type()) {
+#define CONVERT_IF_RESULT_TYPES_MATCH(type)                        \
+  case (type):                                                     \
+    return StochasticConvertOp<operand_type, random_type, (type)>( \
+        operand_literal, random_literal, result_shape);
+      CONVERT_IF_RESULT_TYPES_MATCH(S32)
+      CONVERT_IF_RESULT_TYPES_MATCH(S16)
+      CONVERT_IF_RESULT_TYPES_MATCH(S8)
+#undef CONVERT_IF_RESULT_TYPES_MATCH
+      default:
+        break;
+    }
+    // TODO(b/232442915): Enable converting big floats to small floats.
+    return Unimplemented(
+        "Stochastically converting from type %s to type %s is not implemented.",
+        PrimitiveType_Name(operand_literal.shape().element_type()),
+        PrimitiveType_Name(result_shape.element_type()));
+  }
+
+  StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
+                                        const Literal& random_literal,
+                                        const Shape& result_shape) {
+    switch (operand_literal.shape().element_type()) {
+      case F16:
+        return StochasticConvertOp<F16, U16>(operand_literal, random_literal,
+                                             result_shape);
+      case BF16:
+        return StochasticConvertOp<BF16, U16>(operand_literal, random_literal,
+                                              result_shape);
+      case F32:
+        return StochasticConvertOp<F32, U32>(operand_literal, random_literal,
+                                             result_shape);
+      case F64:
+        return StochasticConvertOp<F64, U64>(operand_literal, random_literal,
+                                             result_shape);
+      default:
+        break;
+    }
+    // TODO(b/232442915): Enable converting big floats to small floats.
+    return Unimplemented(
+        "Stochastically converting from type %s to type %s is not implemented.",
+        PrimitiveType_Name(operand_literal.shape().element_type()),
+        PrimitiveType_Name(result_shape.element_type()));
   }
 
   template <typename NativeT>

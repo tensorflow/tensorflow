@@ -1,4 +1,5 @@
 // RUN: tf-quant-opt %s -quant-insert-quantized-functions | FileCheck %s
+// RUN: tf-quant-opt %s -quant-insert-quantized-functions='quantization-method=ptq target-opset=UNIFORM_QUANTIZED' | FileCheck --check-prefix=UQ-CHECK %s
 
 // Empty module
 module {
@@ -25,3 +26,9 @@ module {
 // CHECK: func private @quantized_matmul_with_relu6_fn
 // CHECK: func private @quantize_i8
 // CHECK: func private @dequantize_i8
+
+// UQ-CHECK: func private @quantized_conv2d_with_bias_fn
+// UQ-CHECK: func private @quantize_qi8
+// UQ-CHECK: func private @requantize_qi8
+// UQ-CHECK: func private @dequantize_qi8
+

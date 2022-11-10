@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_oss", "tf_cc_test")
-load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts", "tf_profiler_pybind_cc_library_wrapper", "tf_profiler_xla_proto_header")
+load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts", "tf_profiler_pybind_cc_library_wrapper")
 
 package(
     default_visibility = ["//tensorflow/core/profiler:internal"],
@@ -628,15 +628,13 @@ cc_library(
 
 cc_library(
     name = "post_process_single_host_xplane",
-    srcs = ["post_process_single_host_xplane.cc"],
     hdrs = ["post_process_single_host_xplane.h"],
     copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler/utils:xplane_schema",
-        "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/tsl/profiler/convert:post_process_single_host_xplane",
     ],
 )
 
@@ -763,7 +761,6 @@ cc_library(
     hdrs = ["hlo_to_tools_data.h"],
     copts = tf_profiler_copts(),
     visibility = [
-        "//tensorflow:__pkg__",
         "//tensorflow/python:__pkg__",
     ],
     deps = [
@@ -832,7 +829,7 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         ":repository",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -840,13 +837,17 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:file_system_utils",
         "//tensorflow/core/profiler/utils:hlo_proto_map",
-    ] + tf_profiler_xla_proto_header(),
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
     name = "xla_op_utils",
     hdrs = ["xla_op_utils.h"],
-    deps = ["@com_google_absl//absl/strings"],
+    deps = [
+        "//tensorflow/tsl/profiler/convert:xla_op_utils",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
@@ -869,24 +870,13 @@ cc_library(
     ],
 )
 
-tf_cc_test(
-    name = "xla_op_utils_test",
-    size = "small",
-    srcs = ["xla_op_utils_test.cc"],
-    deps = [
-        ":xla_op_utils",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
 cc_library(
     name = "hlo_proto_to_graph_view",
     srcs = ["hlo_proto_to_graph_view.cc"],
     hdrs = ["hlo_proto_to_graph_view.h"],
     deps = [
         ":tool_options",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core/platform:errors",

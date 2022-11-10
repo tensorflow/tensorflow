@@ -151,6 +151,14 @@ message LayoutProto {
   // array is assumed to be dense.
   repeated DimLevelType dim_level_types = 9;
 
+  // Whether each dimension is unique or ordered.  Each of the following lists
+  // must be empty, or have one entry for each entry of dim_level_types.  If
+  // either list is empty, all dimensions are assumed to be unique and ordered,
+  // respectively.  Entries in this list may not be false for some DimLevelType
+  // values (such as DIM_DENSE in particular).
+  repeated bool dim_unique = 13;
+  repeated bool dim_ordered = 14;
+
   // Sequence of dimension numbers, from minor (fastest varying index) to major
   // (slowest varying index). This field is required.
   repeated int64 minor_to_major = 1;
@@ -165,6 +173,15 @@ message LayoutProto {
   // Memory space where this array resides. The integer field is interpreted in
   // a backend-specific manner.
   int64 memory_space = 8;
+
+  // The integer types to be used for indices and pointers.  These fields must
+  // not be used unless the layout represents a sparse array.  The PrimitiveType
+  // must correspond to an unsigned integer (U8, U16, U32, or U64).
+  // If not provided, the compiler will use the largest unsigned integer
+  // that is naturally supported by the target device (U32 or U64 in currently
+  // supported devices).
+  PrimitiveType index_primitive_type = 11;
+  PrimitiveType pointer_primitive_type = 12;
 
   // The physical, on-device shape used to represent the shape this layout
   // belongs to. Only used for sparse arrays.

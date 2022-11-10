@@ -20,7 +20,6 @@ load(
     "tf_kernel_tests_linkstatic",
     "tf_platform_alias",
     "tf_platform_deps",
-    "tf_testing_deps",  # @unused
     "tf_windows_aware_platform_deps",
 )
 load(
@@ -32,11 +31,16 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_google",
     "if_not_android",
+    "if_not_fuchsia",
     "if_windows",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",  # @unused
     "tf_cuda_library",
+)
+load(
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -71,6 +75,7 @@ exports_files(
         "env_time.h",
         "file_system.h",
         "file_system_helper.h",
+        "float8.h",
         "host_info.h",
         "human_readable_json.h",
         "init_main.h",
@@ -122,6 +127,15 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/tsl/platform:bfloat16",
+    ],
+)
+
+cc_library(
+    name = "float8",
+    hdrs = ["float8.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/tsl/platform:float8",
     ],
 )
 
@@ -406,7 +420,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["logging.h"],
     deps = [
-        "//tensorflow/core/platform:types",
+        ":types",
         "//tensorflow/tsl/platform:logging",
     ],
 )
@@ -915,6 +929,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":bfloat16",
+        ":float8",
         ":platform",
         ":tstring",
         "//tensorflow/tsl/framework:device_type",
@@ -1012,13 +1027,23 @@ cc_binary(
     ] + if_not_android([":rocm_rocdl_path"]),
 )
 
+cc_library(
+    name = "gpu_all_runtime",
+    visibility = ["//visibility:private"],
+    deps = if_cuda_is_configured(
+        ["//tensorflow/compiler/xla/stream_executor/cuda:all_runtime"],
+    ) + if_rocm_is_configured(
+        ["//tensorflow/compiler/xla/stream_executor/rocm:all_runtime"],
+    ),
+)
+
 # This do-nothing lib should only be used as a dep in cuda_deps in :stream_executor cuda lib because
 # the "+" operator doesn't work for bazel in stream_executor cuda_deps.
 cc_library(
     name = "private_static_dep",
     visibility = ["//visibility:private"],
     deps = if_static(
-        ["//tensorflow/compiler/xla/stream_executor/cuda:all_runtime"],
+        [":gpu_all_runtime"],
     ),
 )
 
@@ -1348,6 +1373,7 @@ filegroup(
         "file_system.h",
         "file_system_helper.h",
         "fingerprint.h",
+        "float8.h",
         "init_main.h",
         "logger.h",
         "mem.h",
@@ -1430,6 +1456,7 @@ filegroup(
         "byte_order.h",
         "cpu_info.h",
         "dynamic_annotations.h",
+        "float8.h",
         "macros.h",
         "mutex.h",
         "platform.h",
@@ -1448,6 +1475,7 @@ filegroup(
     name = "lib_internal_private_hdrs",
     srcs = [
         "bfloat16.h",
+        "float8.h",
         "raw_coding.h",
         "scanner.h",
         "str_util.h",
@@ -1499,6 +1527,7 @@ filegroup(
     name = "tflite_portable_logging_hdrs",
     srcs = [
         "bfloat16.h",
+        "float8.h",
         "logging.h",
         "macros.h",
         "platform.h",
@@ -1577,6 +1606,7 @@ filegroup(
         "file_statistics.h",
         "file_system.h",
         "file_system_helper.h",
+        "float8.h",
         "hash.h",
         "host_info.h",
         "init_main.h",
@@ -1643,7 +1673,9 @@ filegroup(
         "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
         "//tensorflow/tsl/platform:mobile_srcs_only_runtime",
         "//tensorflow/tsl/platform/default:mobile_srcs_only_runtime",
-    ] + tf_google_mobile_srcs_only_runtime(),
+    ] + if_not_fuchsia([
+        "subprocess.h",
+    ]) + tf_google_mobile_srcs_only_runtime(),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 

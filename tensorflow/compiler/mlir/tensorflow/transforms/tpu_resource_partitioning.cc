@@ -76,9 +76,9 @@ LogicalResult UpdateReadUses(TF::ReadVariableOp old_read,
                              llvm::SmallVector<Value, 4> new_reads) {
   xla::OpSharding sharding;
   sharding.ParseFromString(
-      old_partitioned_input._XlaShardingAttr().getValue().str());
+      old_partitioned_input.get_XlaShardingAttr().getValue().str());
   for (OpOperand& read_use :
-       llvm::make_early_inc_range(old_read.value().getUses())) {
+       llvm::make_early_inc_range(old_read.getValue().getUses())) {
     if (dyn_cast_or_null<tf_device::ClusterFuncOp>(read_use.getOwner())) {
       // ClusterFunc's use of the Read is replaced with use of the
       // TPUPartitionedInput.
@@ -130,24 +130,24 @@ LogicalResult PartitionResourceReadsWrites(
     if (!result.hasOneUse()) continue;
     auto assign_var =
         llvm::dyn_cast<TF::AssignVariableOp>(*result.getUsers().begin());
-    if (!assign_var || assign_var.value() != result) continue;
+    if (!assign_var || assign_var.getValue() != result) continue;
     auto partitioned_input = llvm::dyn_cast_or_null<TF::TPUPartitionedInputOp>(
-        assign_var.resource().getDefiningOp());
+        assign_var.getResource().getDefiningOp());
     if (!partitioned_input ||
-        !AllResourceTypesHaveSubtypes(partitioned_input.inputs().getTypes()))
+        !AllResourceTypesHaveSubtypes(partitioned_input.getInputs().getTypes()))
       continue;
 
     builder.setInsertionPoint(assign_var);
     llvm::SmallVector<Type, 4> partitioned_output_types;
-    partitioned_output_types.reserve(partitioned_input.N());
-    for (Type input_type : partitioned_input.inputs().getTypes())
+    partitioned_output_types.reserve(partitioned_input.getN());
+    for (Type input_type : partitioned_input.getInputs().getTypes())
       partitioned_output_types.push_back(GetResourceSubtype(input_type));
     auto partitioned_output = builder.create<TF::TPUPartitionedOutputOp>(
         cluster_func->getLoc(), partitioned_output_types, result,
-        partitioned_input.partition_dimAttr(),
-        partitioned_input._XlaShardingAttr());
-    for (auto resource_write :
-         llvm::zip(partitioned_input.inputs(), partitioned_output.output()))
+        partitioned_input.getPartitionDimAttr(),
+        partitioned_input.get_XlaShardingAttr());
+    for (auto resource_write : llvm::zip(partitioned_input.getInputs(),
+                                         partitioned_output.getOutput()))
       builder.create<TF::AssignVariableOp>(
           assign_var->getLoc(), /*resource=*/std::get<0>(resource_write),
           /*value=*/std::get<1>(resource_write));
@@ -159,23 +159,23 @@ LogicalResult PartitionResourceReadsWrites(
         operand.get().getDefiningOp());
     if (!read_var) continue;
     auto partitioned_input = llvm::dyn_cast_or_null<TF::TPUPartitionedInputOp>(
-        read_var.resource().getDefiningOp());
-    if (!partitioned_input ||
-        !AllResourceTypesHaveSubtypes(partitioned_input.inputs().getTypes())) {
+        read_var.getResource().getDefiningOp());
+    if (!partitioned_input || !AllResourceTypesHaveSubtypes(
+                                  partitioned_input.getInputs().getTypes())) {
       continue;
     }
 
     builder.setInsertionPoint(partitioned_input);
     llvm::SmallVector<Value, 4> partitioned_reads;
-    for (Value input : partitioned_input.inputs()) {
+    for (Value input : partitioned_input.getInputs()) {
       auto partitioned_read = builder.create<TF::ReadVariableOp>(
           read_var->getLoc(), GetResourceSubtype(input), input);
-      partitioned_reads.push_back(partitioned_read.value());
+      partitioned_reads.push_back(partitioned_read.getValue());
     }
     auto partitioned_read = builder.create<TF::TPUPartitionedInputOp>(
-        partitioned_input->getLoc(), read_var.value().getType(),
-        partitioned_reads, partitioned_input.partition_dimAttr(),
-        partitioned_input._XlaShardingAttr());
+        partitioned_input->getLoc(), read_var.getValue().getType(),
+        partitioned_reads, partitioned_input.getPartitionDimAttr(),
+        partitioned_input.get_XlaShardingAttr());
     if (failed(UpdateReadUses(read_var, partitioned_input, partitioned_read,
                               partitioned_reads)))
       return failure();

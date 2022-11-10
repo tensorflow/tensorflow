@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
-#include "tensorflow/core/distributed_runtime/preemption/preemption_sync_manager.h"
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
@@ -70,6 +69,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/util.h"
 #include "tensorflow/compiler/xla/python/weakref_lru_cache.h"
 #include "tensorflow/compiler/xla/python/xla_compiler.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -77,6 +77,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/python/lib/core/bfloat16.h"
+#include "tensorflow/tsl/distributed_runtime/preemption/preemption_sync_manager.h"
 
 // TODO(phawkins): remove host_id properties after JAX is update to avoid them.
 
@@ -184,6 +185,9 @@ PYBIND11_MODULE(xla_extension, m) {
            })
       .def("live_buffers",
            [](const ClientAndPtr<PjRtDevice>& device) {
+             PythonDeprecationWarning(
+                 "Per device live_buffers() is going to be deprecated. Please "
+                 "use the jax.live_arrays() for jax.Arrays instead.");
              return device.client->LiveBuffersOnDevice(device.get());
            })
       .def(
@@ -319,6 +323,10 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<StreamExecutorGpuDevice, PjRtDevice,
              ClientAndPtr<StreamExecutorGpuDevice>>
       gpu_device(m, "GpuDevice");
+  gpu_device.def_property_readonly(
+      "slice_index", &StreamExecutorGpuDevice::slice_index,
+      "Integer ID of a set of devices connected by "
+      "fast network, e.g., NVLink.");
   m.def(
       "get_gpu_client",
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
@@ -474,21 +482,25 @@ PYBIND11_MODULE(xla_extension, m) {
   BuildMlirSubmodule(m);
   BuildCustomCallShardingPybindAPI(m);
 
-  py::class_<tensorflow::PreemptionSyncManager,
-             std::unique_ptr<tensorflow::PreemptionSyncManager>>
+  py::class_<tsl::PreemptionSyncManager,
+             std::unique_ptr<tsl::PreemptionSyncManager>>
       preemption_sync_manager(m, "PreemptionSyncManager");
   preemption_sync_manager
       .def(
           "initialize",
-          [](tensorflow::PreemptionSyncManager& manager,
-             DistributedRuntimeClient* client) { manager.Initialize(client); },
+          [](tsl::PreemptionSyncManager& manager,
+             DistributedRuntimeClient* client) {
+            TF_ASSIGN_OR_RETURN(tsl::CoordinationServiceAgent * agent,
+                                client->GetCoordinationServiceAgent());
+            return manager.Initialize(agent);
+          },
           py::arg("distributed_client"))
       .def("reached_sync_point",
-           [](tensorflow::PreemptionSyncManager& manager, int step_counter) {
+           [](tsl::PreemptionSyncManager& manager, int step_counter) {
              return manager.ReachedSyncPoint(step_counter);
            });
   m.def("create_preemption_sync_manager",
-        []() { return tensorflow::CreatePreemptionSyncManager(); });
+        []() { return tsl::CreatePreemptionSyncManager(); });
 
   py::class_<DistributedRuntimeService,
              std::unique_ptr<DistributedRuntimeService>>

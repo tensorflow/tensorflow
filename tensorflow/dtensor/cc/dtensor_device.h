@@ -37,13 +37,14 @@ namespace dtensor {
 void AllocateDTensorDevice(absl::string_view device_name,
                            TFE_CustomDevice* device, void** device_info);
 
-// Add a mesh to the layout propagator indicated by `device_info`.
+// Add a mesh to the `DTensorDevice` indicated by `device_info`.
 //
 // `serialized_mesh` is a serialized Mesh proto.
 //
-// is_async indicates whether DTensor operations on this mesh will return
-// immediately (with "non-ready" handles) or block until executed. This is
-// exposed as an option for ease of debugging, and will typically be on.
+// If `is_async` is true, it indicates the DTensor operations on this mesh will
+// return immediately (with "non-ready" handles), otherwise block until
+// executed. This is exposed as an option for ease of debugging, and will
+// typically be on.
 //
 // `is_host_mesh` indicates this is a CPU mesh used only for sea-of-donuts-style
 // host collectives.

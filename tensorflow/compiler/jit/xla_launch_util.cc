@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
@@ -400,19 +401,19 @@ static StatusOr<Tensor> GetOrCreateTensorForOutput(
 }
 
 // Sets output `output_num` for `ctx` provided it is known at a compile time.
-static Status SetOutputForConstant(
-    OpKernelContext* ctx, se::Stream* stream,
+Status SetOutputForConstant(
+    OpKernelContext* ctx, bool requires_copy_to_device,
     const XlaCompiler::CompilationResult* compilation_result, int output_num) {
   CHECK(compilation_result->outputs[output_num].is_constant);
   const Tensor& const_tensor =
       compilation_result->outputs[output_num].constant_value;
   Tensor* output_tensor;
-  if (stream && const_tensor.TotalBytes() > 0) {
+  if (requires_copy_to_device && const_tensor.TotalBytes() > 0) {
     // Copy host -> device. (Empty tensors don't have backing buffers.)
-    // Manually allocate memory using an XlaTensorBuffer so we can allocate
-    // as much memory as the device requires (as given by
-    // GetByteSizeRequirement). This avoids XlaTransferManager having to
-    // reallocate the device buffer later.
+    // Manually allocate memory so we can allocate as much memory as the device
+    // requires (as given by GetByteSizeRequirement). This avoids
+    // XlaTransferManager having to reallocate the device buffer later if
+    // XlaTransferManager is used.
     VLOG(1) << "Constant output tensor on device";
 
     TF_RETURN_IF_ERROR(
@@ -569,8 +570,9 @@ Status XlaComputationLaunchContext::PopulateOutputs(
             << shape.DebugString() << " type " << DataTypeString(type);
 
     if (compilation_result->outputs[i].is_constant) {
-      TF_RETURN_IF_ERROR(
-          SetOutputForConstant(ctx, stream, compilation_result, i));
+      TF_RETURN_IF_ERROR(SetOutputForConstant(
+          ctx, /*requires_copy_to_device=*/stream != nullptr,
+          compilation_result, i));
     } else if (type == DT_RESOURCE) {
       int input_index =
           compilation_result->outputs[i].input_index - missing_ctx_input_prefix;

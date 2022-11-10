@@ -44,7 +44,7 @@ class ShapePartitionAssignerTest : public HloTestBase {
 
 TEST_F(ShapePartitionAssignerTest, Shape13WithLayout10) {
   std::vector<int64_t> expected_partitions[] = {{1} /* 1 */, {1, 2} /* 2 */};
-  RunR2Test(ShapeUtil::MakeShapeWithLayout(F32, {1, 3}, {1, 0}), 2,
+  RunR2Test(ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 3}, {1, 0}), 2,
             expected_partitions);
 }
 
@@ -52,7 +52,7 @@ TEST_F(ShapePartitionAssignerTest, Shape31WithLayout01) {
   std::vector<int64_t> expected_partitions[] = {
       {1} /* 1 */, {1, 2} /* 2 */
   };
-  RunR2Test(ShapeUtil::MakeShapeWithLayout(F32, {3, 1}, {0, 1}), 2,
+  RunR2Test(ShapeUtil::MakeShapeWithDenseLayout(F32, {3, 1}, {0, 1}), 2,
             expected_partitions);
 }
 
@@ -60,14 +60,14 @@ TEST_F(ShapePartitionAssignerTest, Shape53WithLayout10) {
   std::vector<int64_t> expected_partitions[] = {{1} /* 1 */, {2} /* 2 */,
                                                 {3} /* 3 */, {4} /* 4 */,
                                                 {5} /* 5 */, {3, 2} /* 6 */};
-  RunR2Test(ShapeUtil::MakeShapeWithLayout(F32, {5, 3}, {1, 0}), 6,
+  RunR2Test(ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 3}, {1, 0}), 6,
             expected_partitions);
 }
 
 TEST_F(ShapePartitionAssignerTest, Shape53WithLayout01) {
   std::vector<int64_t> expected_partitions[] = {
       {1} /* 1 */, {2} /* 2 */, {3} /* 3 */, {2, 2} /* 4 */};
-  RunR2Test(ShapeUtil::MakeShapeWithLayout(F32, {5, 3}, {0, 1}), 4,
+  RunR2Test(ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 3}, {0, 1}), 4,
             expected_partitions);
 }
 
@@ -77,7 +77,7 @@ TEST_F(ShapePartitionAssignerTest, Shape532WithLayout210) {
       {5} /* 5 */,     {3, 2} /* 6 */,  {3, 2} /* 7 */,  {4, 2} /* 8 */,
       {3, 3} /* 9 */,  {3, 3} /* 10 */, {3, 3} /* 11 */, {4, 3} /* 12 */,
       {4, 3} /* 13 */, {4, 3} /* 14 */, {5, 3} /* 15 */, {4, 2, 2} /* 16 */};
-  RunR2Test(ShapeUtil::MakeShapeWithLayout(F32, {5, 3, 2}, {2, 1, 0}), 16,
+  RunR2Test(ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 3, 2}, {2, 1, 0}), 16,
             expected_partitions);
 }
 
@@ -87,7 +87,7 @@ TEST_F(ShapePartitionAssignerTest, Shape532WithLayout201) {
       {2, 2} /* 5 */,  {3, 2} /* 6 */,  {3, 2} /* 7 */,  {3, 2} /* 8 */,
       {3, 3} /* 9 */,  {3, 3} /* 10 */, {3, 3} /* 11 */, {3, 4} /* 12 */,
       {3, 4} /* 13 */, {3, 4} /* 14 */, {3, 5} /* 15 */, {3, 2, 2} /* 16 */};
-  RunR2Test(ShapeUtil::MakeShapeWithLayout(F32, {5, 3, 2}, {2, 0, 1}), 16,
+  RunR2Test(ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 3, 2}, {2, 0, 1}), 16,
             expected_partitions);
 }
 
@@ -97,7 +97,7 @@ class ShapePartitionIteratorTest : public HloTestBase {
 };
 
 TEST_F(ShapePartitionIteratorTest, Shape53WithLayout10) {
-  Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {5, 3}, {1, 0});
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 3}, {1, 0});
 
   {
     ShapePartitionIterator iterator(shape, {1});
@@ -122,7 +122,7 @@ TEST_F(ShapePartitionIteratorTest, Shape53WithLayout10) {
 }
 
 TEST_F(ShapePartitionIteratorTest, Shape532WithLayout210) {
-  Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {5, 3, 2}, {2, 1, 0});
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 3, 2}, {2, 1, 0});
 
   {
     ShapePartitionIterator iterator(shape, {1, 1});
@@ -162,7 +162,8 @@ class RandomShapePartitionIteratorTest : public HloTestBase {
 
 TEST_F(RandomShapePartitionIteratorTest, RandomShapeAndPartitions) {
   // Choose random dimensions for R4 shape.
-  Shape shape = ShapeUtil::MakeShapeWithLayout(F32, RandR4Dims(), {3, 2, 1, 0});
+  Shape shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, RandR4Dims(), {3, 2, 1, 0});
   // Choose random number of outer dimensions to partition.
   const int num_outer_dims_to_partition = 1 + (Rand() % 3);
   // Choose random outer dimension partition counts.

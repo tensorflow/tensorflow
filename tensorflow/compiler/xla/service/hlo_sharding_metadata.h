@@ -21,89 +21,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_domain_metadata.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/tsl/platform/status.h"
-
-namespace xla {
-
-// A DomainMetadata implementation that internally wraps a sharding attribute.
-class ShardingMetadata : public DomainMetadata {
- public:
-  explicit ShardingMetadata(std::shared_ptr<const HloSharding> sharding)
-      : sharding_(std::move(sharding)) {}
-
-  std::unique_ptr<DomainMetadata> Clone() const override;
-
-  absl::string_view Kind() const override { return KindName(); }
-
-  bool Matches(const DomainMetadata& other) const override;
-
-  template <typename H>
-  friend H AbslHashValue(H h, const ShardingMetadata& sharding_metadata) {
-    const bool has_sharding = sharding_metadata.sharding_ != nullptr;
-    if (has_sharding) {
-      h = H::combine(std::move(h), *sharding_metadata.sharding_);
-    }
-    return H::combine(std::move(h), has_sharding);
-  }
-
-  size_t Hash() const override { return absl::HashOf(*this); }
-
-  std::string ToString() const override;
-
-  const HloSharding* sharding() const { return sharding_.get(); }
-
-  static absl::string_view KindName() { return "sharding"; }
-
-  static StatusOr<const ShardingMetadata*> ToShardingMetadata(
-      const DomainMetadata* metadata);
-
-  // Apply the specified domain metadata onto the specified domain. If no
-  // metadata is specified then apply sharding heuristics and normalize the
-  // instructions whose sharding deviates from the one which is inferred as to
-  // be the original one. Policy wise, HLO passes are allowed to create new
-  // unassigned instructions, but if they do create assigned ones, they have to
-  // conform to the ones around.
-  static Status NormalizeShardingDomain(const DomainMetadata::Domain& domain,
-                                        const DomainMetadata* metadata);
-
- private:
-  std::shared_ptr<const HloSharding> sharding_;
-};
-
-// If the sharding between root and instruction changes then returns a
-// ShardingMetadata based kDomain instruction what can be used to separate
-// operand and instruction.
-// Returns nullptr if there is no need for a domain separation.
-class ShardingDomainCreator {
- public:
-  HloInstruction* operator()(HloInstruction* instruction, HloInstruction* root,
-                             HloInstruction* operand);
-
- private:
-  // Map from instruction and user sharding to domain users to CSE identical
-  // domains.
-  struct DomainCseMapKey {
-    const HloInstruction* instruction;
-    std::shared_ptr<const HloSharding> sharding;
-
-    bool operator==(const DomainCseMapKey& other) const;
-
-    template <typename H>
-    friend H AbslHashValue(H h, const DomainCseMapKey& key) {
-      h = H::combine(std::move(h), key.instruction);
-      const bool has_sharding = key.sharding != nullptr;
-      if (has_sharding) {
-        h = H::combine(std::move(h), *key.sharding);
-      }
-      return H::combine(std::move(h), has_sharding);
-    }
-  };
-  absl::flat_hash_map<DomainCseMapKey, HloInstruction*> domain_cse_map_;
-};
-
-}  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SHARDING_METADATA_H_

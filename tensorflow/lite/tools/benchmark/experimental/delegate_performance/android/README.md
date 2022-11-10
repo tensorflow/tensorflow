@@ -20,9 +20,11 @@ background binary executed via `adb shell ...`.
 In addition to that, having multiple benchmarking apps for different performance
 metric evaluations could potentially cost development effort unnecessarily.
 
-To that end, this app offers a more faithful view of runtime performance
+To those ends, this app offers a more faithful view of runtime performance
 (accuracy and latency) that developers can expect when deploying TensorFlow Lite
-with their application.
+with their application, and the app provides a single entrypoint to various
+performance metrics to avoid the need to switch between different benchmarking
+apps.
 
 ## To build/install/run
 
@@ -100,23 +102,23 @@ and `report.json`
 
 **XNNPack delegate provider**
 
-- `use_xnnpack`: `bool` (default=true)
+-   `use_xnnpack`: `bool` (default=true)
 
 **GPU delegate provider**
 
-- `use_gpu`: `bool` (default=false)
+-   `use_gpu`: `bool` (default=false)
 
 **NNAPI delegate provider**
 
-- `use_nnapi`: `bool` (default=false)
+-   `use_nnapi`: `bool` (default=false)
 
 ##### Steps
 
 1.  Run the benchmark. Currently the accuracy benchmark only supports parsing
     arguments for delegate selection.
 
-TODO(b/250886376): allow passing delegate
-    binary that implements stable delegate ABI.
+TODO(b/250886376): allow passing delegate binary that implements stable delegate
+ABI.
 
 Run the test with the XNNPack delegate (default):
 

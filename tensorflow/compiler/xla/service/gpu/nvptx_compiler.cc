@@ -22,8 +22,10 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/call_once.h"
+#include "absl/strings/str_format.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/dump.h"
@@ -45,7 +47,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/triangular_solve_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
@@ -74,7 +75,8 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
       /*allow_mixed_precision=*/false);
   pipeline.AddPass<GpusolverRewriter>();
   pipeline.AddPass<GpuConvRewriter>();
-  pipeline.AddPass<CudnnFusedConvRewriter>();
+  pipeline.AddPass<CudnnFusedConvRewriter>(
+      stream_exec->GetDeviceDescription().cuda_compute_capability());
   pipeline.AddPass<GpuConvPaddingLegalization>();
   pipeline.AddPass<CudnnPadForConvolutions>(
       stream_exec->GetDeviceDescription().cuda_compute_capability());
@@ -344,8 +346,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   std::string ptx;
   if (!(debug_module &&
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
-    XLA_SCOPED_LOGGING_TIMER(
-        "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
+    XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+        "NVPTXCompiler::CompileTargetBinary - CompileToPtx for ",
+        (debug_module != nullptr ? debug_module->name() : "(unknown")));
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
     TF_ASSIGN_OR_RETURN(ptx, nvptx::CompileToPtx(selected_module, gpu_version,
                                                  module_config, libdevice_dir));
@@ -358,7 +361,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
 
   std::vector<uint8_t> cubin = CompileGpuAsmOrGetCachedResult(
       stream_exec, ptx, std::get<se::CudaComputeCapability>(gpu_version),
-      module_config, relocatable);
+      module_config,
+      (debug_module != nullptr ? debug_module->name() : "(unknown)"),
+      relocatable);
 
   return std::pair<std::string, std::vector<uint8_t>>(std::move(ptx),
                                                       std::move(cubin));
@@ -367,8 +372,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
 std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     se::StreamExecutor* stream_exec, const std::string& ptx,
     se::CudaComputeCapability cc, const HloModuleConfig& hlo_module_config,
-    bool relocatable) {
-  XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompileGpuAsmOrGetCachedResult");
+    absl::string_view module_name, bool relocatable) {
+  XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+      "NVPTXCompiler::CompileGpuAsmOrGetCachedResult for ", module_name));
   tsl::profiler::TraceMe activity("PTX->CUBIN",
                                   tsl::profiler::TraceMeLevel::kInfo);
   bool inserted;
@@ -469,6 +475,39 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   CHECK(cache_value != nullptr);
   CHECK(cache_value->compilation_done);
   return cache_value->cubin_data;
+}
+
+StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
+    const HloModuleConfig& hlo_module_config) {
+  // TODO(phawkins): rather than comparing version numbers, it might be more
+  // robust if we simply tried to link something the first time we compile.
+  auto ptxas_config =
+      PtxOptsFromDebugOptions(hlo_module_config.debug_options());
+  TF_ASSIGN_OR_RETURN(
+      auto ptxas_version_tuple,
+      se::GetAsmCompilerVersion(ptxas_config.preferred_cuda_dir));
+  int ptxas_version = std::get<0>(ptxas_version_tuple) * 1000 +
+                      std::get<1>(ptxas_version_tuple) * 10;
+  int driver_version;
+  if (!se::gpu::GpuDriver::GetDriverVersion(&driver_version)) {
+    return FailedPrecondition("Unable to get CUDA driver version");
+  }
+  bool ok = driver_version >= ptxas_version;
+  if (!ok) {
+    LOG_FIRST_N(WARNING, 1)
+        << "The NVIDIA driver's CUDA version is "
+        << absl::StrFormat("%d.%d", driver_version / 1000,
+                           (driver_version % 1000) / 10)
+        << " which is older than the ptxas CUDA version "
+        << absl::StrFormat("(%d.%d.%d)", std::get<0>(ptxas_version_tuple),
+                           std::get<1>(ptxas_version_tuple),
+                           std::get<2>(ptxas_version_tuple))
+        << ". Because the driver is older than the ptxas version, XLA is "
+           "disabling parallel compilation, which may slow down compilation. "
+           "You should update your NVIDIA driver or use the NVIDIA-provided "
+           "CUDA forward compatibility packages.";
+  }
+  return ok;
 }
 
 StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(

@@ -57,6 +57,30 @@ func.func @TfParseExample(%arg0: tensor<1x!tf_type.string>) -> (tensor<1x1x!tf_t
 // CHECK-SAME: operand_segment_sizes = array<i32: 1, 1, 0, 2, 2>, result_segment_sizes = array<i32: 0, 0, 0, 2>
 }
 
+// CHECK-LABEL: TfMapDataset
+func.func @TfMapDataset(%arg0: tensor<!tf_type.variant>) -> (tensor<!tf_type.variant>) {
+  %0 = "tfl.custom"(%arg0) {
+    custom_code = "FlexMapDataset",
+    custom_option = #tfl<const_bytes : "0x0A4D61704461746173657400CA120A4D6170446174617365741A002A1A0A1470726573657276655F63617264696E616C697479120228012A100A0A54617267756D656E747312020A002A1E0A187573655F696E7465725F6F705F706172616C6C656C69736D120228012A0E0A086D65746164617461120212002A2C0A0166122752250A235F5F696E666572656E63655F446174617365745F6D61705F6C616D6264615F343131302A150A0C6F75747075745F747970657312050A033201072A150A0D6F75747075745F73686170657312040A023A0032000002D8CD1414042801">
+  } : (tensor<!tf_type.variant>) -> tensor<!tf_type.variant>
+
+  func.return %0 : tensor<!tf_type.variant>
+// CHECK: "tf.MapDataset"(
+// CHECK-SAME: {Targuments = [], f = @{{.*}}, metadata = "", output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], preserve_cardinality = true, use_inter_op_parallelism = true}
+}
+
+// CHECK-LABEL: TfTakeWhileDataset
+func.func @TfTakeWhileDataset(%arg0: tensor<!tf_type.variant>, %arg1: tensor<!tf_type.resource>) -> (tensor<!tf_type.variant>) {
+  %0 = "tfl.custom"(%arg0, %arg1) {
+    custom_code = "FlexTakeWhileDataset",
+    custom_option = #tfl<const_bytes : "0x1054616B655768696C654461746173657400C0121054616B655768696C65446174617365741A001A001A001A001A001A001A001A001A002A1A0A0A54617267756D656E7473120C0A0A320814140914141414092A3E0A097072656469636174651231522F0A2D5F5F696E666572656E63655F446174617365745F74616B655F7768696C655F7072656469636174655F373738302A0E0A086D65746164617461120212002A150A0C6F75747075745F747970657312050A033201072A150A0D6F75747075745F73686170657312040A023A0032000002D4C31414042801">
+  } : (tensor<!tf_type.variant>, tensor<!tf_type.resource>) -> tensor<!tf_type.variant>
+
+  func.return %0 : tensor<!tf_type.variant>
+// CHECK: "tf.TakeWhileDataset"(
+// CHECK-SAME: {Targuments = [!tf_type.resource, !tf_type.resource, i64, !tf_type.resource, !tf_type.resource, !tf_type.resource, !tf_type.resource, i64], metadata = "", output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], predicate = @{{.*}}}
+}
+
 // CHECK-LABEL: FailureOnInvalidOp
 func.func @FailureOnInvalidOp(%arg0: tensor<4xf64>, %arg1: tensor<4xf64>) -> tensor<4xf64> {
   // expected-error@+1 can't find registered TF op for Nop

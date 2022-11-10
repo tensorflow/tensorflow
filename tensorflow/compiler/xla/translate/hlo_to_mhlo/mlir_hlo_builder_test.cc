@@ -25,8 +25,8 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
@@ -94,7 +94,7 @@ TEST_F(XlaBuilderTest, Infeed) {
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
   ExpectHasSubstr(
       GetMlirOpString(infeed),
-      R"("mhlo.tuple"(%1#0, %1#1) : (tensor<4x8xf32>, !mhlo.token) -> tuple<tensor<4x8xf32>)");
+      R"(mhlo.tuple %1#0, %1#1 : tuple<tensor<4x8xf32>, !mhlo.token>)");
 }
 
 TEST_F(XlaBuilderTest, Outfeed) {
@@ -132,9 +132,8 @@ TEST_F(XlaBuilderTest, Tuple) {
   auto tuple = Tuple(&xla_builder_, {data0, data1});
 
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
-  ExpectHasSubstr(
-      GetMlirOpString(tuple),
-      R"("mhlo.tuple"(%0, %1) : (tensor<3x7xf32>, tensor<f32>) -> tuple<tensor<3x7xf32>, tensor<f32>>)");
+  ExpectHasSubstr(GetMlirOpString(tuple),
+                  R"(mhlo.tuple %0, %1 : tuple<tensor<3x7xf32>, tensor<f32>>)");
 }
 
 TEST_F(XlaBuilderTest, GetTupleElement) {
@@ -148,7 +147,7 @@ TEST_F(XlaBuilderTest, GetTupleElement) {
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
   ExpectHasSubstr(
       GetMlirOpString(gte),
-      R"("mhlo.get_tuple_element"(%2) {index = 1 : i32} : (tuple<tensor<3x7xf32>, tensor<f32>>) -> tensor<f32>)");
+      R"(mhlo.get_tuple_element %2[1] : (tuple<tensor<3x7xf32>, tensor<f32>>) -> tensor<f32>)");
 }
 
 TEST_F(XlaBuilderTest, Slice) {

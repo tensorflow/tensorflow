@@ -43,11 +43,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/tools/hlo_extractor.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/subprocess.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/util/command_line_flags.h"
 #if defined(PLATFORM_GOOGLE)
 #include "util/readline/readline.h"
@@ -611,7 +611,7 @@ void DoPlotCommand(const Options& opts, const HloModule& module,
     RenderAndDisplayGraph(opts, [&](RenderedGraphFormat format) {
       return RenderGraph(*comp, /*label=*/"",
                          comp->parent()->config().debug_options(), format,
-                         /*hlo_execution_profile=*/nullptr, hlo_render_options);
+                         hlo_render_options);
     });
   } else {
     RenderAndDisplayGraph(opts, [&](RenderedGraphFormat format) {

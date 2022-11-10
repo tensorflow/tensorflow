@@ -35,7 +35,7 @@ namespace builtin {
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_ABS, Register_ABS(), /* min_version = */ 1,
-             /* max_version = */ 4);
+             /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_HARD_SWISH, Register_HARD_SWISH());
   AddBuiltin(BuiltinOperator_RELU, Register_RELU(), /* min_version = */ 1,
              /* max_version = */ 3);
@@ -139,7 +139,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE(),
              /* min_version = */ 1,
-             /* max_version = */ 5);
+             /* max_version = */ 6);
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN(),
              /* min_version = */ 1,
              /* max_version = */ 3);
@@ -206,7 +206,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_NEG, Register_NEG());
   AddBuiltin(BuiltinOperator_SELECT, Register_SELECT(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_SELECT_V2, Register_SELECT_V2());
   AddBuiltin(BuiltinOperator_SLICE, Register_SLICE(),
              /* min_version = */ 1,
@@ -276,7 +276,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_FILL, Register_FILL(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_MIRROR_PAD, Register_MIRROR_PAD(),
              /* min_version = */ 1,
              /* max_version = */ 2);
@@ -352,7 +352,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_UNSORTED_SEGMENT_SUM,
              Register_UNSORTED_SEGMENT_SUM());
   AddBuiltin(BuiltinOperator_ATAN2, Register_ATAN2());
-  AddBuiltin(BuiltinOperator_SIGN, Register_SIGN());
+  AddBuiltin(BuiltinOperator_SIGN, Register_SIGN(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_AVERAGE_POOL_3D, Register_AVERAGE_POOL_3D());
   AddBuiltin(BuiltinOperator_MAX_POOL_3D, Register_MAX_POOL_3D());
   AddCustom("NumericVerify", tflite::ops::custom::Register_NUMERIC_VERIFY());
@@ -369,8 +371,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
 
   // Populate the list of TF Lite delegate creators. The created delegates could
   // be applied to the model graph by default at runtime.
-  delegate_creators_.push_back([](int num_threads) {
-    return tflite::MaybeCreateXNNPACKDelegate(num_threads);
+  delegate_creators_.push_back([](TfLiteContext* context) {
+    return tflite::MaybeCreateXNNPACKDelegate(context);
   });
 }
 

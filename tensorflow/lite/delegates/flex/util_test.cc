@@ -232,7 +232,7 @@ TEST(UtilTest, CreateTfTensorFromTfLiteTensorFloat) {
 }
 
 TEST(UtilTest, CreateTfTensorFromTfLiteTensorString) {
-  TfLiteTensor tflite_tensor;
+  TfLiteTensor tflite_tensor{};
   tflite_tensor.type = kTfLiteString;
   tflite_tensor.is_variable = false;
   tflite_tensor.sparsity = nullptr;

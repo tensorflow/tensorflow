@@ -36,9 +36,6 @@ enum class MlirBridgeRolloutPolicy {
   // features in the model, the MLIR bridge should be run. If the MLIR Bridge
   // errors, the fallback path should be used whenever possible.
   kEnabledAfterGraphAnalysis,
-  // The bridge was fallback enabled in a safe mode and passed all graph
-  // analysis checks.
-  kEnabledAfterGraphAnalysisSafeModeFallback
 };
 
 // Analyzes the user requested policy as well as the contents of the graph and

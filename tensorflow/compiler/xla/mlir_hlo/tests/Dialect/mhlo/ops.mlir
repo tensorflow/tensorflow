@@ -443,9 +443,17 @@ func.func @broadcast_in_dim_bad_dimension_size(%arg0: tensor<1x2xi32>) -> tensor
 // -----
 
 func.func @broadcast_in_dim_bad_rank_decrease(%arg0: tensor<1x2x3xi32>) -> tensor<3xi32> {
-  // expected-error@+1 {{result rank (1) is less than operand rank (3)}}
+  // expected-error@+1 {{broadcast_dimensions contains invalid value 1 for result with rank 1}}
   %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0,1,2]> : tensor<3xi64>} : (tensor<1x2x3xi32>) -> tensor<3xi32>
   func.return %0 : tensor<3xi32>
+}
+
+// -----
+
+func.func @broadcast_in_dim_duplicate_bcast_dimensions(%arg0: tensor<1x1x3xi32>) -> tensor<1x2x3xi32> {
+  // expected-error@+1 {{broadcast_dimensions should not have duplicates}}
+  %0 = "stablehlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0,0,2]> : tensor<3xi64>} : (tensor<1x1x3xi32>) -> tensor<1x2x3xi32>
+  func.return %0 : tensor<1x2x3xi32>
 }
 
 // -----
@@ -4625,10 +4633,10 @@ func.func @rfft_invalid_ret_elt(%arg0: tensor<3x9xf32>) -> tensor<3x9xf32> {
 
 // CHECK-LABEL: @eltwise_static_and_dynamic_type(
 //  CHECK-SAME: %[[A:.*]]: tensor<10x10xf32>, %[[B:.*]]: tensor<?x?xf32>) -> tensor<10x10xf32>
-//       CHECK: %[[R:.*]] = mhlo.add(%[[A]], %[[B]]) : (tensor<10x10xf32>, tensor<?x?xf32>) -> tensor<10x10xf32>
+//       CHECK: %[[R:.*]] = mhlo.add %[[A]], %[[B]] : (tensor<10x10xf32>, tensor<?x?xf32>) -> tensor<10x10xf32>
 //       CHECK: return %[[R]] : tensor<10x10xf32>
 func.func @eltwise_static_and_dynamic_type(%arg0: tensor<10x10xf32>, %arg1: tensor<?x?xf32>) -> tensor<10x10xf32> {
-  %0 = mhlo.add(%arg0, %arg1) : (tensor<10x10xf32>, tensor<?x?xf32>) -> tensor<10x10xf32>
+  %0 = mhlo.add %arg0, %arg1 : (tensor<10x10xf32>, tensor<?x?xf32>) -> tensor<10x10xf32>
   func.return %0 : tensor<10x10xf32>
 }
 
@@ -4736,7 +4744,7 @@ func.func @add_dependency(%data: tensor<4x16xf32>) -> tensor<4x16xf32> {
 
 // CHECK: func @uniform_quantize
 func.func @uniform_quantize(%arg: tensor<16x16xf32>) -> tensor<16x16x!quant.uniform<ui8:f32, 34.0:16>> {
-  %0 = mhlo.uniform_quantize(%arg) : (tensor<16x16xf32>) -> tensor<16x16x!quant.uniform<ui8:f32, 34.0:16>>
+  %0 = mhlo.uniform_quantize %arg : (tensor<16x16xf32>) -> tensor<16x16x!quant.uniform<ui8:f32, 34.0:16>>
   func.return %0 : tensor<16x16x!quant.uniform<ui8:f32, 34.0:16>>
 }
 
@@ -4744,7 +4752,7 @@ func.func @uniform_quantize(%arg: tensor<16x16xf32>) -> tensor<16x16x!quant.unif
 
 // CHECK: func @uniform_requantize
 func.func @uniform_requantize(%arg: tensor<16x16x!quant.uniform<i8:f32, 5.0:20>>) -> tensor<16x16x!quant.uniform<i8:f32, 34.0:16>> {
-  %0 = mhlo.uniform_quantize(%arg) : (tensor<16x16x!quant.uniform<i8:f32, 5.0:20>>) -> tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>
+  %0 = mhlo.uniform_quantize %arg : (tensor<16x16x!quant.uniform<i8:f32, 5.0:20>>) -> tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>
   func.return %0 : tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>
 }
 
@@ -4752,7 +4760,7 @@ func.func @uniform_requantize(%arg: tensor<16x16x!quant.uniform<i8:f32, 5.0:20>>
 
 // CHECK: func @uniform_dequantize
 func.func @uniform_dequantize(%arg: tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<16x16xf32> {
-  %0 = mhlo.uniform_dequantize(%arg) : (tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<16x16xf32>
+  %0 = mhlo.uniform_dequantize %arg : (tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<16x16xf32>
   func.return %0 : tensor<16x16xf32>
 }
 
@@ -4760,7 +4768,7 @@ func.func @uniform_dequantize(%arg: tensor<16x16x!quant.uniform<i8:f32, 34.0:16>
 
 // CHECK: func @uniform_dequantize_unranked
 func.func @uniform_dequantize_unranked(%arg: tensor<*x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<*xf32> {
-  %0 = mhlo.uniform_dequantize(%arg) : (tensor<*x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<*xf32>
+  %0 = mhlo.uniform_dequantize %arg : (tensor<*x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
@@ -4768,7 +4776,7 @@ func.func @uniform_dequantize_unranked(%arg: tensor<*x!quant.uniform<i8:f32, 34.
 
 func.func @uniform_dequantize_not_quantize(%arg: tensor<16x16xf32>) -> tensor<16x16xf32> {
   // expected-error@+1 {{operand #0 must be tensor of 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer values, but got 'tensor<16x16xf32>'}}
-  %0 = mhlo.uniform_dequantize(%arg) : (tensor<16x16xf32>) -> tensor<16x16xf32>
+  %0 = mhlo.uniform_dequantize %arg : (tensor<16x16xf32>) -> tensor<16x16xf32>
   func.return %0 : tensor<16x16xf32>
 }
 
@@ -4779,8 +4787,8 @@ func.func @quantized_constants() -> (tensor<2x!quant.uniform<i8:f32, 2.0:15>>, t
   %0 = mhlo.constant() {value = dense<[1, 2]> : tensor<2xi8>} : () -> tensor<2x!quant.uniform<i8:f32, 2.000000e+00:15>>
   %1 = mhlo.constant dense<[10.0, 12.0]> : tensor<2xf32>
   %2 = mhlo.constant dense<[3.0, 100.0]> : tensor<2xf32>
-  %3 = mhlo.uniform_quantize(%2) : (tensor<2xf32>) -> tensor<2x!quant.uniform<i8:f32, 2.0:15>>
-  %4 = mhlo.uniform_quantize(%1) : (tensor<2xf32>) -> tensor<2x!quant.uniform<ui8:f32, 34.0:16>>
+  %3 = mhlo.uniform_quantize %2 : (tensor<2xf32>) -> tensor<2x!quant.uniform<i8:f32, 2.0:15>>
+  %4 = mhlo.uniform_quantize %1 : (tensor<2xf32>) -> tensor<2x!quant.uniform<ui8:f32, 34.0:16>>
   func.return %0, %4, %3 : tensor<2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x!quant.uniform<ui8:f32, 34.0:16>>, tensor<2x!quant.uniform<i8:f32, 2.0:15>>
   // CHECK: mhlo.constant() {value = dense<[1, 2]> : tensor<2xi8>} : () -> tensor<2x!quant.uniform<i8:f32, 2.000000e+00:15>>
   // CHECK-NEXT: mhlo.constant dense<[1.000000e+01, 1.200000e+01]> : tensor<2xf32>

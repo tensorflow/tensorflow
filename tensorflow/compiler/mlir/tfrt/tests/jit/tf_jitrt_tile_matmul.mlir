@@ -1,12 +1,13 @@
 // RUN: tf-tfrt-opt %s -split-input-file \
-// RUN:   -xla-cpu-transform-matmul="tile-sizes=0,0,0" \
-// RUN: | FileCheck %s --check-prefix=TILE-EMPTY
+// RUN:   -xla-cpu-transform-matmul="tile-sizes=8,4,2" \
+// RUN: | FileCheck %s --check-prefix=MARKED
 
 // RUN: tf-tfrt-opt %s -split-input-file \
 // RUN:   -xla-cpu-transform-matmul="tile-sizes=8,4,2" \
-// RUN: | FileCheck %s
+// RUN: | FileCheck %s --check-prefix=PEELED
 
-func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
+                  -> tensor<?x?xf32> {
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %arg0, %c0 : tensor<?x?xf32>
   %c1 = arith.constant 1 : index
@@ -19,76 +20,57 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?x
   return %4 : tensor<?x?xf32>
 }
 
-// TILE-EMPTY-LABEL: func @matmul(
-// TILE-EMPTY-SAME:    %[[LHS:.*]]: tensor<?x?xf32>,
-// TILE-EMPTY-SAME:    %[[RHS:.*]]: tensor<?x?xf32>) -> tensor<?x?xf32>
+// PEELED-LABEL: func @matmul(
+// PEELED-SAME:      %[[LHS:.*]]: tensor<?x?xf32>, %[[RHS:.*]]: tensor<?x?xf32>)
 
-// TILE-EMPTY-DAG:   %[[C0_F32:.*]] = arith.constant 0.000000e+00 : f32
-// TILE-EMPTY-DAG:   %[[C0:.*]] = arith.constant 0 : index
-// TILE-EMPTY-DAG:   %[[C1:.*]] = arith.constant 1 : index
+// PEELED-DAG:     %[[C0:.*]] = arith.constant 0 : index
+// PEELED:         %[[INIT:.*]] = tensor.empty
 
-// TILE-EMPTY:       %[[DIM_0:.*]] = tensor.dim %[[LHS]], %[[C0]] : [[TY_2D:.*]]
-// TILE-EMPTY:       %[[DIM_1:.*]] = tensor.dim %[[RHS]], %[[C1]] : [[TY_2D]]
-// TILE-EMPTY:       %[[INIT:.*]] = tensor.empty(%[[DIM_0]], %[[DIM_1]]) : [[TY_2D]]
-// TILE-EMPTY:       %[[FILL:.*]] = linalg.fill ins(%[[C0_F32]]{{.*}}outs(%[[INIT]]
+// PEELED:         %[[MAIN_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]]) to (%[[IUB:.*]], %[[JUB:.*]]) step
+// PEELED:           %[[MAIN_SLICE:.*]] = gml_st.materialize %[[INIT]]
+// PEELED:           %[[MAIN_FILL:.*]] = linalg.fill{{.*}}outs(%[[MAIN_SLICE]]
+// PEELED:           %[[MAIN_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) to (%[[KUB:.*]]) {{.*}} outs ({{.*}} = %[[MAIN_FILL]]:
+// PEELED:             %[[MAIN_PAR_MAIN_FOR_MATMUL:.*]] = linalg.matmul
+// PEELED-NEXT:        gml_st.set_yield %[[MAIN_PAR_MAIN_FOR_MATMUL]]
+// PEELED:           %[[REM_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[KUB]]) {{.*}} outs ({{.*}} = %[[MAIN_FOR]]:
+// PEELED:             %[[MAIN_PAR_REM_FOR_MATMUL:.*]] = linalg.matmul
+// PEELED-NEXT:        gml_st.set_yield %[[MAIN_PAR_REM_FOR_MATMUL]]
+// PEELED:           gml_st.set_yield %[[REM_FOR]]
 
-// TILE-EMPTY:       %[[MATMUL:.*]] = linalg.matmul
-// TILE-EMPTY-SAME:    ins(%[[LHS]], %[[RHS]] : [[TY_2D]], [[TY_2D]])
-// TILE-EMPTY-SAME:    outs(%[[FILL]] : [[TY_2D]])
+// PEELED:         %[[REM_RHS_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[JUB]])
+// PEELED:           %[[REM_RHS_SLICE:.*]] = gml_st.materialize %[[MAIN_PAR]]
+// PEELED:           %[[REM_RHS_FILL:.*]] = linalg.fill{{.*}}outs(%[[REM_RHS_SLICE]]
+// PEELED:           %[[REM_RHS_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) {{.*}} outs ({{.*}} = %[[REM_RHS_FILL]]:
+// PEELED:             %[[REM_RHS_PAR_MATMUL:.*]] = linalg.matmul
+// PEELED-NEXT:        gml_st.set_yield %[[REM_RHS_PAR_MATMUL]]
+// PEELED:           gml_st.set_yield %[[REM_RHS_FOR]]
+
+// PEELED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[IUB]], %[[C0]])
+// PEELED:           %[[REM_LHS_SLICE:.*]] = gml_st.materialize %[[REM_RHS_PAR]]
+// PEELED:           %[[REM_LHS_FILL:.*]] = linalg.fill{{.*}}outs(%[[REM_LHS_SLICE]]
+// PEELED:           %[[REM_LHS_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) {{.*}} outs ({{.*}} = %[[REM_LHS_FILL]]:
+// PEELED:             %[[REM_LHS_PAR_MATMUL:.*]] = linalg.matmul
+// PEELED-NEXT:        gml_st.set_yield %[[REM_LHS_PAR_MATMUL]]
+// PEELED:           gml_st.set_yield %[[REM_LHS_FOR]]
 
 // -----
 
-// CHECK-LABEL:      func @matmul(
-// CHECK-SAME:         %[[LHS:.*]]: tensor<?x?xf32>,
-// CHECK-SAME:         %[[RHS:.*]]: tensor<?x?xf32>)
+// MARKED-LABEL: func @matmul(
 
-// CHECK-DAG:        %[[C0_F32:.*]] = arith.constant 0.000000e+00 : f32
-// CHECK-DAG:        %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG:        %[[C1:.*]] = arith.constant 1 : index
-// CHECK-DAG:        %[[C2:.*]] = arith.constant 2 : index
-// CHECK-DAG:        %[[C4:.*]] = arith.constant 4 : index
-// CHECK-DAG:        %[[C8:.*]] = arith.constant 8 : index
+// MARKED:         %[[C0:.*]] = arith.constant 0 : index
+// MARKED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]]) to (%[[IUB:.*]], %[[JUB:.*]]) step
+// MARKED:           gml_st.for (%[[K:.*]]) = (%[[C0]]) to (%[[KUB:.*]]) step
+// MARKED:           } {__internal_peeled_marker__ = true}
+// MARKED:           gml_st.for (%[[K:.*]]) = (%[[KUB]])
+// MARKED:           } {__internal_peeled_marker__ = true}
+// MARKED:         } {__internal_peeled_marker__ = true}
 
-// CHECK:            %[[DIM_0:.*]] = tensor.dim %[[LHS]], %[[C0]] : [[TY_2D:.*]]
-// CHECK:            %[[DIM_1:.*]] = tensor.dim %[[RHS]], %[[C1]] : [[TY_2D]]
-// CHECK:            %[[INIT:.*]] = tensor.empty(%[[DIM_0]], %[[DIM_1]]) : [[TY_2D]]
-// CHECK:            %[[FILL:.*]] = linalg.fill ins(%[[C0_F32]]{{.*}}outs(%[[INIT]]
-// CHECK:            %[[LHS_ROW:.*]] = tensor.dim %[[LHS]], %[[C0]] : [[TY_2D]]
-// CHECK:            %[[LHS_COL:.*]] = tensor.dim %[[LHS]], %[[C1]] : [[TY_2D]]
-// CHECK:            %[[RHS_COL:.*]] = tensor.dim %[[RHS]], %[[C1]] : [[TY_2D]]
+// MARKED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[JUB]])
+// MARKED:           gml_st.for (%[[K:.*]]) = (%[[C0]])
+// MARKED:           } {__internal_peeled_marker__ = true}
+// MARKED:         } {__internal_peeled_marker__ = true}
 
-// CHECK:            gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
-// CHECK-SAME:         to (%[[LHS_ROW]], %[[RHS_COL]]) step (%[[C8]], %[[C4]])
-
-// CHECK:            %[[LHS_TILE:.*]] = gml_st.tile [%[[I]], 0]
-// CHECK:            %[[LHS_SLICE:.*]] = gml_st.materialize %[[LHS]][%[[LHS_TILE]]]
-
-// CHECK:            %[[RHS_TILE:.*]] = gml_st.tile [0, %[[J]]]
-// CHECK:            %[[RHS_SLICE:.*]] = gml_st.materialize %[[RHS]][%[[RHS_TILE]]]
-
-// CHECK:            %[[OUT_TILE:.*]] = gml_st.tile [%[[I]], %[[J]]]
-// CHECK:            %[[OUT_SLICE:.*]] = gml_st.materialize %[[FILL]][%[[OUT_TILE]]]
-
-// CHECK:            %[[LHS_SUB_ROW:.*]] = tensor.dim %[[LHS_SLICE]], %[[C0]] : [[TY_2D]]
-// CHECK:            %[[LHS_SUB_COL:.*]] = tensor.dim %[[LHS_SLICE]], %[[C1]] : [[TY_2D]]
-// CHECK:            %[[RHS_SUB_COL:.*]] = tensor.dim %[[RHS_SLICE]], %[[C1]] : [[TY_2D]]
-// CHECK:            %[[FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]])
-// CHECK-SAME:         to (%[[LHS_SUB_COL]]) step (%[[C2]])
-// CHECK-SAME:         outs (%[[OUT_SUB_ARG:.*]] = %[[OUT_SLICE]]: [[TY_2D]])
-
-// CHECK:            %[[LHS_SUB_TILE:.*]] = gml_st.tile [0, %[[K]]]
-// CHECK:            %[[LHS_SUB_SLICE:.*]] = gml_st.materialize %[[LHS_SLICE]][%[[LHS_SUB_TILE]]]
-
-// CHECK:            %[[RHS_SUB_TILE:.*]] = gml_st.tile [%[[K]], 0]
-// CHECK:            %[[RHS_SUB_SLICE:.*]] = gml_st.materialize %[[RHS_SLICE]][%[[RHS_SUB_TILE]]]
-
-// CHECK:            %[[OUT_SUB_TILE:.*]] = gml_st.tile [0, 0] [%[[LHS_SUB_ROW]], %[[RHS_SUB_COL]]]
-// CHECK:            %[[OUT_SUB_SLICE:.*]] = gml_st.materialize %[[OUT_SUB_ARG]][%[[OUT_SUB_TILE]]]
-
-// CHECK:            %[[MATMUL:.*]] = linalg.matmul
-// CHECK-SAME:         ins(%[[LHS_SUB_SLICE]], %[[RHS_SUB_SLICE]] : [[TY_2D]], [[TY_2D]])
-// CHECK:              outs(%[[OUT_SUB_SLICE]] : [[TY_2D]])
-
-// CHECK-NEXT:       gml_st.set_yield %[[MATMUL]] into %[[OUT_SUB_ARG]][%[[OUT_SUB_TILE]]]
-
-// CHECK:            gml_st.set_yield %[[FOR]] into %[[FILL]][%[[OUT_TILE]]]
+// MARKED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[IUB]], %[[C0]])
+// MARKED:           gml_st.for (%[[K:.*]]) = (%[[C0]])
+// MARKED:           } {__internal_peeled_marker__ = true}
+// MARKED:         } {__internal_peeled_marker__ = true}

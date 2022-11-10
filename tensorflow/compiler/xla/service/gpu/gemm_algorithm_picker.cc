@@ -21,23 +21,23 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logger.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 #include "tensorflow/tsl/util/proto/proto_utils.h"
 
 namespace xla {
@@ -46,6 +46,22 @@ namespace gpu {
 using tensorflow::AutotuneResult;
 
 namespace {
+
+StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
+    GemmBackendConfig_Epilogue epilogue) {
+  switch (epilogue) {
+    case GemmBackendConfig::DEFAULT:
+      return se::cuda::BlasLt::Epilogue::kDefault;
+    case GemmBackendConfig::RELU:
+      return se::cuda::BlasLt::Epilogue::kReLU;
+    case GemmBackendConfig::BIAS:
+      return se::cuda::BlasLt::Epilogue::kBias;
+    case GemmBackendConfig::BIASRELU:
+      return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
+    default:
+      return InternalError("Unsupported Epilogue.");
+  }
+}
 
 struct AutotuneConfig {
   bool should_init_buffers() const { return autotune_level >= 2; }
@@ -267,10 +283,12 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   std::optional<se::blas::AlgorithmType> best_algorithm;
   if (IsCublasLtMatmul(*gemm)) {
     bool has_matrix_bias = config.beta != 0.;
-    bool has_vector_bias = gemm_config.epilogue() == GemmBackendConfig::BIAS;
 
-    auto epilogue = has_vector_bias ? se::cuda::BlasLt::Epilogue::kBias
-                                    : se::cuda::BlasLt::Epilogue::kDefault;
+    TF_ASSIGN_OR_RETURN(bool has_vector_bias, cublas_lt::EpilogueAddsVectorBias(
+                                                  gemm_config.epilogue()));
+
+    TF_ASSIGN_OR_RETURN(auto epilogue,
+                        AsBlasLtEpilogue(gemm_config.epilogue()));
 
     se::DeviceMemoryBase bias_buffer;
     if (has_vector_bias) {
@@ -385,7 +403,8 @@ StatusOr<bool> RunOnComputation(HloComputation* computation,
 StatusOr<bool> GemmAlgorithmPicker::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_SCOPED_LOGGING_TIMER("GemmAlgorithmPicker");
+  XLA_SCOPED_LOGGING_TIMER(
+      absl::StrCat("GemmAlgorithmPicker for ", module->name()));
 
   if (module->config().debug_options().xla_gpu_autotune_level() == 0) {
     VLOG(2) << "GEMM auto-tuning disabled, GemmAlgorithmPicker returning early";

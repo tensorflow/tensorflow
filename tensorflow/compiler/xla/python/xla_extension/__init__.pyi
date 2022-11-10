@@ -324,7 +324,7 @@ class Device:
   def __getattr__(self, name: str) -> Any: ...
 
 class GpuDevice(Device):
-  pass
+  slice_index: int
 
 class TpuDevice(Device):
   pass
@@ -482,6 +482,8 @@ class ArrayImpl:
                _skip_checks: bool = ...): ...
   def block_until_ready(self) -> ArrayImpl: ...
   def is_deleted(self) -> bool: ...
+  # TODO(yashkatariya): remove this once the transition completes.
+  def _init_with_fastpath_disabled(self) -> None: ...
   dtype: np.dtype
   shape: Tuple[int, ...]
   _arrays: Any

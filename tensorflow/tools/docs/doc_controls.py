@@ -14,7 +14,7 @@
 # ==============================================================================
 """Documentation control decorators."""
 
-from typing import TypeVar
+from typing import Optional, TypeVar
 
 T = TypeVar("T")
 
@@ -39,6 +39,13 @@ def inheritable_header(text):
 
   return _wrapped
 
+
+def get_inheritable_header(obj) -> Optional[str]:
+  return getattr(obj, _INHERITABLE_HEADER, None)
+
+
+header = inheritable_header
+get_header = get_inheritable_header
 
 _DO_NOT_DOC = "_tf_docs_do_not_document"
 

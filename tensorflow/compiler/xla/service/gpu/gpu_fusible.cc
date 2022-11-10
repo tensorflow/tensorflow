@@ -21,10 +21,10 @@ limitations under the License.
 #include <stack>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -124,10 +124,31 @@ const HloInstruction* GetRealHeroForMultiOutputFusion(
   for (const auto* inst : fused_expression_root->operands()) {
     if (IsReductionFromOrToContiguousDimensions(*inst) ||
         FindAnyTiledTranspose(*inst)) {
-      return inst;
+      return &FindNonTrivialHero(*inst);
     }
   }
   return fused_expression_root->operands()[0];
+}
+
+// Returns whether the output of a fusion with reduction are consistent with
+// `first_reduce`.
+static bool IsFusedReductionOutputConsistent(
+    const HloInstruction* inst, const HloInstruction* first_reduce) {
+  if (IsReductionFromOrToContiguousDimensions(*inst)) {
+    // Shapes, layouts and dimensions must be the same for all reduces
+    // inside of this fusion.
+    return ShapeUtil::EqualIgnoringElementType(first_reduce->shape(),
+                                               inst->shape()) &&
+           ShapeUtil::EqualIgnoringElementType(
+               first_reduce->operand(0)->shape(), inst->operand(0)->shape()) &&
+           ShapeUtil::EqualIgnoringElementType(
+               first_reduce->operand(1)->shape(), inst->operand(1)->shape()) &&
+           first_reduce->dimensions() == inst->dimensions();
+  }
+  return ShapeUtil::CompatibleIgnoringElementType(
+             first_reduce->operand(0)->shape(), inst->shape()) &&
+         LayoutUtil::Equal(first_reduce->operand(0)->shape().layout(),
+                           inst->shape().layout());
 }
 
 FusionDecision ShapesCompatibleForMultiOutputFusion(
@@ -139,7 +160,7 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
     // by the shape of the first operand.
     if (IsReductionFromOrToContiguousDimensions(*element_instr) ||
         FindAnyTiledTranspose(*element_instr)) {
-      return element_instr->operand(0)->shape();
+      return FindNonTrivialHero(*element_instr).operand(0)->shape();
     }
     return element_instr->shape();
   };
@@ -151,36 +172,40 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
   const HloInstruction* hero1 = GetRealHeroForMultiOutputFusion(instr1);
   const HloInstruction* hero2 = GetRealHeroForMultiOutputFusion(instr2);
 
-  if (IsReductionFromOrToContiguousDimensions(*hero1) &&
-      IsReductionFromOrToContiguousDimensions(*hero2) &&
-      !AreFusedReductionOutputsConsistent({hero1, hero2}, hero1)) {
+  bool hero1_is_unnested_reduce =
+      IsReductionFromOrToContiguousDimensions(*hero1);
+  bool hero1_is_unnested_transpose = FindAnyTiledTranspose(*hero1).has_value();
+  bool hero2_is_unnested_reduce =
+      IsReductionFromOrToContiguousDimensions(*hero2);
+  bool hero2_is_unnested_transpose = FindAnyTiledTranspose(*hero2).has_value();
+
+  if (hero1_is_unnested_reduce && hero2_is_unnested_reduce &&
+      !IsFusedReductionOutputConsistent(hero2, hero1)) {
     return "tiled reductions with different shapes";
-  } else if (FindAnyTiledTranspose(*hero1) && FindAnyTiledTranspose(*hero2) &&
+  } else if (hero1_is_unnested_transpose && hero2_is_unnested_transpose &&
              (!ShapeUtil::EqualIgnoringElementType(hero1->shape(),
                                                    hero2->shape()) ||
               !ShapeUtil::EqualIgnoringElementType(
                   hero1->operand(0)->shape(), hero2->operand(0)->shape()))) {
     return "tiled transposes with different shapes";
-  } else if ((FindAnyTiledTranspose(*hero1) &&
-              IsReductionFromOrToContiguousDimensions(*hero2)) ||
-             (FindAnyTiledTranspose(*hero2) &&
-              IsReductionFromOrToContiguousDimensions(*hero1))) {
+  } else if ((hero1_is_unnested_transpose && hero2_is_unnested_reduce) ||
+             (hero1_is_unnested_reduce && hero2_is_unnested_transpose)) {
     return "MOF-fusion of a transpose and a reduction";
   }
 
   const Shape& l1 = get_loop_shape(hero1);
   const Shape& l2 = get_loop_shape(hero2);
 
-  // We accept different shapes provided one element is reduction and the shapes
-  // are trivially reshapable.
+  // We accept different shapes provided shapes are trivially reshapable.
   bool accept_unequal_shape =
       !l1.IsTuple() && !l2.IsTuple() &&
-      (IsReductionFromOrToContiguousDimensions(*hero1) ||
-       IsReductionFromOrToContiguousDimensions(*hero2));
+      (hero1_is_unnested_reduce || hero2_is_unnested_reduce ||
+       hero1_is_unnested_transpose || hero2_is_unnested_transpose);
+
   if (!ShapeUtil::EqualIgnoringElementType(l1, l2) &&
       (!accept_unequal_shape ||
-       !ShapeUtil::ReshapeIsBitcast(
-           l1, ShapeUtil::ChangeElementType(l2, l1.element_type())))) {
+       !ShapeUtil::IsReshapeOrTransposeBitcast(l1, l2,
+                                               /*ignore_element_type=*/true))) {
     return "different loop shapes";
   }
   return {};
@@ -239,7 +264,9 @@ bool IsLoopFusible(const HloInstruction& instr) {
 
 FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
                                          const HloInstruction& consumer) {
-  if (!IsLoopFusible(producer)) {
+  if (!IsLoopFusible(producer) &&
+      !(FindAnyTiledTranspose(producer) &&
+        &FindNonTrivialHero(consumer) == &producer)) {
     return "the producer is not loop-fusible";
   }
 
@@ -361,8 +388,7 @@ static int64_t SharedMemoryUsageNoCache(const HloInstruction& instr) {
   return 0;
 }
 
-static int64_t SharedMemoryUsage(const HloInstruction& instr,
-                                 FusionInfoCache* cache = nullptr) {
+int64_t SharedMemoryUsage(const HloInstruction& instr, FusionInfoCache* cache) {
   if (!cache) {
     return SharedMemoryUsageNoCache(instr);
   }

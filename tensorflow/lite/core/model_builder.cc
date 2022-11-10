@@ -105,7 +105,7 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromAllocation(
     ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
   if (!allocation || !allocation->valid()) {
-    TF_LITE_REPORT_ERROR(error_reporter, "The model allocation is null/empty");
+    error_reporter->Report("The model allocation is null/empty");
     return nullptr;
   }
 
@@ -113,8 +113,7 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromAllocation(
       reinterpret_cast<const uint8_t*>(allocation->base()),
       allocation->bytes());
   if (!VerifyModelBuffer(base_verifier)) {
-    TF_LITE_REPORT_ERROR(error_reporter,
-                         "The model is not a valid Flatbuffer buffer");
+    error_reporter->Report("The model is not a valid Flatbuffer buffer");
     return nullptr;
   }
 
@@ -160,8 +159,7 @@ string FlatBufferModel::GetMinimumRuntime() const {
       }
       // If there is no '\0' in the buffer, this indicates that the flatbuffer
       // is malformed.
-      TF_LITE_REPORT_ERROR(
-          error_reporter_,
+      error_reporter_->Report(
           "Min_runtime_version in model metadata is malformed");
       break;
     }

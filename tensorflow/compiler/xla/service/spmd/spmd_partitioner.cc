@@ -31,20 +31,20 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
@@ -3922,23 +3922,27 @@ Status SpmdPartitioningVisitor::HandleReduceWindow(HloInstruction* hlo) {
   if (hlo->sharding().IsTileMaximal()) {
     return DefaultAction(hlo);
   }
-  HloReduceWindowInstruction* reduce_window =
-      Cast<HloReduceWindowInstruction>(hlo);
+  auto* reduce_window = Cast<HloReduceWindowInstruction>(hlo);
   absl::Span<HloInstruction* const> input_arrays = reduce_window->inputs();
   absl::Span<HloInstruction* const> init_values = reduce_window->init_values();
-  int64_t input_idx = 0;
   absl::InlinedVector<PartitionedHlo::WindowedInputShardReturnValue, 2>
       sharded_results;
   absl::InlinedVector<const Shape*, 2> sharded_input_shapes,
       replicated_init_shapes;
   absl::InlinedVector<HloInstruction*, 2> sharded_inputs, replicated_inits;
+
+  int64_t input_idx = 0;
   for (const HloInstruction* input_array : input_arrays) {
     PartitionedHlo& operand = GetPartitionedHlo(input_array);
     // Replicate init
-    PartitionedHlo replicated_init = GetPartitionedHlo(init_values[input_idx++])
+    PartitionedHlo replicated_init = GetPartitionedHlo(init_values[input_idx])
                                          .Reshard(HloSharding::Replicate());
+
+    const HloSharding& sharding =
+        hlo->sharding().IsTuple() ? hlo->sharding().tuple_elements()[input_idx]
+                                  : hlo->sharding();
     auto resharded_operand_and_window = operand.ReshardAsWindowedInput(
-        hlo->window(), hlo->sharding(), replicated_init.hlo());
+        hlo->window(), sharding, replicated_init.hlo());
     if (!resharded_operand_and_window.has_value()) {
       return DefaultAction(hlo);
     }
@@ -3947,17 +3951,14 @@ Status SpmdPartitioningVisitor::HandleReduceWindow(HloInstruction* hlo) {
     sharded_input_shapes.push_back(&sharded_inputs.back()->shape());
     replicated_inits.push_back(replicated_init.hlo());
     replicated_init_shapes.push_back(&replicated_inits.back()->shape());
+    input_idx++;
   }
   TF_ASSIGN_OR_RETURN(Shape sharded_rw_shape,
                       ShapeInference::InferReduceWindowShape(
                           sharded_input_shapes, replicated_init_shapes,
                           sharded_results[0].shard_window,
                           hlo->to_apply()->ComputeProgramShape()));
-  HloSharding result_sharding =
-      (hlo->shape().IsTuple())
-          ? hlo->sharding().GetTupleSharding(hlo->shape()).value()
-          : hlo->sharding();
-  Shape shard_shape = MakePartitionedShape(hlo->shape(), result_sharding);
+  Shape shard_shape = MakePartitionedShape(hlo->shape(), hlo->sharding());
   if (shard_shape.has_layout()) {
     *sharded_rw_shape.mutable_layout() = shard_shape.layout();
   }

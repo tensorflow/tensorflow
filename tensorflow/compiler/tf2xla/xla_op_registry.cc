@@ -87,7 +87,7 @@ XlaOpRegistry::~XlaOpRegistry() = default;
   }
   if (!x.has_device_allowlist && !y.has_device_allowlist) {
     LOG(WARNING) << "Duplicate registrations of " << x.name
-                 << "with no device allowlists.";
+                 << " with no device allowlists.";
     return false;
   }
   if (x.has_device_allowlist && y.has_device_allowlist) {

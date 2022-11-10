@@ -18,17 +18,19 @@ limitations under the License.
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
 
 namespace xla {
 namespace hlo_sharding_util {
@@ -387,6 +389,12 @@ HloSharding SplitShardingDimension(const HloSharding& sharding,
 // dimensions[dimension] * dimensions[dimension+1}.
 HloSharding MergeShardingDimension(const HloSharding& sharding,
                                    int64_t dimension);
+
+// Creates a tuple sharding by combining sharding on the elements of the tuple.
+// If none of the elements have a sharding, return nullptr.
+std::shared_ptr<const HloSharding> CreateTupleSharding(
+    const Shape& shape, absl::Span<const HloInstruction* const> elements);
+
 }  // namespace hlo_sharding_util
 }  // namespace xla
 

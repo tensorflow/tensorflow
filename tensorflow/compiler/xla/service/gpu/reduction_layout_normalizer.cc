@@ -19,11 +19,11 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -119,7 +119,7 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
 
       Shape new_operand_shape = ShapeUtil::MakeShape(
           operand_shape.element_type(), new_operand_shape_data);
-      Shape new_reduce_shape = ShapeUtil::MakeShapeWithLayout(
+      Shape new_reduce_shape = ShapeUtil::MakeShapeWithDenseLayout(
           reduce_shape.element_type(), new_reduce_shape_data,
           new_reduce_shape_layout);
 

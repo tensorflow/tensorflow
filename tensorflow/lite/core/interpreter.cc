@@ -329,8 +329,7 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
   // by default, in which case, the execution will fall back to default
   // implementation if the XNNPACK delegate fails to be applied.
   for (size_t i = 0; i < delegate_providers.size(); ++i) {
-    auto delegate_ptr =
-        delegate_providers[i](context_->recommended_num_threads);
+    auto delegate_ptr = delegate_providers[i](context_);
     // Note when XNNPACK-by-default is disabled, the corresponding creator (i.e.
     // tflite::MaybeCreateXNNPACKDelegate(...)) will return a nullptr.
     // Therefore, we simply continue with the next one.
@@ -349,10 +348,10 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
             i);
         break;
       case kTfLiteError:
-        TF_LITE_REPORT_ERROR(error_reporter_,
-                             "Failed to apply the default TensorFlow Lite "
-                             "delegate indexed at %zu.",
-                             i);
+        error_reporter_->Report(
+            "Failed to apply the default TensorFlow Lite "
+            "delegate indexed at %zu.",
+            i);
         return kTfLiteError;
       case kTfLiteDelegateError:
         TFLITE_LOG(
@@ -378,10 +377,10 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
             i);
         return kTfLiteUnresolvedOps;
       default:
-        TF_LITE_REPORT_ERROR(error_reporter_,
-                             "Unknown status (%d) after applying the default "
-                             "TensorFlow Lite delegate indexed at %zu.",
-                             status, i);
+        error_reporter_->Report(
+            "Unknown status (%d) after applying the default "
+            "TensorFlow Lite delegate indexed at %zu.",
+            status, i);
         return kTfLiteError;
     }
   }

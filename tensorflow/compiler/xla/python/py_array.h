@@ -33,7 +33,8 @@ struct PyArray_Storage {
                   bool committed, std::shared_ptr<PyClient> py_client,
                   std::shared_ptr<Traceback> traceback,
                   std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers)
-      : aval(std::move(aval)),
+      : fastpath_enabled(true),
+        aval(std::move(aval)),
         weak_type(weak_type),
         dtype(std::move(dtype)),
         shape(std::move(shape)),
@@ -49,8 +50,16 @@ struct PyArray_Storage {
     }
     prev = nullptr;
   }
+
+  // TODO(yashkatariya): remove this once the transition completes.
+  struct DisableFastpath {};
+  explicit PyArray_Storage(DisableFastpath) : fastpath_enabled(false) {}
+
   ~PyArray_Storage();
   pybind11::handle AsHandle();
+
+  // TODO(yashkatariya): remove this once the transition completes.
+  bool fastpath_enabled;
 
   pybind11::object aval;
   bool weak_type = false;
@@ -95,6 +104,10 @@ class PyArray : public pybind11::object {
                      pybind11::object sharding,
                      absl::Span<const PyArray> py_arrays, bool committed,
                      bool skip_checks);
+
+  // TODO(yashkatariya): remove this once the transition completes.
+  struct DisableFastpath {};
+  static void PyInit(pybind11::object self, DisableFastpath);
 
   // Only used in C++
   PyArray(pybind11::object aval, bool weak_type, pybind11::dtype dtype,
@@ -158,6 +171,9 @@ class PyArray : public pybind11::object {
   }
 
   int num_shards() const { return pjrt_buffers().size(); }
+
+  // TODO(yashkatariya): remove this once the transition completes.
+  bool fastpath_enabled() const { return GetStorage().fastpath_enabled; }
 
   static pybind11::handle type() {
     DCHECK(type_);

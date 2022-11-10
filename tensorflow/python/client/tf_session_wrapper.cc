@@ -797,6 +797,9 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   m.def("TF_ImportGraphDefOptionsSetUniquifyNames",
         TF_ImportGraphDefOptionsSetUniquifyNames,
         py::call_guard<py::gil_scoped_release>());
+  m.def("TF_ImportGraphDefOptionsSetPropagateDeviceSpec",
+        tensorflow::TF_ImportGraphDefOptionsSetPropagateDeviceSpec,
+        py::call_guard<py::gil_scoped_release>());
   m.def("TF_ImportGraphDefOptionsRemapControlDependency",
         TF_ImportGraphDefOptionsRemapControlDependency,
         py::call_guard<py::gil_scoped_release>());

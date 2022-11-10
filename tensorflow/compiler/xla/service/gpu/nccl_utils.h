@@ -17,10 +17,13 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_UTILS_H_
 
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
+#include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -37,7 +40,7 @@ namespace gpu {
 
 ncclRedOp_t ToNcclReduction(ReductionKind kind);
 StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
-    PrimitiveType element_type);
+    PrimitiveType element_type, Thunk::Kind reduction_op);
 
 bool IsGlobalNcclConfig();
 bool IsNcclLaunchModeParallel();

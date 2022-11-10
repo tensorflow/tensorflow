@@ -27,9 +27,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/tsl/platform/env.h"
 
-namespace tensorflow {
+namespace tsl {
 class CoordinationServiceAgent;
-}  // namespace tensorflow
+}  // namespace tsl
 
 namespace xla {
 
@@ -124,7 +124,7 @@ class DistributedRuntimeClient {
 
   // Returns pointer to coordination service agent, or InternalError if the
   // client does not use coordination service.
-  virtual StatusOr<tensorflow::CoordinationServiceAgent*>
+  virtual StatusOr<tsl::CoordinationServiceAgent*>
   GetCoordinationServiceAgent() = 0;
 };
 

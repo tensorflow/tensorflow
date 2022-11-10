@@ -84,7 +84,7 @@ void HandleFuncOp(Operation* op) {
 
 // Handles cast op between the first convolution and the block argument.
 LogicalResult HandleCast(TF::CastOp cast_op, ArrayRef<int64_t> new_shape) {
-  auto cast_input = cast_op.x();
+  auto cast_input = cast_op.getX();
   // Update input type.
   auto transform_result_type =
       RankedTensorType::get(new_shape, getElementTypeOrSelf(cast_input));
@@ -98,7 +98,7 @@ LogicalResult HandleCast(TF::CastOp cast_op, ArrayRef<int64_t> new_shape) {
       block_arg = nullptr;
       cast_op_input = nullptr;
     } else {
-      auto cast_input = cast_op_input.x();
+      auto cast_input = cast_op_input.getX();
       // Update input type.
       auto transform_result_type =
           RankedTensorType::get(new_shape, getElementTypeOrSelf(cast_input));
@@ -113,7 +113,7 @@ LogicalResult HandleCast(TF::CastOp cast_op, ArrayRef<int64_t> new_shape) {
 
 // Handles padding before convolution for space to depth transform.
 LogicalResult HandlePad(TF::PadOp op, int32_t kernel_size, int32_t block_size) {
-  auto ranked_type = op.input().getType().dyn_cast<RankedTensorType>();
+  auto ranked_type = op.getInput().getType().dyn_cast<RankedTensorType>();
   if (!ranked_type) return failure();
   auto pad_input_shape = ranked_type.getShape();
   Location loc = op.getLoc();
@@ -162,7 +162,7 @@ void HandleConv2DStride(TF::Conv2DOp conv2d) {
 
 // Transforms input shape for the first convolution.
 void HandleConv2DInput(TF::Conv2DOp conv2d, int64_t block_size) {
-  auto input = conv2d.input();
+  auto input = conv2d.getInput();
   auto input_shape = input.getType().cast<RankedTensorType>().getShape();
   SmallVector<int64_t, 4> transform_shape = {
       input_shape[0], input_shape[1] / block_size, input_shape[2] / block_size,
@@ -223,7 +223,7 @@ void HandleConv2DFilter(TF::Conv2DOp conv2d, int64_t block_size) {
   // 2. Reshape to [4, 2, 4, 2, 3, 64]
   // 3. Transpose to [4, 4, 2, 2, 3, 64]
   // 4. Reshape to [4, 4, 12, 64]
-  auto filter = conv2d.filter();
+  auto filter = conv2d.getFilter();
   OpBuilder builder(conv2d);
   builder.setInsertionPoint(conv2d);
   // Book keeping filter information.
@@ -296,7 +296,7 @@ void HandleConv2DBackPropFilter(TF::Conv2DBackpropFilterOp backprop,
   OpBuilder builder(backprop);
   builder.setInsertionPoint(backprop);
 
-  auto input = backprop.input();
+  auto input = backprop.getInput();
   // Get new filter size from new_filter_shape.
   auto new_filter_sizes = builder.create<TF::ConstOp>(
       backprop.getLoc(),
@@ -321,10 +321,10 @@ void HandleConv2DBackPropFilter(TF::Conv2DBackpropFilterOp backprop,
   // Build new BackPropFilterOp.
   auto loc = backprop.getLoc();
   auto new_backprop = builder.create<TF::Conv2DBackpropFilterOp>(
-      loc, new_result_type, input, new_filter_sizes, backprop.out_backprop(),
-      strides, backprop.use_cudnn_on_gpu(), backprop.padding(),
-      backprop.explicit_paddings(), backprop.data_format(),
-      backprop.dilations());
+      loc, new_result_type, input, new_filter_sizes, backprop.getOutBackprop(),
+      strides, backprop.getUseCudnnOnGpu(), backprop.getPadding(),
+      backprop.getExplicitPaddings(), backprop.getDataFormat(),
+      backprop.getDilations());
 
   // For example, if new filter shape is [4, 4, 12, 64], old filter shape
   // is [7, 7, 3, 64] with block_size 2.
@@ -508,13 +508,13 @@ Optional<BlockArgumentInfo> GetInputBlockArgNum(Value input) {
 
   while (pad_op || cast_op) {
     if (pad_op) {
-      auto block_arg_num = GetBlockArgNum(pad_op.input());
+      auto block_arg_num = GetBlockArgNum(pad_op.getInput());
       if (block_arg_num.has_value()) return block_arg_num;
-      next_input = pad_op.input();
+      next_input = pad_op.getInput();
     } else {
-      auto block_arg_num = GetBlockArgNum(cast_op.x());
+      auto block_arg_num = GetBlockArgNum(cast_op.getX());
       if (block_arg_num.has_value()) return block_arg_num;
-      next_input = cast_op.x();
+      next_input = cast_op.getX();
     }
     pad_op = dyn_cast_or_null<TF::PadOp>(next_input.getDefiningOp());
     cast_op = dyn_cast_or_null<TF::CastOp>(next_input.getDefiningOp());
@@ -527,28 +527,28 @@ Optional<BlockArgumentInfo> GetInputBlockArgNum(Value input) {
 // Only the first convolution in the graph whose batch size smaller than 8
 // and its input feature size smaller than 8 can be transformed.
 Optional<BlockArgumentInfo> GetConv2DInputArgNum(TF::Conv2DOp conv2d) {
-  if (conv2d.data_format() != "NHWC" || conv2d.strides().size() != 4) {
+  if (conv2d.getDataFormat() != "NHWC" || conv2d.getStrides().size() != 4) {
     return None;
   }
   // Current supported ops between convolution input and the block arguments are
   // PadOp and CastOp.
-  return GetInputBlockArgNum(conv2d.input());
+  return GetInputBlockArgNum(conv2d.getInput());
 }
 
 // Applies space to depth transform for the first convolution on TPU device.
 void HandleFirstConvolution(TF::Conv2DOp conv2d, int64_t block_size) {
   // Check if input and filter type are RankedTensorType.
   auto input_tensor_type =
-      conv2d.input().getType().dyn_cast<RankedTensorType>();
+      conv2d.getInput().getType().dyn_cast<RankedTensorType>();
   auto filter_tensor_type =
-      conv2d.filter().getType().dyn_cast<RankedTensorType>();
+      conv2d.getFilter().getType().dyn_cast<RankedTensorType>();
   if (!input_tensor_type || !filter_tensor_type) return;
   // Book keeping filter shape for padding and backprop filter rewrite.
   auto filter_shape = filter_tensor_type.getShape();
   SmallVector<int32_t, 4> old_filter_shape(filter_shape.begin(),
                                            filter_shape.end());
   // Handles input.
-  auto conv2d_input = conv2d.input();
+  auto conv2d_input = conv2d.getInput();
   if (auto block_arg = conv2d_input.dyn_cast<mlir::BlockArgument>()) {
     // Change on device function type/shape.
     HandleFuncOp(block_arg.getOwner()->getParentOp());
@@ -557,7 +557,7 @@ void HandleFirstConvolution(TF::Conv2DOp conv2d, int64_t block_size) {
   if (auto pad_op = dyn_cast_or_null<TF::PadOp>(conv2d_input.getDefiningOp())) {
     // Rewrite pad_op before Convolutioin.
     if (failed(HandlePad(pad_op, filter_shape[0], block_size))) return;
-    auto pad_input = pad_op.input();
+    auto pad_input = pad_op.getInput();
     if (auto block_arg = pad_input.dyn_cast<mlir::BlockArgument>()) {
       // Change on device function type/shape.
       HandleFuncOp(block_arg.getOwner()->getParentOp());
@@ -571,7 +571,8 @@ void HandleFirstConvolution(TF::Conv2DOp conv2d, int64_t block_size) {
 
   // Book keeping new filter shape for backprop filter rewrite.
   // Filter shape is defined in HandleConv2DFilter, thus it is RankedTensorType.
-  filter_shape = conv2d.filter().getType().cast<RankedTensorType>().getShape();
+  filter_shape =
+      conv2d.getFilter().getType().cast<RankedTensorType>().getShape();
   SmallVector<int32_t, 4> new_filter_shape(filter_shape.begin(),
                                            filter_shape.end());
 
@@ -591,7 +592,7 @@ void HandleFirstConvolution(TF::Conv2DOp conv2d, int64_t block_size) {
 int32_t GetConv2DBlockSize(TF::Conv2DOp conv2d) {
   SmallVector<int32_t, 4> strides(4, 1);
   for (int i = 0; i < 3; ++i) {
-    strides[i] = conv2d.strides()[i].cast<mlir::IntegerAttr>().getInt();
+    strides[i] = conv2d.getStrides()[i].cast<mlir::IntegerAttr>().getInt();
   }
 
   // Space to depth only supports striding at spatial dimension.

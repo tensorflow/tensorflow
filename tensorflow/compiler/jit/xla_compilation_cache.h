@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -116,10 +117,7 @@ class XlaCompilationCache : public ResourceBase {
                  const XlaCompiler::CompilationResult** out_compilation_result,
                  xla::LocalExecutable** out_executable);
 
-  // As above, but calls XlaCompiler::CompileSingleOp instead of
-  // XlaCompiler::CompileFunction. If MLIR bridge is enabled through ConfigProto
-  // in OpKernelContext, then uses MLIR bridge for compilation instead of
-  // XlaCompiler, if possible.
+  // As above, but for a single op.
   Status CompileSingleOp(
       const XlaCompiler::Options& options,
       const std::vector<XlaCompiler::Argument>& args, OpKernelContext* ctx,
@@ -324,7 +322,6 @@ class XlaCompilationCache : public ResourceBase {
           tensorflow::Env::Default(), "async_compiler_threads",
           kNumCompilerThreads);
     }
-
   } async_compilation_state_;
 
   // The number of times a lazy compilation must be requested for a specific
@@ -338,19 +335,10 @@ class XlaCompilationCache : public ResourceBase {
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompilationCache);
 };
 
-// Creates a single-node graph using the specified node_def as the only op apart
-// from the arg and retval nodes.
-StatusOr<std::unique_ptr<Graph>> CreateGraph(
-    const NodeDef& node_def, absl::Span<const XlaCompiler::Argument> args,
-    absl::Span<const DataType> result_types);
-
-// Use XlaCompiler to compile a single op into HLO.
-Status XlaSingleOpToHlo(
-    XlaCompiler* compiler, const XlaCompiler::Options& options,
-    const std::vector<XlaCompiler::Argument>& args,
-    const XlaCompiler::SingleOpCompileArgument& single_op_compile_argument,
-    const XlaCompiler::CompileOptions& compile_options,
-    XlaCompiler::CompilationResult* compilation_result);
+// Generates the ExecutableBuildOptions for compliation from HLO to executable.
+xla::ExecutableBuildOptions GetExecutableBuildOptions(
+    const XlaCompiler::Options& options,
+    const XlaCompiler::CompilationResult& result, int default_device_ordinal);
 
 }  // namespace tensorflow
 

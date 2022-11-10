@@ -39,7 +39,7 @@ pybind_extension(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_pipeline",
         "//tensorflow/compiler/mlir/tfrt/python_tests:python_test_attrs_registration",
-        "//tensorflow/compiler/xla/mlir/transforms/runtime:compiler",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:compiler",
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/runtime:jit_executable",
         "//tensorflow/core/platform:dynamic_annotations",

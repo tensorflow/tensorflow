@@ -4,7 +4,6 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 package(
     default_visibility = [
         ":friends",
-        "//tensorflow:__pkg__",
     ],
     licenses = ["notice"],
 )

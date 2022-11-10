@@ -170,9 +170,7 @@ static bool OperatorWritersMain(raw_ostream& os, RecordKeeper& records) {
   // Create a scoped object to assign op metadata to generated XLA ops.
   os << "  xla::XlaScopedOpMetadataAssignment "
         "op_metadata(lowering_context.builder, "
-        "mlir::mhlo::CreateOpMetadataFromLocation("
-        "op, lowering_context.converter->GetOptions().legalize_node_names"
-        "));\n\n";
+        "mlir::mhlo::CreateOpMetadataFromLocation(op));\n\n";
 
   // Retrieve all the definitions derived from HLO_Op and sort by record name.
   for (const auto* def : records.getAllDerivedDefinitions("HLO_Op")) {

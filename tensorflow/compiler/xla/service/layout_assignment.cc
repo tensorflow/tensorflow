@@ -32,18 +32,18 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
@@ -1288,7 +1288,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     }
 
     const Shape& output_shape = instruction->shape();
-    Shape output_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
+    Shape output_shape_with_layout = ShapeUtil::MakeShapeWithDenseLayout(
         output_shape.element_type(), output_shape.dimensions(),
         LayoutUtil::MinorToMajor(output_layout));
     Shape operand_shape = operand->shape();
@@ -1365,7 +1365,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
       // Don't assign a layout in case of R1 -> effective R1 reshape.
       return nullptr;
     }
-    Shape operand_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
+    Shape operand_shape_with_layout = ShapeUtil::MakeShapeWithDenseLayout(
         operand->shape().element_type(), operand->shape().dimensions(),
         LayoutUtil::MinorToMajor(operand_layout));
     Shape output_shape = user->shape();

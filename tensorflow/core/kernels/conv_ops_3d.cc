@@ -345,13 +345,8 @@ struct LaunchConvOp<GPUDevice, T> {
       }
     }
 
-#if GOOGLE_CUDA
-    const bool compute_in_nhwc =
-        CUDNN_VERSION >= 8000 && DataTypeToEnum<T>::value == DT_HALF;
-#else
-    // fast NHWC implementation is a CUDA only feature
-    const bool compute_in_nhwc = false;
-#endif
+    const bool compute_in_nhwc = ComputeInNhwcEnabled(
+        DataTypeToEnum<T>::value, stream, /*use_4d_tensor=*/false);
     const TensorFormat compute_data_format =
         (compute_in_nhwc && data_format == FORMAT_NHWC) ? FORMAT_NHWC
                                                         : FORMAT_NCHW;

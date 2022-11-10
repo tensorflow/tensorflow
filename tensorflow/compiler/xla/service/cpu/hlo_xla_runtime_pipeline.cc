@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/hlo_xla_runtime_pipeline.h"
 
+#include <utility>
+
 #include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/TensorToLinalg/TensorToLinalgPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
@@ -35,13 +39,19 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Vector/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/transforms/bufferizable_op_interface_impl.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/bufferizable_op_interface_impl.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
+#include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
+#include "tensorflow/compiler/xla/mlir_hlo/gml_st/interfaces/bufferizable_op_interface_impl.h"
+#include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/interfaces/bufferizable_op_interface_impl.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace cpu {
@@ -66,18 +76,17 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions() {
   return options;
 }
 
-void AddSparsificationPasses(xla::runtime::PassManager& passes) {
-  passes->addNestedPass<FuncOp>(mlir::createLinalgGeneralizationPass());
-  passes->addNestedPass<FuncOp>(
+void AddSparsificationPasses(mlir::OpPassManager& pm) {
+  pm.addNestedPass<FuncOp>(mlir::createLinalgGeneralizationPass());
+  pm.addNestedPass<FuncOp>(
       mlir::bufferization::createEmptyTensorToAllocTensorPass());
-  passes->addPass(mlir::bufferization::createTensorCopyInsertionPass(
+  pm.addPass(mlir::bufferization::createTensorCopyInsertionPass(
       GetBufferizationOptions()));
-  passes->addPass(mlir::createSparseTensorRewritePass());
-  passes->addPass(mlir::createSparsificationPass());
-  passes->addPass(mlir::createSparseTensorConversionPass());
-  passes->addPass(
-      mlir::createDenseBufferizationPass(GetBufferizationOptions()));
-  passes->addNestedPass<mlir::func::FuncOp>(
+  pm.addPass(mlir::createSparseTensorRewritePass());
+  pm.addPass(mlir::createSparsificationPass());
+  pm.addPass(mlir::createSparseTensorConversionPass());
+  pm.addPass(mlir::createDenseBufferizationPass(GetBufferizationOptions()));
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createFinalizingBufferizePass());
 }
 
@@ -86,122 +95,177 @@ void AddSparsificationPasses(xla::runtime::PassManager& passes) {
 // -------------------------------------------------------------------------- //
 // Assemble a HLO XLA Runtime pipeline to lower from HLO to Linalg on buffers.
 // -------------------------------------------------------------------------- //
-void CreateDefaultHloXlaRuntimePipeline(xla::runtime::PassManager& passes) {
-  passes->addPass(mlir::createInlinerPass());
-  passes->addPass(mlir::mhlo::createExpandHloTuplesPass("main"));
-  // TODO(b/233771980): Remove once custom_call doesn't use tuples.
-  passes->addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createFlattenTuplePass());
-  // Remove redundant shape operations left after legalizing to HLO.
-  passes->addPass(mlir::createCSEPass());
-  passes->addPass(mlir::createCanonicalizerPass());
 
+static Status CreateHloXlaPipeline(
+    mlir::OpPassManager& pm, const HloXlaRuntimePipelineOptions& options) {
+  // Resolve all shape constraints (e.g. broadcast constraints that can be
+  // proved statically and changed to const witness) early to allow more
+  // efficient broadcast operations moving.
   // Move up broadcasting operations to allow for more fusion opportunities.
-  // Add the broadcast propagation pass first, because it can help to avoid
-  // exponential complexity from the EarlyBroadcastInDimOp pattern which is used
-  // in the merge assuming ops pass further down.
-  passes->addNestedPass<FuncOp>(mlir::mhlo::createMergeAssumingOpsPass());
-  passes->addNestedPass<FuncOp>(mlir::mhlo::createBroadcastPropagationPass());
-  passes->addPass(mlir::createCSEPass());
-  passes->addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createInlinerPass());
+  pm.addPass(mlir::mhlo::createExpandHloTuplesPass("main"));
+  // TODO(b/233771980): Remove once custom_call doesn't use tuples.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createFlattenTuplePass());
+  pm.addPass(createXlaAbiLegalizationPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createLegalizeGeneralDotPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createBroadcastPropagationPass());
+  pm.addPass(mlir::createCSEPass());
+  pm.addPass(mlir::createCanonicalizerPass());
 
-  // Group reduction and parallel dimensions of reduction operations and realize
-  // them through equivalent 1D or 2D reductions, if possible.
-  passes->addNestedPass<FuncOp>(
-      mlir::mhlo::createGroupReductionDimensionsPass());
+  // Transform HLO operations to Linalg.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeSortPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createLegalizeControlFlowPass());
+  pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
+  // TODO(kramerb): Give THLO lowerings priority over linalg when it's ready for
+  // concat, reduce and friends.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createLegalizeHloToLinalgPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createLegalizeMHLOToTHLOPass());
 
-  // Also, try to simplify reshape operations.
-  passes->addNestedPass<FuncOp>(mlir::createSymbolicShapeOptimizationPass());
+  // Lower index cast on tensors to tensor.generate.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createLowerIndexCastPass());
 
-  passes->addNestedPass<FuncOp>(mlir::mhlo::createSparseRewritingPass());
-  passes->addNestedPass<FuncOp>(mlir::mhlo::createLegalizeGeneralDotPass());
+  pm.addPass(mlir::mhlo::createConvertToSignlessPass());
 
-  // Transform HLO operations to Linalg and Standard.
-  passes->addNestedPass<FuncOp>(mlir::mhlo::createLegalizeControlFlowPass());
-  passes->addNestedPass<FuncOp>(mlir::mhlo::createLegalizeSortPass());
-  passes->addNestedPass<FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
-  passes->addPass(mlir::mhlo::createLegalizeToArithmeticPass());
-  passes->addNestedPass<FuncOp>(
-      mlir::mhlo::createLegalizeHloShapeOpsToStandardPass());
-
-  // Now that all compute operations are converted to standard (as a side effect
-  // of bufferizing to memref dialect) we can remove the remaining references
-  // to unsigned types.
-  passes->addPass(mlir::mhlo::createConvertToSignlessPass());
+  // Transform scatter ops.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::gml_st::createTransformScatterForCpuPass());
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
   // use linalg inputs instead of outputs for memref.dim operations).
-  passes->addNestedPass<FuncOp>(mlir::createShapeSimplification());
-  passes->addNestedPass<FuncOp>(mlir::createShapeToShapeLowering());
-  passes->addPass(mlir::createConvertShapeToStandardPass());
-  passes->addNestedPass<FuncOp>(mlir::createConvertShapeConstraintsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createShapeSimplification());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createShapeToShapeLowering());
+  pm.addPass(mlir::createConvertShapeToStandardPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::createConvertShapeConstraintsPass());
 
   // Fuse Linalg on tensors operations.
-  passes->addPass(mlir::createCSEPass());
-  passes->addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
-  // Lower index cast on tensors to tensor.generate.
-  passes->addNestedPass<FuncOp>(mlir::createLowerIndexCastPass());
-  passes->addPass(mlir::createCSEPass());
-  passes->addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
+  pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::createLinalgElementwiseOpFusionPass());
+  pm.addPass(mlir::createReconcileUnrealizedCastsPass());
+  pm.addPass(mlir::createConvertTensorToLinalgPass());
 
-  // Convert complex types.
-  passes->addPass(mlir::createConvertComplexToStandardPass());
+  // Detensorize SCF iter args.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createDetensorizeScfOpsPass());
+  // mhlo ops on unit tensors generate trivial linalg.generics, which
+  // one-shot-bufferize generates unnecessary allocs for. The detensorize pass
+  // replaces these linalg.generics with scalar ops.
+  auto detensorize = mlir::createLinalgDetensorizePass();
+  if (detensorize->initializeOptions("aggressive-mode=true").failed()) {
+    return tsl::errors::Internal("Failed to set up detensorize pass.");
+  }
+  pm.addNestedPass<mlir::func::FuncOp>(std::move(detensorize));
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createScalarizationPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::bufferization::createEmptyTensorToAllocTensorPass());
 
-  // Add linalg passes to perform fusion, tiling, peeling and vectorization.
-  //  AddLinalgTransformations(pm, options);
+  // Always run canonicalizer (which does dead code removal) before
+  // bufferizing anything.
+  pm.addPass(mlir::createCanonicalizerPass());
 
-  // Inline everything, bufferization doesn't model ownership across calls.
-  passes->addPass(mlir::createInlinerPass());
+  if (options.sparse_bufferization) {
+    // Convert Sparse tensors.
+    AddSparsificationPasses(pm);
+  } else {
+    pm.addPass(mlir::hlo::createOneShotBufferizePass());
+  }
 
-  // Always run canonicalizer (which does dead code removal) before bufferizing
-  // anything.
-  passes->addPass(mlir::createCanonicalizerPass());
-
-  // Convert sparse tensors.
-  AddSparsificationPasses(passes);
-
-  passes->addPass(mlir::createCSEPass());
-  passes->addPass(mlir::createCanonicalizerPass());
-
-  // Deallocate all temporary buffers.
-  passes->addNestedPass<FuncOp>(
+  // Handle framework specific requirements for buffers and then insert
+  // deallocations for temporary buffers.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertLinalgToLoopsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::gml_st::createGmlStToScfPass());
+  pm.addPass(mlir::createCSEPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+  mlir::bufferization::BufferResultsToOutParamsOptions out_params_options;
+  out_params_options.filterFn = [](mlir::func::FuncOp* func) {
+    // Only transform the entry point.
+    return func->getSymName() == "main";
+  };
+  pm.addPass(mlir::bufferization::createBufferResultsToOutParamsPass(
+      out_params_options));
+  if (options.outline_with_xla_framework) {
+    pm.addPass(mlir::mhlo::CreateOutlineWithXLAFrameworkPass());
+  }
+  pm.addPass(mlir::createInlinerPass());
+  if (!options.sparse_bufferization) {
+    pm.addNestedPass<FuncOp>(
+        mlir::bufferization::createPromoteBuffersToStackPass(nullptr));
+  }
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createBufferDeallocationPass());
 
-  passes->addNestedPass<FuncOp>(mlir::gml_st::createGmlStToScfPass());
+  pm.addPass(mlir::createBufferizationToMemRefPass());
 
-  passes->addPass(mlir::createBufferizationToMemRefPass());
-  passes->addPass(mlir::createCSEPass());
-  passes->addPass(mlir::createCanonicalizerPass());
+  // Specialize linalg.matmul to linalg.dot, linalg.matvec or linalg.vecmat,
+  // and immediately canonicalize to clean up not taken branches.
+  // pm.addNestedPass<mlir::func::FuncOp>(CreateLinalgMatmulSpecializationPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+
+  // Tile and vectorize linalg operation using Linalg Codegen Strategy.
+  // pm.addNestedPass<mlir::func::FuncOp>(CreateCodegenStrategyForMatMulPass());
+
+  // TODO(tpopp): Move hits to mlir::hlo::createGenericHostToLLVMPass?
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::createConvertComplexToStandardPass());
+
+  pm.addPass(mlir::createCSEPass());
+  pm.addPass(mlir::createCanonicalizerPass());
 
   mlir::VectorTransferToSCFOptions vec_to_scf_options;
   vec_to_scf_options.unroll = true;
-  passes->addNestedPass<FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::createConvertVectorToSCFPass(vec_to_scf_options));
+
+  return OkStatus();
 }
 
-void RegisterHloXlaRuntimePipelineDialects(
-    xla::runtime::DialectRegistry& dialects) {
-  mlir::arith::registerBufferizableOpInterfaceExternalModels(*dialects);
+Status CreateHloXlaRuntimePipeline(
+    xla::runtime::PassManager& passes,
+    const HloXlaRuntimePipelineOptions& options) {
+  return CreateHloXlaPipeline(*passes, options);
+}
+
+Status CreateDefaultHloXlaRuntimePipeline(xla::runtime::PassManager& passes) {
+  HloXlaRuntimePipelineOptions options;
+  return CreateHloXlaPipeline(*passes, options);
+}
+
+void RegisterHloXlaRuntimePipelineDialects(mlir::DialectRegistry& dialects) {
+  mlir::arith::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
-      *dialects);
-  mlir::gml_st::registerBufferizableOpInterfaceExternalModels(*dialects);
-  mlir::linalg::registerBufferizableOpInterfaceExternalModels(*dialects);
-  mlir::mhlo::registerBufferizableOpInterfaceExternalModels(*dialects);
-  mlir::scf::registerBufferizableOpInterfaceExternalModels(*dialects);
-  mlir::shape::registerBufferizableOpInterfaceExternalModels(*dialects);
-  mlir::tensor::registerBufferizableOpInterfaceExternalModels(*dialects);
-  mlir::vector::registerBufferizableOpInterfaceExternalModels(*dialects);
-}
-
-static void CreateDefaultHloXlaPipeline(mlir::OpPassManager& pm) {
-  xla::runtime::PassManager passes(&pm);
-  CreateDefaultHloXlaRuntimePipeline(passes);
+      dialects);
+  mlir::gml_st::registerBufferizableOpInterfaceExternalModels(dialects);
+  mlir::linalg::registerBufferizableOpInterfaceExternalModels(dialects);
+  mlir::mhlo::registerBufferizableOpInterfaceExternalModels(dialects);
+  mlir::scf::registerBufferizableOpInterfaceExternalModels(dialects);
+  mlir::shape::registerBufferizableOpInterfaceExternalModels(dialects);
+  mlir::tensor::registerBufferizableOpInterfaceExternalModels(dialects);
+  mlir::vector::registerBufferizableOpInterfaceExternalModels(dialects);
 }
 
 static mlir::PassPipelineRegistration<> hlo_xla_runtime_pipeline(
     "hlo-xla-runtime-pipeline",
     "Convert HLO dialect to XLA Runtime compatible dialects",
-    CreateDefaultHloXlaPipeline);
+    [](mlir::OpPassManager& pm) {
+      HloXlaRuntimePipelineOptions options;
+      Status status = CreateHloXlaPipeline(pm, options);
+      if (!status.ok()) {
+        LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
+                   << status.error_message();
+      }
+    });
+
+static mlir::PassPipelineRegistration<> sparsification_pipeline(
+    "hlo-xla-runtime-sparsification",
+    "Sparsification passes from HLO-XLA Runtime pipeline",
+    AddSparsificationPasses);
 
 }  // namespace cpu
 }  // namespace xla

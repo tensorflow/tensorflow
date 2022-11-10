@@ -58,6 +58,7 @@ limitations under the License.
 
 namespace tflite {
 
+#ifndef DOXYGEN_SKIP
 class InterpreterTest;  // Class for friend declarations.
 
 namespace delegates {
@@ -71,6 +72,7 @@ class TestDelegation;  // Class for friend declarations.
 namespace interpreter_wrapper {
 class InterpreterWrapper;  // Class for friend declarations.
 }  // namespace interpreter_wrapper
+#endif  // DOXYGEN_SKIP
 
 /// An interpreter for a graph of nodes that input and output from tensors.
 /// Each node of the graph processes a set of input tensors and produces a
@@ -564,6 +566,7 @@ class Interpreter {
   /// 5. kTfLiteError: Unexpected/runtime failure.
   /// WARNING: This is an experimental API and subject to change.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteOpaqueDelegateStruct* delegate);
 
   // Owning handle to a TfLiteDelegate instance.
   using TfLiteDelegatePtr =
@@ -613,6 +616,9 @@ class Interpreter {
   TfLiteStatus SetBufferHandle(int tensor_index,
                                TfLiteBufferHandle buffer_handle,
                                TfLiteDelegate* delegate);
+  TfLiteStatus SetBufferHandle(int tensor_index,
+                               TfLiteBufferHandle buffer_handle,
+                               TfLiteOpaqueDelegateStruct* opaque_delegate);
 
   /// Get the delegate buffer handle, and the delegate which can process the
   /// buffer handle.
@@ -620,6 +626,9 @@ class Interpreter {
   TfLiteStatus GetBufferHandle(int tensor_index,
                                TfLiteBufferHandle* buffer_handle,
                                TfLiteDelegate** delegate);
+  TfLiteStatus GetBufferHandle(int tensor_index,
+                               TfLiteBufferHandle* buffer_handle,
+                               TfLiteOpaqueDelegateStruct** opaque_delegate);
 
   /// Sets the profiler to tracing execution. The caller retains ownership
   /// of the profiler and must ensure its validity.
@@ -755,10 +764,12 @@ class Interpreter {
 
  private:
   friend class InterpreterBuilder;
+#ifndef DOXYGEN_SKIP
   friend class tflite::InterpreterTest;
   friend class tflite::delegates::InterpreterUtils;
   friend class tflite::delegates::test_utils::TestDelegation;
   friend class tflite::interpreter_wrapper::InterpreterWrapper;
+#endif  // DOXYGEN_SKIP
 
   /// Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,
@@ -907,7 +918,7 @@ class Interpreter {
   // An empty one means there's no delegate to be applied by default or
   // delegates have been applied and doesn't need to be applied again.
   using TfLiteDelegateCreator =
-      std::function<TfLiteDelegatePtr(int /*num_threads*/)>;
+      std::function<TfLiteDelegatePtr(TfLiteContext* /*context*/)>;
   using TfLiteDelegateCreators = std::vector<TfLiteDelegateCreator>;
   TfLiteDelegateCreators lazy_delegate_providers_;
 

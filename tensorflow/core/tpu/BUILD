@@ -14,9 +14,9 @@ package(
         "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
         "//tensorflow/compiler/tf2xla/kernels:__subpackages__",
         "//tensorflow/compiler/xla:__subpackages__",
+        "//tensorflow/compiler/xla/backends/profiler/tpu:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor/tpu:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
-        "//tensorflow/core/profiler/backends/tpu:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/dtensor:__subpackages__",
     ],
@@ -67,7 +67,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -180,6 +180,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
+        "//tensorflow/core/platform:status",
     ],
     # Always link this in, because even if we don't use it directly we want its
     # static initializers to dynamically load API symbols exported from libtpu.so
@@ -235,10 +236,10 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:computation_layout",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:executable",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:maybe_owning_device_memory",
@@ -265,41 +266,12 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_on_demand_compiler",
-    srcs = ["tpu_on_demand_compiler.cc"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:compiler",
-        "//tensorflow/compiler/xla/service:executable",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_cost_analysis",
-        "//tensorflow/compiler/xla/service:hlo_module_group",
-        "//tensorflow/compiler/xla/service:shaped_buffer",
-        "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
-        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",
-        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
-        "//tensorflow/compiler/xla/stream_executor/tpu:proto_helper",
-        "//tensorflow/compiler/xla/stream_executor/tpu:status_helper",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executable",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_hdrs",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_platform_id",
-        "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/types:span",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
     name = "tpu_runtime",
     srcs = [],
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_api_dlsym_initializer",
-        "//tensorflow/core/tpu:tpu_on_demand_compiler",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_on_demand_compiler",
         "//tensorflow/core/tpu/ops",
     ],
 )

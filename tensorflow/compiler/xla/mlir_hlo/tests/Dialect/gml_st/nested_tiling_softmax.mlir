@@ -5,8 +5,8 @@
 // RUN:     --canonicalize --cse | \
 // RUN: FileCheck %s
 
-// CHECK: #map0 = affine_map<(d0, d1) -> (d0, d1)>
-// CHECK: #map1 = affine_map<(d0, d1) -> (d0)>
+// CHECK: #map{{[0-9]*}} = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK: #map{{[0-9]*}} = affine_map<(d0, d1) -> (d0)>
 #map0 = affine_map<(d0, d1) -> (d0, d1)>
 #map1 = affine_map<(d0, d1) -> (d0)>
 
@@ -98,45 +98,45 @@ func.func @softmax(%arg0: tensor<64x128xf32>) -> tensor<64x128xf32> {
 // CHECK-NEXT:     %[[MATERIALIZE_5:.*]] = gml_st.materialize %[[MATERIALIZE_0]][%[[TILE_5]]]
 
 // CHECK-NEXT:     %[[GENERIC:.*]] = linalg.generic
-// CHECK-SAME:         indexing_maps = [#map0, #map1]
+// CHECK-SAME:         indexing_maps = [#[[MAP0:map[0-9]*]], #[[MAP1:map[0-9]*]]]
 // CHECK-SAME:         iterator_types = ["parallel", "reduction"]
 // CHECK-SAME:         ins(%[[MATERIALIZE_4]] : tensor<1x128xf32>)
 // CHECK-SAME:         outs(%[[MATERIALIZE_5]] : tensor<1xf32>)
 
 // CHECK:          %[[MATERIALIZE_6:.*]] = gml_st.materialize %[[MATERIALIZE_1]][%[[TILE_4]]]
 // CHECK-NEXT:     %[[GENERIC_0:.*]] = linalg.generic
-// CHECK-SAME:         indexing_maps = [#map1, #map0]
+// CHECK-SAME:         indexing_maps = [#[[MAP1]], #[[MAP0]]]
 // CHECK-SAME:         iterator_types = ["parallel", "parallel"]
 // CHECK-SAME:         ins(%[[GENERIC]] : tensor<1xf32>)
 // CHECK-SAME:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
 
 // CHECK:          %[[GENERIC_1:.*]] = linalg.generic
-// CHECK-SAME:         indexing_maps = [#map0, #map0, #map0]
+// CHECK-SAME:         indexing_maps = [#[[MAP0]], #[[MAP0]], #[[MAP0]]]
 // CHECK-SAME:         iterator_types = ["parallel", "parallel"]
 // CHECK-SAME:         ins(%[[MATERIALIZE_4]], %[[GENERIC_0]] : tensor<1x128xf32>, tensor<1x128xf32>)
 // CHECK-SAME:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
 
 // CHECK:          %[[GENERIC_2:.*]] = linalg.generic
-// CHECK-SAME:         indexing_maps = [#map0, #map0]
+// CHECK-SAME:         indexing_maps = [#[[MAP0]], #[[MAP0]]]
 // CHECK-SAME:         iterator_types = ["parallel", "parallel"]
 // CHECK-SAME:         ins(%[[GENERIC_1]] : tensor<1x128xf32>)
 // CHECK-SAME:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
 
 // CHECK:          %[[MATERIALIZE_8:.*]] = gml_st.materialize %[[MATERIALIZE_3]][%[[TILE_5]]]
 // CHECK-NEXT:          %[[GENERIC_3:.*]] = linalg.generic
-// CHECK-SAME:         indexing_maps = [#map0, #map1]
+// CHECK-SAME:         indexing_maps = [#[[MAP0]], #[[MAP1]]]
 // CHECK-SAME:         iterator_types = ["parallel", "reduction"]
 // CHECK-SAME:         ins(%[[GENERIC_2]] : tensor<1x128xf32>)
 // CHECK-SAME:         outs(%[[MATERIALIZE_8]] : tensor<1xf32>)
 
 // CHECK:          %[[GENERIC_4:.*]] = linalg.generic
-// CHECK-SAME:         indexing_maps = [#map1, #map0]
+// CHECK-SAME:         indexing_maps = [#[[MAP1]], #[[MAP0]]]
 // CHECK-SAME:         iterator_types = ["parallel", "parallel"]
 // CHECK-SAME:         ins(%[[GENERIC_3]] : tensor<1xf32>)
 // CHECK-SAME:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
 
 // CHECK:          %[[GENERIC_5:.*]] = linalg.generic
-// CHECK-SAME:         indexing_maps = [#map0, #map0, #map0
+// CHECK-SAME:         indexing_maps = [#[[MAP0]], #[[MAP0]], #[[MAP0]]
 // CHECK-SAME:         iterator_types = ["parallel", "parallel"]
 // CHECK-SAME:         ins(%[[GENERIC_2]], %[[GENERIC_4]] : tensor<1x128xf32>, tensor<1x128xf32>)
 // CHECK-SAME:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)

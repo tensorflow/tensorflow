@@ -113,17 +113,19 @@ cc_test(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//third_party/pthreadpool",
         "@com_google_googletest//:gtest_main",
-        "@pthreadpool",
     ],
 )
 
 cc_library(
     name = "vendor_delegate",
     hdrs = ["vendor_delegate.h"],
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
     deps = [
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core/shims:delegate_plugin",
+        "//tensorflow/lite/core/experimental/acceleration/configuration/c:vendor_delegate",
     ],
 )

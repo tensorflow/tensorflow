@@ -27,6 +27,7 @@ cc_binary(
     srcs = [
         "external_delegate_adaptor.cc",
     ],
+    defines = ["TFL_EXTERNAL_DELEGATE_COMPILE_LIBRARY"],
     linkshared = 1,
     linkstatic = 1,
     deps = [

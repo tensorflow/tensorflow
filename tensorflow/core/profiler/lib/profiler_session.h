@@ -24,8 +24,8 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/profiler_options.pb.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
@@ -66,8 +66,6 @@ class ProfilerSession {
       TF_LOCKS_EXCLUDED(mutex_);
 
  private:
-  friend class DeviceProfilerSession;
-
   // Constructs an instance of the class and starts profiling
   explicit ProfilerSession(const ProfileOptions& options);
 

@@ -384,7 +384,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
                                      while_op.body_function()));
     } else if (auto while_region = dyn_cast<WhileRegionOp>(op)) {
       AnalyzeWhileLoop(while_region, backtrack_analysis.GetAnalysisForRegion(
-                                         while_region.body()));
+                                         while_region.getBody()));
     } else if (auto case_op = dyn_cast<CaseOp>(op)) {
       llvm::SmallVector<func::FuncOp, 4> functions;
       case_op.get_branch_functions(functions);
@@ -556,7 +556,7 @@ void ResourceAliasAnalysisInfo::AnalyzeFunctionalCaseOrIfOp(
         });
     if (all_passthrough_args_known) {
       for (const auto& passthrough_arg : passthrough_args) {
-        Value operand = case_or_if_op.input()[passthrough_arg.getValue()];
+        Value operand = case_or_if_op.getInput()[passthrough_arg.getValue()];
         PropagateInputToOutput(operand, result);
       }
     } else {

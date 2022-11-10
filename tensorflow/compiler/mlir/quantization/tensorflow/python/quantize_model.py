@@ -28,6 +28,7 @@ from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model as quantize_model_wrapper
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
+from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -601,13 +602,16 @@ def _run_static_range_qat(
     The static-range quantized graph.
   """
   logging.info('Running static-range quantization for QAT model.')
-  graph_def_serialized = (
+  exported_model_serialized = (
       quantize_model_wrapper.quantize_qat_model(saved_model_path,
                                                 ','.join(signature_def_keys),
                                                 ','.join(tags),
                                                 quant_opts.SerializeToString()))
 
-  return graph_pb2.GraphDef.FromString(graph_def_serialized)
+  exported_model = exported_model_pb2.ExportedModel.FromString(
+      exported_model_serialized)
+
+  return exported_model.graph_def
 
 
 def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
@@ -701,16 +705,18 @@ def _run_static_range_ptq(
     initialize resources (e.g. hash tables) when a SavedModel is loaded.
   """
   logging.info('Running post-training quantization pre-calibration step.')
-  graph_def_serialized, init_node_name = (
+  exported_model_serialized = (
       quantize_model_wrapper.quantize_ptq_model_pre_calibration(
           saved_model_path, ','.join(signature_def_keys), ','.join(tags),
           quant_opts.SerializeToString()))
 
-  graph_def = graph_pb2.GraphDef.FromString(graph_def_serialized)
+  exported_model = exported_model_pb2.ExportedModel.FromString(
+      exported_model_serialized)
 
   float_model_dir = tempfile.mkdtemp()
   v1_builder = builder.SavedModelBuilder(float_model_dir)
 
+  graph_def = exported_model.graph_def
   with session.Session(graph=ops.Graph()) as sess:
     for function_def in graph_def.library.function:
       for node_def in function_def.node_def:
@@ -729,7 +735,7 @@ def _run_static_range_ptq(
         sess,
         tags,
         signature_def_map=signature_def_map,
-        main_op=_find_op(working_graph, init_node_name))
+        main_op=_find_op(working_graph, exported_model.init_node_name))
 
   v1_builder.save()
 
@@ -753,7 +759,7 @@ def _run_static_range_ptq(
         sess,
         tags,
         signature_def_map=signature_def_map,
-        main_op=_find_op(working_graph, init_node_name))
+        main_op=_find_op(working_graph, exported_model.init_node_name))
 
   v1_builder.save()
 
@@ -761,14 +767,16 @@ def _run_static_range_ptq(
                                                        signature_def_keys, tags)
 
   logging.info('Running post-training quantization post-calibration step.')
-  graph_def_serialized, init_node_name = (
+  exported_model_serialized = (
       quantize_model_wrapper.quantize_ptq_model_post_calibration(
           calibrated_model_dir, ','.join(signature_def_keys), ','.join(tags),
           quant_opts.SerializeToString()))
 
-  graph_def = graph_pb2.GraphDef.FromString(graph_def_serialized)
+  exported_model = exported_model_pb2.ExportedModel.FromString(
+      exported_model_serialized)
 
-  return graph_def, signature_def_map, init_node_name
+  return (exported_model.graph_def, signature_def_map,
+          exported_model.init_node_name)
 
 
 def _save_model_v1(graph_def: graph_pb2.GraphDef,
@@ -942,17 +950,18 @@ def _dynamic_range_quantize(
         _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS)
 
   # Apply post-training dynamic range quantization to the model.
-  graph_def_serialized = (
+  exported_model_serialized = (
       quantize_model_wrapper.quantize_ptq_dynamic_range(
           saved_model_path, ','.join(signature_keys), ','.join(tags),
           quantization_options.SerializeToString()))
 
-  graph_def = graph_pb2.GraphDef.FromString(graph_def_serialized)
+  exported_model = exported_model_pb2.ExportedModel.FromString(
+      exported_model_serialized)
   signature_def_map = _get_signatures_from_saved_model(saved_model_path,
                                                        signature_keys, tags)
 
   _save_model_v1(
-      graph_def,
+      exported_model.graph_def,
       output_directory,
       signature_def_map,
       tags={tag_constants.SERVING})
@@ -983,6 +992,26 @@ def _verify_output_dir(output_dir: Optional[str], overwrite: bool) -> None:
     raise FileExistsError(f'Output directory already exists: {output_dir} . '
                           'Please set overwrite_output_directory to true to '
                           'overwrite the existing directory.')
+
+
+def _populate_quantization_options_default_values(
+    quantization_options: quant_opts_pb2.QuantizationOptions) -> None:
+  """Populates default values for QuantizationOptions.
+
+  Populates unspecified or unset fields of QuantizationOptions with the default
+  values.
+
+  * If `op_set` is unspecified, it defaults to `OpSet.TF`.
+  * If `freeze_all_variables` is not set, it defaults to `True`.
+
+  Args:
+    quantization_options: An instance of QuantizationOptions.
+  """
+  if quantization_options.op_set == quant_opts_pb2.OpSet.OP_SET_UNSPECIFIED:
+    quantization_options.op_set = quant_opts_pb2.OpSet.TF
+
+  if not quantization_options.HasField('freeze_all_variables'):
+    quantization_options.freeze_all_variables.enabled = True
 
 
 def quantize(
@@ -1029,17 +1058,19 @@ def quantize(
       implemented.
   """
   _verify_output_dir(output_directory, overwrite_output_directory)
+
+  # Set default values for None arguments.
   if output_directory is None:
     output_directory = tempfile.mkdtemp()
 
-  # Set default values for None arguments.
   if quantization_options is None:
     quantization_options = quant_opts_pb2.QuantizationOptions()
-  if quantization_options.op_set == quant_opts_pb2.OpSet.OP_SET_UNSPECIFIED:
-    quantization_options.op_set = quant_opts_pb2.OpSet.TF
+
+  _populate_quantization_options_default_values(quantization_options)
 
   if tags is None:
     tags = {tag_constants.SERVING}
+
   if signature_keys is None:
     signature_keys = [signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
 

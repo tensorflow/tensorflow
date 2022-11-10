@@ -77,7 +77,7 @@ LoggingOpResolver::LoggingOpResolver(
       absl::StrAppend(&error_message, "\nThere are unresolved custom ops: [",
                       absl::StrJoin(unresolved_custom_ops, ", "), "]");
     }
-    TF_LITE_REPORT_ERROR(error_reporter, error_message.c_str());
+    error_reporter->Report(error_message.c_str());
   }
 }
 

@@ -347,8 +347,11 @@ StatusOr<DevicePutResult> DevicePut(py::handle arg, PjRtDevice* to_device,
         return p;
       }();
 
-  if (arg.get_type() == xla::PyArray::type()) {
-    return HandlePyArray(arg, to_device, options);
+  if (arg.get_type() == PyArray::type()) {
+    auto array = py::reinterpret_borrow<PyArray>(arg);
+    if (array.fastpath_enabled()) {
+      return HandlePyArray(arg, to_device, options);
+    }
   }
 
   // Fast-path for the most common case of PyBuffer.
@@ -556,8 +559,10 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
 
   if (arg.get_type() == PyArray::type()) {
     auto array = py::reinterpret_borrow<PyArray>(arg);
-    auto dtype = array.GetBuffer(0)->on_device_shape().element_type();
-    return PyArgSignature(dtype, array.shape(), array.weak_type());
+    if (array.fastpath_enabled()) {
+      auto dtype = array.GetBuffer(0)->on_device_shape().element_type();
+      return PyArgSignature(dtype, array.shape(), array.weak_type());
+    }
   }
 
   // Fast-path for the most common case of PyBuffer.

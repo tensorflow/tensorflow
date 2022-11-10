@@ -1,7 +1,8 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
-load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cc_test")
+load("//tensorflow/tsl:tsl.bzl", "if_not_android")
+load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
 load(
     "//tensorflow/tsl/profiler/builds:build_config.bzl",
     "tf_profiler_copts",
@@ -33,6 +34,7 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "connected_traceme.h",
         "context_types.h",
     ],
     visibility = ["//visibility:public"],
@@ -47,10 +49,10 @@ cc_library(
     ],
     deps = [
         ":profiler_interface",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -58,11 +60,12 @@ cc_library(
     name = "profiler_factory",
     hdrs = ["profiler_factory.h"],
     visibility = [
+        "//tensorflow/compiler/xla/backends/profiler:friends",
         "//tensorflow/core/profiler/lib:__pkg__",
     ],
     deps = [
         ":profiler_interface",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
     ] + if_static([
         ":profiler_factory_impl",
     ]),
@@ -81,25 +84,26 @@ cc_library(
     ],
     deps = [
         ":profiler_interface",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
-        "//tensorflow/core/profiler/lib:profiler_controller",
         "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/profiler/lib:profiler_controller",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
     ],
     alwayslink = True,
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "profiler_factory_test",
     srcs = ["profiler_factory_test.cc"],
     deps = [
         ":profiler_factory",
+        ":profiler_factory_impl",
         ":profiler_interface",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -109,12 +113,13 @@ cc_library(
     hdrs = ["profiler_interface.h"],
     copts = tf_profiler_copts(),
     visibility = [
+        "//tensorflow/compiler/xla/backends/profiler:friends",
         "//tensorflow/core/profiler:internal",
         "//tensorflow/tsl:internal",
     ],
     deps = [
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -125,18 +130,20 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/util:env_var",
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "profiler_lock_test",
     srcs = ["profiler_lock_test.cc"],
     deps = [
         ":profiler_lock",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -151,7 +158,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "traceme_encode_test",
     srcs = ["traceme_encode_test.cc"],
     deps = [
@@ -206,7 +213,7 @@ cc_library(
     ]),
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "scoped_annotation_test",
     size = "small",
     srcs = ["scoped_annotation_test.cc"],
@@ -217,6 +224,20 @@ tf_cc_test(
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
         "//tensorflow/tsl/profiler/backends/cpu:annotation_stack",
+        "//tensorflow/tsl/profiler/backends/cpu:annotation_stack_impl",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "connected_traceme",
+    hdrs = ["connected_traceme.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":context_types_hdrs",
+        ":traceme",
+        ":traceme_encode",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )

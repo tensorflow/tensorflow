@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for segment_sum."""
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -39,7 +39,7 @@ def make_segment_sum_tests(options):
         name="data",
         shape=parameters["data_shape"])
     segment_ids = tf.constant(parameters["segment_ids"], dtype=tf.int32)
-    out = tf.segment_sum(data, segment_ids)
+    out = tf.math.segment_sum(data, segment_ids)
     return [data], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

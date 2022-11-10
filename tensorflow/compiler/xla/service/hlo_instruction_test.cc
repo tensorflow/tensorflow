@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 
 #include <optional>
 #include <set>
@@ -22,13 +22,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -816,8 +816,8 @@ TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {
           {1, 2},
           {3, 4},
       })));
-  auto shape10 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0});
-  auto shape01 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1});
+  auto shape10 = ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0});
+  auto shape01 = ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {0, 1});
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
   auto outfeed10 = builder.AddInstruction(
       HloInstruction::CreateOutfeed(shape10, constant, token, ""));
@@ -1178,7 +1178,8 @@ TEST_F(HloInstructionTest, FullyElementwise) {
 
 TEST_F(HloInstructionTest, MapIsElementwise) {
   auto module = CreateNewVerifiedModule();
-  const Shape r2f32 = ShapeUtil::MakeShapeWithLayout(F32, {10, 10}, {1, 0});
+  const Shape r2f32 =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 10}, {1, 0});
   HloComputation::Builder builder(TestName());
   HloComputation::Builder map_builder("id");
   map_builder.AddInstruction(

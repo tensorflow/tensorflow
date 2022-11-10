@@ -16,17 +16,14 @@
 
 from typing import List, Optional
 
-from absl import flags
 from absl import logging
 
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
-from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import tpu_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
-from tensorflow.python.framework import tfrt_utils
 from tensorflow.python.platform import remote_utils
 from tensorflow.python.util.tf_export import tf_export
 
@@ -44,7 +41,7 @@ def initialize_multi_client_cluster(job_name: str,
                                     collective_leader: str,
                                     port: Optional[int] = None,
                                     gpu_use_nccl_communication: bool = False,
-                                    enable_coordination_service: bool = False):
+                                    enable_coordination_service: bool = True):
   """Initialize GRPC servers and collectives for multi-client DTensor setup.
 
   This function can be used to initialize a multi-client cluster and enable
@@ -108,13 +105,6 @@ def initialize_multi_client_cluster(job_name: str,
   context.ensure_initialized()
 
 
-def _configure_tpu_runtime():
-  if ("tpu_use_tfrt" in flags.FLAGS and flags.FLAGS["tpu_use_tfrt"].value):
-    context.context().use_tfrt = True
-    # Unit tests that skip tfrt backends requires the following line.
-    tfrt_utils.set_tfrt_enabled(True)
-
-
 @tf_export(
     "experimental.dtensor.initialize_accelerator_system",
     "experimental.dtensor.initialize_tpu_system",
@@ -122,7 +112,7 @@ def _configure_tpu_runtime():
     v1=[])
 def initialize_accelerator_system(
     device_type: Optional[str] = None,
-    enable_coordination_service: Optional[bool] = False) -> str:
+    enable_coordination_service: Optional[bool] = True) -> str:
   """Initializes accelerators and communication fabrics for DTensor.
 
   DTensor configures TensorFlow to run in the local mode or multi-client mode.
@@ -188,12 +178,8 @@ def initialize_accelerator_system(
     raise ValueError(f"Unknown device_type {device_type}. "
                      "Allowed values are CPU, GPU, or TPU")
 
-  # Reconfigure TensorFlow to use TFRT TPU runtime if requested.
-  if device_type == "TPU":
-    _configure_tpu_runtime()
-
   if config.gpu_use_nccl_communication():
-    logical_gpu_count = api.num_local_devices("GPU")
+    logical_gpu_count = config.num_local_devices("GPU")
     physical_gpu_count = len(tf_config.list_physical_devices("GPU"))
     if logical_gpu_count != physical_gpu_count:
       raise ValueError(
@@ -204,8 +190,8 @@ def initialize_accelerator_system(
 
   # Configure logical host CPU devices for accelerators.
   if device_type in ("GPU", "TPU"):
-    num_local_devices = api.num_local_devices(device_type)
-    if api.num_local_devices("CPU") < num_local_devices:
+    num_local_devices = config.num_local_devices(device_type)
+    if config.num_local_devices("CPU") < num_local_devices:
       tf_config.set_logical_device_configuration(
           tf_config.list_physical_devices("CPU")[0],
           [context.LogicalDeviceConfiguration()] * num_local_devices)

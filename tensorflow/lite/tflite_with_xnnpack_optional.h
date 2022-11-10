@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace tflite {
 std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>
-MaybeCreateXNNPACKDelegate(int num_threads);
+MaybeCreateXNNPACKDelegate(TfLiteContext* context);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_TFLITE_WITH_XNNPACK_OPTIONAL_H_

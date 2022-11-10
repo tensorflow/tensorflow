@@ -88,6 +88,9 @@ REQUIRED_PACKAGES = [
     'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
+    # TODO(b/239052279): replace with external dependency on JAX repo once JAX
+    # no longer relies on TF.
+    'jax >= 0.3.15',
     'libclang >= 13.0.0',
     'numpy >= 1.20',
     'opt_einsum >= 2.3.2',
@@ -118,7 +121,7 @@ REQUIRED_PACKAGES = [
     # current release version. These also usually have "alpha" or "dev" in their
     # version name.
     # These are all updated during the TF release process.
-    standard_or_nightly('tensorboard >= 2.10, < 2.11',
+    standard_or_nightly('tensorboard >= 2.11, < 2.12',
                         'tb-nightly ~= 2.11.0.a'),
     standard_or_nightly('tensorflow_estimator >= 2.11.0rc0, < 2.12',
                         'tf-estimator-nightly ~= 2.12.0.dev'),
