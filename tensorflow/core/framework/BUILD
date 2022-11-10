@@ -1793,6 +1793,17 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "optimized_function_graph_proto",
+    srcs = ["optimized_function_graph.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    protodeps = [
+        ":types_proto",
+        ":graph_proto",
+    ],
+)
+
+tf_proto_library(
     name = "protos_all",
     cc_api_version = 2,
     make_default_target_header_only = True,
