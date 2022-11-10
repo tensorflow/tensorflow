@@ -33,6 +33,9 @@ py_library(
     srcs = [
         "lazy_utils.py",
         "trt_convert.py",
+        "trt_convert_common.py",
+        "trt_convert_v1.py",
+        "trt_convert_v2.py",
         "types.py",
         "utils.py",
     ],

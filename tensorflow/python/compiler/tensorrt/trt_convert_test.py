@@ -28,6 +28,7 @@ from tensorflow.compiler.tf2tensorrt.utils.trt_engine_instance_pb2 import TRTEng
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
+from tensorflow.python.compiler.tensorrt import trt_convert_v2
 from tensorflow.python.compiler.tensorrt.test import test_utils
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
@@ -1140,7 +1141,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     converter.convert()
 
     # Patch save function with mock.
-    with mock.patch.object(trt_convert, "save") as mock_save:
+    with mock.patch.object(trt_convert_v2, "save") as mock_save:
       mock_save.save = mock.MagicMock()
       # Save converted model with options.
       output_saved_model_dir = self.mkdtemp()
