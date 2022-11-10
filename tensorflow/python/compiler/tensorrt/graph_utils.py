@@ -1,4 +1,4 @@
-# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,72 +15,26 @@
 """Exposes the Python wrapper conversion to trt_graph."""
 
 import collections
-import os
 import re
 
-from tensorflow.python.compiler.tensorrt.types import TrtVersion
-
-from tensorflow.compiler.tf2tensorrt import _pywrap_py_utils
-from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import dtypes
 
 
-def disable_non_trt_optimizers_in_rewriter_config(rewriter_config):
-  """Modifies rewriter_config to disable all non-TRT optimizations."""
-  off = rewriter_config_pb2.RewriterConfig.OFF
+class _DTypeIndex(dict):
+  """Helper class to create an index of dtypes with incremental values."""
 
-  rewriter_config.arithmetic_optimization = off
-  rewriter_config.auto_mixed_precision = off
-  rewriter_config.auto_parallel.enable = False
-  rewriter_config.constant_folding = off
-  rewriter_config.debug_stripper = off
-  rewriter_config.dependency_optimization = off
-  # This one needs to be ON to allow TF-TRT
-  rewriter_config.disable_meta_optimizer = False
-  rewriter_config.disable_model_pruning = True
-  rewriter_config.function_optimization = off
-  rewriter_config.implementation_selector = off
-  rewriter_config.layout_optimizer = off
-  rewriter_config.loop_optimization = off
-  rewriter_config.memory_optimization = (
-      rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
-  rewriter_config.min_graph_nodes = -1
-  rewriter_config.pin_to_host_optimization = off
-  rewriter_config.remapping = off
-  rewriter_config.scoped_allocator_optimization = off
-  rewriter_config.shape_optimization = off
+  # Making `_DTypeIndex` a singleton
+  _instance = None
+  def __new__(cls, *args, **kwargs):
+    if not isinstance(cls._instance, cls):
+      cls._instance = super().__new__(cls, *args, **kwargs)
+    return cls._instance
 
-
-def _is_tensorrt_version_greater_equal(trt_ver, target_ver):
-  trt_ver = TrtVersion(trt_ver)
-  target_ver = TrtVersion(target_ver)
-
-  return trt_ver >= target_ver
-
-
-def is_linked_tensorrt_version_greater_equal(major, minor=0, patch=0):
-  ver = _pywrap_py_utils.get_linked_tensorrt_version()
-  return _is_tensorrt_version_greater_equal(ver, (major, minor, patch))
-
-
-def is_loaded_tensorrt_version_greater_equal(major, minor=0, patch=0):
-  ver = _pywrap_py_utils.get_loaded_tensorrt_version()
-  return _is_tensorrt_version_greater_equal(ver, (major, minor, patch))
-
-
-def is_experimental_feature_activated(feature_name):
-  """Determines if a TF-TRT experimental feature is enabled.
-
-  This helper function checks if an experimental feature was enabled using
-  the environment variable `TF_TRT_EXPERIMENTAL_FEATURES=feature_1,feature_2`.
-
-  Args:
-    feature_name: Name of the feature being tested for activation.
-  """
-
-  return (feature_name
-          in os.environ.get("TF_TRT_EXPERIMENTAL_FEATURES",
-                            default="").split(","))
+  # Emulating `defaultdict` behavior except that it uses `self` as input.
+  def __getitem__(self, dtype):
+    if dtype not in self:
+      self[dtype] = len(self) + 1
+    return super().__getitem__(dtype)
 
 
 def _convert_dtype_id_to_str(dtype):
@@ -88,10 +42,10 @@ def _convert_dtype_id_to_str(dtype):
   if isinstance(dtype, int):
     return dtypes._TYPE_TO_STRING[dtype]
   else:
-    return [dtypes._TYPE_TO_STRING[d] for d in dtype]
+    return [_convert_dtype_id_to_str(d) for d in dtype]
 
 
-def get_node_compute_dtype(node):
+def _get_node_compute_dtype(node):
   """Returns the compute DType of a GraphDef Node."""
   # Note: Order is important, by default TF Node compute dtype is mentioned
   # under `T` key, unless these nodes are one of ["TRTEngineOP", "Cast", "Plh"].
@@ -121,45 +75,6 @@ def get_node_compute_dtype(node):
       continue
 
 
-def get_node_io_shapes(node, key):
-  """Returns the input/output shapes of a GraphDef Node."""
-  out_shape = []
-  for shape in node.attr[key].list.shape:
-    out_shape.append([dim.size for dim in shape.dim])
-  return out_shape
-
-
-def get_trtengineop_io_dtypes(node, key):
-  """Returns the input/output dtypes of a TRTEngineOp."""
-  return _convert_dtype_id_to_str(node.attr[key].list.type)
-
-
-def get_trtengineop_io_nodes_count(node, key):
-  """Returns the number of input/output nodes of a TRTEngineOp."""
-  return len(node.attr[key].list.type)
-
-
-def get_trtengineop_node_op_count(graphdef, node_name):
-  """Counts the number of nodes and OP types of a given TRTEngineOp."""
-  ops_in_engine = collections.defaultdict(int)
-  for func in graphdef.library.function:
-    if f"{node_name}_native_segment" == func.signature.name:
-      node_count = len(func.node_def)
-      for node in func.node_def:
-        ops_in_engine[node.op] += 1
-      break
-  return node_count, ops_in_engine
-
-
-class DTypeIndex(dict):
-  """Helper class to create an index of dtypes with incremental values."""
-
-  def get_dtype_index(self, dtype):
-    if dtype not in self:
-      self[dtype] = len(self) + 1
-    return self[dtype]
-
-
 def draw_graphdef_as_graphviz(graphdef, dot_output_filename):
   """Exports a GraphDef to GraphViz format.
 
@@ -173,7 +88,7 @@ def draw_graphdef_as_graphviz(graphdef, dot_output_filename):
   - Compute Device
   """
 
-  dtype_index = DTypeIndex()
+  dtype_index = _DTypeIndex()
 
   with open(dot_output_filename, "w") as f:
     print("digraph tftrt_converted_graph {", file=f)
@@ -191,8 +106,8 @@ def draw_graphdef_as_graphviz(graphdef, dot_output_filename):
     for node in graphdef.node:
       output_name = node.name
 
-      node_precision = get_node_compute_dtype(node)
-      color_idx = dtype_index.get_dtype_index(node_precision)
+      node_precision = _get_node_compute_dtype(node)
+      color_idx = dtype_index[node_precision]
 
       device_key = node.device.split("/")[-1]
       if not device_key:
@@ -249,3 +164,33 @@ def draw_graphdef_as_graphviz(graphdef, dot_output_filename):
   print("  - `sudo apt install -y graphviz`")
   print("  - `dot -Tpng <input_filename>.dot -o <output_filename>.png`")
   print("===================================================================\n")
+
+
+def get_node_io_shapes(node, key):
+  """Returns the input/output shapes of a GraphDef Node."""
+  out_shape = []
+  for shape in node.attr[key].list.shape:
+    out_shape.append([dim.size for dim in shape.dim])
+  return out_shape
+
+
+def get_trtengineop_io_dtypes(node, key):
+  """Returns the input/output dtypes of a TRTEngineOp."""
+  return _convert_dtype_id_to_str(node.attr[key].list.type)
+
+
+def get_trtengineop_io_nodes_count(node, key):
+  """Returns the number of input/output nodes of a TRTEngineOp."""
+  return len(node.attr[key].list.type)
+
+
+def get_trtengineop_node_op_count(graphdef, node_name):
+  """Counts the number of nodes and OP types of a given TRTEngineOp."""
+  ops_in_engine = collections.defaultdict(int)
+  for func in graphdef.library.function:
+    if f"{node_name}_native_segment" == func.signature.name:
+      node_count = len(func.node_def)
+      for node in func.node_def:
+        ops_in_engine[node.op] += 1
+      break
+  return node_count, ops_in_engine

@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -9,38 +9,28 @@
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
+# See the License for the specific language govezrning permissions and
 # limitations under the License.
 # =============================================================================
 """Exposes the Python wrapper conversion to trt_graph."""
 
-from functools import partial  # pylint: disable=g-importing-member
 import os
 import tempfile
-
 import numpy as np
 
+from functools import partial  # pylint: disable=g-importing-member
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.python.compiler.tensorrt import utils as trt_utils
-from tensorflow.python.compiler.tensorrt.trt_convert_common import DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES
-from tensorflow.python.compiler.tensorrt.trt_convert_common import PROFILE_STRATEGY_RANGE
-from tensorflow.python.compiler.tensorrt.trt_convert_common import TrtConversionParams
-from tensorflow.python.compiler.tensorrt.trt_convert_common import TrtPrecisionMode
-from tensorflow.python.compiler.tensorrt.trt_convert_common import _TRTEngineResource
-from tensorflow.python.compiler.tensorrt.trt_convert_common import _TRT_ENGINE_OP_NAME
-from tensorflow.python.compiler.tensorrt.trt_convert_common import _annotate_variable_ops
-from tensorflow.python.compiler.tensorrt.trt_convert_common import _apply_inlining
-from tensorflow.python.compiler.tensorrt.trt_convert_common import _check_conversion_params
-from tensorflow.python.compiler.tensorrt.trt_convert_common import _check_trt_version_compatibility
-from tensorflow.python.compiler.tensorrt.trt_convert_common import _construct_function_from_graph_def
-from tensorflow.python.compiler.tensorrt.trt_convert_common import _convert_to_tensor
-from tensorflow.python.compiler.tensorrt.trt_convert_common import _get_canonical_engine_name
-from tensorflow.python.compiler.tensorrt.trt_convert_common import _get_tensorrt_rewriter_config
-from tensorflow.python.compiler.tensorrt.trt_convert_common import _print_row
-from tensorflow.python.compiler.tensorrt.trt_convert_common import _save_calibration_table
-from tensorflow.python.compiler.tensorrt.trt_convert_common import gen_trt_ops
-from tensorflow.python.compiler.tensorrt.trt_convert_common import supported_profile_strategies
+from tensorflow.python.compiler.tensorrt import gen_trt_ops
+from tensorflow.python.compiler.tensorrt import graph_utils
+from tensorflow.python.compiler.tensorrt import model_opt
+from tensorflow.python.compiler.tensorrt import trt_utils
+from tensorflow.python.compiler.tensorrt.constants import DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES
+from tensorflow.python.compiler.tensorrt.constants import TrtConversionParams
+from tensorflow.python.compiler.tensorrt.constants import TrtPrecisionMode
+from tensorflow.python.compiler.tensorrt.constants import TrtProfileStrategy
+from tensorflow.python.compiler.tensorrt.constants import TRT_ENGINE_OP_NAME
+from tensorflow.python.compiler.tensorrt.types import TRTEngineResource
 from tensorflow.python.eager import context
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import convert_to_constants
@@ -74,7 +64,7 @@ class TrtGraphConverterV2(object):
 
      ```python
      params = tf.experimental.tensorrt.ConversionParams(
-         precision_mode='FP16')
+         precision_mode=TrtPrecisionMode.FP16)
      converter = tf.experimental.tensorrt.Converter(
          input_saved_model_dir="my_dir", conversion_params=params)
      converter.convert()
@@ -90,7 +80,7 @@ class TrtGraphConverterV2(object):
 
      ```python
      params = tf.experimental.tensorrt.ConversionParams(
-         precision_mode='FP16',
+         precision_mode=TrtPrecisionMode.FP16,
          # Set this to a large enough number so it can cache all the engines.
          maximum_cached_engines=16)
      converter = tf.experimental.tensorrt.Converter(
@@ -120,7 +110,7 @@ class TrtGraphConverterV2(object):
 
      ```python
      params = tf.experimental.tensorrt.ConversionParams(
-         precision_mode='INT8',
+         precision_mode=TrtPrecisionMode.INT8,
          # Currently only one INT8 engine is supported in this mode.
          maximum_cached_engines=1,
          use_calibration=True)
@@ -164,19 +154,6 @@ class TrtGraphConverterV2(object):
        engine will be run with optimal performance with such inputs.
      * `Range+Optimal`: create the profiles for both `Range` and `Optimal`.
   """
-
-  def _verify_profile_strategy(self, strategy):
-    supported_strategies = [s.lower() for s in supported_profile_strategies()]
-    if strategy.lower() not in supported_strategies:
-      raise ValueError(
-          ("profile_strategy '{}' is not supported. It should be one of {}"
-          ).format(strategy, supported_profile_strategies()))
-    if strategy == "ImplicitBatchModeCompatible":
-      logging.warn(
-          "ImplicitBatchModeCompatible strategy is deprecated, and"
-          " using it may result in errors during engine building. Please"
-          " consider using a different profile strategy.")
-
   @deprecation.deprecated_args(None,
                                "Use individual converter parameters instead",
                                "conversion_params")
@@ -209,8 +186,7 @@ class TrtGraphConverterV2(object):
       max_workspace_size_bytes: the maximum GPU temporary memory that the TRT
         engine can use at execution time. This corresponds to the
         'workspaceSize' parameter of nvinfer1::IBuilder::setMaxWorkspaceSize().
-      precision_mode: one of the strings in
-        TrtPrecisionMode.supported_precision_modes().
+      precision_mode: one of the TrtPrecisionMode values.
       minimum_segment_size: the minimum number of nodes required for a subgraph
         to be replaced by TRTEngineOp.
       maximum_cached_engines: max number of cached TRT engines for dynamic TRT
@@ -246,8 +222,9 @@ class TrtGraphConverterV2(object):
           use_calibration=use_calibration,
           allow_build_at_runtime=allow_build_at_runtime)
 
-    _check_trt_version_compatibility()
-    _check_conversion_params(conversion_params, is_v2=True)
+    trt_utils.validate_environment()
+
+    conversion_params.validate()
 
     self._conversion_params = conversion_params
     self._input_saved_model_dir = input_saved_model_dir
@@ -259,10 +236,10 @@ class TrtGraphConverterV2(object):
     self.freeze = not trt_utils.is_experimental_feature_activated(
         "disable_graph_freezing")
 
-    self._need_calibration = ((
-        (conversion_params.precision_mode == TrtPrecisionMode.INT8) or
-        (conversion_params.precision_mode == TrtPrecisionMode.INT8.lower())) and
-                              conversion_params.use_calibration)
+    self._need_calibration = (
+        conversion_params.precision_mode == TrtPrecisionMode.INT8 and
+        conversion_params.use_calibration
+    )
 
     self._calibration_input_fn = None
 
@@ -283,12 +260,14 @@ class TrtGraphConverterV2(object):
       self.freeze = True
 
     self._profile_strategy = "Unknown"
+
     if self._use_dynamic_shape:
       if dynamic_shape_profile_strategy is None:
-        self._profile_strategy = PROFILE_STRATEGY_RANGE
-      else:
-        self._verify_profile_strategy(dynamic_shape_profile_strategy)
-        self._profile_strategy = dynamic_shape_profile_strategy
+        dynamic_shape_profile_strategy = TrtProfileStrategy.RANGE
+
+      self._profile_strategy = TrtProfileStrategy(
+        dynamic_shape_profile_strategy
+      )
 
     # Fields to support TF-TRT testing and shouldn't be used for other purpose.
     self._test_only_disable_non_trt_optimizers = False
@@ -307,9 +286,10 @@ class TrtGraphConverterV2(object):
     """
     grappler_session_config = config_pb2.ConfigProto()
     # Always set `allow_build_at_runtime` for offline TensorRT engine building.
-    custom_rewriter_config = _get_tensorrt_rewriter_config(
+    custom_rewriter_config = model_opt.get_tensorrt_rewriter_config(
         conversion_params=self._conversion_params._replace(
-            allow_build_at_runtime=True),
+            allow_build_at_runtime=True
+        ),
         is_dynamic_op=True,
         max_batch_size=None,
         disable_non_trt_optimizers=self._test_only_disable_non_trt_optimizers,
@@ -323,23 +303,24 @@ class TrtGraphConverterV2(object):
   def _for_each_trt_node(self, graph_def, fn):
     """Helper method to manipulate all TRTEngineOps in a GraphDef."""
     for node in graph_def.node:
-      if node.op == _TRT_ENGINE_OP_NAME:
+      if node.op == TRT_ENGINE_OP_NAME:
         fn(node)
     for func in graph_def.library.function:
       for node in func.node_def:
-        if node.op == _TRT_ENGINE_OP_NAME:
+        if node.op == TRT_ENGINE_OP_NAME:
           fn(node)
 
   def _execute_calibration(self, calibration_input_fn):
     """Run INT8 calibration with the provided input generator function."""
     for inp in calibration_input_fn():
-      args, kwargs = _convert_to_tensor(inp)
+      args, kwargs = trt_utils.convert_to_tensor(inp)
       self._converted_func(*args, **kwargs)
 
-    self._for_each_trt_node(self._converted_graph_def, _save_calibration_table)
+    self._for_each_trt_node(
+        self._converted_graph_def, trt_utils.save_calibration_table)
 
     # Rebuild the function since calibration has changed the graph.
-    self._converted_func = _construct_function_from_graph_def(
+    self._converted_func = model_opt.construct_function_from_graph_def(
         self._converted_func, self._converted_graph_def)
     self._calibrated = True
 
@@ -395,9 +376,10 @@ class TrtGraphConverterV2(object):
     if self.freeze:
       frozen_func = convert_to_constants.convert_variables_to_constants_v2(func)
     else:
-      inlined_graph_def = _apply_inlining(func)
-      _annotate_variable_ops(func, inlined_graph_def)
-      frozen_func = _construct_function_from_graph_def(func, inlined_graph_def)
+      inlined_graph_def = model_opt.apply_inlining(func)
+      model_opt.annotate_variable_ops(func, inlined_graph_def)
+      frozen_func = model_opt.construct_function_from_graph_def(
+          func, inlined_graph_def)
     frozen_graph_def = frozen_func.graph.as_graph_def()
 
     # Clear any prior device assignments
@@ -423,7 +405,7 @@ class TrtGraphConverterV2(object):
 
     # Run TRT optimizer in Grappler to convert the graph.
     self._converted_graph_def = self._run_conversion(grappler_meta_graph_def)
-    self._converted_func = _construct_function_from_graph_def(
+    self._converted_func = model_opt.construct_function_from_graph_def(
         func, self._converted_graph_def, frozen_func)
 
     if self._need_calibration:
@@ -438,7 +420,7 @@ class TrtGraphConverterV2(object):
     graphviz_path = os.environ.get("TF_TRT_EXPORT_GRAPH_VIZ_PATH", default=None)
     if graphviz_path is not None:
       try:
-        trt_utils.draw_graphdef_as_graphviz(
+        graph_utils.draw_graphdef_as_graphviz(
             graphdef=self._converted_func.graph.as_graph_def(add_shapes=True),
             dot_output_filename=graphviz_path)
       except Exception as e:
@@ -506,7 +488,7 @@ class TrtGraphConverterV2(object):
       # Profile generation is enabled using the _profile_generation_mode
       # attribute of the TRTEngineOps. We need to rebuild the function to
       # change this attribute.
-      func = _construct_function_from_graph_def(self._converted_func,
+      func = model_opt.construct_function_from_graph_def(self._converted_func,
                                                 self._converted_graph_def)
     else:
       func = self._converted_func
@@ -518,7 +500,7 @@ class TrtGraphConverterV2(object):
     for inp in input_fn():
       if first_input is None:
         first_input = inp
-      args, kwargs = _convert_to_tensor(inp)
+      args, kwargs = trt_utils.convert_to_tensor(inp)
       func(*args, **kwargs)
 
     if self._need_trt_profiles():
@@ -537,7 +519,7 @@ class TrtGraphConverterV2(object):
       # the inputs can be used because the shape of this input does not
       # determine the engine and instead the shapes collected in profiles
       # determine the engine.
-      args, kwargs = _convert_to_tensor(first_input)
+      args, kwargs = trt_utils.convert_to_tensor(first_input)
       self._converted_func(*args, **kwargs)
 
     self._build_called_once = True
@@ -573,7 +555,7 @@ class TrtGraphConverterV2(object):
     def _serialize_and_track_engine(node):
       """Serialize TRT engines in the cache and track them."""
       # Don't dump the same cache twice.
-      canonical_engine_name = _get_canonical_engine_name(node.name)
+      canonical_engine_name = trt_utils.get_canonical_engine_name(node.name)
       if canonical_engine_name in resource_map:
         return
 
@@ -588,22 +570,23 @@ class TrtGraphConverterV2(object):
             save_gpu_specific_engines=save_gpu_specific_engines)
       except errors.NotFoundError:
         logging.info(
-            "Could not find %s in TF-TRT cache. "
-            "This can happen if build() is not called, "
-            "which means TensorRT engines will be built "
-            "and cached at runtime.", canonical_engine_name)
+            f"Could not find {canonical_engine_name} in TF-TRT cache. This can "
+            "happen if build() is not called, which means TensorRT engines "
+            "will be built and cached at runtime.")
         return
 
       # TODO(laigd): add an option for the user to choose the device.
-      resource_map[canonical_engine_name] = _TRTEngineResource(
+      resource_map[canonical_engine_name] = TRTEngineResource(
           canonical_engine_name, filename,
           self._conversion_params.maximum_cached_engines)
 
     self._for_each_trt_node(self._converted_graph_def,
                             _serialize_and_track_engine)
-    # If the graph is frozen, tracked variables are not needed by the converted model.
-    trackable = autotrackable.AutoTrackable(
-    ) if self.freeze else self._saved_model
+    # If the graph is frozen, tracked variables are not needed by the
+    # converted model.
+    trackable = (
+        autotrackable.AutoTrackable() if self.freeze else self._saved_model
+    )
     trackable.trt_engine_resources = resource_map
 
     # Set allow_build_at_runtime=False if asked by user.
@@ -683,7 +666,7 @@ class TrtGraphConverterV2(object):
     positions = np.cumsum(positions).tolist()
     headers = [h for h, _ in columns]
 
-    _print_row(headers, positions, print_fn=print_fn)
+    trt_utils.print_row(headers, positions, print_fn=print_fn)
     print_fn("=" * line_length)
 
     n_engines = 0
@@ -703,21 +686,21 @@ class TrtGraphConverterV2(object):
 
     for name, node in sorted(trtengineops_dict.items()):
       node_device = node.device.split("/")[-1]
-      in_shapes = trt_utils.get_node_io_shapes(node, "input_shapes")
-      out_shapes = trt_utils.get_node_io_shapes(node, "_output_shapes")
-      in_dtypes = trt_utils.get_trtengineop_io_dtypes(node, "InT")
-      out_dtypes = trt_utils.get_trtengineop_io_dtypes(node, "OutT")
-      in_nodes_count = trt_utils.get_trtengineop_io_nodes_count(node, "InT")
-      out_nodes_count = trt_utils.get_trtengineop_io_nodes_count(node, "OutT")
-      node_count, converted_ops_dict = trt_utils.get_trtengineop_node_op_count(
-          graphdef, name)
+      in_shapes = graph_utils.get_node_io_shapes(node, "input_shapes")
+      out_shapes = graph_utils.get_node_io_shapes(node, "_output_shapes")
+      in_dtypes = graph_utils.get_trtengineop_io_dtypes(node, "InT")
+      out_dtypes = graph_utils.get_trtengineop_io_dtypes(node, "OutT")
+      in_nodes_count = graph_utils.get_trtengineop_io_nodes_count(node, "InT")
+      out_nodes_count = graph_utils.get_trtengineop_io_nodes_count(node, "OutT")
+      node_count, converted_ops_dict = \
+          graph_utils.get_trtengineop_node_op_count(graphdef, name)
 
       n_ops_converted += node_count
 
       if n_engines != 1:
         print_fn(f"\n{'-'*40}\n")
 
-      _print_row(
+      trt_utils.print_row(
           fields=[
               name, node_device, node_count, in_nodes_count, out_nodes_count,
               in_dtypes, out_dtypes, in_shapes, out_shapes

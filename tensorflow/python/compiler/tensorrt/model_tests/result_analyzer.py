@@ -179,7 +179,7 @@ def analyze_test_numerics(test_results: model_handler.TestResultCollection,
         f"No {'CPU' if use_cpu_baseline else 'GPU'} baseline found!")
   for fn0, fn1 in itertools.product(preprocess_funcs, postprocess_funcs):
     func0, func1 = preprocess_funcs[fn0], postprocess_funcs[fn1]
-    column_names.append("{}_{}".format(fn0, fn1))
+    column_names.append(f"{fn0}_{fn1}")
     columns.append([])
     for result in test_results.results:
       columns[-1].append(dict())

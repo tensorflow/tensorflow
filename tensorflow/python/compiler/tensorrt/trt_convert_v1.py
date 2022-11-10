@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,17 +18,13 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
-from tensorflow.python.compiler.tensorrt import utils as trt_utils
-from tensorflow.python.compiler.tensorrt.trt_convert_common import DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES
-from tensorflow.python.compiler.tensorrt.trt_convert_common import TrtConversionParams
-from tensorflow.python.compiler.tensorrt.trt_convert_common import TrtPrecisionMode
-from tensorflow.python.compiler.tensorrt.trt_convert_common import _TRT_ENGINE_OP_NAME
-from tensorflow.python.compiler.tensorrt.trt_convert_common import _check_conversion_params
-from tensorflow.python.compiler.tensorrt.trt_convert_common import _check_trt_version_compatibility
-from tensorflow.python.compiler.tensorrt.trt_convert_common import _get_canonical_engine_name
-from tensorflow.python.compiler.tensorrt.trt_convert_common import _get_tensorrt_rewriter_config
-from tensorflow.python.compiler.tensorrt.trt_convert_common import _to_bytes
-from tensorflow.python.compiler.tensorrt.trt_convert_common import gen_trt_ops
+from tensorflow.python.compiler.tensorrt import gen_trt_ops
+from tensorflow.python.compiler.tensorrt import model_opt
+from tensorflow.python.compiler.tensorrt import trt_utils
+from tensorflow.python.compiler.tensorrt.constants import DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES
+from tensorflow.python.compiler.tensorrt.constants import TrtConversionParams
+from tensorflow.python.compiler.tensorrt.constants import TrtPrecisionMode
+from tensorflow.python.compiler.tensorrt.constants import TRT_ENGINE_OP_NAME
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
@@ -46,15 +42,15 @@ from tensorflow.python.util import deprecation
 
 
 @deprecation.deprecated(
-None, "You shouldn't need a rewriter_config with the current TF-TRT APIs.")
+    None, "You shouldn't need a rewriter_config with the current TF-TRT APIs.")
 def get_tensorrt_rewriter_config(conversion_params,
-                           is_dynamic_op=None,
-                           max_batch_size=None,
-                           is_v2=False,
-                           disable_non_trt_optimizers=False):
-  return _get_tensorrt_rewriter_config(conversion_params, is_dynamic_op,
-                                   max_batch_size, is_v2,
-                                   disable_non_trt_optimizers)
+                                 is_dynamic_op=None,
+                                 max_batch_size=None,
+                                 is_v2=False,
+                                 disable_non_trt_optimizers=False):
+  return model_opt.get_tensorrt_rewriter_config(
+      conversion_params, is_dynamic_op,max_batch_size, is_v2,
+      disable_non_trt_optimizers)
 
 
 class TrtGraphConverter(object):
@@ -89,6 +85,8 @@ class TrtGraphConverter(object):
   ```
   """
 
+  @deprecation.deprecated(
+      None, "This API has been deprecated. Replaced by `TrtGraphConverterV2`.")
   def __init__(self,
                input_saved_model_dir=None,
                input_saved_model_tags=None,
@@ -118,7 +116,7 @@ class TrtGraphConverter(object):
       max_workspace_size_bytes: the maximum GPU temporary memory which the TRT
         engine can use at execution time. This corresponds to the
         'workspaceSize' parameter of nvinfer1::IBuilder::setMaxWorkspaceSize().
-      precision_mode: one of TrtPrecisionMode.supported_precision_modes().
+      precision_mode: one of the TrtPrecisionMode values.
       minimum_segment_size: the minimum number of nodes required for a subgraph
         to be replaced by TRTEngineOp.
       is_dynamic_op: whether to generate dynamic TRT ops which will build the
@@ -151,7 +149,8 @@ class TrtGraphConverter(object):
     if not input_graph_def and not input_saved_model_dir:
       raise ValueError("Must specify one of input_graph_def and "
                        "input_saved_model_dir")
-    _check_trt_version_compatibility()
+
+    trt_utils.validate_environment()
 
     self._input_graph_def = input_graph_def
     self._nodes_denylist = nodes_denylist
@@ -169,9 +168,12 @@ class TrtGraphConverter(object):
     # For calibration usage.
     self._calibration_graph = None
     self._calibration_data_collected = False
+
+    self._precision_mode = TrtPrecisionMode(precision_mode)
     self._need_calibration = (
-        ((precision_mode == TrtPrecisionMode.INT8) or
-         (precision_mode == TrtPrecisionMode.INT8.lower())) and use_calibration)
+        self._precision_mode == TrtPrecisionMode.INT8 and use_calibration
+    )
+
     if self._need_calibration and not is_dynamic_op:
       logging.warn(
           "INT8 precision mode with calibration is supported with "
@@ -196,7 +198,6 @@ class TrtGraphConverter(object):
         maximum_cached_engines=maximum_cached_engines,
         use_calibration=use_calibration,
         allow_build_at_runtime=True)
-    _check_conversion_params(self._conversion_params)
 
     self._test_only_disable_non_trt_optimizers = False
 
@@ -204,7 +205,7 @@ class TrtGraphConverter(object):
     """Run Grappler's OptimizeGraph() tool to convert the graph."""
     # Create custom ConfigProto for Grappler.
     grappler_session_config = config_pb2.ConfigProto()
-    custom_rewriter_config = _get_tensorrt_rewriter_config(
+    custom_rewriter_config = model_opt.get_tensorrt_rewriter_config(
         conversion_params=self._conversion_params,
         is_dynamic_op=self._is_dynamic_op,
         max_batch_size=self._max_batch_size,
@@ -226,9 +227,9 @@ class TrtGraphConverter(object):
       denylist = collection_def.node_list.value
       for i in self._nodes_denylist:
         if isinstance(i, ops.Tensor):
-          denylist.append(_to_bytes(i.name))
+          denylist.append(trt_utils.cast_to_bytes(i.name))
         else:
-          denylist.append(_to_bytes(i))
+          denylist.append(trt_utils.cast_to_bytes(i))
 
   def _convert_graph_def(self):
     """Convert the input GraphDef."""
@@ -368,7 +369,7 @@ class TrtGraphConverter(object):
 
     calibrate_rewriter_cfg = rewriter_config_pb2.RewriterConfig()
     if self._test_only_disable_non_trt_optimizers:
-      trt_utils.disable_non_trt_optimizers_in_rewriter_config(
+      model_opt.disable_non_trt_optimizers_in_rewriter_config(
           calibrate_rewriter_cfg)
 
     # Set allow_soft_placement=True to run the graph for calibration so that
@@ -398,7 +399,7 @@ class TrtGraphConverter(object):
         resource_name_input = array_ops.placeholder(dtypes.string)
 
         for node in self._converted_graph_def.node:
-          if node.op == _TRT_ENGINE_OP_NAME:
+          if node.op == TRT_ENGINE_OP_NAME:
             # Adds the get_calibration_data op for the device if not done
             # before. We only add one such op for each device.
             # TODO(laigd): What if the device is empty?????
@@ -413,7 +414,9 @@ class TrtGraphConverter(object):
             calibration_result = calibration_sess.run(
                 device_to_get_resource_op_map[node.device],
                 feed_dict={
-                    resource_name_input: _get_canonical_engine_name(node.name)
+                    resource_name_input: trt_utils.get_canonical_engine_name(
+                        node.name
+                    )
                 })
             node.attr["calibration_data"].s = calibration_result
 
@@ -450,7 +453,7 @@ class TrtGraphConverter(object):
         kind = collection_def.WhichOneof("kind")
         if kind is None:
           logging.error(
-              "Cannot identify data type for collection %s. Skipping.", key)
+              f"Cannot identify data type for collection {key}. Skipping.")
           continue
         from_proto = ops.get_from_proto_function(key)
         if from_proto and kind == "bytes_list":
@@ -505,7 +508,8 @@ class TrtGraphConverter(object):
     saved_model_builder.save()
 
 
-# TODO(laigd): use TrtConversionParams here.
+@deprecation.deprecated(
+    None, "This API has been deprecated and replaced by `TrtGraphConverterV2`.")
 def create_inference_graph(
     input_graph_def,
     outputs,
@@ -531,7 +535,7 @@ def create_inference_graph(
     max_workspace_size_bytes: the maximum GPU temporary memory which the TRT
       engine can use at execution time. This corresponds to the 'workspaceSize'
       parameter of nvinfer1::IBuilder::setMaxWorkspaceSize().
-    precision_mode: one of TrtPrecisionMode.supported_precision_modes().
+    precision_mode: one of the TrtPrecisionMode values.
     minimum_segment_size: the minimum number of nodes required for a subgraph to
       be replaced by TRTEngineOp.
     is_dynamic_op: whether to generate dynamic TRT ops which will build the TRT

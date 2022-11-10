@@ -1,10 +1,10 @@
 path: "tensorflow.experimental.tensorrt.Converter"
 tf_class {
-  is_instance: "<class \'tensorflow.python.compiler.tensorrt.trt_convert.TrtGraphConverterV2\'>"
+  is_instance: "<class \'tensorflow.python.compiler.tensorrt.trt_convert_v2.TrtGraphConverterV2\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'input_saved_model_dir\', \'input_saved_model_tags\', \'input_saved_model_signature_key\', \'use_dynamic_shape\', \'dynamic_shape_profile_strategy\', \'max_workspace_size_bytes\', \'precision_mode\', \'minimum_segment_size\', \'maximum_cached_engines\', \'use_calibration\', \'allow_build_at_runtime\', \'conversion_params\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'1073741824\', \'FP32\', \'3\', \'1\', \'True\', \'True\', \'None\'], "
+    argspec: "args=[\'self\', \'input_saved_model_dir\', \'input_saved_model_tags\', \'input_saved_model_signature_key\', \'use_dynamic_shape\', \'dynamic_shape_profile_strategy\', \'max_workspace_size_bytes\', \'precision_mode\', \'minimum_segment_size\', \'maximum_cached_engines\', \'use_calibration\', \'allow_build_at_runtime\', \'conversion_params\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'9223372036854775295\', \'TrtPrecisionMode.FP32\', \'3\', \'1\', \'True\', \'True\', \'None\'], "
   }
   member_method {
     name: "build"

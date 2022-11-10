@@ -14,8 +14,9 @@
 # ==============================================================================
 """Model script to test TF-TensorRT integration."""
 
+from tensorflow.python.compiler.tensorrt.constants import TrtVersionEnv
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
-from tensorflow.python.compiler.tensorrt import utils as trt_utils
+from tensorflow.python.compiler.tensorrt.types import TrtVersion
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -41,10 +42,12 @@ class BoolTest(trt_test.TfTrtIntegrationTestBase):
     return ["TRTEngineOp_000"]
 
   def ShouldRunTest(self, run_params):
-    reason = "Boolean ops are not implemented "
-    return (run_params.dynamic_shape, reason + "in ImplicitBatch mode") \
-        if trt_utils.is_linked_tensorrt_version_greater_equal(8, 2, 0)  \
-        else (False, reason + "for TRT < 8.2.0")
+    error = "Boolean ops are not implemented"
+    return (
+        (run_params.dynamic_shape, f"{error} in ImplicitBatch mode")
+        if TrtVersionEnv() >= TrtVersion("8.2.0") else
+        (False, f"{error} for TRT < 8.2.0")
+    )
 
 
 if __name__ == "__main__":

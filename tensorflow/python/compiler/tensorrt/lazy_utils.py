@@ -25,27 +25,35 @@ def LazyObj(base_cls):
 
     __bypass_getattribute__ = [
         "wrapped", "_wrapped", "_setup_fn", "__maybe_load__", "__setattr__",
-        "__base_cls__"
+        "__base_cls__", "_debug"
     ]
 
-    __bypass_setattr__ = ["_setup_fn", "_wrapped"]
+    __bypass_setattr__ = ["_setup_fn", "_wrapped", "_debug"]
 
-    def __init__(self, setup_fn=None):
+    def __init__(self, setup_fn=None, debug=False):
       if setup_fn is None or not callable(setup_fn):
         raise ValueError
 
-      self._wrapped = None
+      self._debug = debug
       self._setup_fn = setup_fn
+      self._wrapped = None
 
     @property
     def wrapped(self):
       if self._wrapped is None:
-        self._wrapped = _LazyObj.__base_cls__(self._setup_fn())
+        if self._debug:
+          print("Loading Obj")
+        obj = self._setup_fn()
+        if isinstance(obj, _LazyObj.__base_cls__):
+          self._wrapped = obj
+        else:
+          self._wrapped = _LazyObj.__base_cls__(obj)
       return self._wrapped
 
     def __getattribute__(self, name):
       if name not in _LazyObj.__bypass_getattribute__:
-        return self.wrapped.__getattribute__(name)
+        wrapped_obj = self.wrapped
+        return wrapped_obj.__getattribute__(wrapped_obj, name)
       else:
         return super().__getattribute__(name)
 
@@ -76,8 +84,13 @@ def LazyObj(base_cls):
       # Re-implemented Methods
       "__class__", "__getattribute__", "__init__", "__setattr__", "__dict__",
       # Forbidden methods
-      "__init_subclass__", "__new__", "__subclasshook__"
+      "__init_subclass__", "__new__", "__subclasshook__",
+      # MetaClasses Specific methods: Targeting EnumMeta namely
+      "__abstractmethods__", "__base__", "__bases__", "__basicsize__",
+      "__dictoffset__", "__flags__", "__itemsize__", "__mro__", "__name__",
+      "__qualname__", "__text_signature__", "__weakrefoffset__"
   ]
+
   for key in dir(base_cls):
     if key in protected_methods:
       continue

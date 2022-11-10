@@ -16,8 +16,6 @@
 
 import os
 
-from unittest import SkipTest  # pylint: disable=g-importing-member
-
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops

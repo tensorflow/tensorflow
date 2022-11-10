@@ -216,7 +216,7 @@ class _ModelHandlerBase(metaclass=abc.ABCMeta):
     return str(self._model_config)
 
   def __repr__(self) -> str:
-    return "{}({})".format(self.__class__.__name__, str(self))
+    return f"{self.__class__.__name__}({self})"
 
   @property
   def model_config(self) -> ModelConfig:
@@ -319,7 +319,7 @@ class ModelHandlerV1(_ModelHandlerBase):
             latency.append(time.time() - before)
         except Exception as exc:
           raise RuntimeError("Failed to run model inference! "
-                             "Model information: {}".format(str(self))) from exc
+                             f"Model information: {self}") from exc
     return TestResult(
         model_config=self.model_config,
         enable_gpu=enable_gpu,
@@ -379,7 +379,7 @@ class ModelHandlerV2(_ModelHandlerBase):
           latency.append(time.time() - before)
     except Exception as exc:
       raise RuntimeError("Failed to run model inference! "
-                         "Model information: {}".format(str(self))) from exc
+                         f"Model information: {self}") from exc
     return TestResult(
         model_config=self.model_config,
         enable_gpu=enable_gpu,
@@ -413,12 +413,11 @@ class _TrtModelHandlerBase(_ModelHandlerBase):
   def _check_contains_trt_engine(self, graph_def: graph_pb2.GraphDef):
     if "TRTEngineOp" not in [node.op for node in graph_def.node]:
       raise RuntimeError("Failed to convert to TensorRT! "
-                         "Model Information: {}".format(str(self)))
+                         f"Model Information: {self}")
 
   def __str__(self) -> str:
     base = super(_TrtModelHandlerBase, self).__str__()
-    return "{}, TrtConversionParams: {}".format(base,
-                                                str(self._trt_convert_params))
+    return f"{base}, TrtConversionParams: {self._trt_convert_params}"
 
   @property
   def trt_convert_params(self) -> trt.TrtConversionParams:
@@ -491,7 +490,7 @@ class TrtModelHandlerV1(_TrtModelHandlerBase, ModelHandlerV1):
             feed_dict_fn=lambda: calibration_inputs)
       except Exception as exc:
         raise RuntimeError("Failed to calibrate! "
-                           "Model Information: {}".format(str(self))) from exc
+                           f"Model Information: {self}") from exc
 
   def run(self,
           inputs: Optional[Mapping[str, np.ndarray]] = None,
@@ -574,10 +573,10 @@ class _ModelHandlerManagerBase(metaclass=abc.ABCMeta):
     self._result_collection = None
 
   def __str__(self) -> str:
-    return "Input Model: {}".format(str(self._ori_model))
+    return f"Input Model: {self._ori_model}"
 
   def __repr__(self) -> str:
-    return "{}({})".format(self.__class__.__name__, str(self))
+    return f"{self.__class__.__name__}({self})"
 
   @property
   @classmethod

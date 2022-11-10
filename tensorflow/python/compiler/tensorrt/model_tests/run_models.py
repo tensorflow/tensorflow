@@ -67,17 +67,17 @@ flags.DEFINE_enum("numerics_baseline", "CPU", ["CPU", "GPU"],
 
 flags.DEFINE_float(
     "fp32_speedup_tolerance", 0.90,
-    "Log errors whenever mean TensorRT fp32 speedup is lower than the tolerance."
+    "Log errors whenever mean TensorRT fp32 speedup is lower than the tolerance"
 )
 
 flags.DEFINE_float(
     "fp16_speedup_tolerance", 0.90,
-    "Log errors whenever mean TensorRT fp16 speedup is lower than the tolerance."
+    "Log errors whenever mean TensorRT fp16 speedup is lower than the tolerance"
 )
 
 flags.DEFINE_float(
     "int8_speedup_tolerance", 0.90,
-    "Log errors whenever mean TensorRT int8 speedup is lower than the tolerance."
+    "Log errors whenever mean TensorRT int8 speedup is lower than the tolerance"
 )
 
 flags.DEFINE_float(
@@ -157,8 +157,8 @@ class SampleRunner(object):
     elif self._output_format == "JSON":
       df.to_json(os.path.join(path, "result.json"))
     else:
-      raise NotImplementedError("Unsupported output format: {}".format(
-          self._output_format))
+      raise NotImplementedError("Unsupported output format: "
+                                f"{self._output_format}")
 
   def _run_impl(
       self, test_name: str,

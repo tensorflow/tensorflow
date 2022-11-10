@@ -141,8 +141,8 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
     mnist_saver = saver.Saver()
     checkpoint_file = latest_checkpoint(model_dir)
     if checkpoint_file is None:
-      raise ValueError('latest_checkpoint returned None. check if' +
-                       'model_dir={} is the right directory'.format(model_dir))
+      raise ValueError("latest_checkpoint returned None. check if "
+                       f"model_dir={model_dir} is the right directory")
     mnist_saver.restore(sess, checkpoint_file)
 
   def _GetGraphDef(self, use_trt, max_batch_size, model_dir):

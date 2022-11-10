@@ -8,4 +8,12 @@ tf_module {
     name: "Converter"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "TrtPrecisionMode"
+    mtype: "<class \'tensorflow.python.compiler.tensorrt.types._EnumMeta\'>"
+  }
+  member {
+    name: "TrtProfileStrategy"
+    mtype: "<class \'tensorflow.python.compiler.tensorrt.types._EnumMeta\'>"
+  }
 }

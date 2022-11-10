@@ -1,39 +1,37 @@
 path: "tensorflow.experimental.tensorrt.ConversionParams"
 tf_class {
-  is_instance: "<class \'tensorflow.python.compiler.tensorrt.trt_convert.TrtConversionParams\'>"
-  is_instance: "<class \'tensorflow.python.compiler.tensorrt.trt_convert.TrtConversionParams\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tensorflow.python.compiler.tensorrt.constants.TrtConversionParams\'>"
+  is_instance: "<type \'object\'>"
   member {
     name: "allow_build_at_runtime"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'bool\'>"
   }
   member {
     name: "max_workspace_size_bytes"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'tensorflow.python.compiler.tensorrt.lazy_utils.LazyObj.<locals>._LazyObj\'>"
   }
   member {
     name: "maximum_cached_engines"
-    mtype: "<type \'property\'>"
+    mtype: "<type \'int\'>"
   }
   member {
     name: "minimum_segment_size"
-    mtype: "<type \'property\'>"
+    mtype: "<type \'int\'>"
   }
   member {
     name: "precision_mode"
-    mtype: "<type \'property\'>"
+    mtype: "<enum \'TrtPrecisionMode\'>"
   }
   member {
     name: "use_calibration"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'bool\'>"
   }
   member_method {
     name: "__init__"
+    argspec: "args=[\'self\', \'max_workspace_size_bytes\', \'precision_mode\', \'minimum_segment_size\', \'maximum_cached_engines\', \'use_calibration\', \'allow_build_at_runtime\'], varargs=None, keywords=None, defaults=[\'9223372036854775295\', \'TrtPrecisionMode.FP32\', \'3\', \'1\', \'True\', \'True\'], "
   }
   member_method {
-    name: "count"
-  }
-  member_method {
-    name: "index"
+    name: "validate"
+    argspec: "args=[\'self\', \'is_v2\'], varargs=None, keywords=None, defaults=[\'True\'], "
   }
 }

@@ -1,0 +1,20 @@
+path: "tensorflow.experimental.tensorrt.TrtProfileStrategy"
+tf_class {
+  is_instance: "<enum \'TrtProfileStrategy\'>"
+  member {
+    name: "IMPLICIT_BATCH_MODE_COMPATIBLE"
+    mtype: "<enum \'TrtProfileStrategy\'>"
+  }
+  member {
+    name: "OPTIMAL"
+    mtype: "<enum \'TrtProfileStrategy\'>"
+  }
+  member {
+    name: "RANGE"
+    mtype: "<enum \'TrtProfileStrategy\'>"
+  }
+  member {
+    name: "RANGE_OPTIMAL"
+    mtype: "<enum \'TrtProfileStrategy\'>"
+  }
+}
