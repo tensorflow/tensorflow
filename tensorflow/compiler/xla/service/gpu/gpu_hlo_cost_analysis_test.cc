@@ -147,7 +147,12 @@ f {
   a2 = s8[10000] add(b1, b1)
   s1 = s8[8000] slice(a2), slice={[0:8000]}
   s2 = s8[8000] slice(a2), slice={[2000:10000]}
-  ROOT r1 = s8[8000] add(s1, s2)
+  c = s8[10000] constant({...})
+  sc1 = s8[8000] slice(c), slice={[0:8000]}
+  sc2 = s8[8000] slice(c), slice={[2000:10000]}
+  a3 = s8[8000] add(s1, s2)
+  a4 = s8[8000] add(sc1, sc2)
+  ROOT a5 = s8[8000] add(a3, a4)
 }
 
 ENTRY e {
@@ -164,9 +169,9 @@ ENTRY e {
 
   EXPECT_EQ(analysis.output_bytes_accessed(*root), 8000);
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 1);
-  // Operand + output.
-  EXPECT_EQ(analysis.bytes_accessed(*root), 1 + 8000);
-  EXPECT_EQ(analysis.bytes_accessed(), 1 + 8000);
+  // Operand + output + constant.
+  EXPECT_EQ(analysis.bytes_accessed(*root), 1 + 8000 + 10000);
+  EXPECT_EQ(analysis.bytes_accessed(), 1 + 8000 + 10000);
 }
 
 TEST_F(GpuHloCostAnalysisTest, BroadcastFlops) {
