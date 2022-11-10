@@ -84,6 +84,7 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(_TFLITE_ENABLE_RUY "${TFLITE_ENABLE_RUY}")
+set(THREADS_PREFER_PTHREAD_FLAG ON)
 if("${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
   set(_TFLITE_ENABLE_RUY ON)
 endif()
@@ -148,6 +149,7 @@ find_package(gemmlowp REQUIRED)
 find_package(NEON_2_SSE REQUIRED)
 find_package(cpuinfo REQUIRED)  #CPUINFO is used by XNNPACK and RUY library
 find_package(ruy REQUIRED)
+find_package(Threads REQUIRED)
 set(TF_TARGET_PRIVATE_OPTIONS "")
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang$")
   # TensorFlow uses a heap of deprecated proto fields so surpress these
@@ -542,6 +544,7 @@ target_link_libraries(tensorflow-lite
     flatbuffers::flatbuffers
     gemmlowp
     ruy::ruy
+    Threads::Threads
     ${CMAKE_DL_LIBS}
     ${TFLITE_TARGET_DEPENDENCIES}
 )
