@@ -1905,4 +1905,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %0 = "tf.XlaSharding"(%arg0) : (tensor<1x2x3xf32>) -> tensor<*xf32>
     return %0 : tensor<*xf32>
   }
+
+  // CHECK-LABEL: func @shape_partial_eval
+  func.func @shape_partial_eval(%arg0: tensor<1x?x7xf32>, %arg1: tensor<3x7xf32>) -> tensor<*xf32> {
+    %0 = "tf.Shape"(%arg0) : (tensor<1x?x7xf32>) -> tensor<3xi32>
+
+    // CHECK: tf.Reshape
+    // CHECK-SAME: tensor<1x3x7xf32>
+    %1 = "tf.Reshape"(%arg1, %0) : (tensor<3x7xf32>, tensor<3xi32>) -> tensor<*xf32>
+    return %1 : tensor<*xf32>
+  }
 }
