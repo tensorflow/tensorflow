@@ -541,6 +541,7 @@ tf_py_test(
     size = "small",
     srcs = ["map_test.py"],
     shard_count = 19,
+    tags = ["no_oss"], # TODO(b/258503209): Disable the test. 
     deps = [
         ":checkpoint_test_base",
         ":test_base",
