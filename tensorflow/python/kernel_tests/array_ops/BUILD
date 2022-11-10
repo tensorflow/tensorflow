@@ -19,6 +19,7 @@ cuda_py_test(
     tags = [
         "noasan",  # times out
         "optonly",  # times out
+        "no_oss",  # TODO(b/258503209): Disable the test.
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -140,7 +141,10 @@ cuda_py_test(
     name = "concat_op_test",
     size = "medium",
     srcs = ["concat_op_test.py"],
-    tags = ["no_windows"],  # b/126916429
+    tags = [
+        "no_windows",  # b/126916429
+        "no_oss",  # TODO(b/258503209): Disable the test.
+    ],
     xla_tags = [
         "no_cuda_asan",  # times out
     ],
@@ -560,6 +564,7 @@ cuda_py_test(
     name = "slice_op_test",
     size = "medium",
     srcs = ["slice_op_test.py"],
+    tags = ["no_oss"], # TODO(b/258503209): Disable the test. 
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -609,6 +614,9 @@ cuda_py_test(
     name = "split_op_test",
     size = "medium",
     srcs = ["split_op_test.py"],
+    tags = [
+        "no_oss",  # TODO(b/258503209): Disable the test.
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

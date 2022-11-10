@@ -412,6 +412,7 @@ tf_py_test(
     size = "small",
     srcs = ["conv_utils_test.py"],
     python_version = "PY3",
+    tags = ["no_oss"], # TODO(b/258503209): Disable the test. 
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
