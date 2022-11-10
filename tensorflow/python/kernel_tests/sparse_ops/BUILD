@@ -266,7 +266,7 @@ cuda_py_test(
     tags = [
         "no_windows",  # Fails as SegmentSum is nondeterministic on Windows
         "no_oss",  # TODO(b/258503209): Disable the test. 
-           ],
+    ],
     xla_enable_strict_auto_jit = False,
     deps = [
         ":sparse_xent_op_test_base",
