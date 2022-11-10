@@ -1018,11 +1018,16 @@ static inline Status Csr2cscImpl(cudaDataType_t dtype, OpKernelContext* context,
                                  const int* csrRowPtr, const int* csrColInd,
                                  Scalar* cscVal, int* cscRowInd, int* cscColPtr,
                                  const cusparseAction_t copyValues) {
+#if CUDA_VERSION < 12000
+  cusparseCsr2CscAlg_t algo = CUSPARSE_CSR2CSC_ALG2;
+#else
+  cusparseCsr2CscAlg_t algo = CUSPARSE_CSR2CSC_ALG1;
+#endif
   size_t bufferSize;
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCsr2cscEx2_bufferSize(
       cusparse_handle, m, n, nnz, AsCudaComplex(csrVal), csrRowPtr, csrColInd,
       AsCudaComplex(cscVal), cscColPtr, cscRowInd, dtype, copyValues,
-      CUSPARSE_INDEX_BASE_ZERO, CUSPARSE_CSR2CSC_ALG2, &bufferSize));
+      CUSPARSE_INDEX_BASE_ZERO, algo, &bufferSize));
 
   Tensor buffer;
   TF_RETURN_IF_ERROR(context->allocate_temp(
@@ -1031,11 +1036,10 @@ static inline Status Csr2cscImpl(cudaDataType_t dtype, OpKernelContext* context,
 
   DCHECK(buffer.flat<Scalar>().data() != nullptr);
 
-  TF_RETURN_IF_GPUSPARSE_ERROR(
-      cusparseCsr2cscEx2(cusparse_handle, m, n, nnz, AsCudaComplex(csrVal),
-                         csrRowPtr, csrColInd, AsCudaComplex(cscVal), cscColPtr,
-                         cscRowInd, dtype, copyValues, CUSPARSE_INDEX_BASE_ZERO,
-                         CUSPARSE_CSR2CSC_ALG2, buffer.flat<Scalar>().data()));
+  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCsr2cscEx2(
+      cusparse_handle, m, n, nnz, AsCudaComplex(csrVal), csrRowPtr, csrColInd,
+      AsCudaComplex(cscVal), cscColPtr, cscRowInd, dtype, copyValues,
+      CUSPARSE_INDEX_BASE_ZERO, algo, buffer.flat<Scalar>().data()));
 
   return OkStatus();
 }
