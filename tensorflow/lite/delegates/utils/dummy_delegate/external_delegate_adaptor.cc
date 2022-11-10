@@ -23,9 +23,9 @@ limitations under the License.
 namespace tflite {
 namespace tools {
 
-TfLiteDelegate* CreateDummyDelegateFromOptions(char** options_keys,
-                                               char** options_values,
-                                               size_t num_options) {
+TfLiteDelegate* CreateDummyDelegateFromOptions(
+    const char* const* options_keys, const char* const* options_values,
+    size_t num_options) {
   DummyDelegateOptions options = TfLiteDummyDelegateOptionsDefault();
 
   // Parse key-values options to DummyDelegateOptions by mimicking them as
@@ -104,9 +104,11 @@ extern "C" {
 
 // Defines two symbols that need to be exported to use the TFLite external
 // delegate. See tensorflow/lite/delegates/external for details.
-TFL_EXTERNAL_DELEGATE_EXPORT TfLiteDelegate* tflite_plugin_create_delegate(
-    char** options_keys, char** options_values, size_t num_options,
-    void (*report_error)(const char*)) {
+extern TFL_EXTERNAL_DELEGATE_EXPORT TfLiteDelegate*
+tflite_plugin_create_delegate(const char* const* options_keys,
+                              const char* const* options_values,
+                              size_t num_options,
+                              void (*report_error)(const char*)) {
   return tflite::tools::CreateDummyDelegateFromOptions(
       options_keys, options_values, num_options);
 }

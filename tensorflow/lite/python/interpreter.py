@@ -46,7 +46,8 @@ class Delegate:
 
   The shared library is expected to have two functions:
     TfLiteDelegate* tflite_plugin_create_delegate(
-        char**, char**, size_t, void (*report_error)(const char *))
+        const char* const*, const char* const*, size_t,
+        void (*report_error)(const char *))
     void tflite_plugin_destroy_delegate(TfLiteDelegate*)
 
   The first one creates a delegate object. It may return NULL to indicate an

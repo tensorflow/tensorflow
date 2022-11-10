@@ -29,7 +29,7 @@ namespace {
 // External delegate library construct
 struct ExternalLib {
   using CreateDelegatePtr = std::add_pointer<TfLiteDelegate*(
-      const char**, const char**, size_t,
+      const char* const*, const char* const*, size_t,
       void (*report_error)(const char*))>::type;
   using DestroyDelegatePtr = std::add_pointer<void(TfLiteDelegate*)>::type;
   struct wchar_codecvt : public std::codecvt<wchar_t, char, std::mbstate_t> {};
