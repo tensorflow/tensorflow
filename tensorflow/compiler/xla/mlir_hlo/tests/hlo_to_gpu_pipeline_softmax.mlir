@@ -93,3 +93,43 @@ func.func @imperfectly_tiled_softmax(%argbuffer : memref<2047x4095xf32>,
 }
 // CHECK: gpu.module @[[MODULE]]
 // CHECK: llvm.func @[[KERNEL]]({{.*}}) attributes {gpu.kernel, nvvm.kernel}
+
+// -----
+
+// CHECK-LABEL: @imperfectly_tiled_softmax_4d
+// CHECK-SAME:  %[[ARG0:.*]]: memref<6x4x2047x4095xf32>, %[[ARG1:.*]]: memref<6x4x2047x4095xf32>
+func.func @imperfectly_tiled_softmax_4d(%argbuffer : memref<6x4x2047x4095xf32>,
+    %resbuffer : memref<6x4x2047x4095xf32>) {
+  %arg = bufferization.to_tensor %argbuffer : memref<6x4x2047x4095xf32>
+  %0 = mhlo.constant dense<-1> : tensor<1xi64>
+  %1 = mhlo.convert %arg : tensor<6x4x2047x4095xf32>
+  %2 = mhlo.constant dense<0xFF800000> : tensor<f32>
+  %3 = mhlo.reduce(%1 init: %2) applies mhlo.maximum across dimensions = [3]
+      : (tensor<6x4x2047x4095xf32>, tensor<f32>) -> tensor<6x4x2047xf32>
+  %4 = mhlo.convert %3 : tensor<6x4x2047xf32>
+  %cst = arith.constant dense<1> : tensor<1xi32>
+  %5 = mhlo.reshape %4 : (tensor<6x4x2047xf32>) -> tensor<6x4x2047x1xf32>
+  %6 = chlo.broadcast_subtract %arg, %5
+      : (tensor<6x4x2047x4095xf32>, tensor<6x4x2047x1xf32>)
+      -> tensor<6x4x2047x4095xf32>
+  %7 = mhlo.exponential %6 : tensor<6x4x2047x4095xf32>
+  %8 = mhlo.convert %7 : tensor<6x4x2047x4095xf32>
+  %9 = mhlo.constant dense<-0.000000e+00> : tensor<f32>
+  %10 = mhlo.reduce(%8 init: %9) applies mhlo.add across dimensions = [3]
+      : (tensor<6x4x2047x4095xf32>, tensor<f32>) -> tensor<6x4x2047xf32>
+  %11 = mhlo.convert %10 : tensor<6x4x2047xf32>
+  %cst_0 = arith.constant dense<1> : tensor<1xi32>
+  %12 = mhlo.reshape %11 : (tensor<6x4x2047xf32>) -> tensor<6x4x2047x1xf32>
+  %13 = chlo.broadcast_divide %7, %12
+      : (tensor<6x4x2047x4095xf32>, tensor<6x4x2047x1xf32>)
+      -> tensor<6x4x2047x4095xf32>
+  // CHECK:         %[[COLLAPSE_SHAPE:.*]] = memref.collapse_shape %[[ARG0]] {{\[\[}}0, 1, 2], [3{{\]\]}} : memref<6x4x2047x4095xf32> into memref<49128x4095xf32>
+  // CHECK:         %[[COLLAPSE_SHAPE_2:.*]] = memref.collapse_shape %[[ARG1]] {{\[\[}}0, 1, 2], [3{{\]\]}} : memref<6x4x2047x4095xf32> into memref<49128x4095xf32>
+  // CHECK:         gpu.launch_func  @imperfectly_tiled_softmax_4d_kernel::@imperfectly_tiled_softmax_4d_kernel
+  // CHECK-SAME:        args(%[[COLLAPSE_SHAPE]] : memref<49128x4095xf32>, %[[COLLAPSE_SHAPE_2]] : memref<49128x4095xf32>)
+  // CHECK:         return
+  memref.tensor_store %13, %resbuffer : memref<6x4x2047x4095xf32>
+  "lmhlo.terminator"() : () -> ()
+}
+// CHECK:       gpu.module @imperfectly_tiled_softmax_4d_kernel
+// CHECK:         llvm.func @imperfectly_tiled_softmax_4d_kernel(%[[ARG0_0:.*]]: !llvm.ptr<f32>, %[[ARG1_0:.*]]: !llvm.ptr<f32>

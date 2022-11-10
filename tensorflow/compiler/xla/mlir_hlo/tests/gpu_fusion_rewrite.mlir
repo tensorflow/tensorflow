@@ -233,3 +233,44 @@ func.func @complete_softmax(
   }) {fusion_type = "softmax_fusion"} : () -> ()
   "lmhlo.terminator"() : () -> ()
 }
+
+// -----
+
+func.func @softmax_4d(
+    %arg0: memref<16384xi8> {lmhlo.params = 0 : index},
+    %arg1: memref<16384xi8> {lmhlo.output_index = dense<> : tensor<0xi64>}
+) attributes {result_xla_shape = "f32[128,32]{1,0}"} {
+  %c0 = arith.constant 0 : index
+  %view = memref.view %arg0[%c0][] : memref<16384xi8> to memref<4x4x8x32xf32>
+  %c0_0 = arith.constant 0 : index
+  %view_1 = memref.view %arg1[%c0_0][]
+      : memref<16384xi8> to memref<4x4x8x32xf32>
+  "lmhlo.fusion"() ({
+    %0 = bufferization.to_tensor %view : memref<4x4x8x32xf32>
+    %1 = mhlo.constant dense<0.0> : tensor<f32>
+    %2 = mhlo.reduce(%0 init: %1) across dimensions = [3]
+        : (tensor<4x4x8x32xf32>, tensor<f32>) -> tensor<4x4x8xf32>
+    reducer(%arg3: tensor<f32>, %arg4: tensor<f32>) {
+      %5 = mhlo.maximum %arg3, %arg4 : tensor<f32>
+      mhlo.return %5 : tensor<f32>
+    }
+    %3 = "mhlo.broadcast_in_dim"(%2) {broadcast_dimensions = dense<[0, 1, 2]>
+        : tensor<3xi64>} : (tensor<4x4x8xf32>) -> tensor<4x4x8x32xf32>
+    %4 = mhlo.subtract %0, %3 : tensor<4x4x8x32xf32>
+    memref.tensor_store %4, %view_1 : memref<4x4x8x32xf32>
+    "lmhlo.terminator"() : () -> ()
+  }) {fusion_type = "softmax_fusion"} : () -> ()
+  "lmhlo.terminator"() : () -> ()
+}
+
+// CHECK:      module attributes {gpu.container_module}
+// CHECK:        gpu.module @fusion_kernel
+// CHECK:          llvm.func @fusion_kernel(%[[ARG0:.*]]: !llvm.ptr<f32>, %[[ARG1:.*]]: !llvm.ptr<f32>)
+
+// CHECK:        func.func @softmax_4d(%[[ARG0_0:.*]]: memref<16384xi8> {lmhlo.params = 0 : index}, %[[ARG1_0:.*]]: memref<16384xi8> {lmhlo.output_index = dense<> : tensor<0xi64>}) attributes {result_xla_shape = "f32[128,32]{1,0}"}
+// CHECK:          %[[VIEW:.*]] = memref.view %[[ARG0_0]][%{{.*}}][] : memref<16384xi8> to memref<4x4x8x32xf32>
+// CHECK:          %[[VIEW_1:.*]] = memref.view %[[ARG1_0]][%{{.*}}][] : memref<16384xi8> to memref<4x4x8x32xf32>
+// CHECK:          %[[COLLAPSE_SHAPE:.*]] = memref.collapse_shape %[[VIEW]] {{\[\[}}0, 1, 2], [3{{\]\]}} : memref<4x4x8x32xf32> into memref<128x32xf32>
+// CHECK:          %[[COLLAPSE_SHAPE_4:.*]] = memref.collapse_shape %[[VIEW_1]] {{\[\[}}0, 1, 2], [3{{\]\]}} : memref<4x4x8x32xf32> into memref<128x32xf32>
+// CHECK:          gpu.launch_func  @fusion_kernel::@fusion_kernel
+// CHECK-SAME:         args(%[[COLLAPSE_SHAPE]] : memref<128x32xf32>, %[[COLLAPSE_SHAPE_4]] : memref<128x32xf32>)

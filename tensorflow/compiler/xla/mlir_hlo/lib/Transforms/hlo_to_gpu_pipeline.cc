@@ -64,6 +64,13 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
     // Simplify unit dimension.
     pm.addPass(mlir::createLinalgFoldUnitExtentDimsPass());
 
+    // Collapse all but the trailing reduction/bcast dimension.
+    pm.addNestedPass<FuncOp>(
+        gml_st::createCollapseShapePass({/*retainTrailingDims=*/1}));
+    // Merge multiple occurences of collapsed operand. This is needed to detect
+    // the softmax pattern later.
+    pm.addNestedPass<FuncOp>(mlir::createCSEPass());
+
     // Tile parallel dimensions of the softmax-like patterns and distribute them
     // across warps. Warps remain independant of each other.
     pm.addNestedPass<FuncOp>(gml_st::createTilingSoftmaxPass(
