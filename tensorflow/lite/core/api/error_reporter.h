@@ -34,26 +34,25 @@ namespace tflite {
 /// that drives a GUI error log box.
 class ErrorReporter {
  public:
-  virtual ~ErrorReporter() {}
+  virtual ~ErrorReporter() = default;
+  /// Converts `args` to character equivalents according to `format` string,
+  /// constructs the error string and report it.
+  /// Returns number of characters written or zero on success, and negative
+  /// number on error.
   virtual int Report(const char* format, va_list args) = 0;
+
+  /// Converts arguments to character equivalents according to `format` string,
+  /// constructs the error string and report it.
+  /// Returns number of characters written or zero on success, and negative
+  /// number on error.
   int Report(const char* format, ...);
+
+  /// Equivalent to `Report` above. The additional `void*` parameter is unused.
+  /// This method is for compatibility with macros that takes `TfLiteContext`,
+  /// like TF_LITE_ENSURE and related macros.
   int ReportError(void*, const char* format, ...);
 };
 
 }  // namespace tflite
-
-// You should not make bare calls to the error reporter, instead use the
-// TF_LITE_REPORT_ERROR macro, since this allows message strings to be
-// stripped when the binary size has to be optimized. If you are looking to
-// reduce binary size, define TF_LITE_STRIP_ERROR_STRINGS when compiling and
-// every call will be stubbed out, taking no memory.
-#ifndef TF_LITE_STRIP_ERROR_STRINGS
-#define TF_LITE_REPORT_ERROR(reporter, ...)                             \
-  do {                                                                  \
-    static_cast<tflite::ErrorReporter*>(reporter)->Report(__VA_ARGS__); \
-  } while (false)
-#else  // TF_LITE_STRIP_ERROR_STRINGS
-#define TF_LITE_REPORT_ERROR(reporter, ...)
-#endif  // TF_LITE_STRIP_ERROR_STRINGS
 
 #endif  // TENSORFLOW_LITE_CORE_API_ERROR_REPORTER_H_

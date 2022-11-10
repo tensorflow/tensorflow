@@ -64,6 +64,10 @@ struct ThreadPoolDevice;
 struct GpuDevice;
 }  // end namespace Eigen
 
+namespace tsl {
+class CoordinationServiceAgent;
+}
+
 namespace tensorflow {
 
 namespace checkpoint {
@@ -81,7 +85,6 @@ class ResourceMgr;
 class ScopedStepContainer;
 class CollectiveExecutor;
 class StepStatsCollectorInterface;
-class CoordinationServiceAgent;
 
 // A label that is added to kernels that are JIT compiled. These labels will be
 // removed before kernels are looked up, so they can be used without specifying
@@ -681,7 +684,7 @@ class OpKernelContext {
     bool* outputs_required_array = nullptr;
 
     // For access to distributed coordination service.
-    CoordinationServiceAgent* coordination_service_agent = nullptr;
+    tsl::CoordinationServiceAgent* coordination_service_agent = nullptr;
   };
 
   // params must outlive the OpKernelContext.
@@ -1153,7 +1156,7 @@ class OpKernelContext {
   }
 
   // Access to distributed coordination service.
-  CoordinationServiceAgent* coordination_service_agent() const {
+  tsl::CoordinationServiceAgent* coordination_service_agent() const {
     return params_->coordination_service_agent;
   }
 

@@ -103,7 +103,7 @@ class CheckQuantizableOps
   LogicalResult matchAndRewrite(TF::PartitionedCallOp call_op,
                                 PatternRewriter& rewriter) const override {
     StringRef function_name =
-        call_op.fAttr().cast<FlatSymbolRefAttr>().getValue();
+        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
     if (!function_name.startswith("composite_") ||
         !call_op->hasAttr(kQuantTraitAttrName)) {
       return failure();

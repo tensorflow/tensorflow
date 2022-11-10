@@ -18,8 +18,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
 class WhileUtil {
@@ -64,7 +65,7 @@ class WhileUtil {
       absl::Span<HloInstruction* const> instructions);
 
   using LoopStateTy = std::vector<HloInstruction*>;
-  using LoopBodyGeneratorTy = std::function<StatusOr<LoopStateTy>(
+  using LoopBodyGeneratorTy = absl::FunctionRef<StatusOr<LoopStateTy>(
       HloInstruction* /*induction_var*/,
       const LoopStateTy& /*current_values*/)>;
 
@@ -82,8 +83,7 @@ class WhileUtil {
   //  }
   static StatusOr<LoopStateTy> MakeCountedLoop(
       HloComputation* computation, int32_t trip_count,
-      const LoopStateTy& init_values,
-      const LoopBodyGeneratorTy& loop_body_generator,
+      const LoopStateTy& init_values, LoopBodyGeneratorTy loop_body_generator,
       const OpMetadata& metadata);
 
   struct OwningLoopStateTy {
@@ -96,7 +96,7 @@ class WhileUtil {
   static StatusOr<OwningLoopStateTy> MakeCountedLoop(
       HloModule* module, int32_t trip_count,
       const WhileUtil::LoopStateTy& init_values,
-      const WhileUtil::LoopBodyGeneratorTy& loop_body_generator,
+      WhileUtil::LoopBodyGeneratorTy loop_body_generator,
       const OpMetadata& metadata);
 
   // Returns the GetTupleElement instructions in `while_body` that access

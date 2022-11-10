@@ -57,7 +57,7 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [Pure]> {
     // Returns data type of the result handle. Returned type contains type of
     // the TensorList element as a subtype.
     VariantType handle_dtype() {
-      return getElementTypeOrSelf(handle().getType()).cast<TF::VariantType>();
+      return getElementTypeOrSelf(getHandle().getType()).cast<TF::VariantType>();
     }
   }];
 }
@@ -111,13 +111,13 @@ An n-way switch statement, implementing the following:
 
 
  let extraClassDeclaration = [{
-    int num_branches() { return branches().size(); }
+    int num_branches() { return getBranches().size(); }
 
     // Gets function corresponding branch # `index`.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
     // enabling reusing cached symbol table lookup.
     func::FuncOp ResolveBranchFunction(::mlir::SymbolTableCollection* table, int index) {
-      auto flat_sym_ref = branches()[index].cast<FlatSymbolRefAttr>();
+      auto flat_sym_ref = getBranches()[index].cast<FlatSymbolRefAttr>();
       if (table)
         return table->lookupNearestSymbolFrom<func::FuncOp>(*this, flat_sym_ref);
       return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, flat_sym_ref);
@@ -282,9 +282,9 @@ else_branch: A function that takes 'inputs' and returns a list of
     // enabling reusing cached symbol table lookup.
     func::FuncOp ResolveThenFunction(::mlir::SymbolTableCollection* table) {
       if (table)
-        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, then_branchAttr());
+        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, getThenBranchAttr());
       return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
-        *this, then_branchAttr());
+        *this, getThenBranchAttr());
     }
     // TODO(b/204997177): Deprecate and remove.
     func::FuncOp then_function(::mlir::SymbolTableCollection* table = nullptr) {
@@ -296,9 +296,9 @@ else_branch: A function that takes 'inputs' and returns a list of
     // enabling reusing cached symbol table lookup.
     func::FuncOp ResolveElseFunction(::mlir::SymbolTableCollection* table) {
       if (table)
-        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, else_branchAttr());
+        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, getElseBranchAttr());
       return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
-        *this, else_branchAttr());
+        *this, getElseBranchAttr());
     }
     // TODO(b/204997177): Deprecate and remove.
     func::FuncOp else_function(::mlir::SymbolTableCollection* table = nullptr) {
@@ -377,7 +377,7 @@ else_branch: A region that computes the outputs of the op if cond = false.
 }
 
 def TF_LegacyCallOp : TF_Op<"LegacyCall",
-                            [CallOpInterface, Pure]> {
+                            [CallOpInterface, SymbolUserOpInterface, Pure]> {
   let summary =
     "returns `f(inputs)`, where `f` is a function.";
 
@@ -403,21 +403,24 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
 
   let extraClassDeclaration = [{
     // Gets the argument operands to the called function.
-    operand_range getArgOperands() { return args(); }
+    operand_range getArgOperands() { return getArgs(); }
 
     // Returns the callee of this operation.
-    CallInterfaceCallable getCallableForCallee() { return fAttr(); }
+    CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
 
     // Returns the resolved callee function of this operation.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
     // enabling reusing cached symbol table lookup.
     func::FuncOp ResolveFunc(::mlir::SymbolTableCollection* table) {
       if (table)
-        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, fAttr());
-      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, fAttr());
+        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, getFAttr());
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getFAttr());
     }
     // TODO(b/204997177): Deprecate and remove.
     func::FuncOp func() {  return ResolveFunc(nullptr); }
+
+    // SymbolUserOpInterface verifier.
+    LogicalResult verifySymbolUses(SymbolTableCollection &symbolTable);
   }];
 }
 
@@ -564,18 +567,18 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
 
   let extraClassDeclaration = [{
     // Gets the argument operands to the called function.
-    operand_range getArgOperands() { return args(); }
+    operand_range getArgOperands() { return getArgs(); }
 
     // Returns the callee of this operation.
-    CallInterfaceCallable getCallableForCallee() { return fAttr(); }
+    CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
 
     // Returns the resolved callee function of this operation.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
     // enabling reusing cached symbol table lookup.
     func::FuncOp ResolveFunc(::mlir::SymbolTableCollection* table) {
       if (table)
-        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, fAttr());
-      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, fAttr());
+        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, getFAttr());
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getFAttr());
     }
     // TODO(b/204997177): Deprecate and remove.
     func::FuncOp func() {  return ResolveFunc(nullptr); }
@@ -644,8 +647,8 @@ body: A function that takes a list of tensors and returns another
     // enabling reusing cached symbol table lookup.
     func::FuncOp ResolveCondFunction(::mlir::SymbolTableCollection* table) {
       if (table)
-        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, condAttr());
-      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, condAttr());
+        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, getCondAttr());
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getCondAttr());
     }
     // TODO(b/204997177): Deprecate and remove.
     func::FuncOp cond_function() { return ResolveCondFunction(nullptr); }
@@ -655,8 +658,8 @@ body: A function that takes a list of tensors and returns another
     // enabling reusing cached symbol table lookup.
     func::FuncOp ResolveBodyFunction(::mlir::SymbolTableCollection* table) {
       if (table)
-        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, bodyAttr());
-      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, bodyAttr());
+        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, getBodyAttr());
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getBodyAttr());
     }
     // TODO(b/204997177): Deprecate and remove.
     func::FuncOp body_function() { return ResolveBodyFunction(nullptr); }
@@ -779,7 +782,7 @@ Example:
     TensorType resource_subtype() { return resource_type().getSubtypes()[0]; }
 
     ResourceType resource_type() {
-      return getElementTypeOrSelf(resource()).cast<TF::ResourceType>();
+      return getElementTypeOrSelf(getResource()).cast<TF::ResourceType>();
     }
   }];
 
@@ -1004,18 +1007,18 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface, Symb
 
   let extraClassDeclaration = [{
     // Gets the argument operands to the called function.
-    operand_range getArgOperands() { return args(); }
+    operand_range getArgOperands() { return getArgs(); }
 
     // Returns the callee of this operation.
-    CallInterfaceCallable getCallableForCallee() { return fAttr(); }
+    CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
 
     // Returns the resolved callee function of this operation.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
     // enabling reusing cached symbol table lookup.
     func::FuncOp ResolveFunc(::mlir::SymbolTableCollection* table) {
       if (table)
-        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, fAttr());
-      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, fAttr());
+        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, getFAttr());
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getFAttr());
     }
     // TODO(b/204997177): Deprecate and remove.
     func::FuncOp func() {  return ResolveFunc(nullptr); }

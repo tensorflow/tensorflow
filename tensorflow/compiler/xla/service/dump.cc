@@ -27,8 +27,8 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/lib/io/zlib_compression_options.h"
@@ -418,10 +418,15 @@ static std::vector<std::string> DumpHloModuleImpl(
         pb, opts, opts.dump_compress_protos));
   }
 
-  auto render_graph = [&](RenderedGraphFormat format) {
-    StatusOr<std::string> rendered_graph = RenderGraph(
-        *module.entry_computation(),
-        /*label=*/filename, module.config().debug_options(), format);
+  auto render_graph = [&](RenderedGraphFormat format,
+                          bool show_fusion_subcomputations = true) {
+    HloRenderOptions hlo_render_options;
+    hlo_render_options.show_fusion_subcomputations =
+        show_fusion_subcomputations;
+    StatusOr<std::string> rendered_graph =
+        RenderGraph(*module.entry_computation(),
+                    /*label=*/filename, module.config().debug_options(), format,
+                    hlo_render_options);
     if (rendered_graph.ok()) {
       return std::move(rendered_graph).value();
     }
@@ -439,6 +444,11 @@ static std::vector<std::string> DumpHloModuleImpl(
     file_paths.push_back(
         DumpToFileInDirImpl(StrFormat("%s.html", filename),
                             render_graph(RenderedGraphFormat::kHtml), opts));
+    if (absl::StrContains(filename, kAfterOptimizationsDumpName)) {
+      file_paths.push_back(DumpToFileInDirImpl(
+          StrFormat("%s.top_level.html", filename),
+          render_graph(RenderedGraphFormat::kHtml, false), opts));
+    }
   }
 
   if (opts.dump_fusion_visualization) {

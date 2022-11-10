@@ -65,6 +65,12 @@ void populateHloToLhloConversionPattern(
 // Collection of rewrite patterns for lowering of HLO to arithmetic dialect.
 void populateHloToArithmeticConversionPatterns(RewritePatternSet *patterns);
 
+// Collection of rewrite patterns for lowering pointwise HLO ops with scalar
+// arguments to arithmetic dialect.
+void populateScalarHloToArithmeticConversionPatterns(
+    MLIRContext *context, TypeConverter &typeConverter,
+    RewritePatternSet *patterns);
+
 // Collection of rewrite patterns for lowering of shape operations from the HLO
 // dialect to the standard dialect.
 void populateHloShapeOpsToStandardConversionPattern(

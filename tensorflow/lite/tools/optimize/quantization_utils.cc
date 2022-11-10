@@ -117,8 +117,7 @@ TfLiteStatus GetQuantizationParams(TensorT* tensor, TensorType activations_type,
                                    tensor->quantization->max[0],
                                    half_quantized_range, quantization_params);
   } else {
-    TF_LITE_REPORT_ERROR(
-        error_reporter,
+    error_reporter->Report(
         "Unsupported activation type for quantize-activation: %d",
         activations_type);
     return kTfLiteError;
@@ -141,22 +140,19 @@ TfLiteStatus FillPerChannelMinMax(const float* const input,
                                   QuantizationParametersT* quantization_params,
                                   ErrorReporter* error_reporter) {
   if (!quantization_params->min.empty() || !quantization_params->max.empty()) {
-    TF_LITE_REPORT_ERROR(
-        error_reporter,
+    error_reporter->Report(
         "Min or max already present in tensor quantization params.");
     return kTfLiteError;
   }
 
   if (dimension.size() > kPerChannelMaxDim) {
-    TF_LITE_REPORT_ERROR(
-        error_reporter,
+    error_reporter->Report(
         "Expected tensor with less than %d dimensions, but got %d.",
         kPerChannelMaxDim + 1, dimension.size());
     return kTfLiteError;
   }
   if (channel_dim_index >= dimension.size()) {
-    TF_LITE_REPORT_ERROR(
-        error_reporter,
+    error_reporter->Report(
         "Expected channel_dim_index to be less than %d, but got %d.",
         dimension.size(), channel_dim_index);
     return kTfLiteError;
@@ -205,18 +201,15 @@ TfLiteStatus GetSymmetricScalesFromMaxMin(QuantizationParametersT* quant_params,
                                           ErrorReporter* error_reporter) {
   // Check that max and min values are present and their sizes match.
   if (quant_params->min.empty() || quant_params->max.empty()) {
-    TF_LITE_REPORT_ERROR(error_reporter,
-                         "Max and min values are not populated.");
+    error_reporter->Report("Max and min values are not populated.");
     return kTfLiteError;
   }
   if (quant_params->min.size() != quant_params->max.size()) {
-    TF_LITE_REPORT_ERROR(error_reporter,
-                         "Dimensions of max and min values do not match.");
+    error_reporter->Report("Dimensions of max and min values do not match.");
     return kTfLiteError;
   }
   if (scales->size() != quant_params->min.size()) {
-    TF_LITE_REPORT_ERROR(error_reporter,
-                         "Provided scale vector has incorrect size.");
+    error_reporter->Report("Provided scale vector has incorrect size.");
     return kTfLiteError;
   }
 
@@ -249,16 +242,14 @@ TfLiteStatus AdjustWeightsForBiasScale(QuantizationParametersT* quant_params,
   // TODO(dmolitor) Test using a separate strategy for scales of 0.
   const int32_t kScale = std::numeric_limits<int32_t>::max();
   if (quant_params == nullptr) {
-    TF_LITE_REPORT_ERROR(error_reporter,
-                         "Missing max and min values for weight tensor.");
+    error_reporter->Report("Missing max and min values for weight tensor.");
     return kTfLiteError;
   }
   // channel_dim_size is calculated from min.size() to infer whether
   // quantization is per axis
   int channel_dim_size = quant_params->min.size();
   if (channel_dim_size == 0) {
-    TF_LITE_REPORT_ERROR(
-        error_reporter,
+    error_reporter->Report(
         "Missing weight scales. Unable to check compatibility with bias "
         "scale.");
     return kTfLiteError;
@@ -305,7 +296,7 @@ TfLiteStatus SymmetricPerChannelQuantization(TensorT* tensor,
                                              std::vector<int8_t>* output_value,
                                              ErrorReporter* error_reporter) {
   if (tensor == nullptr) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Cannot quantize. Tensor is null.");
+    error_reporter->Report("Cannot quantize. Tensor is null.");
     return kTfLiteError;
   }
   const int32_t channel_dim_size = tensor->shape[channel_dim_index];
@@ -412,25 +403,23 @@ void SymmetricPerChannelQuantizeValues(const float* const input,
 TfLiteStatus SymmetricQuantizeTensorFromMinMax(ModelT* model, TensorT* tensor,
                                                ErrorReporter* error_reporter) {
   if (model == nullptr || tensor == nullptr) {
-    TF_LITE_REPORT_ERROR(error_reporter, "No tensor to quantize.");
+    error_reporter->Report("No tensor to quantize.");
     return kTfLiteError;
   }
 
   BufferT* buffer = model->buffers[tensor->buffer].get();
   if (buffer == nullptr) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Missing buffer.");
+    error_reporter->Report("Missing buffer.");
     return kTfLiteError;
   }
 
   if (!HasMinMax(tensor)) {
-    TF_LITE_REPORT_ERROR(error_reporter,
-                         "Missing min or max values for quantization.");
+    error_reporter->Report("Missing min or max values for quantization.");
     return kTfLiteError;
   }
   if (tensor->quantization->min.size() != 1 ||
       tensor->quantization->max.size() != 1) {
-    TF_LITE_REPORT_ERROR(error_reporter,
-                         "Expected single entry in max and min.");
+    error_reporter->Report("Expected single entry in max and min.");
     return kTfLiteError;
   }
 
@@ -553,8 +542,7 @@ TfLiteStatus AddQuantizationParams(const std::vector<float>& scales,
   }
   tensor->quantization->scale.assign(scales.begin(), scales.end());
   if (zero_point.size() != scales.size()) {
-    TF_LITE_REPORT_ERROR(
-        error_reporter,
+    error_reporter->Report(
         "Received zero_point of size %d and scales of size %d. "
         "These sizes should match.",
         zero_point.size(), scales.size());
@@ -573,8 +561,7 @@ TfLiteStatus SymmetricQuantizeTensorPerChannel(ModelT* model, TensorT* tensor,
                                                int32_t channel_dim_index,
                                                ErrorReporter* error_reporter) {
   if (tensor->shape.size() > kPerChannelMaxDim) {
-    TF_LITE_REPORT_ERROR(
-        error_reporter,
+    error_reporter->Report(
         "SymmetricQuantizeTensorPerChannel requires tensor with less than %d "
         "dimensions, but got %d dimension(s).",
         kPerChannelMaxDim + 1, tensor->shape.size());

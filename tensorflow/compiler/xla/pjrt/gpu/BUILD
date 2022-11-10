@@ -37,6 +37,7 @@ cc_library(
     visibility = ["//tensorflow/compiler/xla/pjrt:friends"],
     deps = [
         ":gpu_helpers",
+        "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -49,6 +50,8 @@ cc_library(
         "//tensorflow/tsl/framework:bfc_allocator",
         "//tensorflow/tsl/framework:device_id",
         "//tensorflow/tsl/framework:device_id_impl",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/util:env_var",
         "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
         "//tensorflow/compiler/xla/stream_executor:device_memory",

@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -108,6 +109,40 @@ struct RngGetAndUpdateStatePattern
   }
 };
 
+template <typename OpTy>
+struct ScalarHloToArithmeticPattern : public OpConversionPattern<OpTy> {
+  using OpConversionPattern<OpTy>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      OpTy op, typename OpTy::Adaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    auto isScalar = [&](Value v) {
+      return v.getType().cast<ShapedType>().getRank() == 0;
+    };
+
+    if (!llvm::all_of(adaptor.getOperands(), isScalar))
+      return rewriter.notifyMatchFailure(op, "All operands must be scalar.");
+
+    auto loc = op.getLoc();
+
+    Optional<ShapedType> resultTy;
+    resultTy = this->typeConverter->convertType(op->getResultTypes().front())
+                   .template dyn_cast<ShapedType>();
+
+    SmallVector<Value> operands;
+    for (auto operand : adaptor.getOperands()) {
+      operands.push_back(
+          rewriter.create<tensor::ExtractOp>(loc, operand, ValueRange()));
+    }
+    Value scalarResult = mhlo::MhloOpToStdScalarOp::mapOp(
+        op, resultTy->getElementType(), operands, &rewriter);
+    if (!scalarResult) return failure();
+    rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, *resultTy,
+                                                        scalarResult);
+    return success();
+  }
+};
+
 struct HloLegalizeToArithmeticPass
     : public impl::HloLegalizeToArithmeticPassBase<
           HloLegalizeToArithmeticPass> {
@@ -138,6 +173,62 @@ struct HloLegalizeToArithmeticPass
 
 void populateHloToArithmeticConversionPatterns(RewritePatternSet* patterns) {
   patterns->add<RngGetAndUpdateStatePattern>(patterns->getContext());
+}
+
+void populateScalarHloToArithmeticConversionPatterns(
+    MLIRContext* context, TypeConverter& typeConverter,
+    RewritePatternSet* patterns) {
+  // clang-format off
+  patterns->add<
+      ScalarHloToArithmeticPattern<mhlo::AbsOp>,
+      ScalarHloToArithmeticPattern<mhlo::AddOp>,
+      ScalarHloToArithmeticPattern<mhlo::AndOp>,
+      ScalarHloToArithmeticPattern<mhlo::Atan2Op>,
+      ScalarHloToArithmeticPattern<mhlo::BitcastConvertOp>,
+      ScalarHloToArithmeticPattern<mhlo::CbrtOp>,
+      ScalarHloToArithmeticPattern<mhlo::CeilOp>,
+      ScalarHloToArithmeticPattern<mhlo::ClampOp>,
+      ScalarHloToArithmeticPattern<mhlo::ClzOp>,
+      ScalarHloToArithmeticPattern<mhlo::CompareOp>,
+      ScalarHloToArithmeticPattern<mhlo::ComplexOp>,
+      ScalarHloToArithmeticPattern<mhlo::ConvertOp>,
+      ScalarHloToArithmeticPattern<mhlo::CopyOp>,
+      ScalarHloToArithmeticPattern<mhlo::CosineOp>,
+      ScalarHloToArithmeticPattern<mhlo::DivOp>,
+      ScalarHloToArithmeticPattern<mhlo::ExpOp>,
+      ScalarHloToArithmeticPattern<mhlo::Expm1Op>,
+      ScalarHloToArithmeticPattern<mhlo::FloorOp>,
+      ScalarHloToArithmeticPattern<mhlo::ImagOp>,
+      ScalarHloToArithmeticPattern<mhlo::IsFiniteOp>,
+      ScalarHloToArithmeticPattern<mhlo::Log1pOp>,
+      ScalarHloToArithmeticPattern<mhlo::LogOp>,
+      ScalarHloToArithmeticPattern<mhlo::LogisticOp>,
+      ScalarHloToArithmeticPattern<mhlo::MaxOp>,
+      ScalarHloToArithmeticPattern<mhlo::MinOp>,
+      ScalarHloToArithmeticPattern<mhlo::MulOp>,
+      ScalarHloToArithmeticPattern<mhlo::NegOp>,
+      ScalarHloToArithmeticPattern<mhlo::NotOp>,
+      ScalarHloToArithmeticPattern<mhlo::OrOp>,
+      ScalarHloToArithmeticPattern<mhlo::PopulationCountOp>,
+      ScalarHloToArithmeticPattern<mhlo::PowOp>,
+      ScalarHloToArithmeticPattern<mhlo::RealOp>,
+      ScalarHloToArithmeticPattern<mhlo::ReducePrecisionOp>,
+      ScalarHloToArithmeticPattern<mhlo::RemOp>,
+      ScalarHloToArithmeticPattern<mhlo::RoundNearestEvenOp>,
+      ScalarHloToArithmeticPattern<mhlo::RoundOp>,
+      ScalarHloToArithmeticPattern<mhlo::RsqrtOp>,
+      ScalarHloToArithmeticPattern<mhlo::SelectOp>,
+      ScalarHloToArithmeticPattern<mhlo::ShiftLeftOp>,
+      ScalarHloToArithmeticPattern<mhlo::ShiftRightArithmeticOp>,
+      ScalarHloToArithmeticPattern<mhlo::ShiftRightLogicalOp>,
+      ScalarHloToArithmeticPattern<mhlo::SignOp>,
+      ScalarHloToArithmeticPattern<mhlo::SineOp>,
+      ScalarHloToArithmeticPattern<mhlo::SqrtOp>,
+      ScalarHloToArithmeticPattern<mhlo::SubtractOp>,
+      ScalarHloToArithmeticPattern<mhlo::TanhOp>,
+      ScalarHloToArithmeticPattern<mhlo::XorOp>
+  >(typeConverter, context);
+  // clang-format on
 }
 
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToArithmeticPass() {

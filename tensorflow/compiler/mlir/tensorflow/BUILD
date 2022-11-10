@@ -974,6 +974,16 @@ cc_library(
 )
 
 cc_library(
+    name = "topological_sort",
+    srcs = ["utils/topological_sort.cc"],
+    hdrs = ["utils/topological_sort.h"],
+    deps = [
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "initialize_variables_in_session_init",
     srcs = [
         "transforms/initialize_variables_in_session_init.cc",
@@ -1304,6 +1314,7 @@ cc_library(
         ":tf_pass_inc_gen",
         ":tf_savedmodel_pass_inc_gen",
         ":tfe_legalize_tfg",
+        ":topological_sort",
         ":tpu_cluster_util",
         ":tpu_rewrite_device_util",
         ":translate_utils",

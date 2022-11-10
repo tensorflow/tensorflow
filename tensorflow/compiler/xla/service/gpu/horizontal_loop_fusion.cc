@@ -103,6 +103,12 @@ class HorizontalLoopFusionImpl {
 };  // HorizontalLoopFusionImpl
 
 bool IsFusibleCandidate(const HloInstruction& instr) {
+  // For now, we do not support fusing instruction with control flow.
+  if (!instr.control_successors().empty() ||
+      !instr.control_predecessors().empty()) {
+    return false;
+  }
+
   // Require no further check for element-wise instructions.
   if (instr.IsElementwise() && instr.operand_count() > 0) {
     return true;
@@ -514,14 +520,6 @@ Status HorizontalLoopFusionImpl::Fuse(
 StatusOr<bool> HorizontalLoopFusionImpl::Run() {
   bool changed = false;
   XLA_VLOG_LINES(3, computation_->ToString());
-
-  for (HloInstruction* instr : computation_->instructions()) {
-    if (!instr->control_successors().empty()) {
-      VLOG(1) << "Skipping HorizontalLoopFusion as there is control flow in "
-                 "the graph";
-      return false;
-    }
-  }
 
   // Traverse from use to def. Bitcasts are placed after h-fusions to resolve
   // shape mismatch but bitcasts could prevent future h-fusion from happening.

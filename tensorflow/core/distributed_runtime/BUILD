@@ -154,9 +154,9 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core/activity_watcher",
-        "//tensorflow/core/distributed_runtime/coordination:coordination_service",
-        "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
     ],
 )

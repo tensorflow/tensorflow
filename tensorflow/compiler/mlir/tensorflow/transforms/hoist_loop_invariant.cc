@@ -71,7 +71,7 @@ bool ResourceOpCanBeHoisted(
   auto read_var_op = llvm::dyn_cast<ReadVariableOp>(op);
   if (!read_var_op) return false;
   auto var_handle_op = llvm::dyn_cast_or_null<VarHandleOp>(
-      read_var_op.resource().getDefiningOp());
+      read_var_op.getResource().getDefiningOp());
   if (!var_handle_op) return false;
   return read_only_vars.contains(GetResourceHandle(var_handle_op));
 }

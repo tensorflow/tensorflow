@@ -214,19 +214,19 @@ TF::IfRegionOp CloneEmptyIfWithPredicate(TF::IfRegionOp if_region,
                                          OpBuilder& builder) {
   // Mark op as stateful due to side-effecting communication ops added later.
   auto host_side_if = builder.create<TF::IfRegionOp>(
-      if_region.getLoc(), llvm::SmallVector<Type, 4>{}, if_region.cond(),
-      /*is_stateless=*/false, if_region._then_func_nameAttr(),
-      if_region._else_func_nameAttr());
+      if_region.getLoc(), llvm::SmallVector<Type, 4>{}, if_region.getCond(),
+      /*is_stateless=*/false, if_region.get_thenFuncNameAttr(),
+      if_region.get_elseFuncNameAttr());
 
   // Create empty then branch region.
-  auto& then_branch = host_side_if.then_branch();
+  auto& then_branch = host_side_if.getThenBranch();
   then_branch.push_back(new Block);
   builder.setInsertionPointToEnd(&then_branch.front());
   builder.create<TF::YieldOp>(if_region.getLoc(),
                               /*operands=*/ArrayRef<Value>{});
 
   // Create empty else branch region.
-  auto& else_branch = host_side_if.else_branch();
+  auto& else_branch = host_side_if.getElseBranch();
   else_branch.push_back(new Block);
   builder.setInsertionPointToEnd(&else_branch.front());
   builder.create<TF::YieldOp>(if_region.getLoc(),
@@ -243,7 +243,7 @@ TF::WhileRegionOp CloneEmptyWhile(uint64_t parallel_iterations, Location loc,
       parallel_iterations, /*is_stateless=*/false, /*shape_invariant=*/false);
 
   // Create empty else branch region.
-  auto& body = host_side_while.body();
+  auto& body = host_side_while.getBody();
   body.push_back(new Block);
   builder.setInsertionPointToEnd(&body.front());
   builder.create<TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
@@ -715,14 +715,14 @@ LogicalResult DecomposeControlFlow(tf_device::ClusterOp tpu_cluster,
       if (!HasOutsideCompilationNested(op)) return WalkResult::advance();
       OpBuilder builder(if_op);
       auto host_if = CloneEmptyIfWithPredicate(if_op, builder);
-      if (failed(MoveOpsToHost(tpu_cluster, &if_op.then_branch().front(),
-                               host_if.then_branch().front().getTerminator(),
+      if (failed(MoveOpsToHost(tpu_cluster, &if_op.getThenBranch().front(),
+                               host_if.getThenBranch().front().getTerminator(),
                                compilation_key, device_ordinal,
                                default_device_ordignal,
                                communication_key_index)))
         return WalkResult::interrupt();
-      if (failed(MoveOpsToHost(tpu_cluster, &if_op.else_branch().front(),
-                               host_if.else_branch().front().getTerminator(),
+      if (failed(MoveOpsToHost(tpu_cluster, &if_op.getElseBranch().front(),
+                               host_if.getElseBranch().front().getTerminator(),
                                compilation_key, device_ordinal,
                                default_device_ordignal,
                                communication_key_index)))
@@ -734,16 +734,17 @@ LogicalResult DecomposeControlFlow(tf_device::ClusterOp tpu_cluster,
     if (auto while_op = llvm::dyn_cast<TF::WhileRegionOp>(op)) {
       if (!HasOutsideCompilationNested(op)) return WalkResult::advance();
       OpBuilder builder(while_op);
-      auto host_while = CloneEmptyWhile(while_op.parallel_iterations(),
+      auto host_while = CloneEmptyWhile(while_op.getParallelIterations(),
                                         while_op.getLoc(), builder);
       const auto condition_send_recv_key =
           llvm::formatv("while_condition_channel_{0}",
                         communication_key_index++)
               .str();
-      auto& cond = host_while.cond();
+      auto& cond = host_while.getCond();
       cond.push_back(new Block);
-      auto condition = while_op.cond().front().getTerminator()->getOperand(0);
-      builder.setInsertionPoint(while_op.cond().front().getTerminator());
+      auto condition =
+          while_op.getCond().front().getTerminator()->getOperand(0);
+      builder.setInsertionPoint(while_op.getCond().front().getTerminator());
       builder.create<TF::XlaSendToHostOp>(while_op.getLoc(), condition,
                                           condition_send_recv_key);
       builder.setInsertionPointToEnd(&cond.front());
@@ -754,13 +755,13 @@ LogicalResult DecomposeControlFlow(tf_device::ClusterOp tpu_cluster,
       builder.create<TF::YieldOp>(while_op.getLoc(),
                                   recv_condition_at_host->getResults());
 
-      if (failed(MoveOpsToHost(tpu_cluster, &while_op.cond().front(),
+      if (failed(MoveOpsToHost(tpu_cluster, &while_op.getCond().front(),
                                recv_condition_at_host, compilation_key,
                                device_ordinal, default_device_ordignal,
                                communication_key_index)))
         return WalkResult::interrupt();
-      if (failed(MoveOpsToHost(tpu_cluster, &while_op.body().front(),
-                               host_while.body().front().getTerminator(),
+      if (failed(MoveOpsToHost(tpu_cluster, &while_op.getBody().front(),
+                               host_while.getBody().front().getTerminator(),
                                compilation_key, device_ordinal,
                                default_device_ordignal,
                                communication_key_index)))
@@ -1047,12 +1048,12 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
   builder.setInsertionPoint(tmp_host_launch_op.GetBody().getTerminator());
   auto compilation_key_op =
       CreateCompilationKeyPlaceholder(tpu_cluster.getLoc(), builder);
-  Value compilation_key = compilation_key_op.program();
+  Value compilation_key = compilation_key_op.getProgram();
   auto device_ordinal_op = builder.create<TF::_TPUDeviceOrdinalPlaceholderOp>(
       tpu_cluster.getLoc(), RankedTensorType::get({}, builder.getI64Type()));
   Value device_ordinal = nullptr;
   if (tpu_cluster->getParentOfType<tf_device::ReplicateOp>()) {
-    device_ordinal = device_ordinal_op.device_ordinal();
+    device_ordinal = device_ordinal_op.getDeviceOrdinal();
   }
   int default_device_ordinal = 0;
   if (failed(GetDefaultDeviceOrdinal(tpu_cluster, default_device_ordinal))) {

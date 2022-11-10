@@ -330,18 +330,18 @@ Value RewriteHostComputeOp(OpBuilder& builder, int64_t& channel_id,
   Location loc = host_compute.getLoc();
 
   SmallVector<Value, 4> send_tokens;
-  for (auto operand : llvm::enumerate(host_compute.inputs())) {
+  for (auto operand : llvm::enumerate(host_compute.getInputs())) {
     auto send_token = CreateSendOp(
-        builder, channel_id, loc, operand.value(), host_compute.send_key(),
+        builder, channel_id, loc, operand.value(), host_compute.getSendKey(),
         operand.index(), token, xla::kXlaHostTransferTfRendezvousHandlerName);
     send_tokens.push_back(send_token);
   }
   token = CreateSinkToken(builder, loc, send_tokens, token);
 
   SmallVector<Value, 4> recv_tokens;
-  for (auto result : llvm::enumerate(host_compute.outputs())) {
+  for (auto result : llvm::enumerate(host_compute.getOutputs())) {
     auto recv_token = CreateRecvOp(
-        builder, channel_id, loc, result.value(), host_compute.recv_key(),
+        builder, channel_id, loc, result.value(), host_compute.getRecvKey(),
         result.index(), token, xla::kXlaHostTransferTfRendezvousHandlerName);
     recv_tokens.push_back(recv_token);
   }
@@ -356,7 +356,7 @@ Value RewriteSendToHostOp(OpBuilder& builder, int64_t& channel_id,
                           TF::XlaSendToHostOp send_to_host, Value token) {
   builder.setInsertionPoint(send_to_host);
   token = CreateSendOp(builder, channel_id, send_to_host.getLoc(),
-                       send_to_host.input(), send_to_host.key(),
+                       send_to_host.getInput(), send_to_host.getKey(),
                        /*index=*/0, token,
                        xla::kXlaHostTransferTfRendezvousHandlerName);
 
@@ -369,7 +369,7 @@ Value RewriteRecvFromHostOp(OpBuilder& builder, int64_t& channel_id,
                             TF::XlaRecvFromHostOp recv_from_host, Value token) {
   builder.setInsertionPoint(recv_from_host);
   token = CreateRecvOp(builder, channel_id, recv_from_host.getLoc(),
-                       recv_from_host.output(), recv_from_host.key(),
+                       recv_from_host.getOutput(), recv_from_host.getKey(),
                        /*index=*/0, token,
                        xla::kXlaHostTransferTfRendezvousHandlerName);
 

@@ -136,10 +136,11 @@ void LowerIf(TF::IfOp op) {
   Location loc = op.getLoc();
   OpBuilder builder(op);
 
-  SmallVector<Value, 3> inputs(op.input());
+  SmallVector<Value, 3> inputs(op.getInput());
 
   // Create the new `mhlo.if` op.
-  auto if_op = builder.create<mhlo::IfOp>(loc, op.getResultTypes(), op.cond());
+  auto if_op =
+      builder.create<mhlo::IfOp>(loc, op.getResultTypes(), op.getCond());
 
   // Import the regions for both the true and false cases. These regions
   // must be updated to tuple the return results together and use the xla hlo
@@ -161,11 +162,11 @@ void LowerCase(TF::CaseOp op) {
   Location loc = op.getLoc();
   OpBuilder builder(op);
 
-  SmallVector<Value, 4> inputs(op.input());
+  SmallVector<Value, 4> inputs(op.getInput());
 
   // Create the new `mhlo.case` op.
   auto case_op = builder.create<mhlo::CaseOp>(
-      loc, op.getResultTypes(), op.branch_index(), op.branches().size());
+      loc, op.getResultTypes(), op.getBranchIndex(), op.getBranches().size());
 
   // Import the regions for all branches.
   for (unsigned i = 0; i < op.num_branches(); ++i) {
@@ -188,7 +189,7 @@ void LowerWhile(TF::WhileOp op) {
 
   // XLA prefers tuple arguments for control flow due to XLA not supporting
   // multiple return values.
-  SmallVector<Value, 3> inputs(op.input());
+  SmallVector<Value, 3> inputs(op.getInput());
   builder.setInsertionPoint(op);
 
   // Create the new `mhlo.while` op with inputs.
@@ -313,19 +314,20 @@ void LowerIfRegion(TF::IfRegionOp op) {
   OpBuilder builder(op);
 
   builder.setInsertionPoint(op);
-  ReplaceTerminator(&op.then_branch().front(), /*extra_results=*/{}, &builder,
+  ReplaceTerminator(&op.getThenBranch().front(), /*extra_results=*/{}, &builder,
                     /*tuple_return=*/false);
 
   builder.setInsertionPoint(op);
-  ReplaceTerminator(&op.else_branch().front(), /*extra_results=*/{}, &builder,
+  ReplaceTerminator(&op.getElseBranch().front(), /*extra_results=*/{}, &builder,
                     /*tuple_return=*/false);
 
   // Create the new `mhlo.if` op and take ownership of regions from
   // `tf.IfRegion` op.
   builder.setInsertionPoint(op);
-  auto if_op = builder.create<mhlo::IfOp>(loc, op.getResultTypes(), op.cond());
-  if_op.getTrueBranch().takeBody(op.then_branch());
-  if_op.getFalseBranch().takeBody(op.else_branch());
+  auto if_op =
+      builder.create<mhlo::IfOp>(loc, op.getResultTypes(), op.getCond());
+  if_op.getTrueBranch().takeBody(op.getThenBranch());
+  if_op.getFalseBranch().takeBody(op.getElseBranch());
 
   // Replace all uses of `op` results with that of `mhlo.IfOp`.
   op->replaceAllUsesWith(if_op);
@@ -337,7 +339,7 @@ void LowerCaseRegion(TF::CaseRegionOp op) {
   Location loc = op.getLoc();
   OpBuilder builder(op);
 
-  for (Region& region : op.branches()) {
+  for (Region& region : op.getBranches()) {
     builder.setInsertionPoint(op);
     ReplaceTerminator(&region.front(), /*extra_results=*/{}, &builder,
                       /*tuple_return=*/false);
@@ -347,8 +349,8 @@ void LowerCaseRegion(TF::CaseRegionOp op) {
   // `tf.CaseRegion` op.
   builder.setInsertionPoint(op);
   auto case_op = builder.create<mhlo::CaseOp>(
-      loc, op.getResultTypes(), op.branch_index(), op.branches().size());
-  for (auto region : llvm::zip(case_op.getBranches(), op.branches()))
+      loc, op.getResultTypes(), op.getBranchIndex(), op.getBranches().size());
+  for (auto region : llvm::zip(case_op.getBranches(), op.getBranches()))
     std::get<0>(region).takeBody(std::get<1>(region));
 
   // Replace all uses of `op` results with that of `mhlo.CaseOp`.
@@ -360,7 +362,7 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
   Location loc = op.getLoc();
   OpBuilder builder(op);
 
-  SmallVector<Value, 3> inputs(op.input());
+  SmallVector<Value, 3> inputs(op.getInput());
   const int inputs_size = inputs.size();
   llvm::SetVector<Value> implicit_inputs;
   getUsedValuesDefinedAbove(op.getOperation()->getRegions(), implicit_inputs);
@@ -381,7 +383,7 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
   // Rewrite cond and associated block arguments and terminator. Ownership of
   // cond region is transfered over from `tf.WhileRegion` to `mhlo.while`.
   Region& cond = while_op.getCond();
-  cond.takeBody(op.cond());
+  cond.takeBody(op.getCond());
   Block& cond_block = cond.front();
   builder.setInsertionPointToStart(&cond_block);
 
@@ -397,7 +399,7 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
   // Rewrite body and associated block arguments and terminator. Ownership of
   // body region is transfered over from `tf.WhileRegion` to `mhlo.while`.
   Region& body = while_op.getBody();
-  body.takeBody(op.body());
+  body.takeBody(op.getBody());
   Block& body_block = body.front();
   builder.setInsertionPointToStart(&body_block);
   // Add args corresponding to 'implicit_inputs'.

@@ -143,6 +143,7 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
 class BooleanMaskTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
+    super().setUp()
     self.rng = np.random.RandomState(42)
 
   def CheckVersusNumpy(self, ndims_mask, arr_shape, make_mask=None, axis=None):
@@ -626,7 +627,7 @@ class StridedSliceChecker(object):
 STRIDED_SLICE_TYPES = [
     dtypes.int32, dtypes.int64, dtypes.int16, dtypes.int8, dtypes.uint8,
     dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128,
-    dtypes.bool
+    dtypes.bool, dtypes.bfloat16
 ]
 
 

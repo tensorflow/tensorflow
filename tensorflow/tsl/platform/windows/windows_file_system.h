@@ -67,6 +67,10 @@ class WindowsFileSystem : public FileSystem {
 
   Status DeleteDir(const string& name, TransactionToken* token) override;
 
+  Status DeleteRecursively(const std::string& dirname, TransactionToken* token,
+                           int64_t* undeleted_files,
+                           int64_t* undeleted_dirs) override;
+
   Status GetFileSize(const string& fname, TransactionToken* token,
                      uint64* size) override;
 

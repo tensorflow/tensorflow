@@ -31,6 +31,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/core/bitmap.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -197,11 +199,12 @@ class LiteralBase {
   //
   // This literal must have a dense layout.
   void EachCellAsString(
-      const std::function<void(absl::Span<const int64_t> indices,
-                               const std::string& value)>& per_cell) const;
+      absl::FunctionRef<void(absl::Span<const int64_t> indices,
+                             const std::string& value)>
+          per_cell) const;
   template <typename NativeT>
   void EachCell(
-      std::function<void(absl::Span<const int64_t> indices, NativeT value)>
+      absl::FunctionRef<void(absl::Span<const int64_t> indices, NativeT value)>
           per_cell) const;
 
   // Checks whether all of this literal's values are equal to the given scalar
@@ -803,9 +806,9 @@ class MutableLiteralBase : public LiteralBase {
   using LiteralBase::untyped_data;
 
   template <typename NativeT>
-  void MutableEachCell(
-      std::function<NativeT(absl::Span<const int64_t> indices, NativeT value)>
-          per_cell);
+  void MutableEachCell(absl::FunctionRef<NativeT(
+                           absl::Span<const int64_t> indices, NativeT value)>
+                           per_cell);
 
   // Copy values from 'src_literal' rooted at 'src_shape_index' into this
   // literal rooted at 'dest_shape_index'. The subshape of this literal rooted
@@ -890,14 +893,14 @@ class MutableLiteralBase : public LiteralBase {
   // This literal must have a dense layout.
   template <typename NativeT>
   Status Populate(
-      const std::function<NativeT(absl::Span<const int64_t>)>& generator);
+      absl::FunctionRef<NativeT(absl::Span<const int64_t>)> generator);
 
   // A parallel version of Populate(). This can be used if the generator is
   // thread-safe and the values for the shape's different elements are
   // independent.
   template <typename NativeT>
   Status PopulateParallel(
-      const std::function<NativeT(absl::Span<const int64_t>, int)>& generator);
+      absl::FunctionRef<NativeT(absl::Span<const int64_t>, int)> generator);
 
   // Fills this literal with the given value.
   template <typename NativeT>
@@ -1051,7 +1054,7 @@ class MutableLiteralBase : public LiteralBase {
   //  Status PopulateInternal(const FnType& generator, bool parallel);
   template <typename NativeT>
   Status PopulateInternal(
-      const std::function<NativeT(absl::Span<const int64_t>, int)>& generator,
+      absl::FunctionRef<NativeT(absl::Span<const int64_t>, int)> generator,
       bool parallel);
 
   friend class LiteralBase;
@@ -1295,7 +1298,7 @@ NativeT LiteralBase::GetFirstElement() const {
 
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE void LiteralBase::EachCell(
-    std::function<void(absl::Span<const int64_t> indices, NativeT value)>
+    absl::FunctionRef<void(absl::Span<const int64_t> indices, NativeT value)>
         per_cell) const {
   CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
@@ -1315,7 +1318,7 @@ TF_ATTRIBUTE_NOINLINE void LiteralBase::EachCell(
 
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::MutableEachCell(
-    std::function<NativeT(absl::Span<const int64_t> indices, NativeT value)>
+    absl::FunctionRef<NativeT(absl::Span<const int64_t> indices, NativeT value)>
         per_cell) {
   CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
@@ -1419,7 +1422,7 @@ void MutableLiteralBase::PopulateR4FromArray4D(const Array4D<NativeT>& values) {
 
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::PopulateInternal(
-    const std::function<NativeT(absl::Span<const int64_t>, int)>& generator,
+    absl::FunctionRef<NativeT(absl::Span<const int64_t>, int)> generator,
     bool parallel) {
   const Shape& this_shape = shape();
   const int64_t rank = this_shape.rank();
@@ -1472,7 +1475,7 @@ TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::PopulateInternal(
 
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::Populate(
-    const std::function<NativeT(absl::Span<const int64_t>)>& generator) {
+    absl::FunctionRef<NativeT(absl::Span<const int64_t>)> generator) {
   CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
   return PopulateInternal<NativeT>(
@@ -1483,14 +1486,14 @@ TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::Populate(
 }
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::PopulateParallel(
-    const std::function<NativeT(absl::Span<const int64_t>, int)>& generator) {
+    absl::FunctionRef<NativeT(absl::Span<const int64_t>, int)> generator) {
   CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
   return PopulateInternal<NativeT>(
       [&](absl::Span<const int64_t> indexes, int thread_id) {
         return generator(indexes, thread_id);
       },
-      /*parallel=*/true);
+      /*parallel=*/data<NativeT>().size() > 32);
 }
 
 template <typename NativeT>

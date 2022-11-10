@@ -23,8 +23,6 @@ limitations under the License.
 #include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/error_payloads.h"
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 #include "tensorflow/core/distributed_runtime/remote_device.h"
@@ -34,6 +32,8 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 #include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 #include "tensorflow/tsl/protobuf/distributed_runtime_payloads.pb.h"
@@ -259,14 +259,14 @@ Status SessionMgr::CreateSession(
     // Initialize coordination service if it is the leader.
     if (IsMultiClientLeader(server_def, coordination_config)) {
       coordination_service_ =
-          CoordinationServiceInterface::EnableCoordinationService(
+          tsl::CoordinationServiceInterface::EnableCoordinationService(
               worker_env_->env, coordination_config, std::move(client_cache));
     }
 
     // Initialize coordination service agent.
     std::unique_ptr<CoordinationClientCache> agent_cache;
     TF_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&agent_cache));
-    coordination_service_agent_ = CreateCoordinationServiceAgent();
+    coordination_service_agent_ = tsl::CreateCoordinationServiceAgent();
     TF_RETURN_IF_ERROR(coordination_service_agent_->Initialize(
         worker_env_->env, server_def.job_name(), server_def.task_index(),
         coordination_config,
@@ -389,7 +389,7 @@ std::shared_ptr<WorkerSession> SessionMgr::LegacySession() {
   return legacy_session_;
 }
 
-CoordinationServiceAgent* SessionMgr::GetCoordinationServiceAgent() {
+tsl::CoordinationServiceAgent* SessionMgr::GetCoordinationServiceAgent() {
   return coordination_service_agent_.get();
 }
 

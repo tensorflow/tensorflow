@@ -24,11 +24,12 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_runner_interface.h"
+#include "tensorflow/compiler/xla/service/hlo_runner_pjrt.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -232,14 +233,15 @@ void HloTestBase::RunAndFilecheckHloRewrite(
 
 StatusOr<Literal> HloTestBase::Execute(std::unique_ptr<HloModule> module,
                                        absl::Span<Literal* const> arguments) {
-  return test_runner_.Execute(std::move(module), arguments);
+  return GetHloRunner().value()->Execute(std::move(module), arguments);
 }
 
 Literal HloTestBase::ExecuteNoHloPasses(std::unique_ptr<HloModule> module,
                                         absl::Span<Literal* const> arguments) {
-  return test_runner_
-      .Execute(std::move(module), arguments,
-               /*run_hlo_passes=*/false)
+  return GetHloRunner()
+      .value()
+      ->Execute(std::move(module), arguments,
+                /*run_hlo_passes=*/false)
       .value();
 }
 
@@ -337,8 +339,8 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 
   // Execute on two backends.
   TF_ASSIGN_OR_RETURN(
-      auto test,
-      test_runner_.Execute(std::move(module), arguments, run_hlo_passes));
+      auto test, GetHloRunner().value()->Execute(std::move(module), arguments,
+                                                 run_hlo_passes));
   TF_ASSIGN_OR_RETURN(auto reference,
                       reference_runner_.Execute(std::move(reference_module),
                                                 arguments, run_hlo_passes));
@@ -413,8 +415,8 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
     return ::testing::AssertionFailure() << change.status();
   }
 
-  const auto output =
-      test_runner_.Execute(std::move(module), fake_arguments, run_hlo_passes);
+  const auto output = GetHloRunner().value()->Execute(
+      std::move(module), fake_arguments, run_hlo_passes);
   return output.ok()
              ? ::testing::AssertionSuccess()
              : ::testing::AssertionFailure() << output.status().error_message();
@@ -443,11 +445,11 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
   // Execute the two modules.
   TF_ASSIGN_OR_RETURN(
-      auto test_0,
-      test_runner_.Execute(std::move(module_0), arguments, run_hlo_passes));
+      auto test_0, GetHloRunner().value()->Execute(std::move(module_0),
+                                                   arguments, run_hlo_passes));
   TF_ASSIGN_OR_RETURN(
-      auto test_1,
-      test_runner_.Execute(std::move(module_1), arguments, run_hlo_passes));
+      auto test_1, GetHloRunner().value()->Execute(std::move(module_1),
+                                                   arguments, run_hlo_passes));
 
   return LiteralTestUtil::NearOrEqual(/*expected=*/test_0, /*actual=*/test_1,
                                       error);
@@ -574,9 +576,10 @@ HloTestBase::RunAndCompareTwoModulesInternal(
                   : ::testing::AssertionFailure() << s.error_message();
   }
 
-  auto output = test_runner_.Execute(std::move(module), fake_argument_ptrs,
-                                     /*run_hlo_passes=*/run_hlo_passes,
-                                     /*profile=*/profile);
+  auto output =
+      GetHloRunner().value()->Execute(std::move(module), fake_argument_ptrs,
+                                      /*run_hlo_passes=*/run_hlo_passes,
+                                      /*profile=*/profile);
 
   return output.ok()
              ? ::testing::AssertionSuccess()
@@ -666,8 +669,8 @@ HloTestBase::RunAndCompareTwoModulesInternal(
                     : ::testing::AssertionFailure() << s.error_message();
     }
 
-    auto executable =
-        test_runner_.CreateExecutable(std::move(module), run_hlo_passes);
+    auto executable = GetHloRunner().value()->CreateExecutable(
+        std::move(module), run_hlo_passes);
     if (!executable.ok()) {
       return ::testing::AssertionFailure()
              << executable.status().error_message();
@@ -677,7 +680,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
   std::optional<Literal> canonical_output;
   for (int i = 0; i < n; ++i) {
-    StatusOr<Literal> output = test_runner_.ExecuteWithExecutable(
+    StatusOr<Literal> output = GetHloRunner().value()->ExecuteWithExecutable(
         executables[i].get(), fake_arguments[i],
         /*profile=*/&((*profiles)[i]));
     if (!output.ok()) {
@@ -811,6 +814,17 @@ StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
   return backend().compiler()->RunHloPasses(
       std::move(hlo_module), backend().default_stream_executor(),
       backend().default_stream_executor()->GetAllocator());
+}
+
+StatusOr<std::unique_ptr<HloRunnerInterface>> HloTestBase::GetHloRunnerForTest(
+    se::Platform* test_platform) {
+  if (ShouldUsePjRt()) {
+    TF_ASSIGN_OR_RETURN(auto client, GetGlobalPjRtClientTestFactory().Get()());
+    return std::unique_ptr<HloRunnerInterface>(
+        new HloRunnerPjRt(std::move(client)));
+  } else {
+    return std::unique_ptr<HloRunnerInterface>(new HloRunner(test_platform));
+  }
 }
 
 }  // namespace xla

@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_utils.h"
 
+#include <cstdlib>
 #include <memory>
+#include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
@@ -72,7 +76,8 @@ ncclRedOp_t ToNcclReduction(ReductionKind kind) {
 
 namespace {
 
-StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type) {
+StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type,
+                                        Thunk::Kind reduction_op) {
   switch (element_type) {
     case S8:
       return ncclInt8;
@@ -95,6 +100,19 @@ StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type) {
     case F64:
     case C128:
       return ncclFloat64;
+    case S16:
+    case U16:
+      // For all-reduce and reduce-scatter, we expect 16 bit integer types to be
+      // promoted to 32-bit.
+      if (reduction_op == Thunk::kNcclAllReduce ||
+          reduction_op == Thunk::kNcclAllReduceStart ||
+          reduction_op == Thunk::kNcclReduceScatter) {
+        return tsl::errors::InvalidArgument(absl::StrFormat(
+            "Unsupported data type: %s", PrimitiveType_Name(element_type)));
+      }
+      // For collectives that just move data around, we can use ncclFloat16 for
+      // 16-bit integer data types.
+      return ncclFloat16;
 #if defined(__CUDA_BF16_TYPES_EXIST__)
     case BF16:
       return ncclBfloat16;
@@ -192,8 +210,9 @@ void CheckNcclAsyncError(NcclComm& lockable_comm) {
 }  // namespace
 
 StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
-    PrimitiveType element_type) {
-  TF_ASSIGN_OR_RETURN(ncclDataType_t dtype, ToNcclDataType(element_type));
+    PrimitiveType element_type, Thunk::Kind reduction_op) {
+  TF_ASSIGN_OR_RETURN(ncclDataType_t dtype,
+                      ToNcclDataType(element_type, reduction_op));
   bool is_complex = primitive_util::IsComplexType(element_type);
   return std::make_pair(dtype, is_complex ? 2 : 1);
 }

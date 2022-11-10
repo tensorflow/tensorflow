@@ -72,6 +72,16 @@ class HloProtoBufferWrapper {
     Init();
   }
 
+  // Get the heap simulator trace ID using memory color.
+  // If unable to find the heap simulator trace, return -1.
+  int64_t GetHeapSimulatorTraceId(const int64_t memory_color) const {
+    int64_t id = GetHeapSimulatorTraceIdFromBufferAllocationIndex(memory_color);
+    if (id != -1) {
+      return id;
+    }
+    return GetHeapSimulatorTraceIdFromEvents(memory_color);
+  }
+
   // Get the raw HLO proto.
   const ::xla::HloProto& GetHloProto() const { return hlo_proto_; }
 
@@ -134,6 +144,64 @@ class HloProtoBufferWrapper {
             &buffer_allocation;
       }
     }
+  }
+
+  // From a list of heap simulator traces, identify the one that has the largest
+  // number of memory events with color <memory_color>.
+  int64_t GetHeapSimulatorTraceIdFromEvents(const int64_t memory_color) const {
+    int64_t best_index = -1;
+    int64_t best_event_count = 0;
+    for (int64_t i = 0;
+         i < hlo_proto_.buffer_assignment().heap_simulator_traces_size(); i++) {
+      const auto& heap_simulator_trace =
+          hlo_proto_.buffer_assignment().heap_simulator_traces(i);
+      int64_t event_count = 0;
+      for (const auto& event : heap_simulator_trace.events()) {
+        const LogicalBufferProto& logical_buffer =
+            GetLogicalBuffer(event.buffer_id());
+        if (logical_buffer.color() == memory_color) {
+          event_count++;
+        }
+      }
+      if (event_count > best_event_count) {
+        best_index = i;
+        best_event_count = event_count;
+      }
+    }
+    return best_index;
+  }
+
+  // Tries to get heap simulator trace based on buffer_allocation_index.
+  int64_t GetHeapSimulatorTraceIdFromBufferAllocationIndex(
+      const int64_t memory_color) const {
+    absl::flat_hash_map<int64_t, const BufferAllocationProto*>
+        id_to_buffer_allocation;
+    for (const auto& buffer_allocation :
+         hlo_proto_.buffer_assignment().buffer_allocations()) {
+      id_to_buffer_allocation[buffer_allocation.index()] = &buffer_allocation;
+    }
+    for (int64_t i = 0;
+         i < hlo_proto_.buffer_assignment().heap_simulator_traces_size(); i++) {
+      int64_t buffer_allocation_index = hlo_proto_.buffer_assignment()
+                                            .heap_simulator_traces(i)
+                                            .buffer_allocation_index();
+      const auto iter = id_to_buffer_allocation.find(buffer_allocation_index);
+      if (buffer_allocation_index && iter != id_to_buffer_allocation.end()) {
+        // Find the heap simulator trace that corresponds to the HLO temporaries
+        // buffer allocation, where is_thread_local,
+        // is_entry_computation_parameter, is_constant, and maybe_live_out will
+        // all be false.
+        const auto* buffer_allocation = iter->second;
+        if (buffer_allocation->color() == memory_color &&
+            !buffer_allocation->is_thread_local() &&
+            !buffer_allocation->is_entry_computation_parameter() &&
+            !buffer_allocation->is_constant() &&
+            !buffer_allocation->maybe_live_out()) {
+          return i;
+        }
+      }
+    }
+    return -1;
   }
 
   // Reference to the original HLO proto.
@@ -529,8 +597,30 @@ class LogicalBufferShareTracker {
 };
 
 Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
-                                 const HeapSimulatorTrace& trace,
+                                 const int64_t memory_color,
+                                 int64_t heap_simulator_trace_id,
                                  HeapSimulatorStats* stats) {
+  // If heap simulator trace id is not explicitly set by user, the profiler will
+  // try to infer the heap simulator trace id from <memory_color>.
+  if (heap_simulator_trace_id == -1) {
+    heap_simulator_trace_id = wrapper.GetHeapSimulatorTraceId(memory_color);
+  }
+  // If still unable to get a valid heap simulator trace id, skip heap simulator
+  // trace and process the rest of the buffers.
+  if (heap_simulator_trace_id < 0 ||
+      heap_simulator_trace_id >= wrapper.GetHloProto()
+                                     .buffer_assignment()
+                                     .heap_simulator_traces_size()) {
+    return OkStatus();
+  }
+
+  // Run through all the simulator events in the given trace, and simulate the
+  // heap in order to find the point of peak memory usage and record its
+  // associated metadata.
+  const auto& trace =
+      wrapper.GetHloProto().buffer_assignment().heap_simulator_traces(
+          heap_simulator_trace_id);
+
   LogicalBufferShareTracker share_tracker;
   stats->SetSimulatorTraceEventSize(trace.events_size());
   for (const auto& event : trace.events()) {
@@ -580,23 +670,14 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
     const HloProto& hlo_proto, int64_t small_buffer_size,
     int64_t heap_simulator_trace_id, int64_t memory_color) {
   HloProtoBufferWrapper wrapper(hlo_proto);
-  HeapSimulatorStats simulator_stats(wrapper);
 
-  // Run through all the simulator events in the given trace, and simulate the
-  // heap in order to find the point of peak memory usage and record its
-  // associated metadata.
-  if (heap_simulator_trace_id >= 0 &&
-      heap_simulator_trace_id <
-          hlo_proto.buffer_assignment().heap_simulator_traces_size()) {
-    auto status = ProcessHeapSimulatorTrace(
-        wrapper,
-        hlo_proto.buffer_assignment().heap_simulator_traces(
-            heap_simulator_trace_id),
-        &simulator_stats);
-    if (!status.ok()) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Failed to process heap simulator trace: ", status.error_message()));
-    }
+  // Process heap simulator trace.
+  HeapSimulatorStats simulator_stats(wrapper);
+  auto status = ProcessHeapSimulatorTrace(
+      wrapper, memory_color, heap_simulator_trace_id, &simulator_stats);
+  if (!status.ok()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Failed to process heap simulator trace: ", status.error_message()));
   }
 
   // Process indefinite memory usage.
@@ -758,87 +839,6 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
 
   NoteSpecialAllocations(wrapper, small_buffer_size, &result);
   return result;
-}
-
-// From a list of heap simulator traces, identify the one that has the largest
-// number of memory events with color <memory_color>.
-// If unable to find the heap simulator trace, return -1, and
-// ConvertHloProtoToPreprocessResult will not consider heap_simulator_traces
-// during preprocess.
-int64_t GetHeapSimulatorTraceIdFromEvents(const HloProto& proto,
-                                          int64_t memory_color) {
-  absl::flat_hash_map<int64_t, const xla::LogicalBufferProto*>
-      id_to_logical_buffer;
-  for (const auto& logical_buffer :
-       proto.buffer_assignment().logical_buffers()) {
-    id_to_logical_buffer[logical_buffer.id()] = &logical_buffer;
-  }
-  int64_t best_index = -1;
-  int64_t best_event_count = 0;
-  for (int64_t i = 0;
-       i < proto.buffer_assignment().heap_simulator_traces_size(); i++) {
-    const auto& heap_simulator_trace =
-        proto.buffer_assignment().heap_simulator_traces(i);
-    int64_t event_count = 0;
-    for (const auto& event : heap_simulator_trace.events()) {
-      const auto iter = id_to_logical_buffer.find(event.buffer_id());
-      if (iter == id_to_logical_buffer.end()) {
-        continue;
-      }
-      if (iter->second->color() == memory_color) {
-        event_count++;
-      }
-    }
-    if (event_count > best_event_count) {
-      best_index = i;
-      best_event_count = event_count;
-    }
-  }
-
-  return best_index;
-}
-
-// Tries to get the correct heap simulator trace based on
-// buffer_allocation_index.
-int64_t GetHeapSimulatorTraceIdFromBufferAllocationIndex(const HloProto& proto,
-                                                         int64_t memory_color) {
-  absl::flat_hash_map<int64_t, const xla::BufferAllocationProto*>
-      id_to_buffer_allocation;
-  for (const auto& buffer_allocation :
-       proto.buffer_assignment().buffer_allocations()) {
-    id_to_buffer_allocation[buffer_allocation.index()] = &buffer_allocation;
-  }
-  for (int64_t i = 0;
-       i < proto.buffer_assignment().heap_simulator_traces_size(); ++i) {
-    int64_t buffer_allocation_index = proto.buffer_assignment()
-                                          .heap_simulator_traces(i)
-                                          .buffer_allocation_index();
-    const auto iter = id_to_buffer_allocation.find(buffer_allocation_index);
-    if (buffer_allocation_index && iter != id_to_buffer_allocation.end()) {
-      // Find the heap simulator trace that corresponds to the HLO temporaries
-      // buffer allocation, where is_thread_local,
-      // is_entry_computation_parameter, is_constant, and maybe_live_out will
-      // all be false.
-      const auto* buffer_allocation = iter->second;
-      if (buffer_allocation->color() == memory_color &&
-          !buffer_allocation->is_thread_local() &&
-          !buffer_allocation->is_entry_computation_parameter() &&
-          !buffer_allocation->is_constant() &&
-          !buffer_allocation->maybe_live_out()) {
-        return i;
-      }
-    }
-  }
-  return -1;
-}
-
-int64_t GetHeapSimulatorTraceId(const HloProto& proto, int64_t memory_color) {
-  int64_t id =
-      GetHeapSimulatorTraceIdFromBufferAllocationIndex(proto, memory_color);
-  if (id != -1) {
-    return id;
-  }
-  return GetHeapSimulatorTraceIdFromEvents(proto, memory_color);
 }
 
 }  // namespace profiler

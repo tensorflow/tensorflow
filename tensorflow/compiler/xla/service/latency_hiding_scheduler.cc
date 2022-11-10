@@ -35,15 +35,15 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_buffer.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -63,6 +63,11 @@ LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
       break;
     case HloOpcode::kAllGatherStart:
       if (target.GetInstr().opcode() == HloOpcode::kAllGatherDone) {
+        return kHighCost;
+      }
+      break;
+    case HloOpcode::kAllReduceStart:
+      if (target.GetInstr().opcode() == HloOpcode::kAllReduceDone) {
         return kHighCost;
       }
       break;
@@ -94,6 +99,7 @@ bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
   if (hlo.opcode() == HloOpcode::kAsyncDone) {
     switch (hlo.async_wrapped_opcode()) {
       case HloOpcode::kAllGather:
+      case HloOpcode::kAllReduce:
       case HloOpcode::kCollectivePermute:
         return true;
       default:
@@ -102,6 +108,7 @@ bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
   }
   switch (hlo.opcode()) {
     case HloOpcode::kAllGatherDone:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kCollectivePermuteDone:
       return true;
     case HloOpcode::kSendDone:
@@ -117,6 +124,7 @@ bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
   if (hlo.opcode() == HloOpcode::kAsyncStart) {
     switch (hlo.async_wrapped_opcode()) {
       case HloOpcode::kAllGather:
+      case HloOpcode::kAllReduce:
       case HloOpcode::kCollectivePermute:
         return true;
       default:
@@ -125,6 +133,7 @@ bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
   }
   switch (hlo.opcode()) {
     case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllReduceStart:
     case HloOpcode::kCollectivePermuteStart:
       return true;
     case HloOpcode::kSend:
@@ -143,6 +152,9 @@ ResourcesVector AsyncTracker::GetResourcesFromInstruction(
         case HloOpcode::kAllGather:
           return ResourcesVector{std::make_pair(
               ResourceType::kAllGather, ResourceUsageType::kResourceRelease)};
+        case HloOpcode::kAllReduce:
+          return ResourcesVector{std::make_pair(
+              ResourceType::kAllReduce, ResourceUsageType::kResourceRelease)};
         case HloOpcode::kCollectivePermute:
           return ResourcesVector{
               std::make_pair(ResourceType::kCollectivePermute,
@@ -157,6 +169,9 @@ ResourcesVector AsyncTracker::GetResourcesFromInstruction(
     case HloOpcode::kAllGatherStart:
       return ResourcesVector{std::make_pair(
           ResourceType::kAllGather, ResourceUsageType::kResourceRelease)};
+    case HloOpcode::kAllReduceStart:
+      return ResourcesVector{std::make_pair(
+          ResourceType::kAllReduce, ResourceUsageType::kResourceRelease)};
     case HloOpcode::kAfterAll:
       // TODO(maggioni): Understand why AfterAll need to not be overlapped.
       return ResourcesVector{std::make_pair(ResourceType::kSendHost,
@@ -182,6 +197,9 @@ ResourcesVector AsyncTracker::GetResourcesFromInstruction(
         case HloOpcode::kAllGather:
           return ResourcesVector{std::make_pair(
               ResourceType::kAllGather, ResourceUsageType::kResourceOccupy)};
+        case HloOpcode::kAllReduce:
+          return ResourcesVector{std::make_pair(
+              ResourceType::kAllReduce, ResourceUsageType::kResourceOccupy)};
         case HloOpcode::kCollectivePermute:
           return ResourcesVector{
               std::make_pair(ResourceType::kCollectivePermute,
@@ -196,6 +214,9 @@ ResourcesVector AsyncTracker::GetResourcesFromInstruction(
     case HloOpcode::kAllGatherDone:
       return ResourcesVector{std::make_pair(
           ResourceType::kAllGather, ResourceUsageType::kResourceOccupy)};
+    case HloOpcode::kAllReduceDone:
+      return ResourcesVector{std::make_pair(
+          ResourceType::kAllReduce, ResourceUsageType::kResourceOccupy)};
     case HloOpcode::kRecvDone:
       return ResourcesVector{
           static_cast<const HloSendRecvInstruction*>(hlo.operand(0))
@@ -1196,6 +1217,8 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
       config_.collective_permute_overlap_limit;
   sched_state.max_concurrent_async[ResourceType::kAllGather] =
       config_.all_gather_overlap_limit;
+  sched_state.max_concurrent_async[ResourceType::kAllReduce] =
+      config_.all_reduce_overlap_limit;
   sched_state.max_concurrent_async[ResourceType::kSendRecv] =
       config_.send_recv_overlap_limit;
   sched_state.max_concurrent_async[ResourceType::kSendHost] =
@@ -1239,6 +1262,11 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
   }
   module_pressure_state_->UpdatePressureStateForComputation(
       computation, memory_pressure_tracker.pressure_state());
+  CHECK_EQ(sched_state.new_sequence_reversed.size(),
+           sched_state.sched_graph.GetOriginalInstrList().size())
+      << "Not all instructions have been scheduled "
+      << sched_state.new_sequence_reversed.size() << " vs "
+      << sched_state.sched_graph.GetOriginalInstrList().size();
   VLOG(1) << "Total time: "
           << sched_state.sched_graph
                  .GetNode(sched_state.new_sequence_reversed.back())
@@ -1264,6 +1292,7 @@ LatencyHidingScheduler::LatencyHidingStatistics(
   enum class AsyncKind {
     kNotAsync,
     kAllGather,
+    kAllReduce,
     kCollectivePermute,
     kSend,
     kRecv,
@@ -1272,6 +1301,8 @@ LatencyHidingScheduler::LatencyHidingStatistics(
     switch (opcode) {
       case HloOpcode::kAllGatherStart:
         return AsyncKind::kAllGather;
+      case HloOpcode::kAllReduceStart:
+        return AsyncKind::kAllReduce;
       case HloOpcode::kCollectivePermuteStart:
         return AsyncKind::kCollectivePermute;
       case HloOpcode::kSend:
@@ -1353,6 +1384,8 @@ LatencyHidingScheduler::LatencyHidingStatistics(
       .computation = computation,
       .all_gather_wasted_cycles =
           wasted_time_per_collective[AsyncKind::kAllGather],
+      .all_reduce_wasted_cycles =
+          wasted_time_per_collective[AsyncKind::kAllReduce],
       .collective_permute_wasted_cycles =
           wasted_time_per_collective[AsyncKind::kCollectivePermute],
       .send_wasted_cycles = wasted_time_per_collective[AsyncKind::kSend],
@@ -1375,6 +1408,7 @@ std::string LatencyHidingScheduler::SchedulerStatisticsString(
   }
   absl::StrAppend(&result, "Total wasted cycles: ",
                   sched_stats.all_gather_wasted_cycles +
+                      sched_stats.all_reduce_wasted_cycles +
                       sched_stats.collective_permute_wasted_cycles +
                       sched_stats.send_wasted_cycles +
                       sched_stats.recv_wasted_cycles,
@@ -1383,6 +1417,8 @@ std::string LatencyHidingScheduler::SchedulerStatisticsString(
                   sched_stats.collective_permute_wasted_cycles, "\n");
   absl::StrAppend(&result, "Wasted cycles for all-gather: ",
                   sched_stats.all_gather_wasted_cycles, "\n");
+  absl::StrAppend(&result, "Wasted cycles for all-reduce: ",
+                  sched_stats.all_reduce_wasted_cycles, "\n");
   absl::StrAppend(&result,
                   "Wasted cycles for send: ", sched_stats.send_wasted_cycles,
                   "\n");

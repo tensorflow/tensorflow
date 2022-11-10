@@ -271,6 +271,7 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/strings:str_format",
     ],
 )

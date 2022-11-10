@@ -54,6 +54,10 @@ struct FusionInfoCache {
   absl::flat_hash_map<const HloInstruction*, int64_t> num_unnested_reductions;
 };
 
+// Returns projected shared memory usage of a given instruction in bytes.
+int64_t SharedMemoryUsage(const HloInstruction& instr,
+                          FusionInfoCache* cache = nullptr);
+
 inline constexpr int64_t MaxOperandsAndOutputsPerFusion() { return 64; }
 
 bool IsInputFusible(const HloInstruction& instr);

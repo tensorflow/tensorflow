@@ -98,19 +98,19 @@ Value ConvertConditionToBoolean(Operation* op, Value cond) {
 
 // Transform a functional IfOp to a region based IfRegionOp.
 LogicalResult ConvertIfOp(IfOp if_op) {
-  Value cond = ConvertConditionToBoolean(if_op, if_op.cond());
+  Value cond = ConvertConditionToBoolean(if_op, if_op.getCond());
   OpBuilder builder(if_op);
   auto if_region = builder.create<TF::IfRegionOp>(
-      if_op.getLoc(), if_op.getResultTypes(), cond, if_op.is_stateless(),
+      if_op.getLoc(), if_op.getResultTypes(), cond, if_op.getIsStateless(),
       builder.getStringAttr(if_op.then_function().getName()),
       builder.getStringAttr(if_op.else_function().getName()));
   CopyDeviceAndUnderscoredAttributes(if_op, if_region);
 
   CreateCall(if_op, if_op.then_function(),
-             /*caller_region=*/if_region.then_branch(), if_op.input(),
+             /*caller_region=*/if_region.getThenBranch(), if_op.getInput(),
              /*use_region_args=*/false);
   CreateCall(if_op, if_op.else_function(),
-             /*caller_region=*/if_region.else_branch(), if_op.input(),
+             /*caller_region=*/if_region.getElseBranch(), if_op.getInput(),
              /*use_region_args=*/false);
   if_op.replaceAllUsesWith(if_region.getResults());
   if_op.erase();
@@ -119,21 +119,21 @@ LogicalResult ConvertIfOp(IfOp if_op) {
 
 LogicalResult ConvertWhileOp(WhileOp while_op) {
   auto while_region = OpBuilder(while_op).create<TF::WhileRegionOp>(
-      while_op.getLoc(), while_op.getResultTypes(), while_op.input(),
-      while_op.parallel_iterations(), while_op.is_stateless(),
-      while_op.shape_invariant());
+      while_op.getLoc(), while_op.getResultTypes(), while_op.getInput(),
+      while_op.getParallelIterations(), while_op.getIsStateless(),
+      while_op.getShapeInvariant());
   CopyDeviceAndUnderscoredAttributes(while_op, while_region);
 
   YieldOp cond_yield =
       CreateCall(while_op, while_op.cond_function(),
-                 /*caller_region=*/while_region.cond(), while_op.input(),
+                 /*caller_region=*/while_region.getCond(), while_op.getInput(),
                  /*use_region_args=*/true);
   Value i1_cond =
       ConvertConditionToBoolean(cond_yield, cond_yield.getOperand(0));
   cond_yield.setOperand(0, i1_cond);
 
   CreateCall(while_op, while_op.body_function(),
-             /*caller_region=*/while_region.body(), while_op.input(),
+             /*caller_region=*/while_region.getBody(), while_op.getInput(),
              /*use_region_args=*/true);
   while_op.replaceAllUsesWith(while_region.getResults());
   while_op.erase();

@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/bufferizable_op_interface_impl.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
@@ -68,20 +68,36 @@ struct CustomCallOpInterface
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
                           const BufferizationOptions &options) const {
     auto customCallOp = cast<mhlo::CustomCallOp>(op);
+    Value tokenArgument;
 
     // Bufferize arguments.
     SmallVector<Value> bufferArgs;
     for (OpOperand &operand : customCallOp->getOpOperands()) {
+      auto &newBuffer = bufferArgs.emplace_back();
+      if (operand.get().getType().isa<mhlo::TokenType>()) {
+        // Remember the token for later. We need it for the return value but
+        // it's not getting passed to LMHLO.
+        if (tokenArgument) return failure();
+        tokenArgument = operand.get();
+        continue;
+      }
       if (!operand.get().getType().isa<TensorType>()) return failure();
       FailureOr<Value> operandBuffer =
           getBuffer(rewriter, operand.get(), options);
       if (failed(operandBuffer)) return failure();
-      bufferArgs.push_back(*operandBuffer);
+      newBuffer = *operandBuffer;
     }
 
     // Allocate outputs.
     for (OpResult result : customCallOp->getOpResults()) {
-      auto tensorType = result.getType().cast<RankedTensorType>();
+      auto &newBuffer = bufferArgs.emplace_back();
+      if (result.getType().isa<mhlo::TokenType>()) {
+        // Token must be the last result.
+        if (result.getResultNumber() != customCallOp->getNumResults() - 1)
+          return failure();
+        continue;
+      }
+      auto tensorType = result.getType().dyn_cast<RankedTensorType>();
       if (!tensorType) return failure();
       // TODO(springerm): Create alloc_tensor ops during TensorCopyInsertion.
       AnalysisState analysisState(options);
@@ -92,21 +108,55 @@ struct CustomCallOpInterface
       if (failed(tensorAlloc)) return failure();
       auto memrefType =
           MemRefType::get(tensorType.getShape(), tensorType.getElementType());
-      Value resultBuffer = rewriter.create<bufferization::ToMemrefOp>(
+      newBuffer = rewriter.create<bufferization::ToMemrefOp>(
           op->getLoc(), memrefType, *tensorAlloc);
-      bufferArgs.push_back(resultBuffer);
+    }
+
+    lmhlo::CustomCallTargetArgMappingAttr targetMapping;
+    auto numArguments = static_cast<int32_t>(customCallOp->getNumOperands());
+    auto numResults = static_cast<int32_t>(customCallOp->getNumResults());
+    if (tokenArgument) {
+      // If there was a token, squeeze all the non-token arguments and results
+      // (in-place) and remember the mapping.
+      int nextIndex = 0;
+      llvm::SmallVector<int64_t> argToTargetArgMapping;
+      for (int i = 0; i < numArguments; ++i) {
+        if (bufferArgs[i]) {
+          argToTargetArgMapping.push_back(i);
+          bufferArgs[nextIndex++] = bufferArgs[i];
+        }
+      }
+      llvm::SmallVector<int64_t> resultToTargetResultMapping;
+      for (int i = numArguments; i < bufferArgs.size(); ++i) {
+        if (bufferArgs[i]) {
+          resultToTargetResultMapping.push_back(i - numArguments);
+          bufferArgs[nextIndex++] = bufferArgs[i];
+        }
+      }
+
+      // Build the mapping attribute.
+      targetMapping = lmhlo::CustomCallTargetArgMappingAttr::get(
+          rewriter.getContext(), numArguments, numResults,
+          argToTargetArgMapping, resultToTargetResultMapping);
+
+      // Drop the remaining operands and adjust num_arguments and num_results
+      // for LMHLO creation.
+      bufferArgs.resize(nextIndex);
+      numArguments = static_cast<int32_t>(argToTargetArgMapping.size());
+      numResults = static_cast<int32_t>(resultToTargetResultMapping.size());
     }
 
     auto lhloOp = rewriter.create<lmhlo::CustomCallOp>(
         op->getLoc(), llvm::None, bufferArgs, op->getAttrs());
+    if (targetMapping) lhloOp.setTargetArgMappingAttr(targetMapping);
     // lmhlo.custom_call uses a segment_size attribute to tell input from output
     // arguments.
     lhloOp->setAttr(lhloOp.getOperandSegmentSizeAttr(),
-                    rewriter.getDenseI32ArrayAttr(
-                        {static_cast<int32_t>(op->getNumOperands()),
-                         static_cast<int32_t>(op->getNumResults())}));
+                    rewriter.getDenseI32ArrayAttr({numArguments, numResults}));
+    // If we have a token argument pass it through untouched.
+    if (tokenArgument) bufferArgs.push_back(tokenArgument);
     bufferization::replaceOpWithBufferizedValues(
-        rewriter, op, makeArrayRef(bufferArgs).slice(op->getNumOperands()));
+        rewriter, op, makeArrayRef(bufferArgs).slice(numArguments));
     return success();
   }
 };

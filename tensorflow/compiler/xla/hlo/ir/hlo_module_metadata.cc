@@ -34,7 +34,7 @@ StatusOr<HloPassMetadata*> HloModuleMetadata::GetCurrentHloPassMetadata() {
 }
 
 Status HloModuleMetadata::MutateCurrentHloPassMetadata(
-    const std::function<void(HloPassMetadata*)>& mutator) {
+    absl::FunctionRef<void(HloPassMetadata*)> mutator) {
   TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
                       GetCurrentHloPassMetadata());
   mutator(pass_metadata);

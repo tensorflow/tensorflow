@@ -129,13 +129,13 @@ tf_python_pybind_extension(
 
 cc_library(
     name = "python_hooks",
-    srcs = ["python_hooks.cc"],
     hdrs = ["python_hooks.h"],
     compatible_with = get_compatible_with_cloud(),
     copts = tf_profiler_copts() + ["-fexceptions"],
     features = ["-use_header_modules"],  # Incompatible with -fexceptions.
-    visibility = ["//visibility:public"],
+    visibility = ["//tensorflow/core/profiler:__subpackages__"],
     deps = [
+        "//tensorflow/compiler/xla/python/profiler/internal:python_hooks",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:time_utils",

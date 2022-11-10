@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/tsl/platform/status.h"
 
 #include "tensorflow/core/common_runtime/gpu_fusion_pass.h"
 
@@ -60,7 +61,7 @@ const int kVlogLevel = 2;
 //    - false if env-var value is either not set or set to any other value
 bool ReadBoolFromEnvVar(const char* env_var_name) {
   bool value = false;
-  tensorflow::ReadBoolFromEnvVar(env_var_name, false, &value);
+  TF_CHECK_OK(tsl::ReadBoolFromEnvVar(env_var_name, false, &value));
   return value;
 }
 
@@ -494,11 +495,11 @@ Status ROCmFusionPass::Run(const GraphOptimizationPassOptions& options) {
   } else {
     VLOG(kVlogLevel) << "ROCmFusionPass was not enabled!";
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ROCmFMAPass::Run(const GraphOptimizationPassOptions& options) {
-  if (ReadBoolFromEnvVar("TF_ROCM_FMA_DISABLE")) return Status::OK();
+  if (ReadBoolFromEnvVar("TF_ROCM_FMA_DISABLE")) return OkStatus();
   return ROCmFusionPassBase::Run(options, kROCmFMAPassGrouping);
 }
 
@@ -510,7 +511,7 @@ Status ROCmFusionPassBase::Run(const GraphOptimizationPassOptions& options,
   // - options.graph (for all but POST_PARTITIONING grouping)
   // - options.partition_graphs (for POST_PARTITIONING_grouping)
   if (options.graph == nullptr && options.partition_graphs == nullptr) {
-    return Status::OK();
+    return OkStatus();
   }
 
   if (grouping == OptimizationPassRegistry::POST_PARTITIONING) {
@@ -532,7 +533,7 @@ Status ROCmFusionPassBase::Run(const GraphOptimizationPassOptions& options,
     // run the pass
     RunPass(options.graph->get());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool ROCmFusionPassBase::RunPass(Graph* graph) {

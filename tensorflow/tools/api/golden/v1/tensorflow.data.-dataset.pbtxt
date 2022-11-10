@@ -200,6 +200,10 @@ tf_class {
     argspec: "args=[\'self\', \'path\', \'compression\', \'reader_func\', \'shard_func\', \'name\'], varargs=None, keywords=None, defaults=[\'AUTO\', \'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "sparse_batch"
+    argspec: "args=[\'self\', \'batch_size\', \'row_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "take"
     argspec: "args=[\'self\', \'count\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

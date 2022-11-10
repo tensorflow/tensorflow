@@ -81,10 +81,10 @@ struct MergeControlFlowPass
 llvm::SmallSetVector<Operation*, 4> GetAllOpsFromIf(TF::IfRegionOp if_op) {
   llvm::SmallSetVector<Operation*, 4> all_ops;
   all_ops.insert(if_op);
-  for (Operation& op : if_op.then_branch().front()) {
+  for (Operation& op : if_op.getThenBranch().front()) {
     all_ops.insert(&op);
   }
-  for (Operation& op : if_op.else_branch().front()) {
+  for (Operation& op : if_op.getElseBranch().front()) {
     all_ops.insert(&op);
   }
   return all_ops;
@@ -121,14 +121,14 @@ bool SafeToMerge(TF::IfRegionOp first_if, TF::IfRegionOp second_if,
       dependencies.push_back(successor);
     }
   }
-  for (Operation& op : first_if.then_branch().front()) {
+  for (Operation& op : first_if.getThenBranch().front()) {
     for (auto* successor : side_effect_analysis.DirectControlSuccessors(&op)) {
       if (!downstream_if_ops.contains(successor) &&
           !destination_ops.contains(successor))
         dependencies.push_back(successor);
     }
   }
-  for (Operation& op : first_if.else_branch().front()) {
+  for (Operation& op : first_if.getElseBranch().front()) {
     for (auto* successor : side_effect_analysis.DirectControlSuccessors(&op)) {
       if (!downstream_if_ops.contains(successor) &&
           !destination_ops.contains(successor))
@@ -173,14 +173,14 @@ bool SafeToMerge(TF::IfRegionOp first_if, TF::IfRegionOp second_if,
 // Move the body excluding the terminators of else and then regions from
 // 'second_if' to 'first_if'.
 void MoveBranches(TF::IfRegionOp first_if, TF::IfRegionOp second_if) {
-  Block& first_if_then_block = first_if.then_branch().front();
-  auto& second_if_then_body = second_if.then_branch().front().getOperations();
+  Block& first_if_then_block = first_if.getThenBranch().front();
+  auto& second_if_then_body = second_if.getThenBranch().front().getOperations();
   first_if_then_block.getOperations().splice(
       first_if_then_block.without_terminator().end(), second_if_then_body,
       second_if_then_body.begin(), std::prev(second_if_then_body.end()));
 
-  Block& first_if_else_block = first_if.else_branch().front();
-  auto& second_if_else_body = second_if.else_branch().front().getOperations();
+  Block& first_if_else_block = first_if.getElseBranch().front();
+  auto& second_if_else_body = second_if.getElseBranch().front().getOperations();
   first_if_else_block.getOperations().splice(
       first_if_else_block.without_terminator().end(), second_if_else_body,
       second_if_else_body.begin(), std::prev(second_if_else_body.end()));
@@ -396,14 +396,14 @@ void ReplaceInternalUsage(llvm::SmallVector<TF::IfRegionOp, 8>& if_op_segment) {
       for (OpResult result : it->getResults()) {
         replaceAllUsesInRegionWith(
             result,
-            it->then_branch().front().getTerminator()->getOperand(
+            it->getThenBranch().front().getTerminator()->getOperand(
                 result.getResultNumber()),
-            it2->then_branch());
+            it2->getThenBranch());
         replaceAllUsesInRegionWith(
             result,
-            it->else_branch().front().getTerminator()->getOperand(
+            it->getElseBranch().front().getTerminator()->getOperand(
                 result.getResultNumber()),
-            it2->else_branch());
+            it2->getElseBranch());
       }
     }
   }
@@ -487,12 +487,12 @@ void CreateYieldOps(
     auto if_op = index_and_value.value();
     for (auto i : return_indices[index_and_value.index()]) {
       merged_then_yield_values.push_back(
-          if_op.then_branch().front().getTerminator()->getOperand(i));
+          if_op.getThenBranch().front().getTerminator()->getOperand(i));
     }
   }
-  builder.setInsertionPointToEnd(&new_if_op.then_branch().front());
+  builder.setInsertionPointToEnd(&new_if_op.getThenBranch().front());
   builder.create<TF::YieldOp>(
-      first_if.then_branch().front().getTerminator()->getLoc(),
+      first_if.getThenBranch().front().getTerminator()->getLoc(),
       /*operands=*/merged_then_yield_values);
 
   llvm::SmallVector<Value, 4> merged_else_yield_values;
@@ -500,12 +500,12 @@ void CreateYieldOps(
     auto if_op = index_and_value.value();
     for (auto i : return_indices[index_and_value.index()]) {
       merged_else_yield_values.push_back(
-          if_op.else_branch().front().getTerminator()->getOperand(i));
+          if_op.getElseBranch().front().getTerminator()->getOperand(i));
     }
   }
-  builder.setInsertionPointToEnd(&new_if_op.else_branch().front());
+  builder.setInsertionPointToEnd(&new_if_op.getElseBranch().front());
   builder.create<TF::YieldOp>(
-      first_if.else_branch().front().getTerminator()->getLoc(),
+      first_if.getElseBranch().front().getTerminator()->getLoc(),
       /*operands=*/merged_else_yield_values);
 }
 
@@ -541,12 +541,12 @@ void MergeIfPerSegment(
   builder.setInsertionPoint(if_op_segment.back().getOperation());
 
   auto new_if_op = builder.create<TF::IfRegionOp>(
-      first_if.getLoc(), merged_return_types, first_if.cond(),
+      first_if.getLoc(), merged_return_types, first_if.getCond(),
       llvm::all_of(if_op_segment,
-                   [&](TF::IfRegionOp op) { return op.is_stateless(); }),
-      first_if._then_func_nameAttr(), first_if._else_func_nameAttr());
-  new_if_op.then_branch().push_back(new Block);
-  new_if_op.else_branch().push_back(new Block);
+                   [&](TF::IfRegionOp op) { return op.getIsStateless(); }),
+      first_if.get_thenFuncNameAttr(), first_if.get_elseFuncNameAttr());
+  new_if_op.getThenBranch().push_back(new Block);
+  new_if_op.getElseBranch().push_back(new Block);
 
   // Replace internal usages of merged if ops.
   ReplaceInternalUsage(if_op_segment);
@@ -607,9 +607,9 @@ void OptimizeIfRegions(Block* block, ModuleOp module) {
       grouped_if_ops;
   llvm::SmallVector<Value, 4> if_cond_order;
   block->walk([&](TF::IfRegionOp if_op) {
-    auto it = grouped_if_ops.try_emplace(if_op.cond());
+    auto it = grouped_if_ops.try_emplace(if_op.getCond());
     if (it.second) {
-      if_cond_order.push_back(if_op.cond());
+      if_cond_order.push_back(if_op.getCond());
     }
     it.first->getSecond().push_back(if_op);
   });

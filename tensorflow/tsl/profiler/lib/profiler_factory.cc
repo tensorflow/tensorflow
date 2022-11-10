@@ -18,10 +18,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/tsl/platform/mutex.h"
-#include "tensorflow/core/profiler/lib/profiler_controller.h"
-#include "tensorflow/tsl/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/profiler/lib/profiler_controller.h"
+#include "tensorflow/tsl/profiler/lib/profiler_interface.h"
 
 namespace tsl {
 namespace profiler {
@@ -50,8 +50,7 @@ std::vector<std::unique_ptr<profiler::ProfilerInterface>> CreateProfilers(
     // A factory might return nullptr based on options.
     if (profiler == nullptr) continue;
     result.emplace_back(
-        std::make_unique<tensorflow::profiler::ProfilerController>(
-          std::move(profiler)));
+        std::make_unique<ProfilerController>(std::move(profiler)));
   }
   return result;
 }

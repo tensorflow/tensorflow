@@ -902,10 +902,9 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
   // To make clone behavior match uncloned behavior, we reorder
   // module->computations_ to match the order in computations_.
   using ComputationSorter = MappedPtrContainerSorter<HloComputation>;
-  ComputationSorter::MapPtrFn computation_map_fn =
-      [&context](const HloComputation* c) {
-        return context.FindComputation(c);
-      };
+  auto computation_map_fn = [&context](const HloComputation* c) {
+    return context.FindComputation(c);
+  };
   auto status = ComputationSorter::Sort(
       computation_map_fn, ComputationSorter::IndexAfterMappedElementsFn(),
       computations_, module->computations_);

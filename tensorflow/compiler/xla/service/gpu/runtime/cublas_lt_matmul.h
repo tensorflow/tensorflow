@@ -16,14 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_CUBLAS_LT_MATMUL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_CUBLAS_LT_MATMUL_H_
 
-#include <memory>
-#include <optional>
-#include <string_view>
-#include <tuple>
-
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
-#include "tensorflow/compiler/xla/runtime/logical_result.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
@@ -31,15 +25,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-using llvm::ArrayRef;
-
-struct DotDimensionNumbers {
-  llvm::ArrayRef<int64_t> lhs_batch;
-  llvm::ArrayRef<int64_t> lhs_contract;
-  llvm::ArrayRef<int64_t> rhs_batch;
-  llvm::ArrayRef<int64_t> rhs_contract;
-};
 
 // Registers XLA Gpu runtime kernel launch custom calls.
 void RegisterMatmulCustomCalls(runtime::DirectCustomCallRegistry& registry);
@@ -49,15 +34,6 @@ void RegisterMatmulCustomCalls(runtime::DirectCustomCallRegistry& registry);
 
 namespace xla {
 namespace runtime {
-
-using llvm::ArrayRef;
-
-XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
-    xla::gpu::DotDimensionNumbers,
-    AggregateMember<ArrayRef<int64_t>>("lhs_batch"),
-    AggregateMember<ArrayRef<int64_t>>("lhs_contract"),
-    AggregateMember<ArrayRef<int64_t>>("rhs_batch"),
-    AggregateMember<ArrayRef<int64_t>>("rhs_contract"));
 
 #if GOOGLE_CUDA
 XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(

@@ -23,9 +23,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_runner.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -412,6 +412,11 @@ class HloTestBase : public ManifestCheckingTest {
       std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
       const absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes);
+
+  // Returns either an HloRunner or HloRunnerPjRt implementation depending if
+  // there exists a registered PjRtClientFactory.
+  StatusOr<std::unique_ptr<HloRunnerInterface>> GetHloRunnerForTest(
+      se::Platform* test_platform);
 };
 
 }  // namespace xla

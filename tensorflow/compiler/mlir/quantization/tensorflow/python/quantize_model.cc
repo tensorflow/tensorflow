@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/constants.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
@@ -86,8 +87,17 @@ std::string GetInitNodeName(
   return "";
 }
 
+ExportedModel CreateExportedModel(GraphDef &&graph_def,
+                                  const absl::string_view init_node_name) {
+  ExportedModel exported_model{};
+  *exported_model.mutable_graph_def() = graph_def;
+  exported_model.set_init_node_name(std::string(init_node_name));
+
+  return exported_model;
+}
+
 // Converts MLIR ModuleOp to ExportedModel. Returns InternalError status
-// when the GraphDef conversion fails.
+// when the conversion fails.
 absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
     const mlir::ModuleOp module_op) {
   const GraphExportConfig config{};
@@ -102,10 +112,11 @@ absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
                                status.error_message());
   }
 
-  auto graph_def = std::make_unique<GraphDef>();
-  graph->ToGraphDef(graph_def.get());
+  GraphDef graph_def{};
+  graph->ToGraphDef(&graph_def);
 
-  return ExportedModel{*graph_def, GetInitNodeName(control_ret_nodes)};
+  return CreateExportedModel(std::move(graph_def),
+                             GetInitNodeName(control_ret_nodes));
 }
 
 // Creates a new file to dump the intermediate MLIRs by prefixing the

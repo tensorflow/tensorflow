@@ -121,7 +121,6 @@ cc_test(
     srcs = ["delegate_test.cc"],
     data = ["//tensorflow/lite:testdata/add.bin"],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs.
-    tags = ["nomsan"],  # TODO(b/246990697)
     deps = [
         ":delegate_test_util",
         ":interpreter_utils",

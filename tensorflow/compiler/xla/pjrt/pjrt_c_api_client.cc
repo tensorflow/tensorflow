@@ -208,7 +208,6 @@ StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
   return GetCppDevice(args.device);
 }
 
-
 // Initializes `PJRT_Client_Compile_Args`, which will be used to call
 // API PJRT_Client_Compile().
 static StatusOr<std::unique_ptr<PjRtLoadedExecutable>> InitializeArgsAndCompile(
@@ -327,11 +326,14 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
     HostBufferSemantics host_buffer_semantics,
     std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
   if (host_buffer_semantics != HostBufferSemantics::kImmutableOnlyDuringCall &&
-      host_buffer_semantics != HostBufferSemantics::kZeroCopy) {
+      host_buffer_semantics != HostBufferSemantics::kZeroCopy &&
+      host_buffer_semantics !=
+          HostBufferSemantics::kImmutableUntilTransferCompletes) {
     return Unimplemented(
         "PJRT C API does not support HostBufferSemantics other than "
-        "HostBufferSemantics::kImmutableOnlyDuringCall and "
-        "HostBufferSemantics::kZeroCopy.");
+        "HostBufferSemantics::kImmutableOnlyDuringCall, "
+        "HostBufferSemantics::kZeroCopy and "
+        "HostBufferSemantics::kImmutableUntilTransferCompletes.");
   }
 
   PJRT_Client_BufferFromHostBuffer_Args args;

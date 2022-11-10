@@ -1,5 +1,4 @@
-// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text --legalize-node-names=false %s | FileCheck %s --dump-input=always --check-prefixes=CHECK,NOLNN
-// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s --dump-input=always --check-prefixes=CHECK,LNN
+// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s --dump-input=always --check-prefixes=CHECK
 
 // CHECK-LABEL: %main
 func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
@@ -52,8 +51,7 @@ func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
 }
 
 // CHECK: after-all
-// NOLNN-SAME: metadata={op_name="name(with)[]"}
-// LNN-SAME: metadata={op_name="name.with..."}
+// CHECK-SAME: metadata={op_name="name(with)[]"}
 
 // -----
 
@@ -64,5 +62,4 @@ func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
 }
 
 // CHECK: after-all
-// NOLNN-SAME: metadata={op_name="name(anothername)" source_file="file_name" source_line=2}
-// LNN-SAME: metadata={op_name="name.anothername." source_file="file_name" source_line=2}
+// CHECK-SAME: metadata={op_name="name(anothername)" source_file="file_name" source_line=2}

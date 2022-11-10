@@ -152,7 +152,7 @@ Status DropoutGrad(const AttrSlice& attrs, FunctionDef* g) {
          /*Attrs=*/{{"T", "$T"}}}
       });
   // clang-format on
-  return Status::OK();
+  return OkStatus();
 }
 REGISTER_OP_GRADIENT("Dropout", DropoutGrad);
 

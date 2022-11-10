@@ -40,11 +40,12 @@ class ModulePressureState;
 enum class ResourceType {
   kNoResource = 0,
   kAllGather = 1,
-  kCollectivePermute = 2,
-  kSendRecv = 3,
-  kSendHost = 4,
-  kRecvHost = 5,
-  kNumResources = 6,
+  kAllReduce = 2,
+  kCollectivePermute = 3,
+  kSendRecv = 4,
+  kSendHost = 5,
+  kRecvHost = 6,
+  kNumResources = 7,
 };
 
 enum class ResourceUsageType {
@@ -66,6 +67,7 @@ class HloScheduleGraph;
 struct SchedulerConfig {
   int64_t collective_permute_overlap_limit = 1;
   int64_t all_gather_overlap_limit = 1;
+  int64_t all_reduce_overlap_limit = 1;
   int64_t send_recv_overlap_limit = 1;
   int64_t send_recv_host_overlap_limit = 1;
   bool schedule_send_recvs = false;
@@ -645,6 +647,7 @@ class LatencyHidingScheduler : public HloModulePass {
   struct SchedulerStatistics {
     const HloComputation* computation = nullptr;
     double all_gather_wasted_cycles = 0;
+    double all_reduce_wasted_cycles = 0;
     double collective_permute_wasted_cycles = 0;
     double send_wasted_cycles = 0;
     double recv_wasted_cycles = 0;

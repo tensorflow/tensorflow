@@ -45,8 +45,8 @@ namespace {
 
 std::string GetVariableName(Operation* op) {
   if (auto handle = dyn_cast<TF::VarHandleOp>(op)) {
-    std::string container = handle.container().str();
-    std::string shared_name = handle.shared_name().str();
+    std::string container = handle.getContainer().str();
+    std::string shared_name = handle.getSharedName().str();
     if (container.empty()) {
       return absl::StrCat("vars.", shared_name);
     } else {
@@ -61,9 +61,9 @@ std::string GetVariableName(Operation* op) {
 Operation* GetHandleSource(Operation* op, DataFlowSolver& solver) {
   Value resource;
   if (auto read = llvm::dyn_cast<TF::ReadVariableOp>(op)) {
-    resource = read.resource();
+    resource = read.getResource();
   } else if (auto write = llvm::dyn_cast<TF::AssignVariableOp>(op)) {
-    resource = write.resource();
+    resource = write.getResource();
   }
   const TF::ResourceDataflowAnalysis::StateT* state =
       solver.lookupState<TF::ResourceDataflowAnalysis::StateT>(resource);
@@ -90,7 +90,7 @@ Type GetGlobalType(Operation* source) {
     // Resources are represented as tensor<resource<tensor<...>>>, so
     // unwrap until we get to the inner tensor<...>.
     auto tensor =
-        llvm::dyn_cast<TensorType>(var_handle_op.resource().getType());
+        llvm::dyn_cast<TensorType>(var_handle_op.getResource().getType());
     if (!tensor) return nullptr;
     TF::ResourceType resource =
         llvm::dyn_cast<TF::ResourceType>(tensor.getElementType());
@@ -165,8 +165,8 @@ struct LowerVariableOpsToMlProgramPass
       Operation* load = builder.create<mlir::ml_program::GlobalLoadOp>(
           op.getLoc(), globalOp.getType(),
           SymbolRefAttr::get(op->getContext(), globalOp.getSymName()));
-      if (globalOp.getType() != op.value().getType()) {
-        load = builder.create<TF::CastOp>(op.getLoc(), op.value().getType(),
+      if (globalOp.getType() != op.getValue().getType()) {
+        load = builder.create<TF::CastOp>(op.getLoc(), op.getValue().getType(),
                                           load->getResult(0));
       }
       op.getResult().replaceAllUsesWith(load->getResult(0));
@@ -182,8 +182,8 @@ struct LowerVariableOpsToMlProgramPass
       symbol_table.insert(globalOp);
       OpBuilder builder(op);
       globalOp.setIsMutableAttr(builder.getUnitAttr());
-      Value value_to_store = op.value();
-      if (globalOp.getType() != op.value().getType()) {
+      Value value_to_store = op.getValue();
+      if (globalOp.getType() != op.getValue().getType()) {
         value_to_store = builder.create<TF::CastOp>(
             op.getLoc(), globalOp.getType(), value_to_store);
       }

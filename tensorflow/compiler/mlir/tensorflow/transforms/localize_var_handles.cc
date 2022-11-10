@@ -50,11 +50,11 @@ struct LocalizeVarHandlesPass
 void MaybeCreateVarHandleForOp(Operation* op, DataFlowSolver& solver) {
   Value resource;
   if (auto read = llvm::dyn_cast<TF::ReadVariableOp>(op)) {
-    resource = read.resource();
+    resource = read.getResource();
   } else if (auto write = llvm::dyn_cast<TF::AssignVariableOp>(op)) {
-    resource = write.resource();
+    resource = write.getResource();
   } else if (auto next = llvm::dyn_cast<TF::IteratorGetNextOp>(op)) {
-    resource = next.iterator();
+    resource = next.getIterator();
   }
 
   if (llvm::dyn_cast_or_null<TF::VarHandleOp>(resource.getDefiningOp())) {
@@ -79,11 +79,11 @@ void MaybeCreateVarHandleForOp(Operation* op, DataFlowSolver& solver) {
     container = "";
     shared_name = global.getSymName();
   } else if (auto handle = llvm::dyn_cast<TF::VarHandleOp>(source)) {
-    container = handle.container();
-    shared_name = handle.shared_name();
+    container = handle.getContainer();
+    shared_name = handle.getSharedName();
   } else if (auto it = llvm::dyn_cast<TF::IteratorOp>(source)) {
-    container = it.container();
-    shared_name = it.shared_name();
+    container = it.getContainer();
+    shared_name = it.getSharedName();
   } else {
     // Can't happen, as long as this file and resource_dataflow.cc are in sync.
     return;
@@ -98,7 +98,7 @@ void MaybeCreateVarHandleForOp(Operation* op, DataFlowSolver& solver) {
     // See core/kernels/data/iterator_ops.cc.)
     resource_op = builder.create<TF::IteratorOp>(
         op->getLoc(), resource.getType(), shared_name, container,
-        it.output_types(), it.output_shapes());
+        it.getOutputTypes(), it.getOutputShapes());
   } else {
     resource_op = builder.create<TF::VarHandleOp>(
         op->getLoc(), resource.getType(), container, shared_name);

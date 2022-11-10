@@ -296,7 +296,9 @@ def XlaRewritePass : Pass<"tf-xla-rewrite", "mlir::ModuleOp"> {
     operations with `_xla_compile_device_type` attribute into `tf.XlaLaunch`
     operations. This makes the attached function execute with XLA.
     `tf.XlaLaunch` requires resource-type arguments come at the end, so this
-    pass rewrites the called function if necessary.
+    pass rewrites the called function if necessary. Notice this pass will only
+    rewrite the outermost call if there are nested calls to avoid nested
+    `tf.XlaLaunch` operations from being created.
 
     For example, the `tf.PartitionedCall` operation in the following code
 

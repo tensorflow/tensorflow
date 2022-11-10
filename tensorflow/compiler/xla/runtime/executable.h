@@ -285,7 +285,7 @@ class Executable {
                             void** args, void** attrs, void** rets);
 
  private:
-  friend class JitCompiler;  // see `mlir/transforms/runtime/jit_compiler.h`
+  friend class JitCompiler;  // see `mlir/runtime/transforms/jit_compiler.h`
 
   // Executable exports multiple functions available for users to call into. At
   // run time they are referenced by their ordinal, so that we don't depend on

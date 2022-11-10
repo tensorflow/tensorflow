@@ -82,8 +82,13 @@ tf_proto_library(
         "tfprof_output.proto",
     ],
     cc_api_version = 2,
-    protodeps = tf_additional_all_protos(),
+    protodeps = [
+        "//tensorflow/tsl/profiler/protobuf:profile_proto",
+    ] + tf_additional_all_protos(),
     visibility = [":friends"],
+    exports = [
+        "//tensorflow/tsl/profiler/protobuf:profile_proto",
+    ],
 )
 
 cc_library(

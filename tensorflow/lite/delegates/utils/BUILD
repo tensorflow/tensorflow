@@ -76,6 +76,7 @@ cc_test(
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates:delegate_test_util",
+        "//tensorflow/lite/delegates/utils/experimental/sample_vendor_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
         "@com_google_absl//absl/container:flat_hash_map",

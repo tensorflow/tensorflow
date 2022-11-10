@@ -47,7 +47,7 @@ struct DTensorUndoMergeConstAcrossMesh
             mlir::dyn_cast<mlir::TF::DTensorLayout>(consumer);
         if (!layout_op) continue;
 
-        const Layout layout = layout_op.layout();  // keep-alive for mesh.
+        const Layout layout = layout_op.getLayout();  // keep-alive for mesh.
         const Mesh& mesh = layout.mesh();
         if (std::find(known_meshes.begin(), known_meshes.end(), mesh) ==
             known_meshes.end()) {

@@ -106,6 +106,15 @@ struct AutoShardingSolverOption {
   bool force_strategy;
   std::vector<int64_t> force_strategy_inst_indices;
   std::vector<std::string> force_strategy_stra_names;
+
+  bool only_allow_divisible;
+
+  // If true, trictly limit the following iterations to use the same number of
+  // shards for sharded tensor dimensions; if false, the following iterations
+  // can choose different number of shards for sharded tensor dimensions.
+  // Enabling it can hurt the performance of dot ops, but can make the search
+  // space more scalable. Therefore leaving it as an option.
+  bool nd_sharding_iteratively_strict_search_space;
 };
 
 // One sharding strategy

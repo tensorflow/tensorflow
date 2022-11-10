@@ -63,7 +63,7 @@ class ClusterConstantSinkingPass
         if (!const_op) return;
 
         // Filter constants using user provided predicate function.
-        if (filter && !filter(cluster, const_op.value())) return;
+        if (filter && !filter(cluster, const_op.getValue())) return;
 
         // We found a constant, try to insert it in the map and re-use its
         // cloned value if any.

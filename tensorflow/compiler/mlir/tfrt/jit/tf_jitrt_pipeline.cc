@@ -31,9 +31,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.h"
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
+#include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/passes.h"
 
@@ -79,9 +79,8 @@ void AddLinalgTransformations(OpPassManager& pm,
       options.vector_size, options.reduction_1d_tile_size,
       options.reduction_2d_tile_sizes));
 
-  // TODO(b/248219927): Enable matmul transformations when bufferization works.
-  // pm.addNestedPass<FuncOp>(
-  //     mlir::gml_st::createTransformMatmulForCpuPass(options.matmul_tile_sizes));
+  pm.addNestedPass<FuncOp>(
+      mlir::gml_st::createTransformMatmulForCpuPass(options.matmul_tile_sizes));
 
   if (options.vectorize && options.codegen_transpose)
     pm.addNestedPass<FuncOp>(CreateTileTransposePass());
@@ -95,6 +94,7 @@ void AddLinalgTransformations(OpPassManager& pm,
     pm.addNestedPass<FuncOp>(CreateFuseFillIntoTiledReductionPass());
   }
   pm.addNestedPass<FuncOp>(CreateTileFillPass(options.vector_size));
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createCollapseMaterializeOpsPass());
   pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeGmlStLoopsPass());
 }
 

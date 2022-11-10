@@ -79,7 +79,7 @@ Status FusedMulAddGrad(const AttrSlice& attrs, FunctionDef* g) {
       // Nodes
       nodes);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 template <int T>
@@ -136,7 +136,7 @@ Status FusedMulAdd2Grad(const AttrSlice& attrs, FunctionDef* g) {
       // Nodes
       nodes);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_OP_GRADIENT("_FusedMulAdd", FusedMulAddGrad<0>);

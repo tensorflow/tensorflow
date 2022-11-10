@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <utility>
 
-#include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
+#include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"

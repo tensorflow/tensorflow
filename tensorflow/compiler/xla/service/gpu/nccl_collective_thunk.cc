@@ -24,10 +24,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -212,7 +210,8 @@ std::string NcclCollectiveThunk::GetDeviceString(
                          global_device_id.value(), device_ordinal);
 }
 
-bool IsTypeSupportedByNccl(PrimitiveType element_type) {
+bool IsTypeSupportedByNccl(PrimitiveType element_type,
+                           Thunk::Kind reduction_op) {
   switch (element_type) {
     case S8:
     case PRED:
@@ -230,6 +229,12 @@ bool IsTypeSupportedByNccl(PrimitiveType element_type) {
     case C64:
     case C128:
       return true;
+    case S16:
+    case U16:
+      // 16-bit integer reductions are not directly suppored by NCCL and cannot
+      // be implicitly converted into other 16-bit types like ncclFloat16 as
+      // they involve actual comptation andn not just data movement.
+      return !IsReductionCollective(reduction_op);
     default:
       return false;
   }

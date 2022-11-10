@@ -75,8 +75,12 @@ inline void StridedSlice(const tflite::StridedSliceParams& op_params,
       return index < end;
     }
   };
-  const int* shape = static_cast<const int*>(input_shape.DimsData());
-  const int* stride = static_cast<const int*>(params_copy.strides);
+  // With a static_cast it is not possible to initialize
+  // a variable of type 'const int *'
+  // with an rvalue of type 'const int32_t *' (aka 'const long *').
+  // reinterpret_cast is required to handle this casting.
+  const int* shape = reinterpret_cast<const int*>(input_shape.DimsData());
+  const int* stride = reinterpret_cast<const int*>(params_copy.strides);
   const bool inner_stride_is_1 = params_copy.strides[4] == 1;
 
   for (int offset_0 = start_0; lc(stop_0, stride[0], offset_0);

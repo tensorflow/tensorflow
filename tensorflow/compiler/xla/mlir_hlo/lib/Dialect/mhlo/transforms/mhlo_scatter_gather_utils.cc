@@ -85,11 +85,11 @@ makeOperandStartIndexPermutations(ArrayRef<int64_t> dimMap, int operandRank) {
 TypedValue<TensorType> insertDegenerateDimensions(
     OpBuilder& b, Location loc, TypedValue<TensorType> tensor,
     ArrayRef<int64_t> dimsToInsert) {
+  assert(llvm::is_sorted(dimsToInsert) && "dimsToInsert must be sorted");
   if (dimsToInsert.empty()) return tensor;
   TensorType type = tensor.getType();
   SmallVector<int64_t> newShape{type.getShape()};
-  for (int64_t dim : llvm::reverse(dimsToInsert))
-    newShape.insert(newShape.begin() + dim, 1);
+  for (int64_t dim : dimsToInsert) newShape.insert(newShape.begin() + dim, 1);
   auto newType = RankedTensorType::get(newShape, type.getElementType());
 
   return b

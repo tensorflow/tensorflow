@@ -117,6 +117,16 @@ typedef struct TfLiteRegistrationExternal TfLiteRegistrationExternal;
 /// e.g. "2.12.0" or "2.13.0-rc2".
 TFL_CAPI_EXPORT extern const char* TfLiteVersion(void);
 
+/// The supported TensorFlow Lite model file Schema version.
+///
+/// Returns the (major) version number of the Schema used for model
+/// files that is supported by the (potentially dynamically loaded)
+/// TensorFlow Lite Runtime.
+///
+/// Model files using schema versions different to this may not be supported by
+/// the current version of the TF Lite Runtime.
+TFL_CAPI_EXPORT int TfLiteSchemaVersion(void);
+
 // Returns a model from the provided buffer, or null on failure.
 //
 // NOTE: The caller retains ownership of the `model_data` buffer and should

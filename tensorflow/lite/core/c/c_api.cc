@@ -52,6 +52,8 @@ extern "C" {
 
 const char* TfLiteVersion() { return TFLITE_VERSION_STRING; }
 
+int TfLiteSchemaVersion() { return TFLITE_SCHEMA_VERSION; }
+
 TfLiteModel* TfLiteModelCreate(const void* model_data, size_t model_size) {
   auto model = tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
       static_cast<const char*>(model_data), model_size);

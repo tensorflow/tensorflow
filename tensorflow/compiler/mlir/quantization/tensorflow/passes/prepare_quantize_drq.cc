@@ -19,7 +19,6 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <utility>
-#include <vector>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -32,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 //===----------------------------------------------------------------------===//
 // The prepare-quantize-drq Pass.
@@ -43,8 +42,7 @@ namespace quant {
 
 namespace {
 
-using QuantizationUnit = std::pair<Operation*, int>;
-using QuantizationUnits = llvm::SetVector<QuantizationUnit>;
+using QuantizationUnits = llvm::SetVector<std::pair<Operation*, int>>;
 
 // Applies prepare quantization on the model in TF dialect for dynamic range
 // quantization case.
@@ -60,22 +58,13 @@ class PrepareQuantizeDRQPass
 
   // Constructor used by the PassRegistration and enforce int8 quantization.
   // This is only used by test.
-  explicit PrepareQuantizeDRQPass() : op_set_(OpSet::UNIFORM_QUANTIZED) {
+  explicit PrepareQuantizeDRQPass() {
     quant_specs_.inference_type = tensorflow::DT_QINT8;
   }
 
   // Constructor used by manually creating the pass.
-  explicit PrepareQuantizeDRQPass(const QuantizationSpecs& quant_specs,
-                                  OpSet op_set)
-      : quant_specs_(quant_specs), op_set_(op_set) {
-    enable_per_channel_quantization_ = !quant_specs_.disable_per_channel;
-  }
-
-  PrepareQuantizeDRQPass(const PrepareQuantizeDRQPass& other) {
-    quant_specs_ = other.quant_specs_;
-    op_set_ = other.op_set_;
-    enable_per_channel_quantization_ = !quant_specs_.disable_per_channel;
-  }
+  explicit PrepareQuantizeDRQPass(const QuantizationSpecs& quant_specs)
+      : quant_specs_(quant_specs) {}
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -97,11 +86,6 @@ class PrepareQuantizeDRQPass
 
  private:
   QuantizationSpecs quant_specs_;
-  OpSet op_set_;
-
-  Option<bool> enable_per_channel_quantization_{
-      *this, "enable-per-channel-quantization", llvm::cl::init(false),
-      llvm::cl::desc("Whether enable per-channel quantized weights.")};
 };
 
 // If the weight is applicable to dynamic range quantization, insert Quantize
@@ -109,11 +93,9 @@ class PrepareQuantizeDRQPass
 class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
  public:
   explicit PrepareDRQQuantizableOp(MLIRContext* context,
-                                   const quant::QuantizationSpecs& quant_specs,
-                                   bool enable_per_channel_quantization)
+                                   const quant::QuantizationSpecs& quant_specs)
       : OpRewritePattern<arith::ConstantOp>(context),
-        quant_specs_(quant_specs),
-        enable_per_channel_quantization_(enable_per_channel_quantization) {}
+        quant_specs_(quant_specs) {}
 
   LogicalResult matchAndRewrite(arith::ConstantOp op,
                                 PatternRewriter& rewriter) const override {
@@ -161,40 +143,28 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
 
   // Apply per-tensor quantization for int8 dynamic range quantization.
   bool quantizeOpAsInt8(PatternRewriter& rewriter, arith::ConstantOp op,
-                        QuantizationUnit quant_op) const {
-    auto [quantized_op, weight_idx] = quant_op;
-    const bool is_narrow_range = true;
-    const bool is_legacy_float = quant_specs_.legacy_float_scale;
-    const bool is_signed = quant_specs_.IsSignedInferenceType();
-    const int bit_width = quant_specs_.GetQuantizationTypeWidth();
+                        std::pair<Operation*, int> quant_op) const {
+    bool is_narrow_range = true;
+    bool is_legacy_float = quant_specs_.legacy_float_scale;
+    bool is_signed = quant_specs_.IsSignedInferenceType();
+    int bit_width = quant_specs_.GetQuantizationTypeWidth();
 
-    std::unique_ptr<OpQuantSpec> spec = GetTFOpQuantSpec(quantized_op);
-    const int quant_dim = spec->coeff_op_quant_dim[weight_idx];
-    const bool is_per_channel_quantization =
-        enable_per_channel_quantization_ && quant_dim != -1;
-
-    QuantizedType quant_type;
+    QuantizedType quant_type = nullptr;
     DenseFPElementsAttr attr;
     if (!matchPattern(op->getResult(0), m_Constant(&attr))) return false;
 
-    if (is_per_channel_quantization) {
-      quant_type = quant::GetUniformQuantizedPerAxisTypeForWeight(
-                       attr, quant_dim,
-                       /*symmetric=*/true, bit_width, is_signed,
-                       is_narrow_range, is_legacy_float)
-                       .template dyn_cast<quant::QuantizedType>();
-    } else {
-      quant_type = quant::GetUniformQuantizedTypeForWeight(
-                       attr, is_narrow_range && is_signed, bit_width, is_signed,
-                       is_narrow_range, is_legacy_float)
-                       .template dyn_cast<quant::QuantizedType>();
-    }
+    quant_type = quant::GetUniformQuantizedTypeForWeight(
+                     attr, is_narrow_range && is_signed, bit_width, is_signed,
+                     is_narrow_range, is_legacy_float)
+                     .template dyn_cast<quant::QuantizedType>();
+
     return insertQDQ(rewriter, op, quant_type, quant_op);
   }
 
   // Insert Quantize and Dequantize ops.
   bool insertQDQ(PatternRewriter& rewriter, arith::ConstantOp op,
-                 QuantizedType quant_type, QuantizationUnit quant_op) const {
+                 QuantizedType quant_type,
+                 std::pair<Operation*, int> quant_op) const {
     if (!quant_type) return false;
 
     Operation* quantize_op = quant_op.first;
@@ -238,8 +208,7 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
   }
 
  protected:
-  QuantizationSpecs quant_specs_;
-  bool enable_per_channel_quantization_;
+  quant::QuantizationSpecs quant_specs_;
 };
 
 // Remove all the stats ops which are redundant for dynamic range quantizaiton.
@@ -249,84 +218,6 @@ void PrepareQuantizeDRQPass::removeAllStatsOp(func::FuncOp func) {
     stats_op.erase();
   });
 }
-
-// Apply constant transformations for the op_set.
-class PreprocessConstantOp : public OpRewritePattern<TF::PartitionedCallOp> {
- public:
-  explicit PreprocessConstantOp(MLIRContext* context, OpSet op_set)
-      : OpRewritePattern<TF::PartitionedCallOp>(context), op_set_(op_set) {}
-
-  LogicalResult matchAndRewrite(TF::PartitionedCallOp op,
-                                PatternRewriter& rewriter) const override {
-    const auto f_attr = op.fAttr().cast<FlatSymbolRefAttr>();
-    // Non-quantizable op
-    if (!op->hasAttr(kQuantTraitAttrName)) return failure();
-    StringRef function_name = f_attr.getValue();
-    if (!function_name.startswith("composite_")) {
-      return failure();
-    }
-
-    std::unique_ptr<OpQuantSpec> spec = GetTFOpQuantSpec(op);
-    absl::flat_hash_set<int> operands = spec->quantizable_operands;
-
-    if (function_name.contains("depthwise_conv2d")) {
-      // Uniform Quantized op requires weights of tf.DepthwiseConv2dNative to
-      // be transformed from [H,W,C,M] to [H,W,1,CxM] where
-      // H=height,W=width,C=channel,M=multiplier. Therefore, a reshape op is
-      // inserted between the constant op and the function op so that the
-      // constant is safely transformed for the multi-use cases as well. Note
-      // that bias doesn't need transformation as its shape is already in [CxM].
-      if (operands.size() != 1) return failure();
-      int weight_operand_idx = *(operands.begin());
-      Operation* weight_op = op.getOperand(weight_operand_idx).getDefiningOp();
-
-      if (op_set_ == OpSet::UNIFORM_QUANTIZED) {
-        DenseFPElementsAttr attr;
-        if (!matchPattern(weight_op->getResult(0), m_Constant(&attr))) {
-          return failure();
-        }
-
-        // Get new shape
-        llvm::ArrayRef<int64_t> cur_shape = attr.getType().getShape();
-        int cur_rank = cur_shape.size();
-        if (cur_shape[2] == 1) return failure();
-        TensorType new_shape = RankedTensorType::get(
-            {cur_shape[0], cur_shape[1], 1, cur_shape[2] * cur_shape[3]},
-            attr.getElementType());
-
-        // Inserts a reshape op
-        RankedTensorType shape_spec_type =
-            RankedTensorType::get({cur_rank}, rewriter.getIntegerType(64));
-        DenseElementsAttr new_shape_const_attr =
-            DenseElementsAttr::get(shape_spec_type, new_shape.getShape());
-        rewriter.setInsertionPointAfter(weight_op);
-        arith::ConstantOp new_shape_const = rewriter.create<arith::ConstantOp>(
-            weight_op->getLoc(), shape_spec_type, new_shape_const_attr);
-        TF::ReshapeOp reshape_op = rewriter.create<TF::ReshapeOp>(
-            weight_op->getLoc(), new_shape, weight_op->getResult(0),
-            new_shape_const);
-        op->setOperand(weight_operand_idx, reshape_op);
-
-        // Fix function information accordingly
-        auto module = op->getParentOfType<ModuleOp>();
-        SymbolTable symbol_table(module);
-        auto float_func =
-            dyn_cast<func::FuncOp>(symbol_table.lookup(function_name));
-        auto func_args = op.args();
-
-        SmallVector<Value> new_func_args{func_args.begin(), func_args.end()};
-        new_func_args[weight_operand_idx] = reshape_op;
-        float_func.getArgument(weight_operand_idx).setType(new_shape);
-        float_func.setType(FunctionType::get(
-            getContext(), TypeRange{ValueRange{new_func_args}},
-            float_func.getResultTypes()));
-      }
-    }
-
-    return success();
-  }
-  OpSet op_set_;
-};
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/prepare_quantize.inc"
 
@@ -338,9 +229,7 @@ void PrepareQuantizeDRQPass::runOnOperation() {
 
   RewritePatternSet patterns(&getContext());
   populateWithGenerated(patterns);
-  patterns.add<PreprocessConstantOp>(ctx, op_set_);
-  patterns.add<PrepareDRQQuantizableOp>(ctx, quant_specs_,
-                                        enable_per_channel_quantization_);
+  patterns.add<PrepareDRQQuantizableOp>(ctx, quant_specs_);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
@@ -348,9 +237,8 @@ void PrepareQuantizeDRQPass::runOnOperation() {
 
 // Creates an instance of the TensorFlow dialect PrepareQuantizeDRQ
 // pass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizeDRQPass(
-    const QuantizationSpecs& quant_specs, const OpSet op_set) {
-  return std::make_unique<PrepareQuantizeDRQPass>(quant_specs, op_set);
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizeDRQPass() {
+  return std::make_unique<PrepareQuantizeDRQPass>();
 }
 
 static PassRegistration<PrepareQuantizeDRQPass> pass;

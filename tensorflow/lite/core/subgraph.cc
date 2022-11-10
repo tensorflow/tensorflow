@@ -202,27 +202,41 @@ class InterpreterInfo : public GraphInfo {
   explicit InterpreterInfo(Subgraph* subgraph) : subgraph_(subgraph) {}
 
   size_t num_tensors() const override { return subgraph_->tensors_size(); }
+
   TfLiteTensor* tensors() override { return subgraph_->tensors(); }
+
   TfLiteTensor* tensor(size_t index) override {
     return subgraph_->tensor(index);
   }
+
   size_t num_execution_nodes() const override {
     return subgraph_->execution_plan().size();
   }
+
   size_t num_total_nodes() const override { return subgraph_->nodes_size(); }
+
   const TfLiteNode& node(size_t index) const override {
     int node_index = subgraph_->execution_plan()[index];
     return subgraph_->nodes_and_registration()[node_index].first;
   }
+
+  const TfLiteRegistration& registration(size_t index) const override {
+    const int node_index = subgraph_->execution_plan()[index];
+    return subgraph_->nodes_and_registration()[node_index].second;
+  }
+
   size_t node_index(size_t index) const override {
     return subgraph_->execution_plan()[index];
   }
+
   const std::vector<int>& inputs() const override {
     return subgraph_->inputs();
   }
+
   const std::vector<int>& outputs() const override {
     return subgraph_->outputs();
   }
+
   const std::vector<int>& variables() const override {
     return subgraph_->variables();
   }

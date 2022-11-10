@@ -25,6 +25,16 @@ exports_files(
 )
 
 tf_proto_library(
+    name = "profile_proto",
+    srcs = ["profile.proto"],
+    cc_api_version = 2,
+    visibility = [
+        "//tensorflow/compiler/xla/python:__pkg__",
+        "//tensorflow/core/profiler:__pkg__",
+    ],
+)
+
+tf_proto_library(
     name = "protos_all",
     create_go_proto = False,
     make_default_target_header_only = True,
