@@ -62,7 +62,9 @@ target_link_libraries(MhloDialect
   MLIRQuantDialect
   MLIRSparseTensorDialect
   HloOpsCommon
+  StablehloAssemblyFormat
   StablehloBase
+  StablehloTypeInference
 )
 target_include_directories(MhloDialect
   PUBLIC
