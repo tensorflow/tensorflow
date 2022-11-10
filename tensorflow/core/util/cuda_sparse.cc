@@ -781,7 +781,7 @@ static inline Status CsrgeamBufferSizeExtImpl(
 
 TF_CALL_LAPACK_TYPES(CSRGEAM_BUFFERSIZE_INSTANCE);
 
-#if CUDA_VERSION < 10000
+#if (GOOGLE_CUDA && (CUDA_VERSION < 10000)) || TENSORFLOW_USE_ROCM
 
 Status GpuSparse::CsrgemmNnz(
     cusparseOperation_t transA, cusparseOperation_t transB, int m, int k, int n,
@@ -839,7 +839,7 @@ static inline Status CsrgemmImpl(
 
 TF_CALL_LAPACK_TYPES(CSRGEMM_INSTANCE);
 
-#else
+#elif GOOGLE_CUDA && (CUDA_VERSION < 12000)
 
 template <typename T>
 static const T* one_ptr() {
@@ -932,7 +932,61 @@ static inline Status CsrgemmImpl(
 
 TF_CALL_LAPACK_TYPES(CSRGEMM_INSTANCE);
 
-#endif  // CUDA_VERSION < 10000
+#elif GOOGLE_CUDA  // CUDA_VERSION >= 12000
+
+#define SPGEMM_WORKESTIMATION_INSTANCE(Scalar, dtype)                      \
+  template <>                                                              \
+  Status GpuSparse::SpGEMM_workEstimation<Scalar>(                         \
+      GpuSparseConstSpMatDescr & matA, GpuSparseConstSpMatDescr & matB,    \
+      GpuSparseSpMatDescr & matC, GpuSparseSpGEMMDescr & spgemmDescr,      \
+      size_t * bufferSize1, void* externalBuffer1) {                       \
+    DCHECK(initialized_);                                                  \
+    Scalar alpha = static_cast<Scalar>(1.0);                               \
+    Scalar beta = static_cast<Scalar>(0.0);                                \
+    TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpGEMM_workEstimation(            \
+        *gpusparse_handle_, CUSPARSE_OPERATION_NON_TRANSPOSE,              \
+        CUSPARSE_OPERATION_NON_TRANSPOSE, &alpha, matA.get(), matB.get(),  \
+        &beta, matC.get(), dtype, CUSPARSE_SPGEMM_ALG1, spgemmDescr.get(), \
+        bufferSize1, externalBuffer1));                                    \
+    return OkStatus();                                                     \
+  }
+TF_CALL_CUSPARSE_DTYPES(SPGEMM_WORKESTIMATION_INSTANCE);
+
+#define SPGEMM_COMPUTE_INSTANCE(Scalar, dtype)                             \
+  template <>                                                              \
+  Status GpuSparse::SpGEMM_compute<Scalar>(                                \
+      GpuSparseConstSpMatDescr & matA, GpuSparseConstSpMatDescr & matB,    \
+      GpuSparseSpMatDescr & matC, GpuSparseSpGEMMDescr & spgemmDescr,      \
+      size_t * bufferSize2, void* externalBuffer2) {                       \
+    DCHECK(initialized_);                                                  \
+    Scalar alpha = static_cast<Scalar>(1.0);                               \
+    Scalar beta = static_cast<Scalar>(0.0);                                \
+    TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpGEMM_compute(                   \
+        *gpusparse_handle_, CUSPARSE_OPERATION_NON_TRANSPOSE,              \
+        CUSPARSE_OPERATION_NON_TRANSPOSE, &alpha, matA.get(), matB.get(),  \
+        &beta, matC.get(), dtype, CUSPARSE_SPGEMM_ALG1, spgemmDescr.get(), \
+        bufferSize2, externalBuffer2));                                    \
+    return OkStatus();                                                     \
+  }
+TF_CALL_CUSPARSE_DTYPES(SPGEMM_COMPUTE_INSTANCE);
+
+#define SPGEMM_COPY_INSTANCE(Scalar, dtype)                                  \
+  template <>                                                                \
+  Status GpuSparse::SpGEMM_copy<Scalar>(                                     \
+      GpuSparseConstSpMatDescr & matA, GpuSparseConstSpMatDescr & matB,      \
+      GpuSparseSpMatDescr & matC, GpuSparseSpGEMMDescr & spgemmDescr) {      \
+    DCHECK(initialized_);                                                    \
+    Scalar alpha = static_cast<Scalar>(1.0);                                 \
+    Scalar beta = static_cast<Scalar>(0.0);                                  \
+    TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpGEMM_copy(                        \
+        *gpusparse_handle_, CUSPARSE_OPERATION_NON_TRANSPOSE,                \
+        CUSPARSE_OPERATION_NON_TRANSPOSE, &alpha, matA.get(), matB.get(),    \
+        &beta, matC.get(), dtype, CUSPARSE_SPGEMM_ALG1, spgemmDescr.get())); \
+    return OkStatus();                                                       \
+  }
+TF_CALL_CUSPARSE_DTYPES(SPGEMM_COPY_INSTANCE);
+
+#endif
 
 template <typename Scalar, typename BufferSizeFnT, typename SparseFnT>
 static inline Status Csru2csrImpl(SparseFnT op, BufferSizeFnT buffer_size_op,
