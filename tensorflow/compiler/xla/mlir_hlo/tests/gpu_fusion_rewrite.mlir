@@ -192,3 +192,44 @@ func.func @softmax(
   }) {fusion_type = "softmax_fusion"} : () -> ()
   "lmhlo.terminator"() : () -> ()
 }
+
+// -----
+
+// CHECK: gpu.container_module
+// CHECK: gpu.module @fusion_kernel
+// CHECK: llvm.func @fusion_kernel
+// CHECK-SAME: gpu.kernel
+// CHECK-LABEL: func.func @complete_softmax
+// CHECK: gpu.launch_func @fusion_kernel::@fusion_kernel
+func.func @complete_softmax(
+    %arg0: memref<640xi8> {lmhlo.params = 0 : index},
+    %arg1: memref<640xi8> {lmhlo.output_index = dense<> : tensor<0xi64>}
+) attributes {result_xla_shape = "f32[32,5]{1,0}"} {
+  %c0 = arith.constant 0 : index
+  %view = memref.view %arg0[%c0][] : memref<640xi8> to memref<32x5xf32>
+  %c0_0 = arith.constant 0 : index
+  %view_1 = memref.view %arg1[%c0_0][] : memref<640xi8> to memref<32x5xf32>
+  "lmhlo.fusion"() ({
+    %0 = bufferization.to_tensor %view : memref<32x5xf32>
+    %1 = mhlo.constant dense<0xFF800000> : tensor<f32>
+    %2 = mhlo.reduce(%0 init: %1) across dimensions = [1] : (tensor<32x5xf32>, tensor<f32>) -> tensor<32xf32>
+     reducer(%arg4: tensor<f32>, %arg5: tensor<f32>)  {
+      %10 = mhlo.maximum %arg4, %arg5 : tensor<f32>
+      mhlo.return %10 : tensor<f32>
+    }
+    %3 = "mhlo.broadcast_in_dim"(%2) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<32xf32>) -> tensor<32x5xf32>
+    %4 = mhlo.subtract %0, %3 : tensor<32x5xf32>
+    %5 = mhlo.exponential %4 : tensor<32x5xf32>
+    %6 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+    %7 = mhlo.reduce(%5 init: %6) across dimensions = [1] : (tensor<32x5xf32>, tensor<f32>) -> tensor<32xf32>
+     reducer(%arg4: tensor<f32>, %arg5: tensor<f32>)  {
+      %10 = mhlo.add %arg4, %arg5 : tensor<f32>
+      mhlo.return %10 : tensor<f32>
+    }
+    %8 = "mhlo.broadcast_in_dim"(%7) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<32xf32>) -> tensor<32x5xf32>
+    %9 = mhlo.divide %5, %8 : tensor<32x5xf32>
+    memref.tensor_store %9, %view_1 : memref<32x5xf32>
+    "lmhlo.terminator"() : () -> ()
+  }) {fusion_type = "softmax_fusion"} : () -> ()
+  "lmhlo.terminator"() : () -> ()
+}
