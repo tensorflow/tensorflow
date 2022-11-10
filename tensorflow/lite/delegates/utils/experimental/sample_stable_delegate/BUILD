@@ -24,13 +24,13 @@ package(
 )
 
 cc_library(
-    name = "sample_vendor_delegate",
+    name = "sample_stable_delegate",
     testonly = True,
     srcs = [
-        "sample_vendor_delegate.cc",
+        "sample_stable_delegate.cc",
     ],
     hdrs = [
-        "sample_vendor_delegate.h",
+        "sample_stable_delegate.h",
     ],
     copts = tflite_copts(),
     deps = [
@@ -49,30 +49,30 @@ cc_library(
 )
 
 cc_library(
-    name = "sample_vendor_delegate_external",
+    name = "sample_stable_delegate_external",
     testonly = True,
     srcs = [
-        "sample_vendor_delegate_external.cc",
+        "sample_stable_delegate_external.cc",
     ],
     copts = tflite_copts(),
     deps = [
-        ":sample_vendor_delegate",
+        ":sample_stable_delegate",
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:vendor_delegate",
+        "//tensorflow/lite/core/experimental/acceleration/configuration/c:stable_delegate",
         "//tensorflow/lite/core/shims:delegate_plugin",
         "//tensorflow/lite/delegates/utils:simple_opaque_delegate",
-        "//tensorflow/lite/experimental/acceleration/configuration/c:vendor_delegate",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate",
     ],
 )
 
 tflite_cc_shared_object(
-    name = "tensorflowlite_sample_vendor",
+    name = "tensorflowlite_sample_stable",
     testonly = True,
     linkopts = tflite_linkopts(),
     deps = [
-        ":sample_vendor_delegate_external",
+        ":sample_stable_delegate_external",
     ],
 )

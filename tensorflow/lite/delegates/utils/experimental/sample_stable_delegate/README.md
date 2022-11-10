@@ -1,18 +1,18 @@
-# TensorFlow Lite Sample Vendor Delegate
+# TensorFlow Lite Sample Stable Delegate
 
 ## Description
 
-An example delegate for vendor delegate testing.
+An example delegate for stable delegate testing.
 
 **Note:** Dynamic loading of delegate shared object files is work-in-progress.
-Therefore, the vendor delegate library currently needs to be linked directly
+Therefore, the stable delegate library currently needs to be linked directly
 with TFLite.
 
 Here, we show a delegate implementation to illustrate our approach to create an
-opaque delegate. The sample vendor delegate supports addition and subtraction
+opaque delegate. The sample stable delegate supports addition and subtraction
 operations only.
 
-The sample vendor delegate implementation uses the new stable delegate API,
+The sample stable delegate implementation uses the new stable delegate API,
 which is based around TfLiteOpaqueDelegateStruct. TfLiteOpaqueDelegateStruct is
 an opaque version of TfLiteDelegate; allows delegation of nodes to alternative
 backends. This is an abstract type that is intended to have the same role as

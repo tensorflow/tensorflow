@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_UTILS_EXPERIMENTAL_SAMPLE_VENDOR_DELEGATE_SAMPLE_VENDOR_DELEGATE_H_
-#define TENSORFLOW_LITE_DELEGATES_UTILS_EXPERIMENTAL_SAMPLE_VENDOR_DELEGATE_SAMPLE_VENDOR_DELEGATE_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_UTILS_EXPERIMENTAL_SAMPLE_STABLE_DELEGATE_SAMPLE_STABLE_DELEGATE_H_
+#define TENSORFLOW_LITE_DELEGATES_UTILS_EXPERIMENTAL_SAMPLE_STABLE_DELEGATE_SAMPLE_STABLE_DELEGATE_H_
 
 #include <memory>
 
@@ -26,15 +26,15 @@ namespace helpers {
 int CalculateNumElements(const TfLiteOpaqueTensor* opaque_tensor);
 }  // namespace helpers
 
-static const char kSampleVendorDelegateName[] = "SampleVendorDelegate";
+static const char kSampleStableDelegateName[] = "SampleStableDelegate";
 
 // A simple delegate that supports only addition and subtraction operations.
 // Implements SimpleOpaqueDelegateInterface, and therefore the delegate can be
 // easily be adapted to work with the stable TFLite delegate API via
 // TfLiteOpaqueDelegateFactory.
-class SampleVendorDelegate : public SimpleOpaqueDelegateInterface {
+class SampleStableDelegate : public SimpleOpaqueDelegateInterface {
  public:
-  // SampleVendorDelegate supports float32 input type only.
+  // SampleStableDelegate supports float32 input type only.
   // Returns true if the inputs of 'node' are float32 and the operation is
   // addition or subtraction.
   bool IsNodeSupportedByDelegate(
@@ -49,8 +49,8 @@ class SampleVendorDelegate : public SimpleOpaqueDelegateInterface {
   // Returns a name that identifies the delegate.
   const char* Name() const override;
 
-  // Returns an instance of SampleVendorDelegateKernel that implements
-  // SimpleOpaqueDelegateKernelInterface. SampleVendorDelegateKernel describes
+  // Returns an instance of SampleStableDelegateKernel that implements
+  // SimpleOpaqueDelegateKernelInterface. SampleStableDelegateKernel describes
   // how a subgraph is delegated and the concrete evaluation of both addition
   // and subtraction operations to be performed by the delegate.
   std::unique_ptr<SimpleOpaqueDelegateKernelInterface>
@@ -60,4 +60,4 @@ class SampleVendorDelegate : public SimpleOpaqueDelegateInterface {
 }  // namespace example
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_UTILS_EXPERIMENTAL_SAMPLE_VENDOR_DELEGATE_SAMPLE_VENDOR_DELEGATE_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_UTILS_EXPERIMENTAL_SAMPLE_STABLE_DELEGATE_SAMPLE_STABLE_DELEGATE_H_

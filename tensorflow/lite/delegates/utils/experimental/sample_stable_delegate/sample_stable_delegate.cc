@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/delegates/utils/experimental/sample_vendor_delegate/sample_vendor_delegate.h"
+#include "tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate.h"
 
 #include <memory>
 #include <utility>
@@ -33,7 +33,7 @@ namespace tflite {
 namespace example {
 namespace {
 
-class SampleVendorDelegateKernel : public SimpleOpaqueDelegateKernelInterface {
+class SampleStableDelegateKernel : public SimpleOpaqueDelegateKernelInterface {
   bool IsExternalTensor(const TfLiteOpaqueTensor* opaque_tensor) const {
     return external_tensors_.count(opaque_tensor) != 0;
   }
@@ -178,7 +178,7 @@ int helpers::CalculateNumElements(const TfLiteOpaqueTensor* opaque_tensor) {
   return total_num_elements;
 }
 
-bool SampleVendorDelegate::IsNodeSupportedByDelegate(
+bool SampleStableDelegate::IsNodeSupportedByDelegate(
     const TfLiteRegistrationExternal* registration_external,
     const TfLiteOpaqueNode* node, TfLiteOpaqueContext* context) const {
   if (kTfLiteBuiltinAdd !=
@@ -197,17 +197,17 @@ bool SampleVendorDelegate::IsNodeSupportedByDelegate(
   return true;
 }
 
-TfLiteStatus SampleVendorDelegate::Initialize(TfLiteOpaqueContext* context) {
+TfLiteStatus SampleStableDelegate::Initialize(TfLiteOpaqueContext* context) {
   return kTfLiteOk;
 }
 
-const char* SampleVendorDelegate::Name() const {
-  return kSampleVendorDelegateName;
+const char* SampleStableDelegate::Name() const {
+  return kSampleStableDelegateName;
 }
 
 std::unique_ptr<SimpleOpaqueDelegateKernelInterface>
-SampleVendorDelegate::CreateDelegateKernelInterface() {
-  return std::make_unique<SampleVendorDelegateKernel>();
+SampleStableDelegate::CreateDelegateKernelInterface() {
+  return std::make_unique<SampleStableDelegateKernel>();
 }
 
 }  // namespace example

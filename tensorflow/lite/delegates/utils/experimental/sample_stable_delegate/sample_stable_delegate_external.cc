@@ -19,38 +19,38 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h"
-#include "tensorflow/lite/delegates/utils/experimental/sample_vendor_delegate/sample_vendor_delegate.h"
+#include "tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate.h"
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/c/vendor_delegate.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/c/stable_delegate.h"
 
 namespace {
 
-TfLiteDelegate* SampleVendorDelegateCreateFunc(const void* tflite_settings) {
-  auto delegate = std::make_unique<tflite::example::SampleVendorDelegate>();
+TfLiteDelegate* SampleStableDelegateCreateFunc(const void* tflite_settings) {
+  auto delegate = std::make_unique<tflite::example::SampleStableDelegate>();
   return reinterpret_cast<TfLiteDelegate*>(
       tflite::TfLiteOpaqueDelegateFactory::CreateSimpleDelegate(
           std::move(delegate)));
 }
 
-void SampleVendorDelegateDestroyFunc(TfLiteDelegate* sample_vendor_delegate) {
+void SampleStableDelegateDestroyFunc(TfLiteDelegate* sample_stable_delegate) {
   tflite::TfLiteOpaqueDelegateFactory::DeleteSimpleDelegate(
-      reinterpret_cast<TfLiteOpaqueDelegateStruct*>(sample_vendor_delegate));
+      reinterpret_cast<TfLiteOpaqueDelegateStruct*>(sample_stable_delegate));
 }
 
-int SampleVendorDelegateErrnoFunc(TfLiteDelegate* sample_vendor_delegate) {
+int SampleStableDelegateErrnoFunc(TfLiteDelegate* sample_stable_delegate) {
   // no-op
   return 0;
 }
 
-const TfLiteOpaqueDelegatePlugin sample_vendor_delegate_plugin = {
-    SampleVendorDelegateCreateFunc, SampleVendorDelegateDestroyFunc,
-    SampleVendorDelegateErrnoFunc};
+const TfLiteOpaqueDelegatePlugin sample_stable_delegate_plugin = {
+    SampleStableDelegateCreateFunc, SampleStableDelegateDestroyFunc,
+    SampleStableDelegateErrnoFunc};
 
 }  // namespace
 
 /**
  * A super simple test delegate for testing.
  */
-extern "C" const TfLiteVendorDelegate TFL_TheVendorDelegate = {
-    TFL_VENDOR_DELEGATE_ABI_VERSION, tflite::example::kSampleVendorDelegateName,
-    /*delegate_version=*/"1.0.0", &sample_vendor_delegate_plugin};
+extern "C" const TfLiteStableDelegate TFL_TheStableDelegate = {
+    TFL_STABLE_DELEGATE_ABI_VERSION, tflite::example::kSampleStableDelegateName,
+    /*delegate_version=*/"1.0.0", &sample_stable_delegate_plugin};

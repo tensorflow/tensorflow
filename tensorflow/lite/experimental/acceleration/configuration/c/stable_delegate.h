@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_VENDOR_DELEGATE_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_VENDOR_DELEGATE_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_STABLE_DELEGATE_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_STABLE_DELEGATE_H_
 
-#include "tensorflow/lite/core/experimental/acceleration/configuration/c/vendor_delegate.h"
+#include "tensorflow/lite/core/experimental/acceleration/configuration/c/stable_delegate.h"
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_VENDOR_DELEGATE_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_STABLE_DELEGATE_H_
