@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -68,10 +69,17 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
                  // TODO(frgossen): Relax the rank 2 constraint when the
                  // pipeline can handle it.
                  .WithPredicate([](const HloInstruction* instr) {
-                   return instr->IsElementwiseBinary() &&
-                          instr->shape().rank() == 2 &&
-                          // Currently crashes the pipeline.
-                          instr->shape().dimensions(0) != 1;
+                   int64_t rank = instr->shape().rank();
+                   return instr->IsElementwiseBinary() && rank == 2 &&
+                          // If the product of the first dimensions is 1, it
+                          // currently crashes the pipeline. Also, we expect
+                          // that the performance is not so good if the
+                          // reduction dimension is big compared to the other
+                          // dimensions.
+                          Product(absl::Span<const int64_t>(
+                                      instr->shape().dimensions())
+                                      .first(rank - 1)) >
+                              instr->shape().dimensions(rank - 1);
                  }))) {
     return false;
   }
@@ -91,7 +99,10 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
   // The reduction should reduce the last dimension of the operand shape.
   if (reduce->opcode() != HloOpcode::kReduce ||
       reduce->dimensions().size() != 1 ||
-      reduce->dimensions()[0] != reduce->shape().rank()) {
+      reduce->dimensions()[0] != reduce->shape().rank() ||
+      // Currently we only support F32, because the lowering uses gpu.shuffle op
+      // which has this restriction.
+      reduce->shape().element_type() != F32) {
     return false;
   }
 
