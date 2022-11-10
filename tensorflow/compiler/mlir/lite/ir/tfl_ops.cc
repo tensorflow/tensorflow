@@ -3805,8 +3805,8 @@ int64_t AveragePool3DOp::GetArithmeticCount(Operation *op) {
   int64_t count;
   if (ArithmeticCountUtilHelper::GetFirstOutputCount(op, &count)) {
     auto avg_pool = llvm::dyn_cast<AveragePool3DOp>(op);
-    return avg_pool.filter_depth() * avg_pool.filter_height() *
-           avg_pool.filter_width() * count;
+    return avg_pool.getFilterDepth() * avg_pool.getFilterHeight() *
+           avg_pool.getFilterWidth() * count;
   }
 
   return -1;
@@ -3834,8 +3834,8 @@ int64_t MaxPool3DOp::GetArithmeticCount(Operation *op) {
   int64_t count;
   if (ArithmeticCountUtilHelper::GetFirstOutputCount(op, &count)) {
     auto max_pool = llvm::dyn_cast<MaxPool3DOp>(op);
-    return max_pool.filter_depth() * max_pool.filter_height() *
-           max_pool.filter_width() * count;
+    return max_pool.getFilterDepth() * max_pool.getFilterHeight() *
+           max_pool.getFilterWidth() * count;
   }
 
   return -1;
