@@ -42,6 +42,7 @@ def _gen_uninitialized_variable(base_dir):
     """A module with an UninitializedVariable."""
 
     def __init__(self):
+      super(SubModule, self).__init__()
       self.uninitialized_variable = resource_variable_ops.UninitializedVariable(
           name="uninitialized_variable", dtype=dtypes.int64)
 
