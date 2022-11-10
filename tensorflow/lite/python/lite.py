@@ -18,6 +18,7 @@ import enum
 import functools
 import pprint
 import shutil
+import sys
 import tempfile
 import time
 import warnings
@@ -77,6 +78,7 @@ from tensorflow.python.client import session as _session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function as _def_function
 from tensorflow.python.eager import function as _function
+from tensorflow.python.framework import byte_swap_tensor as bst
 from tensorflow.python.framework import convert_to_constants as _convert_to_constants
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
@@ -2673,6 +2675,9 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
             raise IOError(
                 "Unable to parse input file '{}'.".format(graph_def_file))
 
+        if sys.byteorder == 'big':
+          bst.swap_tensor_in_frozen_graph(graph_def, "little", "big")
+        
         # Handles models with custom TFLite ops that cannot be resolved in
         # TensorFlow.
         load_model_in_session = True
