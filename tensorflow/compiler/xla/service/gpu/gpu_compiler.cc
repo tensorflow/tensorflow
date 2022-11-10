@@ -154,6 +154,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/simplify_fp_conversions.h"
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
+#include "tensorflow/compiler/xla/service/spmd/collective_permute_motion.h"
 #include "tensorflow/compiler/xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/stable_sort_expander.h"
 #include "tensorflow/compiler/xla/service/stochastic_convert_decomposer.h"
@@ -382,6 +383,7 @@ Status GpuCompiler::OptimizeHloModule(
         hlo_module->config().allow_spmd_sharding_propagation_to_output());
     spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
         num_partitions, hlo_module->config().replica_count());
+    spmd_pipeline.AddPass<CollectivePermuteMotion>();
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(hlo_module).status());
   } else {
     HloPassPipeline sharding_removal_pipeline("sharding-removal");

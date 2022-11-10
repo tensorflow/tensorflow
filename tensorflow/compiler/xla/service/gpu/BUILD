@@ -1793,6 +1793,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:while_loop_trip_count_annotator",
         "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/compiler/xla/service/spmd:collective_permute_motion",
         "//tensorflow/compiler/xla/service/spmd:stateful_rng_spmd_partitioner",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
