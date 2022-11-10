@@ -892,6 +892,7 @@ tf_py_test(
         "no_tsan",  # TODO(b/191433147): reenable
         "no_windows",  # TODO(b/182379890)
         "notap",  # TODO(b/192359227)
+        "no_oss",  # TODO(b/258503209): Disable the test.
     ],
     deps = [
         ":checkpoint_test_base",
