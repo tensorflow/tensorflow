@@ -30,14 +30,14 @@ namespace gpu {
 using xla::runtime::CustomCall;
 using xla::runtime::Executable;
 
-const GemmConfig* JitRtGemmConfigCache::Get(int64_t uid) {
+const GemmConfig* GemmConfigCache::Get(int64_t uid) {
   absl::MutexLock lock(&mutex_);
   auto it = configs_.find(uid);
   if (it != configs_.end()) return &it->second;
   return nullptr;
 }
 
-const GemmConfig* JitRtGemmConfigCache::Set(int64_t uid, GemmConfig config) {
+const GemmConfig* GemmConfigCache::Set(int64_t uid, GemmConfig config) {
   absl::MutexLock lock(&mutex_);
   auto it = configs_.find(uid);
   if (it != configs_.end()) return &it->second;
@@ -53,7 +53,7 @@ struct Gemm {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   absl::Status operator()(const ServiceExecutableRunOptions* run_options,
                           const DebugOptions* debug_options,
-                          JitRtGemmConfigCache* configs,
+                          GemmConfigCache* configs,
                           runtime::StridedMemrefView lhs,
                           runtime::StridedMemrefView rhs,
                           runtime::StridedMemrefView out, int64_t algorithm,
@@ -66,7 +66,7 @@ struct Gemm {
 
 absl::Status Gemm::operator()(const ServiceExecutableRunOptions* run_options,
                               const DebugOptions* debug_options,
-                              JitRtGemmConfigCache* configs,
+                              GemmConfigCache* configs,
                               runtime::StridedMemrefView lhs,
                               runtime::StridedMemrefView rhs,
                               runtime::StridedMemrefView out, int64_t algorithm,
@@ -103,7 +103,7 @@ static bool Gemm(runtime::ExecutionContext* ctx, void** args, void** attrs,
   static auto* handler = CustomCall::Bind("xla.gpu.gemm")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .UserData<const DebugOptions*>()
-                             .UserData<JitRtGemmConfigCache*>()
+                             .UserData<GemmConfigCache*>()
                              .Arg<runtime::StridedMemrefView>()  // lhs
                              .Arg<runtime::StridedMemrefView>()  // rhs
                              .Arg<runtime::StridedMemrefView>()  // out

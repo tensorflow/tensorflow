@@ -27,6 +27,7 @@ limitations under the License.1
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
@@ -52,12 +53,30 @@ using xla::runtime::Executable;
 
 #if GOOGLE_CUDA
 
+const cublas_lt::MatmulPlan* MatmulPlanCache::Get(int64_t uid) {
+  absl::MutexLock lock(&mutex_);
+  auto it = plans_.find(uid);
+  if (it != plans_.end()) return &it->second;
+  return nullptr;
+}
+
+const cublas_lt::MatmulPlan* MatmulPlanCache::Set(int64_t uid,
+                                                  cublas_lt::MatmulPlan plan) {
+  absl::MutexLock lock(&mutex_);
+  auto it = plans_.find(uid);
+  if (it != plans_.end()) return &it->second;
+
+  auto emplaced = plans_.try_emplace(uid, std::move(plan));
+  return &emplaced.first->second;
+}
+
 namespace {
 struct CublasLtMatmul {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   absl::Status operator()(
       const ServiceExecutableRunOptions* run_options,
-      const DebugOptions* debug_options, runtime::StridedMemrefView a,
+      const DebugOptions* debug_options, GemmConfigCache* configs,
+      MatmulPlanCache* plans, runtime::StridedMemrefView a,
       runtime::StridedMemrefView b, runtime::StridedMemrefView c,
       runtime::StridedMemrefView d,
       std::optional<runtime::StridedMemrefView> bias, int64_t algorithm,
@@ -71,7 +90,8 @@ struct CublasLtMatmul {
 
 absl::Status CublasLtMatmul::operator()(
     const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, runtime::StridedMemrefView a,
+    const DebugOptions* debug_options, GemmConfigCache* configs,
+    MatmulPlanCache* plans, runtime::StridedMemrefView a,
     runtime::StridedMemrefView b, runtime::StridedMemrefView c,
     runtime::StridedMemrefView d,
     std::optional<runtime::StridedMemrefView> bias, int64_t algorithm,
@@ -81,14 +101,23 @@ absl::Status CublasLtMatmul::operator()(
   VLOG(3) << "Running CublasLtMatmul";
   se::Stream* stream = run_options->stream();
 
-  // Construct a plan from a gemm config and an epilogue.
-  auto cfg = GetGemmConfig(a, b, c, algorithm, alpha_real, alpha_imag, beta,
-                           dot_dims.lhs_batch, dot_dims.lhs_contract,
-                           dot_dims.rhs_batch, dot_dims.rhs_contract);
-  if (!cfg.ok()) return ToAbslStatus(cfg.status());
+  // Find the gemm config for this instance of operation based on uid.
+  const GemmConfig* config = configs->Get(uid);
+  if (config == nullptr) {
+    auto cfg = GetGemmConfig(a, b, c, algorithm, alpha_real, alpha_imag, beta,
+                             dot_dims.lhs_batch, dot_dims.lhs_contract,
+                             dot_dims.rhs_batch, dot_dims.rhs_contract);
+    if (!cfg.ok()) return ToAbslStatus(cfg.status());
+    config = configs->Set(uid, std::move(*cfg));
+  }
 
-  auto plan = cublas_lt::MatmulPlan::From(*cfg, epilogue);
-  if (!plan.ok()) return ToAbslStatus(plan.status());
+  // Find the matmul plan instance based on uid.
+  const cublas_lt::MatmulPlan* plan = plans->Get(uid);
+  if (plan == nullptr) {
+    auto p = cublas_lt::MatmulPlan::From(*config, epilogue);
+    if (!p.ok()) return ToAbslStatus(p.status());
+    plan = plans->Set(uid, std::move(*p));
+  }
 
   auto algos = plan->GetAlgorithms(stream);
   if (!algos.ok()) return ToAbslStatus(algos.status());
@@ -131,6 +160,8 @@ static bool CublasLtMatmul(runtime::ExecutionContext* ctx, void** args,
       BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul")
                                .UserData<const ServiceExecutableRunOptions*>()
                                .UserData<const DebugOptions*>()
+                               .UserData<GemmConfigCache*>()
+                               .UserData<MatmulPlanCache*>()
                                .Arg<runtime::StridedMemrefView>()  // a
                                .Arg<runtime::StridedMemrefView>()  // b
                                .Arg<runtime::StridedMemrefView>()  // c
@@ -149,6 +180,8 @@ static bool CublasLtMatmulBias(runtime::ExecutionContext* ctx, void** args,
       BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul.bias")
                                .UserData<const ServiceExecutableRunOptions*>()
                                .UserData<const DebugOptions*>()
+                               .UserData<GemmConfigCache*>()
+                               .UserData<MatmulPlanCache*>()
                                .Arg<runtime::StridedMemrefView>()  // a
                                .Arg<runtime::StridedMemrefView>()  // b
                                .Arg<runtime::StridedMemrefView>()  // c

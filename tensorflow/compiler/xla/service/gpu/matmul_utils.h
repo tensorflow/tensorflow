@@ -149,14 +149,14 @@ class MatmulPlan {
   static StatusOr<MatmulPlan> From(const GemmConfig& config,
                                    se::cuda::BlasLt::Epilogue epilogue);
 
-  Status ExecuteOnStream(se::Stream* stream, se::DeviceMemoryBase a_buffer,
-                         se::DeviceMemoryBase b_buffer,
-                         se::DeviceMemoryBase c_buffer,
-                         se::DeviceMemoryBase d_buffer,
-                         se::DeviceMemoryBase bias_buffer,  // may be null
-                         const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
-                         se::ScratchAllocator& scratch_allocator,
-                         se::blas::ProfileResult* profile_result = nullptr);
+  Status ExecuteOnStream(
+      se::Stream* stream, se::DeviceMemoryBase a_buffer,
+      se::DeviceMemoryBase b_buffer, se::DeviceMemoryBase c_buffer,
+      se::DeviceMemoryBase d_buffer,
+      se::DeviceMemoryBase bias_buffer,  // may be null
+      const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
+      se::ScratchAllocator& scratch_allocator,
+      se::blas::ProfileResult* profile_result = nullptr) const;
 
   StatusOr<std::vector<se::cuda::BlasLt::MatmulAlgorithm>> GetAlgorithms(
       se::Stream* stream) const;
@@ -176,7 +176,7 @@ class MatmulPlan {
                   se::DeviceMemoryBase bias_buffer,  // may be null
                   const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
                   se::ScratchAllocator& scratch_allocator,
-                  se::blas::ProfileResult* profile_result);
+                  se::blas::ProfileResult* profile_result) const;
 
   se::cuda::BlasLt::MatmulPlan plan_;
   complex128 alpha_;
