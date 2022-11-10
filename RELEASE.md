@@ -5,6 +5,15 @@
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
+*   `tf.function`:
+
+    *   tf.function now uses the Python inspect library directly for parsing
+        the signature of the Python function it is decorated on.
+    *   This can break certain cases that were previously ignored where the
+        signature is malformed, e.g.
+            *   Using functools.wraps on a function with different signature
+            *   Using functools.partial with an invalid tf.function input
+
 # Known Caveats
 
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
