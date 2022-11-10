@@ -966,11 +966,11 @@ def cast(x, dtype, name=None):
 
   Note casting nan and inf values to integral types has undefined behavior.
 
-  Note this operation can lead to a loss of precision when converting non-tensor
-  inputs such as native Python `float` and `complex` variables to `tf.float64`
-  or `tf.complex128` tensors, since the input is first converted to the
-  `float32` data type and then widened. For such cases, the proper solution is
-  to use `tf.convert_to_tensor` instead of `tf.cast`.
+  Note this operation can lead to a loss of precision when converting native
+  Python `float` and `complex` variables to `tf.float64` or `tf.complex128`
+  tensors, since the input is first converted to the `float32` data type and
+  then widened. It is recommended to use `tf.convert_to_tensor` instead of
+  `tf.cast` for any non-tensor inputs.
 
   Args:
     x: A `Tensor` or `SparseTensor` or `IndexedSlices` of numeric type. It could
