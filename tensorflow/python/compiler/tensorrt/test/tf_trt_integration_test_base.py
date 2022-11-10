@@ -32,8 +32,10 @@ from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python.compiler.tensorrt import model_opt
+from tensorflow.python.compiler.tensorrt import model_opt
 from tensorflow.python.compiler.tensorrt import trt_convert
-from tensorflow.python.compiler.tensorrt import utils as trt_utils
+from tensorflow.python.compiler.tensorrt.constants import TrtPrecisionMode
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import graph_io
@@ -90,14 +92,9 @@ RunParams = collections.namedtuple(
         "dynamic_shape",
     ])
 
-FP32 = "FP32"
-FP16 = "FP16"
-INT8 = "INT8"
-PRECISION_MODES = [FP32, FP16, INT8]
-
 
 def IsQuantizationMode(mode):
-  return mode == "INT8"
+  return mode == TrtPrecisionMode.INT8
 
 
 def IsQuantizationWithCalibration(params):
@@ -143,7 +140,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   @property
   def precision_modes(self):
-    return ["FP32", "FP16", "INT8"]
+    return TrtPrecisionMode.values()
 
   # str is bytes in py2, but unicode in py3.
   def _ToUnicode(self, s):
@@ -341,15 +338,25 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def ExpectedAbsoluteTolerance(self, run_params):
     """The absolute tolerance to compare floating point results."""
-    if run_params.precision_mode == "INT8":
-      return 3e-1
-    return 1.e-05 if run_params.precision_mode == "FP32" else 2.e-02
+    if run_params.precision_mode == "FP32":
+      return 1.e-05
+    elif run_params.precision_mode == "FP16":
+      return 1.e-02
+    elif run_params.precision_mode == "INT8":
+      return 3.e-1
+    else:
+      raise ValueError("Unknown `precision_mode`: {run_params.precision_mode}")
 
   def ExpectedRelativeTolerance(self, run_params):
     """The relative tolerance to compare floating point results."""
-    if run_params.precision_mode == "INT8":
-      return 1e-1
-    return 1.e-05 if run_params.precision_mode == "FP32" else 1.e-02
+    if run_params.precision_mode == "FP32":
+      return 1.e-05
+    elif run_params.precision_mode == "FP16":
+      return 1.e-02
+    elif run_params.precision_mode == "INT8":
+      return 1.e-1
+    else:
+      raise ValueError("Unknown `precision_mode`: {run_params.precision_mode}")
 
   def _GetParamsCached(self):
     if self._trt_test_params is None:
@@ -375,7 +382,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     else:
       rewriter_cfg = rewriter_config_pb2.RewriterConfig()
       if self._disable_non_trt_optimizers:
-        trt_utils.disable_non_trt_optimizers_in_rewriter_config(rewriter_cfg)
+        model_opt.disable_non_trt_optimizers_in_rewriter_config(rewriter_cfg)
 
     config = config_pb2.ConfigProto(
         gpu_options=self._GetGPUOptions(),
@@ -513,7 +520,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     """Return trt converted graphdef in INT8 mode."""
     conversion_params = self.GetConversionParams(run_params)
     logging.info(conversion_params)
-    assert conversion_params.precision_mode == "INT8", (
+    assert conversion_params.precision_mode == TrtPrecisionMode.INT8, (
         f"Incorrect precision mode, expected INT8 but got: "
         f"{conversion_params.precision_mode}.")
     assert run_params.dynamic_engine, "dynamic_engine parameter must be True."
@@ -882,6 +889,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
           self.assertTrue(len(node.attr["serialized_segment"].s), node.name)
         self.assertIn(
             self._RemoveGraphSequenceNumber(node.name), expected_engines)
+
         if IsQuantizationWithoutCalibration(run_params):
           # TODO(bixia): Refine this check by inspecting nodes in the engine.
           if self._ToBytes("INT8") != node.attr["precision_mode"].s:
@@ -1123,14 +1131,19 @@ def _GetTestConfigsV1():
   # whether to run specific ones with ShouldRunTest().
   #
   # Note: INT8 without calibration behaves like FP32/FP16.
-  opts = list(
-      itertools.product([FP32, FP16, INT8], [convert_online, convert_offline],
-                        [dynamic_engine, static_engine], [no_calibration],
-                        [implicit_batch]))
+  opts = list(itertools.product(
+      TrtPrecisionMode.values(),
+      [convert_online, convert_offline],
+      [dynamic_engine, static_engine],
+      [no_calibration],
+      [implicit_batch]
+  ))
   # We always run calibration with offline tool.
   # TODO(aaroey): static calibration engine is not supported yet.
-  opts.append(
-      (INT8, convert_offline, dynamic_engine, use_calibration, implicit_batch))
+  opts.append((
+      TrtPrecisionMode.INT8, convert_offline, dynamic_engine, use_calibration,
+      implicit_batch
+  ))
   return opts
 
 
@@ -1152,12 +1165,22 @@ def _GetTestConfigsV2():
   # - For simplicity we don't test online conversion which requires setting the
   #   Grappler config in default eager context.
   # - INT8 without calibration behaves like FP32/FP16.
-  opts = list(
-      itertools.product([FP32, FP16], [convert_offline], [dynamic_engine],
-                        [no_calibration], [False, True]))
+  opts = list(itertools.product(
+      [TrtPrecisionMode.FP32, TrtPrecisionMode.FP16],
+      [convert_offline],
+      [dynamic_engine],
+      [no_calibration],
+      [False, True]
+  ))
   # We always run calibration with offline tool.
-  opts.append((INT8, convert_offline, dynamic_engine, use_calibration, False))
-  opts.append((INT8, convert_offline, dynamic_engine, use_calibration, True))
+  opts.append((
+      TrtPrecisionMode.INT8, convert_offline, dynamic_engine, use_calibration,
+      False
+  ))
+  opts.append((
+      TrtPrecisionMode.INT8, convert_offline, dynamic_engine, use_calibration,
+      True
+  ))
   return opts
 
 

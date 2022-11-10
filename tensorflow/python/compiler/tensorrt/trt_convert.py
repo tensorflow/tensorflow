@@ -14,10 +14,11 @@
 # =============================================================================
 """Exposes the Python wrapper conversion to trt_graph."""
 
-from tensorflow.python.compiler.tensorrt.trt_convert_common import DEFAULT_TRT_CONVERSION_PARAMS
-from tensorflow.python.compiler.tensorrt.trt_convert_common import DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES
-from tensorflow.python.compiler.tensorrt.trt_convert_common import TrtConversionParams
-from tensorflow.python.compiler.tensorrt.trt_convert_common import TrtPrecisionMode
+from tensorflow.python.compiler.tensorrt.constants import DEFAULT_TRT_CONVERSION_PARAMS
+from tensorflow.python.compiler.tensorrt.constants import DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES
+from tensorflow.python.compiler.tensorrt.constants import TrtConversionParams
+from tensorflow.python.compiler.tensorrt.constants import TrtPrecisionMode
+from tensorflow.python.compiler.tensorrt.constants import TrtProfileStrategy
 from tensorflow.python.compiler.tensorrt.trt_convert_v1 import TrtGraphConverter
 from tensorflow.python.compiler.tensorrt.trt_convert_v1 import create_inference_graph
 from tensorflow.python.compiler.tensorrt.trt_convert_v1 import get_tensorrt_rewriter_config
@@ -29,6 +30,7 @@ __all__ = [
     "DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES",
     "TrtConversionParams",
     "TrtPrecisionMode",
+    "TrtProfileStrategy",
     # TF v1 APIs
     "TrtGraphConverter",
     "create_inference_graph",

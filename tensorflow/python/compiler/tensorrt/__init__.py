@@ -14,6 +14,26 @@
 # =============================================================================
 """Exposes the python wrapper for TensorRT graph transforms."""
 
-# pylint: disable=unused-import,line-too-long
+from tensorflow.compiler.tf2tensorrt.ops import gen_trt_ops
+from tensorflow.python.util.lazy_loader import LazyLoader
+
+# Lazily load the op, since it's not available in cpu-only builds. Importing
+# this at top will cause tests that imports TF-TRT fail when they're built
+# and run without CUDA/GPU.
+_pywrap_py_utils = LazyLoader(
+    "_pywrap_py_utils", globals(),
+    "tensorflow.compiler.tf2tensorrt._pywrap_py_utils")
+
+# Register TRT ops in python, so that when users import this module they can
+# execute a TRT-converted graph without calling any of the methods in this
+# module.
+#
+# This will call register_op_list() in
+# tensorflow/python/framework/op_def_registry.py, but it doesn't register
+# the op or the op kernel in C++ runtime.
+try:
+  gen_trt_ops.trt_engine_op  # pylint: disable=pointless-statement
+except AttributeError:
+  pass
+
 from tensorflow.python.compiler.tensorrt import trt_convert as trt
-# pylint: enable=unused-import,line-too-long

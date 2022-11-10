@@ -1,0 +1,16 @@
+path: "tensorflow.experimental.tensorrt.TrtPrecisionMode"
+tf_class {
+  is_instance: "<enum \'TrtPrecisionMode\'>"
+  member {
+    name: "FP16"
+    mtype: "<enum \'TrtPrecisionMode\'>"
+  }
+  member {
+    name: "FP32"
+    mtype: "<enum \'TrtPrecisionMode\'>"
+  }
+  member {
+    name: "INT8"
+    mtype: "<enum \'TrtPrecisionMode\'>"
+  }
+}

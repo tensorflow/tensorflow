@@ -31,13 +31,15 @@ py_library(
 py_library(
     name = "trt_convert_py",
     srcs = [
+        "constants.py",
+        "graph_utils.py",
         "lazy_utils.py",
+        "model_opt.py",
         "trt_convert.py",
-        "trt_convert_common.py",
         "trt_convert_v1.py",
         "trt_convert_v2.py",
+        "trt_utils.py",
         "types.py",
-        "utils.py",
     ],
     srcs_version = "PY3",
     deps = [

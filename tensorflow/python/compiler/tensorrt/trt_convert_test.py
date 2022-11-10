@@ -27,6 +27,7 @@ from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.compiler.tf2tensorrt.utils.trt_engine_instance_pb2 import TRTEngineInstance  # pylint: disable=g-importing-member
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.compiler.tensorrt import gen_trt_ops
 from tensorflow.python.compiler.tensorrt import trt_convert
 from tensorflow.python.compiler.tensorrt import trt_convert_v2
 from tensorflow.python.compiler.tensorrt.test import test_utils
@@ -57,13 +58,8 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
 from tensorflow.python.tools import saved_model_utils
 from tensorflow.python.trackable import autotrackable
-from tensorflow.python.util.lazy_loader import LazyLoader
 
 _SAVED_MODEL_SIGNATURE_KEY = "mypredict"
-
-gen_trt_ops = LazyLoader(
-    "gen_trt_ops", globals(),
-    "tensorflow.compiler.tf2tensorrt.ops.gen_trt_ops")
 
 
 class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -1163,8 +1159,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     gpus = config.list_physical_devices("GPU")
     if len(gpus) < 2:
-      self.skipTest("Expected at least 2 GPUs but found {} GPUs".format(
-          len(gpus)))
+      self.skipTest(f"Expected at least 2 GPUs but found {len(gpus)} GPUs")
 
     np_input1 = ops.convert_to_tensor(np.ones([4, 1, 1]).astype(np.float32))
     np_input2 = ops.convert_to_tensor(np.ones([4, 1, 1]).astype(np.float32))
