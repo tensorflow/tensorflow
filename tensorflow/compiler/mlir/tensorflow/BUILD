@@ -2173,7 +2173,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/compiler/xla/translate/mhlo_to_hlo:layout_util",
     "//tensorflow/compiler/xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
     "//tensorflow/compiler/mlir/xla:tf_xla_passes",
-    "//tensorflow/compiler/mlir/xla:xla_passes",
+    "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
     "//tensorflow/compiler/xla/translate/mhlo_to_hlo:type_to_shape",
     "//tensorflow/compiler/mlir/xla:adjust_layout",
     "//tensorflow/compiler/mlir/xla:xla_legalize_tf",

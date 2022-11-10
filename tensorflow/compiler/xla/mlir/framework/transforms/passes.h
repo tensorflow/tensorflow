@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_PASSES_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_FRAMEWORK_TRANSFORMS_PASSES_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_FRAMEWORK_TRANSFORMS_PASSES_H_
 
 #include <memory>
 
@@ -51,9 +51,9 @@ void PopulateLegalizeXLAFrameworkToLLVMPatterns(llvm::StringRef device_type,
 #define GEN_PASS_DECL_LEGALIZEXLAFRAMEWORKTOLLVM
 #define GEN_PASS_DECL_OUTLINEWITHXLAFRAMEWORK
 #define GEN_PASS_DECL_PREPAREFOREXPORTPASS
-#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h.inc"
+#include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h.inc"
 
 }  // namespace mhlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_FRAMEWORK_TRANSFORMS_PASSES_H_

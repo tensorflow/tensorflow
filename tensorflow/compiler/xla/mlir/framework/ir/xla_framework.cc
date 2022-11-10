@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // This file defines the operations used in the xla_framework dialect.
-#include "tensorflow/compiler/mlir/xla/ir/xla_framework.h"
+#include "tensorflow/compiler/xla/mlir/framework/ir/xla_framework.h"
 
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -22,9 +22,9 @@ limitations under the License.
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 
 // Generated dialect definitions.
-#include "tensorflow/compiler/mlir/xla/ir/xla_framework_dialect.cc.inc"
+#include "tensorflow/compiler/xla/mlir/framework/ir/xla_framework_dialect.cc.inc"
 #define GET_TYPEDEF_CLASSES
-#include "tensorflow/compiler/mlir/xla/ir/xla_framework_types.cc.inc"
+#include "tensorflow/compiler/xla/mlir/framework/ir/xla_framework_types.cc.inc"
 
 namespace mlir {
 namespace xla_framework {
@@ -33,13 +33,13 @@ namespace xla_framework {
 void XLAFrameworkDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
-#include "tensorflow/compiler/mlir/xla/ir/xla_framework.cc.inc"
+#include "tensorflow/compiler/xla/mlir/framework/ir/xla_framework.cc.inc"
 #undef GET_OP_LIST
       >();
 
   addTypes<
 #define GET_TYPEDEF_LIST
-#include "tensorflow/compiler/mlir/xla/ir/xla_framework_types.cc.inc"
+#include "tensorflow/compiler/xla/mlir/framework/ir/xla_framework_types.cc.inc"
 #undef GET_TYPEDEF_LIST
       >();
 }
@@ -48,4 +48,4 @@ void XLAFrameworkDialect::initialize() {
 }  // namespace mlir
 
 #define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/xla/ir/xla_framework.cc.inc"
+#include "tensorflow/compiler/xla/mlir/framework/ir/xla_framework.cc.inc"

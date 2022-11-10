@@ -28,8 +28,8 @@ limitations under the License.
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/ir/xla_framework.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
+#include "tensorflow/compiler/xla/mlir/framework/ir/xla_framework.h"
+#include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
 
 namespace mlir {
 namespace mhlo {
@@ -132,7 +132,7 @@ struct OutlineXLAFunc : public RewritePattern {
 };
 
 #define GEN_PASS_DEF_OUTLINEWITHXLAFRAMEWORK
-#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h.inc"
+#include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h.inc"
 
 class OutlineWithXLAFrameworkPass
     : public impl::OutlineWithXLAFrameworkBase<OutlineWithXLAFrameworkPass> {

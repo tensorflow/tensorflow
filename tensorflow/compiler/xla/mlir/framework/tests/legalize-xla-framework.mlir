@@ -1,4 +1,4 @@
-// RUN: xla-opt %s -xla-legalize-xla-framework-to-llvm | FileCheck %s
+// RUN: xla-translate-opt %s -xla-legalize-xla-framework-to-llvm | FileCheck %s
 
 memref.global "private" constant @__constant_xf32 : memref<f32> = dense<42.0>
 

@@ -1,4 +1,4 @@
-// RUN: xla-opt %s | xla-opt | FileCheck %s
+// RUN: xla-translate-opt %s | FileCheck %s
 
 // CHECK-LABEL: @buffer_type
 func.func @buffer_type(%arg1: !xla_framework.buffer) -> !xla_framework.buffer

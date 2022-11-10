@@ -71,7 +71,8 @@ tf_cc_binary(
     deps = [
         ":mhlo_to_lhlo_with_xla",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
-        "//tensorflow/compiler/xla/mlir_hlo:all_passes",
+        "//tensorflow/compiler/xla/mlir/framework/ir:xla_framework",
+        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service/cpu:hlo_xla_runtime_pipeline",  # buildcleaner: keep
@@ -90,6 +91,8 @@ tf_cc_binary(
     deps = [
         ":mhlo_to_lhlo_with_xla",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
+        "//tensorflow/compiler/xla/mlir/framework/ir:xla_framework",
+        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/compiler/xla/service:gpu_plugin",

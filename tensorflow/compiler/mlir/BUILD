@@ -74,7 +74,7 @@ cc_library(
     deps = [
         ":init_mlir",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite:tf_tfl_passes",
+        "//tensorflow/compiler/mlir/lite:tf_tfl_passes",  # buildcleaner:keep
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:mlprogram_util",
@@ -82,14 +82,14 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_test_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
-        "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
+        "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",  # buildcleaner:keep
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "//tensorflow/compiler/mlir/tosa:tf_passes",
         "//tensorflow/compiler/mlir/tosa:tf_tfl_passes",
         "//tensorflow/compiler/mlir/tosa:tfl_passes",
         "//tensorflow/compiler/mlir/xla:tf_xla_passes",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
-        "//tensorflow/compiler/mlir/xla:xla_passes",
+        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/core:lib",
@@ -188,7 +188,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_test_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
         "//tensorflow/compiler/mlir/xla:tf_xla_passes",
-        "//tensorflow/compiler/mlir/xla:xla_passes",
+        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
     ],
 )
 
@@ -206,7 +206,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "//tensorflow/compiler/mlir/xla:tf_xla_passes",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
-        "//tensorflow/compiler/mlir/xla:xla_passes",
+        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "@llvm-project//mlir:AllPassesAndDialects",

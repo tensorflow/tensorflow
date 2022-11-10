@@ -1,4 +1,4 @@
-// RUN: xla-opt %s -split-input-file -outline-with-xla-framework | FileCheck %s
+// RUN: xla-translate-opt %s -split-input-file -outline-with-xla-framework | FileCheck %s
 
 // CHECK-LABEL: @func_to_outline_xla_framework
 // CHECK-SAME: %[[ARG0:.*]]: !xla_framework.buffer
