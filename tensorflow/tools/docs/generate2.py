@@ -223,6 +223,7 @@ def build_docs(output_dir, code_url_prefix, search_hints):
 
   do_not_document = ["tf.__internal__",
                      "tf.keras.__internal__",
+                     "tf.keras.wrappers",
                      "tf.__operators__",
                      "tf.tools",
                      "tf.compat.v1.pywrap_tensorflow",
