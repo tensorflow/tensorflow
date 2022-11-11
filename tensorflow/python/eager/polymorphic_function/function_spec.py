@@ -42,7 +42,8 @@ BOUND_VALUE = object()
 
 
 def to_fullargspec(function_type: function_type_lib.FunctionType,
-                   default_values: Dict[str, Any]) -> inspect.FullArgSpec:
+                   default_values: Dict[str, Any],
+                   is_any_target_method: bool) -> inspect.FullArgSpec:
   """Generates backwards compatible FullArgSpec from FunctionType."""
   args = []
   varargs = None
@@ -68,6 +69,9 @@ def to_fullargspec(function_type: function_type_lib.FunctionType,
     elif parameter.kind is inspect.Parameter.VAR_KEYWORD:
       varkw = parameter.name
 
+  if (is_any_target_method and (not args or args[0] != "self")):
+    args.insert(0, "self")
+
   return inspect.FullArgSpec(
       args,
       varargs,
@@ -76,6 +80,60 @@ def to_fullargspec(function_type: function_type_lib.FunctionType,
       kwonlyargs,
       kwonlydefaults if kwonlydefaults else None,
       annotations={})
+
+
+def _to_default_values(fullargspec):
+  """Returns default values from the function's inspected fullargspec."""
+  if fullargspec.defaults is not None:
+    defaults = {
+        name: value for name, value in zip(
+            fullargspec.args[-len(fullargspec.defaults):], fullargspec.defaults)
+    }
+  else:
+    defaults = {}
+
+  if fullargspec.kwonlydefaults is not None:
+    defaults.update(fullargspec.kwonlydefaults)
+
+  return defaults
+
+
+def to_function_type(fullargspec):
+  """Generates FunctionType and default values from fullargspec."""
+  default_values = _to_default_values(fullargspec)
+  parameters = []
+
+  arg_kind = (
+      function_type_lib.Parameter.POSITIONAL_ONLY if fullargspec.kwonlyargs else
+      function_type_lib.Parameter.POSITIONAL_OR_KEYWORD)
+  for arg in fullargspec.args:
+    # TODO(b/249802365): Add sanitization warning when load-bearing.
+    parameters.append(
+        function_type_lib.Parameter(
+            function_type_lib.sanitize_arg_name(arg), arg_kind, arg
+            in default_values, None))
+
+  if fullargspec.varargs is not None:
+    parameters.append(
+        function_type_lib.Parameter(fullargspec.varargs,
+                                    function_type_lib.Parameter.VAR_POSITIONAL,
+                                    False, None))
+
+  for kwarg in fullargspec.kwonlyargs:
+    # TODO(b/249802365): Add sanitization warning when load-bearing.
+    parameters.append(
+        function_type_lib.Parameter(
+            function_type_lib.sanitize_arg_name(kwarg),
+            function_type_lib.Parameter.KEYWORD_ONLY, kwarg in default_values,
+            None))
+
+  if fullargspec.varkw is not None:
+    parameters.append(
+        function_type_lib.Parameter(fullargspec.varkw,
+                                    function_type_lib.Parameter.VAR_KEYWORD,
+                                    False, None))
+
+  return function_type_lib.FunctionType(parameters), default_values
 
 
 # TODO(b/214462107): Clean up and migrate to core/function when unblocked.
@@ -103,12 +161,12 @@ class FunctionSpec(object):
     _validate_signature(input_signature)
     _validate_python_function(python_function, input_signature)
 
+    # TODO(fmuham): Clarify usages and documentation of is_method.
+    is_method = tf_inspect.isanytargetmethod(python_function)
     fullargspec = to_fullargspec(
         function_type_lib.FunctionType.from_callable(python_function),
-        function_type_lib.FunctionType.get_default_values(python_function))
-    is_method = tf_inspect.isanytargetmethod(python_function)
-    if (is_method and (not fullargspec.args or fullargspec.args[0] != "self")):
-      fullargspec.args.insert(0, "self")
+        function_type_lib.FunctionType.get_default_values(python_function),
+        is_method or inspect.ismethod(python_function))
 
     # Get the function's name.  Remove functools.partial wrappers if necessary.
     while isinstance(python_function, functools.partial):
@@ -180,117 +238,16 @@ class FunctionSpec(object):
       self._flat_input_signature = tuple(
           nest.flatten(input_signature, expand_composites=True))
     self.validate_input_signature_with_argspec()
-    self._default_values = self._make_default_values()
-    self._function_type = self._make_function_type()
 
-  def _make_default_values(self):
-    """Returns default values from the function's inspected fullargspec."""
-    if self.fullargspec.defaults is not None:
-      defaults = {
-          name: value for name, value in zip(
-              self.fullargspec.args[-len(self.fullargspec.defaults):],
-              self.fullargspec.defaults)
-      }
-    else:
-      defaults = {}
-
-    if self.fullargspec.kwonlydefaults is not None:
-      defaults.update(self.fullargspec.kwonlydefaults)
-
-    return defaults
+    self._function_type, self._default_values = to_function_type(fullargspec)
+    if self.input_signature:
+      self._function_type = function_type_lib.add_type_constraints(
+          self.function_type, self.input_signature, self.default_values)
 
   @property
   def default_values(self):
     """Returns dict mapping parameter names to default values."""
     return self._default_values
-
-  def _make_function_type(self):
-    """Repackages fullargspec information into an equivalent FunctionType."""
-    parameters = []
-
-    arg_kind = (
-        function_type_lib.Parameter.POSITIONAL_ONLY
-        if self.fullargspec.kwonlyargs else
-        function_type_lib.Parameter.POSITIONAL_OR_KEYWORD)
-    for arg in self.fullargspec.args:
-      # TODO(b/249802365): Add sanitization warning when load-bearing.
-      parameters.append(
-          function_type_lib.Parameter(
-              function_type_lib.sanitize_arg_name(arg), arg_kind, arg
-              in self.default_values, None))
-
-    if self.fullargspec.varargs is not None:
-      parameters.append(
-          function_type_lib.Parameter(
-              self.fullargspec.varargs,
-              function_type_lib.Parameter.VAR_POSITIONAL, False, None))
-
-    for kwarg in self.fullargspec.kwonlyargs:
-      # TODO(b/249802365): Add sanitization warning when load-bearing.
-      parameters.append(
-          function_type_lib.Parameter(
-              function_type_lib.sanitize_arg_name(kwarg),
-              function_type_lib.Parameter.KEYWORD_ONLY, kwarg
-              in self.default_values, None))
-
-    if self.fullargspec.varkw is not None:
-      parameters.append(
-          function_type_lib.Parameter(self.fullargspec.varkw,
-                                      function_type_lib.Parameter.VAR_KEYWORD,
-                                      False, None))
-
-    # Annotate with Type Constraints if needed.
-    # TODO(fmuham): Move this logic to function_type_lib.
-    if self.input_signature:
-      context = trace_type.InternalTracingContext(is_legacy_signature=True)
-      constraints = [
-          trace_type.from_value(c, context) for c in self.input_signature
-      ]
-      annotated_parameters = []
-
-      has_var_pos = any(p.kind is p.VAR_POSITIONAL for p in parameters)
-      for param in parameters:
-        # VAR_POSITIONAL does not allow POSITIONAL_OR_KEYWORD args.
-        sanitized_kind = (
-            param.POSITIONAL_ONLY if has_var_pos and
-            param.kind is param.POSITIONAL_OR_KEYWORD else param.kind)
-
-        if param.name == "self":
-          # Type constraints do not apply on them.
-          annotated_parameters.append(
-              function_type_lib.Parameter("self", sanitized_kind,
-                                          param.optional, None))
-
-        elif param.kind is param.VAR_KEYWORD:
-          # Disabled when input_signature is specified.
-          continue
-
-        elif param.kind is param.VAR_POSITIONAL:
-          # Convert into Positional Only args based on length of constraints.
-          for i in range(len(constraints)):
-            annotated_parameters.append(
-                function_type_lib.Parameter(
-                    param.name + "_" + str(i),
-                    function_type_lib.Parameter.POSITIONAL_ONLY, False,
-                    constraints.pop(0)))
-
-        elif (param.kind in [
-            param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD,
-            param.KEYWORD_ONLY
-        ]):
-          if constraints:
-            annotated_parameters.append(
-                function_type_lib.Parameter(param.name, sanitized_kind,
-                                            param.optional, constraints.pop(0)))
-          elif param.name in self.default_values:
-            type_constraint = trace_type.from_value(
-                self.default_values[param.name])
-            annotated_parameters.append(
-                function_type_lib.Parameter(param.name, sanitized_kind,
-                                            param.optional, type_constraint))
-        parameters = annotated_parameters
-
-    return function_type_lib.FunctionType(parameters)
 
   @property
   def function_type(self):
@@ -410,14 +367,6 @@ class FunctionSpec(object):
               f"{len(missing_tensor_specs)} argument(s):"
               f" {missing_tensor_specs}.")
 
-  def _validate_inputs(self, flat_inputs):
-    """Raises an error if inputs contain illegal values."""
-    for inp in flat_inputs:
-      # TODO(b/183107079): Allow these once they're handled properly.
-      if isinstance(inp, weakref.ref):
-        raise ValueError(
-            f"weakref input {inp} not supported for function {self._name}")
-
   def validate_inputs_with_signature(self, args, kwargs):
     """Checks args and kwargs against the specified input_signature."""
     if kwargs:
@@ -477,6 +426,14 @@ class FunctionSpec(object):
         argument when an input signature is specified, or when the inputs
         do not conform to the input signature.
     """
+    args, kwargs = self.bind_function_inputs(args, kwargs)
+    args, kwargs = cast_inputs(args, kwargs, self.input_signature)
+    filtered_flat_args = filter_function_inputs(args, kwargs)
+
+    return args, kwargs, filtered_flat_args
+
+  def bind_function_inputs(self, args, kwargs):
+    """Bind `args` and `kwargs` into a canonicalized signature args, kwargs."""
     kwargs = {key: kwargs[key] for key in kwargs}
     if self._is_pure:
       args, kwargs = _convert_variables_to_tensors(args, kwargs)
@@ -563,18 +520,7 @@ class FunctionSpec(object):
         for (kwarg, default) in self._fullargspec.kwonlydefaults.items():
           kwargs.setdefault(kwarg, default)
 
-    if self._input_signature is None:
-      inputs, flat_inputs, filtered_flat_inputs = _convert_numpy_inputs(inputs)
-      kwargs, flat_kwargs, filtered_flat_kwargs = _convert_numpy_inputs(kwargs)
-      flat_inputs += flat_kwargs
-      filtered_flat_inputs += filtered_flat_kwargs
-    else:
-      inputs, flat_inputs, filtered_flat_inputs = convert_inputs_to_signature(
-          inputs, self._input_signature, self._flat_input_signature)
-
-    self._validate_inputs(flat_inputs)
-
-    return inputs, kwargs, filtered_flat_inputs
+    return inputs, kwargs
 
 
 def _validate_signature(signature):
@@ -652,7 +598,19 @@ def _convert_variables_to_tensors(args, kwargs):
   return tuple(args), kwargs
 
 
-def _convert_numpy_inputs(inputs):
+def cast_inputs(args, kwargs, input_signature):
+  """Casts args, kwargs to TF values based on an optional input_signature."""
+  if input_signature is None:
+    args = cast_numpy_inputs(args)
+    kwargs = cast_numpy_inputs(kwargs)
+  else:
+    args = cast_inputs_to_signature(args, input_signature)
+    kwargs = {}
+
+  return args, kwargs
+
+
+def cast_numpy_inputs(inputs):
   """Converts numpy array inputs to tensors."""
   flat_inputs = composite_tensor_utils.flatten_with_variables(inputs)
 
@@ -678,16 +636,19 @@ def _convert_numpy_inputs(inputs):
       filtered_flat_inputs.append(flat_inputs[index])
       need_packing = True
   if need_packing:
-    return (nest.pack_sequence_as(
+    return nest.pack_sequence_as(
         structure=inputs,
         flat_sequence=nest.flatten(flat_inputs, expand_composites=True),
-        expand_composites=True), flat_inputs, filtered_flat_inputs)
+        expand_composites=True)
   else:
-    return inputs, flat_inputs, filtered_flat_inputs
+    return inputs
 
 
-def convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
+def cast_inputs_to_signature(inputs, input_signature):
   """Converts inputs to pass into a function with an explicit signature."""
+
+  flat_input_signature = tuple(
+      nest.flatten(input_signature, expand_composites=True))
 
   def format_error_message(inputs, input_signature):
     return ("  inputs: (\n" + "    " + ",\n    ".join(str(i) for i in inputs) +
@@ -732,12 +693,27 @@ def convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
         flat_sequence=flatten_inputs,
         expand_composites=True)
 
-  flat_inputs = composite_tensor_utils.flatten_with_variables(inputs)
+  return inputs
 
-  return (inputs, flat_inputs, [
+
+def filter_function_inputs(args, kwargs):
+  """Filters and flattens args and kwargs."""
+  flat_inputs = composite_tensor_utils.flatten_with_variables(
+      args) + composite_tensor_utils.flatten_with_variables(kwargs)
+
+  for inp in flat_inputs:
+    # TODO(b/183107079): Allow these once they're handled properly.
+    if isinstance(inp, weakref.ref):
+      raise ValueError(
+          f"weakref input {inp} not supported for tf.function.")
+
+  filtered_flat_inputs = [
       t for t in flat_inputs
-      if isinstance(t, (ops.Tensor, resource_variable_ops.BaseResourceVariable))
-  ])
+      if isinstance(t, (ops.Tensor,
+                        resource_variable_ops.BaseResourceVariable))
+  ]
+
+  return filtered_flat_inputs
 
 
 def _get_variable_specs(args):
