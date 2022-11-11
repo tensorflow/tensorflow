@@ -815,6 +815,9 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
     xla::EntryFunctionAttributes entry_func_attrs, DebugOptions debug_options,
     absl::string_view asm_text, absl::string_view binary,
     GpuVersion gpu_version, se::StreamExecutor* executor) {
+  VLOG(1) << "Load serialized Gpu executable from object file: module="
+          << hlo_module->name();
+
   // Load MLIR module behind the compiled object file to recover XLA allocations
   // and output info details. Also recover buffer sizes from the entrypoint
   // function signature.

@@ -296,7 +296,7 @@ XlaCompilationCache::LoadExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result,
     const std::string& serialized_aot_result) {
-  VLOG(2) << "Loading local executable using BEF.";
+  VLOG(2) << "Loading local executable from serialized AOT result";
 
   xla::ExecutableBuildOptions build_options = GetExecutableBuildOptions(
       options, result, client_->default_device_ordinal());
