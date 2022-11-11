@@ -53,4 +53,5 @@ const TfLiteOpaqueDelegatePlugin sample_stable_delegate_plugin = {
  */
 extern "C" const TfLiteStableDelegate TFL_TheStableDelegate = {
     TFL_STABLE_DELEGATE_ABI_VERSION, tflite::example::kSampleStableDelegateName,
-    /*delegate_version=*/"1.0.0", &sample_stable_delegate_plugin};
+    tflite::example::kSampleStableDelegateVersion,
+    &sample_stable_delegate_plugin};

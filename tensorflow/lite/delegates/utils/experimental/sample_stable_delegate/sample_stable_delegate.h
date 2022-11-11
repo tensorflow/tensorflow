@@ -27,6 +27,7 @@ int CalculateNumElements(const TfLiteOpaqueTensor* opaque_tensor);
 }  // namespace helpers
 
 static const char kSampleStableDelegateName[] = "SampleStableDelegate";
+static const char kSampleStableDelegateVersion[] = "1.0.0";
 
 // A simple delegate that supports only addition and subtraction operations.
 // Implements SimpleOpaqueDelegateInterface, and therefore the delegate can be

@@ -14,7 +14,7 @@
 # ==============================================================================
 
 # A sample delegate that supports addition and subtraction only.
-load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_linkopts")
+load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_linkopts_no_undefined")
 
 package(
     default_visibility = [
@@ -69,10 +69,18 @@ cc_library(
 )
 
 tflite_cc_shared_object(
-    name = "tensorflowlite_sample_stable",
+    name = "tensorflowlite_sample_stable_delegate",
     testonly = True,
-    linkopts = tflite_linkopts(),
+    linkopts = tflite_linkopts_no_undefined() + select({
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            # Expose necessary symbols only.
+            "-Wl,--version-script,$(location //tensorflow/lite/delegates/utils/experimental/sample_stable_delegate:version_script.lds)",
+        ],
+    }),
+    per_os_targets = True,
     deps = [
         ":sample_stable_delegate_external",
+        ":version_script.lds",
     ],
 )
