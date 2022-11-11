@@ -229,7 +229,7 @@ class FileWriterTestBase(object):
       sw.close()
 
   @test_util.run_deprecated_v1
-  def testCloseAndReopen(self):
+  def disabled_testCloseAndReopen(self):
     test_dir = self._CleanTestDir("close_and_reopen")
     sw = self._FileWriter(test_dir)
     sw.add_session_log(event_pb2.SessionLog(status=SessionLog.START), 1)
