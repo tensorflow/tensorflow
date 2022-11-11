@@ -108,8 +108,8 @@ struct CollapseBcastPattern : OpRewritePattern<linalg::GenericOp> {
         collapsedInitMap.dropResult(collapsedBcastDim);
     SmallVector<AffineMap> collapsedMaps = {collapsedOperandMap,
                                             collapsedInitMap};
-    SmallVector<StringRef> collapsedIteratorTypes(
-        collapsedInitRank, getParallelIteratorTypeName());
+    SmallVector<utils::IteratorType> collapsedIteratorTypes(
+        collapsedInitRank, utils::IteratorType::parallel);
     auto collapsedBcastOp = rewriter.create<linalg::GenericOp>(
         loc, collapsedInitTy, collapsedOperand, collapsedInit, collapsedMaps,
         collapsedIteratorTypes);
@@ -185,10 +185,10 @@ struct CollapseReductionPattern : OpRewritePattern<linalg::GenericOp> {
         collapsedOperandMap.dropResult(collapsedReductionDim);
     SmallVector<AffineMap> collapsedMaps = {collapsedOperandMap,
                                             collapsedInitMap};
-    SmallVector<StringRef> collapsedIteratorTypes(
-        collapsedOperandRank, getParallelIteratorTypeName());
+    SmallVector<utils::IteratorType> collapsedIteratorTypes(
+        collapsedOperandRank, utils::IteratorType::parallel);
     collapsedIteratorTypes[collapsedReductionDim] =
-        getReductionIteratorTypeName();
+        utils::IteratorType::reduction;
     auto collapsedReductionOp = rewriter.create<linalg::GenericOp>(
         loc, collapsedInitTy, collapsedOperand, collapsedInit, collapsedMaps,
         collapsedIteratorTypes);
@@ -246,8 +246,8 @@ struct CollapseCwisePattern : OpRewritePattern<linalg::GenericOp> {
         AffineMap::getMultiDimIdentityMap(collapsedRank, getContext());
     SmallVector<AffineMap> collapsedMaps(collapsedOperands.size() + 1,
                                          collapsedIdentityMap);
-    SmallVector<StringRef> collapsedIteratorTypes(
-        collapsedRank, getParallelIteratorTypeName());
+    SmallVector<utils::IteratorType> collapsedIteratorTypes(
+        collapsedRank, utils::IteratorType::parallel);
     auto collapsedCwiseOp = rewriter.create<linalg::GenericOp>(
         loc, collapsedInitTy, collapsedOperands, collapsedInit, collapsedMaps,
         collapsedIteratorTypes);

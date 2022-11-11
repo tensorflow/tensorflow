@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -232,8 +233,8 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
       InsertSliceOp insert_output_slice) const {
     rewriter.setInsertionPointAfter(tiled_op);
     auto num_parallel_loops = tiled_op.getNumParallelLoops();
-    SmallVector<mlir::StringRef, 3> parallel_iter_types(
-        num_parallel_loops, mlir::getParallelIteratorTypeName());
+    SmallVector<mlir::utils::IteratorType, 3> parallel_iter_types(
+        num_parallel_loops, mlir::utils::IteratorType::parallel);
     auto id_map = rewriter.getMultiDimIdentityMap(num_parallel_loops);
 
     auto combiner_or = DetectCombiner(tiled_op);

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "gml_st/utils/linalg_utils.h"
 
+#include "mlir/Dialect/Linalg/Utils/Utils.h"
+
 namespace mlir {
 namespace gml_st {
 
@@ -76,12 +78,10 @@ bool isSimpleReduction(Operation *op, int64_t *dimension, Value *operand) {
 
   // Check uniqueness of reduction dimension and remaining parallel iterator
   // types.
-  auto iterTys = genericOp.getIteratorTypes();
-  for (int i = 0; i < static_cast<int64_t>(iterTys.size()); i++) {
-    StringRef expectedTy = i == dim ? getReductionIteratorTypeName()
-                                    : getParallelIteratorTypeName();
-    StringRef actualTy =
-        genericOp.getIteratorTypes()[i].cast<StringAttr>().getValue();
+  for (const auto &[i, actualTy] :
+       llvm::enumerate(genericOp.getIteratorTypesArray())) {
+    utils::IteratorType expectedTy = i == dim ? utils::IteratorType::reduction
+                                              : utils::IteratorType::parallel;
     if (expectedTy != actualTy) return false;
   }
 
@@ -97,12 +97,9 @@ bool isCwiseGenericOp(Operation *op, int64_t *arity) {
   if (!genericOp || genericOp.getNumDpsInits() != 1) return false;
 
   // Check all-parallel iterator types.
-  if (!llvm::all_of(genericOp.getIteratorTypes(), [](Attribute it) {
-        return it.cast<StringAttr>().getValue() ==
-               getParallelIteratorTypeName();
-      })) {
+  if (!llvm::all_of(genericOp.getIteratorTypesArray(),
+                    linalg::isParallelIterator))
     return false;
-  }
 
   // Check all-identity maps.
   if (!llvm::all_of(genericOp.getIndexingMapsArray(),
@@ -130,12 +127,9 @@ bool isSimpleBcast(Operation *op, int64_t *dimension, Value *operand) {
     return false;
 
   // Check all-parallel iterator types.
-  if (!llvm::all_of(genericOp.getIteratorTypes(), [](Attribute it) {
-        return it.cast<StringAttr>().getValue() ==
-               getParallelIteratorTypeName();
-      })) {
+  if (!llvm::all_of(genericOp.getIteratorTypesArray(),
+                    linalg::isParallelIterator))
     return false;
-  }
 
   // Check that the operand map is a degenerate bcast: it maps all dimensions in
   // seqence, skipping the unique bcast dimension.

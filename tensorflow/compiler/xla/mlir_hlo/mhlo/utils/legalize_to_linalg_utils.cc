@@ -39,15 +39,16 @@ bool hasIntegralShapeType(Operation* op) {
 
 }  // namespace
 
-SmallVector<StringRef, 3> getParallelAndReductionIterators(
+SmallVector<utils::IteratorType, 3> getParallelAndReductionIterators(
     unsigned nLoops, unsigned nReduction) {
-  SmallVector<StringRef, 3> res(nLoops - nReduction,
-                                getParallelIteratorTypeName());
-  res.append(nReduction, getReductionIteratorTypeName());
+  SmallVector<utils::IteratorType, 3> res(nLoops - nReduction,
+                                          utils::IteratorType::parallel);
+  res.append(nReduction, utils::IteratorType::reduction);
   return res;
 }
 
-SmallVector<StringRef, 3> getNParallelLoopsAttrs(unsigned nParallelLoops) {
+SmallVector<utils::IteratorType, 3> getNParallelLoopsAttrs(
+    unsigned nParallelLoops) {
   return getParallelAndReductionIterators(nParallelLoops, 0);
 }
 

@@ -50,11 +50,12 @@ namespace mhlo {
 /// Returns an ArrayAttr that contains `nLoops` attributes. All the attributes
 /// are "parallel" except the last `nReduction` elements, where are "reduction"
 /// attributes.
-SmallVector<StringRef, 3> getParallelAndReductionIterators(unsigned nLoops,
-                                                           unsigned nReduction);
+SmallVector<utils::IteratorType, 3> getParallelAndReductionIterators(
+    unsigned nLoops, unsigned nReduction);
 
 /// Returns an ArrayAttr that contains `nParallelLoops` "parallel" attributes.
-SmallVector<StringRef, 3> getNParallelLoopsAttrs(unsigned nParallelLoops);
+SmallVector<utils::IteratorType, 3> getNParallelLoopsAttrs(
+    unsigned nParallelLoops);
 
 /// Generates an init sparse tensor.
 Value getEmptySparseTensor(OpBuilder& b, Location loc, ShapedType type,

@@ -118,8 +118,8 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
   SmallVector<Attribute, 4> iteratorTypes;
   for (const auto &attr : enumerate(op.getIteratorTypesArray())) {
     if (loopIndexToRangeIndex.count(attr.index()))
-      iteratorTypes.push_back(IteratorTypeAttr::get(
-          b.getContext(), utils::symbolizeIteratorType(attr.value()).value()));
+      iteratorTypes.push_back(
+          IteratorTypeAttr::get(b.getContext(), attr.value()));
   }
 
   // 2. Create the tiled loops.

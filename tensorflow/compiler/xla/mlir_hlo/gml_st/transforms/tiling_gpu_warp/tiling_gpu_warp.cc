@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -196,10 +197,9 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
 
     // Match only if it's a linalg.generic tensor<1x?xf32> -> tensor<1xf32> with
     // iterator_types = ["parallel", "reduction"].
-    auto itTypes = llvm::to_vector(
-        genericOp.getIteratorTypes().getAsValueRange<StringAttr>());
-    if (itTypes.size() != 2 || itTypes[0] != getParallelIteratorTypeName() ||
-        itTypes[1] != getReductionIteratorTypeName()) {
+    auto itTypes = genericOp.getIteratorTypesArray();
+    if (itTypes.size() != 2 || !linalg::isParallelIterator(itTypes[0]) ||
+        !linalg::isReductionIterator(itTypes[1])) {
       return rewriter.notifyMatchFailure(genericOp,
                                          "Expected ['parallel', 'reduction']");
     }
