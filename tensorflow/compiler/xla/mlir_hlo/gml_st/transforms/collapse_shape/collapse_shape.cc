@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/IR/TensorInferTypeOpInterfaceImpl.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -267,6 +268,15 @@ struct CollapseCwisePattern : OpRewritePattern<linalg::GenericOp> {
 struct CollapseShapePass
     : public impl::CollapseShapePassBase<CollapseShapePass> {
   using CollapseShapePassBase<CollapseShapePass>::CollapseShapePassBase;
+
+  void getDependentDialects(DialectRegistry& registry) const override {
+    CollapseShapePassBase<CollapseShapePass>::getDependentDialects(registry);
+
+    // TODO(frgossen): Move these iface implementations into the tensor dialect.
+    // Some of its canonicalizations depend on it. Until then, we have to
+    // register them explicitly.
+    tensor::registerInferTypeOpInterfaceExternalModels(registry);
+  }
 
   void runOnOperation() override {
     func::FuncOp f = getOperation();

@@ -66,11 +66,9 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
                             .WithOneUse())
                  // The root operation should be an elementwise binary op of
                  // rank 2.
-                 // TODO(frgossen): Relax the rank 2 constraint when the
-                 // pipeline can handle it.
                  .WithPredicate([](const HloInstruction* instr) {
                    int64_t rank = instr->shape().rank();
-                   return instr->IsElementwiseBinary() && rank == 2 &&
+                   return instr->IsElementwiseBinary() &&
                           // If the product of the first dimensions is 1, it
                           // currently crashes the pipeline. Also, we expect
                           // that the performance is not so good if the

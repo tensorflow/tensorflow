@@ -122,9 +122,7 @@ ENTRY main {
 
 // Currently disabled because we cannot enable matching cases that would crash
 // the mlir pipeline.
-// TODO(akuegel): Enable this test when the check that the number of rows is !=
-// 1 is removed.
-TEST_F(SoftmaxFusionTest, DISABLED_SingleSoftmaxPatternWithReshape) {
+TEST_F(SoftmaxFusionTest, SingleSoftmaxPatternWithReshape) {
   const std::string& hlo_string = R"(
 
 HloModule softmax
@@ -157,6 +155,44 @@ ENTRY main {
               GmockMatch(m::Subtract(m::Parameter(0),
                                      m::Broadcast(m::Reshape(m::Reduce(
                                          m::Parameter(0), m::Constant()))))));
+}
+
+TEST_F(SoftmaxFusionTest, SingleSoftmaxPattern4D) {
+  const std::string& hlo_string = R"(
+
+HloModule softmax
+
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+
+ENTRY main {
+  param_0 = f32[4,8,16,64]{3,2,1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[4,8,16]{2,1,0} reduce(param_0, constant_neg_inf), dimensions={3}, to_apply=max_computation
+  broadcast = f32[4,8,16,64]{3,2,1,0} broadcast(reduce), dimensions={0,1,2}
+  ROOT subtract = f32[4,8,16,64]{3,2,1,0} subtract(param_0, broadcast)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  auto initial_module = module->Clone();
+  SoftmaxFusion fusion;
+  EXPECT_TRUE(fusion.Run(module.get()).value());
+  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+  VLOG(2) << module->ToString();
+  auto* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, GmockMatch(m::CustomCall(m::Parameter(0))));
+  ASSERT_TRUE(root->has_to_apply());
+  // Assert that the softmax computation has exactly the softmax pattern.
+  ASSERT_THAT(root->to_apply()->root_instruction(),
+              GmockMatch(m::Subtract(
+                  m::Parameter(0),
+                  m::Broadcast(m::Reduce(m::Parameter(0), m::Constant())))));
+
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      std::move(module), std::move(initial_module), ErrorSpec(1e-6, 1e-6)));
 }
 
 TEST_F(SoftmaxFusionTest, SoftmaxPatternWithExtraStuff) {
@@ -251,6 +287,63 @@ ENTRY main {
               GmockMatch(m::Exp(m::Subtract(
                   m::Parameter(0),
                   m::Broadcast(m::Reduce(m::Parameter(0), m::Constant()))))));
+}
+
+TEST_F(SoftmaxFusionTest, DoubleSoftmaxPattern4D) {
+  const std::string& hlo_string = R"(
+
+HloModule softmax
+
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+
+add_computation {
+  arg_0.1 = f32[] parameter(0)
+  arg_1.1 = f32[] parameter(1)
+  ROOT maximum = f32[] add(arg_0.1, arg_1.1)
+}
+
+ENTRY main {
+  param_0 = f32[12,34,56,78]{3,2,1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[12,34,56]{2,1,0} reduce(param_0, constant_neg_inf), dimensions={3}, to_apply=max_computation
+  broadcast = f32[12,34,56,78]{3,2,1,0} broadcast(reduce), dimensions={0,1,2}
+  subtract = f32[12,34,56,78]{3,2,1,0} subtract(param_0, broadcast)
+  exponential = f32[12,34,56,78]{3,2,1,0} exponential (subtract)
+  constant_zero = f32[] constant(0)
+  second_reduce = f32[12,34,56]{2,1,0} reduce(exponential, constant_zero), dimensions={3}, to_apply=add_computation
+  second_broadcast = f32[12,34,56,78]{3,2,1,0} broadcast(second_reduce), dimensions={0,1,2}
+  ROOT divide = f32[12,34,56,78]{3,2,1,0} divide(exponential, second_broadcast)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  auto initial_module = module->Clone();
+  SoftmaxFusion fusion;
+  EXPECT_TRUE(fusion.Run(module.get()).value());
+  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+  VLOG(2) << module->ToString();
+  auto* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, GmockMatch(m::CustomCall(m::Parameter(0))));
+  ASSERT_TRUE(root->has_to_apply());
+  // Assert that we have matched both softmax patterns.
+  HloInstruction* exp1;
+  HloInstruction* exp2;
+  ASSERT_THAT(
+      root->to_apply()->root_instruction(),
+      GmockMatch(m::Divide(m::Exp(&exp1, m::Subtract()),
+                           m::Broadcast(m::Reduce(m::Exp(&exp2, m::Subtract()),
+                                                  m::Constant())))));
+  EXPECT_EQ(exp1, exp2);
+  ASSERT_THAT(exp1,
+              GmockMatch(m::Exp(m::Subtract(
+                  m::Parameter(0),
+                  m::Broadcast(m::Reduce(m::Parameter(0), m::Constant()))))));
+
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      std::move(module), std::move(initial_module), ErrorSpec(1e-6, 1e-6)));
 }
 
 TEST_F(SoftmaxFusionTest, DoubleSoftmaxPatternWithExtraStuff) {

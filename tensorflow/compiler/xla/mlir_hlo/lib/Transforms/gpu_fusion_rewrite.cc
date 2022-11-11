@@ -107,8 +107,10 @@ static constexpr llvm::StringLiteral kWrittenOperandsAttrName = "lmhlo.written";
 
 void GpuFusionRewritePass::getDependentDialects(
     DialectRegistry& registry) const {
+  // Collect the dependent dialects for both variants of the pipeline.
   OpPassManager passManager;
-  createHloToGpuPipeline(passManager, {}, {}, {}, false);
+  for (bool experimentalSoftmax : {false, true})
+    createHloToGpuPipeline(passManager, {}, {}, {}, experimentalSoftmax);
   passManager.getDependentDialects(registry);
 }
 

@@ -2924,6 +2924,17 @@ StatusOr<std::vector<llvm_ir::IrArray>> IrEmitterUnnested::BuildKernelThunkImpl(
       continue;
     }
 
+    if (auto collapse_shape_op =
+            llvm::dyn_cast<mlir::memref::CollapseShapeOp>(defining_op)) {
+      argument = collapse_shape_op.getSrc();
+      if (auto view_op =
+              llvm::dyn_cast<mlir::memref::ViewOp>(argument.getDefiningOp())) {
+        argument = view_op.getOperand(0);
+      }
+      add_if_not_exists(argument);
+      continue;
+    }
+
     return Unimplemented(
         "Defining op for argument to GPU kernel not handled: %s",
         defining_op->getName().getStringRef().str());
@@ -5211,9 +5222,10 @@ Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
 }
 
 Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
-  if (mlir::isa<mlir::func::ConstantOp, mlir::arith::ConstantOp,
-                mlir::memref::ViewOp, mlir::memref::ReinterpretCastOp,
-                mlir::func::ReturnOp, mlir::lmhlo::TerminatorOp>(op)) {
+  if (mlir::isa<mlir::memref::CollapseShapeOp, mlir::func::ConstantOp,
+                mlir::arith::ConstantOp, mlir::memref::ReinterpretCastOp,
+                mlir::func::ReturnOp, mlir::lmhlo::TerminatorOp,
+                mlir::memref::ViewOp>(op)) {
     return OkStatus();
   }
 
