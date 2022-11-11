@@ -70,7 +70,6 @@ tf_cc_binary(
     srcs = ["xla_translate_opt_main.cc"],
     deps = [
         ":mhlo_to_lhlo_with_xla",  # buildcleaner: keep
-        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/xla/mlir/framework/ir:xla_framework",
         "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
@@ -90,7 +89,6 @@ tf_cc_binary(
     srcs = ["xla_translate_opt_main.cc"],
     deps = [
         ":mhlo_to_lhlo_with_xla",  # buildcleaner: keep
-        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/xla/mlir/framework/ir:xla_framework",
         "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",

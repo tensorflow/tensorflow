@@ -22,7 +22,6 @@ gentbl_cc_library(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes.td",
     deps = [
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_ops_td_files",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncTdFiles",
