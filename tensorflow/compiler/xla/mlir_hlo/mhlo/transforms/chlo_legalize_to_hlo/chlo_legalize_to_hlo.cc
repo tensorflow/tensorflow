@@ -27,7 +27,6 @@ limitations under the License.
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/map_chlo_to_hlo_op.h"
 #include "mhlo/transforms/rewriters.h"
-#include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -42,6 +41,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "stablehlo/dialect/BroadcastUtils.h"
 #include "stablehlo/dialect/ChloOps.h"
+#include "utils/hlo_utils.h"
 
 namespace mlir {
 namespace chlo {

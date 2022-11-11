@@ -50,8 +50,6 @@ limitations under the License.
 #include "mhlo/IR/hlo_ops.h.inc"
 #include "mhlo/IR/hlo_ops_common.h"
 #include "mhlo/IR/mhlo_bytecode.h"
-#include "mlir-hlo/utils/convert_op_folder.h"
-#include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -81,6 +79,8 @@ limitations under the License.
 #include "mlir/Transforms/InliningUtils.h"
 #include "stablehlo/dialect/AssemblyFormat.h"
 #include "stablehlo/dialect/TypeInference.h"
+#include "utils/convert_op_folder.h"
+#include "utils/hlo_utils.h"
 
 namespace mlir {
 #include "hlo_patterns.cc.inc"

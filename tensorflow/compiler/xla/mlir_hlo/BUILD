@@ -423,9 +423,12 @@ cc_library(
 
 cc_library(
     name = "convert_op_folder",
-    srcs = ["lib/utils/convert_op_folder.cc"],
-    hdrs = ["include/mlir-hlo/utils/convert_op_folder.h"],
-    includes = ["include"],
+    srcs = ["utils/convert_op_folder.cc"],
+    hdrs = ["utils/convert_op_folder.h"],
+    includes = [
+        ".",
+        "include",
+    ],
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -435,7 +438,6 @@ cc_library(
 cc_library(
     name = "mlir_hlo",
     srcs = [
-        "lib/utils/hlo_utils.cc",
         "mhlo/IR/hlo_ops.cc",
         "mhlo/IR/hlo_ops.cc.inc",
         "mhlo/IR/hlo_ops.h.inc",
@@ -446,11 +448,12 @@ cc_library(
         "mhlo/IR/hlo_ops_typedefs.cc.inc",
         "mhlo/IR/hlo_ops_typedefs.h.inc",
         "mhlo/IR/mhlo_bytecode.cc",
+        "utils/hlo_utils.cc",
     ],
     hdrs = [
-        "include/mlir-hlo/utils/hlo_utils.h",
         "mhlo/IR/hlo_ops.h",
         "mhlo/IR/mhlo_bytecode.h",
+        "utils/hlo_utils.h",
     ],
     includes = [
         ".",
@@ -496,9 +499,9 @@ cc_library(
     name = "lhlo",
     srcs = ["lhlo/IR/lhlo_ops.cc"],
     hdrs = [
-        "include/mlir-hlo/utils/lhlo_utils.h",
         "lhlo/IR/lhlo_ops.h",
         "lhlo/IR/lhlo_ops_structs.h",
+        "lhlo/utils/lhlo_utils.h",
     ],
     includes = [
         ".",
@@ -820,9 +823,12 @@ cc_library(
 
 cc_library(
     name = "codegen_utils",
-    srcs = ["lib/utils/codegen_utils.cc"],
-    hdrs = ["include/mlir-hlo/utils/codegen_utils.h"],
-    includes = ["include"],
+    srcs = ["utils/codegen_utils.cc"],
+    hdrs = ["utils/codegen_utils.h"],
+    includes = [
+        ".",
+        "include",
+    ],
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
@@ -836,8 +842,11 @@ cc_library(
 
 cc_library(
     name = "placement_utils",
-    hdrs = ["include/mlir-hlo/utils/placement_utils.h"],
-    includes = ["include"],
+    hdrs = ["utils/placement_utils.h"],
+    includes = [
+        ".",
+        "include",
+    ],
     deps = ["@llvm-project//llvm:Support"],
 )
 

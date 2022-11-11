@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/utils/cycle_detector.h"
+#include "utils/cycle_detector.h"
 
 #include <algorithm>
 

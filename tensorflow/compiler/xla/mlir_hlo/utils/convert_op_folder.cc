@@ -15,7 +15,7 @@ limitations under the License.
 
 // This file defines helpers useful when creating or manipulating lhlo/hlo.
 
-#include "mlir-hlo/utils/convert_op_folder.h"
+#include "utils/convert_op_folder.h"
 
 #include "llvm/ADT/APSInt.h"
 #include "mlir/IR/Attributes.h"

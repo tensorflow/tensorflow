@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/utils/hlo_utils.h"
+#include "utils/hlo_utils.h"
 
 #include <numeric>
 #include <string>
