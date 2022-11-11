@@ -139,6 +139,7 @@ cc_library(
     deps = [
         ":shape",
         ":tensor_view",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
