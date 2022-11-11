@@ -277,8 +277,6 @@ cc_library(
     deps = [
         ":gpu_event_stats",
         ":group_events",
-        ":hlo_module_map",
-        ":hlo_proto_map",
         ":math_utils",
         ":tf_op_utils",
         ":tf_xplane_visitor",
@@ -483,23 +481,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core/platform:statusor",
-    ],
-)
-
-cc_library(
-    name = "hlo_module_map",
-    srcs = ["hlo_module_map.cc"],
-    hdrs = ["hlo_module_map.h"],
-    visibility = [":friends"],
-    deps = [
-        ":hlo_proto_to_module",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_cost_analysis",
-        "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/service/gpu:gpu_hlo_cost_analysis",
-        "//tensorflow/core/platform:path",
-        "//tensorflow/core/profiler/lib:traceme_encode",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
