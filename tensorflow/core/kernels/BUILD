@@ -4390,6 +4390,7 @@ tf_kernel_library(
         "pooling_ops_3d_gpu.cu.cc",
     ],
     deps = [
+        ":cast_op",
         ":conv_2d",
         ":conv_3d",
         ":conv_ops",

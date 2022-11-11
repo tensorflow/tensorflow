@@ -85,6 +85,9 @@ def GetTestConfigsDicts(v1_fn,
     configs1 += [(data_format, use_gpu, dtypes.float16),
                  (data_format, use_gpu, dtypes.float64)]
 
+    if use_gpu:
+      configs1 += [(data_format, use_gpu, dtypes.bfloat16)]
+
   # Convert from tuple to dict and add v1/v2 versions.
   ret = []
   for data_format, use_gpu, data_type in configs1:

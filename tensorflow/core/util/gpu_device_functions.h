@@ -588,6 +588,7 @@ __device__ T GpuAtomicCasHelper(T* ptr, F accumulate) {
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicCasHelper, CudaAtomicCasHelper);
 
+
 // Overload for floating point (using integer comparison to handle NaN
 // correctly).
 template <typename F>

@@ -49,7 +49,7 @@ def GetTestConfigs():
 class PoolingTest(test.TestCase):
 
   def _VerifyOneTest(self, pool_func, input_sizes, window, strides, padding,
-                     data_format, expected, use_gpu):
+                     data_format, data_type, expected, use_gpu):
     """Verifies the output values of the pooling function.
 
     Args:
@@ -59,6 +59,7 @@ class PoolingTest(test.TestCase):
       strides: Tuple of strides for dims: planes, rows, cols.
       padding: Padding type.
       data_format: The data format we use to run the pooling operation.
+      data_type: The data type to use to run the pooling operation.
       expected: An array containing the expected operation outputs.
       use_gpu: Whether to run ops on GPU.
     """
@@ -68,8 +69,11 @@ class PoolingTest(test.TestCase):
     # Initializes the input tensor with array containing incrementing
     # numbers from 1.
     x = [f * 1.0 for f in range(1, total_size + 1)]
+    if data_type == dtypes.bfloat16:
+      x = [f * 0.1 for f in x]
+      expected = [f * 0.1 for f in expected]
     with self.cached_session(use_gpu=use_gpu):
-      t = constant_op.constant(x, shape=input_sizes)
+      t = constant_op.constant(x, shape=input_sizes, dtype=data_type)
       window = [1] + list(window) + [1]
       strides = [1] + list(strides) + [1]
       if data_format == "NCDHW":
@@ -87,13 +91,19 @@ class PoolingTest(test.TestCase):
       vals = self.evaluate(t)
     # Verifies values.
     actual = vals.flatten()
-    self.assertAllClose(expected, actual)
+    rtol = atol = 1e-6
+    if data_type == dtypes.bfloat16:
+      rtol = atol = 2e-2
+    self.assertAllClose(expected, actual, rtol=rtol, atol=atol)
 
   def _VerifyValues(self, pool_func, input_sizes, window, strides,
                     padding, expected):
     for data_format, use_gpu in GetTestConfigs():
       self._VerifyOneTest(pool_func, input_sizes, window, strides, padding,
-                          data_format, expected, use_gpu)
+                          data_format, dtypes.float32, expected, use_gpu)
+      if use_gpu:
+        self._VerifyOneTest(pool_func, input_sizes, window, strides, padding,
+                            data_format, dtypes.bfloat16, expected, use_gpu)
 
   def testAvgPool3dValidPadding(self):
     expected_output = [20.5, 21.5, 22.5]

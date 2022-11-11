@@ -27,6 +27,7 @@ limitations under the License.
 #include "third_party/gpus/cudnn/cudnn.h"
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #if TENSORFLOW_USE_ROCM
@@ -219,17 +220,13 @@ TensorShape PoolParameters::forward_output_shape() {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename T>
-void DnnPoolingOp<T>::Compute(OpKernelContext* context,
-                              se::dnn::PoolingMode pooling_mode,
-                              const std::vector<int32>& size,
-                              const std::vector<int32>& stride, Padding padding,
-                              std::vector<int64_t> explicit_paddings,
-                              TensorFormat data_format, const Tensor& tensor_in,
-                              const TensorShape& tensor_out_shape,
-                              bool propagate_nans) {
-  Tensor* tensor_out = nullptr;
-  OP_REQUIRES_OK(context,
-                 context->allocate_output(0, tensor_out_shape, &tensor_out));
+void DnnPoolingImpl(OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
+                    const std::vector<int32>& size,
+                    const std::vector<int32>& stride, Padding padding,
+                    std::vector<int64_t> explicit_paddings,
+                    TensorFormat data_format, const Tensor& tensor_in,
+                    const TensorShape& tensor_out_shape, bool propagate_nans,
+                    Tensor* tensor_out) {
   if (tensor_in.shape().num_elements() == 0) {
     return;
   }
@@ -424,6 +421,65 @@ void DnnPoolingOp<T>::Compute(OpKernelContext* context,
 #endif
 }
 
+template <typename T>
+void DnnPoolingOp<T>::Compute(OpKernelContext* context,
+                              se::dnn::PoolingMode pooling_mode,
+                              const std::vector<int32>& size,
+                              const std::vector<int32>& stride, Padding padding,
+                              std::vector<int64_t> explicit_paddings,
+                              TensorFormat data_format, const Tensor& tensor_in,
+                              const TensorShape& tensor_out_shape,
+                              bool propagate_nans) {
+  Tensor* tensor_out = nullptr;
+  OP_REQUIRES_OK(context,
+                 context->allocate_output(0, tensor_out_shape, &tensor_out));
+  DnnPoolingImpl<T>(context, pooling_mode, size, stride, padding,
+                    explicit_paddings, data_format, tensor_in, tensor_out_shape,
+                    propagate_nans, tensor_out);
+}
+
+template <>
+void DnnPoolingOp<Eigen::bfloat16>::Compute(
+    OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
+    const std::vector<int32>& size, const std::vector<int32>& stride,
+    Padding padding, std::vector<int64_t> explicit_paddings,
+    TensorFormat data_format, const Tensor& tensor_in,
+    const TensorShape& tensor_out_shape, bool propagate_nans) {
+  Tensor* tensor_out = nullptr;
+  OP_REQUIRES_OK(context,
+                 context->allocate_output(0, tensor_out_shape, &tensor_out));
+
+  auto* stream = context->op_device_context()->stream();
+  const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
+      se::CudaComputeCapability::AMPERE);
+  if (cast_to_float) {
+    Tensor casted_tensor_in;
+    Tensor casted_tensor_out;
+    const GPUDevice& device = context->eigen_device<GPUDevice>();
+    functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
+    OP_REQUIRES_OK(context, context->allocate_temp(DT_FLOAT, tensor_in.shape(),
+                                                   &casted_tensor_in));
+    cast(device, casted_tensor_in.template flat<float>(),
+         tensor_in.template flat<Eigen::bfloat16>());
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(DT_FLOAT, tensor_out->shape(),
+                                          &casted_tensor_out));
+
+    DnnPoolingImpl<float>(context, pooling_mode, size, stride, padding,
+                          explicit_paddings, data_format, casted_tensor_in,
+                          tensor_out_shape, propagate_nans, &casted_tensor_out);
+
+    functor::CastFunctor<GPUDevice, Eigen::bfloat16, float> cast_back;
+    const Tensor& casted_tensor_out_const = casted_tensor_out;
+    cast_back(device, tensor_out->template flat<Eigen::bfloat16>(),
+              casted_tensor_out_const.template flat<float>());
+    return;
+  }
+  DnnPoolingImpl<Eigen::bfloat16>(context, pooling_mode, size, stride, padding,
+                                  explicit_paddings, data_format, tensor_in,
+                                  tensor_out_shape, propagate_nans, tensor_out);
+}
+
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                             \
@@ -438,26 +494,26 @@ namespace functor {
 
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(Eigen::half);
+DECLARE_GPU_SPEC(Eigen::bfloat16);
 DECLARE_GPU_SPEC(double);
 DECLARE_GPU_SPEC(int32);
 }  // namespace functor
 
 template <typename T>
-void DnnPoolingGradOp<T>::Compute(
-    OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
-    const std::vector<int32>& size, const std::vector<int32>& stride,
-    Padding padding, std::vector<int64_t> explicit_paddings,
-    TensorFormat data_format, const Tensor* tensor_in, const Tensor* tensor_out,
-    const Tensor& out_backprop, const TensorShape& tensor_in_shape,
-    bool propagate_nans) {
+void DnnPoolingGradImpl(OpKernelContext* context,
+                        se::dnn::PoolingMode pooling_mode,
+                        const std::vector<int32>& size,
+                        const std::vector<int32>& stride, Padding padding,
+                        std::vector<int64_t> explicit_paddings,
+                        TensorFormat data_format, const Tensor* tensor_in,
+                        const Tensor* tensor_out, const Tensor& out_backprop,
+                        const TensorShape& tensor_in_shape, bool propagate_nans,
+                        Tensor* input_backprop) {
   CHECK((pooling_mode != se::dnn::PoolingMode::kMaximum) ||
         (tensor_in && tensor_out))
       << "For MaxPoolGrad, both tensor_in and tensor_out needs to be "
          "specified";
 
-  Tensor* input_backprop = nullptr;
-  OP_REQUIRES_OK(context,
-                 context->allocate_output(0, tensor_in_shape, &input_backprop));
   if (tensor_in_shape.num_elements() == 0) {
     return;
   }
@@ -764,10 +820,93 @@ void DnnPoolingGradOp<T>::Compute(
 #endif  // CUDNN_VERSION < 7300
 }
 
+template <typename T>
+void DnnPoolingGradOp<T>::Compute(
+    OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
+    const std::vector<int32>& size, const std::vector<int32>& stride,
+    Padding padding, std::vector<int64_t> explicit_paddings,
+    TensorFormat data_format, const Tensor* tensor_in, const Tensor* tensor_out,
+    const Tensor& out_backprop, const TensorShape& tensor_in_shape,
+    bool propagate_nans) {
+  Tensor* input_backprop = nullptr;
+  OP_REQUIRES_OK(context,
+                 context->allocate_output(0, tensor_in_shape, &input_backprop));
+  DnnPoolingGradImpl<T>(context, pooling_mode, size, stride, padding,
+                        explicit_paddings, data_format, tensor_in, tensor_out,
+                        out_backprop, tensor_in_shape, propagate_nans,
+                        input_backprop);
+}
+
+template <>
+void DnnPoolingGradOp<Eigen::bfloat16>::Compute(
+    OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
+    const std::vector<int32>& size, const std::vector<int32>& stride,
+    Padding padding, std::vector<int64_t> explicit_paddings,
+    TensorFormat data_format, const Tensor* tensor_in, const Tensor* tensor_out,
+    const Tensor& out_backprop, const TensorShape& tensor_in_shape,
+    bool propagate_nans) {
+  Tensor* input_backprop = nullptr;
+  OP_REQUIRES_OK(context,
+                 context->allocate_output(0, tensor_in_shape, &input_backprop));
+  auto* stream = context->op_device_context()->stream();
+  const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
+      se::CudaComputeCapability::AMPERE);
+  if (cast_to_float) {
+    Tensor casted_tensor_in;
+    Tensor casted_tensor_out;
+    Tensor casted_out_backprop;
+    Tensor casted_input_backprop;
+
+    const GPUDevice& device = context->eigen_device<GPUDevice>();
+    functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
+    if (tensor_in != nullptr) {
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DT_FLOAT, tensor_in->shape(),
+                                            &casted_tensor_in));
+      cast(device, casted_tensor_in.template flat<float>(),
+           tensor_in->template flat<Eigen::bfloat16>());
+    }
+    if (tensor_out != nullptr) {
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DT_FLOAT, tensor_out->shape(),
+                                            &casted_tensor_out));
+      cast(device, casted_tensor_out.template flat<float>(),
+           tensor_out->template flat<Eigen::bfloat16>());
+    }
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(DT_FLOAT, out_backprop.shape(),
+                                          &casted_out_backprop));
+    cast(device, casted_out_backprop.template flat<float>(),
+         out_backprop.template flat<Eigen::bfloat16>());
+
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(DT_FLOAT, input_backprop->shape(),
+                                          &casted_input_backprop));
+
+    DnnPoolingGradImpl<float>(
+        context, pooling_mode, size, stride, padding, explicit_paddings,
+        data_format, tensor_in != nullptr ? &casted_tensor_in : nullptr,
+        tensor_out != nullptr ? &casted_tensor_out : nullptr,
+        casted_out_backprop, tensor_in_shape, propagate_nans,
+        &casted_input_backprop);
+
+    functor::CastFunctor<GPUDevice, Eigen::bfloat16, float> cast_back;
+    const Tensor& casted_input_backprop_const = casted_input_backprop;
+    cast_back(device, input_backprop->template flat<Eigen::bfloat16>(),
+              casted_input_backprop_const.template flat<float>());
+    return;
+  }
+  DnnPoolingGradImpl<Eigen::bfloat16>(
+      context, pooling_mode, size, stride, padding, explicit_paddings,
+      data_format, tensor_in, tensor_out, out_backprop, tensor_in_shape,
+      propagate_nans, input_backprop);
+}
+
 #define DEFINE_DNN_OPS(T)         \
   template class DnnPoolingOp<T>; \
   template class DnnPoolingGradOp<T>;
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_DNN_OPS)
+TF_CALL_bfloat16(DEFINE_DNN_OPS)
 
 #if CUDNN_VERSION >= 7300
 template class DnnPoolingOp<qint8>;
