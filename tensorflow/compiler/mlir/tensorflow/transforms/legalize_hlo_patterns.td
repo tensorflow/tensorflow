@@ -247,9 +247,10 @@ def : Pat<(HLO_DotOp:$old_value StaticShapeTensorOf<[TF_ElementType]>:$lhs,
 
 def ConvertDotGeneralOp : NativeCodeCall<"ConvertDotGeneralOp($_builder, "
                                                "$0.getDefiningOp())">;
-def : Pat<(HLO_DotGeneralOp:$old_value AnyStaticShapeTensor:$lhs,
-               AnyStaticShapeTensor:$rhs, $dot_dimension_numbers,
-               $precision_config),
+def : Pat<(HLO_DotGeneralOp:$old_value
+               StaticShapeTensorOf<[TF_ElementType]>:$lhs,
+               StaticShapeTensorOf<[TF_ElementType]>:$rhs,
+               $dot_dimension_numbers, $precision_config),
           (ConvertDotGeneralOp $old_value)>;
 
 def IsZero : Constraint<CPred<
