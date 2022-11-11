@@ -556,10 +556,10 @@ std::string Description(const Pattern& pattern) {
 
 template <typename Elem, typename Pattern>
 std::string Explanation(Elem* elem, const Pattern& pattern,
-                        bool single_user_operands = false) {
+                        bool single_user_only = false) {
   std::stringstream ss;
   MatchOption options{/*.capture=*/true,
-                      /*.single_user_operands=*/single_user_operands,
+                      /*.single_user_only=*/single_user_only,
                       /*.explain_os=*/&ss};
   Match(elem, pattern, options);
   return ss.str();
@@ -1040,58 +1040,116 @@ TEST_F(PatternMatcherTest, OneUseAndOneUser) {
             "in p0 = f32[] parameter(0)");
 }
 
-TEST_F(PatternMatcherTest, MatchSingleUserOperands) {
+TEST_F(PatternMatcherTest, MatchSingleUserOnlyUnaryOpOneUser) {
   auto param =
       HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p");
-
   auto reshape =
       SetName("reshape", HloInstruction::CreateReshape(
                              ShapeUtil::MakeShape(F32, {1}), param.get()));
-  EXPECT_TRUE(MatchSingleUserOperands(reshape.get(), m::Reshape(m::Op())));
+  EXPECT_TRUE(MatchSingleUserOnly(reshape.get(), m::Reshape(m::Op())));
+  // Equivalent call of Match:
+  EXPECT_TRUE(Match(reshape.get(), m::Reshape(m::Op().WithOneUser())));
+}
 
+TEST_F(PatternMatcherTest, MatchSingleUserOnlyUnaryOpTwoUsers) {
+  auto param =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p");
+  auto reshape =
+      SetName("reshape", HloInstruction::CreateReshape(
+                             ShapeUtil::MakeShape(F32, {1}), param.get()));
   auto bitcast =
       SetName("bitcast", HloInstruction::CreateBitcast(
                              ShapeUtil::MakeShape(F32, {1}), param.get()));
-  EXPECT_TRUE(MatchSingleUserOperands(param.get(), m::Op()));
-  EXPECT_TRUE(MatchSingleUserOperands(bitcast.get(), m::Bitcast()));
-  EXPECT_FALSE(MatchSingleUserOperands(bitcast.get(), m::Bitcast(m::Op())));
-  EXPECT_EQ(Explanation(bitcast.get(), m::Bitcast(m::Op()), true),
+  EXPECT_TRUE(MatchSingleUserOnly(param.get(), m::Op()));
+  // Equivalent call of Match:
+  EXPECT_TRUE(Match(param.get(), m::Op()));
+
+  EXPECT_TRUE(MatchSingleUserOnly(bitcast.get(), m::Bitcast()));
+  EXPECT_TRUE(Match(bitcast.get(), m::Bitcast()));
+
+  EXPECT_FALSE(MatchSingleUserOnly(bitcast.get(), m::Bitcast(m::Op())));
+  EXPECT_FALSE(Match(bitcast.get(), m::Bitcast(m::Op().WithOneUser())));
+  EXPECT_EQ(Explanation(bitcast.get(), m::Bitcast(m::Op()),
+                        /*single_user_only=*/true),
             "Operand 0 of HloInstruction has 2 users. Expected 1.\nin bitcast "
             "= f32[1]{0} bitcast(f32[] p)");
+}
 
+TEST_F(PatternMatcherTest, MatchSingleUserOnlyBinaryOpOneUser) {
+  auto param0 =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0");
+  auto add = SetName("add", HloInstruction::CreateBinary(
+                                ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd,
+                                param0.get(), param0.get()));
+  EXPECT_TRUE(MatchSingleUserOnly(add.get(), m::Add(m::Op(), m::Op())));
+  // Equivalent call of Match:
+  EXPECT_TRUE(
+      Match(add.get(), m::Add(m::Op().WithOneUser(), m::Op().WithOneUser())));
+}
+
+TEST_F(PatternMatcherTest, MatchSingleUserOnlyBinaryOpTwoUsers) {
   auto param0 =
       HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0");
   auto param1 =
       HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p1");
-
   auto add = SetName("add", HloInstruction::CreateBinary(
                                 ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd,
                                 param0.get(), param0.get()));
-  EXPECT_TRUE(MatchSingleUserOperands(add.get(), m::Add(m::Op(), m::Op())));
-
   auto mul =
       SetName("mul", HloInstruction::CreateBinary(ShapeUtil::MakeShape(F32, {}),
                                                   HloOpcode::kMultiply,
                                                   param1.get(), param0.get()));
-  EXPECT_TRUE(MatchSingleUserOperands(mul.get(), m::Multiply()));
-  EXPECT_FALSE(
-      MatchSingleUserOperands(mul.get(), m::Multiply(m::Op(), m::Op())));
-  EXPECT_EQ(Explanation(mul.get(), m::Multiply(m::Op(), m::Op()), true),
+  EXPECT_TRUE(MatchSingleUserOnly(mul.get(), m::Multiply()));
+  // Equivalent call of Match:
+  EXPECT_TRUE(Match(mul.get(), m::Multiply()));
+
+  EXPECT_FALSE(MatchSingleUserOnly(mul.get(), m::Multiply(m::Op(), m::Op())));
+  EXPECT_FALSE(Match(
+      mul.get(), m::Multiply(m::Op().WithOneUser(), m::Op().WithOneUser())));
+  EXPECT_EQ(Explanation(mul.get(), m::Multiply(m::Op(), m::Op()),
+                        /*single_user_only=*/true),
             "Operand 1 of HloInstruction has 2 users. Expected 1.\nin mul = "
             "f32[] multiply(f32[] p1, f32[] p0)");
-  EXPECT_FALSE(MatchSingleUserOperands(add.get(), m::Add(m::Op(), m::Op())));
-  EXPECT_EQ(Explanation(add.get(), m::Add(m::Op(), m::Op()), true),
+
+  EXPECT_FALSE(MatchSingleUserOnly(add.get(), m::Add(m::Op(), m::Op())));
+  EXPECT_FALSE(
+      Match(add.get(), m::Add(m::Op().WithOneUser(), m::Op().WithOneUser())));
+  EXPECT_EQ(Explanation(add.get(), m::Add(m::Op(), m::Op()),
+                        /*single_user_only=*/true),
             "Operand 0 of HloInstruction has 2 users. Expected 1.\nin add = "
             "f32[] add(f32[] p0, f32[] p0)");
+}
 
+TEST_F(PatternMatcherTest, MatchSingleUserOnlyBinaryOpTwoUsersLowerLevel) {
+  auto param0 =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0");
+  auto param1 =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p1");
+  auto add = SetName("add", HloInstruction::CreateBinary(
+                                ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd,
+                                param0.get(), param0.get()));
+  auto mul =
+      SetName("mul", HloInstruction::CreateBinary(ShapeUtil::MakeShape(F32, {}),
+                                                  HloOpcode::kMultiply,
+                                                  param1.get(), param0.get()));
   auto div = SetName("div", HloInstruction::CreateBinary(
                                 ShapeUtil::MakeShape(F32, {}),
                                 HloOpcode::kDivide, add.get(), mul.get()));
   EXPECT_TRUE(
-      MatchSingleUserOperands(div.get(), m::Divide(m::Add(), m::Multiply())));
-  EXPECT_FALSE(MatchSingleUserOperands(
+      MatchSingleUserOnly(div.get(), m::Divide(m::Add(), m::Multiply())));
+  // Equivalent call of Match:
+  EXPECT_TRUE(Match(div.get(), m::Divide(m::Add().WithOneUser(),
+                                         m::Multiply().WithOneUser())));
+
+  EXPECT_FALSE(MatchSingleUserOnly(
       div.get(), m::Divide(m::Add(m::Op(), m::Op()), m::Multiply())));
-  EXPECT_EQ(Explanation(add.get(), m::Add(m::Op(), m::Op()), true),
+  EXPECT_FALSE(Match(
+      div.get(),
+      m::Divide(
+          m::Add(m::Op().WithOneUser(), m::Op().WithOneUser()).WithOneUser(),
+          m::Multiply().WithOneUser())));
+  EXPECT_EQ(Explanation(add.get(), m::Add(m::Op(), m::Op()),
+                        /*single_user_only=*/true),
             "Operand 0 of HloInstruction has 2 users. Expected 1.\nin add = "
             "f32[] add(f32[] p0, f32[] p0)");
 }

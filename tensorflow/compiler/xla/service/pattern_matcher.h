@@ -155,7 +155,7 @@ struct MatchOption {
   bool capture;
 
   // If true, require all operands prescribed in pattern to have one user.
-  bool single_user_operands;
+  bool single_user_only;
 
   // An explanation for why we failed to match is streamed here, if not-null.
   std::ostream* explain_os;
@@ -164,7 +164,7 @@ struct MatchOption {
 template <typename Value, typename Pattern>
 bool Match(Value* value, const Pattern& pattern,
            MatchOption option = {/*.capture=*/true,
-                                 /*.single_user_operands=*/false,
+                                 /*.single_user_only=*/false,
                                  /*.explain_os=*/nullptr}) {
   if (option.capture) {
     auto new_option = option;
@@ -186,13 +186,20 @@ bool Match(Value* value, const Pattern& pattern,
 // add = add(p0, p0)
 // mul = multiply(p0, p0)
 //
-// MatchSingleUserOperands(p0, m::Op())) -> true.
-// MatchSingleUserOperands(add, m::Add()) -> true.
-// MatchSingleUserOperands(add, m::Add(m::Op(), m::Op())) -> false.
-
+// MatchSingleUserOnly(p0, m::Op()) -> true
+// (Top-level operation in the pattern is not required to have one user).
+//
+// MatchSingleUserOnly(add, m::Add()) -> true
+// (Only operands prescribed in the pattern are required to have one user).
+//
+// MatchSingleUserOnly(add, m::Add(m::Op(), m::Op()) -> false
+// (Operands prescribed in the pattern have two users).
+//
+// The previous line is equivalent to:
+// Match(add, m::Add(m::Op().WithOneUser(), m::Op().WithOneUser()) -> false.
 template <typename Value, typename Pattern>
-bool MatchSingleUserOperands(Value* value, const Pattern& pattern) {
-  MatchOption option = {/*.capture=*/true, /*.single_user_operands=*/true,
+bool MatchSingleUserOnly(Value* value, const Pattern& pattern) {
+  MatchOption option = {/*.capture=*/true, /*.single_user_only=*/true,
                         /*.explain_os=*/nullptr};
   return Match(value, pattern, option);
 }
@@ -1480,7 +1487,7 @@ class HloInstructionPatternOperandImpl {
       EXPLAIN << "\nin operand " << operand_index_;
       return false;
     }
-    if (option.single_user_operands &&
+    if (option.single_user_only &&
         inst->operand(operand_index_)->user_count() != 1) {
       EXPLAIN << "Operand " << operand_index_ << " of HloInstruction has "
               << inst->operand(operand_index_)->user_count()
@@ -1584,7 +1591,7 @@ class HloInstructionPatternBinaryOperandsAnyOrderImpl {
       return false;
     }
 
-    if (option.single_user_operands) {
+    if (option.single_user_only) {
       for (int i = 0; i < 2; ++i) {
         if (inst->operand(i)->user_count() != 1) {
           EXPLAIN << "Operand " << i << " of HloInstruction has "
