@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PROFILER_UTILS_BUFFER_POOL_H_
-#define TENSORFLOW_CORE_PROFILER_UTILS_BUFFER_POOL_H_
+#ifndef TENSORFLOW_TSL_PROFILER_UTILS_BUFFER_POOL_H_
+#define TENSORFLOW_TSL_PROFILER_UTILS_BUFFER_POOL_H_
 
 #include <vector>
 
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 
 // A lightweight buffer management class for tracking fixed sized buffers that
@@ -57,6 +57,6 @@ class BufferPool {
 };
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_PROFILER_UTILS_BUFFER_POOL_H_
+#endif  // TENSORFLOW_TSL_PROFILER_UTILS_BUFFER_POOL_H_

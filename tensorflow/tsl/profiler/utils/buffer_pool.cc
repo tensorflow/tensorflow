@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/utils/buffer_pool.h"
+#include "tensorflow/tsl/profiler/utils/buffer_pool.h"
 
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/mem.h"
+#include "tensorflow/tsl/platform/mutex.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 
 BufferPool::BufferPool(size_t buffer_size_in_bytes)
@@ -81,4 +81,4 @@ size_t BufferPool::GetBufferSizeInBytes() const {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

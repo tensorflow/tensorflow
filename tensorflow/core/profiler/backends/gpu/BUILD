@@ -213,7 +213,7 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/backends/cpu:annotation_stack",
         "//tensorflow/core/profiler/lib:scoped_annotation",
-        "//tensorflow/core/profiler/utils:buffer_pool",
+        "//tensorflow/tsl/profiler/utils:buffer_pool",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/container:node_hash_set",
