@@ -75,10 +75,9 @@ Value NormalizeTensor(ImplicitLocOpBuilder& b, TypedValue<ShapedType> tensor,
   return b.create<mhlo::ReshapeOp>(tensor.getType(), transpose);
 }
 
-void NormalizeInputInPlace(ImplicitLocOpBuilder& b,
-                           TypedValue<ShapedType> tensor,
+void NormalizeInputInPlace(ImplicitLocOpBuilder& b, Value tensor,
                            ArrayRef<int64_t> layout) {
-  if (IsDefaultLayout(layout)) {
+  if (!tensor.getType().isa<ShapedType>() || IsDefaultLayout(layout)) {
     return;
   }
 
