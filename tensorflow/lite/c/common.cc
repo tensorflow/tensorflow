@@ -315,7 +315,7 @@ struct TfLiteOpaqueDelegateStruct* TfLiteOpaqueDelegateCreate(
 }
 
 void TfLiteOpaqueDelegateDelete(
-    const struct TfLiteOpaqueDelegateStruct* opaque_delegate) {
+    struct TfLiteOpaqueDelegateStruct* opaque_delegate) {
   if (!opaque_delegate) return;
 
   const TfLiteDelegate* tflite_delegate =
