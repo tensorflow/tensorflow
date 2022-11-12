@@ -600,7 +600,10 @@ Status EagerServiceImpl::ExecuteOp(CallOptions* call_opts,
   TF_RETURN_IF_ERROR(GetEagerOperationAndNumRetvals(
       operation, eager_context, eager_executor, &op, &num_retvals));
 
-  auto cm = std::make_shared<CancellationManager>();
+  // Shard the CancellationManager so that it won't become a bottleneck in
+  // rendezvous.
+  auto cm =
+      std::make_shared<CancellationManager>(env_->experimental_num_shards);
   if (call_opts) {
     op.SetCancellationManager(cm.get());
     call_opts->SetCancelCallback([cm] { cm->StartCancel(); });
