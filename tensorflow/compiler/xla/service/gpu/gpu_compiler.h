@@ -87,6 +87,14 @@ class GpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
   XlaRuntimeGpuExecutableProto xla_runtime_gpu_executable_;
 };
 
+struct GpuTargetConfig {
+  GpuDeviceInfo gpu_device_info;
+  stream_executor::CudaComputeCapability cuda_compute_capability;
+  stream_executor::RocmComputeCapability rocm_compute_capability;
+  std::string platform_name;
+  int device_ordinal;
+};
+
 // The GPU compiler generates efficient GPU executables.
 class GpuCompiler : public LLVMCompiler {
  public:

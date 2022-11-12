@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <algorithm>
+#include <any>
 #include <atomic>
 #include <functional>
 #include <iterator>
@@ -1510,8 +1511,6 @@ StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                 const AotCompilationOptions& options) {
   CHECK(options.PlatformId() == se::cuda::kCudaPlatformId);
-  CHECK(options.executor() != nullptr);
-  auto stream_exec = options.executor();
 
   std::vector<std::unique_ptr<HloModule>> modules =
       module_group->ConsumeModules();
@@ -1519,17 +1518,33 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
   for (const auto& module : modules) {
     llvm::LLVMContext llvm_context;
-    GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
 
     // Compile the module
     CompileModuleResults compile_module_results;
-    TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
-        module.get(), &llvm_context, target_triple_, data_layout_,
-        stream_exec->platform()->Name(), stream_exec->platform()->id(),
-        gpu_device_info,
-        stream_exec->GetDeviceDescription().cuda_compute_capability(),
-        stream_exec->GetDeviceDescription().rocm_compute_capability(),
-        GetCanShareBuffer(), pointer_size_, &compile_module_results));
+
+    const std::any& target_config = options.target_config();
+    auto* gpu_target_config = std::any_cast<GpuTargetConfig>(&target_config);
+    if (gpu_target_config) {
+      TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
+          module.get(), &llvm_context, target_triple_, data_layout_,
+          gpu_target_config->platform_name, options.PlatformId(),
+          gpu_target_config->gpu_device_info,
+          gpu_target_config->cuda_compute_capability,
+          gpu_target_config->rocm_compute_capability, GetCanShareBuffer(),
+          pointer_size_, &compile_module_results));
+    } else {
+      CHECK(options.executor() != nullptr);
+      auto stream_exec = options.executor();
+      const stream_executor::DeviceDescription& device_description =
+          stream_exec->GetDeviceDescription();
+      TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
+          module.get(), &llvm_context, target_triple_, data_layout_,
+          stream_exec->platform()->Name(), options.PlatformId(),
+          GetGpuDeviceInfo(stream_exec),
+          device_description.cuda_compute_capability(),
+          device_description.rocm_compute_capability(), GetCanShareBuffer(),
+          pointer_size_, &compile_module_results));
+    }
 
     if (user_pre_optimization_hook_) {
       user_pre_optimization_hook_(*compile_module_results.llvm_module);
@@ -1540,7 +1555,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         BackendCompileResult backend_result,
         CompileToTargetBinary(
             module->config(), std::move(compile_module_results.llvm_module),
-            stream_exec, {options.device_allocator()}, module.get()));
+            options.executor(), {options.device_allocator()}, module.get()));
 
     auto& compiled_executable = compile_module_results.executable;
 
