@@ -944,7 +944,7 @@ func.func @broadcast(%arg: tensor<4x?x16xf32>) -> tensor<4x2x1x4x?x16xf32> {
 // CHECK-PRIMITIVE: %[[DIM:.*]] = tensor.dim %{{.*}}, %[[C1]] : tensor<4x?x16xf32>
 // CHECK-PRIMITIVE: %{{.*}} = tensor.empty(%[[DIM]]) : tensor<4x2x1x4x?x16xf32>
 // CHECK-PRIMITIVE: linalg.broadcast
-// CHECK-PRIMITIVE: dimensions = [3, 4, 5]
+// CHECK-PRIMITIVE:   dimensions = [3, 4, 5]
 
 // -----
 
@@ -961,6 +961,14 @@ func.func @broadcast_in_dim(%operand: tensor<5x7x1xf32>) -> tensor<7x10x6x4x5xf3
 // CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32, %{{.*}}: f32):
 // CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
+
+// CHECK-PRIMITIVE-LABEL: func @broadcast_in_dim
+// CHECK-PRIMITIVE: tensor.collapse_shape
+// CHECK-PRIMITIVE: linalg.transpose
+// CHECK-PRIMITIVE:   permutation = [1, 0]
+// CHECK-PRIMITIVE: tensor.empty() : tensor<7x10x6x4x5xf32>
+// CHECK-PRIMITIVE: linalg.broadcast
+// CHECK-PRIMITIVE:   dimensions = [0, 4]
 
 // -----
 
@@ -980,6 +988,15 @@ func.func @broadcast_in_dim_ui32(%operand: tensor<5x7x1xui32>) -> tensor<7x10x6x
 // CHECK-NEXT:   linalg.yield %[[OPERAND]] : i32
 // CHECK: builtin.unrealized_conversion_cast %[[RES]] : tensor<7x10x6x4x5xi32> to tensor<7x10x6x4x5xui32>
 
+// CHECK-PRIMITIVE-LABEL: func @broadcast_in_dim_ui32
+// CHECK-PRIMITIVE: tensor.collapse_shape
+// CHECK-PRIMITIVE: linalg.transpose
+// CHECK-PRIMITIVE:   permutation = [1, 0]
+// CHECK-PRIMITIVE: tensor.empty() : tensor<7x10x6x4x5xi32>
+// CHECK-PRIMITIVE: %[[RES:.*]] = linalg.broadcast
+// CHECK-PRIMITIVE:   dimensions = [0, 4]
+// CHECK-PRIMITIVE: builtin.unrealized_conversion_cast %[[RES]] : tensor<7x10x6x4x5xi32> to tensor<7x10x6x4x5xui32>
+
 // -----
 
 // CHECK-DAG: #[[OPERAND_MAP:.+]] = affine_map<(d0, d1) -> (d0)>
@@ -997,12 +1014,43 @@ func.func @broadcast_in_dim_with_one_to_one(
 // CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32, %{{.*}}: f32):
 // CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
 
+// CHECK-PRIMITIVE-LABEL: func @broadcast_in_dim_with_one_to_one
+// CHECK-PRIMITIVE-NOT: tensor.collapse_shape
+// CHECK-PRIMITIVE-NOT: linalg.transpose
+// CHECK-PRIMITIVE:     linalg.broadcast
+// CHECK-PRIMITIVE:       dimensions = [0]
+
+// -----
+
+// CHECK-DAG: #[[OPERAND_MAP:.+]] = affine_map<(d0, d1, d2, d3) -> (d2, d0, d1)>
+// CHECK-DAG: #[[RESULT_MAP:.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-LABEL: func @broadcast_in_dim_with_transpose
+func.func @broadcast_in_dim_with_transpose(
+         %operand: tensor<2x3x4xf32>) -> tensor<3x4x2x5xf32> {
+  %0 = "mhlo.broadcast_in_dim"(%operand)
+         {broadcast_dimensions = dense<[2, 0, 1]> : tensor<3xi64>}
+         : (tensor<2x3x4xf32>) -> tensor<3x4x2x5xf32>
+  func.return %0 : tensor<3x4x2x5xf32>
+}
+// CHECK: tensor.empty() : tensor<3x4x2x5xf32>
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32, %{{.*}}: f32):
+// CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
+
+// CHECK-PRIMITIVE-LABEL: func @broadcast_in_dim_with_transpose
+// CHECK-PRIMITIVE: tensor.empty() : tensor<3x4x2xf32>
+// CHECK-PRIMITIVE: linalg.transpose
+// CHECK-PRIMITIVE:   permutation = [1, 2, 0]
+// CHECK-PRIMITIVE: tensor.empty() : tensor<3x4x2x5xf32>
+// CHECK-PRIMITIVE: linalg.broadcast
+// CHECK-PRIMITIVE:   dimensions = [0, 1, 2]
+
 // -----
 
 // CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1, d2) -> ()>
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
-// CHECK-LABEL: func @broadcast_scalar
-func.func @broadcast_scalar(%operand: tensor<f32>) -> tensor<7x10x6xf32> {
+// CHECK-LABEL: func @broadcast_in_dim_scalar
+func.func @broadcast_in_dim_scalar(%operand: tensor<f32>) -> tensor<7x10x6xf32> {
   %0 = "mhlo.broadcast_in_dim"(%operand)
         {broadcast_dimensions = dense<[]> : tensor<0xi64>}
         : (tensor<f32>) -> tensor<7x10x6xf32>
@@ -1012,6 +1060,11 @@ func.func @broadcast_scalar(%operand: tensor<f32>) -> tensor<7x10x6xf32> {
 // CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32, %{{.*}}: f32):
 // CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
+
+// CHECK-PRIMITIVE-LABEL: func @broadcast_in_dim_scalar
+// CHECK-PRIMITIVE: tensor.empty() : tensor<7x10x6xf32>
+// CHECK-PRIMITIVE: linalg.broadcast
+// CHECK-PRIMITIVE:   dimensions = []
 
 // -----
 

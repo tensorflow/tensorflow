@@ -756,6 +756,102 @@ class HloBroadcastInDimConverter
   }
 };
 
+class BroadcastInDimOpToBroadcastConverter
+    : public OpConversionPattern<mhlo::BroadcastInDimOp> {
+ public:
+  using OpConversionPattern<mhlo::BroadcastInDimOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::BroadcastInDimOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    Location loc = op.getLoc();
+
+    auto resultTy = typeConverter->convertType(op.getType()).cast<ShapedType>();
+
+    SmallVector<int64_t> dimensions =
+        llvm::to_vector(op.getBroadcastDimensions().getValues<int64_t>());
+
+    Value operand = adaptor.getOperand();
+    operand = dropExpandedSize1Dims(rewriter, loc, operand, dimensions,
+                                    resultTy.getShape());
+    operand = transposeOperand(rewriter, loc, operand, dimensions);
+
+    Value emptyTensor =
+        getEmptyTensorFor(rewriter, loc, resultTy, op, adaptor.getOperands());
+
+    rewriter.replaceOpWithNewOp<linalg::BroadcastOp>(
+        op, operand, emptyTensor, dimensions,
+        linalg::getPrunedAttributeList(op));
+    return success();
+  }
+
+ private:
+  // Add tensor.collapse_shape to remove dimensions from the input of size 1
+  // that are not 1 in the result.
+  static Value dropExpandedSize1Dims(PatternRewriter& rewriter, Location loc,
+                                     Value operand,
+                                     SmallVector<int64_t>& dimensions,
+                                     ArrayRef<int64_t> resultShape) {
+    auto operandTy = operand.getType().cast<ShapedType>();
+    ArrayRef<int64_t> operandShape = operandTy.getShape();
+
+    SmallVector<int64_t> newOperandShape;
+    SmallVector<int64_t> newDimensions;
+
+    for (auto& [operandDim, mappedResultDim] : llvm::enumerate(dimensions)) {
+      if (operandShape[operandDim] != 1 || resultShape[mappedResultDim] == 1) {
+        newOperandShape.push_back(operandShape[operandDim]);
+        newDimensions.push_back(mappedResultDim);
+      }
+    }
+
+    // Do not insert tensor.collapse_shape if there is nothing to drop.
+    if (newOperandShape.size() == operandShape.size()) return operand;
+
+    auto newOperandType =
+        RankedTensorType::get(newOperandShape, operandTy.getElementType());
+
+    Optional<SmallVector<ReassociationIndices>> reassociationMap =
+        getReassociationIndicesForReshape(operandTy, newOperandType);
+
+    dimensions = newDimensions;
+    return rewriter.create<tensor::CollapseShapeOp>(loc, newOperandType,
+                                                    operand, *reassociationMap);
+  }
+
+  // Insert linalg.transpose if broadcasted dimensions are not in sorded order.
+  // linalg.broadcast does not support implicit transpose, so the input needs to
+  // be explicitely transposed.
+  static Value transposeOperand(PatternRewriter& rewriter, Location loc,
+                                Value operand,
+                                SmallVector<int64_t>& dimensions) {
+    // Do not insert `transpose` is dimensions are already sorted.
+    if (llvm::is_sorted(dimensions)) return operand;
+
+    SmallVector<int64_t> permutation =
+        llvm::to_vector(llvm::seq<int64_t>(0, dimensions.size()));
+    llvm::sort(permutation, [&](int64_t lhs, int64_t rhs) {
+      return dimensions[lhs] < dimensions[rhs];
+    });
+
+    auto operandTy = operand.getType().cast<ShapedType>();
+    ArrayRef<int64_t> operandShape = operandTy.getShape();
+    SmallVector<int64_t> transposedOperandShape, transposedDimensions;
+
+    for (int i = 0; i < permutation.size(); ++i) {
+      transposedOperandShape.push_back(operandShape[permutation[i]]);
+      transposedDimensions.push_back(dimensions[permutation[i]]);
+    }
+    dimensions = transposedDimensions;
+
+    return rewriter.create<mhlo::TransposeOp>(
+        loc,
+        RankedTensorType::get(transposedOperandShape,
+                              operandTy.getElementType()),
+        operand, rewriter.getI64VectorAttr(permutation));
+  }
+};
+
 // If the input has a static shape we know exactly when the broadcast must
 // expand (the dimension is 1, which also trivially expands to 1) or will never
 // expand (the dimension is not 1). We can also source the information from the
@@ -3756,7 +3852,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       BitcastConvertConverter,
       ConcatenateConverter,
       ConstConverterTensor, HloDynamicBroadcastInDimConverter,
-      HloBroadcastInDimConverter, IotaConverter<mhlo::IotaOp>,
+      IotaConverter<mhlo::IotaOp>,
       EinsumToLinalgConverter,
       IotaConverter<mhlo::DynamicIotaOp>,
       RealDynamicSliceConverter,
@@ -3776,6 +3872,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
 
   if (enablePrimitiveOps) {
     patterns->add<
+      BroadcastInDimOpToBroadcastConverter,
       BroadcastOpToBroadcastConverter,
       MapOpToMapConverter,
       PointwiseToLinalgMapConverter<mhlo::AbsOp>,
@@ -3831,6 +3928,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
   } else {
     patterns->add<
       BroadcastConverter<mhlo::BroadcastOp>,
+      HloBroadcastInDimConverter,
       MapOpToGenericConverter,
       PointwiseToLinalgConverter<mhlo::AbsOp>,
       PointwiseToLinalgConverter<mhlo::AddOp>,
