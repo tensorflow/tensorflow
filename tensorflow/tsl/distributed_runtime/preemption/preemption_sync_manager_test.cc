@@ -132,6 +132,9 @@ class PreemptionSyncManagerTest : public ::testing::Test {
         /*num_threads=*/1);
     coord_rpc_service_ = std::make_unique<GrpcCoordinationServiceImpl>(
         coord_compute_pool_.get(), &builder);
+    auto* grpc_coord_service =
+        static_cast<GrpcCoordinationServiceImpl*>(coord_rpc_service_.get());
+    grpc_coord_service->SetCoordinationServiceInstance(coord_service_.get());
     grpc_server_ = builder.BuildAndStart();
     coord_rpc_thread_ = absl::WrapUnique(Env::Default()->StartThread(
         /*thread_options=*/{}, /*name=*/"CoordinationServiceHandleRPCsLoop",
