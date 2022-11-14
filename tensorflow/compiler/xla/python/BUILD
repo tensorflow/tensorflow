@@ -239,12 +239,14 @@ cc_library(
     name = "pprof_profile_builder",
     srcs = ["pprof_profile_builder.cc"],
     hdrs = ["pprof_profile_builder.h"],
+    compatible_with = [],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":traceback",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/tsl/platform:protobuf",
