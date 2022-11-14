@@ -209,58 +209,6 @@ static se::DeviceMemoryBase GetDeviceAddress(runtime::FlatMemrefView& memref) {
 
 // -------------------------------------------------------------------------- //
 
-#if XLA_ENABLE_XCCL
-FailureOr<NcclComm::Lock> GetNcclComm(const NcclExecuteParams& params,
-                                      int64_t group_mode, int64_t op_id,
-                                      ArrayRef<int64_t> replica_group_offsets,
-                                      ArrayRef<int64_t> replica_group_values) {
-  // TODO(b/233930690): Pass the attribute below as a nested array.
-  // Pass an array of arrays using two vectors; one specifying all the values
-  // and another specifying the (ending) offsets of each array in the other
-  // vector. Example: [ [10, 20, 30, 40], [50, 60], [70, 80, 90] ] turns into
-  // offsets=[4, 6, 9] values=[10, 20, 30, 40, 50, 60, 70, 80, 90].
-  std::vector<ReplicaGroup> replica_groups;
-  int i = 0;
-  for (int64_t replica_group_end : replica_group_offsets) {
-    ReplicaGroup replica_group;
-    while (i < replica_group_end)
-      replica_group.add_replica_ids(replica_group_values[i++]);
-    replica_groups.push_back(replica_group);
-  }
-
-  auto comm =
-      LockNcclComm(params, replica_groups,
-                   static_cast<CollectiveOpGroupMode>(group_mode), op_id);
-  if (comm.ok()) return std::move(comm.value());
-  return failure();
-}
-#endif  // XLA_ENABLE_XCCL
-
-FailureOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
-    CustomCall::RemainingArgs& args) {
-  // Add MemRef arguments as buffer arguments.
-  const int buffer_pairs = args.size() / 2;
-  std::vector<DeviceBufferPair> device_buffers;
-  device_buffers.reserve(buffer_pairs);
-  for (int i = 0; i < buffer_pairs; ++i) {
-    auto source = args.get<runtime::StridedMemrefView>(i);
-    auto destination = args.get<runtime::StridedMemrefView>(i + buffer_pairs);
-    if (failed(source) || failed(destination)) {
-      // Unsupported argument type.
-      return failure();
-    }
-
-    int element_count = 1;
-    for (int size : source->sizes) element_count *= size;
-    device_buffers.emplace_back(DeviceBufferPair{
-        source->dtype, element_count, GetDeviceAddress(*source),
-        GetDeviceAddress(*destination)});
-  }
-  return device_buffers;
-}
-
-// -------------------------------------------------------------------------- //
-
 namespace {
 
 // TODO(ezhulenev): Today XLA represents TriangularSolve as a "classic" XLA
@@ -507,91 +455,6 @@ static bool CustomCall(runtime::ExecutionContext* ctx, void** args,
 
 // -------------------------------------------------------------------------- //
 
-namespace {
-struct ReplicaId {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          runtime::FlatMemrefView result) const;
-  static ReplicaId Handler() { return ReplicaId(); }
-};
-}  // namespace
-
-absl::Status ReplicaId::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    runtime::FlatMemrefView result) const {
-  VLOG(3) << "Running ReplicaId";
-  se::Stream* stream = run_options->stream();
-  NcclExecuteParams params(*run_options, stream);
-
-  StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
-  if (!global_device_id.ok()) return ToAbslStatus(global_device_id.status());
-
-  StatusOr<DeviceAssignment::LogicalID> logical_id =
-      params.device_assn->LogicalIdForDevice(global_device_id.value());
-  if (!logical_id.ok()) return ToAbslStatus(logical_id.status());
-
-  se::DeviceMemoryBase result_data = GetDeviceAddress(result);
-  params.stream->ThenMemset32(&result_data, logical_id.value().replica_id,
-                              /*size=*/4);
-
-  return absl::OkStatus();
-}
-
-static bool ReplicaId(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                      void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.replica_id")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<runtime::FlatMemrefView>()  // result
-                             .To<RuntimeChecks()>(ReplicaId::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
-
-// -------------------------------------------------------------------------- //
-
-namespace {
-struct PartitionId {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          runtime::FlatMemrefView result) const;
-  static PartitionId Handler() { return PartitionId(); }
-};
-}  // namespace
-
-absl::Status PartitionId::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    runtime::FlatMemrefView result) const {
-  VLOG(3) << "Running PartitionId";
-  se::Stream* stream = run_options->stream();
-  NcclExecuteParams params(*run_options, stream);
-
-  StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
-  if (!global_device_id.ok()) return ToAbslStatus(global_device_id.status());
-
-  StatusOr<DeviceAssignment::LogicalID> logical_id =
-      params.device_assn->LogicalIdForDevice(global_device_id.value());
-  if (!logical_id.ok()) return ToAbslStatus(logical_id.status());
-
-  se::DeviceMemoryBase result_data = GetDeviceAddress(result);
-  params.stream->ThenMemset32(&result_data, logical_id.value().computation_id,
-                              /*size=*/4);
-
-  return absl::OkStatus();
-}
-
-static bool PartitionId(runtime::ExecutionContext* ctx, void** args,
-                        void** attrs, void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.partition_id")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<runtime::FlatMemrefView>()  // result
-                             .To<RuntimeChecks()>(PartitionId::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
-
-// -------------------------------------------------------------------------- //
 
 // Populate mapping from XLA (SE) enums/structs type id to symbol names.
 void PopulateXlaGpuTypeIdNames(TypeIDNameRegistry& registry) {
@@ -639,10 +502,6 @@ void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   RegisterMemcpyCustomCalls(registry);
   RegisterIoFeedCustomCalls(registry);
   RegisterMemsetCustomCalls(registry);
-
-  // Collective operations.
-  registry.Register("xla.gpu.partition_id", &xla::gpu::PartitionId);
-  registry.Register("xla.gpu.replica_id", &xla::gpu::ReplicaId);
 }
 
 }  // namespace gpu

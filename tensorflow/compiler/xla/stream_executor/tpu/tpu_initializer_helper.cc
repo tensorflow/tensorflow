@@ -173,13 +173,14 @@ stream_executor::port::Status TryAcquireTpuLock() {
       auto pid = FindLibtpuProcess();
       if (pid.ok()) {
         return tsl::errors::Aborted(absl::StrCat(
-            "libtpu.so is already in use by process with pid ", pid.value(),
+            "The TPU is already in use by process with pid ", pid.value(),
             ". Not attempting to load libtpu.so in this process."));
       } else {
         return tsl::errors::Aborted(
-            "libtpu.so already in use by another process probably owned by "
+            "The TPU is already in use by another process probably owned by "
             "another user. Run \"$ sudo lsof -w /dev/accel0\" to figure out "
-            "which process is using the TPU. Not attempting to load "
+            "which process is using the TPU. If you still get this message, "
+            "run \"$ sudo rm /tmp/libtpu_lockfile\". Not attempting to load "
             "libtpu.so in this process.");
       }
     } else {

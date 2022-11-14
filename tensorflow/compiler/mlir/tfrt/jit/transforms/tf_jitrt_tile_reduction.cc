@@ -212,9 +212,8 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
           // Create `linalg.generic` to combine
           // `tensor<(TILE_SIZE/VECTOR_SIZE)xVECTOR_SIZExELEM_TYPE> input with
           // the `tensor<VECTOR_SIZExELEM_TYPE>` output.
-          SmallVector<mlir::StringRef, 2> iter_types{
-              mlir::getReductionIteratorTypeName(),
-              mlir::getParallelIteratorTypeName()};
+          SmallVector<IteratorType, 2> iter_types{IteratorType::reduction,
+                                                  IteratorType::parallel};
           SmallVector<mlir::AffineMap, 2> indexing_maps(
               inputs.size(), rewriter.getMultiDimIdentityMap(2));
           indexing_maps.push_back(
@@ -343,8 +342,8 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
   FailureOr<GenericOp> ReduceVectorIntoOutput(PatternRewriter &rewriter,
                                               LinalgOp linalg_op,
                                               Value partial_result) const {
-    SmallVector<mlir::StringRef, 3> reduction_iter_type(
-        1, mlir::getReductionIteratorTypeName());
+    SmallVector<IteratorType, 3> reduction_iter_type(1,
+                                                     IteratorType::reduction);
     auto map = mlir::AffineMap::get(1, 0, llvm::None, rewriter.getContext());
 
     auto combiner_or = DetectCombiner(linalg_op);

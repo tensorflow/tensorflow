@@ -61,6 +61,11 @@ LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
         return kHighCost;
       }
       break;
+    case HloOpcode::kAsyncStart:
+      if (target.GetInstr().opcode() == HloOpcode::kAsyncDone) {
+        return kHighCost;
+      }
+      break;
     case HloOpcode::kAllGatherStart:
       if (target.GetInstr().opcode() == HloOpcode::kAllGatherDone) {
         return kHighCost;
@@ -98,6 +103,7 @@ LatencyEstimator::TimeCost ApproximateLatencyEstimator::NodeCost(
 bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
   if (hlo.opcode() == HloOpcode::kAsyncDone) {
     switch (hlo.async_wrapped_opcode()) {
+      case HloOpcode::kAllToAll:
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
       case HloOpcode::kCollectivePermute:
@@ -123,6 +129,7 @@ bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
 bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
   if (hlo.opcode() == HloOpcode::kAsyncStart) {
     switch (hlo.async_wrapped_opcode()) {
+      case HloOpcode::kAllToAll:
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
       case HloOpcode::kCollectivePermute:
@@ -149,6 +156,9 @@ ResourcesVector AsyncTracker::GetResourcesFromInstruction(
   switch (hlo.opcode()) {
     case HloOpcode::kAsyncStart:
       switch (hlo.async_wrapped_opcode()) {
+        case HloOpcode::kAllToAll:
+          return ResourcesVector{std::make_pair(
+              ResourceType::kAllToAll, ResourceUsageType::kResourceRelease)};
         case HloOpcode::kAllGather:
           return ResourcesVector{std::make_pair(
               ResourceType::kAllGather, ResourceUsageType::kResourceRelease)};
@@ -194,6 +204,9 @@ ResourcesVector AsyncTracker::GetResourcesFromInstruction(
                                ResourceUsageType::kResourceRelease)};
     case HloOpcode::kAsyncDone:
       switch (hlo.async_wrapped_opcode()) {
+        case HloOpcode::kAllToAll:
+          return ResourcesVector{std::make_pair(
+              ResourceType::kAllToAll, ResourceUsageType::kResourceOccupy)};
         case HloOpcode::kAllGather:
           return ResourcesVector{std::make_pair(
               ResourceType::kAllGather, ResourceUsageType::kResourceOccupy)};
@@ -246,7 +259,9 @@ int64_t AsyncTracker::CollectivesPerInstruction(
     ResourceType async_done, const HloInstruction& instr) const {
   // For instructions not calling a computation then return 1 if the instruction
   // has opcode equal to 'async_done'
-  if (instr.called_computations().empty()) {
+  if (instr.called_computations().empty() ||
+      instr.opcode() == HloOpcode::kAsyncStart ||
+      instr.opcode() == HloOpcode::kAsyncDone) {
     auto resources = GetResourcesFromInstruction(instr);
     return absl::c_any_of(GetResourcesFromInstruction(instr),
                           [async_done](const ResourcePair& resource) {
@@ -1215,6 +1230,8 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
   XLA_VLOG_LINES(5, sched_state.sched_graph.ToString());
   sched_state.max_concurrent_async[ResourceType::kCollectivePermute] =
       config_.collective_permute_overlap_limit;
+  sched_state.max_concurrent_async[ResourceType::kAllToAll] =
+      config_.all_to_all_overlap_limit;
   sched_state.max_concurrent_async[ResourceType::kAllGather] =
       config_.all_gather_overlap_limit;
   sched_state.max_concurrent_async[ResourceType::kAllReduce] =

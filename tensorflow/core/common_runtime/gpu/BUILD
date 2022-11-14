@@ -161,6 +161,10 @@ tf_cuda_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
         ":gpu_virtual_mem_allocator",
     ],
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow_models:__subpackages__",
+    ],
     deps = [
         ":gpu_bfc_allocator",
         ":gpu_cudamallocasync_allocator",

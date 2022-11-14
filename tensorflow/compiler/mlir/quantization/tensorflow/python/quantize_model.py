@@ -994,6 +994,26 @@ def _verify_output_dir(output_dir: Optional[str], overwrite: bool) -> None:
                           'overwrite the existing directory.')
 
 
+def _populate_quantization_options_default_values(
+    quantization_options: quant_opts_pb2.QuantizationOptions) -> None:
+  """Populates default values for QuantizationOptions.
+
+  Populates unspecified or unset fields of QuantizationOptions with the default
+  values.
+
+  * If `op_set` is unspecified, it defaults to `OpSet.TF`.
+  * If `freeze_all_variables` is not set, it defaults to `True`.
+
+  Args:
+    quantization_options: An instance of QuantizationOptions.
+  """
+  if quantization_options.op_set == quant_opts_pb2.OpSet.OP_SET_UNSPECIFIED:
+    quantization_options.op_set = quant_opts_pb2.OpSet.TF
+
+  if not quantization_options.HasField('freeze_all_variables'):
+    quantization_options.freeze_all_variables.enabled = True
+
+
 def quantize(
     saved_model_path: str,
     signature_keys: Optional[Sequence[str]] = None,
@@ -1038,17 +1058,19 @@ def quantize(
       implemented.
   """
   _verify_output_dir(output_directory, overwrite_output_directory)
+
+  # Set default values for None arguments.
   if output_directory is None:
     output_directory = tempfile.mkdtemp()
 
-  # Set default values for None arguments.
   if quantization_options is None:
     quantization_options = quant_opts_pb2.QuantizationOptions()
-  if quantization_options.op_set == quant_opts_pb2.OpSet.OP_SET_UNSPECIFIED:
-    quantization_options.op_set = quant_opts_pb2.OpSet.TF
+
+  _populate_quantization_options_default_values(quantization_options)
 
   if tags is None:
     tags = {tag_constants.SERVING}
+
   if signature_keys is None:
     signature_keys = [signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
 

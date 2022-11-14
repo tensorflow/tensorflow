@@ -185,7 +185,8 @@ def transform_function(
     func_graph = function_def_lib.function_def_to_graph(
         fndef,
         structured_input_signature=structured_input_signature,
-        structured_outputs=structured_outputs_signature)
+        structured_outputs=structured_outputs_signature,
+        propagate_device_spec=True)
 
   # Set handle data.
   for i, output in enumerate(cf.outputs):
@@ -245,14 +246,15 @@ def transform_eager_defined_function(
     func_graph = function_def_lib.function_def_to_graph(
         fndef,
         structured_input_signature=f.graph.structured_input_signature,
-        structured_outputs=f.graph.structured_outputs)
+        structured_outputs=f.graph.structured_outputs,
+        propagate_device_spec=True)
 
   # pylint: disable=protected-access
   # Ref: third_party/tensorflow/python/ops/control_flow_util_v2.py
   # Generate a new `_EagerDefinedFunction`.
   edf = function_lib._EagerDefinedFunction(fndef.signature.name, func_graph,
                                            func_graph.inputs,
-                                           func_graph.outputs, {})
+                                           func_graph.outputs, fndef.attr)
   # pylint: enable=protected-access
 
   return edf

@@ -918,7 +918,7 @@ class Interpreter {
   // An empty one means there's no delegate to be applied by default or
   // delegates have been applied and doesn't need to be applied again.
   using TfLiteDelegateCreator =
-      std::function<TfLiteDelegatePtr(int /*num_threads*/)>;
+      std::function<TfLiteDelegatePtr(TfLiteContext* /*context*/)>;
   using TfLiteDelegateCreators = std::vector<TfLiteDelegateCreator>;
   TfLiteDelegateCreators lazy_delegate_providers_;
 

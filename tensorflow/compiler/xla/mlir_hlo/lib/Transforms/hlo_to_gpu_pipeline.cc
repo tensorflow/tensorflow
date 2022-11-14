@@ -17,7 +17,7 @@ limitations under the License.
 /// written in a combination of LLVM and NVVM dialects.
 
 #include "gml_st/transforms/passes.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mhlo/transforms/passes.h"
 #include "mlir-hlo/Transforms/gpu_passes.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
@@ -64,6 +64,13 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
     // Simplify unit dimension.
     pm.addPass(mlir::createLinalgFoldUnitExtentDimsPass());
 
+    // Collapse all but the trailing reduction/bcast dimension.
+    pm.addNestedPass<FuncOp>(
+        gml_st::createCollapseShapePass({/*retainTrailingDims=*/1}));
+    // Merge multiple occurences of collapsed operand. This is needed to detect
+    // the softmax pattern later.
+    pm.addNestedPass<FuncOp>(mlir::createCSEPass());
+
     // Tile parallel dimensions of the softmax-like patterns and distribute them
     // across warps. Warps remain independant of each other.
     pm.addNestedPass<FuncOp>(gml_st::createTilingSoftmaxPass(
@@ -72,7 +79,7 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
         /*distribute=*/true, warpTileDim, kWarpDistributionLabel));
 
     // GPU-specific tiling for ops on the warp level.
-    pm.addNestedPass<FuncOp>(gml_st::createTilingGPUWarpPass());
+    pm.addNestedPass<FuncOp>(gml_st::createTilingGpuWarpPass());
     pm.addNestedPass<FuncOp>(createScalarizationPass());
 
     pm.addNestedPass<FuncOp>(gml_st::createVectorizeGmlStLoopsPass(
@@ -135,7 +142,9 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
   pm.addNestedPass<GPUModuleOp>(createGpuKernelToNvvmPass());
 #endif
   pm.addPass(createPropagateStaticShapesToKernelPass());
-  pm.addNestedPass<GPUModuleOp>(createCSEPass());
+  // We do not do this as a nested pass in order to properly clean the host
+  // side of the generated code.
+  pm.addPass(createCSEPass());
   // Some instructions crash ptxas down the line if they have debug info
   // attached.
   pm.addNestedPass<GPUModuleOp>(createStripDebugInfoPass());

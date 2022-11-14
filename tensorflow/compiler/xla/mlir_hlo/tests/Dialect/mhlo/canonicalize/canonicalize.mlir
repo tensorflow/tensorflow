@@ -2615,3 +2615,20 @@ func.func @simplify_dynamic_gather(%arg0: tensor<375682x256xf16>, %arg1: tensor<
   // CHECK: return %[[RET]]
   return %1 : tensor<16x64x256xf16>
 }
+
+// CHECK-LABEL: @fold_reduce_window
+func.func @fold_reduce_window(%arg0: tensor<1x1x20xf32>) -> tensor<1x1x20xf32> {
+  %cst_0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %r = "mhlo.reduce_window"(%arg0, %cst_0) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %s = mhlo.add %arg1, %arg2 : tensor<f32>
+    mhlo.return %s : tensor<f32>
+  }) {
+    padding = dense<0> : tensor<3x2xi64>,
+    window_dimensions = dense<1> : tensor<3xi64>,
+    window_strides = dense<1> : tensor<3xi64>
+  } : (tensor<1x1x20xf32>, tensor<f32>) -> tensor<1x1x20xf32>
+  func.return %r : tensor<1x1x20xf32>
+
+  // CHECK: return %arg0 : tensor<1x1x20xf32>
+}

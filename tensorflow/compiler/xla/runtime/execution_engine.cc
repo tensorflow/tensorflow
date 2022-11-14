@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/TargetSelect.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
 
 namespace xla {
@@ -331,6 +332,14 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
   return std::move(engine);
 }
 
+static void InitializeLlvmNativeTarget() {
+  static const bool initialized = [] {
+    llvm::InitializeNativeTarget();
+    return true;
+  }();
+  (void)initialized;
+}
+
 /*static*/ StatusOr<std::unique_ptr<ExecutionEngine>>
 ExecutionEngine::CreateFromObjFile(
     std::unique_ptr<llvm::MemoryBuffer> obj_file, AotOptions options,
@@ -354,6 +363,9 @@ ExecutionEngine::CreateFromObjFile(
 
     return obj_layer;
   };
+
+  // Initialize LLVM native target before constructing LLJIT.
+  InitializeLlvmNativeTarget();
 
   // Construct the LLJIT with the given compiler and object linking layers.
   auto jit = llvm::orc::LLJITBuilder()

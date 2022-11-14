@@ -599,11 +599,10 @@ TEST(SavedModelTest, UseMira) {
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
 
-  tensorflow::Status status;
   auto saved_model =
       SavedModelMiraImpl::LoadSavedModel(options, saved_model_dir,
-                                         /*tags=*/{"serve"}, &status);
-  TF_CHECK_OK(status);
+                                         /*tags=*/{"serve"});
+  TF_CHECK_OK(saved_model.status());
 
   // Set input 'x' to [[1, 1, 1]]
   std::vector<tensorflow::Tensor> inputs;
@@ -613,7 +612,7 @@ TEST(SavedModelTest, UseMira) {
   tfrt::SavedModel::RunOptions run_options;
 
   std::vector<tensorflow::Tensor> outputs;
-  TF_ASSERT_OK(saved_model->Run(run_options, "toy", inputs, &outputs));
+  TF_ASSERT_OK((*saved_model)->Run(run_options, "toy", inputs, &outputs));
   ASSERT_EQ(outputs.size(), 1);
 
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),

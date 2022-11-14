@@ -65,8 +65,23 @@ namespace quantization {
 namespace internal {
 namespace {
 
-void AddExportPasses(mlir::PassManager &pm) {
+// Add passes for transforming the MLIR module op so that it can be exported
+// back to GraphDef. Roughly, this consists of:
+//   1) Inserting the @main function, which will become the main Graph.
+//   2) [Experimental] Unfreezing constants into variables.
+//   3) Converting TF dialect -> tf_executor dialect.
+//   4) Adding initializer function's ops into @main function for correct
+//      resource initialization when loading the exported model.
+//
+// Setting `freeze_all_variables` to `false` is an experimental feature that has
+// no stability guarantees.
+void AddExportPasses(const bool freeze_all_variables, mlir::PassManager &pm) {
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
+
+  if (!freeze_all_variables) {
+    pm.addPass(mlir::quant::CreateUnfreezeConstantsPass());
+  }
+
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(mlir::CreateBreakUpIslandsPass());
@@ -87,8 +102,8 @@ std::string GetInitNodeName(
   return "";
 }
 
-ExportedModel CreateExportedModel(GraphDef &&graph_def,
-                                  const absl::string_view init_node_name) {
+[[nodiscard]] ExportedModel CreateExportedModel(
+    GraphDef &&graph_def, const absl::string_view init_node_name) {
   ExportedModel exported_model{};
   *exported_model.mutable_graph_def() = graph_def;
   exported_model.set_init_node_name(std::string(init_node_name));
@@ -255,7 +270,7 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
   }
 
   AddQuantizeQatPasses(pm, quantization_options);
-  AddExportPasses(pm);
+  AddExportPasses(quantization_options.freeze_all_variables().enabled(), pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {
@@ -323,7 +338,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   }
 
   AddQuantizePtqPreCalibrationPasses(pm, quantization_options);
-  AddExportPasses(pm);
+  AddExportPasses(quantization_options.freeze_all_variables().enabled(), pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {
@@ -385,7 +400,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   }
 
   AddQuantizePtqPostCalibrationPasses(pm, quantization_options);
-  AddExportPasses(pm);
+  AddExportPasses(quantization_options.freeze_all_variables().enabled(), pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {
@@ -454,7 +469,7 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
   }
 
   AddQuantizePtqDynamicRangePasses(pm, quantization_options);
-  AddExportPasses(pm);
+  AddExportPasses(quantization_options.freeze_all_variables().enabled(), pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {

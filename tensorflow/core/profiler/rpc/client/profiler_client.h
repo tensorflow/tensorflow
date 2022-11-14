@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/profiler_analysis.grpc.pb.h"
-#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/profiler_analysis.grpc.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 
 namespace tensorflow {
 namespace profiler {

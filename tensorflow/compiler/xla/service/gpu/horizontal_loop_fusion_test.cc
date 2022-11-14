@@ -38,7 +38,12 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class HorizontalLoopFusionTest : public HloTestBase {};
+class HorizontalLoopFusionTest : public HloTestBase {
+ public:
+  static bool IsFusion(const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kFusion;
+  }
+};
 
 TEST_F(HorizontalLoopFusionTest, BasicTest) {
   auto module = ParseAndReturnVerifiedModule(R"(
@@ -524,14 +529,9 @@ TEST_F(HorizontalLoopFusionTest, IterativeHorizontalFusion) {
 
   // Verify that the total number of fusion instructions is 2 so that we
   // know sqrt.0 and sqrt.1 are fused.
-  size_t total_fusion_instrs = 0;
-  for (const HloInstruction* instr :
-       module->entry_computation()->instructions()) {
-    if (instr->opcode() == HloOpcode::kFusion) {
-      ++total_fusion_instrs;
-    }
-  }
-  EXPECT_EQ(total_fusion_instrs, 2);
+  EXPECT_EQ(
+      absl::c_count_if(module->entry_computation()->instructions(), IsFusion),
+      2);
 }
 
 TEST_F(HorizontalLoopFusionTest, TraversalOrder) {
@@ -593,14 +593,9 @@ TEST_F(HorizontalLoopFusionTest, TraversalOrder) {
   // know all the sqrt instructions are fused into a kernel. Note that if we
   // traverse from def-to-use (i.e., top-to-down) instead of use-to-def, we
   // will end up having 3 fusions instead of 2.
-  size_t total_fusion_instrs = 0;
-  for (const HloInstruction* instr :
-       module->entry_computation()->instructions()) {
-    if (instr->opcode() == HloOpcode::kFusion) {
-      ++total_fusion_instrs;
-    }
-  }
-  EXPECT_EQ(total_fusion_instrs, 2);
+  EXPECT_EQ(
+      absl::c_count_if(module->entry_computation()->instructions(), IsFusion),
+      2);
 }
 
 // Simplified reproducer for Google bug b/242287055.
@@ -670,14 +665,9 @@ ENTRY main {
   VLOG(2) << module->ToString();
 
   // Verify that the total number of fusion instructions is 1.
-  size_t total_fusion_instrs = 0;
-  for (const HloInstruction* instr :
-       module->entry_computation()->instructions()) {
-    if (instr->opcode() == HloOpcode::kFusion) {
-      ++total_fusion_instrs;
-    }
-  }
-  EXPECT_EQ(total_fusion_instrs, 1);
+  EXPECT_EQ(
+      absl::c_count_if(module->entry_computation()->instructions(), IsFusion),
+      1);
 
   const HloInstruction* entry_root =
       module->entry_computation()->root_instruction();

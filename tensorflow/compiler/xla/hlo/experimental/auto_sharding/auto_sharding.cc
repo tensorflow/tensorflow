@@ -1686,8 +1686,12 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
               /* have_memory_cost= */ true, leaf_strategies, cluster_env,
               trimmed_strategy_map);
         } else if (ins->has_sharding()) {
-          strategies = CreateLeafStrategyVector(instruction_id, ins,
-                                                strategy_map, leaf_strategies);
+          if (ins->shape().IsTuple()) {
+            strategies = CreateTupleStrategyVector(instruction_id);
+          } else {
+            strategies = CreateLeafStrategyVector(
+                instruction_id, ins, strategy_map, leaf_strategies);
+          }
         } else if (OutputInputSameShapes(ins)) {
           auto* partitioner =
               GetCustomCallPartitioner(ins->custom_call_target());
@@ -1703,10 +1707,25 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                 trimmed_strategy_map);
           }
         } else {
-          strategies = CreateLeafStrategyVector(instruction_id, ins,
-                                                strategy_map, leaf_strategies);
-          AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                                strategies, replicated_penalty);
+          // TODO (b/258723035) Handle CustomCall ops for GPUs in a better way.
+          if (ins->shape().IsTuple()) {
+            strategies = CreateTupleStrategyVector(instruction_id);
+            strategies->childs.reserve(ins->shape().tuple_shapes_size());
+            for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
+              std::unique_ptr<StrategyVector> child_strategies =
+                  CreateLeafStrategyVector(instruction_id, ins, strategy_map,
+                                           leaf_strategies);
+              AddReplicatedStrategy(ins, ins->shape().tuple_shapes(i),
+                                    cluster_env, strategy_map, child_strategies,
+                                    replicated_penalty);
+              strategies->childs.push_back(std::move(child_strategies));
+            }
+          } else {
+            strategies = CreateLeafStrategyVector(
+                instruction_id, ins, strategy_map, leaf_strategies);
+            AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
+                                  strategies, replicated_penalty);
+          }
         }
         break;
       }

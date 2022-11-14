@@ -666,8 +666,8 @@ tensorflow::Status SavedModelImpl::Run(
   if (run_options.validate_input_specs_dry_run) {
     const auto status = IsInputSpecsCorrect(name, sig_iter->second, inputs);
     if (!status.ok()) {
-      LOG(ERROR) << "TFRT input specs validation failed: "
-                 << status.error_message();
+      LOG_EVERY_N_SEC(ERROR, 5)
+          << "TFRT input specs validation failed: " << status.error_message();
     }
   }
   std::vector<tensorflow::Tensor> captures;

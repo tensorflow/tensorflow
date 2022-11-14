@@ -20492,6 +20492,30 @@ func InplaceUpdate(scope *Scope, x tf.Output, i tf.Output, v tf.Output) (y tf.Ou
 	return op.Output(0)
 }
 
+// An op that interleaves the indices tensor value tensor into an xla tuple.
+//
+// An op that interleaves the indices tensor value tensor into an xla tuple.
+//
+// Arguments:
+//
+//	indices: A rank-1 tensor of indices, for example [1, 2, 3, 4]
+//	values: A rank-1 tensor of values. For example (0.1, 0.2, 0.3, 0.5). It must have same length as indices.
+//
+// Returns An xla tuple, for this example, the output should be (1, 0.1, 2, 0.2, 3, 0.3, 4, 0.5)
+func InterleaveTensorsToXLATuple(scope *Scope, indices tf.Output, values tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "InterleaveTensorsToXLATuple",
+		Input: []tf.Input{
+			indices, values,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes the reciprocal of x element-wise.
 //
 // I.e., \\(y = 1 / x\\).
@@ -46949,6 +46973,52 @@ func SplitV(scope *Scope, value tf.Output, size_splits tf.Output, axis tf.Output
 		return
 	}
 	return output
+}
+
+// SplitXLATupleToTensorsAttr is an optional argument to SplitXLATupleToTensors.
+type SplitXLATupleToTensorsAttr func(optionalAttr)
+
+// SplitXLATupleToTensorsIndicesType sets the optional indices_type attribute to value.
+//
+// value: {int32, int64} = DT_INT32
+// If not specified, defaults to DT_INT32
+func SplitXLATupleToTensorsIndicesType(value tf.DataType) SplitXLATupleToTensorsAttr {
+	return func(m optionalAttr) {
+		m["indices_type"] = value
+	}
+}
+
+// An op that splits an xla tuple to a tensor of indices and a tensor of values.
+//
+// An op that splits an xla tuple to a tensor of indices and a tensor of values.
+//
+// Arguments:
+//
+//	input: An xla tuple. For example (1, 0.1, 2, 0.2, 3, 0.3, 4, 0.4)
+//	values_type: {half, bfloat16, float, int32, uint32, int64}
+//	output_shape: Indices tensor shape. indices and value tensors must have same shape.
+//
+// Returns:
+//
+//	indices: A rank-1 tensor of odd elements of `input`. Such as [1, 2, 3, 4]
+//	values: A rank-1 tensor of even elements of `input`. Such as [0.1, 0.2, 0.3, 0.4].
+func SplitXLATupleToTensors(scope *Scope, input tf.Output, values_type tf.DataType, output_shape tf.Shape, optional ...SplitXLATupleToTensorsAttr) (indices tf.Output, values tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"values_type": values_type, "output_shape": output_shape}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "SplitXLATupleToTensors",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
 }
 
 // Creates a dataset that executes a SQL query and emits rows of the result set.

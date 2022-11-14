@@ -1107,18 +1107,20 @@ typedef struct TfLiteOpaqueDelegateBuilder {
 
 // Creates an opaque delegate and returns its address.  The opaque delegate will
 // behave according to the provided 'opaque_delegate_builder'.  The lifetime of
-// the fields within the 'opaque_delegate_builder' must outlive any interaction
-// between the runtime and the returned 'TfLiteOpaqueDelegateStruct'.  The
-// returned address should be passed to 'TfLiteOpaqueDelegateDelete' for
-// deletion.  If 'opaque_delegate_builder' is a null pointer, then a null
-// pointer will be returned.
+// the objects pointed to by any of the fields within the
+// 'opaque_delegate_builder' must outlive the returned
+// 'TfLiteOpaqueDelegateStruct' and any 'TfLiteInterpreter',
+// 'TfLiteInterpreterOptions', 'tflite::Interpreter', or
+// 'tflite::InterpreterBuilder' that the delegate is added to.  The returned
+// address should be passed to 'TfLiteOpaqueDelegateDelete' for deletion.  If
+// 'opaque_delegate_builder' is a null pointer, then a null pointer will be
+// returned.
 struct TfLiteOpaqueDelegateStruct* TfLiteOpaqueDelegateCreate(
     const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder);
 
 // Deletes the provided opaque 'delegate'.  This function has no effect if the
 // 'delegate' is a null pointer.
-void TfLiteOpaqueDelegateDelete(
-    const struct TfLiteOpaqueDelegateStruct* delegate);
+void TfLiteOpaqueDelegateDelete(struct TfLiteOpaqueDelegateStruct* delegate);
 
 #ifdef __cplusplus
 }  // extern "C"

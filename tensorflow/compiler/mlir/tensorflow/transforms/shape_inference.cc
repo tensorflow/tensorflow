@@ -496,8 +496,8 @@ LogicalResult ComputeInputsRequiredForOutput(ValuePort value_port,
   auto& port = value_port.port;
   if (!op) return failure();
 
-  // No inputs required for constants.
-  if (matchPattern(op, m_Constant())) return success();
+  // No inputs required for constants and ShapeOp.
+  if (matchPattern(op, m_Constant()) || isa<TF::ShapeOp>(op)) return success();
 
   // Note: this focusses only on the trivial pack op case and this could be
   // generalized.
@@ -550,6 +550,30 @@ Attribute ComputeOutputComponent(const ValuePort& value_port,
     if (port.size() != 2 || port[0] != 0) return nullptr;
     ValuePort op_port(op->getOperand(port[1]));
     return values(op_port);
+  }
+
+  if (auto shape_op = dyn_cast<TF::ShapeOp>(op)) {
+    // No shape available in an unranked tensor type.
+    auto operand_ty =
+        shape_op.getOperand().getType().dyn_cast<RankedTensorType>();
+    if (!operand_ty) return nullptr;
+
+    // Shape op has a single output so the first element should always be zero
+    // and the second element of port points to a particular element in the
+    // shape result.
+    if (port.size() != 2 || port[0] != 0 || port[1] >= operand_ty.getRank())
+      return nullptr;
+
+    // If the dim is dynamic, the dimension can't be inferred during
+    // compilation.
+    int64_t dim = operand_ty.getDimSize(port[1]);
+    if (dim == ShapedType::kDynamicSize) return nullptr;
+
+    // Create an elements attribute for the particular dimension.
+    Type element_ty = getElementTypeOrSelf(shape_op.getType());
+    APInt dim_value(element_ty.getIntOrFloatBitWidth(), dim);
+    auto component_ty = RankedTensorType::get({1}, element_ty);
+    return DenseElementsAttr::get(component_ty, {dim_value});
   }
 
   if (auto graph = dyn_cast<tf_executor::GraphOp>(op)) {

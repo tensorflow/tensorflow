@@ -147,6 +147,12 @@ def if_android_arm(a):
         "//conditions:default": [],
     })
 
+def if_not_android(a):
+    return select({
+        clean_dep("//tensorflow/tsl:android"): [],
+        "//conditions:default": a,
+    })
+
 def if_linux_x86_64(a):
     return select({
         clean_dep("//tensorflow/tsl:linux_x86_64"): a,

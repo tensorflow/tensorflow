@@ -451,7 +451,6 @@ struct LoopLikeOpVectorizationPattern : public OpRewritePattern<LoopLikeOp> {
           op, "shoud not use set_yield accumulators");
     }
 
-    Location loc = op.getLoc();
     BlockAndValueMapping bvm;
 
     auto vectorLoopLikeOp = vectorizeLoopLikeOp(op, bvm, rewriter);

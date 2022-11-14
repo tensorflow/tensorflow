@@ -51,6 +51,13 @@ using ::testing::Not;
 
 class CudnnFusedConvRewriterHloTest : public HloTestBase {
  public:
+  se::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
+  }
+
   CudnnFusedConvRewriterHloTest()
       : HloTestBase(/*verifier_layout_sensitive=*/false,
                     /*allow_mixed_precision_in_hlo_verifier=*/false,
@@ -58,6 +65,14 @@ class CudnnFusedConvRewriterHloTest : public HloTestBase {
 };
 
 class CudnnFusedConvRewriterTest : public GpuCodegenTest {
+ public:
+  se::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
+  }
+
  protected:
   std::string GetOptimizedHlo(absl::string_view hlo_string) {
     // cudnn_vectorize_convolutions transforms convolutions, making it hard to
@@ -162,6 +177,34 @@ TEST_F(CudnnFusedConvRewriterTest, TestBias) {
       broadcasted_bias = TYPE[1,3,3,64] broadcast(bias), dimensions={3}
       add1 = TYPE[1,3,3,64] add(conv, broadcasted_bias)
       ROOT relu = TYPE[1,3,3,64] maximum(zeros, add1)
+    })");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestElu) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Conv-Bias-Elu fusion is supported and recommended with "
+                    "the Nvidia Ampere+ GPUs.";
+  }
+  // sum = conv(x, w) + bias
+  // select(compare(sum, 0, GT), sum, exponential-minus-one(sum));
+  TestMatchWithAllTypes(R"(
+    HloModule Test
+
+    ENTRY Test {
+      zero = TYPE[] constant(0)
+      zeros = TYPE[1,3,3,64] broadcast(zero), dimensions={}
+
+      input = TYPE[1,3,3,64] parameter(0)
+      filter = TYPE[3,3,64,64] parameter(1)
+      bias = TYPE[64] parameter(2)
+
+      conv = TYPE[1,3,3,64] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, feature_group_count=1
+      broadcasted_bias = TYPE[1,3,3,64] broadcast(bias), dimensions={3}
+      sum = TYPE[1,3,3,64] add(conv, broadcasted_bias)
+      cmp = pred[1,3,3,64] compare(sum, zeros), direction=GT
+      expm1 = TYPE[1,3,3,64] exponential-minus-one(sum)
+      ROOT elu = TYPE[1,3,3,64] select(cmp, sum, expm1)
     })");
 }
 
@@ -446,7 +489,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToFloat) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
@@ -478,7 +521,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToInt8BiasSideInput) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph.
@@ -517,7 +560,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestReluAfterConvert) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph.
@@ -568,7 +611,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToFloatBiasSideInput) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph.
@@ -612,7 +655,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, Int8SideInputWithScaleAndReshape) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph.
@@ -664,7 +707,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseAlpha) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
@@ -702,7 +745,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseRelu) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
@@ -741,7 +784,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseReluIfMultipleUses) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
@@ -757,6 +800,106 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseReluIfMultipleUses) {
                       m::Parameter(0), m::Parameter(1), m::Parameter(2)),
                   0)
                   .WithShape(F32, {1, 32, 9, 9})),
+          m::Minimum())));
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          conv->backend_config<CudnnConvBackendConfig>());
+  EXPECT_EQ(config.activation_mode(), se::dnn::kNone);
+}
+
+TEST_F(CudnnFusedConvRewriterHloTest, FuseElu) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Conv-Bias-Elu fusion is supported and recommended with "
+                    "the Nvidia Ampere+ GPUs.";
+  }
+  const std::string module_str = R"(
+    HloModule Test
+
+    ENTRY Test {
+      inputs = f16[1,16,9,9] parameter(0)
+      filters = f16[3,3,16,32] parameter(1)
+      bias = f16[32] parameter(2)
+      bias_broadcast = f16[1,32,9,9] broadcast(bias), dimensions={1}
+      zero = f16[] constant(0)
+      zeros = f16[1,32,9,9] broadcast(zero), dimensions={}
+      conv = f16[1,32,9,9] convolution(inputs, filters),
+               window={size=3x3 pad=1_1x1_1},
+               dim_labels=bf01_01io->bf01
+      sum = add(conv, bias_broadcast)
+      cmp = compare(sum, zeros), direction=GT
+      expm1 = exponential-minus-one(sum)
+      ROOT elu = select(cmp, sum, expm1)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+
+  GpuConvRewriter rewriter;
+  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
+  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+
+  SCOPED_TRACE(m->ToString());
+  const HloInstruction* conv;
+  ASSERT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::GetTupleElement(
+              m::CustomCall(&conv, kCudnnConvBiasActivationForwardCallTarget,
+                            m::Parameter(0), m::Parameter(1), m::Parameter(2)),
+              0)
+              .WithShape(F16, {1, 32, 9, 9})));
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          conv->backend_config<CudnnConvBackendConfig>());
+  EXPECT_EQ(config.activation_mode(), se::dnn::kElu);
+}
+
+TEST_F(CudnnFusedConvRewriterHloTest, DontFuseEluIfMultipleUses) {
+  const std::string module_str = R"(
+    HloModule Test
+
+    ENTRY Test {
+      inputs = f16[1,16,9,9] parameter(0)
+      filters = f16[3,3,16,32] parameter(1)
+      bias = f16[32] parameter(2)
+      bias_broadcast = f16[1,32,9,9] broadcast(bias), dimensions={1}
+      zero = f16[] constant(0)
+      zeros = f16[1,32,9,9] broadcast(zero), dimensions={}
+      conv = f16[1,32,9,9] convolution(inputs, filters),
+               window={size=3x3 pad=1_1x1_1},
+               dim_labels=bf01_01io->bf01
+      sum = add(conv, bias_broadcast)
+      cmp = compare(sum, zeros), direction=GT
+      expm1 = exponential-minus-one(sum)
+      elu = select(cmp, sum, expm1)
+      not_elu = minimum(sum, zeros)
+      ROOT root = tuple(elu, not_elu) 
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+
+  GpuConvRewriter rewriter;
+  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
+  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+
+  SCOPED_TRACE(m->ToString());
+  const HloInstruction* conv;
+  auto gte_pattern =
+      m::GetTupleElement(
+          m::CustomCall(&conv, kCudnnConvBiasActivationForwardCallTarget,
+                        m::Parameter(0), m::Parameter(1), m::Parameter(2)),
+          0)
+          .WithShape(F16, {1, 32, 9, 9});
+  ASSERT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::Select(m::Compare(gte_pattern,
+                               m::Broadcast(m::ConstantEffectiveScalar(0)))
+                        .WithComparisonDirection(ComparisonDirection::kGt),
+                    gte_pattern,
+                    m::Op()
+                        .WithPredicate([](const HloInstruction* instr) {
+                          return instr->opcode() == HloOpcode::kExpm1;
+                        })
+                        .WithOperand(0, gte_pattern)),
           m::Minimum())));
   TF_ASSERT_OK_AND_ASSIGN(auto config,
                           conv->backend_config<CudnnConvBackendConfig>());
@@ -782,7 +925,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseAlphaIfMultipleUsers) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
@@ -820,7 +963,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseBiasIfMultipleUsers) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
@@ -857,7 +1000,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseSideInputThroughRelu) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
@@ -894,7 +1037,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseBiasThroughRelu) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
@@ -928,7 +1071,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseSideInputIfMultipleUsers) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
@@ -963,7 +1106,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseConvertToF16IfMultipleUsers) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
@@ -996,7 +1139,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseToS8IfMultipleUsers) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
@@ -1030,7 +1173,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseBias) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
@@ -1061,7 +1204,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseSideInput) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
@@ -1102,7 +1245,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseScaledSideInput) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
@@ -1143,7 +1286,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseBiasAndSideInput) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
@@ -1179,7 +1322,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, EffectiveScalarBias) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
@@ -1221,7 +1364,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, StrengthReduceF32ToF16) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph.
@@ -1266,7 +1409,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, BroadcastReshapeTransposeAfterConvert) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph.
@@ -1317,7 +1460,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, NoStrengthReduceF32ToF16IfBiasIsF32) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph.
@@ -1371,7 +1514,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, F32Constants) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph, and fold
@@ -1423,7 +1566,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, F32ConstantsNotLosslesslyConvertible) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph, and fold
@@ -1484,7 +1627,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseReluBeforeConvert) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph.
@@ -1524,7 +1667,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, BiasTypeMatchesConvTypeIfFp) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser;
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph.
@@ -1793,7 +1936,8 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToInt8NoClamp) {
     })");
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  ASSERT_FALSE(CudnnFusedConvRewriter().Run(m.get()).ok());
+  ASSERT_FALSE(
+      CudnnFusedConvRewriter(GetCudaComputeCapability()).Run(m.get()).ok());
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8NoClamp) {
@@ -1817,7 +1961,8 @@ TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8NoClamp) {
     })");
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  ASSERT_FALSE(CudnnFusedConvRewriter().Run(m.get()).ok());
+  ASSERT_FALSE(
+      CudnnFusedConvRewriter(GetCudaComputeCapability()).Run(m.get()).ok());
 }
 
 }  // namespace

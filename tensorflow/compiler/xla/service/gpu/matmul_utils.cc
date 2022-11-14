@@ -24,10 +24,10 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -738,7 +738,7 @@ Status MatmulPlan::DoMatmul(se::Stream* stream, se::DeviceMemoryBase a_buffer,
                             se::DeviceMemoryBase bias_buffer,
                             const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
                             se::ScratchAllocator& scratch_allocator,
-                            se::blas::ProfileResult* profile_result) {
+                            se::blas::ProfileResult* profile_result) const {
   se::cuda::BlasLt* blas_lt = se::cuda::GetBlasLt(stream);
   TF_RET_CHECK(blas_lt != nullptr);
 
@@ -767,7 +767,7 @@ Status MatmulPlan::ExecuteOnStream(
     se::DeviceMemoryBase d_buffer, se::DeviceMemoryBase bias_buffer,
     const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
     se::ScratchAllocator& scratch_allocator,
-    se::blas::ProfileResult* profile_result) {
+    se::blas::ProfileResult* profile_result) const {
   if (must_swap_operands_) {
     std::swap(a_buffer, b_buffer);
   }

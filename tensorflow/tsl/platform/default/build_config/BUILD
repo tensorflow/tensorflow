@@ -67,21 +67,6 @@ cc_library(
 )
 
 cc_library(
-    name = "platformlib",
-    copts = tsl_copts(),
-    deps = [
-        ":gif",
-        ":jpeg",
-        "//tensorflow/core:protos_all_cc",
-        "@com_googlesource_code_re2//:re2",
-        "@farmhash_archive//:farmhash",
-        "@fft2d",
-        "@highwayhash//:sip_hash",
-        "@zlib",
-    ],
-)
-
-cc_library(
     name = "gif",
     copts = tsl_copts(),
     deps = [

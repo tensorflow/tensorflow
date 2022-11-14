@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace xla {
 namespace cpu {
@@ -75,10 +75,9 @@ Value NormalizeTensor(ImplicitLocOpBuilder& b, TypedValue<ShapedType> tensor,
   return b.create<mhlo::ReshapeOp>(tensor.getType(), transpose);
 }
 
-void NormalizeInputInPlace(ImplicitLocOpBuilder& b,
-                           TypedValue<ShapedType> tensor,
+void NormalizeInputInPlace(ImplicitLocOpBuilder& b, Value tensor,
                            ArrayRef<int64_t> layout) {
-  if (IsDefaultLayout(layout)) {
+  if (!tensor.getType().isa<ShapedType>() || IsDefaultLayout(layout)) {
     return;
   }
 

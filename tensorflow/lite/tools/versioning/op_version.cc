@@ -238,6 +238,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
     }
 
+    case BuiltinOperator_SIGN:
+      // Version 2 supports int32 inputs
+      if (op_sig.inputs.at(0).type == kTfLiteInt32) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_MUL:
       // Version 6 supports complex32 inputs
       if (op_sig.inputs.at(0).type == kTfLiteComplex64) {
@@ -432,6 +439,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_ABS:
+      // Version 5 supports int32
+      if (op_sig.inputs.at(0).type == kTfLiteInt32) {
+        return 5;
+      }
       if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return op_sig.ext_options.abs.input_quantized ? 3 : 4;
       }

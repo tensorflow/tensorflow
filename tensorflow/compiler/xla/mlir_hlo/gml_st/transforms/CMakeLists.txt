@@ -29,10 +29,12 @@ include_directories(BEFORE
 
 add_mlir_library(GmlStPasses
   collapse_materialize_ops/collapse_materialize_ops.cc
+  collapse_shape/collapse_shape.cc
   fusion/fusion.cc
   gml_st_simtfy/gml_st_simtfy.cc
   gml_st_to_scf/gml_st_to_scf.cc
   gml_st_to_gpu/gml_st_to_gpu.cc
+  peeling/peeling.cc
   tiling/tiling.cc
   tiling_cwise/tiling_cwise.cc
   tiling_gpu_warp/tiling_gpu_warp.cc
@@ -64,6 +66,7 @@ add_mlir_library(GmlStPasses
   MLIRLinalgDialect
   MLIRLinalgTransforms
   MLIRPass
+  MLIRSCFUtils
   MLIRSupport
   MLIRVectorDialect
 )
@@ -79,7 +82,6 @@ add_mlir_library(GmlStTransforms
   MLIRAffineDialect
   MLIRDialectUtils
   MLIRIR
-  MLIRSCFUtils
 )
 
 add_mlir_library(GmlStTestPasses

@@ -26,13 +26,9 @@ namespace gpu {
 
 using namespace mlir;  // NOLINT
 
-static bool UseExperimentalCudaGraphs() {
-  std::string_view flag = std::getenv("XLA_GPU_RUNTIME_USE_CUDA_GRAPHS");
-  return flag == "true" || flag == "1";
-}
-
 void populateXlaGpuRuntimePasses(mlir::OpPassManager& pm,
-                                 ThunkSequence* thunk_sequence) {
+                                 ThunkSequence* thunk_sequence,
+                                 const GpuPipelineOpts& opts) {
   // Lower operations with registered IR emitters to Gpu launches.
   pm.addPass(createConvertLmhloToGpuLaunchPass(thunk_sequence));
 
@@ -44,10 +40,7 @@ void populateXlaGpuRuntimePasses(mlir::OpPassManager& pm,
   pm.addPass(createConvertLmhloGpuToGpuRuntimePass());
   pm.addPass(createConvertLmhloToGpuRuntimePass());
 
-  // Enable experimental pass that wraps all launch func operations into Cuda
-  // Graph. Currently it's intended to be a proof of concept and not anywhere
-  // near production readiness.
-  if (UseExperimentalCudaGraphs()) {
+  if (opts.enable_cuda_graphs) {
     pm.addPass(createConvertLaunchFuncToCudaGraphPass());
   }
 

@@ -1,8 +1,10 @@
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 
+visibility = ["//tensorflow/core/function:__subpackages__"]
+
 package(
-    default_visibility = ["//tensorflow/core/function:__subpackages__"],
+    default_visibility = visibility,
 )
 
 licenses(["notice"])
@@ -40,6 +42,7 @@ pytype_strict_library(
         "test_pass.py",
     ],
     srcs_version = "PY3",
+    visibility = visibility,
     deps = [
         ":test_pass_pybind",
         "//tensorflow/python:pywrap_tensorflow",  # buildcleaner: keep (required for TF pybind)

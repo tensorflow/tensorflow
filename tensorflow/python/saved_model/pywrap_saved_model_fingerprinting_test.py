@@ -37,7 +37,7 @@ class FingerprintingTest(test.TestCase):
         fingerprinting.CreateFingerprintDef(file_content, export_dir))
     # We cannot check the value of the graph_def_checksum due to non-determinism
     # in serialization.
-    self.assertGreater(fingerprint_def.graph_def_checksum, 0)
+    self.assertGreater(fingerprint_def.saved_model_checksum, 0)
     self.assertEqual(fingerprint_def.graph_def_program_hash,
                      10127142238652115842)
     self.assertEqual(fingerprint_def.signature_def_hash, 5693392539583495303)

@@ -20,13 +20,30 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 
 #if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #endif  // GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
 
-// Registers XLA Gpu runtime kernel launch custom calls.
+#if GOOGLE_CUDA
+
+class MatmulPlanCache {
+ public:
+  const cublas_lt::MatmulPlan* Get(int64_t uid);
+  const cublas_lt::MatmulPlan* Set(int64_t uid, cublas_lt::MatmulPlan plan);
+
+ private:
+  mutable absl::Mutex mutex_;
+
+  llvm::SmallDenseMap<int64_t, cublas_lt::MatmulPlan> plans_
+      ABSL_GUARDED_BY(mutex_);
+};
+
+#endif  // GOOGLE_CUDA
+
+// Registers XLA Gpu runtime cuBLASLt custom calls.
 void RegisterMatmulCustomCalls(runtime::DirectCustomCallRegistry& registry);
 
 }  // namespace gpu

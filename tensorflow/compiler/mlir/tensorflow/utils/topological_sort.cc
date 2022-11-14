@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <queue>
+#include <utility>
 #include <vector>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -24,26 +25,55 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 
+ExtraDependenciesFunction no_extra_dependencies = nullptr;
+
 std::vector<Operation*> SortBlockTopologically(
-    Block& block, PriorityFunction priorityFunction) {
-  llvm::DenseMap<Operation*, int> remaining_incoming_edges;
+    Block& block, PriorityFunction priorityFunction,
+    ExtraDependenciesFunction extraDependencies) {
+  llvm::DenseMap<Operation*, int> remaining_incoming_data_edges;
+  llvm::DenseMap<Operation*, int> remaining_incoming_ctrl_edges;
   llvm::DenseMap<Operation*, int> position;
   llvm::DenseMap<Operation*, Operation*> ancestor;
   SmallVector<Operation*> ready;
 
+  llvm::SmallVector<mlir::Operation*, 4> empty_op_set;
+  auto ctrlPredecessors =
+      [&](Operation* op) -> llvm::SmallVector<mlir::Operation*, 4> const& {
+    if (extraDependencies) {
+      return extraDependencies(op, /*incoming=*/true);
+    } else {
+      return empty_op_set;
+    }
+  };
+  auto ctrlSuccessors =
+      [&](Operation* op) -> llvm::SmallVector<mlir::Operation*, 4> const& {
+    if (extraDependencies) {
+      return extraDependencies(op, /*incoming=*/false);
+    } else {
+      return empty_op_set;
+    }
+  };
+
   int i = 0;
   for (Operation& op : block.getOperations()) {
-    int incoming_edges = 0;
+    int incoming_ctrl_edges = 0;
+    int incoming_data_edges = 0;
     op.walk([&](Operation* child) {
       ancestor[child] = &op;
+      for (Operation* predecessor : ctrlPredecessors(child)) {
+        if (predecessor->getBlock() == &block) {
+          incoming_ctrl_edges++;
+        }
+      }
       for (Value v : child->getOperands()) {
         if (v.getParentBlock() == &block) {
-          incoming_edges++;
+          incoming_data_edges++;
         }
       }
     });
-    remaining_incoming_edges[&op] = incoming_edges;
-    if (incoming_edges == 0) {
+    remaining_incoming_data_edges[&op] = incoming_data_edges;
+    remaining_incoming_ctrl_edges[&op] = incoming_ctrl_edges;
+    if (incoming_data_edges == 0 && incoming_ctrl_edges == 0) {
       ready.push_back(&op);
     }
     position[&op] = i++;
@@ -64,7 +94,9 @@ std::vector<Operation*> SortBlockTopologically(
       // Uses, not Users, in case getUsers ever dedups.
       for (OpOperand& operand : value.getUses()) {
         Operation* user = ancestor[operand.getOwner()];
-        if (--remaining_incoming_edges[user] == 0) {
+        remaining_incoming_data_edges[user]--;
+        if (remaining_incoming_data_edges[user] == 0 &&
+            remaining_incoming_ctrl_edges[user] == 0) {
           ready.push_back(user);
         }
       }
@@ -105,6 +137,16 @@ std::vector<Operation*> SortBlockTopologically(
     previous_op = best;
     for (Value result : best->getResults()) {
       todo.push(result);
+    }
+    for (Operation* successor : ctrlSuccessors(best)) {
+      if (ancestor.find(successor) != ancestor.end()) {
+        successor = ancestor[successor];
+        remaining_incoming_ctrl_edges[successor]--;
+        if (remaining_incoming_ctrl_edges[successor] == 0 &&
+            remaining_incoming_data_edges[successor] == 0) {
+          ready.push_back(successor);
+        }
+      }
     }
     result.push_back(best);
   }

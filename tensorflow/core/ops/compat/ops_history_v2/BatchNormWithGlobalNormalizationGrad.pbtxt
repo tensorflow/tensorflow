@@ -310,3 +310,84 @@ op {
     version: 9
   }
 }
+op {
+  name: "BatchNormWithGlobalNormalizationGrad"
+  input_arg {
+    name: "t"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "m"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "v"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "gamma"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "dx"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "dm"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "dv"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "db"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "dg"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "variance_epsilon"
+    type: "float"
+  }
+  attr {
+    name: "scale_after_normalization"
+    type: "bool"
+  }
+  deprecation {
+    version: 9
+  }
+}

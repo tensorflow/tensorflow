@@ -17,18 +17,13 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_GEMM_H_
 
 #include "llvm/ADT/DenseMap.h"
-#include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
-#include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 
 namespace xla {
 namespace gpu {
 
-class JitRtGemmConfigCache;
-
-class JitRtGemmConfigCache {
+class GemmConfigCache {
  public:
   const GemmConfig* Get(int64_t uid);
   const GemmConfig* Set(int64_t uid, GemmConfig config);

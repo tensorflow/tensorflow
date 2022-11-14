@@ -482,6 +482,8 @@ cc_library(
     ],
     deps = [
         ":flags",
+        ":tf_graph_to_hlo_compiler",
+        ":tf_to_hlo_compiler",
         ":xla_activity_listener",
         ":xla_activity_proto_cc",
         ":xla_cluster_util",
@@ -1249,4 +1251,23 @@ cc_library(
         "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "tf_to_hlo_compiler",
+    hdrs = ["tf_to_hlo_compiler.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_library(
+    name = "tf_graph_to_hlo_compiler",
+    srcs = ["tf_graph_to_hlo_compiler.cc"],
+    hdrs = ["tf_graph_to_hlo_compiler.h"],
+    deps = [
+        ":tf_to_hlo_compiler",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+    ],
 )

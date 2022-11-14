@@ -30,41 +30,10 @@ struct LinalgTilingOptions;
 namespace mlir {
 namespace gml_st {
 
-bool isZero(Value v);
+constexpr llvm::StringRef kTransformedMarker =
+    "__internal_transformed_marker__";
 
-/// Rewrite a gml_st::LoopOp/ParallelOp/ForOp with bounds/step that potentially
-/// do not divide evenly into a gml_st::LoopOp/ParallelOp/ForOp where the step
-/// divides the iteration space evenly, followed by another
-/// gml_st::LoopOp/ParallelOp/ForOp for the last (partial) iteration (if any).
-/// This transformation is called "loop peeling".
-///
-/// This function peels the `idx`-th loop of the
-/// gml_st::LoopOp/ParallelOp/ForOp. To tile all loops in the loop nest, this
-/// function must be called multiple times.
-///
-/// After loop peeling, this function tries to simplify/canonicalize affine.min
-/// and affine.max ops in the body of the two gml_st::LoopOp/ParallelOp/ForOps.
-/// For more details, refer to `mlir::scf::peelAndCanonicalizeForLoop`.
-///
-/// The return value indicates whether the loop was rewritten or not. Loops are
-/// not rewritten if:
-/// * Loop step size is 1 or
-/// * Loop bounds and step size are static, and step already divides the
-///   iteration space evenly.
-///
-/// Note: This function rewrites the given gml_st::LoopOp/ParallelOp/ForOp
-/// in-place and clones the gml_st::LoopOp/ParallelOp/ForOp operation for the
-/// last iteration. It replaces all uses of the unpeeled
-/// gml_st::LoopOp/ParallelOp/ForOp with the results of the newly generated
-/// gml_st::LoopOp/ParallelOp/ForOp.
-LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
-                                           LoopOp loopOp, int64_t idx,
-                                           LoopOp &result);
-LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
-                                           ParallelOp loopOp, int64_t idx,
-                                           ParallelOp &result);
-LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter, ForOp loopOp,
-                                           int64_t idx, ForOp &result);
+bool isZero(Value v);
 
 /// Perform standalone tiling of a single LinalgOp by `tileSizes`.
 /// An empty vector is interpreted as the identity permutation and the
@@ -77,31 +46,18 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOp(
     const linalg::LinalgTilingOptions &options);
 
 // Sets the attribute to the `op` that indicates that the op was transformed.
-void setTransformationAttr(OpBuilder &b, Operation *op);
+void setTransformationAttr(OpBuilder &b, Operation *op,
+                           StringRef name = kTransformedMarker);
 
 // Removes the attribute that indicates that it was transformed.
-void removeTransformationAttr(Operation *op);
+void removeTransformationAttr(Operation *op,
+                              StringRef name = kTransformedMarker);
 
 // Checks if `op` has the attribute that indicates that it was transformed.
-bool hasTransformationAttr(Operation *op);
+bool hasTransformationAttr(Operation *op, StringRef name = kTransformedMarker);
 
 // Checks if `op` has the matching label attribute.
 bool hasMatchingLabel(Operation *op, StringRef label);
-
-// Uncollapse materialize operations with nested tile chains t1, t2, ..., tn. A
-// materialize op of the form ...
-//   `materialize(t1(t2(...(tn(sn)))), arg)`
-// ... is expanded into ...
-//   `materialize(t1(s1), materialize(t2(...(tn(sn))), arg))`.
-FailureOr<MaterializeOp> uncollapseMaterializeOp(OpBuilder &b,
-                                                 MaterializeOp op);
-
-// Collapse materialize operations with nested tile chains t1, t2, ..., tn, and
-// u1, u2, ..., un. A materialize op of the form ...
-//   `materialize(t1(t2(...(tn(sn)))), materialize(u1(u2(...(un(sn')))), arg))`
-// ... is collapsed as ...
-//   `materialize(t1(t2(...(tn(u1(u2(...(un(sn'))))))), arg)`.
-FailureOr<MaterializeOp> collapseMaterializeOp(OpBuilder &b, MaterializeOp op);
 
 }  // namespace gml_st
 }  // namespace mlir

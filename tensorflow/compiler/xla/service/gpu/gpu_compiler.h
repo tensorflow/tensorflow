@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/executable.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
@@ -85,6 +85,14 @@ class GpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
 
  private:
   XlaRuntimeGpuExecutableProto xla_runtime_gpu_executable_;
+};
+
+struct GpuTargetConfig {
+  GpuDeviceInfo gpu_device_info;
+  stream_executor::CudaComputeCapability cuda_compute_capability;
+  stream_executor::RocmComputeCapability rocm_compute_capability;
+  std::string platform_name;
+  int device_ordinal;
 };
 
 // The GPU compiler generates efficient GPU executables.

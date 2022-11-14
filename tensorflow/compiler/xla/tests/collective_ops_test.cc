@@ -1316,7 +1316,7 @@ XLA_TEST_F(CollectiveOpsTest,
                                            results[0]);
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllGather_16BitInt)) {
+XLA_TEST_F(CollectiveOpsTest, AllGather_16BitInt) {
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -1344,7 +1344,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllGather_16BitInt)) {
   }
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllToAll_16BitInt)) {
+XLA_TEST_F(CollectiveOpsTest, AllToAll_16BitInt) {
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -1370,7 +1370,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllToAll_16BitInt)) {
   LiteralTestUtil::ExpectR1Equal<uint16_t>({15, 16}, results[1]);
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(CollectivePermute_16BitInt)) {
+XLA_TEST_F(CollectiveOpsTest, CollectivePermute_16BitInt) {
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -1396,7 +1396,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(CollectivePermute_16BitInt)) {
   LiteralTestUtil::ExpectR1Equal<uint16_t>({10, 15}, results[1]);
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_16BitInt)) {
+XLA_TEST_F(CollectiveOpsTest, AllReduce_16BitInt) {
   const char* const kModuleStr = R"(
   HloModule test
 
@@ -1430,7 +1430,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_16BitInt)) {
   }
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(ReduceScatter_16BitInt)) {
+XLA_TEST_F(CollectiveOpsTest, ReduceScatter_16BitInt) {
   const char* const kModuleStr = R"(
   HloModule test
 

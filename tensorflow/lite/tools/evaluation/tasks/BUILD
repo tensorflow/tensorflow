@@ -8,6 +8,11 @@ package(
     licenses = ["notice"],
 )
 
+exports_files(
+    ["task_executor_c_api.h"],
+    visibility = ["//tensorflow/lite/tools/evaluation/tasks:__subpackages__"],
+)
+
 cc_library(
     name = "task_executor",
     srcs = ["task_executor.cc"],
@@ -32,5 +37,23 @@ cc_library(
         ":task_executor",
         "//tensorflow/lite/tools:logging",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "task_executor_c_api",
+    srcs = ["task_executor_c_api.cc"],
+    hdrs = [
+        "task_executor_c_api.h",
+    ],
+    copts = tflite_copts(),
+    visibility = [
+        "//tensorflow/lite/tools/evaluation/tasks:__subpackages__",
+    ],
+    deps = [
+        ":task_executor",
+        "//tensorflow/lite/tools:logging",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
     ],
 )

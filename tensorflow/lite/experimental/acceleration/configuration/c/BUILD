@@ -119,13 +119,13 @@ cc_test(
 )
 
 cc_library(
-    name = "vendor_delegate",
-    hdrs = ["vendor_delegate.h"],
+    name = "stable_delegate",
+    hdrs = ["stable_delegate.h"],
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:vendor_delegate",
+        "//tensorflow/lite/core/experimental/acceleration/configuration/c:stable_delegate",
     ],
 )

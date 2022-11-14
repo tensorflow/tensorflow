@@ -128,7 +128,7 @@ Status FixupPassThroughDomainLinks(const DomainMetadata::Domain& domain,
     HloInstruction* gte = pass_through.operand->parent()->AddInstruction(
         HloInstruction::CreateGetTupleElement(pass_through.operand->shape(),
                                               tuple, 0));
-    gte->set_sharding(sharding);
+    gte->set_sharding(sharding.NormalizeTupleSharding(gte->shape()));
     if (pass_through.user != nullptr) {
       TF_RETURN_IF_ERROR(
           pass_through.operand->ReplaceUseWith(pass_through.user, gte));
@@ -139,8 +139,8 @@ Status FixupPassThroughDomainLinks(const DomainMetadata::Domain& domain,
   return OkStatus();
 }
 
-// For tuple shardings if every element have the same sharsing then we want to
-// treat them as single element sharsings to insert less domain separation as a
+// For tuple shardings if every element have the same sharding then we want to
+// treat them as single element shardings to insert less domain separation as a
 // domain can prevent some optimizations and we want to minimize that from
 // happening.
 std::shared_ptr<const HloSharding> CloneShardingForDomain(

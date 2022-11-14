@@ -47,8 +47,38 @@ bool hasSingleElement(ShapedTy type) {
 struct ScalarizeGenericOp : public OpRewritePattern<GenericOp> {
   using OpRewritePattern::OpRewritePattern;
 
+  static LogicalResult inlinePayload(PatternRewriter &rewriter, Location loc,
+                                     GenericOp genericOp,
+                                     ValueRange argValues) {
+    // Clone everything but terminator.
+    Block *body = genericOp.getBlock();
+    BlockAndValueMapping map;
+    map.map(body->getArguments(), argValues);
+    for (auto &op : body->without_terminator()) {
+      if (auto indexOp = dyn_cast<linalg::IndexOp>(&op)) {
+        Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+        map.map(indexOp.getResult(), zero);
+        continue;
+      }
+      rewriter.clone(op, map);
+    }
+
+    // Wrap every scalar result into a tensor using `tensor.from_elements`.
+    SmallVector<Value> newResults;
+    for (auto [resultType, yieldOperand] :
+         llvm::zip(genericOp->getResultTypes(),
+                   body->getTerminator()->getOperands())) {
+      auto scalarValue = map.lookupOrDefault(yieldOperand);
+      newResults.push_back(
+          rewriter.create<FromElementsOp>(loc, resultType, scalarValue));
+    }
+    rewriter.replaceOp(genericOp, newResults);
+    return success();
+  }
+
   LogicalResult matchAndRewrite(GenericOp genericOp,
                                 PatternRewriter &rewriter) const override {
+    // Fail if not every argument is a scalar or a single-element tensor.
     auto isNonScalar = [](Type type) {
       return type.isa<TensorType>() &&
              !hasSingleElement(type.cast<TensorType>());
@@ -57,47 +87,31 @@ struct ScalarizeGenericOp : public OpRewritePattern<GenericOp> {
         llvm::any_of(genericOp.getResultTypes(), isNonScalar))
       return failure();
 
-    // Map block arguments of genericOp to tensor.extract ops of its args.
-    Location loc = genericOp.getLoc();
-    BlockAndValueMapping bvm;
-    for (OpOperand &opOperand : genericOp->getOpOperands()) {
-      Value operandValue = opOperand.get();
-      Type operandType = operandValue.getType();
-      auto bbArg = genericOp.getMatchingBlockArgument(&opOperand);
-      if (!operandType.isa<ShapedType>()) continue;
-
-      SmallVector<Value> indices(
-          operandType.cast<RankedTensorType>().getRank(),
-          rewriter.create<arith::ConstantIndexOp>(loc, 0));
-      Value extractedElement =
-          rewriter.create<ExtractOp>(loc, operandValue, indices);
-      bvm.map(bbArg, extractedElement);
-    }
-
-    // Clone everything but terminator.
-    Block *body = genericOp.getBody();
-    for (Operation &op : body->without_terminator()) {
-      // `linalg.index` can only result in 0 for scalar linalg.generic.
-      if (auto indexOp = dyn_cast<linalg::IndexOp>(op)) {
-        Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
-        bvm.map(indexOp.getResult(), zero);
+    // Load the data corresponding to the block arguments that
+    // represent input operands.
+    SmallVector<Value> indexedValues;
+    indexedValues.reserve(genericOp->getNumOperands());
+    Location loc = genericOp->getLoc();
+    auto zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+    for (OpOperand &operand : genericOp->getOpOperands()) {
+      if (!genericOp.payloadUsesValueFromOperand(&operand)) {
+        indexedValues.push_back(nullptr);
         continue;
       }
-      rewriter.clone(op, bvm);
+      if (genericOp.isScalar(&operand)) {
+        indexedValues.push_back(operand.get());
+        continue;
+      }
+      Value operandValue = operand.get();
+      Type operandType = operandValue.getType();
+      SmallVector<Value> indices(operandType.cast<RankedTensorType>().getRank(),
+                                 zero);
+      Value load = rewriter.create<ExtractOp>(loc, operandValue, indices);
+      indexedValues.push_back(load);
     }
 
-    // Wrap every scalar result into a tensor using `tensor.from_elements`.
-    SmallVector<Value> newResults;
-    for (auto [resultType, yieldOperand] :
-         llvm::zip(genericOp->getResultTypes(),
-                   body->getTerminator()->getOperands())) {
-      auto scalarValue = bvm.lookupOrDefault(yieldOperand);
-      newResults.push_back(
-          rewriter.create<FromElementsOp>(loc, resultType, scalarValue));
-    }
-    rewriter.replaceOp(genericOp, newResults);
-
-    return success();
+    // Inline the op payload and rewrite the operation.
+    return inlinePayload(rewriter, loc, genericOp, indexedValues);
   }
 };
 

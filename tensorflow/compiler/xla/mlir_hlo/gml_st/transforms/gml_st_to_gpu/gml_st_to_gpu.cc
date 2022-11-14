@@ -129,9 +129,8 @@ static Value createCombineOp(Location loc, Value lhs, Value rhs,
       return helper(arith::OrIOp());
     case CombiningKind::XOR:
       return helper(arith::XOrIOp());
-    default:
-      llvm_unreachable("unhandled");
   }
+  llvm_unreachable("unhandled");
 }
 
 LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(

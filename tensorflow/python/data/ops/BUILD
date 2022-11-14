@@ -64,6 +64,7 @@ py_library(
         ":save_ops",
         ":sparse_batch_op",
         ":structured_function",
+        ":unique_op",
         ":window_op",
         ":zip_op",
         "//tensorflow/python:constant_op",
@@ -184,6 +185,11 @@ py_library(
         "//tensorflow/python/platform",
         "//tensorflow/python/util",
     ],
+)
+
+py_library(
+    name = "unique_op",
+    srcs = ["unique_op.py"],
 )
 
 py_library(
