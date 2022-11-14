@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/location_importer.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 using llvm::APInt;
 using llvm::makeArrayRef;
@@ -116,20 +117,6 @@ void CleanUpTupleOps(mlir::Block* block, mlir::OpBuilder* builder) {
 
 }  // namespace
 
-constexpr char kInternalFunction[] = "HLO_INTERNAL_";
-
-std::string Gensym(mlir::ModuleOp op, std::string name) {
-  mlir::SymbolTable symbolTable(op);
-
-  int fresh = 0;
-  std::string fresh_name;
-  do {
-    fresh_name = absl::StrCat(kInternalFunction, name, fresh);
-  } while (symbolTable.lookup(fresh_name));
-
-  return fresh_name;
-}
-
 mlir::TypeRange Untuple(const mlir::Type& type) {
   if (type.isa<mlir::TupleType>()) {
     return llvm::dyn_cast<mlir::TupleType>(type).getTypes();
@@ -150,9 +137,13 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncStart(
   }
   auto func_type = mlir::FunctionType::get(context_, Untuple(result_types[0]),
                                            Untuple(result_types[1]));
-  auto sym = Gensym(module_, func_name);
-  auto function = mlir::OpBuilder(module_.getBodyRegion())
-                      .create<FuncOp>(loc, sym, func_type);
+  auto function = FuncOp::create(loc, func_name, func_type);
+
+  // The new function doesn't need to be inserted in the beginning but is done
+  // to make testing easier and preserve the original behavior.
+  mlir::Block& block = symbol_table_.getOp()->getRegion(0).front();
+  symbol_table_.insert(function, mlir::Block::iterator(block.begin()));
+
   function.setPrivate();
   auto async_builder = mlir::OpBuilder(function.getBody());
 
@@ -336,19 +327,19 @@ Value HloFunctionImporter::CreateTupleValue(
       .getResult();
 }
 
-Status HloFunctionImporter::ImportAsFunc(
-    const HloComputation& computation, mlir::ModuleOp module,
+StatusOr<mlir::func::FuncOp> HloFunctionImporter::ImportAsFunc(
+    const HloComputation& computation, mlir::SymbolTable& symbol_table,
     std::unordered_map<const HloComputation*, FuncOp>* function_map,
     mlir::Builder* builder, bool is_main) {
-  HloFunctionImporter importer(module, function_map, builder);
-  return importer.ImportAsFunc(computation, is_main).status();
+  HloFunctionImporter importer(symbol_table, function_map, builder);
+  return importer.ImportAsFunc(computation, is_main);
 }
 
 Status HloFunctionImporter::ImportAsRegion(
-    const xla::HloComputation& computation, mlir::Region* region,
-    mlir::Builder* builder, bool flatten_region_arg_tuple) {
-  HloFunctionImporter importer(region->getParentOfType<mlir::ModuleOp>(), {},
-                               builder);
+    const xla::HloComputation& computation, mlir::SymbolTable& symbol_table,
+    mlir::Region* region, mlir::Builder* builder,
+    bool flatten_region_arg_tuple) {
+  HloFunctionImporter importer(symbol_table, {}, builder);
   return importer.ImportAsRegion(computation, region, flatten_region_arg_tuple);
 }
 
@@ -363,11 +354,8 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
     if (*imported) {
       return *imported;
     }
-  } else {
-    TF_RET_CHECK(!module_.lookupSymbol<FuncOp>(computation_name))
-        << "Attempting to redeclare an existing function named "
-        << computation.name();
   }
+
   llvm::SmallVector<Type, 4> args, rets;
   TF_RETURN_IF_ERROR(GetMlirTypes(computation.parameter_instructions(), &args));
   TF_RETURN_IF_ERROR(GetMlirTypes({computation.root_instruction()}, &rets));
@@ -434,7 +422,7 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
     }
   }
 
-  module_.push_back(function);
+  symbol_table_.insert(function);
 
   // Add to the map right away for function calls if map is set.
   if (imported) {
@@ -582,29 +570,28 @@ Status HloFunctionImporter::ImportInstructions(
 
 StatusOr<Value> HloFunctionImporter::ImportInstructions(
     const xla::HloComputation& computation,
-    const llvm::SmallVectorImpl<Value>& arguments, mlir::OpBuilder* builder) {
+    const llvm::SmallVectorImpl<Value>& arguments,
+    mlir::SymbolTable& symbol_table, mlir::OpBuilder* builder) {
   mlir::Block* block = builder->getBlock();
   if (block == nullptr)
     return InvalidArgument(
         "ImportInstructions requires a valid block in the builder");
 
-  HloFunctionImporter importer(
-      block->getParent()->getParentOfType<mlir::ModuleOp>(), {}, builder);
+  HloFunctionImporter importer(symbol_table, {}, builder);
   return importer.ImportInstructionsImpl(computation, arguments, builder);
 }
 
 StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
     const xla::HloInstruction* instr,
     const llvm::SmallVectorImpl<mlir::Value>& operands,
-    mlir::OpBuilder* builder, DynamicShapeHandlingMode mode) {
+    mlir::SymbolTable& symbol_table, mlir::OpBuilder* builder,
+    DynamicShapeHandlingMode mode) {
   mlir::Block* block = builder->getBlock();
   if (block == nullptr)
     return InvalidArgument(
         "ImportInstructions requires a valid block in the builder");
 
-  HloFunctionImporter importer(
-      block->getParent()->getParentOfType<mlir::ModuleOp>(), {}, builder);
-
+  HloFunctionImporter importer(symbol_table, {}, builder);
   return importer.ImportInstructionWithLayout(instr, operands, builder, mode);
 }
 

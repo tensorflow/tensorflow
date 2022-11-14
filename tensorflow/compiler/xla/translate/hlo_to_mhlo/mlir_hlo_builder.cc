@@ -197,21 +197,16 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
       builder_.getNamedAttr("backend_config", builder_.getStringAttr(opaque)));
 
   if (computation && !computation->IsNull()) {
-    llvm::SmallVector<mlir::Attribute> computation_names;
-    for (const auto& computation_proto : computation->proto().computations()) {
-      computation_names.push_back(mlir::SymbolRefAttr::get(
-          builder_.getContext(), computation_proto.name()));
-    }
-    attributes.push_back(builder_.getNamedAttr(
-        "called_computations", builder_.getArrayAttr(computation_names)));
-
     // Create new function(s) to represent the called computations. As a result,
     // this legalization may only be called during a module pass rather than the
     // typical parallelized func pass which is not permitted to create
     // functions.
-    TF_RETURN_IF_ERROR(ImportComputation(
-        computation->proto(),
-        builder_.getBlock()->getParent()->getParentOfType<mlir::ModuleOp>()));
+    TF_ASSIGN_OR_RETURN(auto func,
+                        ImportComputationAsFunc(computation->proto()));
+
+    attributes.push_back(builder_.getNamedAttr(
+        "called_computations", builder_.getArrayAttr({mlir::SymbolRefAttr::get(
+                                   builder_.getContext(), func.getName())})));
   }
 
   TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
@@ -741,16 +736,16 @@ Status MlirHloBuilder::ImportComputation(const HloModuleProto& computation,
   TF_ASSIGN_OR_RETURN(auto hlo_module, CreateHloModuleFromProto(computation));
 
   return HloFunctionImporter::ImportAsRegion(*hlo_module->entry_computation(),
-                                             region, &builder_,
+                                             symbol_table_, region, &builder_,
                                              flatten_region_arg_tuple);
 }
 
-Status MlirHloBuilder::ImportComputation(const HloModuleProto& computation,
-                                         mlir::ModuleOp module) {
+StatusOr<mlir::func::FuncOp> MlirHloBuilder::ImportComputationAsFunc(
+    const HloModuleProto& computation) {
   TF_ASSIGN_OR_RETURN(auto hlo_module, CreateHloModuleFromProto(computation));
 
   return HloFunctionImporter::ImportAsFunc(*hlo_module->entry_computation(),
-                                           module, {}, &builder_,
+                                           symbol_table_, {}, &builder_,
                                            /*is_main=*/false);
 }
 

@@ -45,6 +45,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
       : assignment_(assignment),
         computation_(computation),
         module_(module),
+        symbol_table_(module),
         builder_(module.getContext()),
         i8_type_(builder_.getIntegerType(8)) {}
 
@@ -255,6 +256,10 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   // This is the MLIR module in which a function will be created for every HLO
   // computation.
   ModuleOp module_;
+
+  // SymbolTable associated with the module. New functions should be added using
+  // this to avoid name conflicts.
+  mlir::SymbolTable symbol_table_;
 
   // The builder keeps track of the current insertion point in the MLIR
   // module.
