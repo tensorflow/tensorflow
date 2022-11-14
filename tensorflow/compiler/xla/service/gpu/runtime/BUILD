@@ -44,7 +44,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:executor_cache",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -61,6 +60,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu:gpu_conv_runner",
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Support",
@@ -116,7 +116,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:logical_result",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu:matmul_utils",
-        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/container:node_hash_map",
     ],
 )
 
@@ -170,7 +170,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:launch_dimensions",
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
         "//tensorflow/compiler/xla/stream_executor",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -192,8 +192,8 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header",
         "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/container:node_hash_map",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -222,7 +222,6 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu:io_feed_manager",
-        "@llvm-project//llvm:Support",
     ],
 )
 

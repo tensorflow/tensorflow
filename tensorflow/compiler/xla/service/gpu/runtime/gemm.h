@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_GEMM_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_GEMM_H_
 
-#include "llvm/ADT/DenseMap.h"
+#include "absl/container/node_hash_map.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 
@@ -31,7 +31,7 @@ class GemmConfigCache {
  private:
   mutable absl::Mutex mutex_;
 
-  llvm::SmallDenseMap<int64_t, GemmConfig> configs_ ABSL_GUARDED_BY(mutex_);
+  absl::node_hash_map<int64_t, GemmConfig> configs_ ABSL_GUARDED_BY(mutex_);
 };
 
 // Registers XLA Gpu runtime Gemm# custom calls.

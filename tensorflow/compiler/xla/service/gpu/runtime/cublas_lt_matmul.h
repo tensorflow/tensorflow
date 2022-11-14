@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_CUBLAS_LT_MATMUL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_CUBLAS_LT_MATMUL_H_
 
+#include "absl/container/node_hash_map.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 
@@ -37,7 +38,7 @@ class MatmulPlanCache {
  private:
   mutable absl::Mutex mutex_;
 
-  llvm::SmallDenseMap<int64_t, cublas_lt::MatmulPlan> plans_
+  absl::node_hash_map<int64_t, cublas_lt::MatmulPlan> plans_
       ABSL_GUARDED_BY(mutex_);
 };
 

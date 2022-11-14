@@ -23,7 +23,6 @@ limitations under the License.1
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
