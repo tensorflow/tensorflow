@@ -282,6 +282,7 @@ tf_cc_test(
     name = "xla_builder_test",
     srcs = ["xla_builder_test.cc"],
     deps = [
+        ":sharding_builder",
         ":value_inference",
         ":xla_builder",
         ":xla_computation",

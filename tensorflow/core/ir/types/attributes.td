@@ -333,10 +333,7 @@ def TFType_FullTypeAttr : AttrDef<TFTypeDialect, "FullType"> {
 // FuncAttr
 //===----------------------------------------------------------------------===//
 
-def TFType_FuncAttr : TFType_Attr<"Func", [
-    DeclareAttrInterfaceMethods<SubElementAttrInterface,
-        ["replaceImmediateSubElements"]>
-  ]> {
+def TFType_FuncAttr : TFType_Attr<"Func", [SubElementAttrInterface]> {
   let mnemonic = "func";
   let summary = "Models the `AttrValue.value.func` proto attribute value as a "
     "pair of SymbolRef and DictionaryAttr";

@@ -283,9 +283,14 @@ Status CoordinationServiceAgentImpl::Connect() {
            // 2. aborted duplicate task registration error - this means that
            // this task restarted and is trying to reconnect but the service
            // has not restarted yet.
+           // 3. service has not been enabled - this could happen in the single
+           // client scenario, where the server has been started but the service
+           // cannot be used yet (nullptr). Presumably the service is in the
+           // process of being enabled.
            (connect_status.GetPayload(CoordinationErrorPayloadKey()) ==
                 std::nullopt ||
-            errors::IsAborted(connect_status)));
+            errors::IsAborted(connect_status) ||
+            errors::IsInternal(connect_status)));
   if (!connect_status.ok()) {
     SetError(connect_status);
     return connect_status;

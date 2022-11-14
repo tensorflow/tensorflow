@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/dump.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/triangular_solve_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
@@ -75,7 +75,8 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
       /*allow_mixed_precision=*/false);
   pipeline.AddPass<GpusolverRewriter>();
   pipeline.AddPass<GpuConvRewriter>();
-  pipeline.AddPass<CudnnFusedConvRewriter>();
+  pipeline.AddPass<CudnnFusedConvRewriter>(
+      stream_exec->GetDeviceDescription().cuda_compute_capability());
   pipeline.AddPass<GpuConvPaddingLegalization>();
   pipeline.AddPass<CudnnPadForConvolutions>(
       stream_exec->GetDeviceDescription().cuda_compute_capability());
@@ -345,8 +346,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   std::string ptx;
   if (!(debug_module &&
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
-    XLA_SCOPED_LOGGING_TIMER(
-        "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
+    XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+        "NVPTXCompiler::CompileTargetBinary - CompileToPtx for ",
+        (debug_module != nullptr ? debug_module->name() : "(unknown")));
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
     TF_ASSIGN_OR_RETURN(ptx, nvptx::CompileToPtx(selected_module, gpu_version,
                                                  module_config, libdevice_dir));
@@ -359,7 +361,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
 
   std::vector<uint8_t> cubin = CompileGpuAsmOrGetCachedResult(
       stream_exec, ptx, std::get<se::CudaComputeCapability>(gpu_version),
-      module_config, relocatable);
+      module_config,
+      (debug_module != nullptr ? debug_module->name() : "(unknown)"),
+      relocatable);
 
   return std::pair<std::string, std::vector<uint8_t>>(std::move(ptx),
                                                       std::move(cubin));
@@ -368,8 +372,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
 std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     se::StreamExecutor* stream_exec, const std::string& ptx,
     se::CudaComputeCapability cc, const HloModuleConfig& hlo_module_config,
-    bool relocatable) {
-  XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompileGpuAsmOrGetCachedResult");
+    absl::string_view module_name, bool relocatable) {
+  XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+      "NVPTXCompiler::CompileGpuAsmOrGetCachedResult for ", module_name));
   tsl::profiler::TraceMe activity("PTX->CUBIN",
                                   tsl::profiler::TraceMeLevel::kInfo);
   bool inserted;

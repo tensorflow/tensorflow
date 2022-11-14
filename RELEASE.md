@@ -1,17 +1,18 @@
 # Release 2.12.0
 
-*   `tf.keras`:
-
-    *   Added `jit_compile` as a settable property to `tf.keras.Model`.
-    *   Added `synchronized` optional parameter to `layers.BatchNormalization`.
-    *   Added deprecation warning to
-        `layers.experimental.SyncBatchNormalization` and suggested to use
-        `layers.BatchNormalization` with `synchronized=True` instead.
-
 # Breaking Changes
 
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+*   `tf.function`:
+
+    *   tf.function now uses the Python inspect library directly for parsing
+        the signature of the Python function it is decorated on.
+    *   This can break certain cases that were previously ignored where the
+        signature is malformed, e.g.
+            *   Using functools.wraps on a function with different signature
+            *   Using functools.partial with an invalid tf.function input
 
 # Known Caveats
 
@@ -28,15 +29,19 @@
 
 *   `tf.keras`:
 
+    *   Added utility `tf.keras.utils.FeatureSpace`, a one-stop shop for
+        structured data preprocessing and encoding.
     *   Added `tf.SparseTensor` input support to `tf.keras.layers.Embedding`
         layer. The layer now accepts a new boolean argument `sparse`. If
         `sparse` is set to True, the layer returns a SparseTensor instead of a
         dense Tensor. Defaults to False.
-
-*   `tf.keras`:
-
+    *   Added `jit_compile` as a settable property to `tf.keras.Model`.
+    *   Added `synchronized` optional parameter to `layers.BatchNormalization`.
+    *   Added deprecation warning to
+        `layers.experimental.SyncBatchNormalization` and suggested to use
+        `layers.BatchNormalization` with `synchronized=True` instead.
     *   Updated `tf.keras.layers.BatchNormalization` to support masking of the
-        inputs when computing the mean and variance.
+        inputs (`mask` argument) when computing the mean and variance.
 
 * `tf.experimental.dtensor`:
 

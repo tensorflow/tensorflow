@@ -876,7 +876,7 @@ cc_library(
     hdrs = ["hlo_proto_to_graph_view.h"],
     deps = [
         ":tool_options",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core/platform:errors",

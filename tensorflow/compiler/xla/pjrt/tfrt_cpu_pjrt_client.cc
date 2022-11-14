@@ -1617,7 +1617,8 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
         descriptor_table.emplace_back(
             xla::cpu::BufferDesc{buf->data(), buf->size()});
       }
-      Status status = cpu_executable->ExecuteXlaRuntime(descriptor_table);
+      Status status =
+          cpu_executable->ExecuteXlaRuntime(descriptor_table, &run_options);
       if (!status.ok()) return status;
     } else {
       cpu_executable->compute_function()(result_buffer, &run_options, nullptr,

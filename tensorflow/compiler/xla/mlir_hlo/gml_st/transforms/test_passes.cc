@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/interfaces/bufferizable_op_interface_impl.h"
+#include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
@@ -68,17 +69,17 @@ struct TiledLoopPeelingPattern : public OpRewritePattern<LoopOp> {
       return failure();
 
     // Peel loop and canonicalize.
-    LoopOp result;
-    if (failed(peelAndCanonicalizeGmlStLoop(rewriter, loopOp, idx, result)))
-      return failure();
+    auto result = peelAndCanonicalizeGmlStLoop(rewriter, loopOp, idx);
+    if (failed(result)) return failure();
 
     // Apply label, so that the same loop is not rewritten a second time.
     peeledLoops.push_back(idx);
     rewriter.updateRootInPlace(loopOp, [&]() {
       loopOp->setAttr(kPeeledLoopsLabel, rewriter.getI64ArrayAttr(peeledLoops));
     });
-    result->setAttr(kPeeledLoopsLabel, rewriter.getI64ArrayAttr(peeledLoops));
-    result->setAttr(kPartialIterationLabel, rewriter.getUnitAttr());
+    (*result)->setAttr(kPeeledLoopsLabel,
+                       rewriter.getI64ArrayAttr(peeledLoops));
+    (*result)->setAttr(kPartialIterationLabel, rewriter.getUnitAttr());
 
     return success();
   }

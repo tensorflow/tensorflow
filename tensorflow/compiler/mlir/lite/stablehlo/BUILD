@@ -297,6 +297,7 @@ cc_library(
         ":rename_entrypoint_to_main",
         ":smuggle_disallowed_ops",
         ":tf_mhlo",
+        ":unfuse_batch_norm_pass",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
@@ -345,6 +346,29 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "unfuse_batch_norm_pass",
+    srcs = [
+        "transforms/unfuse_batch_norm_pass.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
 tf_cc_binary(
     name = "odml_to_stablehlo",
     srcs = [
@@ -361,7 +385,6 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:passes",
         "//tensorflow/compiler/mlir/lite:flatbuffer_export",
         "//tensorflow/compiler/mlir/lite:tf_to_tfl_flatbuffer",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
         "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quant_ops",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -369,7 +392,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
         "//tensorflow/compiler/mlir/xla:legalize_tf",
-        "//tensorflow/compiler/mlir/xla:xla_passes",
+        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/core:lib",
@@ -396,6 +419,7 @@ tf_cc_binary(
         ":tf_mhlo_tfl",
         ":tf_poly",
         ":tfl_mhlo",
+        ":unfuse_batch_norm_pass",
         "//tensorflow/compiler/mlir:passes",
         "//tensorflow/compiler/mlir:tf_mlir_opt_main",
     ],

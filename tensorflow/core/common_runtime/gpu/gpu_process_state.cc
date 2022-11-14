@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
@@ -291,7 +292,8 @@ SharedCounter* GPUProcessState::GPUAllocatorCounter(
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
-Allocator* GPUProcessState::GetGpuHostAllocator(int numa_node) {
+Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
+                                                int numa_node) {
   CHECK(process_state_);
   if (!HasGPUDevice() ||
       !process_state_->ProcessState::FLAGS_brain_mem_reg_gpu_dma) {
@@ -337,6 +339,19 @@ Allocator* GPUProcessState::GetGpuHostAllocator(int numa_node) {
 
   CHECK_NE(nullptr, se);
 
+  int64_t mem_limit_bytes =
+      options.experimental().gpu_host_mem_limit_in_mb() * (1LL << 20);
+  if (mem_limit_bytes <= 0) {
+    int64_t limit_mb = -1;
+    Status status =
+        tsl::ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",
+                                 1LL << 16 /*2^16 MB == 64GB*/, &limit_mb);
+    if (!status.ok()) {
+      LOG(ERROR) << "GetGpuHostAllocator: " << status.error_message();
+    }
+    mem_limit_bytes = limit_mb * (1LL << 20);
+  }
+
   while (static_cast<int>(gpu_host_allocators_.size()) <= numa_node) {
     while (gpu_host_alloc_visitors_.size() <= numa_node) {
       gpu_host_alloc_visitors_.push_back({});
@@ -347,21 +362,13 @@ Allocator* GPUProcessState::GetGpuHostAllocator(int numa_node) {
     SubAllocator* sub_allocator = new DeviceHostAllocator(
         se, numa_node, gpu_host_alloc_visitors_[numa_node],
         gpu_host_free_visitors_[numa_node]);
-    // TODO(zheng-xq): evaluate whether 64GB by default is the best choice.
-    int64_t gpu_host_mem_limit_in_mb = -1;
-    Status status = tsl::ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",
-                                             1LL << 16 /*64GB max by default*/,
-                                             &gpu_host_mem_limit_in_mb);
-    if (!status.ok()) {
-      LOG(ERROR) << "GetGpuHostAllocator: " << status.error_message();
-    }
-    int64_t gpu_host_mem_limit = gpu_host_mem_limit_in_mb * (1LL << 20);
 
     tsl::BFCAllocator::Options allocator_opts;
-    allocator_opts.allow_growth = true;
-    tsl::Allocator* allocator = new tsl::BFCAllocator(
-        absl::WrapUnique(sub_allocator), gpu_host_mem_limit,
-        /*name=*/"gpu_host_bfc", allocator_opts);
+    allocator_opts.allow_growth =
+        !options.experimental().gpu_host_mem_disallow_growth();
+    tsl::Allocator* allocator =
+        new tsl::BFCAllocator(absl::WrapUnique(sub_allocator), mem_limit_bytes,
+                              /*name=*/"gpu_host_bfc", allocator_opts);
 
     if (LogMemory::IsEnabled() && !allocator->TracksAllocationSizes()) {
       // Wrap the allocator to track allocation ids for better logging

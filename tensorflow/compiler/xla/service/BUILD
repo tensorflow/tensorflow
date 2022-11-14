@@ -415,27 +415,6 @@ tf_cc_test(
     ],
 )
 
-cc_library(
-    name = "hlo_constant_splitter",
-    srcs = ["hlo_constant_splitter.cc"],
-    hdrs = ["hlo_constant_splitter.h"],
-    deps = ["//tensorflow/compiler/xla/service:hlo_pass"],
-)
-
-tf_cc_test(
-    name = "hlo_constant_splitter_test",
-    srcs = ["hlo_constant_splitter_test.cc"],
-    deps = [
-        ":hlo_constant_splitter",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/tsl/lib/core:status_test_util",
-    ],
-)
-
 tf_cc_test(
     name = "hlo_opcode_test",
     srcs = ["hlo_opcode_test.cc"],
@@ -2462,6 +2441,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -2504,6 +2484,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -2513,6 +2494,7 @@ tf_cc_test(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -6943,6 +6925,39 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "stochastic_convert_decomposer",
+    srcs = ["stochastic_convert_decomposer.cc"],
+    hdrs = ["stochastic_convert_decomposer.h"],
+    deps = [
+        ":hlo",
+        ":hlo_creation_utils",
+        ":hlo_pass",
+        ":shape_inference",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:statusor",
+    ],
+)
+
+tf_cc_test(
+    name = "stochastic_convert_decomposer_test",
+    srcs = ["stochastic_convert_decomposer_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_matchers",
+        ":hlo_parser",
+        ":stochastic_convert_decomposer",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
 tf_cc_test(
     name = "gather_simplifier_test",
     srcs = ["gather_simplifier_test.cc"],
@@ -6986,11 +7001,11 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/cpu:cpu_executable",
-        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/util:command_line_flags",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
@@ -7001,18 +7016,24 @@ tf_cc_binary(
 # copybara:uncomment_begin
 # # A simple test of xla_aot_compile which generates an output file from an mhlo file.
 # xla_aot_compile(
-#     name = "xla_aot_compile_test_output",
+#     name = "xla_aot_compile_test_cpu_executable",
 #     mhlo = "xla_aot_compile_test.mlir",
+#     platform = "cpu",
 # )
 #
-# tf_cc_test(
+# xla_test(
 #     name = "xla_aot_compile_test",
 #     srcs = ["xla_aot_compile_test.cc"],
+#     backends = ["cpu"],
 #     data = [
-#         ":xla_aot_compile_test_output",
+#         ":xla_aot_compile_test_cpu_executable",
 #     ],
 #     deps = [
-#         "//tensorflow/compiler/xla:status",
+#         ":platform_util",
+#         "//tensorflow/compiler/xla:executable_run_options",
+#         "//tensorflow/compiler/xla:literal_util",
+#         "//tensorflow/compiler/xla/client:client_library",
+#         "//tensorflow/compiler/xla/client:local_client",
 #         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
 #         "//tensorflow/tsl/lib/core:status_test_util",
 #         "//tensorflow/tsl/platform:env",

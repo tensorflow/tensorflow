@@ -78,6 +78,12 @@ const filter_action = async ({github, context, domain}) => {
       assignees.push('rohan100jain', 'bfontain');
     }
   }
+  if (title && title.toLowerCase().includes('linaro') &&
+      domain.includes('linaro.org')) {
+    if (title.toLowerCase().includes('arm_ci')) {
+      assignees.push('nitins17', 'penpornk');
+    }
+  }
 
   const resp_label = await github.rest.issues.addLabels({
     issue_number: context.issue.number,

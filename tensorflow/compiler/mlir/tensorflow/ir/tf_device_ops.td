@@ -38,7 +38,6 @@ def TfDevice_Dialect : Dialect {
     XlaRun.
 }];
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
   let cppNamespace = "::mlir::tf_device";
 }
 

@@ -92,12 +92,12 @@ In `LMHLO`, direct operand-user information is stripped away, as each op is only
 connected with its buffers, not ops which generate those buffers.
 
 Notice that some `LMHLO` ops, e.g. `lmhlo.fusion` or `lmhlo.reduce`, contain
-[`MHLO`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td)-based
+[`MHLO`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.td)-based
 regions. They are tensor-based `MHLO` regions because ops in them don't have
 buffers associated.
 
 The code that converts XLA HLO to `LMHLO` is
-[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h).
+[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h).
 
 Currently, lowering of those `MHLO` regions takes a twist:
 

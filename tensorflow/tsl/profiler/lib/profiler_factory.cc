@@ -18,10 +18,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/profiler/lib/profiler_controller.h"
 #include "tensorflow/tsl/profiler/lib/profiler_interface.h"
+#include "tensorflow/tsl/profiler/protobuf/profiler_options.pb.h"
 
 namespace tsl {
 namespace profiler {

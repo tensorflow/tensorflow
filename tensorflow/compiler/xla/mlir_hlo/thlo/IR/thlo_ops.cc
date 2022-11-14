@@ -149,10 +149,6 @@ void printDenseI64ArrayAttr(OpAsmPrinter &p, StringRef attributeName,
   p << " " << attributeName << " = [" << attributeValue << "] ";
 }
 
-bool dimensionsMatch(int64_t d1, int64_t d2) {
-  return ShapedType::isDynamic(d1) || ShapedType::isDynamic(d2) || d1 == d2;
-}
-
 SmallVector<utils::IteratorType> getParallelIteratorTypes(int64_t dimCount) {
   return SmallVector<utils::IteratorType>(dimCount,
                                           utils::IteratorType::parallel);
@@ -418,21 +414,6 @@ Value fuseConcatenateOpThroughPointRecursively(
         builder.create<scf::YieldOp>(loc, fused);
       });
   return ifOp.getResults().front();
-}
-
-Value fuseConcatenateOpThroughPoint(ConcatenateOp op, OpBuilder &builder,
-                                    Location loc, Value subset) {
-  auto resultTy = op.getType(0).cast<RankedTensorType>();
-  uint64_t concatDim = op.getDimension();
-
-  // Materialize initial offsets.
-  auto tileOp = subset.getDefiningOp<gml_st::TileOp>();
-  SmallVector<Value> initialOffsets =
-      getValueOrCreateConstantIndexOp(builder, loc, tileOp.getMixedOffsets());
-
-  ValueRange initialOperands = op.getInputs();
-  return fuseConcatenateOpThroughPointRecursively(
-      builder, loc, resultTy, concatDim, initialOffsets, initialOperands);
 }
 
 }  // namespace
@@ -938,7 +919,7 @@ LogicalResult SortOp::verify() {
     return emitOpError() << "expected the number of inputs " << numInputs
                          << " to match the number of outputs " << numOutputs;
   }
-  if (comparatorArgs.size() != numInputs * 2) {
+  if (static_cast<int64_t>(comparatorArgs.size()) != numInputs * 2) {
     return emitOpError() << "expected the number of block arguments "
                          << comparatorArgs.size() << " to be twice the number "
                          << "of inputs (2*" << numInputs << ")";
@@ -995,9 +976,10 @@ LogicalResult SortOp::verify() {
 
   // Checks that the rank of the reference shape is larger than the absolute
   // value of the sorting dimension. This is enough to ensure that the dimension
-  // is valid, since all inputs are known to have the same shape.
-  int64_t referenceRank = referenceShape.size();
-  if (getDimension() >= referenceRank || getDimension() < 0) {
+  // is valid, since all inputs are known to have the same shape. `getDimension`
+  // returns an unsigned int, so no need to check for negative values.
+  size_t referenceRank = referenceShape.size();
+  if (getDimension() >= referenceRank) {
     return emitOpError() << "sorting dimension must be in range [0, "
                          << referenceRank << ") but got " << getDimension();
   }

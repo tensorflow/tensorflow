@@ -12,7 +12,7 @@ limitations under the License.
 
 #include "bindings/c/Attributes.h"
 
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mhlo/IR/hlo_ops.h"
 #include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Support.h"
 

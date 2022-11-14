@@ -21,7 +21,7 @@ limitations under the License.
 #include "lhlo/IR/lhlo_ops.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Transforms/gpu_passes.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -107,8 +107,10 @@ static constexpr llvm::StringLiteral kWrittenOperandsAttrName = "lmhlo.written";
 
 void GpuFusionRewritePass::getDependentDialects(
     DialectRegistry& registry) const {
+  // Collect the dependent dialects for both variants of the pipeline.
   OpPassManager passManager;
-  createHloToGpuPipeline(passManager, {}, {}, {}, false);
+  for (bool experimentalSoftmax : {false, true})
+    createHloToGpuPipeline(passManager, {}, {}, {}, experimentalSoftmax);
   passManager.getDependentDialects(registry);
 }
 

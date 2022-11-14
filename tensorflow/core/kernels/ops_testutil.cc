@@ -174,6 +174,8 @@ Status OpsTestBase::RunOpKernel() {
   test::SetOutputAttrs(params_.get(), &attrs);
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
   params_->slice_reader_cache = &slice_reader_cache_wrapper;
+  CancellationManager default_cancellation_manager;
+  params_->cancellation_manager = &default_cancellation_manager;
   params_->resource_manager = device_->resource_manager();
   params_->function_library = pflr_->GetFLR(device_->name());
 

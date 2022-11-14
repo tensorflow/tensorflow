@@ -291,7 +291,8 @@ Value emitBottomUpMergeSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
   }
 
   Value initParity = b.create<arith::ConstantIntOp>(/*value=*/0, /*width=*/1);
-  if (staticSortDimSize >= 0 && staticSortDimSize < kInsertionSortSize) {
+  if (staticSortDimSize >= 0 &&
+      staticSortDimSize < static_cast<int64_t>(kInsertionSortSize)) {
     return initParity;
   }
 

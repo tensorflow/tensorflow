@@ -1185,6 +1185,8 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
       case PRED:
       case S8:
       case U8:
+      case S16:
+      case U16:
       case S32:
       case U32:
       case S64:

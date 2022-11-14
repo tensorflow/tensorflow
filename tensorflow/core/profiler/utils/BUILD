@@ -427,26 +427,6 @@ cc_library(
 )
 
 cc_library(
-    name = "buffer_pool",
-    srcs = ["buffer_pool.cc"],
-    hdrs = ["buffer_pool.h"],
-    copts = tf_profiler_copts(),
-    deps = [
-        "//tensorflow/core:lib",
-    ],
-)
-
-tf_cc_test(
-    name = "buffer_pool_test",
-    srcs = ["buffer_pool_test.cc"],
-    deps = [
-        ":buffer_pool",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-cc_library(
     name = "gpu_event_stats",
     srcs = ["gpu_event_stats.cc"],
     hdrs = ["gpu_event_stats.h"],
@@ -497,7 +477,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core/platform:statusor",

@@ -94,9 +94,12 @@ void AddSupportedOpsUsingFolding(MLIRContext* context,
 // fallback to the TF2XLA bridge.
 // TODO(b/168036682): Remove this once ops are supported using dynamic padder
 // on MLIR bridge.
+// TODO(b/257574556): Remove the need for this manual list by making use of old
+// bridge phase 2 op list.
 void AddSupportedOpsUsingDynamicPadder(
     MLIRContext* context, llvm::DenseSet<OperationName>* supported_ops) {
   llvm::SmallDenseSet<OperationName, 8> allowlist_ops = {
+      OperationName(TF::DynamicPartitionOp::getOperationName(), context),
       OperationName(TF::WhereOp::getOperationName(), context),
       OperationName(TF::UniqueOp::getOperationName(), context),
       OperationName(TF::XlaSetDynamicDimensionSizeOp::getOperationName(),

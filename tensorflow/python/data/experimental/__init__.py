@@ -47,6 +47,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@ThreadingOptions
 
 @@assert_cardinality
+@@at
 @@bucket_by_sequence_length
 @@cardinality
 @@choose_from_datasets
@@ -126,6 +127,7 @@ from tensorflow.python.data.experimental.ops.lookup_ops import table_from_datase
 from tensorflow.python.data.experimental.ops.parsing_ops import parse_example_dataset
 from tensorflow.python.data.experimental.ops.prefetching_ops import copy_to_device
 from tensorflow.python.data.experimental.ops.prefetching_ops import prefetch_to_device
+from tensorflow.python.data.experimental.ops.random_access import at
 from tensorflow.python.data.experimental.ops.random_ops import RandomDataset
 from tensorflow.python.data.experimental.ops.readers import CsvDataset
 from tensorflow.python.data.experimental.ops.readers import make_batched_features_dataset

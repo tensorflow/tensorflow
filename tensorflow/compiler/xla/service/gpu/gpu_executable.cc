@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
@@ -194,7 +194,7 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
 namespace {
 
 Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
-                           uint64_t start_micros, se::Stream* stream_to_sync);
+                           uint64_t start_nanos, se::Stream* stream_to_sync);
 
 Status ExecuteThunks(const std::string& module_name,
                      const ThunkSequence& thunk_sequence,
@@ -207,7 +207,7 @@ Status ExecuteThunks(const std::string& module_name,
   StatusOr<StreamPool::Ptr> async_comms_stream =
       run_options->BorrowStream(executor->device_ordinal());
 
-  uint64_t start_micros = tsl::Env::Default()->NowMicros();
+  uint64_t start_nanos = tsl::Env::Default()->NowNanos();
 
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
@@ -227,12 +227,12 @@ Status ExecuteThunks(const std::string& module_name,
         async_comms_stream.ok() ? async_comms_stream->get() : nullptr};
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
   }
-  return MaybeSyncAndProfile(run_options, start_micros,
+  return MaybeSyncAndProfile(run_options, start_nanos,
                              block_host_until_done ? main_stream : nullptr);
 }
 
 Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
-                           uint64_t start_micros,
+                           uint64_t start_nanos,
                            se::Stream* stream_to_sync = nullptr) {
   // Make sure kernels are completed before deallocating temporary buffers or
   // the profiler state.
@@ -250,11 +250,11 @@ Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
   // FinishExecution() blocks until main_stream has completed if profiling is
   // enabled; we therefore do not need to defer profile collection onto a
   // stream.
-  uint64_t end_micros = tsl::Env::Default()->NowMicros();
+  uint64_t end_nanos = tsl::Env::Default()->NowNanos();
 
   if (run_options->run_options().execution_profile()) {
     ExecutionProfile* profile = run_options->run_options().execution_profile();
-    const double nanoseconds = (end_micros - start_micros) * 1000.0;
+    const double nanoseconds = end_nanos - start_nanos;
     profile->set_compute_time_ns(std::max(nanoseconds, 1.0));
   }
 
@@ -457,7 +457,7 @@ static Status ExecuteXlaRuntime(const std::string& module_name,
                                 const BufferAllocations& buffer_allocations,
                                 const BufferAllocation* temp_buffer,
                                 bool block_host_until_done) {
-  uint64_t start_micros = tsl::Env::Default()->NowMicros();
+  uint64_t start_nanos = tsl::Env::Default()->NowNanos();
 
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
@@ -470,7 +470,7 @@ static Status ExecuteXlaRuntime(const std::string& module_name,
   if (!executed.ok()) return executed;
 
   return MaybeSyncAndProfile(
-      run_options, start_micros,
+      run_options, start_nanos,
       block_host_until_done ? run_options->stream() : nullptr);
 }
 
@@ -825,6 +825,9 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
     xla::EntryFunctionAttributes entry_func_attrs, DebugOptions debug_options,
     absl::string_view asm_text, absl::string_view binary,
     GpuVersion gpu_version, se::StreamExecutor* executor) {
+  VLOG(1) << "Load serialized Gpu executable from object file: module="
+          << hlo_module->name();
+
   // Load MLIR module behind the compiled object file to recover XLA allocations
   // and output info details. Also recover buffer sizes from the entrypoint
   // function signature.

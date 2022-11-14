@@ -5,8 +5,8 @@ package(
 )
 
 cc_library_with_tflite(
-    name = "vendor_delegate",
-    hdrs = ["vendor_delegate.h"],
+    name = "stable_delegate",
+    hdrs = ["stable_delegate.h"],
     tflite_deps = [
         "//tensorflow/lite/core/shims:delegate_plugin",
     ],

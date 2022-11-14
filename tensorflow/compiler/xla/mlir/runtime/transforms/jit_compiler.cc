@@ -247,14 +247,11 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
 
     // Add function with an unresolved function pointer; it will be updated once
     // we compile the input module to the native executable.
-    Executable::Function function{std::string(name),
-                                  /*fptr=*/nullptr,
-                                  std::move(*signature),
-                                  std::move(*runtime_signature),
-                                  std::move(*arguments_memory_layout),
-                                  std::move(*results_memory_layout)};
-
-    functions.push_back(std::move(function));
+    functions.push_back(Executable::Function(
+        name,
+        /*fptr=*/nullptr, std::move(*signature), std::move(*runtime_signature),
+        std::move(*arguments_memory_layout),
+        std::move(*results_memory_layout)));
   }
 
   // Run the compilation pipeline to lower the module to LLVM dialect.

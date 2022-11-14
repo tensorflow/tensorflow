@@ -88,8 +88,6 @@ class SideEffectAnalysisInfo {
   llvm::SmallVector<Operation*, 4> DirectControlPredecessors(
       Operation* op, llvm::function_ref<bool(Operation*)> filter) const;
 
-  // Returns a vector of ops that are direct control successors of `op`,
-  // sorted in program order. If `filter` is provided, only successors that
   // pass the filter (returning true) will be included.
   const llvm::SmallVector<Operation*, 4>& DirectControlSuccessors(
       Operation* op) const;

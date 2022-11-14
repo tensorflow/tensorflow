@@ -53,7 +53,7 @@ class ConvParameters {
   // A positive number that denotes the version of this class. Should be
   // incremented everytime this class or ConvParametersProto are updated in a
   // way that may invalidate autotune results.
-  static constexpr int kVersion = 2;
+  static constexpr int kVersion = 3;
   // LINT.ThenChange()
 
   // We have three kinds of convolutions today.  Vanilla unfused convolutions,
@@ -96,7 +96,7 @@ class MatmulParameters {
   // A positive number that denotes the version of this class. Should be
   // incremented everytime this class or ConvParametersProto are updated in a
   // way that may invalidate autotune results.
-  static constexpr int kVersion = 1;
+  static constexpr int kVersion = 2;
   // LINT.ThenChange()
 
   MatmulParameters(DataType ab_dtype, DataType c_dtype, bool trans_a,

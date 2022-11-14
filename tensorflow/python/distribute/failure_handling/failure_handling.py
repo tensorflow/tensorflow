@@ -170,6 +170,7 @@ class TerminationConfig(object):
     self.save_fn = save_fn
 
 
+# TODO(wxinyi): add some tests for TerminationConfig.
 # TODO(wxinyi): configure the exit function based on device type (GPU or TPU).
 class GcpGpuTerminationConfig(TerminationConfig):
   """Configurations for GCP GPU VM."""
@@ -219,6 +220,24 @@ class BorgTerminationConfig(TerminationConfig):
     self.save_fn = save_fn
 
 
+class BorgTPUTerminationConfig(TerminationConfig):
+  """Configurations for Borg."""
+
+  def __init__(  # pylint: disable=super-init-not-called
+      self,
+      termination_watcher_fn=None,
+      exit_fn=None,
+      grace_period=None,
+      save_fn=None):
+    self.termination_watcher_fn = termination_watcher_fn
+    if exit_fn:
+      self.exit_fn = lambda unused_time: exit_fn()
+    else:
+      self.exit_fn = failure_handling_util.default_tpu_exit_fn
+    self.grace_period = grace_period or 0
+    self.save_fn = save_fn
+
+
 def _complete_config_for_environment(platform_device, termination_config):
   """Complete un-filled fields of TerminationConfig based on platform."""
   if not termination_config:
@@ -235,6 +254,12 @@ def _complete_config_for_environment(platform_device, termination_config):
                                    termination_config.exit_fn,
                                    termination_config.grace_period,
                                    termination_config.save_fn)
+
+  elif platform_device is failure_handling_util.PlatformDevice.INTERNAL_TPU:
+    return BorgTPUTerminationConfig(termination_config.termination_watcher_fn,
+                                    termination_config.exit_fn,
+                                    termination_config.grace_period,
+                                    termination_config.save_fn)
 
   else:
     # The default we chose are the same as the ones used by Borg. So we just
@@ -853,6 +878,8 @@ class PreemptionCheckpointHandler(object):
 
         context.async_clear_error()
         self._save_checkpoint()
+
+        self._exit_fn(self._checkpoint_time)
 
       else:
         raise

@@ -23,9 +23,9 @@ limitations under the License.
 namespace tflite {
 namespace tools {
 
-TfLiteDelegate* CreateDummyDelegateFromOptions(char** options_keys,
-                                               char** options_values,
-                                               size_t num_options) {
+TfLiteDelegate* CreateDummyDelegateFromOptions(
+    const char* const* options_keys, const char* const* options_values,
+    size_t num_options) {
   DummyDelegateOptions options = TfLiteDummyDelegateOptionsDefault();
 
   // Parse key-values options to DummyDelegateOptions by mimicking them as
@@ -86,16 +86,35 @@ TfLiteDelegate* CreateDummyDelegateFromOptions(char** options_keys,
 
 extern "C" {
 
+// Define TFL_EXTERNAL_DELEGATE_EXPORT macro to export an external delegate
+// API function properly with a shared library.
+#ifdef SWIG
+#define TFL_EXTERNAL_DELEGATE_EXPORT
+#else  // !defined SWIG
+#if defined(_WIN32)
+#ifdef TFL_EXTERNAL_DELEGATE_COMPILE_LIBRARY
+#define TFL_EXTERNAL_DELEGATE_EXPORT __declspec(dllexport)
+#else  // !defined TFL_EXTERNAL_DELEGATE_COMPILE_LIBRARY
+#define TFL_EXTERNAL_DELEGATE_EXPORT __declspec(dllimport)
+#endif  // !defined TFL_EXTERNAL_DELEGATE_COMPILE_LIBRARY
+#else   // !defined _WIN32
+#define TFL_EXTERNAL_DELEGATE_EXPORT __attribute__((visibility("default")))
+#endif  // !defined _WIN32
+#endif  // !defined SWIG
+
 // Defines two symbols that need to be exported to use the TFLite external
 // delegate. See tensorflow/lite/delegates/external for details.
-TFL_CAPI_EXPORT TfLiteDelegate* tflite_plugin_create_delegate(
-    char** options_keys, char** options_values, size_t num_options,
-    void (*report_error)(const char*)) {
+extern TFL_EXTERNAL_DELEGATE_EXPORT TfLiteDelegate*
+tflite_plugin_create_delegate(const char* const* options_keys,
+                              const char* const* options_values,
+                              size_t num_options,
+                              void (*report_error)(const char*)) {
   return tflite::tools::CreateDummyDelegateFromOptions(
       options_keys, options_values, num_options);
 }
 
-TFL_CAPI_EXPORT void tflite_plugin_destroy_delegate(TfLiteDelegate* delegate) {
+TFL_EXTERNAL_DELEGATE_EXPORT void tflite_plugin_destroy_delegate(
+    TfLiteDelegate* delegate) {
   TfLiteDummyDelegateDelete(delegate);
 }
 

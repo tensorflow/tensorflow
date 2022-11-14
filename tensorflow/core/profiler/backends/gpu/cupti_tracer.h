@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/backends/gpu/cupti_collector.h"
 #include "tensorflow/core/profiler/backends/gpu/cupti_interface.h"
-#include "tensorflow/core/profiler/utils/buffer_pool.h"
+#include "tensorflow/tsl/profiler/utils/buffer_pool.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -147,7 +147,7 @@ class CuptiTracer {
 
   std::unique_ptr<CuptiDriverApiHook> cupti_driver_api_hook_;
 
-  BufferPool buffer_pool_;
+  tsl::profiler::BufferPool buffer_pool_;
 };
 
 }  // namespace profiler

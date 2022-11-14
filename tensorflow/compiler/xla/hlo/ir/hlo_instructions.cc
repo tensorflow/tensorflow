@@ -1742,6 +1742,9 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     called_computation()->set_root_instruction(new_root,
                                                /*accept_different_shape=*/true);
     *mutable_shape() = new_root->shape();
+    // The instruction might have an existing sharding, which will no longer
+    // be valid after we change the shape. So clear the sharding.
+    clear_sharding();
     if (root->opcode() == HloOpcode::kTuple) {
       TF_CHECK_OK(called_computation()->RemoveInstruction(root));
     }

@@ -7889,49 +7889,6 @@ TEST_F(AlgebraicSimplifierTest, AbsEliminationMultiply) {
               GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
 }
 
-TEST_F(AlgebraicSimplifierTest, ScalarCompareMaximumSimplification) {
-  std::string module_string = R"(
-    HloModule m
-    test {
-      a = s32[] parameter(0)
-      b = s32[] parameter(1)
-      max = s32[] maximum(a,b)
-      ROOT cmp = pred[] compare(max, a), direction=GT
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_string));
-  SCOPED_TRACE("before: " + m->ToString());
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
-  SCOPED_TRACE("after: " + m->ToString());
-  EXPECT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::Compare(m::Parameter(1), m::Parameter(0))));
-  // Numerically unstable transformation shouldn't be applied to floating types.
-  std::string module_string_f32 =
-      absl::StrReplaceAll(module_string, {{"s32", "f32"}});
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
-}
-
-TEST_F(AlgebraicSimplifierTest, CompareMaximumSimplification) {
-  std::string module_string = R"(
-    HloModule m
-    test {
-      a = s32[12,4,1,6] parameter(0)
-      b = s32[12,4,1,6] parameter(1)
-      max = s32[12,4,1,6] maximum(a,b)
-      ROOT cmp = pred[12,4,1,6] compare(max, b), direction=GT
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_string));
-  SCOPED_TRACE("before: " + m->ToString());
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
-  SCOPED_TRACE("after: " + m->ToString());
-  EXPECT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::Compare(m::Parameter(0), m::Parameter(1))));
-  // Numerically unstable transformation shouldn't be applied to floating types.
-  std::string module_string_f32 =
-      absl::StrReplaceAll(module_string, {{"s32", "f32"}});
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
-}
 
 TEST_F(AlgebraicSimplifierTest, AbsEliminationPower2) {
   const char* kModuleStr = R"(
@@ -8846,6 +8803,29 @@ TEST_F(AlgebraicSimplifierTest, BitcastCopyChainSmall) {
   ASSERT_TRUE(result);
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Bitcast(m::Bitcast(m::Copy(m::Parameter(0))))));
+}
+
+TEST_F(AlgebraicSimplifierTest, BitcastUndoesBitcast) {
+  const char* kModuleStr = R"(
+   HloModule m
+   ENTRY %main (p0: f32[32]) -> f32[1, 32, 32] {
+    %p0 = f32[32]{0} parameter(0)
+    %bitcast.0 = f32[1,32]{1, 0} bitcast(%p0)
+    %bitcast.1 = f32[32]{0} bitcast(%bitcast.0)
+    ROOT %broadcast = f32[1, 32, 32]{2, 1, 0} broadcast(%bitcast.1), dimensions={1}
+  }
+
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  SCOPED_TRACE(m->ToString());
+  auto result = simplifier.Run(m.get()).value();
+  SCOPED_TRACE(m->ToString());
+  ASSERT_TRUE(result);
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::Parameter(0))));
 }
 
 // Reverse(Reverse(A)) ==> A.

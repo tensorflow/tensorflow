@@ -16,7 +16,7 @@
 import enum
 import os
 import sys
-
+import time
 import requests
 
 from six.moves.urllib import request
@@ -27,10 +27,16 @@ GCP_METADATA_HEADER = {'Metadata-Flavor': 'Google'}
 _GCE_METADATA_URL_ENV_VARIABLE = 'GCE_METADATA_IP'
 _RESTARTABLE_EXIT_CODE = 143
 GRACE_PERIOD_GCE = 3600
+MAX_PREEMPTION_WAIT = 900
 
 
 def gce_exit_fn():
   sys.exit(_RESTARTABLE_EXIT_CODE)
+
+
+def default_tpu_exit_fn(checkpoint_time):
+  time.sleep(MAX_PREEMPTION_WAIT-checkpoint_time)
+  sys.exit(42)
 
 
 def request_compute_metadata(path):
@@ -85,17 +91,17 @@ class PlatformDevice(enum.Enum):
 def detect_platform():
   """Returns the platform and device information."""
   if on_gcp():
-    if context.context().list_physical_devices('GPU'):
+    if context.context().list_logical_devices('GPU'):
       return PlatformDevice.GCE_GPU
-    elif context.context().list_physical_devices('TPU'):
+    elif context.context().list_logical_devices('TPU'):
       return PlatformDevice.GCE_TPU
     else:
       return PlatformDevice.GCE_CPU
 
   else:
-    if context.context().list_physical_devices('GPU'):
+    if context.context().list_logical_devices('GPU'):
       return PlatformDevice.INTERNAL_GPU
-    elif context.context().list_physical_devices('TPU'):
+    elif context.context().list_logical_devices('TPU'):
       return PlatformDevice.INTERNAL_TPU
     else:
       return PlatformDevice.INTERNAL_CPU

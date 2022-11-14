@@ -733,6 +733,8 @@ def tf_cc_shared_object(
             name + longsuffix,
         )]
 
+    testonly = kwargs.pop("testonly", default = False)
+
     for name_os, name_os_major, name_os_full in names:
         # Windows DLLs cant be versioned
         if name_os.endswith(".dll"):
@@ -780,6 +782,7 @@ def tf_cc_shared_object(
                     "-Wl,-soname," + soname,
                 ],
             }),
+            testonly = testonly,
             visibility = visibility,
             **kwargs
         )
@@ -794,6 +797,7 @@ def tf_cc_shared_object(
                 "//conditions:default": [":lib%s.so%s" % (name, longsuffix)],
             }),
             visibility = visibility,
+            testonly = testonly,
         )
 
 # buildozer: disable=function-docstring-args

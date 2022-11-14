@@ -413,9 +413,15 @@ TYPED_TEST(Float8CastTest, CastThroughFloat) {
 
   for (int i = 0x00; i <= 0xFF; ++i) {
     Float8 f8 = Float8::FromRep(i);
-    DestType dest = static_cast<DestType>(f8);
-    DestType expected = static_cast<DestType>(static_cast<float>(f8));
-    EXPECT_THAT(dest, EqOrIsNaN(expected));
+
+    if ((!Eigen::numext::isnan(f8) ||
+         std::numeric_limits<DestType>::has_quiet_NaN) &&
+        (!Eigen::numext::isinf(f8) ||
+         std::numeric_limits<DestType>::has_infinity)) {
+      DestType dest = static_cast<DestType>(f8);
+      DestType expected = static_cast<DestType>(static_cast<float>(f8));
+      EXPECT_THAT(dest, EqOrIsNaN(expected));
+    }
   }
 }
 

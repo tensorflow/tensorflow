@@ -43,6 +43,7 @@ namespace tac {
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportFlatbufferOrMlir(
     const std::string& input_filename, bool input_mlir,
+    bool experimental_prune_unreachable_nodes_unconditionally,
     llvm::SourceMgr* source_mgr, mlir::MLIRContext* context) {
   std::string error;
   std::unique_ptr<llvm::MemoryBuffer> buffer =
@@ -70,7 +71,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportFlatbufferOrMlir(
   return tflite::FlatBufferToMlir(
       absl::string_view(buffer->getBufferStart(), buffer->getBufferSize()),
       context, loc, /*use_external_constant=*/false, inputs, outputs,
-      /*experimental_prune_unreachable_nodes_unconditionally=*/true);
+      experimental_prune_unreachable_nodes_unconditionally);
 }
 
 absl::Status ExportFlatbufferOrMlir(const std::string& output_filename,

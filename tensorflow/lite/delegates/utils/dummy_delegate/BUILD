@@ -27,6 +27,7 @@ cc_binary(
     srcs = [
         "external_delegate_adaptor.cc",
     ],
+    defines = ["TFL_EXTERNAL_DELEGATE_COMPILE_LIBRARY"],
     linkshared = 1,
     linkstatic = 1,
     deps = [
@@ -90,4 +91,15 @@ cc_binary(
         "//tensorflow/lite/tools/evaluation/tasks:task_executor_main",
         "//tensorflow/lite/tools/evaluation/tasks/coco_object_detection:run_eval_lib",
     ],
+)
+
+sh_test(
+    name = "external_delegate_test",
+    srcs = ["external_delegate_test.sh"],
+    data = [
+        "//tensorflow/lite/delegates/coreml/internal_test/testdata:mobilenet_v2_1.0_224_quantized_weights_fp16.tflite",
+        "//tensorflow/lite/delegates/utils/dummy_delegate:dummy_external_delegate.so",
+        "//tensorflow/lite/tools/benchmark:benchmark_model",
+    ],
+    visibility = ["//visibility:private"],
 )

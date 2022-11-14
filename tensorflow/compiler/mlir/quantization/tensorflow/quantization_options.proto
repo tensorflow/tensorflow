@@ -109,6 +109,14 @@ enum OpSet {
   UNIFORM_QUANTIZED = 3;
 }
 
+// Configurations for variable freezing during quantization passes.
+message FreezeAllVariables {
+  // Setting this to true freezes all variables to constants during
+  // quantization. Setting this to `false` is an experimental feature and does
+  // not have stability guarantees.
+  bool enabled = 1;
+}
+
 // Defines various options to specify and control the behavior of the quantizer.
 // It consists of
 // 1) Model-wise quantization configuration as a default configuration. If it is
@@ -123,9 +131,11 @@ message QuantizationOptions {
   // exists, this default one will become the quantization configuration for
   // units that are not specified in unit-wise configurations.
   QuantizationMethod quantization_method = 1;
-  OpSet op_set = 2;
+
+  OpSet op_set = 2;  // If not specified, it defaults to `TF`.
 
   QuantizationPrecision quantization_precision = 3;
+
   // Quantization precision for each unit. Units can become either
   // nodes or ops, and the mixture of those different units are allowed.
   // If there are conflicts or ambiguity in this unit-wise precision, our
@@ -136,4 +146,11 @@ message QuantizationOptions {
   // supported for Post-training Dynamic Range Quantization. By default, it is
   // set to 1024. To disable this, set the value to -1 explicitly.
   int64 min_num_elements_for_weights = 5;
+
+  // When set to `true`, freezes all variables in the model into constants.
+  // When set to `false` the model's large constants are converted to variables.
+  // Setting this to `false` is an experimental feature and quantization may
+  // fail. To quantize models larger than 2 GiB, this should be set to `false`.
+  // If not set, it defaults to `true`.
+  FreezeAllVariables freeze_all_variables = 6;
 }

@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -43,6 +44,8 @@ namespace {
 using namespace mlir;  // NOLINT
 
 using mlir::lmhlo::CustomCallOp;
+using mlir::lmhlo::InfeedOp;
+using mlir::lmhlo::OutfeedOp;
 
 using xla::runtime::AppendCustomCallAttrs;
 using xla::runtime::CustomCallDeclarations;
@@ -132,6 +135,63 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
 
 //===----------------------------------------------------------------------===//
 
+LogicalResult LowerXfeed(Operation* op, PatternRewriter& rewriter,
+                         StringRef call_target,
+                         CustomCallDeclarations& custom_calls) {
+  ImplicitLocOpBuilder b(op->getLoc(), rewriter);
+
+  // By default all operands are passed to the custom call handler.
+  llvm::SmallVector<Value> operands = op->getOperands();
+
+  // Create a custom call function declaration.
+  func::FuncOp callee = custom_calls.GetOrCreate(
+      b, call_target, TypeRange(ValueRange(operands)), TypeRange());
+
+  // Call the runtime intrinsic with the original operands.
+  rewriter.replaceOpWithNewOp<func::CallOp>(op, callee.getName(), TypeRange(),
+                                            operands);
+
+  return success();
+}
+
+class InfeedOpLowering : public OpRewritePattern<InfeedOp> {
+ private:
+  static constexpr const char kCallTarget[] = "xla.cpu.infeed";
+
+ public:
+  InfeedOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(InfeedOp op,
+                                PatternRewriter& rewriter) const override {
+    return LowerXfeed(op, rewriter, kCallTarget, custom_calls_);
+  }
+
+ private:
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
+class OutfeedOpLowering : public OpRewritePattern<OutfeedOp> {
+ private:
+  static constexpr const char kCallTarget[] = "xla.cpu.outfeed";
+
+ public:
+  OutfeedOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(OutfeedOp op,
+                                PatternRewriter& rewriter) const override {
+    return LowerXfeed(op, rewriter, kCallTarget, custom_calls_);
+  }
+
+ private:
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
 void ConvertLmhloToCpuRuntimePass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext* ctx = module.getContext();
@@ -142,7 +202,8 @@ void ConvertLmhloToCpuRuntimePass::runOnOperation() {
 
   // Convert lmhlo operations to XLA cpu runtime custom calls.
   RewritePatternSet patterns(ctx);
-  patterns.insert<CustomCallOpLowering>(ctx, custom_calls);
+  patterns.insert<InfeedOpLowering, OutfeedOpLowering, CustomCallOpLowering>(
+      ctx, custom_calls);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();

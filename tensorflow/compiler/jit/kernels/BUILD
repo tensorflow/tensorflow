@@ -48,7 +48,11 @@ cc_library(
     name = "xla_ops_no_jit_rewrite_registration",
     srcs = ["xla_ops.cc"],
     hdrs = ["xla_ops.h"],
-    deps = XLA_OPS_DEPS + ["//tensorflow/core/platform:refcount"],
+    deps = XLA_OPS_DEPS + [
+        "//tensorflow/compiler/jit:tf_graph_to_hlo_compiler",
+        "//tensorflow/compiler/jit:tf_to_hlo_compiler",
+        "//tensorflow/core/platform:refcount",
+    ],
     alwayslink = 1,
 )
 

@@ -20,6 +20,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_COMPILER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_COMPILER_H_
 
+#include <any>
 #include <functional>
 #include <map>
 #include <memory>
@@ -174,6 +175,11 @@ class AotCompilationOptions {
     sanitize_abilists_dataflow_ = abilists;
   }
 
+  const std::any& target_config() const { return target_config_; }
+  void set_target_config(std::any target_config) {
+    target_config_ = std::move(target_config);
+  }
+
  protected:
   AotCompilationOptions();
 
@@ -191,6 +197,8 @@ class AotCompilationOptions {
   bool run_backend_only_ = false;
   bool sanitize_dataflow_ = false;
   std::vector<std::string> sanitize_abilists_dataflow_;
+  // Contains target-specific information required by AOT compilation.
+  std::any target_config_;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time

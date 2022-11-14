@@ -24,8 +24,8 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 

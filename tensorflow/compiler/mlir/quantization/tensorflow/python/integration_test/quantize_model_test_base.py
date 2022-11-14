@@ -418,9 +418,10 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
 
     return ConvModel()
 
-  def _create_matmul_model(self,
-                           has_bias: bool = False,
-                           activation_fn: Optional[ops.Operation] = None) ->...:
+  def _create_matmul_model(
+      self,
+      has_bias: bool = False,
+      activation_fn: Optional[ops.Operation] = None) -> module.Module:
 
     class MatmulModel(module.Module):
       """A simple model with a single matmul.

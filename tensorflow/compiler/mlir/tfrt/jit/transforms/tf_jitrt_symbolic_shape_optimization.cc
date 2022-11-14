@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -34,7 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Analysis/shape_component_analysis.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace tensorflow {
 namespace {
@@ -72,11 +73,6 @@ namespace tensor = mlir::tensor;
 
 // -------------------------------------------------------------------------- //
 
-
-
-
-
-
 // Replace shape.broadcast with a shape if it's statically known.
 class BroadcastOpLowering final
     : public mlir::OpRewritePattern<shape::BroadcastOp> {
@@ -95,7 +91,7 @@ llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis& analysis,
   // First find the input shape with the largest rank.
   SmallVector<ArrayRef<ShapeComponentAnalysis::SymbolicExpr>> shapes_found;
   size_t maxRank = 0;
-  for (const auto &shape : llvm::enumerate(shapes)) {
+  for (const auto& shape : llvm::enumerate(shapes)) {
     auto found_shape = analysis.GetValueInfo(shape.value());
     if (!found_shape) return {};
     shapes_found.push_back(*found_shape);
@@ -109,8 +105,8 @@ llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis& analysis,
   SmallVector<const ShapeComponentAnalysis::SymbolicExpr*> joined_dimensions(
       maxRank);
   SmallVector<std::pair<Value, int64_t>> shape_and_rank_for_dim(maxRank);
-  for (const auto &shape : llvm::enumerate(shapes_found)) {
-    for (const auto &dim : llvm::enumerate(llvm::reverse(shape.value()))) {
+  for (const auto& shape : llvm::enumerate(shapes_found)) {
+    for (const auto& dim : llvm::enumerate(llvm::reverse(shape.value()))) {
       // 1 dimensions don't contribute to the final result.
       if (dim.value().isConstant(1)) continue;
       // If it's not a 1 dimension it will be present in the result. Remember
@@ -264,7 +260,8 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
   AffineMap output_map = AffineMap::getMultiDimIdentityMap(rank, ctx);
 
   // All iterators are parallel.
-  SmallVector<llvm::StringRef> iterator_types(rank, "parallel");
+  SmallVector<mlir::utils::IteratorType> iterator_types(
+      rank, mlir::utils::IteratorType::parallel);
 
   rewriter.replaceOpWithNewOp<linalg::GenericOp>(
       op, /*resultTensorTypes=*/TypeRange{emptyTensor.getType()},

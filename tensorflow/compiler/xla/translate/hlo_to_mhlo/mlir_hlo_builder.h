@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
@@ -51,7 +52,10 @@ class MlirHloBuilder : public XlaBuilder {
       : XlaBuilder(func.getName().str()),
         builder_(&func.getBody()),
         loc_(builder_.getUnknownLoc()),
-        build_functions_(false) {}
+        build_functions_(false),
+        symbol_table_(builder_.getBlock()
+                          ->getParent()
+                          ->getParentOfType<mlir::ModuleOp>()) {}
 
   // TODO(hinsu): Add a constructor to build a new MLIR function from scratch
   // and override Build methods.
@@ -61,7 +65,10 @@ class MlirHloBuilder : public XlaBuilder {
       : XlaBuilder(name),
         builder_(builder),
         loc_(loc),
-        build_functions_(build_functions) {}
+        build_functions_(build_functions),
+        symbol_table_(builder_.getBlock()
+                          ->getParent()
+                          ->getParentOfType<mlir::ModuleOp>()) {}
 
   MlirHloBuilder(const MlirHloBuilder&) = delete;
   MlirHloBuilder& operator=(const MlirHloBuilder&) = delete;
@@ -278,12 +285,14 @@ class MlirHloBuilder : public XlaBuilder {
                            mlir::Region* region,
                            bool flatten_region_arg_tuple = false);
 
-  Status ImportComputation(const HloModuleProto& computation,
-                           mlir::ModuleOp module);
+  StatusOr<mlir::func::FuncOp> ImportComputationAsFunc(
+      const HloModuleProto& computation);
 
   mlir::OpBuilder builder_;
   mlir::Location loc_;
   bool build_functions_;
+
+  mlir::SymbolTable symbol_table_;
 
   absl::flat_hash_map<int64_t, std::unique_ptr<Shape>> handle_to_shape_;
 };

@@ -49,13 +49,18 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass(
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass();
 
 /// Pass to tile warp-level ops on GPU.
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingGPUWarpPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createTilingGpuWarpPass();
 
 /// Pass to match, tile, and fuse softmax implementations.
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass(
     bool distribute, ArrayRef<int64_t> tileSizes,
     StringRef distributionLabel = "");
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass();
+
+// Pass to collapse dimensions of bcasts, reductions, and cwise ops.
+std::unique_ptr<OperationPass<func::FuncOp>> createCollapseShapePass();
+std::unique_ptr<OperationPass<func::FuncOp>> createCollapseShapePass(
+    const CollapseShapePassOptions &options);
 
 /// Pass to collapse (or uncollapse) materialize operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createCollapseMaterializeOpsPass();

@@ -23,9 +23,9 @@ limitations under the License.
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -129,18 +129,6 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
 // Emits code that determines whether the current thread is thread 0 within
 // block 0 of the kernel.
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
-
-// Returns whether the output of a fusion with reduction are consistent with
-// `first_reduce`.
-bool IsFusedReductionOutputConsistent(const HloInstruction* inst,
-                                      const HloInstruction* first_reduce);
-inline bool AreFusedReductionOutputsConsistent(
-    absl::Span<const HloInstruction* const> output_instructions,
-    const HloInstruction* first_reduce) {
-  return absl::c_all_of(output_instructions, [=](const HloInstruction* inst) {
-    return IsFusedReductionOutputConsistent(inst, first_reduce);
-  });
-}
 
 inline std::string MlirToString(mlir::Operation* op) {
   std::string s;

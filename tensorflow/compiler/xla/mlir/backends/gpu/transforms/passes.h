@@ -35,11 +35,19 @@ namespace gpu {
 
 class ThunkSequence;  // forward declare
 
+struct GpuPipelineOpts {
+  // Enable experimental pass that outlines parts of the XLA computation into
+  // CUDA Graphs, which allows us to amortize the cost of launching multiple
+  // device kernels.
+  bool enable_cuda_graphs = false;
+};
+
 // Populate passes that lower MLIR modules from a combination of LMHLO and
 // LMHLO_GPU dialects to the XLA Gpu runtime. This pipeline is composed from
 // the passes defined below, and few builtin MLIR passes.
 void populateXlaGpuRuntimePasses(mlir::OpPassManager& pm,
-                                 ThunkSequence* thunk_sequence);
+                                 ThunkSequence* thunk_sequence,
+                                 const GpuPipelineOpts& opts = {});
 
 //===----------------------------------------------------------------------===//
 // Auxiliary passes for lowering to XLA Gpu runtime.

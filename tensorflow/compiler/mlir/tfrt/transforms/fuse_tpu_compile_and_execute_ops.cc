@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -25,6 +26,41 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+void RecursivelyMoveOp(mlir::TF::_TPUCompileMlirOp compile_op,
+                       mlir::Operation *op_candidate,
+                       llvm::SmallDenseSet<mlir::Operation *> *ops_to_move) {
+  if (!op_candidate || !ops_to_move->contains(op_candidate)) return;
+  // Move the parent first.
+  for (const auto &operand : op_candidate->getOperands()) {
+    RecursivelyMoveOp(compile_op, operand.getDefiningOp(), ops_to_move);
+  }
+  op_candidate->moveBefore(compile_op);
+  // Erase the op to avoid moving the common ancestor.
+  ops_to_move->erase(op_candidate);
+}
+
+// Move exec_op's args defining ops before the compile op to group compile op
+// and execute op.
+void GroupCompileOpAndExecuteOp(mlir::func::FuncOp func,
+                                mlir::TF::_TPUCompileMlirOp compile_op,
+                                mlir::TF::TPUExecuteOp exec_op) {
+  // Collect the ops between compile op and execute op.
+  llvm::SmallDenseSet<mlir::Operation *> ops_to_move;
+  bool collect = false;
+  func.walk(
+      [&ops_to_move, &collect, &compile_op, &exec_op](mlir::Operation *op) {
+        if (collect) ops_to_move.insert(op);
+        if (op == compile_op.getOperation()) collect = true;
+        return op == exec_op.getOperation() ? mlir::WalkResult::interrupt()
+                                            : mlir::WalkResult::advance();
+      });
+  // Recursively move the defining op of the execute op argument in front of the
+  // compile op such that the compile op and execute op are grouped together.
+  for (const auto &operand : exec_op.getArgs()) {
+    RecursivelyMoveOp(compile_op, operand.getDefiningOp(), &ops_to_move);
+  }
+}
 
 // This pass rewrites tf._TPUCompileMlirOp and tf.TPUExecuteOp into a single
 // tf.TPUCompileMlirAndExecuteOp. Also it removes the unnecessary
@@ -87,6 +123,8 @@ class FuseTpuCompileAndExecutePass
         signalPassFailure();
         return;
       }
+
+      GroupCompileOpAndExecuteOp(func, compile_op, exec_op);
 
       builder.setInsertionPointAfter(compile_op);
       llvm::SmallVector<mlir::Type, 4> output_types;

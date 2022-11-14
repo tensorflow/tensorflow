@@ -20,6 +20,7 @@ limitations under the License.
 #include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
+#include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -52,8 +53,6 @@ struct MatmulTransformPattern
     : public OpInterfaceRewritePattern<TilingInterface> {
   using OpInterfaceRewritePattern<TilingInterface>::OpInterfaceRewritePattern;
 
-  MatmulTransformPattern() = default;
-
   explicit MatmulTransformPattern(MLIRContext *context,
                                   int64_t lhsParallelDimTileSize = 2,
                                   int64_t rhsParallelDimTileSize = 4,
@@ -74,9 +73,8 @@ struct MatmulTransformPattern
     // First level tiling: parallel dimensions.
     SmallVector<int64_t> parallelDimsTileSizes{lhsParallelDimTileSize,
                                                rhsParallelDimTileSize, 0};
-    auto tilingParallelDimsResult =
-        tileMatmul(rewriter, matmul, parallelDimsTileSizes,
-                   /*distribute=*/true);
+    auto tilingParallelDimsResult = tileMatmul(
+        rewriter, matmul, parallelDimsTileSizes, /*distribute=*/true);
     if (failed(tilingParallelDimsResult)) return failure();
 
     // Update the results if tiling succeeded.
@@ -107,6 +105,27 @@ struct MatmulTransformPattern
     }
 
     setTransformationAttr(rewriter, matmul);
+
+    // Peel parallel loops.
+    if (auto loop =
+            dyn_cast_or_null<ParallelOp>(tilingParallelDimsResult->loop)) {
+      auto peelingResult = peelAllLoops(loop, rewriter);
+      // Mark all for loops inside remainder parallel loops as peeled to prevent
+      // downstream peeling pass from peeling them.
+      for (auto *remParLoop : peelingResult) {
+        remParLoop->walk([&](Operation *childOp) {
+          if (isa<ForOp>(childOp)) {
+            setTransformationAttr(rewriter, childOp, kPeeledMarker);
+          }
+        });
+      }
+    }
+
+    // Peel reduction loop inside the main parallel loop.
+    if (auto loop = dyn_cast_or_null<ForOp>(tilingReductionDimsResult->loop)) {
+      peelAllLoops(loop, rewriter);
+    }
+
     return success();
   }
 

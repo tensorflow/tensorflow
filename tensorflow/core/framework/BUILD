@@ -576,7 +576,7 @@ cc_library(
     testonly = 1,
     srcs = ["fake_input.cc"],
     hdrs = ["fake_input.h"],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":attr_value_proto_cc",
         ":op_def_proto_cc",
@@ -1789,6 +1789,17 @@ tf_proto_library(
     make_default_target_header_only = True,
     protodeps = [
         ":model_proto",
+    ],
+)
+
+tf_proto_library(
+    name = "optimized_function_graph_proto",
+    srcs = ["optimized_function_graph.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    protodeps = [
+        ":types_proto",
+        ":graph_proto",
     ],
 )
 

@@ -57,7 +57,7 @@ def TilingCwisePass : Pass<"gml-tiling-cwise", "mlir::func::FuncOp"> {
 
 def TilingGPUWarpPass : Pass<"gml-tiling-gpu-warp", "mlir::func::FuncOp"> {
   let summary = "Tile warp-level ops for GPU";
-  let constructor = "::mlir::gml_st::createTilingGPUWarpPass()";
+  let constructor = "::mlir::gml_st::createTilingGpuWarpPass()";
   let dependentDialects = ["::mlir::gml_st::GmlStDialect",
                            "::mlir::arith::ArithDialect"];
 }
@@ -74,6 +74,21 @@ def TilingSoftmaxPass : Pass<"gml-tiling-softmax", "mlir::func::FuncOp"> {
     Option<"distributionLabel", "distribution-label", "std::string",
             /*default=*/"", "Distribution label for generated gml_st.parallel">,
   ];
+}
+
+def CollapseShapePass : Pass<"gml-collapse-shape", "mlir::func::FuncOp"> {
+  let summary = "Collapse dimensions of bcasts, reductions, and cwise ops";
+  let description = [{
+    Pass to collapse dimensions of bcasts, reductions, and cwise ops. A given
+    number of trailing dimensions remains untouched while the remaining leading
+    dimensions will be collapsed where possible.
+  }];
+  let options = [
+    Option<"retainTrailingDims", "retain-trailing-dims", "int64_t",
+           /*default=*/"0",
+           "Number of trailing dimensions that will not be collapsed.">,
+  ];
+  let dependentDialects = ["::mlir::tensor::TensorDialect"];
 }
 
 def CollapseMaterializeOpsPass : Pass<"gml-collapse-materialize-ops",

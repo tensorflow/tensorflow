@@ -22,19 +22,19 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/platform/protobuf.h"
+
 namespace tensorflow {
 namespace autotune_maps_utils {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Given a device_id, this function computes an identifier string that
-// represents the corresponding GPU device type. Currently the identifier is
-// computed as
-// "<device_name> <compute_compatibility> <GPU_memory> <multiprocessor_count>".
-// We cannot simply use <device_name> output by GetDeviceName here because for
-// some GPUs the it will output uninformative names like "Graphics Device",
-// which cannot identify device types of GPUs.
-// TODO(ruochengw): Replace the identifier with something that uniquely
-// determines a GPU device type, e.g. PCI device ID.
+// represents the corresponding GPU device type. Currently the identifier
+// includes the compute capability, memory size, number of SMs, and a few other
+// features about the GPU.
+//
+// We cannot simply use <device_name> output by GetDeviceName here because
+// different GPU vbios versions / part numbers output different names for the
+// same device.
 std::string DeviceIdToIdentifier(int device_id);
 
 // Precomputes a map storing the results of DeviceIdToIdentifierHelper for all

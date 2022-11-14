@@ -1833,8 +1833,11 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ] + if_cuda([
         "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
-    ] + if_mkl(["//tensorflow/core/kernels/mkl:mkl_conv_op"]),
+    ]) + if_mkl([
+        "//tensorflow/core/kernels/mkl:mkl_conv_op",
+    ]),
 )
 
 tf_cuda_cc_test(
@@ -1848,7 +1851,6 @@ tf_cuda_cc_test(
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/cc:cc_ops",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -1857,7 +1859,9 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ],
+    ] + if_cuda([
+        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
+    ]),
 )
 
 tf_cuda_cc_test(
@@ -1871,7 +1875,6 @@ tf_cuda_cc_test(
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/cc:cc_ops",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -1880,7 +1883,9 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ],
+    ] + if_cuda([
+        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
+    ]),
 )
 
 tf_cuda_cc_test(
@@ -1960,7 +1965,6 @@ tf_cuda_cc_test(
         ":fused_batch_norm_op",
         ":ops_testutil",
         ":ops_util",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1968,7 +1972,9 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ],
+    ] + if_cuda([
+        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
+    ]),
 )
 
 tf_cuda_cc_test(
@@ -1985,9 +1991,10 @@ tf_cuda_cc_test(
         ":ops_testutil",
         ":ops_util",
         ":relu_op",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
@@ -1997,9 +2004,9 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
-    ],
+    ] + if_cuda([
+        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
+    ]),
 )
 
 tf_cc_test(
@@ -2011,7 +2018,6 @@ tf_cc_test(
         ":in_topk_op",
         ":ops_testutil",
         ":ops_util",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2019,7 +2025,9 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ],
+    ] + if_cuda([
+        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
+    ]),
 )
 
 tf_kernel_library(
@@ -2222,7 +2230,6 @@ tf_cc_test(
         ":one_hot_op",
         ":ops_testutil",
         ":ops_util",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2230,7 +2237,9 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ],
+    ] + if_cuda([
+        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
+    ]),
 )
 
 tf_cc_test(

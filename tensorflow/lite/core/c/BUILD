@@ -12,7 +12,6 @@ exports_files([
     "c_api.h",
 ])
 
-# LINT.IfChange(c_api)
 tflite_cc_library_with_c_headers_test(
     name = "c_api",
     hdrs = [
@@ -31,31 +30,18 @@ tflite_cc_library_with_c_headers_test(
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
-# LINT.ThenChange(:private_c_api)
 
-# LINT.IfChange(private_c_api)
-cc_library(
+# This is a private target, its visibility is set to public only to be
+# used by "tflite_custom_c_library".
+# Do not use this target directly and don't consider it as a part of the public API.
+alias(
     name = "private_c_api",
-    hdrs = [
-        "c_api.h",
-    ],
-    copts = tflite_copts(),
+    actual = ":c_api",
     tags = ["avoid_dep"],
-    # This is a private target, its visibility is set to public only to be
-    # used by "tflite_custom_c_library".
-    # Do not use this target directly and don't consider it as a part of the public API.
     visibility = [
         "//visibility:public",
     ],
-    deps = [
-        ":c_api_without_op_resolver",
-        "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite:create_op_resolver_with_builtin_ops",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
-    ],
 )
-# LINT.ThenChange(:c_api)
 
 tflite_cc_library_with_c_headers_test(
     name = "c_api_without_op_resolver",

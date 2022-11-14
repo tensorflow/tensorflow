@@ -46,7 +46,8 @@ class Delegate:
 
   The shared library is expected to have two functions:
     TfLiteDelegate* tflite_plugin_create_delegate(
-        char**, char**, size_t, void (*report_error)(const char *))
+        const char* const*, const char* const*, size_t,
+        void (*report_error)(const char *))
     void tflite_plugin_destroy_delegate(TfLiteDelegate*)
 
   The first one creates a delegate object. It may return NULL to indicate an
@@ -85,6 +86,7 @@ class Delegate:
         ctypes.POINTER(ctypes.c_char_p), ctypes.c_int,
         ctypes.CFUNCTYPE(None, ctypes.c_char_p)
     ]
+    # The return type is really 'TfLiteDelegate*', but 'void*' is close enough.
     self._library.tflite_plugin_create_delegate.restype = ctypes.c_void_p
 
     # Convert the options from a dictionary to lists of char pointers.

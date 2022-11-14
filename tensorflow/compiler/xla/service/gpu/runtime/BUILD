@@ -38,6 +38,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
+        "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
+        "//tensorflow/compiler/xla/service/gpu:nccl_utils",
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:executor_cache",
@@ -72,6 +74,7 @@ cc_library(
     deps = [
         ":collectives",
         ":conv",
+        ":cublas_lt_matmul",
         ":gemm",
         ":kernel_launch",
         "//tensorflow/compiler/xla:xla_proto_cc",
@@ -177,6 +180,7 @@ cc_library(
     srcs = ["cublas_lt_matmul.cc"],
     hdrs = ["cublas_lt_matmul.h"],
     deps = [
+        ":gemm",
         ":support",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/runtime:custom_call",

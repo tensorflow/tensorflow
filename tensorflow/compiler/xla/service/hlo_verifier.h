@@ -81,6 +81,11 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
+  HloVerifierOpts&& WithVerifyShardingDeviceNumbers(bool verify) {
+    verify_sharding_device_numbers = verify;
+    return std::move(*this);
+  }
+
   bool IsLayoutSensitive() const { return layout_sensitive; }
 
   bool AllowMixedPrecision() const { return allow_mixed_precision; }
@@ -114,6 +119,9 @@ struct HloVerifierOpts {
   // Check that custom call's called computations have same thread name as
   // parent computation.
   bool verify_custom_call_nested_computation_thread_name = true;
+
+  // Check device numbers in sharding verification.
+  bool verify_sharding_device_numbers = true;
 
   // Whether bitcast should have the same size, including all paddings.
   bool allow_bitcast_to_have_different_size = false;

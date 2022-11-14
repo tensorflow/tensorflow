@@ -20,10 +20,10 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
@@ -104,24 +104,6 @@ class SpmdPartitioningTest : public HloTestBase {
     }
   }
 };
-
-TEST_F(SpmdPartitioningTest, InvalidSharding) {
-  absl::string_view hlo_string = R"(
-HloModule module
-
-ENTRY entry {
-  token0 = token[] after-all(), sharding={maximal device=0}
-  infeed = (f32[8,2]{1,0}, token[]) infeed(token0),
-    sharding={{devices=[2,1]0,1}, {maximal device=0}}
-  ROOT infeed.data = f32[8,2]{1,0} get-tuple-element(infeed), index=0,
-    sharding={maximal device=0}
-})";
-  auto module_status = PartitionComputation(hlo_string, /*num_devices=*/4);
-  EXPECT_FALSE(module_status.status().ok());
-  EXPECT_THAT(module_status.status().ToString(),
-              ::testing::HasSubstr(
-                  "only supports tile sharding that includes all partitions"));
-}
 
 TEST_F(SpmdPartitioningTest, SingleDeviceToReplicated) {
   absl::string_view hlo_string = R"(
