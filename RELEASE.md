@@ -1,5 +1,7 @@
 # Release 2.8.4
 
+This release introduces several vulnerability fixes:
+
 *   Fixes a heap OOB failure in `ThreadUnsafeUnigramCandidateSampler` caused by missing validation ([CVE-2022-41880](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41880))
 *   Fixes a segfault in `ndarray_tensor_bridge` ([CVE-2022-41884](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41884))
 *   Fixes an overflow in `FusedResizeAndPadConv2D` ([CVE-2022-41885](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41885))
