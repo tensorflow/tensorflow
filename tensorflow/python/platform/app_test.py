@@ -16,26 +16,36 @@
 """Tests for our flags implementation."""
 import sys
 
-from tensorflow.python.platform import app
-from tensorflow.python.platform import flags
+from tensorflow.python.platform import app, flags, test
 
 FLAGS = flags.FLAGS
-flags.DEFINE_boolean('myflag', False, '')
+flags.DEFINE_boolean("myflag", False, '')
 
-def main(argv):
-  if (len(argv) != 3):
-    print("Length of argv was not 3: ", argv)
-    sys.exit(-1)
 
-  if argv[1] != "--passthrough":
-    print("--passthrough argument not in argv")
-    sys.exit(-1)
+class TestCMDArgs(test.TestCase):
+  def testWith3Args(self):
+    sys.argv.extend(["--myflag", "--passthrough", "extra"])
+    with self.assertRaises(SystemExit) as cm:
+      app.run()
+    self.assertNotEqual(cm.exception.code, 1)
 
-  if argv[2] != "extra":
-    print("'extra' argument not in argv")
-    sys.exit(-1)
+  def testWithoutPassThrough(self):
+    sys.argv.extend(["--myflag", "--test", "extra"])
+    with self.assertRaises(SystemExit) as cm:
+      app.run()
+    self.assertEqual(cm.exception.code, 2)
+
+  def testWithoutExtra(self):
+    sys.argv.extend(["--myflag", "--passthrough", "notextra"])
+    with self.assertRaises(SystemExit) as cm:
+      app.run()
+    self.assertEqual(cm.exception.code, 2)
+
+  def testWithoutArgs(self):
+    with self.assertRaises(SystemExit) as cm:
+      app.run()
+    self.assertEqual(cm.exception.code, 2)
 
 
 if __name__ == '__main__':
-  sys.argv.extend(["--myflag", "--passthrough", "extra"])
-  app.run()
+  test.main()
