@@ -366,7 +366,7 @@ PYBIND11_MODULE(xla_extension, m) {
         []() -> StatusOr<std::shared_ptr<PyClient>> {
           py::gil_scoped_release gil_release;
           TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> c_api_client,
-                              GetCApiClient());
+                              GetCApiClient("TPU"));
           return std::make_shared<PyClient>(std::move(c_api_client));
         });
 #endif  // XLA_PYTHON_ENABLE_TPU

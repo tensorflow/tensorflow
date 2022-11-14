@@ -1,6 +1,7 @@
 # Description: StreamExecutor Interface for TPUs
 
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     default_visibility = [
@@ -27,7 +28,11 @@ cc_library(
     srcs = ["pjrt_api.cc"],
     hdrs = ["pjrt_api.h"],
     deps = [
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -536,5 +541,16 @@ cc_library(
         ":c_api_decl",
         ":tpu_api",
         "//tensorflow/tsl/platform:types",
+    ],
+)
+
+tf_cc_test(
+    name = "pjrt_api_test",
+    srcs = ["pjrt_api_test.cc"],
+    deps = [
+        ":pjrt_api",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )

@@ -665,6 +665,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/tpu:pjrt_api",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
         "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/strings",
         "@llvm-project//mlir:BytecodeWriter",
     ],
 )

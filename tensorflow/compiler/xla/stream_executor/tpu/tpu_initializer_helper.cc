@@ -227,7 +227,7 @@ void InitializePjRt(void* library_handle) {
     LOG(INFO) << "GetTpuPjrtApi not found";
   } else {
     LOG(INFO) << "GetTpuPjrtApi was found";
-    tensorflow::tpu::SetPjrtApi(fptr());
+    tensorflow::tpu::SetPjrtApi("TPU", fptr());
   }
 }
 
