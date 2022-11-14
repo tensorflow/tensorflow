@@ -182,8 +182,24 @@ Status ReplaceSoftmaxWithCustomCall(HloInstruction* root,
   absl::flat_hash_map<const HloInstruction*, HloInstruction*>
       old_to_new_mapping;
   auto builder = HloComputation::Builder("softmax_computation");
-  old_to_new_mapping[producer] = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, producer->shape(), "parameter_0"));
+  std::vector<HloInstruction*> custom_call_operands;
+  if (producer->IsElementwise()) {
+    int64_t operand_idx = 0;
+    for (HloInstruction* operand : producer->operands()) {
+      if (!old_to_new_mapping.contains(operand)) {
+        custom_call_operands.push_back(operand);
+        old_to_new_mapping[operand] =
+            builder.AddInstruction(HloInstruction::CreateParameter(
+                operand_idx, operand->shape(),
+                absl::StrCat("parameter_", operand_idx)));
+        ++operand_idx;
+      }
+    }
+  } else {
+    custom_call_operands.push_back(producer);
+    old_to_new_mapping[producer] = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, producer->shape(), "parameter_0"));
+  }
   std::function<void(const HloInstruction*)> create_computation =
       [&](const HloInstruction* instr) {
         if (old_to_new_mapping.contains(instr)) {
@@ -203,7 +219,8 @@ Status ReplaceSoftmaxWithCustomCall(HloInstruction* root,
                                                            /*is_entry=*/false);
   auto softmax_custom_call =
       root->parent()->AddInstruction(HloInstruction::CreateCustomCall(
-          root->shape(), {producer}, softmax_computation, kSoftmaxCallTarget));
+          root->shape(), custom_call_operands, softmax_computation,
+          kSoftmaxCallTarget));
   if (root->IsRoot()) {
     root->parent()->set_root_instruction(softmax_custom_call);
     TF_RETURN_IF_ERROR(

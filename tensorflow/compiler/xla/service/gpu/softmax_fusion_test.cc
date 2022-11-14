@@ -224,16 +224,16 @@ ENTRY main {
   VLOG(2) << module->ToString();
   auto* root = module->entry_computation()->root_instruction();
   HloInstruction* custom_call;
-  ASSERT_THAT(
-      root,
-      GmockMatch(m::Log(m::CustomCall(&custom_call, m::Exp(m::Parameter(0))))));
+  ASSERT_THAT(root,
+              GmockMatch(m::Log(m::CustomCall(&custom_call, m::Parameter(0)))));
   ASSERT_TRUE(custom_call->has_to_apply());
   // Assert that the softmax computation has the softmax pattern with the extra
   // Negate, but without the Exponential.
-  ASSERT_THAT(custom_call->to_apply()->root_instruction(),
-              GmockMatch(m::Subtract(
-                  m::Negate(m::Parameter(0)),
-                  m::Broadcast(m::Reduce(m::Parameter(0), m::Constant())))));
+  ASSERT_THAT(
+      custom_call->to_apply()->root_instruction(),
+      GmockMatch(m::Subtract(
+          m::Negate(m::Exp(m::Parameter(0))),
+          m::Broadcast(m::Reduce(m::Exp(m::Parameter(0)), m::Constant())))));
 }
 
 TEST_F(SoftmaxFusionTest, DoubleSoftmaxPattern) {
@@ -384,7 +384,7 @@ ENTRY main {
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
   auto* root = module->entry_computation()->root_instruction();
-  ASSERT_THAT(root, GmockMatch(m::CustomCall(m::Log(m::Parameter(0)))));
+  ASSERT_THAT(root, GmockMatch(m::CustomCall(m::Parameter(0))));
   // Assert that we have matched both softmax patterns.
   ASSERT_TRUE(root->has_to_apply());
   HloInstruction* neg1;
@@ -395,10 +395,11 @@ ENTRY main {
           m::Negate(&neg1, m::Exp()),
           m::Broadcast(m::Reduce(m::Negate(&neg2, m::Exp()), m::Constant())))));
   EXPECT_EQ(neg1, neg2);
-  ASSERT_THAT(neg1,
-              GmockMatch(m::Negate(m::Exp(m::Subtract(
-                  m::Parameter(0),
-                  m::Broadcast(m::Reduce(m::Parameter(0), m::Constant())))))));
+  ASSERT_THAT(
+      neg1,
+      GmockMatch(m::Negate(m::Exp(m::Subtract(
+          m::Log(m::Parameter(0)),
+          m::Broadcast(m::Reduce(m::Log(m::Parameter(0)), m::Constant())))))));
 }
 
 TEST_F(SoftmaxFusionTest, TripleSoftmaxPattern) {
@@ -624,21 +625,18 @@ ENTRY main {
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
   auto* root = module->entry_computation()->root_instruction();
-  HloInstruction* exp1;
-  HloInstruction* exp2;
+  HloInstruction* exp;
   // Assert that we have matched both softmax patterns, but they are in separate
   // custom calls.
-  ASSERT_THAT(
-      root, GmockMatch(m::CustomCall(m::Add(m::Exp(&exp1, m::CustomCall()),
-                                            m::Exp(&exp2, m::CustomCall())))));
-  EXPECT_EQ(exp1, exp2);
-  ASSERT_THAT(exp1, GmockMatch(m::Exp(m::CustomCall(m::Parameter(0)))));
+  ASSERT_THAT(root, GmockMatch(m::CustomCall(m::Exp(&exp, m::CustomCall()))));
+  ASSERT_THAT(exp, GmockMatch(m::Exp(m::CustomCall(m::Parameter(0)))));
   ASSERT_TRUE(root->has_to_apply());
   ASSERT_THAT(root->to_apply()->root_instruction(),
-              GmockMatch(m::Divide(
-                  m::Parameter(0),
-                  m::Broadcast(m::Reduce(m::Parameter(0), m::Constant())))));
-  const HloInstruction* custom_call = exp1->operand(0);
+              GmockMatch(m::Divide(m::Add(m::Parameter(0), m::Parameter(0)),
+                                   m::Broadcast(m::Reduce(
+                                       m::Add(m::Parameter(0), m::Parameter(0)),
+                                       m::Constant())))));
+  const HloInstruction* custom_call = exp->operand(0);
   ASSERT_TRUE(custom_call->has_to_apply());
   ASSERT_THAT(custom_call->to_apply()->root_instruction(),
               GmockMatch(m::Subtract(
@@ -683,23 +681,21 @@ ENTRY main {
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
   auto* root = module->entry_computation()->root_instruction();
-  HloInstruction* exp1;
-  HloInstruction* exp2;
+  HloInstruction* exp;
   HloInstruction* custom_call;
   // Assert that we have matched both softmax patterns, but they are in separate
   // custom calls.
   ASSERT_THAT(root,
-              GmockMatch(m::Add(
-                  m::CustomCall(&custom_call, m::Exp(&exp1, m::CustomCall())),
-                  m::Exp(&exp2, m::CustomCall()))));
-  EXPECT_EQ(exp1, exp2);
-  ASSERT_THAT(exp1, GmockMatch(m::Exp(m::CustomCall(m::Parameter(0)))));
+              GmockMatch(m::Add(m::CustomCall(&custom_call, m::CustomCall()),
+                                m::Exp(&exp, m::CustomCall()))));
+  ASSERT_THAT(exp, GmockMatch(m::Exp(m::CustomCall(m::Parameter(0)))));
   ASSERT_TRUE(custom_call->has_to_apply());
-  ASSERT_THAT(custom_call->to_apply()->root_instruction(),
-              GmockMatch(m::Divide(
-                  m::Parameter(0),
-                  m::Broadcast(m::Reduce(m::Parameter(0), m::Constant())))));
-  const HloInstruction* custom_call2 = exp1->operand(0);
+  ASSERT_THAT(
+      custom_call->to_apply()->root_instruction(),
+      GmockMatch(m::Divide(
+          m::Exp(m::Parameter(0)),
+          m::Broadcast(m::Reduce(m::Exp(m::Parameter(0)), m::Constant())))));
+  const HloInstruction* custom_call2 = exp->operand(0);
   ASSERT_TRUE(custom_call2->has_to_apply());
   ASSERT_THAT(custom_call2->to_apply()->root_instruction(),
               GmockMatch(m::Subtract(
@@ -768,10 +764,12 @@ add_computation {
 
 ENTRY main {
   param_0 = f32[$0,$1]{1,0} parameter(0)
+  param_1 = f32[$0,$1]{1,0} parameter(1)
+  add = f32[$0,$1]{1,0} add(param_0, param_1)
   constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[$0]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  reduce = f32[$0]{0} reduce(add, constant_neg_inf), dimensions={1}, to_apply=max_computation
   broadcast = f32[$0,$1]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f32[$0,$1]{1,0} subtract(param_0, broadcast)
+  subtract = f32[$0,$1]{1,0} subtract(add, broadcast)
   exponential = f32[$0,$1]{1,0} exponential(subtract)
   constant_zero = f32[] constant(0)
   second_reduce = f32[$0]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
