@@ -44,22 +44,29 @@ namespace gpu {
 // TODO(b/232263665): It should be shared between GPU and CPU.
 class GpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
  public:
-  GpuXlaRuntimeAotCompilationResult(HloModuleProto hlo,
-                                    std::string_view obj_file,
-                                    std::string_view mlir_module,
-                                    EntryFunctionAttributes entry_func_attrs,
-                                    std::string_view gpu_asm_text,
-                                    absl::Span<const uint8_t> gpu_binary) {
+  GpuXlaRuntimeAotCompilationResult(
+      HloModuleProto hlo, std::string_view obj_file,
+      std::string_view mlir_module, EntryFunctionAttributes entry_func_attrs,
+      std::string_view gpu_asm_text, absl::Span<const uint8_t> gpu_binary,
+      absl::Span<const GpuExecutable::ConstantInfo> constants = {}) {
     XlaRuntimeExecutableProto xla_runtime_executable;
     *xla_runtime_executable.mutable_hlo_module_proto() = hlo;
     xla_runtime_executable.set_obj_file(std::string(obj_file));
     xla_runtime_executable.set_mlir_module(std::string(mlir_module));
     *xla_runtime_gpu_executable_.mutable_xla_runtime_executable() =
         xla_runtime_executable;
+
     *xla_runtime_gpu_executable_.mutable_entry_func_attrs() = entry_func_attrs;
     xla_runtime_gpu_executable_.set_gpu_asm_text(std::string(gpu_asm_text));
     xla_runtime_gpu_executable_.set_gpu_binary(gpu_binary.data(),
                                                gpu_binary.size());
+
+    for (const GpuExecutable::ConstantInfo& cst : constants) {
+      auto* cst_proto = xla_runtime_gpu_executable_.add_constants();
+      cst_proto->set_symbol_name(cst.symbol_name);
+      cst_proto->set_allocation_index(cst.allocation_index);
+      cst_proto->set_content(cst.content.data(), cst.content.size());
+    }
   }
 
   explicit GpuXlaRuntimeAotCompilationResult(

@@ -121,13 +121,15 @@ class GpuExecutable : public Executable {
       absl::string_view mlir_module,
       xla::EntryFunctionAttributes entry_func_attrs, DebugOptions debug_options,
       absl::string_view asm_text, absl::string_view binary,
-      GpuVersion gpu_version, stream_executor::StreamExecutor* executor);
+      std::vector<ConstantInfo> constants, GpuVersion gpu_version,
+      stream_executor::StreamExecutor* executor);
 
   // Constructor to use when loading a GpuExecutable from an object file (native
   // function compiled for XLA Runtime). Omits setting class members that aren't
   // used in XLA Runtime execution mode.
   GpuExecutable(std::shared_ptr<HloModule> hlo_module, std::string asm_text,
-                std::vector<uint8_t> binary, GpuVersion gpu_version,
+                std::vector<uint8_t> binary,
+                std::vector<ConstantInfo> constants, GpuVersion gpu_version,
                 xla::EntryFunctionAttributes entry_func_attrs,
                 absl::string_view module_name, Shape xla_output_shape,
                 std::vector<BufferAllocation> allocations,

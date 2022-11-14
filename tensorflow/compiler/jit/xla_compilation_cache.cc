@@ -804,9 +804,32 @@ StatusOr<XlaSerializedCacheEntry> XlaCompilationCache::SerializeEntry(
   *serialized_entry.mutable_key() = BuildSerializedCacheKey(sig, hlo_module);
   *serialized_entry.mutable_hlo_module() = hlo_module;
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::AotCompilationResult> aot_result,
-      BuildSerializedExecutable(options, entry.compilation_result));
+  // XLA compiler supports exporting executables as an AOT compilation result
+  // to avoid running potentially expensive compilation pipeline twice. If entry
+  // does not have an executable, only then we'll run the AOT compiler.
+  std::unique_ptr<xla::AotCompilationResult> aot_result;
+
+  // Check if XLA compiler can export available executable.
+  if (entry.executable) {
+    VLOG(1) << "Export local executable as an AOT compilation result";
+    xla::Compiler* compiler = client_->backend().compiler();
+    auto exported = compiler->Export(entry.executable->executable());
+    if (exported.ok()) {
+      aot_result = std::move(*exported);
+    } else if (exported.status().code() == error::UNIMPLEMENTED) {
+      VLOG(1) << "Executable export is not implemented";
+    } else {
+      return exported.status();
+    }
+  }
+
+  // Run AOT compilation pipeline only if execuable export is not supported.
+  if (!aot_result) {
+    VLOG(1) << "Compile executable using AOT compilation pipeline";
+    TF_ASSIGN_OR_RETURN(aot_result, BuildSerializedExecutable(
+                                        options, entry.compilation_result));
+  }
+
   TF_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
   serialized_entry.set_executable(std::move(serialized));
   return serialized_entry;

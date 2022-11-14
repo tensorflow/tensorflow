@@ -292,12 +292,22 @@ GpuXlaRuntimeAotCompilationResult::LoadExecutable(
       HloModule::CreateFromProto(xla_runtime_executable.hlo_module_proto(),
                                  hlo_module_config));
   auto gpu_compiler = tensorflow::down_cast<GpuCompiler*>(compiler);
+
+  std::vector<GpuExecutable::ConstantInfo> constants;
+  for (auto& cst : xla_runtime_gpu_executable_.constants()) {
+    GpuExecutable::ConstantInfo constant = {
+        cst.symbol_name(),
+        {cst.content().begin(), cst.content().end()},
+        cst.allocation_index()};
+    constants.push_back(std::move(constant));
+  }
+
   return GpuExecutable::LoadFromObjFile(
       std::move(hlo_module), xla_runtime_executable.obj_file(),
       xla_runtime_executable.mlir_module(),
       xla_runtime_gpu_executable_.entry_func_attrs(),
       GetDebugOptionsFromFlags(), xla_runtime_gpu_executable_.gpu_asm_text(),
-      xla_runtime_gpu_executable_.gpu_binary(),
+      xla_runtime_gpu_executable_.gpu_binary(), std::move(constants),
       gpu_compiler->GetGpuVersion(executor), executor);
 }
 
@@ -1610,6 +1620,9 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
     std::string data(obj_file->getBuffer().data(),
                      obj_file->getBuffer().size());
+
+    // TODO(b/246976431): Export constants required for running AOT compiled
+    // executable (see GpuExecutable::ConstantInfo).
     results.emplace_back(std::make_unique<GpuXlaRuntimeAotCompilationResult>(
         module->ToProto(), data, program->module,
         compile_module_results.entry_func_attrs, backend_result.first,
@@ -1639,7 +1652,8 @@ StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
 
   std::unique_ptr<AotCompilationResult> result =
       std::make_unique<xla::gpu::GpuXlaRuntimeAotCompilationResult>(
-          module_proto, obj_file, mlir_module, entry_func_attrs, text, binary);
+          module_proto, obj_file, mlir_module, entry_func_attrs, text, binary,
+          gpu_executable->constants());
   return result;
 }
 
