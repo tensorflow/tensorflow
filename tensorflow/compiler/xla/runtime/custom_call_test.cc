@@ -1573,6 +1573,28 @@ BENCHMARK(BM_AggregateAttrX1None);
 template <int value>
 using Data = std::integral_constant<int, value>;
 
+// Benchmark how long it takes to prepare UserData.
+static void BM_PrepareUserData(benchmark::State& state) {
+  Data<0> data0;
+  Data<1> data1;
+  Data<2> data2;
+  Data<3> data3;
+  Data<4> data4;
+  Data<5> data5;
+  Data<6> data6;
+  Data<7> data7;
+  Data<8> data8;
+  Data<9> data9;
+
+  for (auto _ : state) {
+    CustomCall::UserData user_data(&data0, &data1, &data2, &data3, &data4,
+                                   &data5, &data6, &data7, &data8, &data9);
+    benchmark::DoNotOptimize(user_data);
+  }
+}
+
+BENCHMARK(BM_PrepareUserData);
+
 template <CustomCall::RuntimeChecks checks>
 static bool UserDataX12(ExecutionContext* ctx, void** args, void** attrs,
                         void** rets) {
