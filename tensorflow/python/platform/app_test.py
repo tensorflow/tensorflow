@@ -23,11 +23,23 @@ flags.DEFINE_boolean("myflag", False, '')
 
 
 class TestCMDArgs(test.TestCase):
-  def testWith3Args(self):
+  def testWith3AcceptableArgs(self):
     sys.argv.extend(["--myflag", "--passthrough", "extra"])
     with self.assertRaises(SystemExit) as cm:
       app.run()
     self.assertNotEqual(cm.exception.code, 1)
+
+  def testWith2AcceptableArgs(self):
+    sys.argv.extend(["--myflag", "--passthrough"])
+    with self.assertRaises(SystemExit) as cm:
+      app.run()
+    self.assertEqual(cm.exception.code, 2)
+
+  def testWith1AcceptableArg(self):
+    sys.argv.extend(["--myflag"])
+    with self.assertRaises(SystemExit) as cm:
+      app.run()
+    self.assertEqual(cm.exception.code, 2)
 
   def testWithoutPassThrough(self):
     sys.argv.extend(["--myflag", "--test", "extra"])
