@@ -20,7 +20,6 @@ cc_library(
         "//tensorflow/python/profiler/internal:__subpackages__",
     ],
     deps = [
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:path",
