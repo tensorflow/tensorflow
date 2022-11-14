@@ -221,34 +221,32 @@ void TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
       tensor->allocation_type != kTfLitePersistentRo) {
     return;
   }
+  size_t alloc_bytes = num_bytes;
   // TODO(b/145340303): Tensor data should be aligned.
 #ifdef TFLITE_KERNEL_USE_XNNPACK
-  num_bytes += 16;  // XNNPACK_EXTRA_BYTES = 16
+  alloc_bytes += 16;  // XNNPACK_EXTRA_BYTES = 16
 #endif
   if (!tensor->data.data) {
-    tensor->data.data = (char*)malloc(num_bytes);
+    tensor->data.data = (char*)malloc(alloc_bytes);
 #ifdef TF_LITE_TENSORFLOW_PROFILER
-    tflite::OnTfLiteTensorAlloc(tensor, num_bytes);
+    tflite::OnTfLiteTensorAlloc(tensor, alloc_bytes);
 #endif
   } else if (num_bytes > tensor->bytes) {
 #ifdef TF_LITE_TENSORFLOW_PROFILER
     tflite::OnTfLiteTensorDealloc(tensor);
 #endif
     if (preserve_data) {
-      tensor->data.data = (char*)realloc(tensor->data.data, num_bytes);
+      tensor->data.data = (char*)realloc(tensor->data.data, alloc_bytes);
     } else {
       // Calling free and malloc can be more efficient as it avoids needlessly
       // copying the data when it is not required.
       free(tensor->data.data);
-      tensor->data.data = (char*)malloc(num_bytes);
+      tensor->data.data = (char*)malloc(alloc_bytes);
     }
 #ifdef TF_LITE_TENSORFLOW_PROFILER
-    tflite::OnTfLiteTensorAlloc(tensor, num_bytes);
+    tflite::OnTfLiteTensorAlloc(tensor, alloc_bytes);
 #endif
   }
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-  num_bytes -= 16;  // XNNPACK_EXTRA_BYTES = 16
-#endif
   tensor->bytes = num_bytes;
 }
 
