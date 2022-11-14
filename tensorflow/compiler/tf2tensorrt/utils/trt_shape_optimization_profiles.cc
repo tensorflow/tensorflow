@@ -524,18 +524,36 @@ Status TrtShapeOptimizationProfile::SetInputShapeBinding(
       "TrtShapeOptimizationProfile::SetInputShapeBinding",
       tensorflow::profiler::TraceMeLevel::kInfo);
   if (cuda_engine->isShapeBinding(binding_index)) {
-    // Input shape binding data has to be in host memory. That is the reason
-    // we can't use input_tensor.flat().data(). which contains the same
-    // values in device memory. Instead, we use data that was copied to host
-    // by CollectShapeValues.
-    VLOG(2) << "Setting input shape binding for idx " << binding_index
-            << ", with values "
-            << DebugString(actual_shape_values_.at(input_index));
-    bool ret = exec_context->setInputShapeBinding(
-        binding_index, actual_shape_values_.at(input_index).d);
-    if (!ret) {
-      return errors::Internal("Could not set input shape binding for idx ",
-                              binding_index);
+    const auto& newDims = actual_shape_values_.at(input_index);
+    int set_shape = 1;
+    if (exec_context->getOptimizationProfile() != -1 &&
+        (cuda_engine->bindingIsInput(binding_index) ||
+        exec_context->allInputDimensionsSpecified() &&
+        exec_context->allInputShapesSpecified())) {
+      const auto oldDims = exec_context->getBindingDimensions(binding_index);
+      DimsAdapter da(oldDims);
+      const auto tensor_size = da.Volume();
+      if (tensor_size == newDims.nbDims) {
+        auto* data = new int32_t[tensor_size];
+        if (exec_context->getShapeBinding(binding_index, data)) {
+          set_shape = memcmp(data, newDims.d, tensor_size * sizeof(data[0]));
+        }
+        delete[] data;
+      }
+    }
+
+    if (set_shape) {
+      // Input shape binding data has to be in host memory. That is the reason
+      // we can't use input_tensor.flat().data(). which contains the same
+      // values in device memory. Instead, we use data that was copied to host
+      // by CollectShapeValues.
+      VLOG(2) << "Setting input shape binding for idx " << binding_index
+              << ", with values " << DebugString(newDims);
+      bool ret = exec_context->setInputShapeBinding(binding_index, newDims.d);
+      if (!ret) {
+        return errors::Internal("Could not set input shape binding for idx ",
+                                binding_index);
+      }
     }
   }
   return OkStatus();
