@@ -73,7 +73,6 @@
 
 ## Security
 
-This release introduces several vulnerability fixes:
 * TF is currently using giflib 5.2.1 which has [CVE-2022-28506](https://nvd.nist.gov/vuln/detail/CVE-2022-28506). TF is not affected by the CVE as it does not use `DumpScreen2RGB` at all.
 *   Fixes an OOB seg fault in `DynamicStitch` due to missing validation ([CVE-2022-41883](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41883))
 *   Fixes an overflow in `tf.keras.losses.poisson` ([CVE-2022-41887](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41887))
