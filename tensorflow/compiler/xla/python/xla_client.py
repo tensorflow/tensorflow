@@ -43,7 +43,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 106
+_version = 107
 
 # Version number for MLIR:Python components.
 mlir_api_version = 37
@@ -423,7 +423,7 @@ OpSharding = _xla.OpSharding
 HloSharding = _xla.HloSharding
 Sharding = _xla.Sharding
 XLACompatibleSharding = _xla.XLACompatibleSharding
-MeshPspecSharding = _xla.MeshPspecSharding
+NamedSharding = _xla.NamedSharding
 SingleDeviceSharding = _xla.SingleDeviceSharding
 PmapSharding = _xla.PmapSharding
 OpShardingSharding = _xla.OpShardingSharding
