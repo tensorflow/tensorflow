@@ -1533,11 +1533,11 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     static int64_t ConvolveBackwardDataScratchSize = GetDnnWorkspaceLimit(
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 33);  // 8GB by default
 
-    const int device_id = stream->parent()->device_ordinal();
     // To make sure the Conv3DBackpropInputV2 get the correct dtype, we infer
     // the dtype from 2nd input, i.e., out_backprop.
     DataType dtype = context->input(2).dtype();
     const ConvParameters conv_parameters = {
+        stream->parent(),
         dims.batch_size,
         dims.in_depth,
         {{dims.input_size(0), dims.input_size(1), dims.input_size(2)}},
@@ -1548,8 +1548,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         {{dims.stride(0), dims.stride(1), dims.stride(2)}},
         {{padding_planes, padding_rows, padding_cols}},
         dtype,
-        device_id,
-        conv_desc.group_count()};
+        conv_desc.group_count(),
+    };
 
     using se::dnn::AlgorithmConfig;
     using se::dnn::AlgorithmDesc;
@@ -1934,9 +1934,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     static int64_t ConvolveBackwardFilterScratchSize =
         GetDnnWorkspaceLimitOrDefault();
 
-    const int device_id = stream->parent()->device_ordinal();
-    DataType dtype = input.dtype();
     const ConvParameters conv_parameters = {
+        stream->parent(),
         dims.batch_size,
         dims.in_depth,
         {{dims.input_size(0), dims.input_size(1), dims.input_size(2)}},
@@ -1946,9 +1945,9 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         {{dims.dilation(0), dims.dilation(1), dims.dilation(2)}},
         {{dims.stride(0), dims.stride(1), dims.stride(2)}},
         {{padding_planes, padding_rows, padding_cols}},
-        dtype,
-        device_id,
-        conv_desc.group_count()};
+        input.dtype(),
+        conv_desc.group_count(),
+    };
 
     using se::dnn::AlgorithmConfig;
     using se::dnn::AlgorithmDesc;

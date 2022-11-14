@@ -478,9 +478,8 @@ struct LaunchConvOp<GPUDevice, T> {
 
     static int64_t ConvolveScratchSize = GetDnnWorkspaceLimitOrDefault();
 
-    int device_id = stream->parent()->device_ordinal();
-    DataType dtype = input.dtype();
     ConvParameters conv_parameters = {
+        stream->parent(),
         in_batch,
         in_depth,
         {{in_planes, in_rows, in_cols}},
@@ -490,9 +489,9 @@ struct LaunchConvOp<GPUDevice, T> {
         {{dilations[0], dilations[1], dilations[2]}},
         {{strides[0], strides[1], strides[2]}},
         {{pad_planes, pad_rows, pad_cols}},
-        dtype,
-        device_id,
-        conv_desc.group_count()};
+        input.dtype(),
+        conv_desc.group_count(),
+    };
 
     using se::dnn::AlgorithmConfig;
     using se::dnn::AlgorithmDesc;

@@ -1030,26 +1030,26 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
 
   static int64_t ConvolveScratchSize = GetDnnWorkspaceLimitOrDefault();
 
-  int device_id = stream->parent()->device_ordinal();
-  DataType dtype = input.dtype();
-  ConvParameters conv_parameters = {in_batch,             // batch
-                                    in_depths,            // in_depths
-                                    {{in_rows,            // in_rows
-                                      in_cols}},          // in_cols
-                                    compute_data_format,  // compute_data_format
-                                    out_depths,           // out_depths
-                                    {{patch_rows,         // filter_rows
-                                      patch_cols,         // filter_cols
-                                      patch_depths}},     // filter_depths
-                                    {{row_dilation,       // dilation_rows
-                                      col_dilation}},     // dilation_cols
-                                    {{row_stride,         // stride_rows
-                                      col_stride}},       // stride_cols
-                                    {{common_padding_rows,    // padding_rows
-                                      common_padding_cols}},  // padding_cols
-                                    dtype,                    // tensor datatype
-                                    device_id,                // device_id
-                                    conv_desc.group_count()};
+  ConvParameters conv_parameters = {
+      stream->parent(),
+      in_batch,                 // batch
+      in_depths,                // in_depths
+      {{in_rows,                // in_rows
+        in_cols}},              // in_cols
+      compute_data_format,      // compute_data_format
+      out_depths,               // out_depths
+      {{patch_rows,             // filter_rows
+        patch_cols,             // filter_cols
+        patch_depths}},         // filter_depths
+      {{row_dilation,           // dilation_rows
+        col_dilation}},         // dilation_cols
+      {{row_stride,             // stride_rows
+        col_stride}},           // stride_cols
+      {{common_padding_rows,    // padding_rows
+        common_padding_cols}},  // padding_cols
+      input.dtype(),            // tensor datatype
+      conv_desc.group_count(),
+  };
 
   auto entry_or = AutotuneUnfusedConv(
       cudnn_use_autotune, ConvAutotuneMap::GetInstance(), conv_parameters, ctx,

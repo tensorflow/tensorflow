@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.h"
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #if defined(__APPLE__)
@@ -147,6 +148,50 @@ port::Status GpuExecutor::Init(int device_ordinal,
   }
 
   return GpuDriver::GetComputeCapability(&cc_major_, &cc_minor_, device_);
+}
+
+std::optional<std::string> GpuExecutor::MakeDeviceDescriptionStr() const {
+  GpuDeviceHandle device;
+  auto status = GpuDriver::GetDevice(device_ordinal_, &device);
+  if (!status.ok()) {
+    return std::nullopt;
+  }
+
+  int cc_major = 0;
+  int cc_minor = 0;
+  GpuDriver::GetComputeCapability(&cc_major, &cc_minor, device).IgnoreError();
+
+  uint64_t device_memory_size = 0;
+  GpuDriver::GetDeviceTotalMemory(device, &device_memory_size);
+
+  auto value_or = [](const auto& status_or, auto default_val) {
+    if (status_or.ok()) return *status_or;
+    return default_val;
+  };
+
+  int core_count = value_or(GpuDriver::GetMultiprocessorCount(device), 0);
+  int sm_clock_khz = value_or(
+      GpuDriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_CLOCK_RATE, device), 0);
+  int mem_clock_khz =
+      value_or(GpuDriver::GetDeviceAttribute(
+                   CU_DEVICE_ATTRIBUTE_MEMORY_CLOCK_RATE, device),
+               0);
+  int l2_cache_bytes = value_or(
+      GpuDriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_L2_CACHE_SIZE, device),
+      0);
+
+  // It would be better to use the PCI device ID or some other truly unique
+  // identifier for the GPU model.  But getting this requires using NVML or
+  // other hacks, which we don't have access to in OSS TensorFlow.
+  //
+  // Alternatively you might be tempted to use GpuDriver::GetDeviceName as a
+  // unique identifier, but this is not stable across GPU VBIOS versions.
+  //
+  // For now, this identifier is good enough.
+  return absl::StrFormat(
+      "sm_%d.%d with %dB RAM, %d cores, %dKHz clock, %dKHz mem clock, %dB L2$",
+      cc_major, cc_minor, device_memory_size, core_count, sm_clock_khz,
+      mem_clock_khz, l2_cache_bytes);
 }
 
 bool GpuExecutor::FindOnDiskForComputeCapability(
