@@ -1216,8 +1216,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
     GpuVersion gpu_version = GetGpuVersion(stream_exec);
     StatusOr<std::pair<std::string, std::vector<uint8_t>>> result =
         CompileTargetBinary(module_config, llvm_module, gpu_version,
-                            stream_exec->device_ordinal(), relocatable,
-                            debug_module);
+                            stream_exec, relocatable, debug_module);
 
     if (!result.ok()) {
       return result;
