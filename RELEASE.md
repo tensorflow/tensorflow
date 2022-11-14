@@ -26,6 +26,7 @@ This release introduces several vulnerability fixes:
 *   Fixes a invalid char to bool conversion in printing a tensor ([CVE-2022-41911](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41911))
 *   Fixes a heap overflow in `QuantizeAndDequantizeV2` ([CVE-2022-41910](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41910))
 *   Fixes a `CHECK` failure in `SobolSample` via missing validation ([CVE-2022-35935](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-35935))
+*   Fixes a `CHECK` fail in `TensorListScatter` and `TensorListScatterV2` in eager mode ([CVE-2022-35935](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-35935))
 
 # Release 2.8.3
 
