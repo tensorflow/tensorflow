@@ -677,6 +677,11 @@ func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
   // CHECK-SAME:   called_computations = [@foo],
   // CHECK-SAME:   has_side_effect = false,
   // CHECK-SAME:   operand_layouts = [dense<> : tensor<0xindex>],
+  // CHECK-SAME:   output_operand_aliases = [
+  // CHECK-SAME:     #stablehlo.output_operand_alias<
+  // CHECK-SAME:       output_tuple_indices = [],
+  // CHECK-SAME:       operand_index = 0,
+  // CHECK-SAME:       operand_tuple_indices = []>]
   // CHECK-SAME:   result_layouts = [dense<> : tensor<0xindex>]
   // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
   %0 = "mhlo.custom_call"(%arg0) {
@@ -686,8 +691,12 @@ func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
     api_version = 1 : i32,
     called_computations = [@foo],
     operand_layouts = [dense<> : tensor<0xindex>],
+    output_operand_aliases = [
+      #mhlo.output_operand_alias<output_tuple_indices = [],
+                                 operand_index = 0,
+                                 operand_tuple_indices = []>
+    ],
     result_layouts = [dense<> : tensor<0xindex>]
-    // CustomCallOp::output_operand_aliases is unsupported at the moment (see negative test below).
   } : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
@@ -1895,23 +1904,6 @@ func.func @op_convolution_unknown_dimension_numbers(%arg0: tensor<1x8x8x32x207xf
     precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
   } : (tensor<1x8x8x32x207xf32>, tensor<3x3x32x207x16xf32>) -> tensor<32x1x8x8x16xf32>
   func.return %0 : tensor<32x1x8x8x16xf32>
-}
-
-// -----
-
-func.func @op_custom_call_output_operand_aliases(%arg0: tensor<f32>) -> tensor<f32> {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
-  %0 = "mhlo.custom_call"(%arg0) {
-    call_target_name = "foo",
-    output_operand_aliases = [
-      #mhlo.output_operand_alias<
-        output_tuple_indices = [],
-        operand_index = 0,
-        operand_tuple_indices = []
-      >
-    ]
-  } : (tensor<f32>) -> tensor<f32>
-  func.return %0 : tensor<f32>
 }
 
 // -----
