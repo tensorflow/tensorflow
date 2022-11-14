@@ -43,7 +43,7 @@ BOUND_VALUE = object()
 
 def to_fullargspec(function_type: function_type_lib.FunctionType,
                    default_values: Dict[str, Any],
-                   is_any_target_method: bool) -> inspect.FullArgSpec:
+                   is_bound_method: bool) -> inspect.FullArgSpec:
   """Generates backwards compatible FullArgSpec from FunctionType."""
   args = []
   varargs = None
@@ -69,7 +69,7 @@ def to_fullargspec(function_type: function_type_lib.FunctionType,
     elif parameter.kind is inspect.Parameter.VAR_KEYWORD:
       varkw = parameter.name
 
-  if (is_any_target_method and (not args or args[0] != "self")):
+  if (is_bound_method and (not args or args[0] != "self")):
     args.insert(0, "self")
 
   return inspect.FullArgSpec(
@@ -161,12 +161,12 @@ class FunctionSpec(object):
     _validate_signature(input_signature)
     _validate_python_function(python_function, input_signature)
 
-    # TODO(fmuham): Clarify usages and documentation of is_method.
-    is_method = tf_inspect.isanytargetmethod(python_function)
+    is_bound_method = tf_inspect.isanytargetmethod(
+        python_function) or inspect.ismethod(python_function)
     fullargspec = to_fullargspec(
         function_type_lib.FunctionType.from_callable(python_function),
         function_type_lib.FunctionType.get_default_values(python_function),
-        is_method or inspect.ismethod(python_function))
+        is_bound_method)
 
     # Get the function's name.  Remove functools.partial wrappers if necessary.
     while isinstance(python_function, functools.partial):
@@ -175,7 +175,7 @@ class FunctionSpec(object):
 
     return FunctionSpec(
         fullargspec,
-        is_method,
+        is_bound_method,
         input_signature,
         is_pure=is_pure,
         jit_compile=jit_compile,
@@ -183,7 +183,7 @@ class FunctionSpec(object):
 
   def __init__(self,
                fullargspec,
-               is_method,
+               is_bound_method,
                input_signature,
                is_pure=False,
                name=None,
@@ -192,7 +192,7 @@ class FunctionSpec(object):
 
     Args:
       fullargspec: `tf_inspect.FullArgSpec` object describing the function.
-      is_method: True if the function is a method.
+      is_bound_method: True if the underlying function is a bound method.
       input_signature: a signature of the function (None, if variable)
       is_pure: if True all input arguments (including variables and constants)
         will be converted to tensors and no variable changes allowed.
@@ -200,14 +200,14 @@ class FunctionSpec(object):
       jit_compile: see `tf.function`.
     """
     self._fullargspec = fullargspec
-    self._is_method = is_method
+    self._is_bound_method = is_bound_method
     self._is_pure = is_pure
     self._jit_compile = jit_compile
 
     # TODO(edloper): Include name when serializing for SavedModel?
     self._name = name or "f"
 
-    if self._is_method:
+    if self._is_bound_method:
       # Remove `self`: default arguments shouldn't be matched to it.
       # TODO(b/127938157): Should this error out if there is no arg to
       # be removed?
@@ -258,9 +258,11 @@ class FunctionSpec(object):
   def fullargspec(self):
     return self._fullargspec
 
+  # TODO(fmuham): Rename to is_bound_method.
   @property
   def is_method(self):
-    return self._is_method
+    """Returns True if the function is a method with a class instance bound."""
+    return self._is_bound_method
 
   @property
   def args_to_indices(self):
