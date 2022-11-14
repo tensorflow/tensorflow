@@ -71,6 +71,10 @@
 
     *   Introduced `set_shape`, which sets the static dense shape of the sparse tensor and has the same semantics as `tf.Tensor.set_shape`.
 
+## Security
+
+* TF is currently using giflib 5.2.1 which has [CVE-2022-28506](https://nvd.nist.gov/vuln/detail/CVE-2022-28506). TF is not affected by the CVE as it does not use `DumpScreen2RGB` at all.
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
