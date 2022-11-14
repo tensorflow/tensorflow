@@ -449,6 +449,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("get_parameter_shardings",
            &PyLoadedExecutable::GetParameterShardings)
       .def("keep_alive", &PyLoadedExecutable::KeepAlive)
+      .def("compile_options",
+           [](const PyLoadedExecutable& self) {
+             return self.pjrt_executable().GetCompileOptions();
+           })
       .def_property_readonly("traceback", &PyLoadedExecutable::traceback)
       .def_property_readonly("fingerprint",
                              [](PyLoadedExecutable* exec) -> py::object {
@@ -648,7 +652,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("get_output_shardings", &PjRtExecutable::GetOutputShardings)
       .def("get_parameter_shardings", &PjRtExecutable::GetParameterShardings)
       .def("get_compiled_memory_stats", &PjRtExecutable::GetCompiledMemoryStats)
-      .def("serialize", &PjRtExecutable::SerializeExecutable);
+      .def("compile_options", &PjRtExecutable::GetCompileOptions)
+      .def("serialize", [](const PjRtExecutable& exec) -> py::bytes {
+        return ValueOrThrow(exec.SerializeExecutable());
+      });
 
   m.def(
       "compile",

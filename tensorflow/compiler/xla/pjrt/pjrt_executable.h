@@ -141,6 +141,10 @@ class PjRtExecutable {
   virtual StatusOr<std::string> FingerprintExecutable() const {
     return Unimplemented("Fingerprinting executable is not supported.");
   }
+
+  virtual StatusOr<struct CompileOptions> GetCompileOptions() const {
+    return Unimplemented("CompileOptions not available.");
+  }
 };
 
 }  // namespace xla
