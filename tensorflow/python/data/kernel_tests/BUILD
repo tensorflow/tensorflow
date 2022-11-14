@@ -547,7 +547,7 @@ cuda_py_test(
 
 tf_py_test(
     name = "len_test",
-    size = "small",
+    size = "medium",
     srcs = ["len_test.py"],
     deps = [
         ":test_base",
