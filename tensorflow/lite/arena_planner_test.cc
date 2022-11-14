@@ -425,14 +425,14 @@ TEST_F(ArenaPlannerTest, SimpleGraphWithInplaceReshape) {
   EXPECT_EQ(GetOffset(2), GetOffset(4));
 }
 
-TEST_F(ArenaPlannerTest, SimpleGraphWithChainOfReshape) {
+TEST_F(ArenaPlannerTest, SimpleGraphWithChainOfInplaceOps) {
   TestGraph graph({0, 1},
                   {
                       /* in, out, tmp */
                       {{0}, {2}, {}},
                       {{2, 3}, {4}, {}, kTfLiteBuiltinReshape},
-                      {{4, 3}, {5}, {}, kTfLiteBuiltinReshape},
-                      {{5, 3}, {6}, {}, kTfLiteBuiltinReshape},
+                      {{4, 3}, {5}, {}, kTfLiteBuiltinExpandDims},
+                      {{5, 3}, {6}, {}, kTfLiteBuiltinSqueeze},
                       {{6, 3}, {7}, {}, kTfLiteBuiltinReshape},
                       {{7}, {8}, {}},
                   },
