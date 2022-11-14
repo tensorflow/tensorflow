@@ -101,7 +101,7 @@ class PoolingTest(test.TestCase):
     for data_format, use_gpu in GetTestConfigs():
       self._VerifyOneTest(pool_func, input_sizes, window, strides, padding,
                           data_format, dtypes.float32, expected, use_gpu)
-      if use_gpu:
+      if use_gpu and test_util.is_gpu_available(cuda_only=True):
         self._VerifyOneTest(pool_func, input_sizes, window, strides, padding,
                             data_format, dtypes.bfloat16, expected, use_gpu)
 
