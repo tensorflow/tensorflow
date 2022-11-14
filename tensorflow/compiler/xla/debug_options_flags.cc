@@ -70,7 +70,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_enable_cudnn_frontend(true);
 
-<<<<<<< HEAD
   // TODO(b/241801928): Remove this flag and legacy cublas support once cublasLt
   // is fully supported
 #if GOOGLE_CUDA
@@ -78,12 +77,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 #else
   opts.set_xla_gpu_enable_cublaslt(false);
 #endif
-=======
-  opts.set_xla_gpu_enable_cublaslt(false);
 
   // TODO(b/258036887): Remove this flag once CUDA Graphs are fully supported.
   opts.set_xla_gpu_enable_cuda_graphs(false);
->>>>>>> upstream/master
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
