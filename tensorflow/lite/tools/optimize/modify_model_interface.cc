@@ -76,7 +76,8 @@ std::vector<TensorOpTensor> GetInputTensors(const TensorType& input_type,
       }
       if (op_code != BuiltinOperator_QUANTIZE) {
         // Currently only supports int8 and int16 quantized models.
-        error_reporter->Report(
+        TF_LITE_REPORT_ERROR(
+            error_reporter,
             "modify_model_interface called on a model without quant/dequant.");
         return {};
       }
@@ -90,9 +91,9 @@ std::vector<TensorOpTensor> GetInputTensors(const TensorType& input_type,
       TensorT* quant_output = subgraph->tensors[op->outputs[0]].get();
       if (quant_output->type != TensorType_INT8 &&
           quant_output->type != TensorType_INT16) {
-        error_reporter->Report(
-            "modify_model_interface currently only supports "
-            "int8 and int16 quantized models.");
+        TF_LITE_REPORT_ERROR(error_reporter,
+                             "modify_model_interface currently only supports "
+                             "int8 and int16 quantized models.");
       }
 
       // The input type must be the same as the model quantization type
@@ -100,7 +101,8 @@ std::vector<TensorOpTensor> GetInputTensors(const TensorType& input_type,
         // An exception, allow for UINT8 input type for INT8 quantized model.
         if (!(input_type == TensorType_UINT8 &&
               quant_output->type == TensorType_INT8)) {
-          error_reporter->Report(
+          TF_LITE_REPORT_ERROR(
+              error_reporter,
               "The %s input type is incompatible with %s quantized models. "
               "To resolve this error, change the input_type to a compatible "
               "one. "
@@ -149,7 +151,8 @@ std::vector<TensorOpTensor> GetOutputTensors(const TensorType& output_type,
       }
       if (op_code != BuiltinOperator_DEQUANTIZE) {
         // Currently only supports int8 and int16 quantized models.
-        error_reporter->Report(
+        TF_LITE_REPORT_ERROR(
+            error_reporter,
             "modify_model_interface called on a model without quant/dequant.");
         return {};
       }
@@ -164,16 +167,17 @@ std::vector<TensorOpTensor> GetOutputTensors(const TensorType& output_type,
       if (dequant_input->type != TensorType_INT8 &&
           dequant_input->type != TensorType_INT16) {
         // Currently only supports int8 and int16 quantized models.
-        error_reporter->Report(
-            "modify_model_interface currently only supports "
-            "int8 and int16 quantized models.");
+        TF_LITE_REPORT_ERROR(error_reporter,
+                             "modify_model_interface currently only supports "
+                             "int8 and int16 quantized models.");
         return {};
       }
       if (output_type != dequant_input->type) {
         // An exception, allow for UINT8 input type for INT8 quantized model.
         if (!(output_type == TensorType_UINT8 &&
               dequant_input->type == TensorType_INT8)) {
-          error_reporter->Report(
+          TF_LITE_REPORT_ERROR(
+              error_reporter,
               "The %s output type is incompatible with %s quantized models. "
               "To resolve this error, change the output_type to a compatible "
               "one. "

@@ -107,7 +107,8 @@ MinibenchmarkStatus FlatbufferStorage<T>::Read() {
       reinterpret_cast<const uint8_t*>(buffer_.c_str());
   while (remaining_size != 0) {
     if (remaining_size < sizeof(flatbuffers::uoffset_t)) {
-      error_reporter_->Report(
+      TF_LITE_REPORT_ERROR(
+          error_reporter_,
           "Corrupt size-prefixed flatbuffer file %s (remaining size less than "
           "size of uoffset_t)",
           path_.c_str());
@@ -118,7 +119,8 @@ MinibenchmarkStatus FlatbufferStorage<T>::Read() {
     flatbuffers::Verifier verifier(
         current_ptr, sizeof(flatbuffers::uoffset_t) + current_size);
     if (!verifier.VerifySizePrefixedBuffer<T>(kFlatbufferStorageIdentifier)) {
-      error_reporter_->Report(
+      TF_LITE_REPORT_ERROR(
+          error_reporter_,
           "Corrupt size-prefixed flatbuffer file %s (verifier returned false)",
           path_.c_str());
       return kMinibenchmarkCorruptSizePrefixedFlatbufferFile;
@@ -126,7 +128,8 @@ MinibenchmarkStatus FlatbufferStorage<T>::Read() {
     contents_.push_back(flatbuffers::GetSizePrefixedRoot<T>(current_ptr));
     size_t consumed = sizeof(flatbuffers::uoffset_t) + current_size;
     if (remaining_size < consumed) {
-      error_reporter_->Report(
+      TF_LITE_REPORT_ERROR(
+          error_reporter_,
           "Corrupt size-prefixed flatbuffer file %s (mismatched size "
           "calculation)",
           path_.c_str());
