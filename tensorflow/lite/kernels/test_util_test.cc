@@ -16,14 +16,17 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <tuple>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 
 TEST(TestUtilTest, QuantizeVector) {
@@ -45,6 +48,27 @@ TEST(TestUtilTest, QuantizeVectorScalingUp) {
   auto q_data = Quantize<uint8_t>(data, /*scale=*/0.1, /*zero_point=*/0);
   std::vector<uint8_t> expected = {0, 0, 0, 5, 10, 255};
   EXPECT_THAT(q_data, ElementsAreArray(expected));
+}
+
+TEST(TestUtilTest, CreateAndGetNewResource) {
+  SingleOpModel m;
+  m.BuildInterpreter({});
+  m.PopulateResource<int>(0, {1, 2, 3}, {3});
+  TfLiteTensor* resource_tensor;
+  ASSERT_EQ(m.GetResource(0, &resource_tensor), kTfLiteOk);
+  EXPECT_EQ(resource_tensor->type, kTfLiteInt32);
+  EXPECT_EQ(resource_tensor->allocation_type, kTfLiteDynamic);
+  const int dims = 3;
+  EXPECT_TRUE(TfLiteIntArrayEqualsArray(resource_tensor->dims, 1, &dims));
+  int* data = GetTensorData<int>(resource_tensor);
+  EXPECT_THAT(std::vector<int>(data, data + dims), ElementsAre(1, 2, 3));
+}
+
+TEST(TestUtilTest, GetResourceDneError) {
+  SingleOpModel m;
+  m.BuildInterpreter({});
+  TfLiteTensor* resource_tensor;
+  EXPECT_EQ(m.GetResource(0, &resource_tensor), kTfLiteError);
 }
 
 }  // namespace

@@ -40,16 +40,22 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/experimental/resource/resource_variable.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"  // IWYU pragma: keep
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 
@@ -582,7 +588,60 @@ class SingleOpModel {
     buf.WriteToTensor(tensor, /*new_shape=*/nullptr);
   }
 
-  // Populates the tensor given its index.
+  // Sets the resource tensor with the given ID in the interpreter with given
+  // data, type, and shape. Creates a new resource if it doesn't already exist.
+  // This is helpful for setting up resource state prior to unit tests. Can only
+  // be invoked after `BuildInterpreter` has been called.
+  template <typename T>
+  void PopulateResource(int resource_id, absl::Span<const T> data,
+                        const std::vector<int>& dims) {
+    Subgraph& primary_subgraph = interpreter_->primary_subgraph();
+    resource::ResourceMap& resources = primary_subgraph.resources();
+    CreateResourceVariableIfNotAvailable(&resources, resource_id);
+    resource::ResourceVariable* variable =
+        resource::GetResourceVariable(&resources, resource_id);
+    TfLiteTensor* tensor_to_set =
+        static_cast<TfLiteTensor*>(malloc(sizeof(TfLiteTensor)));
+    TfLiteType new_type = typeToTfLiteType<T>();
+    tensor_to_set->type = new_type;
+    tensor_to_set->allocation_type = kTfLiteDynamic;
+    // Currently tensor_to_set has no data.
+    tensor_to_set->dims = TfLiteIntArrayCreate(0);
+    TfLiteIntArray* new_dims = ConvertVectorToTfLiteIntArray(dims);
+    // Resize the old tensor given new type and shape. This should update
+    // `resource_tensor->dims`. This will account for change in type of tensor
+    // data as well.
+    primary_subgraph.ResizeTensorImpl(tensor_to_set, new_dims);
+
+    // Set data.
+    tensor_to_set->data.raw = (char*)malloc(tensor_to_set->bytes);
+    T* resource_data = GetTensorData<T>(tensor_to_set);
+    for (const T& d : data) {
+      *resource_data = d;
+      ++resource_data;
+    }
+    variable->AssignFrom(tensor_to_set);
+    TfLiteTensorDataFree(tensor_to_set);
+    TfLiteIntArrayFree(tensor_to_set->dims);
+    free(tensor_to_set);
+  }
+
+  // Gets a pointer to a resource variable if it exists. This is helpful for
+  // asserting things about resource state in a unit test. Can only be invoked
+  // after BuildInterpreter has been called.
+  TfLiteStatus GetResource(int resource_id, TfLiteTensor** tensor) {
+    Subgraph& primary_subgraph = interpreter_->primary_subgraph();
+    resource::ResourceMap& resources = primary_subgraph.resources();
+    resource::ResourceVariable* variable =
+        resource::GetResourceVariable(&resources, resource_id);
+    if (variable == nullptr || tensor == nullptr) return kTfLiteError;
+    *tensor = variable->GetTensor();
+    return kTfLiteOk;
+  }
+
+  // Populates the tensor given its index. Can only be invoked after
+  // BuildInterpreter has been called.
+  // TODO(b/110696148) clean up and merge with vector-taking variant below.
   template <typename T>
   void PopulateTensor(int index, const std::initializer_list<T>& data) {
     PopulateTensorImpl<T>(index, /*offset=*/0, data);
