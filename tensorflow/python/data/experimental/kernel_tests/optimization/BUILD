@@ -77,7 +77,7 @@ tf_py_test(
 
 tf_py_test(
     name = "map_fusion_test",
-    size = "small",
+    size = "medium",
     srcs = ["map_fusion_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
