@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <map>
@@ -188,6 +189,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
 
     CoordinatedTaskState GetState() { return state_; }
     Status GetStatus() { return status_; }
+    uint64_t GetTaskIncarnation() { return task_incarnation_; }
     void SetConnected(uint64_t task_incarnation);
     void Disconnect(uint64_t grace_period_duration_us);
     Status RecordHeartbeat(uint64_t task_incarnation);
@@ -497,7 +499,8 @@ Status CoordinationServiceStandaloneImpl::RegisterTask(
     const CoordinatedTask& task, uint64_t incarnation) {
   const std::string& task_name = GetTaskName(task);
 
-  Status status;
+  Status error;
+  std::string error_message;
   {
     mutex_lock l(state_mu_);
     if (!cluster_state_.contains(task_name)) {
@@ -506,33 +509,57 @@ Status CoordinationServiceStandaloneImpl::RegisterTask(
       return MakeCoordinationError(errors::InvalidArgument(
           "Unexpected task registered with task_name=", task_name));
     }
-    const auto task_status = cluster_state_[task_name]->GetStatus();
-    if (cluster_state_[task_name]->GetState() ==
-            CoordinatedTaskState::TASKSTATE_DISCONNECTED ||
+
+    auto* task_cluster_state = cluster_state_[task_name].get();
+    const auto task_state = task_cluster_state->GetState();
+    const auto task_status = task_cluster_state->GetStatus();
+
+    if (task_state == CoordinatedTaskState::TASKSTATE_DISCONNECTED ||
         (errors::IsUnavailable(task_status) &&
          task_status.GetPayload(CoordinationErrorPayloadKey()))) {
       // This task is currently disconnected (registering for the first time or
       // has called ResetTask() previously), or being unavailable, e.g. due
       // to preemption, but does not have chance to be reset. We should allow
       // the connection.
-      cluster_state_[task_name]->SetConnected(incarnation);
+      task_cluster_state->SetConnected(incarnation);
       LOG(INFO) << task_name
                 << " has connected to coordination service. Incarnation: "
                 << incarnation;
+      return OkStatus();
+    } else if (task_state == CoordinatedTaskState::TASKSTATE_CONNECTED) {
+      // This may happen if the service processes the initial RegisterTask(),
+      // but the agent did not receive the response so the agent retries again.
+      if (task_cluster_state->GetTaskIncarnation() == incarnation) {
+        // This should be a no-op, but we update the last heartbeat timestamp
+        // to give a longer grace period for the agent to start sending
+        // heartbeats.
+        task_cluster_state->SetConnected(incarnation);
+        LOG(INFO) << task_name
+                  << " has connected to coordination service with the same "
+                  << "incarnation again: " << incarnation;
+        return OkStatus();
+      } else {
+        error_message =
+            absl::StrCat(task_name,
+                         " unexpectedly tried to connect with a different "
+                         "incarnation. It has likely restarted.");
+      }
     } else {
       // This task is connected or already in error, which implies it has
       // registered previously.
-      status = MakeCoordinationError(
-          errors::Aborted("Duplicate task registration with task_name=",
-                          task_name),
-          task);
-      SetTaskError(task_name, status);
+      error_message =
+          absl::StrCat(task_name,
+                       " unexpectedly tried to connect while it is already in "
+                       "error. ResetTask() should be called before a "
+                       "subsequent connect attempt.");
     }
+    LOG(ERROR) << error_message;
+    error = MakeCoordinationError(errors::Aborted(error_message), task);
+    SetTaskError(task_name, error);
   }
-  if (!status.ok()) {
-    PropagateError(task);
-  }
-  return status;
+  assert(!error.ok());
+  PropagateError(task);
+  return error;
 }
 
 void CoordinationServiceStandaloneImpl::WaitForAllTasks(
