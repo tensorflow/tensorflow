@@ -92,7 +92,7 @@ class SGD(optimizer_v2.OptimizerV2):
 
   Reference:
       - For `nesterov=True`, See [Sutskever et al., 2013](
-        http://jmlr.org/proceedings/papers/v28/sutskever13.pdf).
+        http://proceedings.mlr.press/v28/sutskever13.pdf).
   """
 
   _HAS_AGGREGATE_GRAD = True
