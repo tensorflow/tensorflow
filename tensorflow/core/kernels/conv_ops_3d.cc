@@ -332,9 +332,12 @@ void LaunchConvOpImpl(OpKernelContext* ctx, bool cudnn_use_autotune,
       const int64_t new_in_planes = in_planes + planes_odd;
 
       Tensor transformed_input;
-      TensorShape transformed_shape = ShapeFromFormat(
-          data_format, in_batch, {{new_in_planes, new_in_rows, new_in_cols}},
-          in_depth);
+      TensorShape transformed_shape;
+      OP_REQUIRES_OK(
+          ctx,
+          ShapeFromFormatWithStatus(
+              data_format, in_batch, {{new_in_planes, new_in_rows, new_in_cols}},
+              in_depth, &transformed_shape));
       OP_REQUIRES_OK(
           ctx, ctx->allocate_temp(DataTypeToEnum<T>::value, transformed_shape,
                                   &transformed_input));
@@ -363,8 +366,11 @@ void LaunchConvOpImpl(OpKernelContext* ctx, bool cudnn_use_autotune,
 
   if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
     VLOG(4) << "Convert the input tensor from NDHWC to NCDHW.";
-    const TensorShape nchw_shape = ShapeFromFormat(
-        FORMAT_NCHW, in_batch, {{in_planes, in_rows, in_cols}}, in_depth);
+    TensorShape nchw_shape;
+    OP_REQUIRES_OK(
+        ctx,
+        ShapeFromFormatWithStatus(
+            FORMAT_NCHW, in_batch, {{in_planes, in_rows, in_cols}}, in_depth, &nchw_shape);
     if (in_depth > 1) {
       Tensor transformed_input;
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
@@ -462,11 +468,16 @@ void LaunchConvOpImpl(OpKernelContext* ctx, bool cudnn_use_autotune,
   Tensor transformed_output;
   if (data_format != compute_data_format) {
     VLOG(4) << "Allocate temporary memory for output in compute data format";
+    TensorShape transformed_output_shape;
+    OP_REQUIRES_OK(
+        ctx,
+        ShapeFromFormatWithStatus(FORMAT_NCHW, in_batch,
+                                  {{out_planes, out_rows, out_cols}}, out_depth,
+                                  &transformed_output_shape));
     OP_REQUIRES_OK(
         ctx, ctx->allocate_temp(
                  DataTypeToEnum<T>::value,
-                 ShapeFromFormat(FORMAT_NCHW, in_batch,
-                                 {{out_planes, out_rows, out_cols}}, out_depth),
+                 transformed_output_shape,
                  &transformed_output));
   } else {
     transformed_output = *output;
