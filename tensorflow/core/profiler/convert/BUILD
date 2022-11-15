@@ -342,8 +342,6 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         ":op_metrics_db_combiner",
-        ":op_stats_combiner",
-        ":preprocess_single_host_xplane",
         ":repository",
         ":step_events_to_steps_db",
         ":xplane_to_kernel_stats_db",
@@ -373,11 +371,30 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "multi_xplanes_to_op_stats",
+    srcs = ["multi_xplanes_to_op_stats.cc"],
+    hdrs = ["multi_xplanes_to_op_stats.h"],
+    copts = tf_profiler_copts(),
+    deps = [
+        ":op_stats_combiner",
+        ":preprocess_single_host_xplane",
+        ":repository",
+        ":xplane_to_op_stats",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:hardware_type_utils",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
 tf_cc_test(
     name = "xplane_to_op_stats_test",
     size = "small",
     srcs = ["xplane_to_op_stats_test.cc"],
     deps = [
+        ":multi_xplanes_to_op_stats",
         ":repository",
         ":step_events_to_steps_db",
         ":xplane_to_op_stats",
@@ -659,6 +676,7 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         ":hlo_to_tools_data_headers_only",
+        ":multi_xplanes_to_op_stats",
         ":op_stats_to_input_pipeline_analysis",
         ":op_stats_to_op_profile",
         ":op_stats_to_overview_page",
