@@ -16,6 +16,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/external/external_delegate_interface.h"
 #include "tensorflow/lite/delegates/utils/dummy_delegate/dummy_delegate.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/logging.h"
@@ -85,22 +86,6 @@ TfLiteDelegate* CreateDummyDelegateFromOptions(
 }  // namespace tflite
 
 extern "C" {
-
-// Define TFL_EXTERNAL_DELEGATE_EXPORT macro to export an external delegate
-// API function properly with a shared library.
-#ifdef SWIG
-#define TFL_EXTERNAL_DELEGATE_EXPORT
-#else  // !defined SWIG
-#if defined(_WIN32)
-#ifdef TFL_EXTERNAL_DELEGATE_COMPILE_LIBRARY
-#define TFL_EXTERNAL_DELEGATE_EXPORT __declspec(dllexport)
-#else  // !defined TFL_EXTERNAL_DELEGATE_COMPILE_LIBRARY
-#define TFL_EXTERNAL_DELEGATE_EXPORT __declspec(dllimport)
-#endif  // !defined TFL_EXTERNAL_DELEGATE_COMPILE_LIBRARY
-#else   // !defined _WIN32
-#define TFL_EXTERNAL_DELEGATE_EXPORT __attribute__((visibility("default")))
-#endif  // !defined _WIN32
-#endif  // !defined SWIG
 
 // Defines two symbols that need to be exported to use the TFLite external
 // delegate. See tensorflow/lite/delegates/external for details.
