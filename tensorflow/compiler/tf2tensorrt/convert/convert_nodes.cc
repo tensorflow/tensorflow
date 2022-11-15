@@ -4712,6 +4712,7 @@ StatusOr<ITensorProxyPtr> ConvertMatMulImpl(const OpConverterParams* params,
 
   if (params->validation_only) return ITensorProxyPtr(nullptr);
 
+#if !IS_TRT_VERSION_GE(8, 0, 0, 0)
   StatusOr<ITensorProxyPtr> result = ConvertFullyConnectedImpl(
       params, input_a, input_b, transpose_a, transpose_b);
   TF_RETURN_IF_ERROR(result.status());
@@ -4720,6 +4721,7 @@ StatusOr<ITensorProxyPtr> ConvertMatMulImpl(const OpConverterParams* params,
     // FC conversion was successful, we can return.
     return output;
   }
+#endif
   const auto convert_to_itensor =
       [&params](TRT_TensorOrWeights operand) -> ITensorProxyPtr {
     if (operand.is_tensor()) {
