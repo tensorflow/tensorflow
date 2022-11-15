@@ -45,42 +45,18 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
-        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
+        "//tensorflow/tsl/profiler/lib:profiler_session",
     ] + if_not_android([
         ":profiler_interface",
         ":profiler_lock",
     ]) + if_static([
-        ":profiler_session_impl",
+        "//tensorflow/tsl/profiler/lib:profiler_session_impl",
     ]),
 )
 
-cc_library(
+alias(
     name = "profiler_session_impl",
-    srcs = [
-        "profiler_session.cc",
-        "profiler_session.h",
-    ],
-    copts = tf_profiler_copts(),
-    visibility = [
-        "//tensorflow/core/profiler:__pkg__",
-        "//tensorflow/python:__pkg__",
-    ],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
-        "@com_google_absl//absl/memory",
-    ] + if_not_android([
-        "//tensorflow/core:lib_internal",
-        ":profiler_interface",
-        ":profiler_factory",
-        ":profiler_collection",
-        ":profiler_lock",
-        "//tensorflow/core/profiler/convert:post_process_single_host_xplane",
-        "//tensorflow/core/profiler/utils:time_utils",
-    ]),
-    alwayslink = True,
+    actual = "//tensorflow/tsl/profiler/lib:profiler_session_impl",
 )
 
 cc_library(

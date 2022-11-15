@@ -13,33 +13,36 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/lib/profiler_session.h"
+#include "tensorflow/tsl/profiler/lib/profiler_session.h"
 
 #include <memory>
 #include <utility>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/platform.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/platform.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_options.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/platform/host_info.h"
-#include "tensorflow/core/profiler/convert/post_process_single_host_xplane.h"
 #include "tensorflow/core/profiler/lib/profiler_collection.h"
-#include "tensorflow/core/profiler/lib/profiler_factory.h"
-#include "tensorflow/core/profiler/lib/profiler_interface.h"
-#include "tensorflow/core/profiler/lib/profiler_lock.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/tsl/platform/host_info.h"
+#include "tensorflow/tsl/profiler/convert/post_process_single_host_xplane.h"
+#include "tensorflow/tsl/profiler/lib/profiler_factory.h"
+#include "tensorflow/tsl/profiler/lib/profiler_interface.h"
+#include "tensorflow/tsl/profiler/lib/profiler_lock.h"
+#include "tensorflow/tsl/profiler/utils/time_utils.h"
 #endif
 
-namespace tensorflow {
+namespace tsl {
 namespace {
+
+using tensorflow::ProfileOptions;
+using tensorflow::profiler::XSpace;
 
 ProfileOptions GetOptions(const ProfileOptions& opts) {
   if (opts.version()) return opts;
@@ -61,7 +64,7 @@ tensorflow::Status ProfilerSession::Status() {
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
-Status ProfilerSession::CollectDataInternal(profiler::XSpace* space) {
+Status ProfilerSession::CollectDataInternal(XSpace* space) {
   mutex_lock l(mutex_);
   TF_RETURN_IF_ERROR(status_);
   LOG(INFO) << "Profiler session collecting data.";
@@ -76,11 +79,11 @@ Status ProfilerSession::CollectDataInternal(profiler::XSpace* space) {
 }
 #endif
 
-Status ProfilerSession::CollectData(profiler::XSpace* space) {
+Status ProfilerSession::CollectData(XSpace* space) {
 #if !defined(IS_MOBILE_PLATFORM)
   space->add_hostnames(port::Hostname());
   TF_RETURN_IF_ERROR(CollectDataInternal(space));
-  PostProcessSingleHostXSpace(space, start_time_ns_);
+  profiler::PostProcessSingleHostXSpace(space, start_time_ns_);
 #endif
   return OkStatus();
 }
@@ -117,7 +120,7 @@ ProfilerSession::ProfilerSession(const ProfileOptions& options)
   start_time_ns_ = profiler::GetCurrentTimeNanos();
 
   DCHECK(profiler_lock_.Active());
-  profilers_ = absl::make_unique<profiler::ProfilerCollection>(
+  profilers_ = std::make_unique<tensorflow::profiler::ProfilerCollection>(
       profiler::CreateProfilers(options_));
   profilers_->Start().IgnoreError();
 #endif
@@ -129,4 +132,4 @@ ProfilerSession::~ProfilerSession() {
 #endif
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

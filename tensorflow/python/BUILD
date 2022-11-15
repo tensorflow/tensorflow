@@ -3514,7 +3514,7 @@ filegroup(
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "//tensorflow/core/profiler/convert:hlo_to_tools_data_impl",  # profiler
-        "//tensorflow/core/profiler/lib:profiler_session_impl",  # profiler
+        "//tensorflow/tsl/profiler/lib:profiler_session_impl",  # profiler
         "//tensorflow/core/profiler/rpc:profiler_server_impl",  # profiler
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler
         "//tensorflow/python/framework:python_api_info",  # python_api_info
