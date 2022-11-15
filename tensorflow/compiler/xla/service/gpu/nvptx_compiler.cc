@@ -317,8 +317,7 @@ GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
 StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    llvm::Module* llvm_module,
-                                   GpuVersion gpu_version,
-                                   se::StreamExecutor* stream_exec,
+                                   GpuVersion gpu_version, int device_ordinal,
                                    bool relocatable,
                                    const HloModule* debug_module) {
   std::string libdevice_dir;
@@ -360,7 +359,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   }
 
   std::vector<uint8_t> cubin = CompileGpuAsmOrGetCachedResult(
-      stream_exec, ptx, std::get<se::CudaComputeCapability>(gpu_version),
+      device_ordinal, ptx, std::get<se::CudaComputeCapability>(gpu_version),
       module_config,
       (debug_module != nullptr ? debug_module->name() : "(unknown)"),
       relocatable);
@@ -370,9 +369,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
 }
 
 std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
-    se::StreamExecutor* stream_exec, const std::string& ptx,
-    se::CudaComputeCapability cc, const HloModuleConfig& hlo_module_config,
-    absl::string_view module_name, bool relocatable) {
+    int device_ordinal, const std::string& ptx, se::CudaComputeCapability cc,
+    const HloModuleConfig& hlo_module_config, absl::string_view module_name,
+    bool relocatable) {
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "NVPTXCompiler::CompileGpuAsmOrGetCachedResult for ", module_name));
   tsl::profiler::TraceMe activity("PTX->CUBIN",
@@ -409,8 +408,8 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
         }
         uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
-        StatusOr<std::vector<uint8_t>> maybe_cubin = se::CompileGpuAsm(
-            stream_exec->device_ordinal(), cache_ptx->c_str(), ptxas_config);
+        StatusOr<std::vector<uint8_t>> maybe_cubin =
+            se::CompileGpuAsm(device_ordinal, cache_ptx->c_str(), ptxas_config);
 
         if (maybe_cubin.ok()) {
           uint64_t end_usecs = tsl::Env::Default()->NowMicros();
