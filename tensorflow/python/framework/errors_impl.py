@@ -224,7 +224,6 @@ class CancelledError(OpError):
   A step that is running such a long-running operation will fail by raising
   `CancelledError`.
 
-  @@__init__
   """
 
   def __init__(self, node_def, op, message, *args):
@@ -246,7 +245,6 @@ class UnknownError(OpError):
   do not return enough error information may be converted to this
   error.
 
-  @@__init__
   """
 
   def __init__(self, node_def, op, message, *args):
@@ -267,7 +265,6 @@ class InvalidArgumentError(OpError):
      ...
   InvalidArgumentError: ...
 
-  @@__init__
   """
 
   def __init__(self, node_def, op, message, *args):
@@ -282,7 +279,6 @@ class DeadlineExceededError(OpError):
 
   This exception is not currently used.
 
-  @@__init__
   """
 
   def __init__(self, node_def, op, message, *args):
@@ -300,7 +296,6 @@ class NotFoundError(OpError):
   operation could raise `NotFoundError` if it receives the name of a file that
   does not exist.
 
-  @@__init__
   """
 
   def __init__(self, node_def, op, message, *args):
@@ -317,7 +312,6 @@ class AlreadyExistsError(OpError):
   could potentially raise this exception if an explicit filename for an
   existing file was passed.
 
-  @@__init__
   """
 
   def __init__(self, node_def, op, message, *args):
@@ -335,7 +329,6 @@ class PermissionDeniedError(OpError):
   operation could raise `PermissionDeniedError` if it receives the name of a
   file for which the user does not have the read file permission.
 
-  @@__init__
   """
 
   def __init__(self, node_def, op, message, *args):
@@ -346,11 +339,10 @@ class PermissionDeniedError(OpError):
 
 @tf_export("errors.UnauthenticatedError")
 class UnauthenticatedError(OpError):
-  """The request does not have valid authentication credentials.
+  """Raised when the request does not have valid authentication credentials.
 
   This exception is not currently used.
 
-  @@__init__
   """
 
   def __init__(self, node_def, op, message, *args):
@@ -361,12 +353,11 @@ class UnauthenticatedError(OpError):
 
 @tf_export("errors.ResourceExhaustedError")
 class ResourceExhaustedError(OpError):
-  """Some resource has been exhausted.
+  """Raised when some resource has been exhausted while running operation.
 
   For example, this error might be raised if a per-user quota is
   exhausted, or perhaps the entire file system is out of space.
 
-  @@__init__
   """
 
   def __init__(self, node_def, op, message, *args):
@@ -377,13 +368,15 @@ class ResourceExhaustedError(OpError):
 
 @tf_export("errors.FailedPreconditionError")
 class FailedPreconditionError(OpError):
-  """Operation was rejected because the system is not in a state to execute it.
+  """Raised when some prerequisites are not met when running an operation.
 
-  This exception is most commonly raised when running an operation
-  that reads a `tf.Variable`
-  before it has been initialized.
+  This typically indicates that system is not in state to execute the operation
+  and requires preconditions to be met before successfully executing current
+  operation.
 
-  @@__init__
+  For example, this exception is commonly raised when running an operation
+  that reads a `tf.Variable` before it has been initialized.
+
   """
 
   def __init__(self, node_def, op, message, *args):
@@ -394,7 +387,7 @@ class FailedPreconditionError(OpError):
 
 @tf_export("errors.AbortedError")
 class AbortedError(OpError):
-  """The operation was aborted, typically due to a concurrent action.
+  """Raised when an operation was aborted, typically due to a concurrent action.
 
   For example, running a
   `tf.queue.QueueBase.enqueue`
@@ -402,7 +395,6 @@ class AbortedError(OpError):
   `tf.queue.QueueBase.close` operation
   previously ran.
 
-  @@__init__
   """
 
   def __init__(self, node_def, op, message, *args):
@@ -420,7 +412,6 @@ class OutOfRangeError(OpError):
   `tf.queue.QueueBase.close`
   operation executes.
 
-  @@__init__
   """
 
   def __init__(self, node_def, op, message, *args):
@@ -439,7 +430,6 @@ class UnimplementedError(OpError):
   would raise this error if pooling was requested on the batch dimension,
   because this is not yet supported.
 
-  @@__init__
   """
 
   def __init__(self, node_def, op, message, *args):
@@ -455,7 +445,6 @@ class InternalError(OpError):
   This exception is raised when some invariant expected by the runtime
   has been broken. Catching this exception is not recommended.
 
-  @@__init__
   """
 
   def __init__(self, node_def, op, message, *args):
@@ -469,7 +458,6 @@ class UnavailableError(OpError):
 
   This exception is not currently used.
 
-  @@__init__
   """
 
   def __init__(self, node_def, op, message, *args):
@@ -486,7 +474,6 @@ class DataLossError(OpError):
   `tf.WholeFileReader.read`
   operation, if the file is truncated while it is being read.
 
-  @@__init__
   """
 
   def __init__(self, node_def, op, message, *args):
