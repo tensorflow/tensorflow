@@ -18,6 +18,7 @@ import functools
 import time
 from typing import List, Optional, Dict
 
+from absl import flags
 import numpy as np
 
 from tensorflow.dtensor.python import config
@@ -125,6 +126,11 @@ def _create_tpu_topology(core_locations: List[_CoreLocation], num_tasks: int,
       mesh_shape=mesh_shape, device_coordinates=device_coordinates)
 
 
+def is_tpu_use_tfrt():
+  """Check if tpu backend is using TFRT-TPU Runtime."""
+  return "tpu_use_tfrt" in flags.FLAGS and flags.FLAGS["tpu_use_tfrt"].value
+
+
 def shutdown_tpu_system():
   """Shuts down the TPU system."""
 
@@ -132,7 +138,10 @@ def shutdown_tpu_system():
   def _shutdown_tpu_system():
     return gen_dtensor_ops.shutdown_tpu_system()
 
-  success = _shutdown_tpu_system() if context.is_tfrt_enabled() else True
+  success = True
+  if is_tpu_use_tfrt():
+    success = _shutdown_tpu_system()
+
   if success:
     logging.info("TPU system shut down.")
   else:
