@@ -92,10 +92,10 @@ struct CollapseBcastPattern : OpRewritePattern<linalg::GenericOp> {
         getCollapsingReassociationIndices(operandRank, retainTrailingDims - 1);
     Value collapsedOperand = rewriter.createOrFold<tensor::CollapseShapeOp>(
         loc, operand, operandReassociation);
-    SmallVector<ReassociationIndices> initReassosiation =
+    SmallVector<ReassociationIndices> initReassociation =
         getCollapsingReassociationIndices(initRank, retainTrailingDims);
     Value collapsedInit =
-        rewriter.create<tensor::CollapseShapeOp>(loc, init, initReassosiation);
+        rewriter.create<tensor::CollapseShapeOp>(loc, init, initReassociation);
 
     auto collapsedInitTy = collapsedInit.getType().cast<RankedTensorType>();
     int64_t collapsedInitRank = collapsedInitTy.getRank();
@@ -116,9 +116,9 @@ struct CollapseBcastPattern : OpRewritePattern<linalg::GenericOp> {
         collapsedIteratorTypes);
     collapsedBcastOp.getRegion().takeBody(op.getBodyRegion());
 
-    // Re-expand reduction op and replace the original.
+    // Re-expand broadcast op and replace the original.
     auto reexpandedBcastOp = rewriter.create<tensor::ExpandShapeOp>(
-        loc, initTy, collapsedBcastOp.getResult(0), initReassosiation);
+        loc, initTy, collapsedBcastOp.getResult(0), initReassociation);
     rewriter.replaceOp(op, reexpandedBcastOp.getResult());
     return success();
   }
@@ -166,10 +166,10 @@ struct CollapseReductionPattern : OpRewritePattern<linalg::GenericOp> {
         getCollapsingReassociationIndices(operandRank, retainTrailingDims);
     Value collapsedOperand = rewriter.create<tensor::CollapseShapeOp>(
         loc, operand, operandReassociation);
-    SmallVector<ReassociationIndices> initReassosiation =
+    SmallVector<ReassociationIndices> initReassociation =
         getCollapsingReassociationIndices(initRank, retainTrailingDims - 1);
     Value collapsedInit =
-        rewriter.create<tensor::CollapseShapeOp>(loc, init, initReassosiation);
+        rewriter.create<tensor::CollapseShapeOp>(loc, init, initReassociation);
 
     auto collapsedOperandTy =
         collapsedOperand.getType().cast<RankedTensorType>();
@@ -197,7 +197,7 @@ struct CollapseReductionPattern : OpRewritePattern<linalg::GenericOp> {
 
     // Re-expand reduction op and replace the original.
     auto reexpandedReductionOp = rewriter.create<tensor::ExpandShapeOp>(
-        loc, initTy, collapsedReductionOp.getResult(0), initReassosiation);
+        loc, initTy, collapsedReductionOp.getResult(0), initReassociation);
     rewriter.replaceOp(op, reexpandedReductionOp.getResult());
     return success();
   }
