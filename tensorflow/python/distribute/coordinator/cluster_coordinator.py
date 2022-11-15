@@ -157,7 +157,7 @@ def _maybe_get_remote_value(val):
 def _maybe_as_type_spec(val):
   if isinstance(val, (RemoteValue, PerWorkerValues)):
     if val._type_spec is None:  # pylint: disable=protected-access
-      raise ValueError("Output of a scheduled function that is not "
+      raise TypeError("Output of a scheduled function that is not "
                        "tf.function cannot be the input of another function.")
     return val._type_spec  # pylint: disable=protected-access
   else:

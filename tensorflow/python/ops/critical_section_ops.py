@@ -192,7 +192,7 @@ class CriticalSection:
                critical_section_def=None, import_scope=None):
     """Creates a critical section."""
     context.ensure_initialized()
-    if critical_section_def and name is not None:
+    if critical_section_def and shared_name is not None:
       raise ValueError(f"Arguments critical_section_def={critical_section_def} "
                        f"and shared_name={shared_name} are mutually exclusive. "
                        "Please only specify one of them.")

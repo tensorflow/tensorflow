@@ -451,10 +451,10 @@ def wrap_rich_text_lines(inp, cols):
   new_line_indices = []
 
   if not isinstance(inp, RichTextLines):
-    raise ValueError("Invalid type of input screen_output")
+    raise TypeError("Invalid type of input screen_output")
 
   if not isinstance(cols, int):
-    raise ValueError("Invalid type of input cols")
+    raise TypeError("Invalid type of input cols")
 
   out = RichTextLines([])
 

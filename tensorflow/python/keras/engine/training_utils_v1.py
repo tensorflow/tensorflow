@@ -520,7 +520,7 @@ def standardize_single_array(x, expected_shape=None):
     return x
 
   if isinstance(x, int):
-    raise ValueError(
+    raise TypeError(
         'Expected an array data type but received an integer: {}'.format(x))
 
   if (x.shape is not None and len(x.shape) == 1 and

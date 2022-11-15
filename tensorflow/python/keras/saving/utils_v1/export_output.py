@@ -157,8 +157,8 @@ class ClassificationOutput(ExportOutput):
                        'got {}'.format(receiver_tensors))
     (_, examples), = receiver_tensors.items()
     if dtypes.as_dtype(examples.dtype) != dtypes.string:
-      raise ValueError('Classification input must be a single string Tensor; '
-                       'got {}'.format(receiver_tensors))
+      raise TypeError('examples must have the type tf.string; '
+                       'got {}'.format(dtypes.as_dtype(examples.dtype)))
     return signature_def_utils.classification_signature_def(
         examples, self.classes, self.scores)
 
@@ -190,8 +190,8 @@ class RegressionOutput(ExportOutput):
                        'got {}'.format(receiver_tensors))
     (_, examples), = receiver_tensors.items()
     if dtypes.as_dtype(examples.dtype) != dtypes.string:
-      raise ValueError('Regression input must be a single string Tensor; '
-                       'got {}'.format(receiver_tensors))
+      raise TypeError('examples must have the type tf.string '
+                       'got {}'.format(dtypes.as_dtype(examples.dtype)))
     return signature_def_utils.regression_signature_def(examples, self.value)
 
 

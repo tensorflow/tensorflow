@@ -338,7 +338,7 @@ def _get_arg_spec(f, params, param_args):
   elif all(isinstance(x, int) for x in params):
     return params
   else:
-    raise ValueError(
+    raise TypeError(
         "params must be all strings or all integers; got %s." % params)
 
 
