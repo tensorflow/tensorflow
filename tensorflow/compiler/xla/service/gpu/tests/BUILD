@@ -115,7 +115,6 @@ tf_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":mlir_gpu_test_base",
-        "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
@@ -128,7 +127,6 @@ tf_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":mlir_gpu_test_base",
-        "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
