@@ -35,6 +35,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -76,11 +77,12 @@ class HloInstructionWrapper {
   size_t flops() const { return flops_; }
   size_t bytes_accessed() const { return bytes_accessed_; }
 
-  std::string op_full_name() const;
+  std::string_view op_full_name() const { return op_full_name_; }
   std::string source_info() const;
 
  private:
   const xla::HloInstruction* instr_;
+  std::string op_full_name_;
   size_t flops_ = 0;
   size_t bytes_accessed_ = 0;
 };

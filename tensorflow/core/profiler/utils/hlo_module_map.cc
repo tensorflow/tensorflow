@@ -45,7 +45,8 @@ int64_t ShapeSize(const xla::Shape& shape) {
 
 HloInstructionWrapper::HloInstructionWrapper(
     const xla::HloInstruction* instr, const xla::HloCostAnalysis* cost_analysis)
-    : instr_(instr) {
+    : instr_(instr),
+      op_full_name_(TraceMeOp(Metadata().op_name(), Metadata().op_type())) {
   if (cost_analysis != nullptr) {
     flops_ = cost_analysis->flop_count(*instr_);
     bytes_accessed_ = cost_analysis->bytes_accessed(*instr_);
@@ -97,10 +98,6 @@ const HloInstructionWrapper* HloModuleWrapper::GetHloInstruction(
   auto it = instructions_by_name_.find(hlo_name);
   if (it != instructions_by_name_.end()) return &it->second;
   return nullptr;
-}
-
-std::string HloInstructionWrapper::op_full_name() const {
-  return TraceMeOp(Metadata().op_name(), Metadata().op_type());
 }
 
 std::string HloInstructionWrapper::source_info() const {
