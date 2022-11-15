@@ -1101,7 +1101,9 @@ def recursively_deserialize_keras_object(config, module_objects=None):
     return [recursively_deserialize_keras_object(x, module_objects)
             for x in config]
   else:
-    raise ValueError('Unable to decode config: {}'.format(config))
+    raise TypeError(
+      "Expected config to be a pair of (tuple, list)\n"
+      "Unable to decode config: {}".format(config))
 
 
 def get_common_shape(x, y):

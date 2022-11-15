@@ -1844,7 +1844,7 @@ def weighted_categorical_column(categorical_column,
     ValueError: if `dtype` is not convertible to float.
   """
   if (dtype is None) or not (dtype.is_integer or dtype.is_floating):
-    raise ValueError('dtype {} is not convertible to float.'.format(dtype))
+    raise TypeError('dtype {} is not convertible to float.'.format(dtype))
   return WeightedCategoricalColumn(
       categorical_column=categorical_column,
       weight_feature_key=weight_feature_key,

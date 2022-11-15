@@ -157,10 +157,10 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
       argument value.
   """
   if not isinstance(model, Model):
-    raise ValueError('Expected `model` argument '
+    raise TypeError('Expected `model` argument '
                      'to be a `Model` instance, got ', model)
   if isinstance(model, Sequential):
-    raise ValueError('Expected `model` argument '
+    raise TypeError('Expected `model` argument '
                      'to be a functional `Model` instance, '
                      'got a `Sequential` instance instead:', model)
   if not model._is_graph_network:
@@ -305,7 +305,7 @@ def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):
       argument value.
   """
   if not isinstance(model, Sequential):
-    raise ValueError('Expected `model` argument '
+    raise TypeError('Expected `model` argument '
                      'to be a `Sequential` model instance, '
                      'but got:', model)
 

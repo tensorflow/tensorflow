@@ -268,10 +268,10 @@ def parse_ranges(range_string):
     if len(item) != 2:
       raise ValueError("Incorrect number of elements in range")
     elif not isinstance(item[0], (int, float)):
-      raise ValueError("Incorrect type in the 1st element of range: %s" %
+      raise TypeError("Incorrect type in the 1st element of range: %s" %
                        type(item[0]))
     elif not isinstance(item[1], (int, float)):
-      raise ValueError("Incorrect type in the 2nd element of range: %s" %
+      raise TypeError("Incorrect type in the 2nd element of range: %s" %
                        type(item[0]))
 
   return ranges
