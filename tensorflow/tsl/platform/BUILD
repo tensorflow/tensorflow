@@ -649,7 +649,10 @@ exports_files(
         "tracing.h",
         "tracing.cc",
     ],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
 )
 
 filegroup(

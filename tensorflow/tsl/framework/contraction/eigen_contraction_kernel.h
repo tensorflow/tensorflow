@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_EIGEN_CONTRACTION_KERNEL_H_
-#define TENSORFLOW_CORE_KERNELS_EIGEN_CONTRACTION_KERNEL_H_
+#ifndef TENSORFLOW_TSL_FRAMEWORK_CONTRACTION_EIGEN_CONTRACTION_KERNEL_H_
+#define TENSORFLOW_TSL_FRAMEWORK_CONTRACTION_EIGEN_CONTRACTION_KERNEL_H_
 
 // Depending on a build configuration this header provides custom kernel for
 // Eigen tensor contractions (small matrix multiplication kernel used to
@@ -29,7 +29,8 @@ limitations under the License.
 // this header to get the benefit of custom contraction kernel:
 //
 //   #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-//   #include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+//   #include
+//   "third_party/tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
 //   #endif
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -39,7 +40,7 @@ limitations under the License.
 #include "dnnl.h"
 #endif
 
-#include "tensorflow/core/platform/dynamic_annotations.h"
+#include "tensorflow/tsl/platform/dynamic_annotations.h"
 
 namespace Eigen {
 namespace internal {
@@ -901,4 +902,4 @@ REGISTER_TENSOR_CONTRACTION_KERNEL_NO_FALLBACK(Eigen::QInt32, Eigen::QInt8,
 }  // namespace internal
 }  // namespace Eigen
 
-#endif  // TENSORFLOW_CORE_KERNELS_EIGEN_CONTRACTION_KERNEL_H_
+#endif  // TENSORFLOW_TSL_FRAMEWORK_CONTRACTION_EIGEN_CONTRACTION_KERNEL_H_

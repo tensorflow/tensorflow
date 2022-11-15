@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_EIGEN_SPATIAL_CONVOLUTIONS_H_
-#define TENSORFLOW_CORE_KERNELS_EIGEN_SPATIAL_CONVOLUTIONS_H_
+#ifndef TENSORFLOW_TSL_FRAMEWORK_CONVOLUTION_EIGEN_SPATIAL_CONVOLUTIONS_H_
+#define TENSORFLOW_TSL_FRAMEWORK_CONVOLUTION_EIGEN_SPATIAL_CONVOLUTIONS_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 // Note the following header is used in both TF and TFLite. Particularly, it's
 // used for float TFLite Conv2D.
-#include "tensorflow/core/kernels/eigen_spatial_convolutions-inl.h"
+#include "tensorflow/tsl/framework/convolution/eigen_spatial_convolutions-inl.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
 
 namespace Eigen {
 namespace internal {
@@ -442,4 +442,4 @@ struct gemm_pack_colmajor_block<
 }  // namespace internal
 }  // namespace Eigen
 #endif  // defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#endif  // TENSORFLOW_CORE_KERNELS_EIGEN_SPATIAL_CONVOLUTIONS_H_
+#endif  // TENSORFLOW_TSL_FRAMEWORK_CONVOLUTION_EIGEN_SPATIAL_CONVOLUTIONS_H_

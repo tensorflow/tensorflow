@@ -28,6 +28,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_GEMM_FUNCTORS_H_
 
 #include <string.h>
+
 #include <map>
 #include <vector>
 
@@ -37,7 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 // Apple provides an optimized BLAS library that is better than Eigen for their

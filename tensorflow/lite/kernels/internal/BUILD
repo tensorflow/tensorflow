@@ -376,8 +376,8 @@ cc_library(
         ":common",
         ":optimized_base",
         ":types",
-        "//tensorflow/core/kernels:eigen_spatial_convolutions-inl",
         "//tensorflow/lite/c:common",
+        "//tensorflow/tsl/framework/convolution:eigen_spatial_convolutions-inl",
         "//third_party/eigen3",
     ],
 )

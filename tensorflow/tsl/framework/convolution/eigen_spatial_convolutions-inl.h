@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_EIGEN_SPATIAL_CONVOLUTIONS_INL_H_
-#define TENSORFLOW_CORE_KERNELS_EIGEN_SPATIAL_CONVOLUTIONS_INL_H_
+#ifndef TENSORFLOW_TSL_FRAMEWORK_CONVOLUTION_EIGEN_SPATIAL_CONVOLUTIONS_INL_H_
+#define TENSORFLOW_TSL_FRAMEWORK_CONVOLUTION_EIGEN_SPATIAL_CONVOLUTIONS_INL_H_
 
-#include "tensorflow/core/kernels/eigen_convolution_helpers.h"
+#include "tensorflow/tsl/framework/convolution/eigen_convolution_helpers.h"
 
 // Note this header is used in both TF and TFLite.
 namespace Eigen {
@@ -1769,4 +1769,4 @@ SpatialConvolution(const Input& input, const Kernel& kernel,
 
 }  // end namespace Eigen
 
-#endif  // TENSORFLOW_CORE_KERNELS_EIGEN_SPATIAL_CONVOLUTIONS_INL_H_
+#endif  // TENSORFLOW_TSL_FRAMEWORK_CONVOLUTION_EIGEN_SPATIAL_CONVOLUTIONS_INL_H_

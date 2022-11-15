@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_EIGEN_CONVOLUTION_HELPERS_H_
-#define TENSORFLOW_CORE_KERNELS_EIGEN_CONVOLUTION_HELPERS_H_
+#ifndef TENSORFLOW_TSL_FRAMEWORK_CONVOLUTION_EIGEN_CONVOLUTION_HELPERS_H_
+#define TENSORFLOW_TSL_FRAMEWORK_CONVOLUTION_EIGEN_CONVOLUTION_HELPERS_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
@@ -59,9 +59,8 @@ class TensorEvaluatorHasPartialPacket {
   template <typename TensorEvaluatorT, typename PacketT, typename IndexT>
   static auto functionExistsSfinae(...) -> std::false_type;
 
-  typedef decltype(
-      functionExistsSfinae<TensorEvaluatorType, PacketType, IndexType>(
-          nullptr)) status;
+  typedef decltype(functionExistsSfinae<TensorEvaluatorType, PacketType,
+                                        IndexType>(nullptr)) status;
 
   static constexpr bool value = status::value;
 };
@@ -85,4 +84,4 @@ EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
 }  // namespace internal
 }  // namespace Eigen
 
-#endif  // TENSORFLOW_CORE_KERNELS_EIGEN_CONVOLUTION_HELPERS_H_
+#endif  // TENSORFLOW_TSL_FRAMEWORK_CONVOLUTION_EIGEN_CONVOLUTION_HELPERS_H_
