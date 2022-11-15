@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <utility>
 
@@ -880,6 +881,21 @@ FailureOr<Value> GatherOp::generateResultTileValue(
 //===----------------------------------------------------------------------===//
 // SortOp
 //===----------------------------------------------------------------------===//
+
+void SortOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+  ResultRange results = getResults();
+  for (int i = 0; i < results.size(); i++) {
+    setNameFn(results[i], "sorted" + std::to_string(i));
+  }
+}
+
+void SortOp::getAsmBlockArgumentNames(Region &region,
+                                      OpAsmSetValueNameFn setNameFn) {
+  for (int i = 0, e = region.getNumArguments(); i < e; i += 2) {
+    setNameFn(region.getArgument(i), "lhs" + std::to_string(i / 2));
+    setNameFn(region.getArgument(i + 1), "rhs" + std::to_string(i / 2));
+  }
+}
 
 ParseResult SortOp::parse(OpAsmParser &parser, OperationState &result) {
   if (parseDstStyleOp(parser, result)) return failure();
