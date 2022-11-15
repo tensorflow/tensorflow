@@ -152,7 +152,7 @@ LogicalResult replaceSetYieldDstByProducerInit(SetYieldOp setYieldOp,
 class FusionPattern : public OpRewritePattern<MaterializeOp> {
  public:
   FusionPattern(MLIRContext* context,
-                function_ref<LogicalResult(Operation*)> filterFn,
+                function_ref<LogicalResult(MaterializeOp)> filterFn,
                 mlir::PatternBenefit benefit = 1)
       : OpRewritePattern<MaterializeOp>(context, benefit), filterFn(filterFn) {}
 
@@ -165,7 +165,7 @@ class FusionPattern : public OpRewritePattern<MaterializeOp> {
   }
 
  private:
-  function_ref<LogicalResult(Operation*)> filterFn;
+  function_ref<LogicalResult(MaterializeOp)> filterFn;
 };
 
 struct FusionPass : public impl::FusionPassBase<FusionPass> {
@@ -182,9 +182,8 @@ struct FusionPass : public impl::FusionPassBase<FusionPass> {
   void runOnOperation() final {
     MLIRContext* ctx = &getContext();
 
-    auto filterFn = [&](Operation* op) {
-      auto materializeOp = cast<MaterializeOp>(op);
-      Operation* producerOp = materializeOp.getSource().getDefiningOp();
+    auto filterFn = [&](MaterializeOp op) {
+      Operation* producerOp = op.getSource().getDefiningOp();
       if (!producerOp || (!producerLabel.empty() &&
                           !hasMatchingLabel(producerOp, producerLabel))) {
         return failure();
@@ -192,7 +191,7 @@ struct FusionPass : public impl::FusionPassBase<FusionPass> {
 
       Operation* consumerOp = nullptr;
       if (!consumerLabel.empty()) {
-        for (Operation* user : materializeOp.getResult().getUsers()) {
+        for (Operation* user : op.getResult().getUsers()) {
           if (hasMatchingLabel(user, consumerLabel)) {
             consumerOp = user;
             break;
@@ -287,7 +286,7 @@ FailureOr<Value> createFusedOp(PatternRewriter& rewriter,
 }
 
 void populateFusionPatterns(MLIRContext* ctx,
-                            function_ref<LogicalResult(Operation*)> filterFn,
+                            function_ref<LogicalResult(MaterializeOp)> filterFn,
                             RewritePatternSet* patterns) {
   patterns->insert<FusionPattern>(ctx, filterFn);
   // clang-format off
