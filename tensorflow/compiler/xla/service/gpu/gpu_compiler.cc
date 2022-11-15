@@ -161,6 +161,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/stochastic_convert_decomposer.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
+#include "tensorflow/compiler/xla/service/while_loop_all_reduce_code_motion.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_trip_count_annotator.h"
@@ -573,6 +574,7 @@ Status GpuCompiler::OptimizeHloModule(
   {
     HloPassPipeline collectives_pipeline("collective-optimizations");
     collectives_pipeline.AddPass<AllReduceFolder>();
+    collectives_pipeline.AddPass<WhileLoopAllReduceCodeMotion>();
     collectives_pipeline.AddPass<ReduceScatterCreator>();
     collectives_pipeline.AddPass<AllReduceReassociate>();
     collectives_pipeline.AddPass<ReduceScatterReassociate>();
