@@ -274,6 +274,7 @@ tf_kernel_library(
         "conv_2d_gpu_double.cu.cc",
         "conv_2d_gpu_float.cu.cc",
         "conv_2d_gpu_half.cu.cc",
+        "conv_2d_gpu_bfloat16.cu.cc",
         "conv_2d_gpu_int.cu.cc",
         "conv_2d_gpu_int_spatial_convolution.cu.cc",
         "conv_2d_gpu_int_spatial_convolution_backward.cu.cc",
@@ -4057,6 +4058,7 @@ tf_kernel_library(
     ],
     prefix = "conv_ops",
     deps = [
+        ":cast_op",
         ":conv_grad_shape_utils",
         ":conv_2d",
         ":conv_3d",
@@ -4122,6 +4124,7 @@ tf_kernel_library(
     gpu_srcs = [
         "depthwise_conv_op.h",
         "depthwise_conv_op_gpu.h",
+        "depthwise_conv_op_gpu_bfloat16.cu.cc",
         "depthwise_conv_op_gpu_double.cu.cc",
         "depthwise_conv_op_gpu_float.cu.cc",
         "depthwise_conv_op_gpu_half.cu.cc",
