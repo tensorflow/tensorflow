@@ -17,3 +17,7 @@
 def c_api_visibility_allowlist():
     """Returns a list of packages that can depend on c_api."""
     return []
+
+def vendor_delegate_allowlist():
+    """Returns a list of packages that can depend on vendor_delegate."""
+    return []

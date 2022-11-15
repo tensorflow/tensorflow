@@ -174,6 +174,7 @@ cc_library(
     srcs = ["nnapi_plugin.cc"],
     hdrs = ["nnapi_plugin.h"],
     visibility = nnapi_plugin_impl_visibility_allowlist() + [
+        "//tensorflow/lite/core/experimental/acceleration/configuration/c:__pkg__",
         "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
     ],
     deps = [
@@ -250,6 +251,7 @@ cc_library(
         "//conditions:default": [],
     }),
     visibility = [
+        "//tensorflow/lite/core/experimental/acceleration/configuration/c:__pkg__",
         "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
     ],
     deps = [

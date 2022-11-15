@@ -15,11 +15,11 @@ limitations under the License.
 
 // This file implements the Delegate Plugin for the GPU Delegate.
 
-#include "tensorflow/lite/experimental/acceleration/configuration/c/gpu_plugin.h"
+#include "tensorflow/lite/core/experimental/acceleration/configuration/c/gpu_plugin.h"
 
 #include <memory>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/gpu_plugin.h"
 

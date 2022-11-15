@@ -12,8 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_XNNPACK_PLUGIN_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_XNNPACK_PLUGIN_H_
+// NOLINTBEGIN(whitespace/line_length)
+/// WARNING: Users of TensorFlow Lite should not include this file directly,
+/// but should instead include
+/// "third_party/tensorflow/lite/experimental/acceleration/configuration/c/xnnpack_plugin.h".
+/// Only the TensorFlow Lite implementation itself should include this
+/// file directly.
+// NOLINTEND(whitespace/line_length)
+#ifndef TENSORFLOW_LITE_CORE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_XNNPACK_PLUGIN_H_
+#define TENSORFLOW_LITE_CORE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_XNNPACK_PLUGIN_H_
 
 // This header file is for the delegate plugin for XNNPACK.
 //
@@ -26,10 +33,18 @@ limitations under the License.
 // But to provide a C API to access the XNNPACK delegate plugin, we do expose
 // some functions, which are declared below.
 
-// NOLINTBEGIN(whitespace/line_length)
-/// For documentation, see
-/// third_party/tensorflow/lite/core/experimental/acceleration/configuration/c/xnnpack_plugin.h.
-// NOLINTEND(whitespace/line_length)
-#include "tensorflow/lite/core/experimental/acceleration/configuration/c/xnnpack_plugin.h"  // IWYU pragma: export
+#include "tensorflow/lite/core/experimental/acceleration/configuration/c/delegate_plugin.h"
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_XNNPACK_PLUGIN_H_
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// C API for the XNNPACK delegate plugin.
+// Returns a pointer to a statically allocated table of function pointers.
+const TfLiteDelegatePlugin* TfLiteXnnpackDelegatePluginCApi();
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif
+
+#endif  // TENSORFLOW_LITE_CORE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_XNNPACK_PLUGIN_H_

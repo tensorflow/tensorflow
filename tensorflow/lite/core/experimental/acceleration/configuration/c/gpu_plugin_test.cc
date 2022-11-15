@@ -14,36 +14,36 @@ limitations under the License.
 ==============================================================================*/
 
 // Some very simple unit tests of the C API Delegate Plugin for the
-// NNAPI Delegate.
+// GPU Delegate.
 
-#include "tensorflow/lite/experimental/acceleration/configuration/c/nnapi_plugin.h"
+#include "tensorflow/lite/core/experimental/acceleration/configuration/c/gpu_plugin.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 
 namespace tflite {
 
-class NnapiTest : public testing::Test {
+class GpuTest : public testing::Test {
  public:
   void SetUp() override {
     // Construct a FlatBuffer that contains
-    // TFLiteSettings { NnapiSettings { foo1 : bar1, foo2 : bar2,  ...} }.
-    NNAPISettingsBuilder nnapi_settings_builder(flatbuffer_builder_);
-    flatbuffers::Offset<NNAPISettings> nnapi_settings =
-        nnapi_settings_builder.Finish();
-    // nnapi_settings_builder.add_foo1(bar1);
-    // nnapi_settings_builder.add_foo2(bar2);
+    // TFLiteSettings { GpuSettings { foo1 : bar1, foo2 : bar2,  ...} }.
+    GPUSettingsBuilder gpu_settings_builder(flatbuffer_builder_);
+    flatbuffers::Offset<GPUSettings> gpu_settings =
+        gpu_settings_builder.Finish();
+    // gpu_settings_builder.add_foo1(bar1);
+    // gpu_settings_builder.add_foo2(bar2);
     TFLiteSettingsBuilder tflite_settings_builder(flatbuffer_builder_);
-    tflite_settings_builder.add_nnapi_settings(nnapi_settings);
+    tflite_settings_builder.add_gpu_settings(gpu_settings);
     flatbuffers::Offset<TFLiteSettings> tflite_settings =
         tflite_settings_builder.Finish();
     flatbuffer_builder_.Finish(tflite_settings);
     settings_ = flatbuffers::GetRoot<TFLiteSettings>(
         flatbuffer_builder_.GetBufferPointer());
   }
-  ~NnapiTest() override {}
+  ~GpuTest() override {}
 
  protected:
   // settings_ points into storage owned by flatbuffer_builder_.
@@ -51,18 +51,18 @@ class NnapiTest : public testing::Test {
   const TFLiteSettings *settings_;
 };
 
-TEST_F(NnapiTest, CanCreateAndDestroyDelegate) {
-  TfLiteDelegate *delegate = TfLiteNnapiDelegatePluginCApi()->create(settings_);
+TEST_F(GpuTest, CanCreateAndDestroyDelegate) {
+  TfLiteDelegate *delegate = TfLiteGpuDelegatePluginCApi()->create(settings_);
   EXPECT_NE(delegate, nullptr);
-  TfLiteNnapiDelegatePluginCApi()->destroy(delegate);
+  TfLiteGpuDelegatePluginCApi()->destroy(delegate);
 }
 
-TEST_F(NnapiTest, CanGetDelegateErrno) {
-  TfLiteDelegate *delegate = TfLiteNnapiDelegatePluginCApi()->create(settings_);
+TEST_F(GpuTest, CanGetDelegateErrno) {
+  TfLiteDelegate *delegate = TfLiteGpuDelegatePluginCApi()->create(settings_);
   int error_number =
-      TfLiteNnapiDelegatePluginCApi()->get_delegate_errno(delegate);
+      TfLiteGpuDelegatePluginCApi()->get_delegate_errno(delegate);
   EXPECT_EQ(error_number, 0);
-  TfLiteNnapiDelegatePluginCApi()->destroy(delegate);
+  TfLiteGpuDelegatePluginCApi()->destroy(delegate);
 }
 
 }  // namespace tflite

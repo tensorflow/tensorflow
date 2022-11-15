@@ -13,42 +13,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file implements the Delegate Plugin for the NNAPI Delegate.
+// This file implements the C API Delegate Plugin for the XNNPACK Delegate.
 
-#include "tensorflow/lite/experimental/acceleration/configuration/c/nnapi_plugin.h"
+#include "tensorflow/lite/core/experimental/acceleration/configuration/c/xnnpack_plugin.h"
 
 #include <memory>
 
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/nnapi_plugin.h"
 
 extern "C" {
 
 static TfLiteDelegate* CreateDelegate(const void* settings) {
   const ::tflite::TFLiteSettings* tflite_settings =
       static_cast<const ::tflite::TFLiteSettings*>(settings);
-  tflite::delegates::NnapiPlugin nnapi_plugin(*tflite_settings);
-  auto support_library_handle = nnapi_plugin.GetSupportLibraryHandle();
-  if (support_library_handle) {
-    auto nnapi_support_library_driver =
-        reinterpret_cast<const NnApiSLDriverImplFL5*>(support_library_handle);
-    return new tflite::StatefulNnApiDelegate(nnapi_support_library_driver,
-                                             nnapi_plugin.Options());
+  auto options(TfLiteXNNPackDelegateOptionsDefault());
+  const auto* xnnpack_settings = tflite_settings->xnnpack_settings();
+  if (xnnpack_settings) {
+    options.num_threads = xnnpack_settings->num_threads();
   }
-  return new tflite::StatefulNnApiDelegate(nnapi_plugin.Options());
+  return TfLiteXNNPackDelegateCreate(&options);
 }
 
 static void DestroyDelegate(TfLiteDelegate* delegate) {
-  delete static_cast<tflite::StatefulNnApiDelegate*>(delegate);
+  TfLiteXNNPackDelegateDelete(delegate);
 }
 
-static int DelegateErrno(TfLiteDelegate* from_delegate) {
-  auto nnapi_delegate =
-      static_cast<tflite::StatefulNnApiDelegate*>(from_delegate);
-  return nnapi_delegate->GetNnApiErrno();
-}
+static int DelegateErrno(TfLiteDelegate* from_delegate) { return 0; }
 
 static constexpr TfLiteDelegatePlugin kPluginCApi{
     CreateDelegate,
@@ -56,7 +48,7 @@ static constexpr TfLiteDelegatePlugin kPluginCApi{
     DelegateErrno,
 };
 
-const TfLiteDelegatePlugin* TfLiteNnapiDelegatePluginCApi() {
+const TfLiteDelegatePlugin* TfLiteXnnpackDelegatePluginCApi() {
   return &kPluginCApi;
 }
 

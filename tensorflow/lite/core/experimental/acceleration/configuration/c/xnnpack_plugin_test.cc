@@ -16,12 +16,12 @@ limitations under the License.
 // Some very simple unit tests of the C API Delegate Plugin for the
 // XNNPACK Delegate.
 
-#include "tensorflow/lite/experimental/acceleration/configuration/c/xnnpack_plugin.h"
+#include "tensorflow/lite/core/experimental/acceleration/configuration/c/xnnpack_plugin.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "pthreadpool.h"  // from @pthreadpool
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 
