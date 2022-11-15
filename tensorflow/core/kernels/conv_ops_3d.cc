@@ -370,7 +370,7 @@ void LaunchConvOpImpl(OpKernelContext* ctx, bool cudnn_use_autotune,
     OP_REQUIRES_OK(
         ctx,
         ShapeFromFormatWithStatus(
-            FORMAT_NCHW, in_batch, {{in_planes, in_rows, in_cols}}, in_depth, &nchw_shape);
+            FORMAT_NCHW, in_batch, {{in_planes, in_rows, in_cols}}, in_depth, &nchw_shape));
     if (in_depth > 1) {
       Tensor transformed_input;
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
