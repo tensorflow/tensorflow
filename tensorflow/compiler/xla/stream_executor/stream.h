@@ -1006,6 +1006,12 @@ class Stream {
       ScratchAllocator *scratch_allocator);
   Stream &ThenBlasGemmBatchedWithScratch(
       blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
+      uint64_t k, float alpha, const DeviceMemorySlice<Eigen::bfloat16> &a,
+      int lda, const DeviceMemorySlice<Eigen::bfloat16> &b, int ldb, float beta,
+      const DeviceMemorySlice<Eigen::bfloat16> &c, int ldc, int batch_count,
+      ScratchAllocator *scratch_allocator);
+  Stream &ThenBlasGemmBatchedWithScratch(
+      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
       uint64_t k, float alpha, const DeviceMemorySlice<float> &a, int lda,
       const DeviceMemorySlice<float> &b, int ldb, float beta,
       const DeviceMemorySlice<float> &c, int ldc, int batch_count,
