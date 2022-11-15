@@ -50,7 +50,7 @@ StatusCallback AllToAll::CheckCounterAndCallDone() {
       status_.Update(s);
       ++counter_;
       // For all devices other than itself, there's a send and a receive. We
-      // wait until all of them complete.
+      // wait until all of them are complete.
       if (counter_ < 2 * col_params_->group.group_size) {
         return;
       }
