@@ -66,17 +66,20 @@ void printDstStyleOp(
     function_ref<SmallVector<StringRef>(DstOpTy op, OpAsmPrinter &)>
         printAttrsFn = nullptr) {
   if (op.getNumDpsInputs() != 0) {
+    p.printNewline();
     p << " ins(";
     llvm::interleaveComma(
         op.getOperands().take_front(op.getNumDpsInputs()), p,
         [&](Value input) { p << input << " : " << input.getType(); });
     p << ")";
   }
+  p.printNewline();
   p << " outs(";
   llvm::interleaveComma(
       op.getOperands().take_back(op.getNumDpsInits()), p,
       [&](Value output) { p << output << " : " << output.getType(); });
   p << ")";
+  p.printNewline();
 
   // Print attributes with custom printing logic.
   SmallVector<StringRef> elidedAttrs;
