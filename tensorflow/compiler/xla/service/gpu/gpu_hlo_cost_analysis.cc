@@ -221,8 +221,15 @@ Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
     // possible", and if we were to include temp memory in here, we'd
     // essentially be *rewarding* convs that use additional temp memory!
     if (custom_call->shape().IsTuple()) {
-      SetOutputBytesAccessed(
-          options_.shape_size(custom_call->shape().tuple_shapes(0)));
+      float output_size =
+          options_.shape_size(custom_call->shape().tuple_shapes(0));
+      // 'Bytes accessed' are estimated in HloCostAnalysis::Preprocess() as
+      // input + output. As the output size is being adjusted here it has
+      // to propagate to the total bytes accessed.
+      current_properties_[kBytesAccessedKey] -=
+          current_properties_[GetOutputBytesAccessedKey()];
+      SetOutputBytesAccessed(output_size);
+      current_properties_[kBytesAccessedKey] += output_size;
     }
     return OkStatus();
   }
