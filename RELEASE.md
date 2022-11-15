@@ -61,6 +61,11 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
+* `tf.random`
+  * Added non-experimental aliases for `tf.random.split` and
+    `tf.random.fold_in`, the experimental endpoints are still available
+    so no code changes are necessary.
+
 # Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:

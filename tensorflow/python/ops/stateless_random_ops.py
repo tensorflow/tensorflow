@@ -170,7 +170,7 @@ def uint32s_to_uint64(x):
                              constant_op.constant(32, dtypes.uint64)))
 
 
-@tf_export("random.experimental.stateless_split")
+@tf_export("random.split", "random.experimental.stateless_split")
 @dispatch.add_dispatch_support
 def split(seed, num=2, alg="auto_select"):
   """Splits an RNG seed into `num` new seeds by adding a leading axis.
@@ -178,7 +178,7 @@ def split(seed, num=2, alg="auto_select"):
   Example:
 
   >>> seed = [1, 2]
-  >>> new_seeds = tf.random.experimental.stateless_split(seed, num=3)
+  >>> new_seeds = tf.random.split(seed, num=3)
   >>> print(new_seeds)
   tf.Tensor(
   [[1105988140 1738052849]
@@ -206,7 +206,7 @@ def split(seed, num=2, alg="auto_select"):
                                   minval=None, maxval=None, alg=alg)
 
 
-@tf_export("random.experimental.stateless_fold_in")
+@tf_export("random.fold_in", "random.experimental.stateless_fold_in")
 @dispatch.add_dispatch_support
 def fold_in(seed, data, alg="auto_select"):
   """Folds in data to an RNG seed to form a new RNG seed.
