@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu.h.inc"
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_dialect.h.inc"
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_enums.h.inc"
+#define GET_ATTRDEF_CLASSES
+#include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_attrdefs.h.inc"
 #undef GET_OP_CLASSES
 
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_XLA_CPU_IR_XLA_CPU_H_

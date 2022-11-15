@@ -30,7 +30,7 @@ class TensorOrMemrefOf<list<Type> allowedTypes> :
   AnyTypeOf<[MemRefOf<allowedTypes>, RankedTensorOf<allowedTypes>],
   "", "::mlir::ShapedType">;
 
-def XlaCpuAllReduceOp : XlaCpu_Op<"all_reduce",
+def AllReduceOp : XlaCpu_Op<"all_reduce",
     [SameOperandsElementType, SameOperandsAndResultType]> {
   let summary = [{
     CPU-specific version of AllReduce.
@@ -47,7 +47,7 @@ def XlaCpuAllReduceOp : XlaCpu_Op<"all_reduce",
         [I8, I16, I32, I64, F16, F32, F64, Complex<F<32>>, Complex<F<64>>]
       >>:$operand,
       I64ElementsAttr:$replica_groups,
-      I64:$channel_handle,
+      I64Attr:$channel_handle,
       UnitAttr:$use_global_device_ids,
       XlaCpuReductionKind:$reduction_kind
   );

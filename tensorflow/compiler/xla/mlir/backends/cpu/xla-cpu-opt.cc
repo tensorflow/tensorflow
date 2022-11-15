@@ -18,6 +18,7 @@ limitations under the License.
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/IR/gml_st_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/test_passes.h"
@@ -38,7 +39,8 @@ int main(int argc, char **argv) {
   mlir::stablehlo::registerAllDialects(registry);
   registry.insert<mlir::func::FuncDialect, mlir::lmhlo::LmhloDialect,
                   mlir::gml_st::GmlStDialect, mlir::thlo::THLODialect,
-                  mlir::linalg::LinalgDialect, mlir::tensor::TensorDialect>();
+                  mlir::linalg::LinalgDialect, mlir::tensor::TensorDialect,
+                  mlir::xla_cpu::XlaCpuDialect>();
 
   xla::cpu::registerCpuTransformsPasses();
 

@@ -28,6 +28,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "legalize_collective_ops.cc",
         "lmhlo_to_cpu_runtime.cc",
         "xla_abi_legalization.cc",
     ],
@@ -35,6 +36,7 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         "//tensorflow/compiler/xla/mlir/runtime/utils:custom_calls",
+        "//tensorflow/compiler/xla/mlir/xla_cpu/ir:xla_cpu",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "@llvm-project//llvm:Support",

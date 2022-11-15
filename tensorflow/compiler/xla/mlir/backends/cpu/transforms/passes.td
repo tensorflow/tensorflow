@@ -51,4 +51,19 @@ def LegalizeXlaAbiPass :
   let constructor = "createXlaAbiLegalizationPass()";
 }
 
+def LegalizeCollectiveOpsPass :
+   Pass<"xla-legalize-collective-ops", "mlir::func::FuncOp"> {
+  let summary = "Legalizes collective ops to AllToAll and regular ops.";
+
+  let description = [{
+      Lowers collective ops to xla_cpu ops.
+  }];
+
+  let dependentDialects = [
+    "mlir::mhlo::MhloDialect", "mlir::xla_cpu::XlaCpuDialect"
+  ];
+
+  let constructor = "createLegalizeCollectiveOpsPass()";
+}
+
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_CPU_PASSES_TD_

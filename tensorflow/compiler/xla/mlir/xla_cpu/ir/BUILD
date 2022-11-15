@@ -2,6 +2,11 @@ load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],
+)
+
 td_library(
     name = "td_files",
     srcs = [
@@ -84,8 +89,6 @@ cc_library(
     name = "xla_cpu",
     srcs = [
         "xla_cpu.cc",
-        "xla_cpu.cc.inc",
-        "xla_cpu.h.inc",
     ],
     hdrs = ["xla_cpu.h"],
     deps = [
