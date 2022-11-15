@@ -1956,13 +1956,17 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
   std::unique_ptr<MPSolver> solver(std::make_unique<MPSolver>("", MPSolver::GLPK_MIXED_INTEGER_PROGRAMMING));
   CHECK(solver);
   solver->MutableObjective()->SetMinimization();
+  std::string solver_parameter_str;
 #if !defined(__APPLE__)
   if (solver->ProblemType() ==
       operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
-    // Set random_seed and interleave_search for determinism,
-    // num_workers for parallelism.
-    solver->SetSolverSpecificParametersAsString(absl::StrCat(
-        "random_seed:1,interleave_search:true,num_workers:", num_workers));
+    // Set random_seed, interleave_search and share_binary_clauses for
+    // determinism, and num_workers for parallelism.
+    solver_parameter_str = absl::StrCat(
+        "share_binary_clauses:false,random_seed:1,interleave_"
+        "search:true,num_workers:",
+        num_workers);
+    solver->SetSolverSpecificParametersAsString(solver_parameter_str);
   }
 #endif
   // Create variables
@@ -2149,6 +2153,7 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
 
   solver->set_time_limit(3600 * 1000);  // in ms
   VLOG(0) << "Starting solver " << solver->ProblemType() << "\n"
+          << "Solver parameter string: " << solver_parameter_str << "\n"
           << "Number of workers: " << num_workers << "\n"
           << "Number of threads: " << solver->GetNumThreads() << "\n"
           << "Time limit: " << solver->time_limit() << "\n"
