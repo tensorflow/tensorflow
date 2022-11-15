@@ -262,10 +262,6 @@ tensorflow::Status GraphExecutionRunOnFunction(
     outputs->push_back(host_tensor);
   }
 
-  // TODO(b/171926578): Explicitly clear the context data. Remove it after the
-  // b/171926578 is fixed.
-  exec_ctx.request_ctx()->ClearData();
-
   // Check if error is due to cancellation.
   // TODO(tfrt-devs): report cancellation reason from runtime.
   if (request_info->tfrt_request_context->IsCancelled()) {
