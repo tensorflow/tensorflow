@@ -32,6 +32,8 @@ int GetPlatformSeverity(LogSeverity severity) {
       return ANDROID_LOG_WARN;
     case TFLITE_LOG_ERROR:
       return ANDROID_LOG_ERROR;
+    case TFLITE_LOG_SILENT:
+      return ANDROID_LOG_SILENT;
     default:
       return ANDROID_LOG_DEBUG;
   }

@@ -33,6 +33,8 @@ int GetPlatformSeverity(LogSeverity severity) {
       return LOG_WARNING;
     case TFLITE_LOG_ERROR:
       return LOG_ERR;
+    case TFLITE_LOG_SILENT:
+      return LOG_SILENT;
     default:
       return LOG_DEBUG;
   }
