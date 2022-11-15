@@ -20,6 +20,7 @@ from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
@@ -49,19 +50,25 @@ class TakeTest(test_base.DatasetTestBase, parameterized.TestCase):
 class TakeDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                 parameterized.TestCase):
 
-  def _build_take_dataset(self, count):
-    components = (np.arange(10),)
-    return dataset_ops.Dataset.from_tensor_slices(components).take(count)
+  def _build_take_dataset(self, count, options=None):
+    dataset = dataset_ops.Dataset.range(100).take(count)
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
-          combinations.combine(count=[5], num_outputs=[5]) +
-          combinations.combine(count=[20, 10, -1], num_outputs=[10]) +
+          combinations.combine(symbolic_checkpoint=[False, True]),
+          combinations.combine(count=[50], num_outputs=[50]) +
+          combinations.combine(count=[200, 100, -1], num_outputs=[100]) +
           combinations.combine(count=[0], num_outputs=[0])))
-  def test(self, verify_fn, count, num_outputs):
-    verify_fn(self, lambda: self._build_take_dataset(count), num_outputs)
+  def test(self, verify_fn, symbolic_checkpoint, count, num_outputs):
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(self, lambda: self._build_take_dataset(count, options),
+              num_outputs)
 
 
 class TakeRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):

@@ -24,6 +24,9 @@ py_library(
 py_library(
     name = "counter_op",
     srcs = ["counter_op.py"],
+    deps = [
+        "//third_party/py/numpy",
+    ],
 )
 
 py_library(

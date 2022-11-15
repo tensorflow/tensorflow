@@ -1347,10 +1347,12 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                         parameterized.TestCase):
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations(),
-                         combinations.combine(num_parallel_calls=[None, 2])))
-  def testCore(self, verify_fn, num_parallel_calls):
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              num_parallel_calls=[None, 2], symbolic_checkpoint=[False, True])))
+  def testCore(self, verify_fn, num_parallel_calls, symbolic_checkpoint):
 
     tensor_slice_len = 7
     num_epochs = 2
@@ -1365,8 +1367,11 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       def _map_fn(x, y, z):
         return math_ops.square(x), math_ops.square(y), math_ops.square(z)
 
-      return (dataset_ops.Dataset.from_tensor_slices(components).map(
-          _map_fn, num_parallel_calls=num_parallel_calls).repeat(num_epochs))
+      dataset = dataset_ops.Dataset.from_tensor_slices(components).map(
+          _map_fn, num_parallel_calls=num_parallel_calls).repeat(num_epochs)
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
 
     verify_fn(self, _build_ds, tensor_slice_len * num_epochs)
 

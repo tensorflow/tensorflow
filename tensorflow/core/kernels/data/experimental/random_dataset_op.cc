@@ -106,6 +106,8 @@ class RandomDatasetOp::Dataset : public DatasetBase {
           parent_generator_(seeds_.first, seeds_.second),
           generator_(&parent_generator_) {}
 
+    bool SymbolicCheckpointCompatible() const override { return true; }
+
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {

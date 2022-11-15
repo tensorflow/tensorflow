@@ -5130,7 +5130,7 @@ class RangeDataset(DatasetSource):
       self._stop = self._build_tensor(args[1], "stop")
       self._step = self._build_tensor(args[2], "step")
     else:
-      raise ValueError(f"Invalid `args`. The lenght of `args` should be "
+      raise ValueError(f"Invalid `args`. The length of `args` should be "
                        f"between 1 and 3 but was {len(args)}.")
     if "output_type" in kwargs:
       self._output_type = kwargs["output_type"]
