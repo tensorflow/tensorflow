@@ -18,8 +18,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/string_view.h"
-
 namespace tflite {
 namespace gpu {
 
@@ -33,7 +31,7 @@ GPUResources QcomThinFilterDescriptor::GetGPUResources(
 }
 
 absl::Status QcomThinFilterDescriptor::PerformSelector(
-    const GpuInfo& gpu_info, absl::string_view selector,
+    const GpuInfo& gpu_info, const std::string& selector,
     const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) const {
   if (selector == "GetHandle" && args.empty()) {

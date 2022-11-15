@@ -50,7 +50,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -103,7 +102,6 @@ cc_library(
     deps = [
         ":gpu_object_desc",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -137,13 +135,13 @@ cc_library(
     srcs = ["tensor_desc.cc"],
     hdrs = ["tensor_desc.h"],
     deps = [
-        ":gpu_object_desc",
-        ":util",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_object_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:util",
         "@com_google_absl//absl/strings",
     ],
 )

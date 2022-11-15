@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
 
@@ -41,7 +40,7 @@ struct QcomThinFilterDescriptor : public GPUObjectDescriptor {
       default;
 
   absl::Status PerformSelector(const GpuInfo& gpu_info,
-                               absl::string_view selector,
+                               const std::string& selector,
                                const std::vector<std::string>& args,
                                const std::vector<std::string>& template_args,
                                std::string* result) const override;
