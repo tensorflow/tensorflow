@@ -18995,7 +18995,7 @@ Apply a sparse update to a tensor taking the element-wise maximum.
 Returns a new tensor copied from `tensor` whose values are element-wise maximum between
 tensor and updates according to the indices.
 
->>> tensor = [0, 0, 0, 0, 0, 0, 0, 0] 
+>>> tensor = [0, 0, 0, 0, 0, 0, 0, 0]
 >>> indices = [[1], [4], [5]]
 >>> updates = [1, -1, 1]
 >>> tf.tensor_scatter_nd_max(tensor, indices, updates).numpy()
