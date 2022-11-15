@@ -356,7 +356,9 @@ class ResourceExhaustedError(OpError):
   """Raised when some resource has been exhausted while running operation.
 
   For example, this error might be raised if a per-user quota is
-  exhausted, or perhaps the entire file system is out of space.
+  exhausted, or perhaps the entire file system is out of space. If running into
+  `ResourceExhaustedError` due to out of memory (OOM), try to use smaller batch
+  size or reduce dimension size of model weights.
 
   """
 
