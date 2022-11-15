@@ -61,13 +61,13 @@ using mlir::func::FuncOp;
 
 mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions() {
   using mlir::bufferization::BufferizationOptions;
+  using mlir::bufferization::LayoutMapOption;
   using mlir::bufferization::OneShotBufferizationOptions;
 
   OneShotBufferizationOptions options;
   options.bufferizeFunctionBoundaries = true;
   options.allowReturnAllocs = true;
-  options.functionBoundaryTypeConversion =
-      BufferizationOptions::LayoutMapOption::IdentityLayoutMap;
+  options.functionBoundaryTypeConversion = LayoutMapOption::IdentityLayoutMap;
   options.unknownTypeConverterFn = [](mlir::Value value, unsigned memorySpace,
                                       const BufferizationOptions& options) {
     return mlir::bufferization::getMemRefTypeWithStaticIdentityLayout(
