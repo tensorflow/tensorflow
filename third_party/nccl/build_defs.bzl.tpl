@@ -386,12 +386,12 @@ def cuda_rdc_library(name, hdrs = None, copts = None, linkstatic = True, **kwarg
     )
 
     # Remove intermediate relocatable device code.
-    pruned = name + "_pruned"
-    _prune_relocatable_code(
-        name = pruned,
-        input = lib,
-        gpu_archs = cuda_gpu_architectures(),
-    )
+    # pruned = name + "_pruned"
+    # _prune_relocatable_code(
+    #     name = pruned,
+    #     input = lib,
+    #     gpu_archs = cuda_gpu_architectures(),
+    # )
 
     # Repackage the two libs into a single archive. This is required because
     # both libs reference symbols defined in the other one. For details, see
@@ -399,7 +399,7 @@ def cuda_rdc_library(name, hdrs = None, copts = None, linkstatic = True, **kwarg
     merged = name + "_merged"
     _merge_archive(
         name = merged,
-        srcs = [pruned, dlink],
+        srcs = [lib, dlink],
     )
 
     # Create cc target from archive.

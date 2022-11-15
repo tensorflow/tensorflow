@@ -46,7 +46,10 @@ def cuda_default_copts():
     ] + %{cuda_extra_copts}) + if_cuda_clang_opt(
         # Some important CUDA optimizations are only enabled at O3.
         ["-O3"]
-    )
+    ) + select({
+            "@local_config_cuda//cuda:using_clang": ["--no-cuda-include-ptx=all"],
+            "//conditions:default": [],
+    })
 
 def cuda_gpu_architectures():
     """Returns a list of supported GPU architectures."""
