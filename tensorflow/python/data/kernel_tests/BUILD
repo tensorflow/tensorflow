@@ -170,6 +170,9 @@ tf_py_test(
     name = "counter_test",
     size = "small",
     srcs = ["counter_test.py"],
+    tags = [
+        "noasan",  # TODO(b/259262341) fix this test for asan and re-enable
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
