@@ -31,6 +31,7 @@ visibility = [
     "//third_party/py/cleverhans:__subpackages__",
     "//third_party/courier:__subpackages__",
     "//third_party/py/courier:__subpackages__",
+    "//third_party/py/lingvo:__subpackages__",
     "//third_party/py/reverb:__subpackages__",
     "//third_party/py/tensorfn:__subpackages__",
     "//third_party/py/neural_structured_learning:__subpackages__",
