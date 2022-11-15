@@ -220,11 +220,11 @@ stream_executor::port::Status InitializeTpuLibrary(void* library_handle) {
 }
 
 typedef const PJRT_Api* (*PjRtFuncPtr)();
-void InitializePjRt(void* library_handle) {
+void MaybeInitializePjRt(void* library_handle) {
   PjRtFuncPtr fptr = &GetTpuPjrtApi;
   *reinterpret_cast<void**>(&fptr) = dlsym(library_handle, "GetTpuPjrtApi");
   if (fptr == nullptr) {
-    LOG(INFO) << "GetTpuPjrtApi not found";
+    LOG(INFO) << "GetTpuPjrtApi not found. PjrtApi will not be used.";
   } else {
     LOG(INFO) << "GetTpuPjrtApi was found";
     tensorflow::tpu::SetPjrtApi("TPU", fptr());
@@ -279,7 +279,7 @@ stream_executor::port::Status FindAndLoadTpuLibrary() {
     // Try to acquire exclusive access.
     TF_RETURN_IF_ERROR(TryAcquireTpuLock());
     TF_RETURN_IF_ERROR(InitializeTpuLibrary(library));
-    InitializePjRt(library);
+    MaybeInitializePjRt(library);
   }
 
   InitializeCreateGcsFileSystemFnPtr();
