@@ -3181,22 +3181,17 @@ StatusOr<bool> AutoSharding::Run(
               << " GB.";
     if (set_to_memory_lower_bound) {
       LOG(INFO)
-          << "--xla_tpu_auto_spmd_partitioning_memory_budget_gb is 0, setting "
-             "option.memory_budget_per_device to be the estimated memory "
-             "consumption lower bound of this module to maximize sharding. "
-             "Note "
-             "that the memory consumption estimation does not take into "
-             "account "
-             "alias pairs or while op inputs. So if the model "
-             "is very small such that the alias pairs and while op inputs "
-             "consist significant memory usage percentage, this lower bound "
-             "will "
-             "cause solver being unable to find feasible solutison. Please set "
-             "xla_tpu_auto_spmd_partitioning_memory_budget_gb to be greater "
-             "than "
-          << memory_lower_bound_gb << " if this behavior is undesired.";
-      option_.memory_budget_per_device =
-          memory_lower_bound_gb * (1024 * 1024 * 1024);
+          << "--xla_tpu_auto_spmd_partitioning_memory_budget_gb is 0, and "
+             "--xla_tpu_auto_spmd_partitioning_memory_budget_ratio is "
+          << option_.memory_budget_ratio
+          << ", so setting "
+             "option.memory_budget_per_device to "
+          << memory_lower_bound_gb << " x " << option_.memory_budget_ratio
+          << " = " << memory_lower_bound_gb * option_.memory_budget_ratio
+          << " GB";
+      option_.memory_budget_per_device = memory_lower_bound_gb *
+                                         (1024 * 1024 * 1024) *
+                                         option_.memory_budget_ratio;
     } else if (option_.memory_budget_per_device > 0) {
       option_.memory_budget_per_device = original_memory_budget *
                                          original_device_mesh.num_elements() /

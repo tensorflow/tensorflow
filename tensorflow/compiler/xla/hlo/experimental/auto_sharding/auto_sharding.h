@@ -73,7 +73,13 @@ struct AutoShardingOption {
   bool simplify_graph = true;
 
   // Memory budget (bytes) per device. Default value -1 means no memory budget.
+  // Value 0 means setting it to the memory lower bound estimation.
   int64_t memory_budget_per_device = -1;
+
+  // Memory budget =
+  //     memory_budget_ratio * (memory lower bound estimation).
+  // Enabled when memory_budget_per_device == 0;
+  float memory_budget_ratio = 1.1;
 
   // Overwrite the all gather cost with the input all reduce cost.
   bool force_all_gather_cost = false;
