@@ -24,10 +24,12 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/jit/device_compilation_profiler.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/jit/xla_compilation_cache.h"
+#include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -339,8 +341,8 @@ static Status CompileToLocalExecutable(
     OpKernelContext* ctx, const NameAttrList& function, bool has_ref_vars,
     const XlaPlatformInfo& platform_info,
     const std::vector<XlaCompiler::Argument>& args,
-    XlaCompilationCache::CompileMode compile_mode,
-    bool may_alias_resource_update, xla::LocalClient** client,
+    DeviceCompileMode compile_mode, bool may_alias_resource_update,
+    xla::LocalClient** client,
     const XlaCompiler::CompilationResult** compilation_result,
     xla::LocalExecutable** executable) {
   // We store information about the JIT-compiled XLA computation
@@ -357,10 +359,18 @@ static Status CompileToLocalExecutable(
         return BuildXlaCompilationCache(ctx->device(), ctx->function_library(),
                                         platform_info, cache);
       }));
-  // Hold the reference to the JIT during evaluation. (We could probably
-  // free it sooner because the ResourceMgr will retain a reference, but
-  // this is more obviously correct.)
+  DeviceCompilationProfiler* profiler;
+  TF_RETURN_IF_ERROR(rm->LookupOrCreate<DeviceCompilationProfiler>(
+      rm->default_container(), "device_compilation_profiler", &profiler,
+      [](DeviceCompilationProfiler** profiler) {
+        *profiler = new DeviceCompilationProfiler();
+        return OkStatus();
+      }));
+  // Hold the reference to the JIT cache and profiler during evaluation. (We
+  // could probably free them sooner because the ResourceMgr will retain
+  // references, but this is more obviously correct.)
   core::ScopedUnref cache_ref(cache);
+  core::ScopedUnref profiler_ref(profiler);
 
   *client = static_cast<xla::LocalClient*>(cache->client());
 
@@ -377,7 +387,7 @@ static Status CompileToLocalExecutable(
       !has_ref_vars && may_alias_resource_update;
 
   return cache->Compile(options, function, args, compile_options, compile_mode,
-                        compilation_result, executable);
+                        profiler, compilation_result, executable);
 }
 
 // Get-or-create thread pool for a given collective.
@@ -440,7 +450,7 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
 
     const Status s = CompileToLocalExecutable(
         ctx, function_, /*has_ref_vars=*/has_ref_vars_, platform_info_, args,
-        XlaCompilationCache::CompileMode::kStrict,
+        DeviceCompileMode::kStrict,
         /*may_alias_resource_update=*/true, &client, &compilation_result,
         &executable);
     OP_REQUIRES_OK_ASYNC(ctx, s, done);
@@ -633,13 +643,13 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
     mutex_lock guard(cannot_compile_cluster_mu_);
     cannot_compile_cluster = cannot_compile_cluster_;
   }
-  XlaCompilationCache::CompileMode compile_mode = [&] {
+  DeviceCompileMode compile_mode = [&] {
     if (must_compile_) {
-      return XlaCompilationCache::CompileMode::kStrict;
+      return DeviceCompileMode::kStrict;
     }
     return GetXlaOpsCommonFlags().tf_xla_async_compilation
-               ? XlaCompilationCache::CompileMode::kAsync
-               : XlaCompilationCache::CompileMode::kLazy;
+               ? DeviceCompileMode::kAsync
+               : DeviceCompileMode::kLazy;
   }();
 
   if (GetXlaOpsCommonFlags().tf_xla_always_defer_compilation ||
@@ -658,7 +668,7 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
     const Status status = CompileToLocalExecutable(
         ctx, function_, has_ref_vars_, platform_info_, args, compile_mode,
         /*may_alias_resource_update=*/false, &client, &kernel, &executable);
-    if (compile_mode != XlaCompilationCache::CompileMode::kLazy ||
+    if (compile_mode != DeviceCompileMode::kLazy ||
         status.code() != error::UNIMPLEMENTED) {
       OP_REQUIRES_OK(ctx, status);
     }
