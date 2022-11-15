@@ -2504,7 +2504,7 @@ class FeatureTransformationCache(object):
       return feature_tensor
 
     if isinstance(key, six.string_types):
-      raise ValueError('Feature {} is not in features dictionary.'.format(key))
+      raise TypeError('Feature {} is not in features dictionary.'.format(key))
 
     if not isinstance(key, FeatureColumn):
       raise TypeError('"key" must be either a "str" or "FeatureColumn". '
@@ -2703,7 +2703,7 @@ class NumericColumn(
 
   def _transform_input_tensor(self, input_tensor):
     if isinstance(input_tensor, sparse_tensor_lib.SparseTensor):
-      raise ValueError(
+      raise TypeError(
           'The corresponding Tensor of numerical column must be a Tensor. '
           'SparseTensor is not supported. key: {}'.format(self.key))
     if self.normalizer_fn is not None:

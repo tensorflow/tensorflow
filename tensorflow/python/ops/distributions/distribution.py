@@ -161,8 +161,8 @@ class _DistributionMeta(abc.ABCMeta):
       ValueError:  If a `Distribution` public method lacks a docstring.
     """
     if not baseclasses:  # Nothing to be done for Distribution
-      raise TypeError("Expected non-empty baseclass. Does Distribution "
-                      "not subclass _BaseDistribution?")
+      raise TypeError("Expected non-empty baseclass. "
+                      "Distribution must be a subclass of BaseDistribution.")
     which_base = [
         base for base in baseclasses
         if base == _BaseDistribution or issubclass(base, Distribution)]
