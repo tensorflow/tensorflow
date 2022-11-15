@@ -562,6 +562,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/runtime:jit_executable",
+        "//tensorflow/compiler/xla/service/gpu/runtime:triangular_solve",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:custom_call_status_internal",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",

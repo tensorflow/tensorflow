@@ -35,6 +35,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
         "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:computation_placer_hdr",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
@@ -253,5 +254,21 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
+    name = "triangular_solve",
+    srcs = ["triangular_solve.cc"],
+    hdrs = ["triangular_solve.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service/gpu:gpu_asm_opts_util",
+        "//tensorflow/compiler/xla/service/gpu:triangular_solve_thunk",
+        "//tensorflow/tsl/platform:human_readable_json",
     ],
 )
