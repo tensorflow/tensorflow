@@ -6061,6 +6061,15 @@ struct Sign {
   Optional<FloatOrInt> operator()(const FloatOrInt& fi) { return compute(fi); }
 };
 
+template <typename FloatOrInt>
+struct Abs {
+  APFloat compute(const APFloat& f) { return abs(f); }
+
+  APInt compute(const APInt& i) { return i.abs(); }
+
+  Optional<FloatOrInt> operator()(const FloatOrInt& fi) { return compute(fi); }
+};
+
 double rsqrt(double d) { return 1.0 / std::sqrt(d); }
 
 double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
@@ -6068,6 +6077,11 @@ double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
 // NOLINTBEGIN(bugprone-macro-parentheses)
 #define UNARY_FOLDER(Op, Func)                                                \
   OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                          \
+    /* AbsOp could take complex but return float */                           \
+    if (getElementTypeOrSelf(getOperation()->getOperand(0).getType()) !=      \
+        getElementTypeOrSelf(getType())) {                                    \
+      return {};                                                              \
+    }                                                                         \
     if (getElementTypeOrSelf(getType()).isa<FloatType>())                     \
       return UnaryFolder<Op, FloatType, APFloat, Func<APFloat>>(this, attrs); \
     if (getElementTypeOrSelf(getType()).isa<IntegerType>())                   \
@@ -6115,6 +6129,7 @@ double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
 
 UNARY_FOLDER(NegOp, std::negate)
 UNARY_FOLDER(SignOp, Sign)
+UNARY_FOLDER(AbsOp, Abs)
 UNARY_FOLDER_INT(NotOp, std::bit_not)
 UNARY_FOLDER_FLOAT(RoundNearestEvenOp, RoundNearestEven)
 UNARY_FOLDER_FLOAT(RoundOp, Round)

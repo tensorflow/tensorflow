@@ -1849,6 +1849,15 @@ func.func @not_fold_rsqrt_const_zero() -> tensor<4xf32> {
   func.return %1 : tensor<4xf32>
 }
 
+// CHECK-LABEL: func @fold_abs
+func.func @fold_abs() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<-1.0> : tensor<4xf32>
+  %1 = "mhlo.abs"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  //     CHECK: mhlo.constant dense<1.000000e+00> : tensor<4xf32>
+  // CHECK-NOT: mhlo.abs
+  func.return %1 : tensor<4xf32>
+}
+
 // CHECK-LABEL: func @fold_sine
 func.func @fold_sine() -> tensor<4xf32> {
   %0 = mhlo.constant dense<2.0> : tensor<4xf32>

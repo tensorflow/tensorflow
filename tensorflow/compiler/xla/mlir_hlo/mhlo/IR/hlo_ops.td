@@ -185,6 +185,7 @@ def HLO_AbsOp: HLO_UnaryElementwiseOp<"abs",
     %0 = mhlo.abs %arg0 : tensor<3xi32>
     ```
   }];
+  let hasFolder = 1;
 }
 
 def HLO_CbrtOp: HLO_UnaryElementwiseOp<"cbrt",
