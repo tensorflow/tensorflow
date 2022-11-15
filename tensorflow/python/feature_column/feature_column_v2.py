@@ -1854,7 +1854,10 @@ def weighted_categorical_column(categorical_column,
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export(
     'feature_column.crossed_column',
-    deprecation_inst='Use `tf.keras.layers.experimental.preprocessing.HashedCrossing` instead for feature crossing when preprocessing data to train a Keras model.'
+    deprecation_inst='Use '\
+      '`tf.keras.layers.experimental.preprocessing.HashedCrossing` '\
+      'instead for feature crossing when preprocessing data to train a '\
+      'Keras model.'
 )
 def crossed_column(keys, hash_bucket_size, hash_key=None):
   """Returns a column for performing crosses of categorical features.
