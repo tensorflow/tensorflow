@@ -134,28 +134,54 @@ absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
                              GetInitNodeName(control_ret_nodes));
 }
 
+// Retrieve the MLIR dump directory. The directory is read from the environment
+// variable `TF_QUANT_MLIR_DUMP_PREFIX`. However, if a special value "sponge" is
+// set to `TF_QUANT_MLIR_DUMP_PREFIX`, it uses the directory set in
+// `TEST_UNDECLARED_OUTPUT_DIRS`. Returns `absl::FailedPreconditionError` if
+// either:
+//   1. `TF_QUANT_MLIR_DUMP_PREFIX` is not set (empty), or
+//   2. `TEST_UNDECLARED_OUTPUT_DIRS` is not set (empty) when
+//      `TF_QUANT_MLIR_DUMP_PREFIX = "sponge"`.
+[[nodiscard]] absl::StatusOr<std::string> GetMlirDumpDir() {
+  auto dump_dir = std::string(
+      absl::NullSafeStringView(std::getenv("TF_QUANT_MLIR_DUMP_PREFIX")));
+  if (dump_dir.empty()) {
+    return absl::FailedPreconditionError(
+        "Environment variable not set: TF_QUANT_MLIR_DUMP_PREFIX, "
+        "IR dump file for TF quantization is not created.");
+  }
+
+  if (absl::EqualsIgnoreCase(dump_dir, "sponge")) {
+    if (!tsl::io::GetTestUndeclaredOutputsDir(&dump_dir)) {
+      return absl::FailedPreconditionError(
+          "Environment variable TF_QUANT_MLIR_DUMP_PREFIX=sponge but "
+          "TEST_UNDECLARED_OUTPUT_DIRS not set.");
+    }
+  }
+
+  return dump_dir;
+}
+
 // Creates a new file to dump the intermediate MLIRs by prefixing the
 // `dump_file_name` with the value of the TF_QUANT_MLIR_DUMP_PREFIX env
 // variable. Returns absl::FailedPreconditionError if the env variable is not
 // set or set to an empty string.
 [[nodiscard]] absl::StatusOr<std::unique_ptr<llvm::raw_fd_ostream>>
 CreateMlirDumpFile(const absl::string_view dump_file_name) {
-  const auto prefix =
-      absl::NullSafeStringView(std::getenv("TF_QUANT_MLIR_DUMP_PREFIX"));
-  if (prefix.empty()) {
-    return absl::FailedPreconditionError(
-        "Environment variable not set: TF_QUANT_MLIR_DUMP_PREFIX, "
-        "IR dump file for TF quantization is not created.");
+  const absl::StatusOr<std::string> dump_dir = GetMlirDumpDir();
+  if (!dump_dir.ok()) {
+    return dump_dir.status();
   }
 
   Env *env = Env::Default();
-  const Status status = env->RecursivelyCreateDir(std::string(prefix));
+  const Status status = env->RecursivelyCreateDir(*dump_dir);
   if (!status.ok()) {
     return ToAbslStatus(status);
   }
 
   std::error_code ec{};  // NOLINT: Required to create llvm::raw_fd_ostream
-  const std::string dump_file_path = tsl::io::JoinPath(prefix, dump_file_name);
+  const std::string dump_file_path =
+      tsl::io::JoinPath(*dump_dir, dump_file_name);
   auto dump_file = std::make_unique<llvm::raw_fd_ostream>(dump_file_path, ec);
   if (ec) {
     return absl::InternalError(absl::StrFormat(
