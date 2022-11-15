@@ -124,7 +124,7 @@ Status MakeArgTuple(const PyCall* call, TFE_Context* ctx, PyObject** tuple) {
         "Failed to create python tuple. Please make sure `token` is a "
         "well-formed UTF-8 string.");
   }
-  return OkStatus();
+  return Status::OK();
 }
 
 bool IsSingleNone(PyObject* obj) {
