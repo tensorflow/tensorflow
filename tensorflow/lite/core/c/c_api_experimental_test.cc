@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/c/c_api_experimental.h"
+#include "tensorflow/lite/core/c/c_api_experimental.h"
 
 #include <string.h>
 
@@ -23,8 +23,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
 #include "tensorflow/lite/testing/util.h"
 
@@ -45,7 +45,7 @@ const TfLiteRegistration* GetDummyRegistration() {
 
 TEST(CApiExperimentalTest, Smoke) {
   TfLiteModel* model =
-      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+      TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -67,7 +67,7 @@ TEST(CApiExperimentalTest, Smoke) {
 // Test using TfLiteInterpreterCreateWithSelectedOps.
 TEST(CApiExperimentalTest, SelectedBuiltins) {
   TfLiteModel* model =
-      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+      TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -90,7 +90,7 @@ TEST(CApiExperimentalTest, SelectedBuiltins) {
 // we do NOT get the standard builtin operators by default.
 TEST(CApiExperimentalTest, MissingBuiltin) {
   TfLiteModel* model =
-      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+      TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   // Install a custom error reporter into the interpreter by way of options.
@@ -147,7 +147,7 @@ const TfLiteRegistration* MyFindCustomOp(void*, const char* custom_op,
 // Test using TfLiteInterpreterCreateWithSelectedOps.
 TEST(CApiExperimentalTest, SetOpResolver) {
   TfLiteModel* model =
-      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+      TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -200,7 +200,7 @@ void CheckExecution(TfLiteInterpreterOptions* options,
                     TfLiteStatus expected_first_result,
                     TfLiteStatus expected_subsequent_results) {
   TfLiteModel* model =
-      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+      TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
