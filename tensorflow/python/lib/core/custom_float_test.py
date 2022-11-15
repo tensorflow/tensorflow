@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Test cases for the bfloat16,float8_e4m3b11 Python types."""
+"""Test cases for custom float Python types."""
 
 import collections
 import copy
@@ -28,11 +28,14 @@ import numpy as np
 
 # pylint: disable=unused-import,g-bad-import-order
 from tensorflow.python.framework import dtypes
+from tensorflow.python.lib.core import _pywrap_float8
 from tensorflow.python.lib.core import _pywrap_bfloat16
 from tensorflow.python.platform import test
 
 bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
 float8_e4m3b11 = _pywrap_bfloat16.TF_float8_e4m3b11_type()
+float8_e4m3 = _pywrap_float8.TF_float8_e4m3_type()
+float8_e5m2 = _pywrap_float8.TF_float8_e5m2_type()
 
 
 def numpy_assert_allclose(a, b, float_type, **kwargs):
@@ -73,48 +76,94 @@ def test_binary_operation(a, b, op, float_type):
         truncate(expected, float_type=float_type), float(result))
 
 
-epsilon = {
+def dtype_has_inf(dtype):
+  """Determines if the dtype has an `inf` representation."""
+  inf = float("inf")
+  is_inf = False
+  try:
+    x = dtype(inf)
+    is_inf = np.isinf(x)
+  except (OverflowError, ValueError):
+    pass
+  return is_inf
+
+
+# Configure bounds and properties for our custom types, to be used in tests
+# below.
+FLOAT_EPSILON = {
     bfloat16: float.fromhex("1.0p-7"),
     float8_e4m3b11: float.fromhex("1.0p-3"),
+    float8_e4m3: float.fromhex("1.0p-3"),
+    float8_e5m2: float.fromhex("1.0p-2"),
+}
+
+FLOAT_MAX = {
+    bfloat16: float.fromhex("1.FEp127"),
+    float8_e4m3b11: float.fromhex("1.Ep4"),
+    float8_e4m3: float.fromhex("1.Cp8"),
+    float8_e5m2: float.fromhex("1.Cp15"),
+}
+
+FLOAT_SMALLEST_SUBNORMAL = {
+    bfloat16: float.fromhex("1.0p-133"),
+    float8_e4m3b11: float.fromhex("1.0p-13"),
+    float8_e4m3: float.fromhex("1.0p-9"),
+    float8_e5m2: float.fromhex("1.0p-16"),
+}
+
+FLOAT_SMALLEST_NORMAL = {
+    bfloat16: float.fromhex("1.0p-126"),
+    float8_e4m3b11: float.fromhex("1.0p-10"),
+    float8_e4m3: float.fromhex("1.0p-6"),
+    float8_e5m2: float.fromhex("1.0p-14"),
 }
 
 # Values that should round trip exactly to float and back.
-FLOAT_VALUES = {}
-FLOAT_VALUES[bfloat16] = [
-    0.0, 1.0, -1, 0.5, -0.5, epsilon[bfloat16], 1.0 + epsilon[bfloat16],
-    1.0 - epsilon[bfloat16], -1.0 - epsilon[bfloat16], -1.0 + epsilon[bfloat16],
-    3.5, 4, 5, 7,
-    float("inf"),
-    float("-inf"),
-    float("nan")
-]
+# pylint: disable=g-complex-comprehension
+FLOAT_VALUES = {
+    dtype: [
+        0.0, 1.0, -1.0, 0.5, -0.5, FLOAT_EPSILON[dtype],
+        1.0 + FLOAT_EPSILON[dtype], 1.0 - FLOAT_EPSILON[dtype],
+        -1.0 - FLOAT_EPSILON[dtype], -1.0 + FLOAT_EPSILON[dtype], 3.5, 4, 5, 7,
+        FLOAT_MAX[dtype], -FLOAT_MAX[dtype], float("nan"), float("-nan"),
+        float("inf") if dtype_has_inf(dtype) else 0.0,
+        float("-inf") if dtype_has_inf(dtype) else 0.0
+    ] for dtype in FLOAT_EPSILON.keys()
+}
 
-FLOAT_VALUES[float8_e4m3b11] = [
-    0.0,
-    1.0,
-    -1,
-    0.5,
-    -0.5,
-    epsilon[float8_e4m3b11],
-    1.0 + epsilon[float8_e4m3b11],
-    1.0 - epsilon[float8_e4m3b11],
-    -1.0 - epsilon[float8_e4m3b11],
-    -1.0 + epsilon[float8_e4m3b11],
-    3.5,
-    4,
-    5,
-    7,
-    float(30),  # max float
-    float(-30),  # min float
-    float("nan")
-]
+# Values that should round trip exactly to integer and back.
+INT_VALUES = {
+    bfloat16: [0, 1, 2, 10, 34, 47, 128, 255, 256, 512],
+    float8_e4m3b11:
+        list(range(0, 30, 2)) + list(range(1, 15, 2)),
+    float8_e4m3: [
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22,
+        24, 26, 28, 30, 32, 36, 40, 44, 48, 52, 56, 60, 64, 72, 80, 88, 96, 104,
+        112, 120, 128, 144, 160, 176, 192, 208, 224, 240, 256, 288, 320, 352,
+        384, 416, 448
+    ],
+    float8_e5m2: [
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 56,
+        64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 448, 512, 640, 768,
+        896, 1024, 1280, 1536, 1792, 2048, 2560, 3072, 3584, 4096, 5120, 6144,
+        7168, 8192, 10240, 12288, 14336, 16384, 20480, 24576, 28672, 32768,
+        40960, 49152, 57344
+    ]
+}
+
+BITS_TYPE = {
+    bfloat16: np.uint16,
+    float8_e4m3b11: np.uint8,
+    float8_e4m3: np.uint8,
+    float8_e5m2: np.uint8
+}
 
 
 # pylint: disable=g-complex-comprehension
 @parameterized.named_parameters(({
     "testcase_name": "_" + dtype.__name__,
     "float_type": dtype
-} for dtype in [bfloat16, float8_e4m3b11]))
+} for dtype in [bfloat16, float8_e4m3b11, float8_e4m3, float8_e5m2]))
 class CustomFloatTest(parameterized.TestCase):
   """Tests the non-numpy Python methods of the custom float type."""
 
@@ -124,21 +173,19 @@ class CustomFloatTest(parameterized.TestCase):
 
   def testRoundTripNumpyTypes(self, float_type):
     for dtype in [np.float16, np.float32, np.float64, np.longdouble]:
-      np.testing.assert_equal(-3.75, dtype(float_type(dtype(-3.75))))
-      np.testing.assert_equal(1.5, float(float_type(dtype(1.5))))
-      np.testing.assert_equal(4.5, dtype(float_type(np.array(4.5, dtype))))
+      for f in FLOAT_VALUES[float_type]:
+        np.testing.assert_equal(dtype(f), dtype(float_type(dtype(f))))
+        np.testing.assert_equal(float(dtype(f)), float(float_type(dtype(f))))
+        np.testing.assert_equal(dtype(f), dtype(float_type(np.array(f, dtype))))
+
       np.testing.assert_equal(
-          np.array([2, 5, -1], float_type),
-          float_type(np.array([2, 5, -1], dtype)))
+          dtype(np.array(FLOAT_VALUES[float_type], float_type)),
+          np.array(FLOAT_VALUES[float_type], dtype))
 
   def testRoundTripToInt(self, float_type):
-    for v in {
-        bfloat16: [
-            -256, -255, -34, -2, -1, 0, 1, 2, 10, 47, 128, 255, 256, 512
-        ],
-        float8_e4m3b11: list(range(-30, 30, 2)) + list(range(-15, 15, 2)),
-    }[float_type]:
+    for v in INT_VALUES[float_type]:
       self.assertEqual(v, int(float_type(v)))
+      self.assertEqual(-v, int(float_type(-v)))
 
   def testRoundTripToNumpy(self, float_type):
     for dtype in [
@@ -146,9 +193,10 @@ class CustomFloatTest(parameterized.TestCase):
     ]:
       with self.subTest(dtype.__name__):
         for v in FLOAT_VALUES[float_type]:
-          np.testing.assert_equal(v, float_type(dtype(v)))
-          np.testing.assert_equal(v, dtype(float_type(dtype(v))))
-          np.testing.assert_equal(v, dtype(float_type(np.array(v, dtype))))
+          np.testing.assert_equal(dtype(v), dtype(float_type(dtype(v))))
+          np.testing.assert_equal(dtype(v), dtype(float_type(dtype(v))))
+          np.testing.assert_equal(
+              dtype(v), dtype(float_type(np.array(v, dtype))))
         if dtype != float_type:
           np.testing.assert_equal(
               np.array(FLOAT_VALUES[float_type], dtype),
@@ -156,24 +204,20 @@ class CustomFloatTest(parameterized.TestCase):
                                   dtype)).astype(dtype))
 
   def testStr(self, float_type):
-    for value in [
-        0.0, 1.0, -3.5,
-        float.fromhex("1.0p-7"),
-        float("inf"),
-        float("-inf"),
-        float("nan")
-    ]:
+    for value in FLOAT_VALUES[float_type]:
       self.assertEqual("%.6g" % float(float_type(value)),
                        str(float_type(value)))
 
+  def testFromStr(self, float_type):
+    self.assertEqual(float_type(1.2), float_type("1.2"))
+    self.assertTrue(np.isnan(float_type("nan")))
+    self.assertTrue(np.isnan(float_type("-nan")))
+    if dtype_has_inf(float_type):
+      self.assertEqual(float_type(float("inf")), float_type("inf"))
+      self.assertEqual(float_type(float("-inf")), float_type("-inf"))
+
   def testRepr(self, float_type):
-    for value in [
-        0.0, 1.0, -3.5,
-        float.fromhex("1.0p-7"),
-        float("inf"),
-        float("-inf"),
-        float("nan")
-    ]:
+    for value in FLOAT_VALUES[float_type]:
       self.assertEqual("%.6g" % float(float_type(value)),
                        repr(float_type(value)))
 
@@ -197,14 +241,14 @@ class CustomFloatTest(parameterized.TestCase):
         nan_hash = hash(nan)
         nan_object_hash = object.__hash__(nan)
         # The hash of a NaN is either 0 or a hash of the object pointer.
-        self.assertIn(nan_hash, (sys.hash_info.nan, nan_object_hash), str(nan))
+        self.assertIn(nan_hash, (sys.hash_info.nan, nan_object_hash),
+                      str(nan))
 
   def testHashInf(self, float_type):
-    if float_type == float8_e4m3b11:
-      self.skipTest("Not supported")  # no inf for e4m3b11
-    self.assertEqual(sys.hash_info.inf, hash(float_type(float("inf"))), "inf")
-    self.assertEqual(-sys.hash_info.inf, hash(float_type(float("-inf"))),
-                     "-inf")
+    if dtype_has_inf(float_type):
+      self.assertEqual(sys.hash_info.inf, hash(float_type(float("inf"))), "inf")
+      self.assertEqual(-sys.hash_info.inf, hash(float_type(float("-inf"))),
+                       "-inf")
 
   # Tests for Python operations
   def testNegate(self, float_type):
@@ -227,10 +271,7 @@ class CustomFloatTest(parameterized.TestCase):
             lhs_type,
             rhs_type,
             float_type=float_type,
-            next_largest_fp_type={
-                bfloat16: np.float32,
-                float8_e4m3b11: np.float32,
-            }[float_type])
+            next_largest_fp_type=np.float32)
         actual_type = type(lhs_type(3.5) + rhs_type(2.25))
         self.assertEqual(expected_type, actual_type)
 
@@ -314,17 +355,20 @@ class CustomFloatTest(parameterized.TestCase):
         float_type=float_type)
 
   def testSort(self, float_type):
-    values_to_sort = np.float32(FLOAT_VALUES[float_type])
+    # Note: np.sort doesn't work properly with NaNs since they always compare
+    # False.
+    values_to_sort = np.float32(
+        [x for x in FLOAT_VALUES[float_type] if not np.isnan(x)])
     sorted_f32 = np.sort(values_to_sort)
-    sorted_bf16 = np.sort(values_to_sort.astype(float_type))  # pylint: disable=too-many-function-args
-    np.testing.assert_equal(sorted_f32, np.float32(sorted_bf16))
+    sorted_float_type = np.sort(values_to_sort.astype(float_type))  # pylint: disable=too-many-function-args
+    np.testing.assert_equal(sorted_f32, np.float32(sorted_float_type))
 
   def testArgmax(self, float_type):
     values_to_sort = np.float32(
         float_type(np.float32(FLOAT_VALUES[float_type])))
     argmax_f32 = np.argmax(values_to_sort)
-    argmax_bf16 = np.argmax(values_to_sort.astype(float_type))  # pylint: disable=too-many-function-args
-    np.testing.assert_equal(argmax_f32, argmax_bf16)
+    argmax_float_type = np.argmax(values_to_sort.astype(float_type))  # pylint: disable=too-many-function-args
+    np.testing.assert_equal(argmax_f32, argmax_float_type)
 
   def testArgmaxOnNan(self, float_type):
     """Ensures we return the right thing for multiple NaNs."""
@@ -342,8 +386,8 @@ class CustomFloatTest(parameterized.TestCase):
     values_to_sort = np.float32(
         float_type(np.float32(FLOAT_VALUES[float_type])))
     argmin_f32 = np.argmin(values_to_sort)
-    argmin_bf16 = np.argmin(values_to_sort.astype(float_type))  # pylint: disable=too-many-function-args
-    np.testing.assert_equal(argmin_f32, argmin_bf16)
+    argmin_float_type = np.argmin(values_to_sort.astype(float_type))  # pylint: disable=too-many-function-args
+    np.testing.assert_equal(argmin_f32, argmin_float_type)
 
   def testArgminOnNan(self, float_type):
     """Ensures we return the right thing for multiple NaNs."""
@@ -387,9 +431,9 @@ BINARY_PREDICATE_UFUNCS = [
 @parameterized.named_parameters(({
     "testcase_name": "_" + dtype.__name__,
     "float_type": dtype
-} for dtype in [bfloat16, float8_e4m3b11]))
+} for dtype in [bfloat16, float8_e4m3b11, float8_e4m3, float8_e5m2]))
 class CustomFloatNumPyTest(parameterized.TestCase):
-  """Tests the NumPy integration of the float8_e4m3b11 type."""
+  """Tests NumPy integration of the custom float types."""
 
   def testDtype(self, float_type):
     self.assertEqual(float_type, np.dtype(float_type))
@@ -424,10 +468,8 @@ class CustomFloatNumPyTest(parameterized.TestCase):
     np.testing.assert_equal(x >= y, bx >= by)
 
   def testEqual2(self, float_type):
-    if float_type == float8_e4m3b11:
-      self.skipTest("Not supported")  # out of range.
-    a = np.array([401408], float_type)
-    b = np.array([82432], float_type)
+    a = np.array([31], float_type)
+    b = np.array([15], float_type)
     self.assertFalse(a.__eq__(b))
 
   def testCanCast(self, float_type):
@@ -472,7 +514,7 @@ class CustomFloatNumPyTest(parameterized.TestCase):
 
   def testConformNumpyComplex(self, float_type):
     for dtype in [np.complex64, np.complex128, np.clongdouble]:
-      x = np.array([1.5, 2.5 + 2.j, 3.25], dtype=dtype)
+      x = np.array([1.5, 2.5 + 2.j, 3.5], dtype=dtype)
       y_np = x.astype(np.float32)
       y_tf = x.astype(float_type)
       numpy_assert_allclose(y_np, y_tf, atol=2e-2, float_type=float_type)
@@ -486,14 +528,14 @@ class CustomFloatNumPyTest(parameterized.TestCase):
         np.arange(100, dtype=np.float32).astype(float_type),
         np.arange(100, dtype=float_type))
     np.testing.assert_equal(
-        np.arange(-16, 16, 1, dtype=np.float32).astype(float_type),
-        np.arange(-16, 16, 1, dtype=float_type))
+        np.arange(-8, 8, 1, dtype=np.float32).astype(float_type),
+        np.arange(-8, 8, 1, dtype=float_type))
     np.testing.assert_equal(
-        np.arange(-0., -7., -0.25, dtype=np.float32).astype(float_type),
-        np.arange(-0., -7., -0.25, dtype=float_type))
+        np.arange(-0., -2., -0.25, dtype=np.float32).astype(float_type),
+        np.arange(-0., -2., -0.25, dtype=float_type))
     np.testing.assert_equal(
-        np.arange(-30., 30., 2., dtype=np.float32).astype(float_type),
-        np.arange(-30., 30., 2., dtype=float_type))
+        np.arange(-16., 16., 2., dtype=np.float32).astype(float_type),
+        np.arange(-16., 16., 2., dtype=float_type))
 
   def testUnaryUfunc(self, float_type):
     for op in UNARY_UFUNCS:
@@ -598,32 +640,29 @@ class CustomFloatNumPyTest(parameterized.TestCase):
     numpy_assert_allclose(mant1, mant2, rtol=1e-2, float_type=float_type)
 
   def testCopySign(self, float_type):
-    if float_type == float8_e4m3b11:
-      self.skipTest("Not supported")  # Nans don't have payload.
-    for nan_payload in list(range(1, 128)):
-      with self.subTest(nan_payload):
-        inf_bits = 0x7f80
-        nan_bits = inf_bits | nan_payload
-        nan = np.uint16(nan_bits).view(bfloat16)
-        nan_with_sign = np.copysign(nan, bfloat16(-1))
-        nan_with_sign_bits = nan_with_sign.view(np.uint16)
-        np.testing.assert_equal(nan_bits | (1 << 15), nan_with_sign_bits)
+    for bits in list(range(1, 128)):
+      with self.subTest(bits):
+        bits_type = BITS_TYPE[float_type]
+        val = bits_type(bits).view(float_type)
+        val_with_sign = np.copysign(val, float_type(-1))
+        val_with_sign_bits = val_with_sign.view(bits_type)
+        num_bits = np.iinfo(bits_type).bits
+        np.testing.assert_equal(bits | (1 << (num_bits - 1)),
+                                val_with_sign_bits)
 
   def testNextAfter(self, float_type):
     one = np.array(1., dtype=float_type)
     two = np.array(2., dtype=float_type)
     zero = np.array(0., dtype=float_type)
     nan = np.array(np.nan, dtype=float_type)
-    np.testing.assert_equal(np.nextafter(one, two) - one, epsilon[float_type])
     np.testing.assert_equal(
-        np.nextafter(one, zero) - one, -epsilon[float_type] / 2)
+        np.nextafter(one, two) - one, FLOAT_EPSILON[float_type])
+    np.testing.assert_equal(
+        np.nextafter(one, zero) - one, -FLOAT_EPSILON[float_type] / 2)
     np.testing.assert_equal(np.isnan(np.nextafter(nan, one)), True)
     np.testing.assert_equal(np.isnan(np.nextafter(one, nan)), True)
     np.testing.assert_equal(np.nextafter(one, one), one)
-    smallest_denormal = {
-        bfloat16: float.fromhex("1.0p-133"),
-        float8_e4m3b11: float.fromhex("1.0p-13"),
-    }[float_type]
+    smallest_denormal = FLOAT_SMALLEST_SUBNORMAL[float_type]
     np.testing.assert_equal(np.nextafter(zero, one), smallest_denormal)
     np.testing.assert_equal(np.nextafter(zero, -one), -smallest_denormal)
     for a, b in itertools.permutations([0., nan], 2):
@@ -635,45 +674,42 @@ class CustomFloatNumPyTest(parameterized.TestCase):
 
   def testSpacing(self, float_type):
     # Sweep a variety of binades to see that spacing gives the proper ULP.
-    # All subnormals have a fixed distance of 2^-133.
     with self.subTest(name="Subnormals"):
-      if float_type == float8_e4m3b11:
-        self.skipTest("Not supported")
-      for i in {
-          float8_e4m3b11: range(-13, -10),
-          bfloat16: range(-133, -126)
-      }[float_type]:
+      for i in range(
+          int(np.log2(FLOAT_SMALLEST_SUBNORMAL[float_type])),
+          int(np.log2(FLOAT_SMALLEST_NORMAL[float_type]))):
         power_of_two = float_type(2.0**i)
-        distance = {
-            float8_e4m3b11: float.fromhex("0x1p-13"),
-            bfloat16: float.fromhex("0x1p-133")
-        }[float_type]
+        distance = FLOAT_SMALLEST_SUBNORMAL[float_type]
         np.testing.assert_equal(np.spacing(power_of_two), distance)
         np.testing.assert_equal(np.spacing(-power_of_two), -distance)
     # Normals have a distance which depends on their binade.
     with self.subTest(name="Normals"):
-      for i in {
-          float8_e4m3b11: range(-10, 4),
-          bfloat16: range(-126, 127)
-      }[float_type]:
+      for i in range(
+          int(np.log2(FLOAT_SMALLEST_NORMAL[float_type])),
+          int(np.log2(FLOAT_MAX[float_type]))):
         power_of_two = float_type(2.0**i)
-        distance = epsilon[float_type] * power_of_two
+        distance = FLOAT_EPSILON[float_type] * power_of_two
         np.testing.assert_equal(np.spacing(power_of_two), distance)
         np.testing.assert_equal(np.spacing(-power_of_two), -distance)
-    inf = float_type(float("inf"))
-    nan = float_type(float("nan"))
+
     # Check that spacing agrees with arithmetic involving nextafter.
     with self.subTest(name="NextAfter"):
       for x in FLOAT_VALUES[float_type]:
         x_float_type = float_type(x)
         spacing = np.spacing(x_float_type)
-        toward = np.copysign(inf, x_float_type)
+        toward = np.copysign(float_type(2.0 * np.abs(x) + 1), x_float_type)
         nextup = np.nextafter(x_float_type, toward)
-        np.testing.assert_equal(spacing, nextup - x_float_type)
+        if np.isnan(spacing):
+          self.assertTrue(np.isnan(nextup - x_float_type))
+        else:
+          np.testing.assert_equal(spacing, nextup - x_float_type)
+
     # Check that spacing for special values gives the correct answer.
     with self.subTest(name="NonFinite"):
+      nan = float_type(float("nan"))
       np.testing.assert_equal(np.spacing(nan), np.spacing(np.float32(nan)))
-      if float_type != float8_e4m3b11:  # inf not supported.
+      if dtype_has_inf(float_type):
+        inf = float_type(float("inf"))
         np.testing.assert_equal(np.spacing(inf), np.spacing(np.float32(inf)))
 
 
