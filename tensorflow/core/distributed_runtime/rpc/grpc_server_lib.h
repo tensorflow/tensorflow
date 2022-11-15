@@ -173,9 +173,6 @@ class GrpcServer : public ServerInterface {
   GrpcWorker* worker_impl() const { return worker_impl_.get(); }
   GrpcWorkerEnv* grpc_worker_env() const { return grpc_worker_env_.get(); }
 
-  Status SetCoordinationServiceInstance(
-      tsl::CoordinationServiceInterface* service);
-
  private:
   Env* env_;
 

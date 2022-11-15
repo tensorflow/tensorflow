@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_RPC_HANDLER_H_
 #define TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_RPC_HANDLER_H_
 
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -29,8 +28,6 @@ class CoordinationServiceRpcHandler {
   explicit CoordinationServiceRpcHandler() {}
 
   void SetAgentInstance(CoordinationServiceAgent* agent);
-
-  void SetServiceInstance(CoordinationServiceInterface* service);
 
   void RegisterTaskAsync(const tensorflow::RegisterTaskRequest* request,
                          tensorflow::RegisterTaskResponse* response,
@@ -92,9 +89,8 @@ class CoordinationServiceRpcHandler {
                           StatusCallback done);
 
  private:
-  mutex mu_;
-  CoordinationServiceAgent* agent_ TF_GUARDED_BY(mu_) = nullptr;
-  CoordinationServiceInterface* service_ TF_GUARDED_BY(mu_) = nullptr;
+  mutex agent_mu_;
+  CoordinationServiceAgent* agent_ TF_GUARDED_BY(agent_mu_) = nullptr;
 };
 
 }  // namespace tsl

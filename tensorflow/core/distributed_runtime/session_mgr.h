@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_rpc_handler.h"
 
 namespace tensorflow {
 
@@ -47,8 +46,7 @@ class SessionMgr {
   explicit SessionMgr(
       WorkerEnv* worker_env, const std::string& default_worker_name,
       std::unique_ptr<WorkerCacheInterface> default_worker_cache,
-      WorkerCacheFactory worker_cache_factory,
-      tsl::CoordinationServiceRpcHandler* coordination_handler);
+      WorkerCacheFactory worker_cache_factory);
   ~SessionMgr() {}
 
   // Allocates state for a new session.
@@ -94,9 +92,9 @@ class SessionMgr {
 
   Status DeleteSession(const std::string& session);
 
-  // Provides access to the coordination service agent. This method should only
-  // be called after the agent has been initialized during session creation, or
-  // an invalid nullptr is returned. Note: the agent is thread-safe and mutable.
+  // Provides access to the coordination service. This method should only be
+  // called after the agent has been initialized during session creation, or an
+  // invalid nullptr is returned. Note: the agent is thread-safe and mutable.
   tsl::CoordinationServiceAgent* GetCoordinationServiceAgent();
 
   static std::string WorkerNameFromServerDef(const ServerDef& server_def);
@@ -135,9 +133,6 @@ class SessionMgr {
   bool is_logging_active_ = false;
 
   const WorkerCacheFactory worker_cache_factory_;
-
-  // Not owned. And should only be used for setting the coordination service.
-  tsl::CoordinationServiceRpcHandler* coordination_handler_ = nullptr;
 
   Status WorkerSessionForSessionLocked(
       const std::string& session_handle,

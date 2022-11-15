@@ -50,10 +50,6 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
   void SetCoordinationServiceAgentInstance(CoordinationServiceAgent* agent) {
     rpc_handler_.SetAgentInstance(agent);
   }
-  void SetCoordinationServiceInstance(CoordinationServiceInterface* service) {
-    rpc_handler_.SetServiceInstance(service);
-  }
-  CoordinationServiceRpcHandler* GetRpcHandler() { return &rpc_handler_; }
 
  private:
 #define HANDLER(method)                                                       \

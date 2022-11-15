@@ -40,45 +40,41 @@ using tensorflow::KeyValueEntry;
 
 void CoordinationServiceRpcHandler::SetAgentInstance(
     CoordinationServiceAgent* agent) {
-  mutex_lock l(mu_);
+  mutex_lock l(agent_mu_);
   agent_ = agent;
-}
-
-void CoordinationServiceRpcHandler::SetServiceInstance(
-    CoordinationServiceInterface* service) {
-  mutex_lock l(mu_);
-  service_ = service;
 }
 
 void CoordinationServiceRpcHandler::RegisterTaskAsync(
     const RegisterTaskRequest* request, RegisterTaskResponse* response,
     StatusCallback done) {
-  tf_shared_lock l(mu_);
-  if (service_ == nullptr) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
     done(MakeCoordinationError(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
   const CoordinatedTask& task = request->source_task();
   const uint64_t incarnation = request->incarnation();
-  const uint64_t leader_incarnation = service_->GetServiceIncarnation();
+  const uint64_t leader_incarnation = service->GetServiceIncarnation();
   response->set_leader_incarnation(leader_incarnation);
-  done(service_->RegisterTask(task, incarnation));
+  done(service->RegisterTask(task, incarnation));
 }
 
 void CoordinationServiceRpcHandler::HeartbeatAsync(
     const HeartbeatRequest* request, HeartbeatResponse* response,
     StatusCallback done) {
-  tf_shared_lock l(mu_);
-  if (service_ == nullptr) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
     done(MakeCoordinationError(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
   const CoordinatedTask& task = request->source_task();
   const uint64_t incarnation = request->incarnation();
-  const uint64_t leader_incarnation = service_->GetServiceIncarnation();
-  Status s = service_->RecordHeartbeat(task, incarnation);
+  const uint64_t leader_incarnation = service->GetServiceIncarnation();
+  Status s = service->RecordHeartbeat(task, incarnation);
   if (!s.ok()) {
     done(s);
     return;
@@ -90,15 +86,16 @@ void CoordinationServiceRpcHandler::HeartbeatAsync(
 void CoordinationServiceRpcHandler::WaitForAllTasksAsync(
     const WaitForAllTasksRequest* request, WaitForAllTasksResponse* response,
     StatusCallback done) {
-  tf_shared_lock l(mu_);
-  if (service_ == nullptr) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
     done(MakeCoordinationError(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
-  service_->WaitForAllTasks(
+  service->WaitForAllTasks(
       request->source_task(), request->device_info(),
-      [response, service = service_, done = std::move(done)](Status s) {
+      [response, service, done = std::move(done)](Status s) {
         if (s.ok()) {
           *response->mutable_device_info() = service->ListClusterDevices();
         }
@@ -109,32 +106,34 @@ void CoordinationServiceRpcHandler::WaitForAllTasksAsync(
 void CoordinationServiceRpcHandler::ShutdownTaskAsync(
     const ShutdownTaskRequest* request, ShutdownTaskResponse* response,
     StatusCallback done) {
-  tf_shared_lock l(mu_);
-  if (service_ == nullptr) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
     done(MakeCoordinationError(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
-  service_->ShutdownTaskAsync(request->source_task(),
-                              [done](Status s) { done(s); });
+  service->ShutdownTaskAsync(request->source_task(),
+                             [done](Status s) { done(s); });
 }
 
 void CoordinationServiceRpcHandler::ResetTaskAsync(
     const ResetTaskRequest* request, ResetTaskResponse* response,
     StatusCallback done) {
-  tf_shared_lock l(mu_);
-  if (service_ == nullptr) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
     done(MakeCoordinationError(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
-  done(service_->ResetTask(request->source_task()));
+  done(service->ResetTask(request->source_task()));
 }
 
 void CoordinationServiceRpcHandler::ReportErrorToTaskAsync(
     const ReportErrorToTaskRequest* request,
     ReportErrorToTaskResponse* response, StatusCallback done) {
-  tf_shared_lock l(mu_);
+  tf_shared_lock l(agent_mu_);
   if (agent_ == nullptr) {
     done(MakeCoordinationError(errors::Internal(
         "CoordinationServiceAgent is uninitialized or has already shutdown.")));
@@ -154,13 +153,14 @@ void CoordinationServiceRpcHandler::ReportErrorToTaskAsync(
 void CoordinationServiceRpcHandler::ReportErrorToServiceAsync(
     const ReportErrorToServiceRequest* request,
     ReportErrorToServiceResponse* response, StatusCallback done) {
-  tf_shared_lock l(mu_);
-  if (service_ == nullptr) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
     done(MakeCoordinationError(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
-  done(service_->ReportTaskError(
+  done(service->ReportTaskError(
       request->error_origin(),
       MakeCoordinationError(
           Status{static_cast<error::Code>(request->error_code()),
@@ -172,13 +172,14 @@ void CoordinationServiceRpcHandler::ReportErrorToServiceAsync(
 void CoordinationServiceRpcHandler::GetTaskStateAsync(
     const GetTaskStateRequest* request, GetTaskStateResponse* response,
     StatusCallback done) {
-  tf_shared_lock l(mu_);
-  if (service_ == nullptr) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
     done(MakeCoordinationError(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
-  auto result = service_->GetTaskState(
+  auto result = service->GetTaskState(
       {request->source_task().begin(), request->source_task().end()});
   absl::c_move(result,
                RepeatedFieldBackInserter(response->mutable_task_state()));
@@ -188,26 +189,28 @@ void CoordinationServiceRpcHandler::GetTaskStateAsync(
 void CoordinationServiceRpcHandler::InsertKeyValueAsync(
     const InsertKeyValueRequest* request, InsertKeyValueResponse* response,
     StatusCallback done) {
-  tf_shared_lock l(mu_);
-  if (service_ == nullptr) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
     done(MakeCoordinationError(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
-  done(service_->InsertKeyValue(request->kv().key(), request->kv().value()));
+  done(service->InsertKeyValue(request->kv().key(), request->kv().value()));
 }
 
 void CoordinationServiceRpcHandler::GetKeyValueAsync(
     const GetKeyValueRequest* request, GetKeyValueResponse* response,
     StatusCallback done) {
-  tf_shared_lock l(mu_);
-  if (service_ == nullptr) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
     done(MakeCoordinationError(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
   response->mutable_kv()->set_key(request->key());
-  service_->GetKeyValueAsync(
+  service->GetKeyValueAsync(
       request->key(), [response, done = std::move(done)](
                           const StatusOr<std::string>& status_or_value) {
         if (status_or_value.ok()) {
@@ -220,13 +223,14 @@ void CoordinationServiceRpcHandler::GetKeyValueAsync(
 void CoordinationServiceRpcHandler::TryGetKeyValueAsync(
     const TryGetKeyValueRequest* request, TryGetKeyValueResponse* response,
     StatusCallback done) {
-  tf_shared_lock l(mu_);
-  if (service_ == nullptr) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
     done(MakeCoordinationError(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
-  auto result = service_->TryGetKeyValue(request->key());
+  auto result = service->TryGetKeyValue(request->key());
   if (!result.ok()) {
     done(MakeCoordinationError(result.status()));
     return;
@@ -239,14 +243,15 @@ void CoordinationServiceRpcHandler::TryGetKeyValueAsync(
 void CoordinationServiceRpcHandler::GetKeyValueDirAsync(
     const GetKeyValueDirRequest* request, GetKeyValueDirResponse* response,
     StatusCallback done) {
-  tf_shared_lock l(mu_);
-  if (service_ == nullptr) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
     done(MakeCoordinationError(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
   std::vector<KeyValueEntry> results =
-      service_->GetKeyValueDir(request->directory_key());
+      service->GetKeyValueDir(request->directory_key());
   *response->mutable_kv() = {std::make_move_iterator(results.begin()),
                              std::make_move_iterator(results.end())};
   done(OkStatus());
@@ -255,27 +260,29 @@ void CoordinationServiceRpcHandler::GetKeyValueDirAsync(
 void CoordinationServiceRpcHandler::DeleteKeyValueAsync(
     const DeleteKeyValueRequest* request, DeleteKeyValueResponse* response,
     StatusCallback done) {
-  tf_shared_lock l(mu_);
-  if (service_ == nullptr) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
     done(MakeCoordinationError(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
-  done(service_->DeleteKeyValue(request->key()));
+  done(service->DeleteKeyValue(request->key()));
 }
 
 void CoordinationServiceRpcHandler::BarrierAsync(const BarrierRequest* request,
                                                  BarrierResponse* response,
                                                  StatusCallback done) {
-  tf_shared_lock l(mu_);
-  if (service_ == nullptr) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
     done(MakeCoordinationError(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
   std::vector<CoordinatedTask> tasks = {request->tasks().begin(),
                                         request->tasks().end()};
-  service_->BarrierAsync(
+  service->BarrierAsync(
       request->barrier_id(),
       absl::Milliseconds(request->barrier_timeout_in_ms()),
       request->source_task(), tasks,
@@ -285,13 +292,14 @@ void CoordinationServiceRpcHandler::BarrierAsync(const BarrierRequest* request,
 void CoordinationServiceRpcHandler::CancelBarrierAsync(
     const CancelBarrierRequest* request, CancelBarrierResponse* response,
     StatusCallback done) {
-  tf_shared_lock l(mu_);
-  if (service_ == nullptr) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
     done(MakeCoordinationError(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
-  done(service_->CancelBarrier(request->barrier_id(), request->source_task()));
+  done(service->CancelBarrier(request->barrier_id(), request->source_task()));
 }
 
 }  // namespace tsl
