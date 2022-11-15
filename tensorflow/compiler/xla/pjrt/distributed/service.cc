@@ -516,6 +516,9 @@ CoordinationServiceImpl::CoordinationServiceImpl(
       /*num_threads=*/4);
   coord_rpc_service_ = std::make_unique<tsl::GrpcCoordinationServiceImpl>(
       coord_compute_pool_.get(), builder);
+  auto* grpc_coord_service =
+      static_cast<tsl::GrpcCoordinationServiceImpl*>(coord_rpc_service_.get());
+  grpc_coord_service->SetCoordinationServiceInstance(coord_service_.get());
   LOG(INFO) << "Experimental coordination service is enabled.";
 }
 
@@ -523,6 +526,8 @@ CoordinationServiceImpl::~CoordinationServiceImpl() {
   // Service object must be destroyed to clear all pending RPCs before shutting
   // down the RPC service.
   coord_service_ = nullptr;
+  static_cast<tsl::GrpcCoordinationServiceImpl*>(coord_rpc_service_.get())
+      ->SetCoordinationServiceInstance(nullptr);
   coord_rpc_service_->Shutdown();
 }
 
