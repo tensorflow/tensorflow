@@ -928,24 +928,50 @@ cc_library(
         ":ir_emission_utils",
         ":matmul_utils",
         ":stream_executor_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:autotune_results_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/tsl/util/proto:proto_utils",
         "//tensorflow/compiler/xla/stream_executor:blas",
-        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
-        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/tsl/platform:logger",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:autotuning_proto_cc",
+        "//tensorflow/tsl/util/proto:proto_utils",
     ]),
+)
+
+tf_cc_test(
+    name = "gemm_algorithm_picker_test",
+    srcs = ["gemm_algorithm_picker_test.cc"],
+    tags = [
+        "gpu",
+        "no_oss",
+        "noasan",
+        "nomsan",
+        "requires-gpu-sm70",
+    ],
+    deps = [
+        ":gemm_algorithm_picker",
+        ":gemm_rewriter",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc",
+    ],
 )
 
 cc_library(
@@ -1009,6 +1035,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
+        "//tensorflow/compiler/xla:autotune_results_proto_cc",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -1031,6 +1058,31 @@ cc_library(
         "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
     ]),
+)
+
+tf_cc_test(
+    name = "gpu_conv_algorithm_picker_test",
+    srcs = ["gpu_conv_algorithm_picker_test.cc"],
+    tags = [
+        "gpu",
+        "no_oss",
+        "noasan",
+        "nomsan",
+        "requires-gpu-sm70",
+    ],
+    deps = [
+        ":gpu_conv_algorithm_picker",
+        ":gpu_conv_rewriter",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
+        "//tensorflow/compiler/xla/service:tuple_simplifier",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+    ],
 )
 
 cc_library(
