@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/backends/profiler/gpu/cupti_tracer.h"
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
@@ -23,7 +24,6 @@ limitations under the License.
 #include "third_party/gpus/cuda/extras/CUPTI/include/generated_nvtx_meta.h"
 #include "tensorflow/compiler/xla/backends/profiler/gpu/cupti_collector.h"
 #include "tensorflow/compiler/xla/backends/profiler/gpu/nvtx_utils.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/host_info.h"
@@ -1952,8 +1952,7 @@ void CuptiTracer::RequestActivityBuffer(uint8_t **buffer, size_t *size) {
 
 Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
                                           uint8_t *buffer, size_t size) {
-  auto buffer_cleanup = tensorflow::gtl::MakeCleanup(
-      [&]() { buffer_pool_.ReclaimBuffer(buffer); });
+  absl::Cleanup buffer_cleanup = [&]() { buffer_pool_.ReclaimBuffer(buffer); };
   if (size == 0) {
     return OkStatus();
   }
