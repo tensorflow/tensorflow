@@ -1184,13 +1184,14 @@ static void NullDiagnosticHandler(const llvm::DiagnosticInfo& diag_info,
 StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
                                    std::unique_ptr<llvm::Module> llvm_module,
+                                   GpuVersion gpu_version, int device_ordinal,
                                    se::StreamExecutor* stream_exec,
                                    const CompileOptions& options,
                                    const HloModule* debug_module) {
   using BackendCompileResult = std::pair<std::string, std::vector<uint8_t>>;
 
   const auto compile_single_module =
-      [this, stream_exec, &module_config, debug_module](
+      [this, gpu_version, device_ordinal, &module_config, debug_module](
           llvm::Module* llvm_module, bool relocatable,
           std::optional<int> shard_number) -> StatusOr<BackendCompileResult> {
     {
@@ -1215,11 +1216,9 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
                                  FilenameFor(*debug_module, "", ""), "*")
                   : ".");
     }
-    GpuVersion gpu_version = GetGpuVersion(stream_exec);
     StatusOr<std::pair<std::string, std::vector<uint8_t>>> result =
         CompileTargetBinary(module_config, llvm_module, gpu_version,
-                            stream_exec->device_ordinal(), relocatable,
-                            debug_module);
+                            device_ordinal, relocatable, debug_module);
 
     if (!result.ok()) {
       return result;
@@ -1471,9 +1470,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   using BackendCompileResult = std::pair<std::string, std::vector<uint8_t>>;
   TF_ASSIGN_OR_RETURN(
       BackendCompileResult backend_result,
-      CompileToTargetBinary(module->config(),
-                            std::move(compile_module_results.llvm_module),
-                            stream_exec, options, module.get()));
+      CompileToTargetBinary(
+          module->config(), std::move(compile_module_results.llvm_module),
+          GetGpuVersion(stream_exec), stream_exec->device_ordinal(),
+          stream_exec, options, module.get()));
   if (DumpingEnabledForHloModule(*module) &&
       std::holds_alternative<OwnedThunkSequence>(
           compile_module_results.executable)) {
@@ -1529,6 +1529,10 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       module_group->ConsumeModules();
   std::vector<std::unique_ptr<AotCompilationResult>> results;
 
+  std::any target_config = options.target_config();
+  auto* gpu_target_config = std::any_cast<GpuTargetConfig>(&target_config);
+  CHECK(gpu_target_config != nullptr || options.executor() != nullptr);
+
   for (const auto& module : modules) {
     llvm::LLVMContext llvm_context;
 
@@ -1564,11 +1568,24 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     }
 
     using BackendCompileResult = std::pair<std::string, std::vector<uint8_t>>;
-    TF_ASSIGN_OR_RETURN(
-        BackendCompileResult backend_result,
-        CompileToTargetBinary(
-            module->config(), std::move(compile_module_results.llvm_module),
-            options.executor(), {options.device_allocator()}, module.get()));
+    BackendCompileResult backend_result;
+    if (gpu_target_config) {
+      TF_ASSIGN_OR_RETURN(
+          backend_result,
+          CompileToTargetBinary(
+              module->config(), std::move(compile_module_results.llvm_module),
+              gpu_target_config->cuda_compute_capability,
+              gpu_target_config->device_ordinal, options.executor(),
+              {options.device_allocator()}, module.get()));
+    } else {
+      TF_ASSIGN_OR_RETURN(
+          backend_result,
+          CompileToTargetBinary(
+              module->config(), std::move(compile_module_results.llvm_module),
+              GetGpuVersion(options.executor()),
+              options.executor()->device_ordinal(), options.executor(),
+              {options.device_allocator()}, module.get()));
+    }
 
     auto& compiled_executable = compile_module_results.executable;
 
@@ -1789,10 +1806,12 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
   auto thunk_sequence = ir_emitter->ConsumeThunkSequence();
 
   using BackendCompileResult = std::pair<std::string, std::vector<uint8_t>>;
-  TF_ASSIGN_OR_RETURN(BackendCompileResult backend_result,
-                      compiler->CompileToTargetBinary(
-                          module_config, std::move(llvm_module), stream_exec,
-                          options, /*debug_module=*/nullptr));
+  TF_ASSIGN_OR_RETURN(
+      BackendCompileResult backend_result,
+      compiler->CompileToTargetBinary(
+          module_config, std::move(llvm_module),
+          compiler->GetGpuVersion(stream_exec), stream_exec->device_ordinal(),
+          stream_exec, options, /*debug_module=*/nullptr));
 
   GpuVersion gpu_version = compiler->GetGpuVersion(stream_exec);
   return GpuExecutable::Create(

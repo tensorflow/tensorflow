@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -96,8 +97,10 @@ class GpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
 
 struct GpuTargetConfig {
   GpuDeviceInfo gpu_device_info;
-  stream_executor::CudaComputeCapability cuda_compute_capability;
-  stream_executor::RocmComputeCapability rocm_compute_capability;
+  // CUDA "CC" major value, -1 if not available.
+  stream_executor::CudaComputeCapability cuda_compute_capability{-1, -1};
+  // ROCm gfx arch,  "gfx000" if not available.
+  stream_executor::RocmComputeCapability rocm_compute_capability{"gfx000"};
   std::string platform_name;
   int device_ordinal;
 };
@@ -130,9 +133,9 @@ class GpuCompiler : public LLVMCompiler {
 
   StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileToTargetBinary(
       const HloModuleConfig& module_config,
-      std::unique_ptr<llvm::Module> llvm_module,
-      se::StreamExecutor* stream_exec, const CompileOptions& options,
-      const HloModule* debug_module);
+      std::unique_ptr<llvm::Module> llvm_module, GpuVersion gpu_version,
+      int device_ordinal, se::StreamExecutor* stream_exec,
+      const CompileOptions& options, const HloModule* debug_module);
 
   se::Platform::Id PlatformId() const override { return platform_id_; }
 
