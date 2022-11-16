@@ -399,7 +399,6 @@ tf_py_test(
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:map_op",
         "@absl_py//absl/testing:parameterized",
     ],
 )
