@@ -20,7 +20,7 @@ limitations under the License.
 // to merge these two files together, but we need to consider the following
 // obstacles:
 // * We need to have a common representation for arguments. That is to say,
-//   HLO_Array<X> translates to HLO_Tensor<X> in HLO dialect, and
+//   HLO_Array<X> translates to MHLO_Tensor<X> in HLO dialect, and
 //   Arg<LHLO_Buffer<X>, "", [Mem(Read|Write)]> in LHLO. Array types within
 //   tuples also need to be transformed.
 // * As of now, TableGen's dag functions are not sufficient to accomplish the

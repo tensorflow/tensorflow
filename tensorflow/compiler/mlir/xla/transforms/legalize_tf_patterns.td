@@ -259,7 +259,7 @@ class EqualityPat<Op FromOp, CHLO_ComparisonDirectionValue direction>
         (CHLO_BroadcastCompareOp
          $l, $r, (BinBroadcastDimensions $l, $r), direction,
          (CHLO_DEFAULT_COMPARISON_TYPE)),
-        [(HLO_Tensor $l)]>;
+        [(MHLO_Tensor $l)]>;
 
 def : EqualityPat<TF_EqualOp, CHLO_ComparisonDirectionValue<"EQ">>;
 def : EqualityPat<TF_NotEqualOp, CHLO_ComparisonDirectionValue<"NE">>;
@@ -508,7 +508,7 @@ def TFSliceSizes2HLOSliceSizes : NativeCodeCall<
     "TFSliceSizes2HLOSliceSizes($0, $1, $2.cast<DenseIntElementsAttr>(),"
     "&$_builder)">;
 
-def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
+def : Pat<(TF_SliceOp:$op MHLO_Tensor:$input, MHLO_Tensor:$starting_indices,
            (ConstantLikeMatcher AnyAttr:$slice_sizes)),
           (MHLO_DynamicSliceOp $input,
            (UnpackStartingIndices $op, $starting_indices),
@@ -520,8 +520,8 @@ def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
 // Select op patterns.
 //===----------------------------------------------------------------------===//
 
- def : Pat<(TF_SelectV2Op HLO_Tensor:$pred, HLO_Tensor:$on_true,
-            HLO_Tensor:$on_false),
+ def : Pat<(TF_SelectV2Op MHLO_Tensor:$pred, MHLO_Tensor:$on_true,
+            MHLO_Tensor:$on_false),
            (CHLO_BroadcastSelectOp $pred, $on_true, $on_false)>;
 
 //===----------------------------------------------------------------------===//
@@ -595,7 +595,7 @@ foreach Mapping = [
                    [TF_TanhOp, MHLO_TanhOp],
                    [TF_TanOp, CHLO_TanOp]
                   ] in {
- def : Pat<(Mapping[0] HLO_Tensor:$input),
+ def : Pat<(Mapping[0] MHLO_Tensor:$input),
            (Mapping[1] $input)>;
 }
 
@@ -610,13 +610,13 @@ def : Pat<(TF_TransposeOp:$res $arg, (ConstantLikeMatcher ElementsAttr:$permutat
 
 // Lowering these ops with static shape to mhlo.reshape
 foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
-  def : Pat<(TfOp:$res HLO_Tensor:$arg, $ignored),
+  def : Pat<(TfOp:$res MHLO_Tensor:$arg, $ignored),
             (MHLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)],
             (addBenefit 2)>;
 }
 
 // Lowering tf.Reshape with dynamic shape
-def : Pat<(TF_ReshapeOp:$res HLO_Tensor:$arg, $shape),
+def : Pat<(TF_ReshapeOp:$res MHLO_Tensor:$arg, $shape),
           (CHLO_DynamicReshapeOp $arg, $shape)>;
 
 // Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
@@ -630,7 +630,7 @@ def BothElementTypesSameWidthIntOrFloat : Constraint<CPred<
 // TODO(mgester): Due to restrictions of xla::BitcastConvertType we currently
 // only lower if both input and output types are int or float and have same width
 
-def : Pat<(TF_BitcastOp:$res HLO_Tensor:$arg),
+def : Pat<(TF_BitcastOp:$res MHLO_Tensor:$arg),
           (MHLO_BitcastConvertOp $arg),
           [(BothElementTypesSameWidthIntOrFloat $res, $arg)]>;
 
@@ -769,7 +769,7 @@ def : Pat<(TF_XlaDotV2Op $lhs, $rhs, $dimension_numbers, $precision_config),
 // XlaDynamicSlice op.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_XlaDynamicSliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
+def : Pat<(TF_XlaDynamicSliceOp:$op MHLO_Tensor:$input, MHLO_Tensor:$starting_indices,
            (ConstantLikeMatcher AnyAttr:$slice_sizes)),
           (MHLO_DynamicSliceOp $input,
            (UnpackStartingIndices $op, $starting_indices),
