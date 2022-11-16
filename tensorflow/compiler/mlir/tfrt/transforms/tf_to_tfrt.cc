@@ -120,12 +120,14 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
   FallbackExecuteOpConversion(
       mlir::MLIRContext *context, CoreRTConverter *corert_converter,
       tfrt_compiler::FallbackConverter *fallback_converter,
+      const mlir::SymbolTable *symbol_table,
       const tfrt_compiler::CostAnalysis *cost_analysis,
       bool tpu_lower_to_fallback, bool target_tpurt)
       : mlir::ConversionPattern(mlir::Pattern::MatchAnyOpTypeTag(),
                                 kFallbackBenefit, context),
         corert_converter_(*corert_converter),
         fallback_converter_(*fallback_converter),
+        symbol_table_(*symbol_table),
         cost_analysis_(*cost_analysis),
         tpu_lower_to_fallback_(tpu_lower_to_fallback),
         target_tpurt_(target_tpurt) {}
@@ -151,8 +153,11 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
     // Convert the function (symbol) attributes to an array of string
     // attributes, which represents the function names.
     llvm::SmallVector<mlir::StringAttr, 4> func_attr_keys;
-    mlir::ArrayAttr op_func_attrs =
-        corert_converter_.CreateOpFuncAttrs(op->getAttrs(), &func_attr_keys);
+    mlir::ArrayAttr op_func_attrs = corert_converter_.CreateOpFuncAttrs(
+        symbol_table_, op->getAttrs(), &func_attr_keys);
+    if (!op_func_attrs) {
+      return op->emitWarning("failed to create func attributes.");
+    }
 
     // Remove the function attributes, which have already been processed.
     for (const auto &key : func_attr_keys) op->removeAttr(key);
@@ -235,6 +240,7 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
 
   CoreRTConverter &corert_converter_;
   tfrt_compiler::FallbackConverter &fallback_converter_;
+  const mlir::SymbolTable &symbol_table_;
   const tfrt_compiler::CostAnalysis &cost_analysis_;
   bool tpu_lower_to_fallback_;
   bool target_tpurt_;
@@ -796,16 +802,20 @@ template <typename TF_Op>
 class CoreRTExecuteOpConversion : public mlir::OpConversionPattern<TF_Op> {
  public:
   CoreRTExecuteOpConversion(mlir::MLIRContext *context,
-                            CoreRTConverter *corert_converter)
-      : CoreRTExecuteOpConversion(context, corert_converter, "") {}
+                            CoreRTConverter *corert_converter,
+                            const mlir::SymbolTable *symbol_table)
+      : CoreRTExecuteOpConversion(context, corert_converter, symbol_table, "") {
+  }
 
   // If device_name is not empty, only ops that are using this device is lowered
   // using CoreRTExecuteOpConversion.
   CoreRTExecuteOpConversion(mlir::MLIRContext *context,
                             CoreRTConverter *corert_converter,
+                            const mlir::SymbolTable *symbol_table,
                             llvm::StringRef device_name)
       : mlir::OpConversionPattern<TF_Op>(context, kCoreRTBenefit),
         corert_converter_(*corert_converter),
+        symbol_table_(*symbol_table),
         device_name_(device_name) {}
 
   LogicalResult matchAndRewrite(
@@ -838,8 +848,11 @@ class CoreRTExecuteOpConversion : public mlir::OpConversionPattern<TF_Op> {
     // Convert the function (symbol) attributes to an array of string
     // attributes, which represents the function names.
     llvm::SmallVector<mlir::StringAttr, 4> func_attr_keys;
-    ArrayAttr op_func_attrs =
-        corert_converter_.CreateOpFuncAttrs(op->getAttrs(), &func_attr_keys);
+    ArrayAttr op_func_attrs = corert_converter_.CreateOpFuncAttrs(
+        symbol_table_, op->getAttrs(), &func_attr_keys);
+    if (!op_func_attrs) {
+      return op.emitWarning("failed to create func attributes.");
+    }
 
     // Remove the function attributes, which have already been processed.
     for (const auto &key : func_attr_keys) op->removeAttr(key);
@@ -870,6 +883,7 @@ class CoreRTExecuteOpConversion : public mlir::OpConversionPattern<TF_Op> {
 
  private:
   CoreRTConverter &corert_converter_;
+  const mlir::SymbolTable &symbol_table_;
   llvm::StringRef device_name_;
 };
 
@@ -1536,8 +1550,8 @@ void PopulateTFToTFRTConversionPatterns(
     bool target_tpurt) {
   // By default, we lower all TF ops to fallback ops.
   patterns->add<FallbackExecuteOpConversion>(
-      context, corert_converter, fallback_converter, cost_analysis,
-      tpu_lower_to_fallback, target_tpurt);
+      context, corert_converter, fallback_converter, symbol_table,
+      cost_analysis, tpu_lower_to_fallback, target_tpurt);
   patterns->add<FallbackConstOpConversion, FallbackSetResourceOp,
                 FallbackGetResourceOp>(context, corert_converter);
 
@@ -1611,8 +1625,8 @@ void PopulateTFToTFRTConversionPatterns(
                   CoreRTExecuteOpConversion<TF::SubOp>,
                   CoreRTExecuteOpConversion<TF::TileOp>,
                   CoreRTExecuteOpConversion<TF::TanhOp>,
-                  CoreRTExecuteOpConversion<TF::ZerosLikeOp>>(context,
-                                                              corert_converter);
+                  CoreRTExecuteOpConversion<TF::ZerosLikeOp>>(
+        context, corert_converter, symbol_table);
   }
 }
 

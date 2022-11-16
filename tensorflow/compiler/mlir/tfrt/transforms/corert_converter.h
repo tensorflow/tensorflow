@@ -50,6 +50,7 @@ class CoreRTConverter : public mlir::TypeConverter {
   // both being string attributes. The values represent function names.
   // This method also populates a vector of attribute keys to be removed.
   mlir::ArrayAttr CreateOpFuncAttrs(
+      const mlir::SymbolTable &symbol_table,
       llvm::ArrayRef<mlir::NamedAttribute> attrs,
       llvm::SmallVector<mlir::StringAttr, 4> *func_attr_keys);
 
@@ -156,6 +157,7 @@ class CoreRTConverter : public mlir::TypeConverter {
   mlir::TypeAttr ConvertTypeAttribute(mlir::TypeAttr type_attr);
 
   mlir::StringAttr ConvertSymbolAttrToStringAttr(
+      const mlir::SymbolTable &symbol_table,
       mlir::FlatSymbolRefAttr symbol_attr);
 
   mlir::Builder builder_;
