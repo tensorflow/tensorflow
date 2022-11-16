@@ -312,9 +312,11 @@ func.func @attr_transpose_adjoint(%arg0: tensor<16x16xf32>, %arg1: tensor<16x16x
 
 // TypeExtensionsAttr aka #mhlo.type_extensions is covered below.
 
-func.func @attr_type_extensions_bounds(%arg0: tensor<?xf32, #mhlo.type_extensions<bounds = [16]>>) -> tensor<?xf32, #mhlo.type_extensions<bounds = [16]>> {
-  // CHECK: "func.return"(%arg0) : (tensor<?xf32, #stablehlo.type_extensions<bounds = [16]>>) -> ()
-  func.return %arg0 : tensor<?xf32, #mhlo.type_extensions<bounds = [16]>>
+func.func @attr_type_extensions_bounds(
+    %arg0: tensor<?x?xf32, #mhlo.type_extensions<bounds = [16, ?]>>)
+    -> tensor<?x?xf32, #mhlo.type_extensions<bounds = [16, ?]>> {
+  // CHECK: "func.return"(%arg0) : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [16, ?]>>) -> ()
+  func.return %arg0 : tensor<?x?xf32, #mhlo.type_extensions<bounds = [16, ?]>>
 }
 // CHECK-LABEL: "attr_type_extensions_bounds"
 

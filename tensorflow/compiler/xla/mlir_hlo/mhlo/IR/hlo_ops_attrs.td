@@ -188,7 +188,8 @@ def TypeExtensions : AttrDef<HLO_Dialect, "TypeExtensions", [
 
     See `HLO_BoundedAttrInterface` for documentation for `bounds`.
   }];
-  let assemblyFormat = "`<` `bounds` `=` `[` $bounds `]` `>`";
+
+  let hasCustomAssemblyFormat = 1;
 }
 
 // A layout attribute (1D tensor of index type)

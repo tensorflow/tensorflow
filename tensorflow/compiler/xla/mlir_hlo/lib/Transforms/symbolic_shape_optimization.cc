@@ -338,7 +338,7 @@ struct RemoveRedundantCstrReshapable final
       if (!isSymbolicProduct(
               dim,
               [&](int64_t c) {
-                if (c != ShapedType::kDynamicSize) concreteProductDynShape *= c;
+                if (c != -1) concreteProductDynShape *= c;
               },
               [&](Symbol s) { partialSymbolicFactorsDynShape.push_back(s); })) {
         return failure();

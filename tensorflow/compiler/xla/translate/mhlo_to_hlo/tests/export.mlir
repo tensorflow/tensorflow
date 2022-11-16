@@ -861,9 +861,9 @@ func.func @main(%arg: tensor<4x2xf32>, %size: tensor<i32>) -> tensor<i32> {
 // -----
 
 // CHECK:  HloModule
-func.func @main(%arg: tensor<?x4xf32, #mhlo.type_extensions<bounds = [8, -1]>>) -> tensor<8x4xf32> {
+func.func @main(%arg: tensor<?x4xf32, #mhlo.type_extensions<bounds = [8, ?]>>) -> tensor<8x4xf32> {
   %size = mhlo.constant dense<8> : tensor<i32>
-  %1 = "mhlo.set_dimension_size"(%arg, %size) {dimension = 0 : i64} : (tensor<?x4xf32, #mhlo.type_extensions<bounds = [8, -1]>>, tensor<i32>) -> tensor<8x4xf32>
+  %1 = "mhlo.set_dimension_size"(%arg, %size) {dimension = 0 : i64} : (tensor<?x4xf32, #mhlo.type_extensions<bounds = [8, ?]>>, tensor<i32>) -> tensor<8x4xf32>
   func.return %1 : tensor<8x4xf32>
 }
 

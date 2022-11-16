@@ -13,10 +13,77 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo
  
  def StableHLO_ScatterDimensionNumbers : AttrDef<StableHLO_Dialect, "ScatterDimensionNumbers"> {
    let cppNamespace = "::mlir::stablehlo";
+@@ -172,7 +175,7 @@
+ 
+     See `HLO_BoundedAttrInterface` for documentation for `bounds`.
+   }];
+-  let assemblyFormat = "`<` `bounds` `=` `[` $bounds `]` `>`";
++  let hasCustomAssemblyFormat = 1;
+ }
+ 
+ // A layout attribute (1D tensor of index type)
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -4509,6 +4509,21 @@
+@@ -182,6 +182,57 @@
+     llvm::function_ref<mlir::InFlightDiagnostic()> emitError) const {
+   return hlo::verifyBounds(
+       getBounds(), RankedTensorType::get(bounds, elementType), emitError);
++}
++
++namespace {
++
++void printCommaSeparatedDynamicShapes(AsmPrinter& printer,
++                                      llvm::ArrayRef<int64_t> shape) {
++  printer << '[';
++  auto printIntOrQuestion = [&](int64_t value) {
++    if (ShapedType::isDynamic(value))
++      printer << '?';
++    else
++      printer << value;
++  };
++  llvm::interleaveComma(shape, printer, printIntOrQuestion);
++  printer << ']';
++}
++
++ParseResult parseCommaSeparatedDynamicShapes(AsmParser& parser,
++                                             SmallVectorImpl<int64_t>& shape) {
++  auto parseElt = [&]() -> ParseResult {
++    if (!parser.parseOptionalQuestion()) {
++      shape.push_back(ShapedType::kDynamicSize);
++      return success();
++    }
++    return parser.parseInteger(shape.emplace_back());
++  };
++  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseElt);
++}
++
++}  // namespace
++
++void TypeExtensionsAttr::print(AsmPrinter& printer) const {
++  printer << "<bounds = ";
++  printCommaSeparatedDynamicShapes(printer, getBounds());
++  printer << ">";
++}
++
++Attribute TypeExtensionsAttr::parse(AsmParser& parser, mlir::Type) {
++  if (parser.parseLess() || parser.parseKeyword("bounds") ||
++      parser.parseEqual())
++    return {};
++
++  SmallVector<int64_t> resultBounds;
++  if (parseCommaSeparatedDynamicShapes(parser, resultBounds)) {
++    parser.emitError(parser.getCurrentLocation(),
++                     "failed to parse TypeExtensions parameter 'bounds' which "
++                     "is to be a `::llvm::ArrayRef<int64_t>`");
++    return {};
++  }
++  if (parser.parseGreater()) return {};
++  return TypeExtensionsAttr::get(parser.getContext(), resultBounds);
+ }
+ 
+ //===----------------------------------------------------------------------===//
+@@ -4509,6 +4560,21 @@
    return success();
  }
  
@@ -50,5 +117,390 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/di
 +void printIntArray(AsmPrinter &printer, ArrayRef<int64_t> ints);
  }  // end namespace stablehlo
  }  // end namespace mlir
+ 
+diff --ruN a/stablehlo/stablehlo/tests/infer_stablehlo.mlir b/stablehlo/stablehlo/tests/infer_stablehlo.mlir
+--- stablehlo/stablehlo/tests/infer_stablehlo.mlir
++++ stablehlo/stablehlo/tests/infer_stablehlo.mlir
+@@ -554,7 +554,7 @@
+ func.func @tensor_bounds(%arg0: tensor<3x5xf32>, %arg1: tensor<i32>) -> tensor<*xindex> {
+   %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<3x5xf32>, tensor<i32>) -> tensor<*xf32>
+ 
+-  // CHECK: types0 = tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, -1]>>
++  // CHECK: types0 = tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, ?]>>
+   %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
+   func.return %1 : tensor<*xindex>
+ }
+@@ -562,9 +562,9 @@
+ // -----
+ 
+ // CHECK-LABEL: @static_tensor_bounds
+-func.func @static_tensor_bounds(%arg0: tensor<?x5xf32, #stablehlo.type_extensions<bounds = [8, -1]>>) -> tensor<*xindex> {
++func.func @static_tensor_bounds(%arg0: tensor<?x5xf32, #stablehlo.type_extensions<bounds = [8, ?]>>) -> tensor<*xindex> {
+   %bounds = stablehlo.constant dense<8> : tensor<i32>
+-  %result = "stablehlo.set_dimension_size"(%arg0, %bounds) {dimension = 0 : i64} : (tensor<?x5xf32, #stablehlo.type_extensions<bounds = [8, -1]>>, tensor<i32>) -> tensor<*xf32>
++  %result = "stablehlo.set_dimension_size"(%arg0, %bounds) {dimension = 0 : i64} : (tensor<?x5xf32, #stablehlo.type_extensions<bounds = [8, ?]>>, tensor<i32>) -> tensor<*xf32>
+ 
+   // CHECK: types0 = tensor<8x5xf32>
+   %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
+@@ -574,8 +574,8 @@
+ // -----
+ 
+ // CHECK-LABEL: @edit_tensor_bounds
+-func.func @edit_tensor_bounds(%arg0: tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
+-  %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
++func.func @edit_tensor_bounds(%arg0: tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
++  %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
+ 
+   // CHECK: types0 = tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, 5]>>
+   %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
+@@ -585,10 +585,10 @@
+ // -----
+ 
+ // CHECK-LABEL: @retain_tensor_bounds
+-func.func @retain_tensor_bounds(%arg0: tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
+-  %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
+-
+-  // CHECK: types0 = tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, -1]>>
++func.func @retain_tensor_bounds(%arg0: tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
++  %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
++
++  // CHECK: types0 = tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, ?]>>
+   %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
+   func.return %1 : tensor<*xindex>
+ }
+@@ -596,10 +596,10 @@
+ // -----
+ 
+ // CHECK-LABEL: @unknown_bounds
+-func.func @unknown_bounds(%arg0: tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
+-  %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
+-
+-  // CHECK: types0 = tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>
++func.func @unknown_bounds(%arg0: tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
++  %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
++
++  // CHECK: types0 = tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, ?]>>
+   %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
+   func.return %1 : tensor<*xindex>
+ }
+@@ -622,21 +622,21 @@
+ // See PairwiseSameOperandAndResultType::inferDimWithBound()
+ // CHECK-LABEL: @add_bounds
+ func.func @add_bounds(
+-  %arg0: tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, -1, -1, -1, 3, 3]>>,
+-  %arg1: tensor<3x?x?x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, 4, -1, 3, 3, 4]>>) -> tensor<*xindex> {
++  %arg0: tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, ?, ?, ?, 3, 3]>>,
++  %arg1: tensor<3x?x?x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, 4, ?, 3, 3, 4]>>) -> tensor<*xindex> {
+   %result1 = "stablehlo.add"(%arg0, %arg1) : (
+-    tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, -1, -1, -1, 3, 3]>>,
+-    tensor<3x?x?x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, 4, -1, 3, 3, 4]>>)
++    tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, ?, ?, ?, 3, 3]>>,
++    tensor<3x?x?x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, 4, ?, 3, 3, 4]>>)
+     -> tensor<?x?x?x?x?x?x?xf32>
+   %result2 = "stablehlo.add"(%arg1, %arg0) : (
+-    tensor<3x?x?x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, 4, -1, 3, 3, 4]>>,
+-    tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, -1, -1, -1, 3, 3]>>)
++    tensor<3x?x?x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, 4, ?, 3, 3, 4]>>,
++    tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, ?, ?, ?, 3, 3]>>)
+     -> tensor<?x?x?x?x?x?x?xf32>
+ 
+-  // CHECK: types0 = tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, -1, -1, 3, 3, 3]>>
++  // CHECK: types0 = tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, ?, ?, 3, 3, 3]>>
+   %1 = "hlo_test_infer.get_return_types"(%result1) : (tensor<?x?x?x?x?x?x?xf32>) -> tensor<*xindex>
+ 
+-  // CHECK: types0 = tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, -1, -1, 3, 3, 3]>>
++  // CHECK: types0 = tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, ?, ?, 3, 3, 3]>>
+   %2 = "hlo_test_infer.get_return_types"(%result2) : (tensor<?x?x?x?x?x?x?xf32>) -> tensor<*xindex>
+   func.return %1 : tensor<*xindex>
+ }
+@@ -646,11 +646,11 @@
+ // This test covers "Error out" case for type inference of binary op with bounds
+ // See PairwiseSameOperandAndResultType::inferDimWithBound()
+ func.func @add_bounds_mismatch(
+-  %arg0: tensor<3xf32, #stablehlo.type_extensions<bounds = [-1]>>,
++  %arg0: tensor<3xf32, #stablehlo.type_extensions<bounds = [?]>>,
+   %arg1: tensor<?xf32, #stablehlo.type_extensions<bounds = [2]>>) -> tensor<*xindex> {
+   // expected-error@+1 {{requires compatible types for all operands and results}}
+   %result = "stablehlo.add"(%arg0, %arg1) : (
+-    tensor<3xf32, #stablehlo.type_extensions<bounds = [-1]>>,
++    tensor<3xf32, #stablehlo.type_extensions<bounds = [?]>>,
+     tensor<?xf32, #stablehlo.type_extensions<bounds = [2]>>) -> tensor<?xf32>
+   %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?xf32>) -> tensor<*xindex>
+   func.return %1 : tensor<*xindex>
+@@ -682,10 +682,10 @@
+ // -----
+ 
+ // CHECK-LABEL: func @transpose_with_bounds
+-func.func @transpose_with_bounds(%arg0: tensor<?x2x?x4xi32, #stablehlo.type_extensions<bounds = [1, -1, 3, -1]>>) -> tensor<*xindex> {
+-  %0 = "stablehlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<?x2x?x4xi32, #stablehlo.type_extensions<bounds = [1, -1, 3, -1]>>) -> tensor<*xi32>
+-
+-  // CHECK: types0 = tensor<2x?x4x?xi32, #stablehlo.type_extensions<bounds = [-1, 1, -1, 3]>>
++func.func @transpose_with_bounds(%arg0: tensor<?x2x?x4xi32, #stablehlo.type_extensions<bounds = [1, ?, 3, ?]>>) -> tensor<*xindex> {
++  %0 = "stablehlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<?x2x?x4xi32, #stablehlo.type_extensions<bounds = [1, ?, 3, ?]>>) -> tensor<*xi32>
++
++  // CHECK: types0 = tensor<2x?x4x?xi32, #stablehlo.type_extensions<bounds = [?, 1, ?, 3]>>
+   %1 = "hlo_test_infer.get_return_types"(%0) : (tensor<*xi32>) -> tensor<*xindex>
+   func.return %1 : tensor<*xindex>
+ }
+@@ -693,8 +693,8 @@
+ // -----
+ 
+ // CHECK-LABEL: func @slice_with_bounds
+-func.func @slice_with_bounds(%arg0: tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [-1, 4, -1]>>) -> tensor<*xindex> {
+-  %0 = "stablehlo.slice"(%arg0) {start_indices = dense<[1, 0, 0]> : tensor<3xi64>, limit_indices = dense<[2, 4, 4]> : tensor<3xi64>, strides = dense<[1, 2, 2]> : tensor<3xi64>} : (tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [-1, 4, -1]>>) -> tensor<*xi32>
++func.func @slice_with_bounds(%arg0: tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xindex> {
++  %0 = "stablehlo.slice"(%arg0) {start_indices = dense<[1, 0, 0]> : tensor<3xi64>, limit_indices = dense<[2, 4, 4]> : tensor<3xi64>, strides = dense<[1, 2, 2]> : tensor<3xi64>} : (tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xi32>
+   // CHECK: types0 = tensor<1x2x2xi32>
+   %1 = "hlo_test_infer.get_return_types"(%0) : (tensor<*xi32>) -> tensor<*xindex>
+   func.return %1 : tensor<*xindex>
+@@ -702,9 +702,9 @@
+ 
+ // -----
+ 
+-func.func @slice_with_index_larger_than_bound_dim(%arg0: tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [-1, 4, -1]>>) -> tensor<*xindex> {
++func.func @slice_with_index_larger_than_bound_dim(%arg0: tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xindex> {
+   // expected-error@+1 {{limit index 5 is larger than dimension bound 4 in dimension 1}}
+-  %0 = "stablehlo.slice"(%arg0) {start_indices = dense<[1, 0, 0]> : tensor<3xi64>, limit_indices = dense<[2, 5, 4]> : tensor<3xi64>, strides = dense<[1, 2, 2]> : tensor<3xi64>} : (tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [-1, 4, -1]>>) -> tensor<*xi32>
++  %0 = "stablehlo.slice"(%arg0) {start_indices = dense<[1, 0, 0]> : tensor<3xi64>, limit_indices = dense<[2, 5, 4]> : tensor<3xi64>, strides = dense<[1, 2, 2]> : tensor<3xi64>} : (tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xi32>
+   %1 = "hlo_test_infer.get_return_types"(%0) : (tensor<*xi32>) -> tensor<*xindex>
+   func.return %1 : tensor<*xindex>
+ }
+@@ -712,26 +712,26 @@
+ // -----
+ 
+ // CHECK-LABEL: @pad_with_bounds
+-func.func @pad_with_bounds(%arg0: tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [-1, 3, -1]>>, %arg1: tensor<f16>) -> tensor<*xindex> {
++func.func @pad_with_bounds(%arg0: tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [?, 3, ?]>>, %arg1: tensor<f16>) -> tensor<*xindex> {
+   %0 = "stablehlo.pad"(%arg0, %arg1) {
+     edge_padding_low = dense<[2, 2, 0]> : tensor<3xi64>,
+     edge_padding_high = dense<[0, 0, 0]> : tensor<3xi64>,
+     interior_padding = dense<[1, 1, 1]> : tensor<3xi64>
+-  } : (tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [-1, 3, -1]>>, tensor<f16>) -> tensor<*xf16>
++  } : (tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [?, 3, ?]>>, tensor<f16>) -> tensor<*xf16>
+   %1 = "hlo_test_infer.get_return_types"(%0) : (tensor<*xf16>) -> tensor<*xindex>
+-  // CHECK: types0 = tensor<7x?x?xf16, #stablehlo.type_extensions<bounds = [-1, 7, -1]>>
+-  func.return %1 : tensor<*xindex>
+-}
+-
+-// -----
+-
+-func.func @pad_with_negative_inferred_bounds(%arg0: tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [-1, 3, -1]>>, %arg1: tensor<f16>) -> tensor<*xindex> {
++  // CHECK: types0 = tensor<7x?x?xf16, #stablehlo.type_extensions<bounds = [?, 7, ?]>>
++  func.return %1 : tensor<*xindex>
++}
++
++// -----
++
++func.func @pad_with_negative_inferred_bounds(%arg0: tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [?, 3, ?]>>, %arg1: tensor<f16>) -> tensor<*xindex> {
+   // expected-error@+1 {{Padding result in negative bound for dimension 1}}
+   %0 = "stablehlo.pad"(%arg0, %arg1) {
+     edge_padding_low = dense<[2, -10, 0]> : tensor<3xi64>,
+     edge_padding_high = dense<[0, 0, 0]> : tensor<3xi64>,
+     interior_padding = dense<[1, 1, 1]> : tensor<3xi64>
+-  } : (tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [-1, 3, -1]>>, tensor<f16>) -> tensor<*xf16>
++  } : (tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [?, 3, ?]>>, tensor<f16>) -> tensor<*xf16>
+   %1 = "hlo_test_infer.get_return_types"(%0) : (tensor<*xf16>) -> tensor<*xindex>
+   func.return %1 : tensor<*xindex>
+ }
+@@ -750,13 +750,13 @@
+ 
+ // CHECK-LABEL: @concat_bounds_c0
+ func.func @concat_bounds_c0(
+-  %arg0: tensor<5x1xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
+-  %arg1: tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>)  -> tensor<*xindex> {
++  %arg0: tensor<5x1xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
++  %arg1: tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>)  -> tensor<*xindex> {
+   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
+-    tensor<5x1xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
+-    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>) -> tensor<?x?xi32>
++    tensor<5x1xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
++    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
+   // CHECK: types0 = tensor<5x3xi32>
+-  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex> 
++  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex>
+   func.return %1 : tensor<*xindex>
+ }
+ 
+@@ -764,19 +764,19 @@
+ 
+ // CHECK-LABEL: @concat_bounds_c1
+ func.func @concat_bounds_c1(
+-  %arg0: tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
+-  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>)  -> tensor<*xindex> {
++  %arg0: tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
++  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>)  -> tensor<*xindex> {
+   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
+-    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
+-    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>) -> tensor<?x?xi32>
++    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
++    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
+   // CHECK: types0 = tensor<5x?xi32>
+-  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex> 
++  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex>
+ 
+   %result_swap = "stablehlo.concatenate"(%arg1, %arg0) { dimension = 1 : i64 } : (
+-    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
+-    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>) -> tensor<?x?xi32>
++    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
++    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
+   // CHECK: types0 = tensor<5x?xi32>
+-  %2 = "hlo_test_infer.get_return_types"(%result_swap) : (tensor<?x?xi32>) -> tensor<*xindex> 
++  %2 = "hlo_test_infer.get_return_types"(%result_swap) : (tensor<?x?xi32>) -> tensor<*xindex>
+ 
+   func.return %1 : tensor<*xindex>
+ }
+@@ -785,19 +785,19 @@
+ 
+ // CHECK-LABEL: @concat_bounds_c2
+ func.func @concat_bounds_c2(
+-  %arg0: tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
+-  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>)  -> tensor<*xindex> {
++  %arg0: tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
++  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
+   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
+-    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
+-    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>) -> tensor<?x?xi32>
+-  // CHECK: types0 = tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 6]>>
+-  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex> 
++    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
++    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>) -> tensor<?x?xi32>
++  // CHECK: types0 = tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 6]>>
++  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex>
+ 
+   %result_swap = "stablehlo.concatenate"(%arg1, %arg0) { dimension = 1 : i64 } : (
+-    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>, 
+-    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>) -> tensor<?x?xi32>
+-  // CHECK: types0 = tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 6]>>
+-  %2 = "hlo_test_infer.get_return_types"(%result_swap) : (tensor<?x?xi32>) -> tensor<*xindex> 
++    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>,
++    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
++  // CHECK: types0 = tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 6]>>
++  %2 = "hlo_test_infer.get_return_types"(%result_swap) : (tensor<?x?xi32>) -> tensor<*xindex>
+ 
+   func.return %1 : tensor<*xindex>
+ }
+@@ -806,13 +806,13 @@
+ 
+ // CHECK-LABEL: @concat_bounds_c3
+ func.func @concat_bounds_c3(
+-  %arg0: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
+-  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>)  -> tensor<*xindex> {
++  %arg0: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
++  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>)  -> tensor<*xindex> {
+   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
+-    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
+-    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>) -> tensor<?x?xi32>
++    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
++    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
+   // CHECK: types0 = tensor<5x?xi32>
+-  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex> 
++  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex>
+   func.return %1 : tensor<*xindex>
+ }
+ 
+@@ -820,19 +820,19 @@
+ 
+ // CHECK-LABEL: @concat_bounds_c4
+ func.func @concat_bounds_c4(
+-  %arg0: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
+-  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>)  -> tensor<*xindex> {
++  %arg0: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
++  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
+   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
+-    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
+-    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>) -> tensor<?x?xi32>
++    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
++    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>) -> tensor<?x?xi32>
+   // CHECK: types0 = tensor<5x?xi32>
+-  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex> 
++  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex>
+ 
+   %result_swap = "stablehlo.concatenate"(%arg1, %arg0) { dimension = 1 : i64 } : (
+-    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>, 
+-    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>) -> tensor<?x?xi32>
++    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>,
++    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
+   // CHECK: types0 = tensor<5x?xi32>
+-  %2 = "hlo_test_infer.get_return_types"(%result_swap) : (tensor<?x?xi32>) -> tensor<*xindex> 
++  %2 = "hlo_test_infer.get_return_types"(%result_swap) : (tensor<?x?xi32>) -> tensor<*xindex>
+ 
+   func.return %1 : tensor<*xindex>
+ }
+@@ -841,13 +841,13 @@
+ 
+ // CHECK-LABEL: @concat_bounds_c5
+ func.func @concat_bounds_c5(
+-  %arg0: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 3]>>, 
+-  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>)  -> tensor<*xindex> {
++  %arg0: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 3]>>,
++  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
+   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
+-    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 3]>>, 
+-    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>) -> tensor<?x?xi32>
+-  // CHECK: types0 = tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 7]>>
+-  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex> 
++    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 3]>>,
++    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>) -> tensor<?x?xi32>
++  // CHECK: types0 = tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 7]>>
++  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex>
+   func.return %1 : tensor<*xindex>
+ }
+ 
+@@ -860,13 +860,13 @@
+ //
+ // CHECK-LABEL: @concat_bounds_unranked_c0
+ func.func @concat_bounds_unranked_c0(
+-  %arg0: tensor<*xi32>, 
+-  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>)  -> tensor<*xindex> {
++  %arg0: tensor<*xi32>,
++  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
+   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (
+-    tensor<*xi32>, 
+-    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>) -> tensor<5x?xi32>
+-  // CHECK: types0 = tensor<?x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>
+-  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<5x?xi32>) -> tensor<*xindex> 
++    tensor<*xi32>,
++    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>) -> tensor<5x?xi32>
++  // CHECK: types0 = tensor<?x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>
++  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<5x?xi32>) -> tensor<*xindex>
+   func.return %1 : tensor<*xindex>
+ }
+ 
+@@ -874,12 +874,12 @@
+ 
+ // CHECK-LABEL: @concat_bounds_unranked_c1
+ func.func @concat_bounds_unranked_c1(
+-  %arg0: tensor<*xi32>, 
+-  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>)  -> tensor<*xindex> {
++  %arg0: tensor<*xi32>,
++  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
+   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
+-    tensor<*xi32>, 
+-    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>) -> tensor<5x?xi32>
++    tensor<*xi32>,
++    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>) -> tensor<5x?xi32>
+   // CHECK: types0 = tensor<5x?xi32>
+-  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<5x?xi32>) -> tensor<*xindex> 
+-  func.return %1 : tensor<*xindex>
+-}
++  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<5x?xi32>) -> tensor<*xindex>
++  func.return %1 : tensor<*xindex>
++}
+diff --ruN a/stablehlo/stablehlo/tests/print_stablehlo.mlir b/stablehlo/stablehlo/tests/print_stablehlo.mlir
+--- stablehlo/stablehlo/tests/print_stablehlo.mlir
++++ stablehlo/stablehlo/tests/print_stablehlo.mlir
+@@ -268,10 +268,10 @@
+ }
+ 
+ // CHECK-LABEL: func @extensions
+-func.func @extensions(%arg0 : tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>,
++func.func @extensions(%arg0 : tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, ?]>>,
+                 %arg1 : tensor<i32>) -> () {
+-  // CHECK:      %0 = stablehlo.set_dimension_size %arg0, %arg1, dim = 1 : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
+-  %0 = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
++  // CHECK:      %0 = stablehlo.set_dimension_size %arg0, %arg1, dim = 1 : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
++  %0 = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
+   "stablehlo.return"() : () -> ()
+ }
  
 
