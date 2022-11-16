@@ -24,8 +24,3 @@ cd build
 # TODO(juanantoniomc): Change "Debug" to "Release" after successful compilation
 # cmake -DLLVM_ENABLE_PROJECTS=clang -DCMAKE_BUILD_TYPE=RelWithDebInfo -G "Unix Makefiles" ../llvm
 # make -j$(nproc)
-
-# Move to clang to right location
-# mkdir -p /usr/lib/llvm-14/
-# mv ./bin /usr/lib/llvm-14/
-# mv ./lib /usr/lib/llvm-14/

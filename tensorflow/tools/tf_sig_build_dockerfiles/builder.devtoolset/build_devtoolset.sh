@@ -189,3 +189,10 @@ PYTHON_VERSIONS=("python3.7m" "python3.8" "python3.9" "python3.10")
 for v in "${PYTHON_VERSIONS[@]}"; do
   ln -s "/usr/local/include/${v}" "/${TARGET}/usr/include/x86_64-linux-gnu/${v}"
 done
+
+# Patch glibc to be compatable with modern clang
+case "${VERSION}" in
+devtoolset-9)
+  patch -p0 -d/ < /glibc2.17-inline.patch
+;;
+esac
