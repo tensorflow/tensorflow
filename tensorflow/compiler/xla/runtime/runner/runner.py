@@ -62,7 +62,7 @@ class Runner:
         f"--module={module_file}", f"--arguments={arguments_file}",
         f"--results={results_file}"
     ]
-    result = subprocess.run(runner_cmd, capture_output=True, check=True)
+    result = subprocess.run(runner_cmd, capture_output=True, check=False)
 
     if result.returncode != 0:
       err = result.stderr.decode("utf-8")
