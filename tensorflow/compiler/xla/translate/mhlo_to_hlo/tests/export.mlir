@@ -1947,4 +1947,4 @@ func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> attributes {execution_
   %0 = "mhlo.add_dependency"(%arg, %token) : (tensor<3x4xf32>, !mhlo.token) -> tensor<3x4xf32>
   func.return %0 : tensor<3x4xf32>
 }
-// CHECK-LITERAL: }, execution_thread="test_thread"
+// CHECK{LITERAL}: }, execution_thread="test_thread"

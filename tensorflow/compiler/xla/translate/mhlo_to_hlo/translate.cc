@@ -81,6 +81,13 @@ Status ConvertMlirHloToHloViaBuilder(mlir::ModuleOp module,
   TF_ASSIGN_OR_RETURN(
       xla::XlaComputation computation,
       return_value.valid() ? builder.Build(return_value) : builder.Build());
+
+  if (auto execution_thread =
+          main->getAttrOfType<mlir::StringAttr>("execution_thread")) {
+    computation.mutable_proto()->mutable_computations(0)->set_execution_thread(
+        execution_thread.str());
+  }
+
   auto hlo_module = computation.proto();
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
 
