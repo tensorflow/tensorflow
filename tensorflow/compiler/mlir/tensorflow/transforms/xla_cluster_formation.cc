@@ -13,11 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
+#include <stack>
+
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/call_graph_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+
+inline constexpr absl::string_view kEntryFunction = "main";
 
 namespace mlir {
 
@@ -32,35 +38,44 @@ struct XlaClusterFormationPass
   void runOnOperation() override;
 };
 
-void EncapsulatePartitionedCall(TF::StatefulPartitionedCallOp call_op) {
-  mlir::OpBuilder builder(call_op);
+void EncapsulatePartitionedCall(Operation *call_op) {
+  OpBuilder builder(call_op);
 
-  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
-      call_op.getLoc(), call_op.getResultTypes());
+  auto cluster = builder.create<tf_device::ClusterOp>(
+      call_op->getLoc(), call_op->getResultTypes());
 
-  call_op.replaceAllUsesWith(cluster.getResults());
+  call_op->replaceAllUsesWith(cluster.getResults());
 
-  cluster.getBody().push_back(new mlir::Block);
+  cluster.getBody().push_back(new Block);
 
-  call_op.getOperation()->moveBefore(&cluster.GetBody(),
-                                     cluster.GetBody().end());
+  call_op->moveBefore(&cluster.GetBody(), cluster.GetBody().end());
 
   builder.setInsertionPointToEnd(&cluster.GetBody());
-  builder.create<mlir::tf_device::ReturnOp>(call_op.getLoc(),
-                                            call_op->getResults());
+  builder.create<tf_device::ReturnOp>(call_op->getLoc(), call_op->getResults());
 }
 
 void XlaClusterFormationPass::runOnOperation() {
   ModuleOp module = getOperation();
+  SymbolTable symtab(module);
 
-  llvm::SmallVector<TF::StatefulPartitionedCallOp, 4> ops;
-  module.walk([&](TF::StatefulPartitionedCallOp call_op) {
-    if (call_op->hasAttr(tensorflow::kCompileDeviceTypeAttr)) {
-      ops.push_back(call_op);
-    }
-  });
-
-  for (auto call_op : ops) {
+  func::FuncOp entry_func = symtab.lookup<func::FuncOp>(kEntryFunction);
+  if (!entry_func) {
+    module.emitError() << "entry function " << kEntryFunction
+                       << " must be present";
+    return signalPassFailure();
+  }
+  auto predicate = [](Operation *op) {
+    if (op->hasAttr(tensorflow::kCompileDeviceTypeAttr)) return true;
+    return false;
+  };
+  llvm::SmallVector<Operation *> outermost_call_ops;
+  if (failed(GetOutermostOpsOfType<TF::StatefulPartitionedCallOp,
+                                   TF::PartitionedCallOp>(
+          entry_func, symtab, outermost_call_ops, predicate)))
+    return signalPassFailure();
+  // Cluster outermost partitioned calls with _xla_compile_device_type
+  // attribute.
+  for (auto &call_op : outermost_call_ops) {
     EncapsulatePartitionedCall(call_op);
   }
 }

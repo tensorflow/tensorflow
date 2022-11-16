@@ -1274,6 +1274,7 @@ cc_library(
     ],
     hdrs = [
         "transforms/bridge.h",
+        "transforms/call_graph_util.h",
         "transforms/cluster_ops_by_policy.h",
         "transforms/collection_ops_util.h",
         "transforms/einsum.h",
