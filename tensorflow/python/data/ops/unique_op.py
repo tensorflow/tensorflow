@@ -20,8 +20,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import gen_experimental_dataset_ops
 
 
-def _unique(self, name):  # pylint: disable=unused-private-name
-  return _UniqueDataset(self, name)
+def _unique(input_dataset, name):  # pylint: disable=unused-private-name
+  return _UniqueDataset(input_dataset, name)
 
 
 class _UniqueDataset(dataset_ops.UnaryUnchangedStructureDataset):
