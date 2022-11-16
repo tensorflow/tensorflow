@@ -170,9 +170,6 @@ tf_py_test(
     name = "counter_test",
     size = "small",
     srcs = ["counter_test.py"],
-    tags = [
-        "noasan",  # TODO(b/259262341) fix this test for asan and re-enable
-    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -909,7 +906,7 @@ cuda_py_test(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:test_ops",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:context",
+        "//tensorflow/python/data/ops:options",
         "//third_party/py/numpy",
     ],
 )
