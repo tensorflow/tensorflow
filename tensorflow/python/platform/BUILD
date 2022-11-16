@@ -117,6 +117,7 @@ tf_py_test(
     tags = [
         "no_pip",
         "no_windows",
+        "no_oss",  # TODO(b/259319686) : Disable the test 
     ],
     deps = [
         ":platform",
@@ -130,6 +131,9 @@ tf_py_test(
     size = "small",
     srcs = ["flags_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_oss",  # TODO(b/259319686) : Disable the test 
+    ],
     deps = [
         ":client_testlib",
         ":platform",
