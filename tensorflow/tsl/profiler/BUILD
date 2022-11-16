@@ -6,6 +6,7 @@ package_group(
 package_group(
     name = "internal",
     packages = [
+        "//tensorflow/compiler/xla/backends/profiler/gpu/...",
         "//tensorflow/core/profiler/...",
         "//tensorflow/python/eager/...",
         "//tensorflow/python/profiler/...",

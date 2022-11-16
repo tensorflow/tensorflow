@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/backends/gpu/nvtx_utils.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/nvtx_utils.h"
 
 #include "third_party/gpus/cuda/include/nvtx3/nvToolsExt.h"
-#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/tsl/platform/platform.h"
 
-namespace tensorflow {
+namespace xla {
 namespace profiler {
 
 /*static*/ std::stack<std::string> &NVTXRangeTracker::GetRangeStack() {
@@ -27,4 +27,4 @@ namespace profiler {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace xla

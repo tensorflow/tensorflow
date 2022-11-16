@@ -13,34 +13,39 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/backends/gpu/rocm_tracer.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/rocm_tracer.h"
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "rocm/rocm_config.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/profiler/backends/cpu/annotation_stack.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/mem.h"
+#include "tensorflow/tsl/profiler/backends/cpu/annotation_stack.h"
+#include "tensorflow/tsl/profiler/utils/time_utils.h"
 
-namespace tensorflow {
+namespace xla {
 namespace profiler {
+
+namespace se = ::stream_executor;
+using tsl::mutex;
+using tsl::mutex_lock;
+using tsl::profiler::AnnotationStack;
 
 constexpr uint32_t RocmTracerEvent::kInvalidDeviceId;
 
-#define RETURN_IF_ROCTRACER_ERROR(expr)                                      \
-  do {                                                                       \
-    roctracer_status_t status = expr;                                        \
-    if (status != ROCTRACER_STATUS_SUCCESS) {                                \
-      const char* errstr = se::wrap::roctracer_error_string();               \
-      LOG(ERROR) << "function " << #expr << "failed with error " << errstr;  \
-      return errors::Internal(absl::StrCat("roctracer call error", errstr)); \
-    }                                                                        \
+#define RETURN_IF_ROCTRACER_ERROR(expr)                                     \
+  do {                                                                      \
+    roctracer_status_t status = expr;                                       \
+    if (status != ROCTRACER_STATUS_SUCCESS) {                               \
+      const char* errstr = se::wrap::roctracer_error_string();              \
+      LOG(ERROR) << "function " << #expr << "failed with error " << errstr; \
+      return tsl::errors::Internal(                                         \
+          absl::StrCat("roctracer call error", errstr));                    \
+    }                                                                       \
   } while (false)
 
 namespace {
@@ -50,7 +55,7 @@ namespace {
 // it can take roughly 98ns, while it takes roughly 1ns with this caching.
 int32_t GetCachedTID() {
   static thread_local int32_t current_thread_id =
-      Env::Default()->GetCurrentThreadId();
+      tsl::Env::Default()->GetCurrentThreadId();
   return current_thread_id;
 }
 
@@ -77,7 +82,7 @@ const char* GetActivityDomainName(uint32_t domain) {
   return "";
 }
 
-string GetActivityDomainOpName(uint32_t domain, uint32_t op) {
+std::string GetActivityDomainOpName(uint32_t domain, uint32_t op) {
   std::ostringstream oss;
   oss << GetActivityDomainName(domain) << " - ";
   switch (domain) {
@@ -267,7 +272,7 @@ const char* GetRocmTracerEventDomainName(const RocmTracerEventDomain& domain) {
 
 void DumpRocmTracerEvent(const RocmTracerEvent& event,
                          uint64_t start_walltime_ns, uint64_t start_gputime_ns,
-                         const string& message) {
+                         const std::string& message) {
   std::ostringstream oss;
   oss << "correlation_id=" << event.correlation_id;
   oss << ",type=" << GetRocmTracerEventTypeName(event.type);
@@ -308,8 +313,8 @@ void DumpRocmTracerEvent(const RocmTracerEvent& event,
   VLOG(3) << oss.str();
 }
 
-Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
-                                       const void* cbdata) {
+tsl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
+                                            const void* cbdata) {
   /* Some APIs such as hipMalloc, implicitly work on th devices set by the
     user using APIs such as hipSetDevice. API callbacks and activity records
     for functions like hipMalloc does not return the device id (CUDA does). To
@@ -321,7 +326,7 @@ Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
 
   // DumpApiCallbackData(domain, cbid, cbdata);
 
-  if (domain != ACTIVITY_DOMAIN_HIP_API) return OkStatus();
+  if (domain != ACTIVITY_DOMAIN_HIP_API) return tsl::OkStatus();
 
   const hip_api_data_t* data = reinterpret_cast<const hip_api_data_t*>(cbdata);
 
@@ -349,7 +354,7 @@ Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
       } else {
         LOG(WARNING) << "An API exit callback received without API enter "
                         "with same correlation id. Event droped!";
-        return OkStatus();  // This API does not belong to us.
+        return tsl::OkStatus();  // This API does not belong to us.
       }
       exit_time = RocmTracer::GetTimestamp();
     }
@@ -430,7 +435,7 @@ Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
         break;
     }
   }
-  return OkStatus();
+  return tsl::OkStatus();
 }
 
 void RocmApiCallbackImpl::AddKernelEventUponApiExit(uint32_t cbid,
@@ -869,8 +874,8 @@ void RocmApiCallbackImpl::AddSynchronizeEventUponApiExit(
   collector_->AddEvent(std::move(event), is_auxiliary);
 }
 
-Status RocmActivityCallbackImpl::operator()(const char* begin,
-                                            const char* end) {
+tsl::Status RocmActivityCallbackImpl::operator()(const char* begin,
+                                                 const char* end) {
   // we do not dump activities in this set in logger
 
   static std::set<activity_op_t> dump_excluded_activities = {
@@ -947,7 +952,7 @@ Status RocmActivityCallbackImpl::operator()(const char* begin,
           default:
             if (dump_excluded_activities.find(record->op) ==
                 dump_excluded_activities.end()) {
-              string drop_message(
+              std::string drop_message(
                   "\nNot in the API tracked activities. Dropped!");
               DumpActivityRecord(record, drop_message);
             }
@@ -988,21 +993,22 @@ Status RocmActivityCallbackImpl::operator()(const char* begin,
                 // markers are with 0ns duration.
                 break;
               default:
-                string drop_message(
+                std::string drop_message(
                     "\nNot in the HIP-OPS-COPY tracked activities. Dropeed!");
                 DumpActivityRecord(record, drop_message);
                 break;
             }  // switch (record->kind)
             break;
           default:
-            string drop_message(
+            std::string drop_message(
                 "\nNot in the HIP-OPS tracked activities. Dropped!");
             DumpActivityRecord(record, drop_message);
             break;
         }  // switch (record->op).
         break;
       default:
-        string drop_message("\nNot in the tracked domain activities. Dropped!");
+        std::string drop_message(
+            "\nNot in the tracked domain activities. Dropped!");
         DumpActivityRecord(record, drop_message);
         break;
     }
@@ -1011,7 +1017,7 @@ Status RocmActivityCallbackImpl::operator()(const char* begin,
         roctracer_next_record(record, &record)));
   }
 
-  return OkStatus();
+  return tsl::OkStatus();
 }
 
 void RocmActivityCallbackImpl::AddHipKernelActivityEvent(
@@ -1409,8 +1415,8 @@ void RocmTracer::ApiCallbackHandler(uint32_t domain, uint32_t cbid,
   if (api_tracing_enabled_) (*api_cb_impl_)(domain, cbid, cbdata);
 }
 
-Status RocmTracer::EnableApiTracing() {
-  if (api_tracing_enabled_) return OkStatus();
+tsl::Status RocmTracer::EnableApiTracing() {
+  if (api_tracing_enabled_) return tsl::OkStatus();
   api_tracing_enabled_ = true;
 
   for (auto& iter : options_->api_callbacks) {
@@ -1432,11 +1438,11 @@ Status RocmTracer::EnableApiTracing() {
       }
     }
   }
-  return OkStatus();
+  return tsl::OkStatus();
 }
 
-Status RocmTracer::DisableApiTracing() {
-  if (!api_tracing_enabled_) return OkStatus();
+tsl::Status RocmTracer::DisableApiTracing() {
+  if (!api_tracing_enabled_) return tsl::OkStatus();
   api_tracing_enabled_ = false;
 
   for (auto& iter : options_->api_callbacks) {
@@ -1458,7 +1464,7 @@ Status RocmTracer::DisableApiTracing() {
       }
     }
   }
-  return OkStatus();
+  return tsl::OkStatus();
 }
 
 void ActivityCallback(const char* begin, const char* end, void* user_data) {
@@ -1487,8 +1493,8 @@ void RocmTracer::ActivityCallbackHandler(const char* begin, const char* end) {
   }
 }
 
-Status RocmTracer::EnableActivityTracing() {
-  if (activity_tracing_enabled_) return OkStatus();
+tsl::Status RocmTracer::EnableActivityTracing() {
+  if (activity_tracing_enabled_) return tsl::OkStatus();
   activity_tracing_enabled_ = true;
 
   if (!options_->activity_tracing.empty()) {
@@ -1525,11 +1531,11 @@ Status RocmTracer::EnableActivityTracing() {
     }
   }
 
-  return OkStatus();
+  return tsl::OkStatus();
 }
 
-Status RocmTracer::DisableActivityTracing() {
-  if (!activity_tracing_enabled_) return OkStatus();
+tsl::Status RocmTracer::DisableActivityTracing() {
+  if (!activity_tracing_enabled_) return tsl::OkStatus();
 
   for (auto& iter : options_->activity_tracing) {
     activity_domain_t domain = iter.first;
@@ -1574,13 +1580,13 @@ Status RocmTracer::DisableActivityTracing() {
             << ", Threshold = " << threshold;
     VLOG(3) << "Wait for pending activity records : sleep for " << duration_ms
             << " ms";
-    tensorflow::profiler::SleepForMillis(duration_ms);
+    tsl::profiler::SleepForMillis(duration_ms);
   }
   ClearPendingActivityRecordsCount();
 
   activity_tracing_enabled_ = false;
 
-  return OkStatus();
+  return tsl::OkStatus();
 }
 
 /*static*/ uint64_t RocmTracer::GetTimestamp() {
@@ -1596,4 +1602,4 @@ Status RocmTracer::DisableActivityTracing() {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace xla

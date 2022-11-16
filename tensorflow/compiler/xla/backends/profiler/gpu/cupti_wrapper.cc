@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/backends/gpu/cupti_wrapper.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/cupti_wrapper.h"
 
 #include <type_traits>
 
-namespace tensorflow {
+namespace xla {
 namespace profiler {
 
 CUptiResult CuptiWrapper::ActivityDisable(CUpti_ActivityKind kind) {
@@ -56,7 +56,8 @@ CUptiResult CuptiWrapper::ActivityRegisterCallbacks(
                                         func_buffer_completed);
 }
 
-CUptiResult CuptiWrapper::GetDeviceId(CUcontext context, uint32* deviceId) {
+CUptiResult CuptiWrapper::GetDeviceId(CUcontext context,
+                                      tsl::uint32* deviceId) {
   return cuptiGetDeviceId(context, deviceId);
 }
 
@@ -245,4 +246,4 @@ CUptiResult CuptiWrapper::GetStreamIdEx(CUcontext context, CUstream stream,
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace xla

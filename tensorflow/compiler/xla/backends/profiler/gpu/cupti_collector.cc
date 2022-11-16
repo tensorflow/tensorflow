@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/backends/gpu/cupti_collector.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/cupti_collector.h"
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -23,19 +23,35 @@ limitations under the License.
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_occupancy.h"
-#include "tensorflow/core/platform/abi.h"
-#include "tensorflow/core/platform/host_info.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/profiler/utils/parse_annotation.h"
-#include "tensorflow/core/profiler/utils/trace_utils.h"
-#include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/tsl/platform/abi.h"
+#include "tensorflow/tsl/platform/host_info.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/profiler/utils/parse_annotation.h"
+#include "tensorflow/tsl/profiler/utils/trace_utils.h"
+#include "tensorflow/tsl/profiler/utils/xplane_builder.h"
+#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
+#include "tensorflow/tsl/profiler/utils/xplane_utils.h"
 
-namespace tensorflow {
+namespace xla {
 namespace profiler {
 
 namespace {
+
+using tensorflow::profiler::XEventMetadata;
+using tensorflow::profiler::XSpace;
+using tsl::mutex;
+using tsl::mutex_lock;
+using tsl::profiler::Annotation;
+using tsl::profiler::FindOrAddMutablePlaneWithName;
+using tsl::profiler::GpuPlaneName;
+using tsl::profiler::kCuptiDriverApiPlaneName;
+using tsl::profiler::kDeviceVendorNvidia;
+using tsl::profiler::kThreadIdOverhead;
+using tsl::profiler::ParseAnnotationStack;
+using tsl::profiler::StatType;
+using tsl::profiler::XEventBuilder;
+using tsl::profiler::XLineBuilder;
+using tsl::profiler::XPlaneBuilder;
 
 bool IsHostEvent(const CuptiTracerEvent& event, int64_t* line_id) {
   // DriverCallback(i.e. kernel launching) events are host events.
@@ -124,7 +140,7 @@ class PerDeviceCollector {
   }
 
   void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
-                    uint64 start_gpu_ns, uint64 end_gpu_ns,
+                    tsl::uint64 start_gpu_ns, tsl::uint64 end_gpu_ns,
                     XLineBuilder* line) {
     if (event.start_time_ns < start_gpu_ns || event.end_time_ns > end_gpu_ns ||
         event.start_time_ns > event.end_time_ns) {
@@ -133,7 +149,7 @@ class PerDeviceCollector {
               << " end time(ns): " << event.end_time_ns;
       return;
     }
-    std::string kernel_name = port::MaybeAbiDemangle(event.name.c_str());
+    std::string kernel_name = tsl::port::MaybeAbiDemangle(event.name.c_str());
     if (kernel_name.empty()) {
       kernel_name = GetTraceEventTypeName(event.type);
     }
@@ -161,7 +177,7 @@ class PerDeviceCollector {
     if (event.context_id != CuptiTracerEvent::kInvalidContextId) {
       xevent.AddStatValue(
           *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kContextId)),
-          absl::StrCat("$$", static_cast<uint64>(event.context_id)));
+          absl::StrCat("$$", static_cast<tsl::uint64>(event.context_id)));
     }
 
     if (event.type == CuptiTracerEventType::Kernel &&
@@ -190,10 +206,11 @@ class PerDeviceCollector {
                           occ_stats.occupancy_pct);
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                               GetStatTypeStr(StatType::kOccupancyMinGridSize)),
-                          static_cast<int32>(occ_stats.min_grid_size));
-      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(GetStatTypeStr(
-                              StatType::kOccupancySuggestedBlockSize)),
-                          static_cast<int32>(occ_stats.suggested_block_size));
+                          static_cast<tsl::int32>(occ_stats.min_grid_size));
+      xevent.AddStatValue(
+          *plane->GetOrCreateStatMetadata(
+              GetStatTypeStr(StatType::kOccupancySuggestedBlockSize)),
+          static_cast<tsl::int32>(occ_stats.suggested_block_size));
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                               GetStatTypeStr(StatType::kKernelDetails)),
                           *plane->GetOrCreateStatMetadata(ToXStat(
@@ -272,11 +289,11 @@ class PerDeviceCollector {
     }
   }
 
-  absl::optional<int> GetDeviceAttribute(CUdevice device,
-                                         CUdevice_attribute attrib) {
+  std::optional<int> GetDeviceAttribute(CUdevice device,
+                                        CUdevice_attribute attrib) {
     int ret_val;
     CUresult err = cuDeviceGetAttribute(&ret_val, attrib, device);
-    if (err != CUDA_SUCCESS) return absl::nullopt;
+    if (err != CUDA_SUCCESS) return std::nullopt;
     return ret_val;
   }
 
@@ -303,7 +320,7 @@ class PerDeviceCollector {
     events_.emplace_back(std::move(event));
   }
 
-  size_t Flush(uint64 start_gpu_ns, uint64 end_gpu_ns,
+  size_t Flush(tsl::uint64 start_gpu_ns, tsl::uint64 end_gpu_ns,
                XPlaneBuilder* device_plane, XPlaneBuilder* host_plane) {
     mutex_lock l(m_);
     // Tracking event types per line.
@@ -375,7 +392,7 @@ class PerDeviceCollector {
       // Times 2 because HBM is DDR memory; it gets two data bits per each
       // data lane.
       auto memory_bandwidth =
-          uint64{2} * (*mem_clock_khz) * 1000 * (*mem_bus_width_bits) / 8;
+          tsl::uint64{2} * (*mem_clock_khz) * 1000 * (*mem_bus_width_bits) / 8;
       device_plane->AddStatValue(
           *device_plane->GetOrCreateStatMetadata(
               GetStatTypeStr(StatType::kDevCapMemoryBandwidth)),
@@ -387,7 +404,7 @@ class PerDeviceCollector {
       device_plane->AddStatValue(
           *device_plane->GetOrCreateStatMetadata(
               GetStatTypeStr(StatType::kDevCapMemorySize)),
-          static_cast<uint64>(total_memory));
+          static_cast<tsl::uint64>(total_memory));
     }
 
     auto compute_capability_major = GetDeviceAttribute(
@@ -452,7 +469,7 @@ class PerDeviceCollector {
 
 }  // namespace
 
-void AnnotationMap::Add(uint32 device_id, uint32 correlation_id,
+void AnnotationMap::Add(tsl::uint32 device_id, tsl::uint32 correlation_id,
                         const absl::string_view annotation,
                         const absl::string_view nvtx_range) {
   if (annotation.empty() && nvtx_range.empty()) return;
@@ -471,8 +488,8 @@ void AnnotationMap::Add(uint32 device_id, uint32 correlation_id,
   }
 }
 
-AnnotationMap::AnnotationInfo AnnotationMap::LookUp(uint32 device_id,
-                                                    uint32 correlation_id) {
+AnnotationMap::AnnotationInfo AnnotationMap::LookUp(
+    tsl::uint32 device_id, tsl::uint32 correlation_id) {
   if (device_id >= per_device_map_.size()) return AnnotationInfo();
   auto& per_device_map = per_device_map_[device_id];
   absl::MutexLock lock(&per_device_map.mutex);
@@ -486,7 +503,8 @@ AnnotationMap::AnnotationInfo AnnotationMap::LookUp(uint32 device_id,
 class CuptiTraceCollectorImpl : public CuptiTraceCollector {
  public:
   CuptiTraceCollectorImpl(const CuptiTracerCollectorOptions& option,
-                          uint64 start_walltime_ns, uint64 start_gpu_ns)
+                          tsl::uint64 start_walltime_ns,
+                          tsl::uint64 start_gpu_ns)
       : CuptiTraceCollector(option),
         num_callback_events_(0),
         num_activity_events_(0),
@@ -512,13 +530,14 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     }
     per_device_collector_[event.device_id].AddEvent(std::move(event));
   }
-  void OnEventsDropped(const std::string& reason, uint32 num_events) override {
+  void OnEventsDropped(const std::string& reason,
+                       tsl::uint32 num_events) override {
     absl::MutexLock lock(&mutex_);
     dropped_events_[reason] += num_events;
   }
   void Flush() override {}
   // Returns true if some GPU events are captured.
-  bool Export(XSpace* space, uint64 end_gpu_ns) override {
+  bool Export(XSpace* space, tsl::uint64 end_gpu_ns) override {
     LOG(INFO) << " GpuTracer has collected " << num_callback_events_
               << " callback api events and " << num_activity_events_
               << " activity events. " << ReportDroppedEvents();
@@ -546,7 +565,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
 
   std::string ReportDroppedEvents() {
     absl::MutexLock lock(&mutex_);
-    string result;
+    std::string result;
     for (const auto& dropped : dropped_events_) {
       absl::StrAppend(&result, " ", dropped.second, " events dropped because ",
                       dropped.first, ";");
@@ -557,8 +576,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
   std::string ReportNumEventsIfDropped() override {
     std::string events_dropped = ReportDroppedEvents();
     if (events_dropped.empty()) return "";
-    return absl::StrCat("Detected GPU events dropped on ", port::Hostname(),
-                        ": Profiler has collected ",
+    return absl::StrCat("Detected GPU events dropped on ",
+                        tsl::port::Hostname(), ": Profiler has collected ",
                         num_callback_events_.load(), " driver events and ",
                         num_activity_events_.load(), " device events.",
                         events_dropped);
@@ -568,10 +587,10 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
   std::atomic<int> num_callback_events_;
   std::atomic<int> num_activity_events_;
   absl::Mutex mutex_;
-  absl::flat_hash_map<std::string, uint64> dropped_events_
+  absl::flat_hash_map<std::string, tsl::uint64> dropped_events_
       ABSL_GUARDED_BY(mutex_);
-  uint64 start_walltime_ns_;
-  uint64 start_gpu_ns_;
+  tsl::uint64 start_walltime_ns_;
+  tsl::uint64 start_gpu_ns_;
   int num_gpus_;
 
   // Set the all XLines of specified XPlane to starting walltime.
@@ -580,7 +599,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
   // this fact. Eventually we change line start time to corresponding
   // start_walltime_ns to normalize with CPU wall time.
   static void NormalizeTimeStamps(XPlaneBuilder* plane,
-                                  uint64 start_walltime_ns) {
+                                  tsl::uint64 start_walltime_ns) {
     plane->ForEachLine(
         [&](XLineBuilder line) { line.SetTimestampNs(start_walltime_ns); });
   }
@@ -591,8 +610,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
 };
 
 std::unique_ptr<CuptiTraceCollector> CreateCuptiCollector(
-    const CuptiTracerCollectorOptions& options, const uint64 start_walltime_ns,
-    const uint64 start_gputime_ns) {
+    const CuptiTracerCollectorOptions& options,
+    const tsl::uint64 start_walltime_ns, const tsl::uint64 start_gputime_ns) {
   return std::make_unique<CuptiTraceCollectorImpl>(options, start_walltime_ns,
                                                    start_gputime_ns);
 }
@@ -621,4 +640,4 @@ absl::string_view GetMemoryKindName(int8_t memory_kind) {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace xla

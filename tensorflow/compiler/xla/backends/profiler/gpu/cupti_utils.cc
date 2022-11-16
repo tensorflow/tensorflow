@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "absl/memory/memory.h"
-#include "tensorflow/core/profiler/backends/gpu/cupti_error_manager.h"
-#include "tensorflow/core/profiler/backends/gpu/cupti_interface.h"
-#include "tensorflow/core/profiler/backends/gpu/cupti_wrapper.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/cupti_error_manager.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/cupti_interface.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/cupti_wrapper.h"
 
-namespace tensorflow {
+namespace xla {
 namespace profiler {
 
 CuptiInterface* GetCuptiInterface() {
@@ -27,4 +27,4 @@ CuptiInterface* GetCuptiInterface() {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace xla

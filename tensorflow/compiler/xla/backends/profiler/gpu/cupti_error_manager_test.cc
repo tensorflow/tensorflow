@@ -15,30 +15,30 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 
-#include "tensorflow/core/profiler/backends/gpu/cupti_error_manager.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/cupti_error_manager.h"
 
 #include <cstdint>
 #include <memory>
 #include <utility>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/profiler/backends/gpu/cuda_test.h"
-#include "tensorflow/core/profiler/backends/gpu/cupti_interface.h"
-#include "tensorflow/core/profiler/backends/gpu/cupti_tracer.h"
-#include "tensorflow/core/profiler/backends/gpu/cupti_wrapper.h"
-#include "tensorflow/core/profiler/backends/gpu/mock_cupti.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/cuda_test.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/cupti_interface.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/cupti_tracer.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/cupti_wrapper.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/mock_cupti.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/profiler/utils/time_utils.h"
 
-namespace tensorflow {
+namespace xla {
 namespace profiler {
 namespace test {
 
-using tensorflow::profiler::CuptiInterface;
-using tensorflow::profiler::CuptiTracer;
-using tensorflow::profiler::CuptiTracerCollectorOptions;
-using tensorflow::profiler::CuptiTracerOptions;
-using tensorflow::profiler::CuptiWrapper;
+using xla::profiler::CuptiInterface;
+using xla::profiler::CuptiTracer;
+using xla::profiler::CuptiTracerCollectorOptions;
+using xla::profiler::CuptiTracerOptions;
+using xla::profiler::CuptiWrapper;
 
 using ::testing::_;
 using ::testing::Invoke;
@@ -74,7 +74,7 @@ class CuptiErrorManagerTest : public ::testing::Test {
     CuptiTracerCollectorOptions collector_options;
     collector_options.num_gpus = CuptiTracer::NumGpus();
     uint64_t start_gputime_ns = CuptiTracer::GetTimestamp();
-    uint64_t start_walltime_ns = tensorflow::profiler::GetCurrentTimeNanos();
+    uint64_t start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();
     cupti_collector_ = CreateCuptiCollector(
         collector_options, start_walltime_ns, start_gputime_ns);
   }
@@ -107,7 +107,7 @@ class CuptiErrorManagerTest : public ::testing::Test {
   // CuptiWrapper instance to which mock_ calls are delegated.
   std::unique_ptr<CuptiWrapper> cupti_wrapper_;
 
-  std::unique_ptr<tensorflow::profiler::CuptiTraceCollector> cupti_collector_;
+  std::unique_ptr<xla::profiler::CuptiTraceCollector> cupti_collector_;
 };
 
 // Verifies that failed EnableProfiling() does not kill an application.
@@ -208,6 +208,6 @@ TEST_F(CuptiErrorManagerTest, GpuTraceAutoEnableTest) {
 
 }  // namespace test
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace xla
 
 #endif  // GOOGLE_CUDA

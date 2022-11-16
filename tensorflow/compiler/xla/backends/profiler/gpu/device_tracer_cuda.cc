@@ -23,24 +23,29 @@ limitations under the License.
 #include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/profiler/backends/gpu/cupti_collector.h"
-#include "tensorflow/core/profiler/backends/gpu/cupti_tracer.h"
-#include "tensorflow/core/profiler/backends/gpu/cupti_wrapper.h"
-#include "tensorflow/core/profiler/lib/profiler_factory.h"
-#include "tensorflow/core/profiler/lib/profiler_interface.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
-#include "tensorflow/core/util/env_var.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/cupti_collector.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/cupti_tracer.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/cupti_wrapper.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tensorflow/tsl/profiler/lib/profiler_factory.h"
+#include "tensorflow/tsl/profiler/lib/profiler_interface.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/utils/time_utils.h"
+#include "tensorflow/tsl/util/env_var.h"
 
-namespace tensorflow {
+namespace xla {
 namespace profiler {
 
+using tensorflow::ProfileOptions;
+using tensorflow::profiler::XSpace;
+using tsl::OkStatus;
+using tsl::ReadBoolFromEnvVar;
+using tsl::Status;
+
 // GpuTracer for GPU.
-class GpuTracer : public profiler::ProfilerInterface {
+class GpuTracer : public tsl::profiler::ProfilerInterface {
  public:
   GpuTracer(CuptiTracer* cupti_tracer, CuptiInterface* cupti_interface)
       : cupti_tracer_(cupti_tracer) {
@@ -73,7 +78,7 @@ class GpuTracer : public profiler::ProfilerInterface {
 
 Status GpuTracer::DoStart() {
   if (!cupti_tracer_->IsAvailable()) {
-    return errors::Unavailable("Another profile session running.");
+    return tsl::errors::Unavailable("Another profile session running.");
   }
 
   options_.cbids_selected = {
@@ -149,8 +154,8 @@ Status GpuTracer::DoStart() {
 
   CuptiTracerCollectorOptions collector_options;
   collector_options.num_gpus = cupti_tracer_->NumGpus();
-  uint64 start_gputime_ns = CuptiTracer::GetTimestamp();
-  uint64 start_walltime_ns = GetCurrentTimeNanos();
+  tsl::uint64 start_gputime_ns = CuptiTracer::GetTimestamp();
+  tsl::uint64 start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();
   cupti_collector_ = CreateCuptiCollector(collector_options, start_walltime_ns,
                                           start_gputime_ns);
 
@@ -189,7 +194,8 @@ Status GpuTracer::CollectData(XSpace* space) {
       VLOG(1) << "No trace data collected, session wasn't started";
       return OkStatus();
     case State::kStartedOk:
-      return errors::FailedPrecondition("Cannot collect trace before stopping");
+      return tsl::errors::FailedPrecondition(
+          "Cannot collect trace before stopping");
     case State::kStartedError:
       LOG(ERROR) << "Cannot collect, profiler failed to start";
       return OkStatus();
@@ -206,17 +212,17 @@ Status GpuTracer::CollectData(XSpace* space) {
         space->add_warnings(std::move(events_dropped));
       }
       if (cupti_collector_) {
-        uint64 end_gpu_ns = CuptiTracer::GetTimestamp();
+        tsl::uint64 end_gpu_ns = CuptiTracer::GetTimestamp();
         cupti_collector_->Export(space, end_gpu_ns);
       }
       return OkStatus();
     }
   }
-  return errors::Internal("Invalid profiling state: ", profiling_state_);
+  return tsl::errors::Internal("Invalid profiling state: ", profiling_state_);
 }
 
 // Not in anonymous namespace for testing purposes.
-std::unique_ptr<profiler::ProfilerInterface> CreateGpuTracer(
+std::unique_ptr<tsl::profiler::ProfilerInterface> CreateGpuTracer(
     const ProfileOptions& options) {
   if (options.device_tracer_level() == 0) return nullptr;
   if (options.device_type() != ProfileOptions::GPU &&
@@ -237,6 +243,6 @@ auto register_gpu_tracer_factory = [] {
 }();
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace xla
 
 #endif  // GOOGLE_CUDA

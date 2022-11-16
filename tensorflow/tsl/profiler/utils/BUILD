@@ -175,6 +175,10 @@ cc_library(
     name = "trace_utils",
     hdrs = ["trace_utils.h"],
     copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/compiler/xla/backends/profiler/gpu:__pkg__",
+        "//tensorflow/tsl/profiler:internal",
+    ],
     deps = [
         "//tensorflow/tsl/platform:types",
     ],
@@ -365,6 +369,10 @@ cc_library(
     srcs = ["buffer_pool.cc"],
     hdrs = ["buffer_pool.h"],
     copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/compiler/xla/backends/profiler/gpu:__pkg__",
+        "//tensorflow/tsl/profiler:internal",
+    ],
     deps = [
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:mutex",

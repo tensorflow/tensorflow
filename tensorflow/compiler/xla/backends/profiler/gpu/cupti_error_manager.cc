@@ -13,15 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/backends/gpu/cupti_error_manager.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/cupti_error_manager.h"
 
 #include <utility>
 
 #include "absl/debugging/leak_check.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
-namespace tensorflow {
+namespace xla {
 namespace profiler {
+
+using tsl::mutex_lock;
 
 CuptiErrorManager::CuptiErrorManager(std::unique_ptr<CuptiInterface> interface)
     : interface_(std::move(interface)), disabled_(0), undo_disabled_(false) {}
@@ -500,4 +502,4 @@ std::string CuptiErrorManager::ResultString(CUptiResult error) const {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace xla

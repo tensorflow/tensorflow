@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // Creates some GPU activity to test functionalities of gpuperfcounter/gputrace.
-#include "tensorflow/core/profiler/backends/gpu/cuda_test.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/cuda_test.h"
 
 #if GOOGLE_CUDA
 #include <stdio.h>
@@ -23,9 +23,9 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/driver_types.h"
 #endif
 
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace xla {
 namespace profiler {
 namespace test {
 
@@ -185,4 +185,4 @@ void MemCopyP2PExplicit() {
 
 }  // namespace test
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace xla

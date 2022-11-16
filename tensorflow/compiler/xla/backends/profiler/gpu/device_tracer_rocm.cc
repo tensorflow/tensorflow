@@ -24,25 +24,46 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/abi.h"
-#include "tensorflow/core/platform/env_time.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/profiler/backends/cpu/annotation_stack.h"
-#include "tensorflow/core/profiler/backends/gpu/rocm_tracer.h"
-#include "tensorflow/core/profiler/lib/profiler_factory.h"
-#include "tensorflow/core/profiler/lib/profiler_interface.h"
-#include "tensorflow/core/profiler/utils/parse_annotation.h"
-#include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
-#include "tensorflow/core/util/env_var.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/rocm_tracer.h"
+#include "tensorflow/tsl/platform/abi.h"
+#include "tensorflow/tsl/platform/env_time.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tensorflow/tsl/profiler/backends/cpu/annotation_stack.h"
+#include "tensorflow/tsl/profiler/lib/profiler_factory.h"
+#include "tensorflow/tsl/profiler/lib/profiler_interface.h"
+#include "tensorflow/tsl/profiler/utils/parse_annotation.h"
+#include "tensorflow/tsl/profiler/utils/xplane_builder.h"
+#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
+#include "tensorflow/tsl/profiler/utils/xplane_utils.h"
+#include "tensorflow/tsl/util/env_var.h"
 
-namespace tensorflow {
+namespace xla {
 namespace profiler {
+
+using tensorflow::ProfileOptions;
+using tsl::mutex;
+using tsl::mutex_lock;
+using tsl::OkStatus;
+using tsl::Status;
+using tsl::profiler::Annotation;
+using tsl::profiler::AnnotationStack;
+using tsl::profiler::FindOrAddMutablePlaneWithName;
+using tsl::profiler::GetStatTypeStr;
+using tsl::profiler::GpuPlaneName;
+using tsl::profiler::kDeviceVendorAMD;
 using tsl::profiler::kThreadIdOverhead;
+using tsl::profiler::ParseAnnotationStack;
+using tsl::profiler::ProfilerInterface;
+using tsl::profiler::RegisterProfilerFactory;
+using tsl::profiler::StatType;
+using tsl::profiler::XEventBuilder;
+using tsl::profiler::XEventMetadata;
+using tsl::profiler::XLineBuilder;
+using tsl::profiler::XPlaneBuilder;
+using tsl::profiler::XSpace;
 
 namespace {
 // Set the all XLines of specified XPlane to starting walltime.
@@ -52,7 +73,7 @@ namespace {
 // start_walltime_ns to normalize with CPU wall time.
 static void NormalizeTimeStamps(XPlaneBuilder* plane,
                                 uint64_t start_walltime_ns) {
-  plane->ForEachLine([&](tensorflow::profiler::XLineBuilder line) {
+  plane->ForEachLine([&](tsl::profiler::XLineBuilder line) {
     line.SetTimestampNs(start_walltime_ns);
   });
 }
@@ -170,8 +191,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
 
   void Export(XSpace* space) {
     uint64_t end_gputime_ns = RocmTracer::GetTimestamp();
-    XPlaneBuilder host_plane(
-        FindOrAddMutablePlaneWithName(space, kRoctracerApiPlaneName));
+    XPlaneBuilder host_plane(FindOrAddMutablePlaneWithName(
+        space, tsl::profiler::kRoctracerApiPlaneName));
     for (int i = 0; i < options_.num_gpus; ++i) {
       std::string name = GpuPlaneName(i);
       XPlaneBuilder device_plane(FindOrAddMutablePlaneWithName(space, name));
@@ -195,20 +216,20 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   uint64_t start_gputime_ns_;
 
   mutex event_maps_mutex_;
-  absl::flat_hash_map<uint32, RocmTracerEvent> api_events_map_
+  absl::flat_hash_map<tsl::uint32, RocmTracerEvent> api_events_map_
       TF_GUARDED_BY(event_maps_mutex_);
-  absl::flat_hash_map<uint32, RocmTracerEvent> activity_api_events_map_
+  absl::flat_hash_map<tsl::uint32, RocmTracerEvent> activity_api_events_map_
       TF_GUARDED_BY(event_maps_mutex_);
 
   /* Some apis such as MEMSETD32 (based on an observation with ResNet50),
     trigger multiple HIP ops domain activities. We keep them in a vector and
     merge them with api activities at flush time.
   */
-  absl::flat_hash_map<uint32, std::vector<RocmTracerEvent>>
+  absl::flat_hash_map<tsl::uint32, std::vector<RocmTracerEvent>>
       activity_ops_events_map_ TF_GUARDED_BY(event_maps_mutex_);
   // This is for the APIs that we track because we need some information from
   // them to populate the corresponding activity that we actually track.
-  absl::flat_hash_map<uint32, RocmTracerEvent> auxiliary_api_events_map_
+  absl::flat_hash_map<tsl::uint32, RocmTracerEvent> auxiliary_api_events_map_
       TF_GUARDED_BY(event_maps_mutex_);
 
   const std::vector<RocmTracerEvent> ApiActivityInfoExchange() {
@@ -563,7 +584,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
         // Times 2 because HBM is DDR memory; it gets two data bits per each
         // data lane.
         auto memory_bandwidth =
-            uint64{2} * (mem_clock_khz)*1000 * (mem_bus_width_bits) / 8;
+            tsl::uint64{2} * (mem_clock_khz)*1000 * (mem_bus_width_bits) / 8;
         device_plane->AddStatValue(
             *device_plane->GetOrCreateStatMetadata(
                 GetStatTypeStr(StatType::kDevCapMemoryBandwidth)),
@@ -575,7 +596,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
         device_plane->AddStatValue(
             *device_plane->GetOrCreateStatMetadata(
                 GetStatTypeStr(StatType::kDevCapMemorySize)),
-            static_cast<uint64>(total_memory));
+            static_cast<tsl::uint64>(total_memory));
       }
 
       auto compute_capability_major = device_properties_.major;
@@ -671,7 +692,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
                 << " corr. id:" << event.correlation_id;
         return;
       }
-      std::string kernel_name = port::MaybeAbiDemangle(event.name.c_str());
+      std::string kernel_name = tsl::port::MaybeAbiDemangle(event.name.c_str());
       if (kernel_name.empty()) {
         kernel_name = GetRocmTracerEventTypeName(event.type);
       }
@@ -700,7 +721,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       //   xevent.AddStatValue(
       //       *plane->GetOrCreateStatMetadata(
       //           GetStatTypeStr(StatType::kContextId)),
-      //       absl::StrCat("$$", static_cast<uint64>(event.context_id)));
+      //       absl::StrCat("$$", static_cast<tsl::uint64>(event.context_id)));
       // }
 
       if (event.type == RocmTracerEventType::Kernel &&
@@ -731,10 +752,11 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
                             occ_stats.occupancy_pct);
         xevent.AddStatValue(*plane->GetOrCreateStatMetadata(GetStatTypeStr(
                                 StatType::kOccupancyMinGridSize)),
-                            static_cast<int32>(occ_stats.min_grid_size));
-        xevent.AddStatValue(*plane->GetOrCreateStatMetadata(GetStatTypeStr(
-                                StatType::kOccupancySuggestedBlockSize)),
-                            static_cast<int32>(occ_stats.suggested_block_size));
+                            static_cast<tsl::int32>(occ_stats.min_grid_size));
+        xevent.AddStatValue(
+            *plane->GetOrCreateStatMetadata(
+                GetStatTypeStr(StatType::kOccupancySuggestedBlockSize)),
+            static_cast<tsl::int32>(occ_stats.suggested_block_size));
         xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                                 GetStatTypeStr(StatType::kKernelDetails)),
                             *plane->GetOrCreateStatMetadata(ToXStat(
@@ -821,7 +843,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
         }
       }
     }
-    bool IsHostEvent(const RocmTracerEvent& event, int64* line_id) {
+    bool IsHostEvent(const RocmTracerEvent& event, tsl::int64* line_id) {
       // DriverCallback(i.e. kernel launching) events are host events.
       if (event.source == RocmTracerEventSource::ApiCallback) {
         *line_id = event.thread_id;
@@ -859,7 +881,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       int host_ev_cnt = 0, dev_ev_cnt = 0;
       mutex_lock l(events_mutex);
       // Tracking event types per line.
-      absl::flat_hash_map<int64, absl::flat_hash_set<RocmTracerEventType>>
+      absl::flat_hash_map<tsl::int64, absl::flat_hash_set<RocmTracerEventType>>
           events_types_per_line;
       for (const RocmTracerEvent& event : events) {
         int64_t line_id = RocmTracerEvent::kInvalidThreadId;
@@ -899,7 +921,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
 
     mutex events_mutex;
     std::vector<RocmTracerEvent> events TF_GUARDED_BY(events_mutex);
-    absl::flat_hash_map<uint32, CorrelationInfo> correlation_info_
+    absl::flat_hash_map<tsl::uint32, CorrelationInfo> correlation_info_
         TF_GUARDED_BY(events_mutex);
     absl::flat_hash_map<RocmDeviceOccupancyParams, OccupancyStats>
         occupancy_cache_;
@@ -1036,7 +1058,7 @@ RocmTraceCollectorOptions GpuTracer::GetRocmTraceCollectorOptions(
 
 Status GpuTracer::DoStart() {
   if (!rocm_tracer_->IsAvailable()) {
-    return errors::Unavailable("Another profile session running.");
+    return tsl::errors::Unavailable("Another profile session running.");
   }
 
   AnnotationStack::Enable(true);
@@ -1044,7 +1066,7 @@ Status GpuTracer::DoStart() {
   RocmTraceCollectorOptions trace_collector_options =
       GetRocmTraceCollectorOptions(rocm_tracer_->NumGpus());
   uint64_t start_gputime_ns = RocmTracer::GetTimestamp();
-  uint64_t start_walltime_ns = tensorflow::EnvTime::NowNanos();
+  uint64_t start_walltime_ns = tsl::EnvTime::NowNanos();
   rocm_trace_collector_ = std::make_unique<RocmTraceCollectorImpl>(
       trace_collector_options, start_walltime_ns, start_gputime_ns);
 
@@ -1090,7 +1112,8 @@ Status GpuTracer::CollectData(XSpace* space) {
       VLOG(3) << "No trace data collected, session wasn't started";
       return OkStatus();
     case State::kStartedOk:
-      return errors::FailedPrecondition("Cannot collect trace before stopping");
+      return tsl::errors::FailedPrecondition(
+          "Cannot collect trace before stopping");
     case State::kStartedError:
       LOG(ERROR) << "Cannot collect, roctracer failed to start";
       return OkStatus();
@@ -1102,7 +1125,7 @@ Status GpuTracer::CollectData(XSpace* space) {
       return OkStatus();
     }
   }
-  return errors::Internal("Invalid profiling state: ", profiling_state_);
+  return tsl::errors::Internal("Invalid profiling state: ", profiling_state_);
 }
 
 // Not in anonymous namespace for testing purposes.
@@ -1125,6 +1148,6 @@ auto register_rocm_gpu_tracer_factory = [] {
 }();
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace xla
 
 #endif  // TENSORFLOW_USE_ROCM
