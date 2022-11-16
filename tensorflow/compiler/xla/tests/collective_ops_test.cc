@@ -103,8 +103,8 @@ class CollectiveOpsTest : public HloTestBase {
     const int kNumReplicas = 2;
     std::string dtype = primitive_util::LowercasePrimitiveTypeName(
         primitive_util::NativeToPrimitiveType<LiteralType>());
-    auto config = GetModuleConfigForTest();
-    config.set_replica_count(kNumReplicas);
+    HloModuleConfig config =
+        GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
     auto module = MakeCrsModule(
         /*shape=*/input_value.shape(),
         /*replica_groups=*/{}, config,
@@ -275,7 +275,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceAnd_Pred) {
     }
   )";
 
-  auto config = GetModuleConfigForTest(/*replica_count=*/2);
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
   auto module = ParseAndReturnVerifiedModule(hlo_module, config).value();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
                           ExecuteReplicated(std::move(module), {},
@@ -315,8 +315,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceOr_Pred) {
     }
   )";
 
-  auto config = GetModuleConfigForTest();
-  config.set_replica_count(2);
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
   auto module = ParseAndReturnVerifiedModule(hlo_module, config).value();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
                           ExecuteReplicated(std::move(module), {},
@@ -344,8 +343,8 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {
 
     DeviceAssignment device_assn = MakeDeviceAssn(devices);
 
-    auto config = GetModuleConfigForTest();
-    config.set_replica_count(devices.size());
+    HloModuleConfig config =
+        GetModuleConfigForTest(/*replica_count=*/devices.size());
     config.set_static_device_assignment(device_assn);
 
     std::vector<float> input_vec(kNumElems);
@@ -377,8 +376,7 @@ XLA_TEST_F(CollectiveOpsTest,
   absl::c_iota(input_vec, 0);
   auto input_literal = LiteralUtil::CreateR1<float>(input_vec);
 
-  auto config = GetModuleConfigForTest();
-  config.set_replica_count(2);
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
   auto executable =
       test_runner_
           .CreateExecutable(MakeCrsModule(input_literal.shape(),
@@ -427,8 +425,8 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_CombinableAllReduces) {
     }
   )";
   static constexpr int kNumReplicas = 2;
-  auto config = GetModuleConfigForTest();
-  config.set_replica_count(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string, config));
 
@@ -468,8 +466,8 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_ThreeReplicaGroups) {
     GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
   }
 
-  auto config = GetModuleConfigForTest();
-  config.set_replica_count(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   std::vector<float> input_vec(kNumElems);
   absl::c_iota(input_vec, 0);
   auto input_literal = LiteralUtil::CreateR1<float>(input_vec);
@@ -518,8 +516,8 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_Degenerate) {
     GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
   }
 
-  auto config = GetModuleConfigForTest();
-  config.set_replica_count(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
   TF_ASSERT_OK_AND_ASSIGN(
@@ -555,8 +553,8 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllReduce)) {
     GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
   }
 
-  HloModuleConfig config = GetModuleConfigForTest();
-  config.set_replica_count(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
@@ -592,8 +590,8 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllReduceTwoOperands)) {
     GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
   }
 
-  HloModuleConfig config = GetModuleConfigForTest();
-  config.set_replica_count(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
@@ -623,8 +621,8 @@ XLA_TEST_F(CollectiveOpsTest, ReplicaId) {
     GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
   }
 
-  auto config = GetModuleConfigForTest();
-  config.set_replica_count(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
@@ -655,8 +653,8 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Simple) {
     GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
   }
 
-  auto config = GetModuleConfigForTest();
-  config.set_replica_count(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -692,8 +690,8 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Degnerate) {
     GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
   }
 
-  auto config = GetModuleConfigForTest();
-  config.set_replica_count(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -728,8 +726,8 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_NoDegnerate) {
     GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
   }
 
-  auto config = GetModuleConfigForTest();
-  config.set_replica_count(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -765,8 +763,8 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Rotate) {
     GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
   }
 
-  auto config = GetModuleConfigForTest();
-  config.set_replica_count(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -810,7 +808,8 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_EmptyReplicaGroups) {
   if (kNumReplicas >= num_devices_) {
     GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
   }
-  auto config = GetModuleConfigForTest(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -855,7 +854,8 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_OrderedReplicaGroups) {
     GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
   }
 
-  auto config = GetModuleConfigForTest(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -894,7 +894,8 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_TwoReplicaGroups) {
     GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
   }
 
-  auto config = GetModuleConfigForTest(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -925,7 +926,8 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllToAll_SplitDimension)) {
     GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
   }
 
-  auto config = GetModuleConfigForTest(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -956,7 +958,8 @@ XLA_TEST_F(CollectiveOpsTest, AllGather_Dim0) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  auto config = GetModuleConfigForTest(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -983,7 +986,8 @@ XLA_TEST_F(CollectiveOpsTest, AllGather_Dim1) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  auto config = GetModuleConfigForTest(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -1014,8 +1018,8 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_TupleAllReduce) {
     }
   )";
   static constexpr int kNumReplicas = 2;
-  auto config = GetModuleConfigForTest();
-  config.set_replica_count(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string, config));
 
@@ -1060,7 +1064,8 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllGatherMixedTypes)) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  auto config = GetModuleConfigForTest(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -1100,7 +1105,8 @@ XLA_TEST_F(CollectiveOpsTest, ReduceScatter) {
   )";
 
   const int64_t kNumReplicas = 2;
-  auto config = GetModuleConfigForTest(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -1138,7 +1144,8 @@ XLA_TEST_F(CollectiveOpsTest, ReduceScatter_Dim1) {
   )";
 
   const int64_t kNumReplicas = 2;
-  auto config = GetModuleConfigForTest(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -1179,7 +1186,8 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(ReduceScatterReassociate)) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  auto config = GetModuleConfigForTest(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -1228,7 +1236,8 @@ XLA_TEST_F(CollectiveOpsTest,
   }
   )";
   const int64_t kNumReplicas = 2;
-  auto config = GetModuleConfigForTest(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -1271,7 +1280,8 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduceReassociate)) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  auto config = GetModuleConfigForTest(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -1306,7 +1316,8 @@ XLA_TEST_F(CollectiveOpsTest,
   )";
 
   const int64_t kNumReplicas = 2;
-  auto config = GetModuleConfigForTest(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -1347,7 +1358,8 @@ XLA_TEST_F(CollectiveOpsTest,
   )";
 
   const int64_t kNumReplicas = 2;
-  auto config = GetModuleConfigForTest(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -1389,7 +1401,8 @@ XLA_TEST_F(CollectiveOpsTest, AllGather_16BitInt) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  auto config = GetModuleConfigForTest(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -1416,7 +1429,8 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_16BitInt) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  auto config = GetModuleConfigForTest(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -1442,7 +1456,8 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_16BitInt) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  auto config = GetModuleConfigForTest(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -1475,7 +1490,8 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_16BitInt) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  auto config = GetModuleConfigForTest(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -1509,7 +1525,8 @@ XLA_TEST_F(CollectiveOpsTest, ReduceScatter_16BitInt) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  auto config = GetModuleConfigForTest(kNumReplicas);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
