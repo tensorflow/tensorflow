@@ -1377,10 +1377,10 @@ static void MemrefX12(State& state) {
 
     func.func @test() {
       %0 = memref.alloca() : memref<4x4xf32>
-      call @custom_call(%0, %0, %0, %0, %0, %0, %0, %0, %0, %0, %0, %0)
-        : (memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>,
-           memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>,
-           memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>
+      call @custom_call(%0, %1, %2, %0, %1, %2, %0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>, memref<4x4xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>, memref<4x4xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>, memref<4x4xf32>
           ) -> ()
       return
     }
@@ -1674,6 +1674,76 @@ static void BM_UserDataX12Less(State& s) { UserDataX12<less>(s); }
 BENCHMARK(BM_UserDataX12All);
 BENCHMARK(BM_UserDataX12Less);
 BENCHMARK(BM_UserDataX12None);
+
+//===----------------------------------------------------------------------===//
+// Benchmark memref encoding for a sequence of custom calls.
+//===----------------------------------------------------------------------===//
+
+template <CustomCall::RuntimeChecks checks>
+static bool RemainingArgsSink(ExecutionContext* ctx, void** args, void** attrs,
+                              void** rets) {
+  static auto* handler =
+      CustomCall::Bind("test.custom_call")
+          .RemainingArgs()
+          .To<checks>([](CustomCall::RemainingArgs) { return success(); })
+          .release();
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+template <CustomCall::RuntimeChecks checks>
+static void MemrefEncoding(State& state) {
+  absl::string_view module = R"(
+    func.func private @custom_call(
+      %arg0: memref<4x4xf32>, %arg1: memref<5x5xf32>, %arg2: memref<6x6xf32>,
+      %arg3: memref<4x4xf32>, %arg4: memref<5x5xf32>, %arg5: memref<6x6xf32>
+    ) attributes { rt.custom_call = "test.custom_call" }
+
+    func.func @test() {
+      %0 = memref.alloca() : memref<4x4xf32>
+      %1 = memref.alloca() : memref<5x5xf32>
+      %2 = memref.alloca() : memref<6x6xf32>
+
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      return
+    }
+  )";
+
+  BenchmarkCustomCall(state, module, {}, "test.custom_call",
+                      &RemainingArgsSink<checks>);
+}
+
+static void BM_MemrefEncoding(State& s) { MemrefEncoding<none>(s); }
+
+BENCHMARK(BM_MemrefEncoding);
 
 }  // namespace runtime
 }  // namespace xla
