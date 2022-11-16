@@ -26,6 +26,7 @@ from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
+from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import structured_function
@@ -3337,25 +3338,49 @@ name=None))
         name=name)
 
   @staticmethod
-  def random(seed=None, name=None):
+  def random(seed=None, rerandomize_each_iteration=None, name=None):
     """Creates a `Dataset` of pseudorandom values.
 
     The dataset generates a sequence of uniformly distributed integer values.
+
+    `rerandomize_each_iteration` controls whether the sequence of random number
+    generated should be re-randomized for each epoch. The default value is False
+    where the dataset generates the same sequence of random numbers for each
+    epoch.
 
     >>> ds1 = tf.data.Dataset.random(seed=4).take(10)
     >>> ds2 = tf.data.Dataset.random(seed=4).take(10)
     >>> print(list(ds1.as_numpy_iterator())==list(ds2.as_numpy_iterator()))
     True
 
+    >>> ds3 = tf.data.Dataset.random(seed=4).take(10)
+    >>> ds3_first_epoch = list(ds3.as_numpy_iterator())
+    >>> ds3_second_epoch = list(ds3.as_numpy_iterator())
+    >>> print(ds3_first_epoch == ds3_second_epoch)
+    True
+
+    >>> ds4 = tf.data.Dataset.random(
+    ...     seed=4, rerandomize_each_iteration=True).take(10)
+    >>> ds4_first_epoch = list(ds4.as_numpy_iterator())
+    >>> ds4_second_epoch = list(ds4.as_numpy_iterator())
+    >>> print(ds4_first_epoch == ds4_second_epoch)
+    False
+
     Args:
       seed: (Optional) If specified, the dataset produces a deterministic
         sequence of values.
+      rerandomize_each_iteration: (Optional) If set to False, the dataset
+      generates the same sequence of random numbers for each epoch. If set to
+      True, it generates a different deterministic sequence of random numbers
+      for each epoch. It is defaulted to True if left unspecified.
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
       Dataset: A `Dataset`.
     """
-    return RandomDataset(seed=seed, name=name)
+    return RandomDataset(seed=seed,
+                         rerandomize_each_iteration=rerandomize_each_iteration,
+                         name=name)
 
   def snapshot(self,
                path,
@@ -5707,12 +5732,37 @@ class _GroupByWindowDataset(UnaryDataset):
 class RandomDataset(DatasetSource):
   """A `Dataset` of pseudorandom values."""
 
-  def __init__(self, seed=None, name=None):
+  def __init__(self, seed=None, rerandomize_each_iteration=None, name=None):
     """A `Dataset` of pseudorandom values."""
     self._seed, self._seed2 = random_seed.get_seed(seed)
+    self._rerandomize = rerandomize_each_iteration
     self._name = name
-    variant_tensor = ged_ops.random_dataset(
-        seed=self._seed, seed2=self._seed2, **self._common_args)
+    if (tf2.enabled() and
+        (context.executing_eagerly() or ops.inside_function())):
+      if (rerandomize_each_iteration is not None or
+          tf_compat.forward_compatible(2022, 12, 17)):
+        variant_tensor = ged_ops.random_dataset_v2(
+            seed=self._seed,
+            seed2=self._seed2,
+            seed_generator=gen_dataset_ops.dummy_seed_generator(),
+            rerandomize_each_iteration=self._rerandomize,
+            **self._common_args)
+      else:
+        variant_tensor = ged_ops.random_dataset(
+            seed=self._seed,
+            seed2=self._seed2,
+            **self._common_args)
+    else:
+      if rerandomize_each_iteration is not None:
+        warnings.warn("The `rerandomize_each_iteration` argument is ignored "
+                      "because it is only available when running in TF2 eager "
+                      "mode or inside a `tf.function`. The mode is "
+                      f"{'TF2' if tf2.enabled() else 'TF1'} "
+                      f"{'eager' if context.executing_eagerly() else 'graph'}.")
+      variant_tensor = ged_ops.random_dataset(
+          seed=self._seed,
+          seed2=self._seed2,
+          **self._common_args)
     super(RandomDataset, self).__init__(variant_tensor)
 
   @property

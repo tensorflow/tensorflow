@@ -43,17 +43,24 @@
     *   Updated `tf.keras.layers.BatchNormalization` to support masking of the
         inputs (`mask` argument) when computing the mean and variance.
 
-* `tf.experimental.dtensor`:
+*   `tf.experimental.dtensor`:
 
-  * Coordination service now works with `dtensor.initialize_accelerator_system`,
-    and enabled by default.
+    *   Coordination service now works with `dtensor.initialize_accelerator_system`,
+        and enabled by default.
 
 *   `tf.data`:
+
     *   Added support for alternative checkpointing protocol which makes it
         possible to checkpoint the state of the input pipeline without having
         to store the contents of internal buffers. The new functionality can
         be enabled through the `experimental_symbolic_checkpointing` option of
         `tf.data.Options()`.
+    *   Added a new `rerandomize_each_iteration` argument for the
+        `tf.data.Dataset.random()` operation, which controls whether the
+        sequence of generated random numbers should be re-randomized every epoch
+        (the default behavior) or not. If `seed` is set and
+        `rerandomize_each_iteration=True`, the `random()` operation will
+        produce a different (deterministic) sequence of numbers every epoch.
 
 # Bug Fixes and Other Changes
 

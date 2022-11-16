@@ -3321,6 +3321,10 @@ tf_module {
     argspec: "args=[\'seed\', \'seed2\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
+    name: "RandomDatasetV2"
+    argspec: "args=[\'seed\', \'seed2\', \'seed_generator\', \'output_types\', \'output_shapes\', \'rerandomize_each_iteration\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'\', \'None\'], "
+  }
+  member_method {
     name: "RandomGamma"
     argspec: "args=[\'shape\', \'alpha\', \'seed\', \'seed2\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'None\'], "
   }

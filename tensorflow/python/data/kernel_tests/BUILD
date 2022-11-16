@@ -803,6 +803,7 @@ tf_py_test(
     size = "small",
     srcs = ["random_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_test_lib",
