@@ -835,11 +835,9 @@ cc_library(
     # Note: adding ":tflite_with_xnnpack_enabled" to the values of following
     # configuration conditions will make TFLite interpreter to apply XNNPACK
     # delegate by default.
-    deps = select({
-        "//tensorflow:macos": [],
-        "//tensorflow:fuchsia": [],
-        "//conditions:default": [":tflite_with_xnnpack_enabled"],
-    }),
+    deps = [
+        ":tflite_with_xnnpack_enabled",
+    ],
 )
 
 cc_library(
