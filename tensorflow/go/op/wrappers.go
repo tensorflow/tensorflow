@@ -53114,8 +53114,15 @@ func TileGrad(scope *Scope, input tf.Output, multiples tf.Output) (output tf.Out
 //
 // Returns the timestamp as a `float64` for seconds since the Unix epoch.
 //
-// Note: the timestamp is computed when the op is executed, not when it is added
-// to the graph.
+// Common usages include:
+// * Logging
+// * Providing a random number seed
+// * Debugging graph execution
+// * Generating timing information, mainly through comparison of timestamps
+//
+// Note: In graph mode, the timestamp is computed when the op is executed,
+// not when it is added to the graph.  In eager mode, the timestamp is computed
+// when the op is eagerly executed.
 func Timestamp(scope *Scope) (ts tf.Output) {
 	if scope.Err() != nil {
 		return
