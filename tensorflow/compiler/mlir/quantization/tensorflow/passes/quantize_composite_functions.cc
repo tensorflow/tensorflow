@@ -769,7 +769,8 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   if (quantization_method_ == QuantizationMethod::kDynamicRangeQuantization) {
     quant_specs.weight_quantization = true;
     quant_specs.inference_type = tensorflow::DT_QINT8;
-    pm.addNestedPass<func::FuncOp>(CreatePrepareQuantizeDRQPass());
+    quant_specs.disable_per_channel = true;
+    pm.addPass(CreatePrepareQuantizeDRQPass(quant_specs, target_opset_));
   } else {
     pm.addNestedPass<func::FuncOp>(
         CreatePrepareQuantizePass(quantization_method_));
