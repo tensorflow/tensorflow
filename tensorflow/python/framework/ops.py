@@ -5615,31 +5615,10 @@ def control_dependencies(control_inputs):
 
   See `tf.Graph.control_dependencies` for more details.
 
-  @compatibility(TF2)
-  In TensorFlow 2 with eager and/or Autograph, you should not need this method
-  most of the times, as ops execute in the expected order thanks to automatic
-  control dependencies. Only use it to manually control ordering, for example as
-  a workaround to known issues such as `tf.function` with `tf.debugging.assert*`
-  and `tf.py_function`.
-  For example:
-  ```python
-  @tf.function
-  def my_assert_func(x, bias):
-      tf.assert_equal(
-          tf.shape(x)[1], tf.shape(bias)[1], message='bad shape')
-      # `tf.function` attempts to execute `tf.math.add` in parallel to
-      # `assert_equal`. As a result an error can get raised from `tf.math.add`
-      # without triggering the assertion error.
-      return tf.math.add(x, bias)
-      # Add `control_dependencies` to ensure serialized execution
-      # with tf.compat.v1.control_dependencies(
-      #     [tf.assert_equal(
-      #         tf.shape(x)[1],tf.shape(bias)[1], message='bad shape')]):
-      #   return tf.math.add(x, bias)
-
-  my_assert_func(tf.ones((3,5)), tf.ones((3,7)))
-  ```
-  @end_compatibility
+  Note: *In TensorFlow 2 with eager and/or Autograph, you should not require
+  this method, as ops execute in the expected order thanks to automatic control
+  dependencies.* Only use `tf.control_dependencies` when working with v1
+  `tf.Graph` code.
 
   When eager execution is enabled, any callable object in the `control_inputs`
   list will be called.
