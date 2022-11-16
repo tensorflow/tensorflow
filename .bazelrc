@@ -309,10 +309,14 @@ build:linux --copt="-Wno-extra"
 build:linux --copt="-Wno-deprecated"
 build:linux --copt="-Wno-deprecated-declarations"
 build:linux --copt="-Wno-ignored-attributes"
-build:linux --copt="-Wno-unknown-warning"
-build:linux --copt="-Wno-array-parameter"
-build:linux --copt="-Wno-stringop-overflow"
+# build:linux --copt="-Wno-unknown-warning"
+# build:linux --copt="-Wno-array-parameter"
+# build:linux --copt="-Wno-stringop-overflow"
 build:linux --copt="-Wno-array-bounds"
+
+# TODO(juanantoniomc): Revise the need for this warning
+# suppression and the ones commented out above.
+build:linux --copt="-Wno-error=unused-but-set-variable"
 
 # Add unused-result as an error on Linux.
 build:linux --copt="-Wunused-result"
