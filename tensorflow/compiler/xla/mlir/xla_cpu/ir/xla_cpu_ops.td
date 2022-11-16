@@ -16,11 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_MLIR_XLA_CPU_OPS_TD_
 #define TENSORFLOW_COMPILER_XLA_MLIR_XLA_CPU_OPS_TD_
 
+include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
-include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_enums.td"
 include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_dialect.td"
+include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_enums.td"
 
 // Base class for XLA CPU dialect ops.
 class XlaCpu_Op<string mnemonic, list<Trait> traits = []> :
@@ -31,21 +32,27 @@ class TensorOrMemrefOf<list<Type> allowedTypes> :
   "", "::mlir::ShapedType">;
 
 def AllReduceOp : XlaCpu_Op<"all_reduce",
-    [SameOperandsElementType, SameOperandsAndResultType]> {
+    [SameOperandsElementType,
+     SameVariadicOperandSize,
+     BufferizableOpInterface]> {
   let summary = [{
     CPU-specific version of AllReduce.
   }];
 
   let description = [{
     The major differences between this and HLO's all_reduce are:
-    - This bufferizes to itself
+    - It bufferizes to itself.
     - It has no region.
+    - It uses destination passing style.
   }];
 
   let arguments = (ins
       Variadic<TensorOrMemrefOf<
         [I8, I16, I32, I64, F16, F32, F64, Complex<F<32>>, Complex<F<64>>]
-      >>:$operand,
+        >>:$operand,
+      Variadic<TensorOrMemrefOf<
+        [I8, I16, I32, I64, F16, F32, F64, Complex<F<32>>, Complex<F<64>>]
+        >>:$dsts,
       I64ElementsAttr:$replica_groups,
       I64Attr:$channel_handle,
       UnitAttr:$use_global_device_ids,
@@ -56,6 +63,19 @@ def AllReduceOp : XlaCpu_Op<"all_reduce",
         [I8, I16, I32, I64, F16, F32, F64, Complex<F<32>>, Complex<F<64>>]
       >>
   );
+  let extraClassDeclaration = [{
+    // Declarations for BufferizableOpInterface:
+    bool bufferizesToMemoryRead(OpOperand &opOperand,
+        const bufferization::AnalysisState &state);
+    bool bufferizesToMemoryWrite(OpOperand &opOperand,
+        const bufferization::AnalysisState &state);
+    SmallVector<OpResult> getAliasingOpResult(
+        OpOperand &opOperand, const bufferization::AnalysisState &state);
+    LogicalResult bufferize(RewriterBase &rewriter,
+        const bufferization::BufferizationOptions &options);
+    bufferization::BufferRelation bufferRelation(OpResult opResult,
+        const bufferization::AnalysisState &state);
+  }];
 }
 
 def ReplicaIdOp : XlaCpu_Op<"replica_id"> {

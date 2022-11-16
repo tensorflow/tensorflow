@@ -19,7 +19,8 @@ func.func @max_reduce(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 
 // CHECK-LABEL: @max_reduce
 //  CHECK-SAME: %[[ARG0:.*]]: tensor<10xf32>
-//       CHECK: %[[RET:.*]] = "xla_cpu.all_reduce"(%[[ARG0]]) {
+//       CHECK: %[[DST:.*]] = tensor.empty() : tensor<10xf32>
+//       CHECK: %[[RET:.*]] = "xla_cpu.all_reduce"(%[[ARG0]], %[[DST]]) {
 //  CHECK-SAME:   channel_handle = 5 : i64,
 //  CHECK-SAME:   reduction_kind = 3 : i32,
 //  CHECK-SAME:   replica_groups = dense<{{\[}}[0, 2, 4, 6], [1, 3, 5, 7]]>

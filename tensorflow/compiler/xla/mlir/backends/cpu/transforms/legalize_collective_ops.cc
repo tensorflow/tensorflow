@@ -97,8 +97,17 @@ class AllReduceLowering : public OpRewritePattern<mhlo::AllReduceOp> {
     if (!reduction_kind) {
       return failure();
     }
+
+    SmallVector<Value> dsts;
+    for (auto ty : op->getResultTypes()) {
+      auto shaped_ty = ty.cast<ShapedType>();
+      dsts.push_back(rewriter.create<tensor::EmptyOp>(
+          op.getLoc(), shaped_ty.getShape(), shaped_ty.getElementType()));
+    }
+
     rewriter.replaceOpWithNewOp<xla_cpu::AllReduceOp>(
-        op, op->getResultTypes(), op->getOperands(), op.getReplicaGroupsAttr(),
+        op, op->getResultTypes(), op->getOperands(), dsts,
+        op.getReplicaGroupsAttr(),
         rewriter.getI64IntegerAttr(op.getChannelHandle()
                                        ? op.getChannelHandle()->getHandle()
                                        : int64_t{0}),

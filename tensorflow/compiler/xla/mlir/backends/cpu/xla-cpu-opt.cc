@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
@@ -33,6 +34,7 @@ int main(int argc, char **argv) {
   mlir::lmhlo::registerAllLmhloPasses();
   mlir::gml_st::registerGmlStPasses();
   mlir::gml_st::registerGmlStTestPasses();
+  mlir::bufferization::registerBufferizationPasses();
 
   mlir::DialectRegistry registry;
   mlir::mhlo::registerAllMhloDialects(registry);
