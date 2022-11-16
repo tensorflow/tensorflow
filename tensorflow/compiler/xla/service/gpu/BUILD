@@ -28,7 +28,8 @@ load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_cloud", "if_nccl")
+load("//tensorflow:tensorflow.default.bzl", "if_nccl")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_cloud")
 
 package(
     default_visibility = [":friends"],

@@ -1,6 +1,6 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
+load("//tensorflow/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 load(
     "//tensorflow/compiler/xla/python/tpu_driver:platform/external/tools.bzl",
     "external_deps",
@@ -71,7 +71,7 @@ cc_library(
         ":tpu_service_proto_cc",
         ":tpu_service_cc_grpc_proto",
         ":tpu_driver_proto_cc",
-    ] + tf_grpc_cc_dependencies() + external_deps(),
+    ] + tsl_grpc_cc_dependencies() + external_deps(),
     alwayslink = 1,
 )
 
@@ -132,7 +132,7 @@ cc_library(
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/core:protos_all_cc",
-    ] + tf_grpc_cc_dependencies() + external_deps(),
+    ] + tsl_grpc_cc_dependencies() + external_deps(),
     alwayslink = 1,
 )
 

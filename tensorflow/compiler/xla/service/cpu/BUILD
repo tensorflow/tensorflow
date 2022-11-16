@@ -1,7 +1,7 @@
 # Description:
 #    LLVM-based CPU backend for XLA.
 
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tensorflow/compiler/xla:xla.bzl", "ORC_JIT_MEMORY_MAPPER_TARGETS")
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -828,8 +828,8 @@ cc_library(
     deps = [
         ":runtime_lightweight_check",
         "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/tsl/framework/contraction:eigen_contraction_kernel",
+        "//tensorflow/tsl/framework/convolution:eigen_helpers",
         "//tensorflow/tsl/platform:mutex",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
@@ -849,8 +849,8 @@ cc_library(
     deps = [
         ":runtime_lightweight_check",
         "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/tsl/framework/contraction:eigen_contraction_kernel",
+        "//tensorflow/tsl/framework/convolution:eigen_helpers",
         "//tensorflow/tsl/platform:mutex",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
@@ -885,7 +885,7 @@ cc_library(
         "//tensorflow/compiler/xla:executable_run_options",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
-        "//tensorflow/core/kernels:eigen_helpers",
+        "//tensorflow/tsl/framework/convolution:eigen_helpers",
         "//third_party/eigen3",
     ] + mkl_deps(),
 )
@@ -970,7 +970,7 @@ cc_library(
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/tsl/platform:dynamic_annotations",
         "//tensorflow/tsl/platform:types",
-        "//tensorflow/core/kernels:eigen_helpers",
+        "//tensorflow/tsl/framework/convolution:eigen_helpers",
         "//third_party/eigen3",
         "//tensorflow/tsl/platform:logging",
     ] + acl_deps(),
@@ -987,8 +987,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_lightweight_check",
-        "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/tsl/framework/contraction:eigen_contraction_kernel",
+        "//tensorflow/tsl/framework/convolution:eigen_helpers",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
@@ -1006,8 +1006,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_lightweight_check",
-        "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/tsl/framework/contraction:eigen_contraction_kernel",
+        "//tensorflow/tsl/framework/convolution:eigen_helpers",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",

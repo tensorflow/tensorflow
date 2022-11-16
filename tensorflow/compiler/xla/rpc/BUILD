@@ -1,5 +1,5 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
+load("//tensorflow/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
@@ -61,7 +61,7 @@ cc_library(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/util:command_line_flags",
-    ] + tf_grpc_cc_dependencies() + if_libtpu(
+    ] + tsl_grpc_cc_dependencies() + if_libtpu(
         if_false = ["//tensorflow/compiler/xla/service:cpu_plugin"],
         if_true = [],
     ),
@@ -93,7 +93,7 @@ tf_cc_test(
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "//tensorflow/tsl/platform:path",
-    ] + tf_grpc_cc_dependencies(),
+    ] + tsl_grpc_cc_dependencies(),
 )
 
 cc_library(
@@ -106,7 +106,7 @@ cc_library(
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/tsl/distributed_runtime/rpc:grpc_util",
-    ] + tf_grpc_cc_dependencies(),
+    ] + tsl_grpc_cc_dependencies(),
 )
 
 # copybara:uncomment_begin(google-only)

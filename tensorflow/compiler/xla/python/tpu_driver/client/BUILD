@@ -1,5 +1,6 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 
 package(
     default_visibility = ["//tensorflow:internal"],

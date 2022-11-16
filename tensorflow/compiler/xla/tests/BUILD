@@ -6,7 +6,7 @@ load(
     "//tensorflow/tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "genrule")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 

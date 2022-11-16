@@ -10,7 +10,8 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow/tsl:tsl.bzl", "if_libtpu")
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable", "internal_cuda_deps", "internal_hlo_deps")
+load("//tensorflow:tensorflow.default.bzl", "internal_cuda_deps", "internal_hlo_deps")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
