@@ -14,5 +14,5 @@ func.func @test(%V__0: tensor<?x?x?xf32> { python_test_attrs.static_type = tenso
   %12 = "tf.FloorDiv"(%V__1, %V__0) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   %13 = "tf.Add"(%11, %12) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   %14 = "tf.Neg"(%13) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
-  return %14 : tensor<?x?x?xf32>
+  func.return %14 : tensor<?x?x?xf32>
 }

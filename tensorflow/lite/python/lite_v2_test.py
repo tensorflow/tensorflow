@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,8 +22,6 @@ import sys
 
 from absl.testing import parameterized
 import numpy as np
-from six.moves import range
-from six.moves import zip
 import tensorflow as tf
 
 # Force loaded shared object symbols to be globally visible. This is needed so
@@ -48,7 +45,9 @@ from tensorflow.lite.python.interpreter import OpResolverType
 from tensorflow.lite.python.testdata import _pywrap_test_registerer as test_registerer
 from tensorflow.lite.python.testdata import double_op
 from tensorflow.lite.python.util import get_conversion_metadata
-from tensorflow.lite.toco import types_pb2 as _types_pb2
+# TODO(b/175659372): We should support 16x8 mode in the mlir quantizer
+# from tensorflow.lite.toco import types_pb2 as _types_pb2
+from tensorflow.lite.tools.flatbuffer_utils import convert_bytearray_to_object as _convert_bytearray_to_object
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -62,7 +61,7 @@ from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.saved_model.loader_impl import parse_saved_model
 from tensorflow.python.saved_model.save import save
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 
 # Only run jax related tests when we can import jax.
 DISABLE_JAX_TEST = False
@@ -136,10 +135,39 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertEqual(expected_value.numpy(), actual_value)
 
   @test_util.run_v2_only
+  def testStringInput(self):
+
+    class Model(tf.Module):
+
+      @tf.function
+      def __call__(self, x):
+        return x
+
+    root = Model()
+    concrete_func = root.__call__.get_concrete_function(
+        tf.constant([str(x) for x in range(11)]))
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
+                                                               root)
+    tflite_model = converter.convert()
+    input_data = tf.constant([str(x) for x in range(11)],
+                             shape=(11,),
+                             dtype=tf.dtypes.string)
+    # Check values from converted model.
+    interpreter = tf.lite.Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+    my_signature = interpreter.get_signature_runner()
+
+    with self.assertRaises(ValueError) as error:
+      _ = my_signature(x=input_data)
+    self.assertIn('Passed in value type is not a numpy array, got type ',
+                  str(error.exception))
+
+  @test_util.run_v2_only
   def testModelWithoutInputs(self):
 
     def _get_random_number_gen():
-      root = tracking.AutoTrackable()
+      root = autotrackable.AutoTrackable()
 
       @tf.function(input_signature=[])
       def func():
@@ -236,7 +264,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   def _getIntegerQuantizeModel(self, num_filters=16):
     np.random.seed(0)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     @tf.function(
         input_signature=[tf.TensorSpec(shape=[1, 5, 5, 3], dtype=tf.float32)])
@@ -327,6 +355,37 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertEqual(
         'The inference_input_type and inference_output_type '
         'must be tf.float32.', str(error.exception))
+
+  def _createV2QATSavedModelWithFloatOpsAtEnd(self):
+    """Create a simple QAT SavedModel that includes float ops at the end."""
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'qat_float_ops_at_end')
+    input_tensor = tf.keras.layers.Input((32, 32, 128))
+    x = tf.quantization.fake_quant_with_min_max_args(input_tensor, -3.0, 3.0)
+    x = tf.keras.layers.Conv2D(1, (3, 3))(x)
+    x = tf.quantization.fake_quant_with_min_max_args(x, -3.0, 3.0)
+    # Exclude the quantization of the following Dense layer by not putting
+    # fake quant layer after the dense layer.
+    output_tensor = tf.keras.layers.Dense(1, activation='sigmoid')(x)
+    model = tf.keras.Model(input_tensor, output_tensor)
+    model.save(saved_model_dir)
+    return saved_model_dir
+
+  def testQuantizationRemovesQDQsForFloatIOInQAT(self):
+    saved_model_dir = self._createV2QATSavedModelWithFloatOpsAtEnd()
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_model = converter.convert()
+
+    # Because assertions on the model later, we opt out applying default TFLite
+    # delegates (i.e. the XNNPACK delegate).
+    interpreter = Interpreter(
+        model_content=quantized_model,
+        experimental_op_resolver_type=OpResolverType
+        .BUILTIN_WITHOUT_DEFAULT_DELEGATES)
+    interpreter.allocate_tensors()
+    # The model should have LOGISTIC op, instead of DEQUANTIZE op.
+    op_details = interpreter._get_ops_details()
+    self.assertEqual(op_details[len(op_details) - 1]['op_name'], 'LOGISTIC')
 
   @parameterized.named_parameters(
       ('EnableMlirQuantizer', True),  # enable mlir quantizer
@@ -458,12 +517,16 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.from_concrete_functions([func], root)
     # TODO(b/156309549): We should add INT16 to the builtin types.
     converter.optimizations = [lite.Optimize.DEFAULT]
-    converter.target_spec.supported_ops = [lite.OpsSet.TFLITE_BUILTINS_INT8]
+    converter.target_spec.supported_ops = [
+        lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+    ]
     converter.representative_dataset = calibration_gen
-    converter._experimental_calibrate_only = True
-    calibrated_tflite = converter.convert()
-    quantized_tflite_model = mlir_quantize(
-        calibrated_tflite, inference_type=_types_pb2.QUANTIZED_INT16)
+    # TODO(b/175659372): We should support 16x8 mode in the mlir quantizer
+    # converter._experimental_calibrate_only = True
+    # calibrated_tflite = converter.convert()
+    # quantized_tflite_model = mlir_quantize(
+    #     calibrated_tflite, inference_type=_types_pb2.QUANTIZED_INT16)
+    quantized_tflite_model = converter.convert()
 
     self.assertIsNotNone(quantized_tflite_model)
 
@@ -476,6 +539,21 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     output_details = interpreter.get_output_details()
     self.assertLen(output_details, 1)
     self.assertEqual(np.float32, output_details[0]['dtype'])
+
+    # The weights tensor should be quantized to 8 bits,
+    # the bias tensor should be 32 bits to utilize optimized kernels,
+    # and the activations should be 16 bits.
+    tensor_details = interpreter.get_tensor_details()
+    # TODO(b/175659372): The old quantizer yields a 64 bit bias and a
+    # slightly different tensor order than the new one.
+    # self.assertEqual(np.int8, tensor_details[1]['dtype'])
+    # self.assertEqual(np.int32, tensor_details[0]['dtype'])
+    # self.assertEqual(np.int16, tensor_details[2]['dtype'])
+    # self.assertEqual(np.int16, tensor_details[3]['dtype'])
+    self.assertEqual(np.int8, tensor_details[2]['dtype'])
+    self.assertEqual(np.int64, tensor_details[1]['dtype'])
+    self.assertEqual(np.int16, tensor_details[0]['dtype'])
+    self.assertEqual(np.int16, tensor_details[3]['dtype'])
 
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite_model), len(float_tflite_model))
@@ -538,7 +616,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     concrete_func = root.f.get_concrete_function(input_data)
 
     converter = lite.TFLiteConverterV2.from_concrete_functions(
-        [concrete_func], trackable_obj=tracking.AutoTrackable())
+        [concrete_func], trackable_obj=autotrackable.AutoTrackable())
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -704,7 +782,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   @test_util.run_v2_only
   def testGraphDebugInfo(self):
     """Test a concrete function has debug info captured."""
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v1 = tf.Variable(3.)
     root.f = tf.function(lambda x: root.v1 * x)
     input_data = tf.constant(1., shape=[1])
@@ -719,7 +797,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   def _getIntegerQuantizationModelWithFlexOp(self):
     np.random.seed(0)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     @tf.function(input_signature=[
         tf.TensorSpec(shape=[3, 3, 3, 3, 3], dtype=tf.float32)
@@ -818,7 +896,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   def _getIntegerQuantizationModelWithUnsupportedOps(self):
     np.random.seed(0)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     @tf.function(input_signature=[
         tf.TensorSpec(shape=[3], dtype=tf.float32),
@@ -1145,7 +1223,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   def testDisablePerChannelQuantization(self, disable_per_channel=False,
                                         enable_mlir_quantizer=False,
                                         representative_dataset=True):
-    k_conv_name = 'Conv2D1'
+    k_conv_name = 'Conv2D'
     # Dynamic range quant requires total num elements of filters > 1024.
     k_num_filters = 38
     root, func, calib_gen = self._getIntegerQuantizeModel(k_num_filters)
@@ -1166,7 +1244,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
     detail = next((d for d in interpreter.get_tensor_details()
-                   if d['name'] == k_conv_name))
+                   if d['name'].startswith(k_conv_name)))
     quant_params = detail['quantization_parameters']
     expected_num_params = 1 if disable_per_channel else k_num_filters
     self.assertLen(quant_params['scales'], expected_num_params)
@@ -1628,10 +1706,36 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual([1, 5, -1], list(actual_value))
 
   @test_util.run_v2_only
+  def testReduceSumWithInt16Quant(self):
+    """Test a model with quantized int16 reduce sum op."""
+    inp = tf.keras.Input([3, 3], 3, name='x')
+    m = tf.keras.Model(inp, tf.reduce_sum(inp, axis=-1))
+
+    converter = tf.lite.TFLiteConverter.from_keras_model(m)
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet
+        .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+    ]
+    converter.inference_input_type = tf.int16
+    converter.inference_output_type = tf.int16
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    inputs = {
+        i.name: np.random.normal(size=i.shape).astype(np.float32)
+        for i in m.inputs
+    }
+    converter.representative_dataset = lambda: [inputs]
+    content = converter.convert()
+
+    interpreter = tf.lite.Interpreter(model_content=content)
+    runner = interpreter.get_signature_runner('serving_default')
+    y = runner(x=np.array([[1, 1, 1], [2, 2, 2], [3, 3, 3]]).astype(np.int16))
+    self.assertEqual([3, 6, 9], list(list(y.values())[0]))
+
+  @test_util.run_v2_only
   def testConstModel(self):
     """Test a basic model with functions to make sure functions are inlined."""
     input_data = tf.constant(1., shape=[1])
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = tf.function(lambda x: 2. * x)
     to_save = root.f.get_concrete_function(input_data)
 
@@ -2139,7 +2243,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   def testGraphDebugInfo(self):
     """Test a SavedModel has debug info captured."""
     input_data = tf.constant(1., shape=[1])
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = tf.function(lambda x: 2. * x)
     to_save = root.f.get_concrete_function(input_data)
     options = save_options.SaveOptions(save_debug_info=True)
@@ -2213,12 +2317,91 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
-  def _createUnknownInputShapeModel(self):
-    """Create a simple SavedModel with unknown input."""
-    saved_model_dir = os.path.join(self.get_temp_dir(), 'unknown_input_shape')
+  @test_util.run_v2_only
+  def testKerasFullyConnectedOutputShape3D(self):
+    """Create a simple FullyConnected Model with an output of three dimensions."""
+    input_tensor = tf.keras.layers.Input(
+        batch_size=1, shape=[3, 3], name='input_tensor', dtype=tf.float32)
+
+    x = tf.quantization.fake_quant_with_min_max_args(input_tensor, -3.0, 3.0)
+    x = tf.keras.layers.Dense(3)(x)
+    x = tf.quantization.fake_quant_with_min_max_args(x, -3.0, 3.0)
+    model = tf.keras.Model(input_tensor, x)
+
+    model.compile(
+        optimizer='adam', loss='mean_squared_error', metrics=['accuracy'])
+
+    # Export the keras model to saved model.
+    saved_model_dir = os.path.join(self.get_temp_dir(),
+                                   'fully_connected_output_3d')
+    model.save(saved_model_dir, save_format='tf', include_optimizer=False)
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    interpreter = Interpreter(model_content=tflite_model)
+    output_details = interpreter.get_output_details()
+    input_details = interpreter.get_input_details()
+    interpreter.allocate_tensors()
+
+    input_data = np.array([[[1, 2, 3], [4, 5, 6], [7, 8, 9]]], np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+    interpreter.invoke()
+
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    expected_value = model.predict(input_data)
+
+    self.assertLen(output_details[0]['shape_signature'], 3)
+    self.assertAllClose(expected_value, actual_value, atol=1e-1)
+    self.assertEqual(
+        list(output_details[0]['shape_signature']),
+        list(model.layers[-1].output_shape))
+
+  @test_util.run_v2_only
+  def testKerasConv2DTransposedWithMismatchQuantizedAxes(self):
+
+    class QuantConv2DTransposed(tf.keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.kernel = self.add_weight('kernel', [3, 3, input_shape[-1], 24])
+
+      def call(self, inputs):
+        filters = tf.quantization.fake_quant_with_min_max_vars_per_channel(
+            self.kernel,
+            -3.0 * tf.ones([24]),
+            3.0 * tf.ones([24]),
+            narrow_range=True)
+        filters = tf.transpose(filters, (0, 1, 3, 2))
+        return tf.nn.conv2d_transpose(inputs, filters, [*inputs.shape[:-1], 24],
+                                      1)
+
+    inp = tf.keras.Input(shape=(6, 8, 48), batch_size=1)
+    x = tf.quantization.fake_quant_with_min_max_vars(
+        inp, -3.0, 3.0, narrow_range=True)
+    x = QuantConv2DTransposed()(x)
+    x = tf.quantization.fake_quant_with_min_max_vars(
+        x, -3.0, 3.0, narrow_range=True)
+
+    model = tf.keras.Model(inp, x)
+
+    saved_model_dir = os.path.join(self.get_temp_dir(),
+                                   'keras_conv2d_transpose')
+    model.save(saved_model_dir)
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+
+    with self.assertRaises(convert.ConverterError) as error:
+      _ = converter.convert()
+    self.assertIn('mismatched quantized axes of input and output',
+                  str(error.exception))
+
+  def _createModelWithInputShape(self, shape):
+    """Create a simple SavedModel with a certain shape."""
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'input_shape_model')
     with tf.Graph().as_default():
       with tf.compat.v1.Session() as sess:
-        unknown_shape = tf.TensorShape(None)
+        unknown_shape = tf.TensorShape(shape)
         in_tensor = tf.compat.v1.placeholder(
             shape=unknown_shape, dtype=tf.float32, name='input')
         out_tensor = in_tensor + in_tensor
@@ -2230,11 +2413,17 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   @test_util.run_v2_only
   def testUnknownInputShapeModel(self):
     """Test a SavedModel with an unknown input shape."""
-    saved_model_dir = self._createUnknownInputShapeModel()
+    saved_model_dir = self._createModelWithInputShape(None)
 
     converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
+
+    # Validate that tensors with unknown shape have unknown rank.
+    tflite_model_obj = _convert_bytearray_to_object(tflite_model)
+    for tensor in tflite_model_obj.subgraphs[0].tensors:
+      self.assertEqual(False, tensor.hasRank)
+      self.assertEqual([], tensor.shape.tolist())
 
     # Check values from converted model.
     interpreter = Interpreter(model_content=tflite_model)
@@ -2250,6 +2439,36 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     interpreter.invoke()
     actual_value = interpreter.get_tensor(output_details[0]['index'])
     self.assertEqual([2., 4., 6.], list(actual_value))
+
+  @test_util.run_v2_only
+  def testScalarInputShapeModel(self):
+    """Test a SavedModel with a scalar input."""
+    saved_model_dir = self._createModelWithInputShape([])
+
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Validate that scalar tensors have a rank = 0.
+    tflite_model_obj = _convert_bytearray_to_object(tflite_model)
+    for tensor in tflite_model_obj.subgraphs[0].tensors:
+      self.assertEqual(True, tensor.hasRank)
+      self.assertEqual([], tensor.shape.tolist())
+
+  @test_util.run_v2_only
+  def testMatrixInputShapeModel(self):
+    """Test a SavedModel with a matrix input."""
+    saved_model_dir = self._createModelWithInputShape([2, 3])
+
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Validate that matrix tensors have a rank = 2.
+    tflite_model_obj = _convert_bytearray_to_object(tflite_model)
+    for tensor in tflite_model_obj.subgraphs[0].tensors:
+      self.assertEqual(True, tensor.hasRank)
+      self.assertEqual([2, 3], tensor.shape.tolist())
 
   @parameterized.named_parameters(
       ('_PerChannelQuant', False, False),
@@ -2271,7 +2490,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     model.build(input_shape=(1, 5, 5, 3))
     saved_model_dir = os.path.join(self.get_temp_dir(), 'conv_saved_model')
     save(model, saved_model_dir)
-    k_conv_name = 'sequential/conv2d/Conv2D1'
+    k_conv_name = 'sequential/conv2d/Conv2D'
     quantized_converter = tf.lite.TFLiteConverter.from_saved_model(
         saved_model_dir)
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
@@ -2293,7 +2512,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
     detail = next((d for d in interpreter.get_tensor_details()
-                   if d['name'] == k_conv_name))
+                   if d['name'].startswith(k_conv_name)))
     quant_params = detail['quantization_parameters']
     expected_num_params = k_num_filters
     if disable_per_channel:
@@ -2354,7 +2573,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
     dense_bias = next((d for d in interpreter.get_tensor_details()
-                       if d['name'] == k_dense_bias_name))
+                       if d['name'].startswith(k_dense_bias_name)))
     self.assertEqual(bias_type, dense_bias['dtype'])
 
   @parameterized.named_parameters(
@@ -2368,7 +2587,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
                                        disable_per_channel,
                                        enable_float16_quant):
     num_filters = 1024
-    conv_name = 'sequential/conv2d/Conv2D1'
+    conv_name = 'sequential/conv2d/Conv2D'
     model = tf.keras.models.Sequential(
         [tf.keras.layers.Conv2D(num_filters, (3, 3), activation='relu')])
     model.build(input_shape=(1, 32, 32, 3))
@@ -2388,8 +2607,22 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
     interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
-    quantized_weight = next(
-        d for d in interpreter.get_tensor_details() if d['name'] == conv_name)
+    quantized_weight = None
+    quantized_weight_with_one_postfix = None
+    quantized_weight_without_one_postfix = None
+    for d in interpreter.get_tensor_details():
+      if d['name'] == conv_name + '1':
+        quantized_weight = d
+        quantized_weight_with_one_postfix = d
+        break
+    for d in interpreter.get_tensor_details():
+      if d['name'].startswith(conv_name):
+        if quantized_weight is None:
+          quantized_weight = d
+        quantized_weight_without_one_postfix = d
+        break
+
+    self.assertIsNotNone(quantized_weight)
     quant_params = quantized_weight['quantization_parameters']
 
     if enable_float16_quant:
@@ -2404,7 +2637,11 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertEqual(np.float32, output_details[0]['dtype'])
     if enable_float16_quant:
-      self.assertEqual(np.float16, quantized_weight['dtype'])
+      self.assertTrue(
+          (quantized_weight_with_one_postfix is not None and
+           np.float16 == quantized_weight_with_one_postfix['dtype']) or
+          (quantized_weight_without_one_postfix is not None and
+           np.float16 == quantized_weight_without_one_postfix['dtype']))
     else:
       self.assertEqual(np.int8, quantized_weight['dtype'])
 
@@ -2579,7 +2816,7 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
                                        disable_per_channel,
                                        enable_float16_quant):
     num_filters = 1024
-    conv_name = 'sequential/conv2d/Conv2D1'
+    conv_name = 'sequential/conv2d/Conv2D'
     model = tf.keras.models.Sequential(
         [tf.keras.Input(shape=(32, 32, 3)),
          tf.keras.layers.Conv2D(num_filters, (3, 3), activation='relu')])
@@ -2597,8 +2834,22 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
 
     interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
-    quantized_weight = next(
-        d for d in interpreter.get_tensor_details() if d['name'] == conv_name)
+    quantized_weight = None
+    quantized_weight_with_one_postfix = None
+    quantized_weight_without_one_postfix = None
+    for d in interpreter.get_tensor_details():
+      if d['name'] == conv_name + '1':
+        quantized_weight = d
+        quantized_weight_with_one_postfix = d
+        break
+    for d in interpreter.get_tensor_details():
+      if d['name'].startswith(conv_name):
+        if quantized_weight is None:
+          quantized_weight = d
+        quantized_weight_without_one_postfix = d
+        break
+
+    self.assertIsNotNone(quantized_weight)
     quant_params = quantized_weight['quantization_parameters']
 
     if enable_float16_quant:
@@ -2613,14 +2864,21 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertEqual(np.float32, output_details[0]['dtype'])
     if enable_float16_quant:
-      self.assertEqual(np.float16, quantized_weight['dtype'])
+      self.assertTrue(
+          (quantized_weight_with_one_postfix is not None and
+           np.float16 == quantized_weight_with_one_postfix['dtype']) or
+          (quantized_weight_without_one_postfix is not None and
+           np.float16 == quantized_weight_without_one_postfix['dtype']))
     else:
       self.assertEqual(np.int8, quantized_weight['dtype'])
 
+  # TODO(b/242081598): The num_bits parameter should be restored to (2, 4, 6)
+  # once a 4-bit conv kernel is available.
   @parameterized.named_parameters([
       ('{}BitWeightOnly={}LowBit={}'.format(num_bits, weight_only, low_bit),
        num_bits, weight_only, low_bit) for num_bits, weight_only, low_bit
-      in itertools.product((2, 4, 6), (True, False), (True, False))])
+      in itertools.product((5, 7, 6), (True, False), (True, False))
+  ])
   @test_util.run_v2_only
   def testQATLowBitKerasModel(self, num_bits, weight_only, low_bit):
     bit_max = (1 << (num_bits - 1)) - 1
@@ -3170,7 +3428,7 @@ class GrapplerTest(lite_v2_test_util.ModelTest):
       y_broadcast = tf.broadcast_to(y_const, [3, 3])
       return tf.matmul(x, y_broadcast)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
     concrete_func = root.f.get_concrete_function(input_data)
 
@@ -3237,7 +3495,7 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
       mult = tf.matmul(fill, input_tensor)
       return tf.matmul(mult, const_tensor)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = model
     concrete_func = root.f.get_concrete_function()
 
@@ -3320,6 +3578,78 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
     actual_value = self._evaluateTFLiteModel(
         tflite_model, [input_data_1, input_data_2],
         input_shapes=[([-1, 256, 256], [1, 256, 256])])[0]
+    self.assertAllClose(expected_value, actual_value, atol=4)
+
+  def testBatchMatMulInputInt8Int8OutputInt32(self):
+    input_data_1 = tf.constant(
+        np.array(
+            np.random.random_integers(-128, high=127, size=(1, 20, 30)),
+            dtype=np.int8))
+    input_data_2 = tf.constant(
+        np.array(
+            np.random.random_integers(-128, high=127, size=(1, 30, 10)),
+            dtype=np.int8))
+
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=[None, 20, 30], dtype=tf.int8),
+        tf.TensorSpec(shape=[None, 30, 10], dtype=tf.int8)
+    ])
+    def model(in_tensor_1, in_tensor_2):
+      return tf.matmul(in_tensor_1, in_tensor_2, output_type=tf.int32)
+
+    concrete_func = model.get_concrete_function()
+
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
+                                                               model)
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = concrete_func(input_data_1, input_data_2)
+    actual_value = self._evaluateTFLiteModel(
+        tflite_model, [input_data_1, input_data_2],
+        input_shapes=[([-1, 20, 30], [1, 20, 30]), ([-1, 30, 10], [1, 30,
+                                                                   10])])[0]
+    self.assertAllEqual(expected_value, actual_value)
+
+  def testBatchMatMulHybrid(self):
+    # Test model that does batch matmul of:
+    # lhs input (1, 256, 128), rhs const (1, 128, 256).
+    # For dynamic range quantization situation, this will result in hybrid batch
+    # matmul, where lhs type is float32 and rhs type is int8.
+
+    # Intentionally set lhs, rhs sizes to satisfy following conditions:
+    # 1. rhs const num_elements >= 1024, since dynamic range quantization
+    # requires const tensor num_elements to be larger than
+    # min_elements_for_weights (which defaults to 1024).
+    # (https://github.com/tensorflow/tensorflow/blob/25e649ac3688655547da998eba2715cf70b3e5c9/tensorflow/compiler/mlir/lite/transforms/prepare_quantize_dynamic_range.cc#L262)
+    # 2. batch_size (256) > accum_dim_size (128) and
+    # num_units (256) > accum_dim_size (128), to test if the sizes are set
+    # correctly according to dimensions. See HybridAsymmetricBatchMatMulOpTest
+    # tests in
+    # https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/kernels/batch_matmul_test.cc.
+    input_data = tf.constant(
+        np.array(np.random.random_sample((1, 256, 128)), dtype=np.float32))
+
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=[None, 256, 128], dtype=tf.float32)
+    ])
+    def model(in_tensor):
+      rhs = tf.constant(
+          np.array(np.random.random_sample((1, 128, 256)), dtype=np.float32))
+      return tf.matmul(in_tensor, rhs)
+
+    concrete_func = model.get_concrete_function()
+
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
+                                                               model)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = concrete_func(input_data)
+    actual_value = self._evaluateTFLiteModel(
+        tflite_model, [input_data],
+        input_shapes=[([-1, 256, 128], [1, 256, 128])])[0]
     self.assertAllClose(expected_value, actual_value, atol=4)
 
   def testSizeInvalid(self):
@@ -3974,7 +4304,7 @@ class SparsityTest(lite_v2_test_util.ModelTest):
 
   def _getSparsificableModel(self, matrix_b_values):
     np.random.seed(0)
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     @tf.function(
         input_signature=[tf.TensorSpec(shape=[16, 4], dtype=tf.float32)])

@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 
+#include <optional>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "llvm/IR/Constants.h"
@@ -29,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -89,9 +91,12 @@ void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
     // linear is in bounds.
     auto* quot = b->CreateUDiv(linear, divisor, "quot");
     if (i < layout.minor_to_major_size() - 1) {
+      llvm::Value* casted_dynamic_dim =
+          b->CreateIntCast(dynamic_dims[dimension], quot->getType(),
+                           /*isSigned=*/true);
       (*multidim)[dimension] =
-          b->CreateURem(quot, dynamic_dims[dimension], "dim_value");
-      divisor = b->CreateMul(divisor, dynamic_dims[dimension], "divisor");
+          b->CreateURem(quot, casted_dynamic_dim, "dim_value");
+      divisor = b->CreateMul(divisor, casted_dynamic_dim, "divisor");
     } else {
       (*multidim)[dimension] = quot;
     }
@@ -176,12 +181,16 @@ IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
       << " should have a layout.";
 }
 
-IrArray::IrArray(llvm::Value* base_ptr, Shape shape)
-    : base_ptr_(base_ptr), shape_(std::move(shape)) {
+IrArray::IrArray(llvm::Value* base_ptr, llvm::Type* pointee_type, Shape shape)
+    : base_ptr_(base_ptr),
+      pointee_type_(pointee_type),
+      shape_(std::move(shape)) {
   TF_CHECK_OK(ShapeUtil::ValidateShape(shape));
   CHECK(base_ptr_->getType()->isPointerTy());
+  CHECK(llvm::cast<llvm::PointerType>(base_ptr_->getType())
+            ->isOpaqueOrPointeeTypeMatches(pointee_type));
   int depth = 0;
-  element_type_ = base_ptr_->getType()->getPointerElementType();
+  element_type_ = pointee_type;
   while (llvm::ArrayType* array_type =
              llvm::dyn_cast<llvm::ArrayType>(element_type_)) {
     element_type_ = array_type->getElementType();
@@ -210,14 +219,10 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
   CHECK_EQ(multidim_.size(), output_shape.rank());
   std::vector<llvm::Value*> source_multidim_index(
       input_shape.rank(), llvm::UndefValue::get(index_type_));
-  auto trivial_reshape =
-      ShapeUtil::InsertedOrDeleted1SizedDimensions(input_shape, output_shape);
-  if (std::get<0>(trivial_reshape)) {
-    // The 1-sized dimensions which only appear in 'input_shape'.
-    auto deleted_dims_indices = std::get<1>(trivial_reshape);
-    // The 1-sized dimensions which only appear in 'output_shape'.
-    auto inserted_dims_indices = std::get<2>(trivial_reshape);
 
+  if (std::optional<ShapeUtil::ShapeEqualityDescriptor> trivial_reshape =
+          ShapeUtil::InsertedOrDeleted1SizedDimensions(input_shape,
+                                                       output_shape)) {
     // This is a two-way merge of 'deleted_dims_indices' with indexing into
     // 'source_multidim_index', and a two-way merge of 'inserted_dims_indices'
     // with indexing into 'multidim_'. When we find a dimension in
@@ -226,11 +231,12 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
     // indices that appear in 'inserted_dims_indices').
     for (int64_t i = 0, j = 0, k = 0, l = 0; i < source_multidim_index.size();
          ++i) {
-      if (j == deleted_dims_indices.size() || deleted_dims_indices[j] > i) {
+      if (j == trivial_reshape->deleted_dimensions.size() ||
+          trivial_reshape->deleted_dimensions[j] > i) {
         // This is a dimension that was preserved. Take the matching value from
         // multidim_.
-        while (l < inserted_dims_indices.size() &&
-               inserted_dims_indices[l] == k) {
+        while (l < trivial_reshape->inserted_dimensions.size() &&
+               trivial_reshape->inserted_dimensions[l] == k) {
           // Skip 1-sized dimensions.
           ++k;
           ++l;
@@ -320,6 +326,12 @@ IrArray::Index IrArray::Index::SourceIndexOfTranspose(
   return Index(operand_multidim_index, operand_shape, index_type_);
 }
 
+static absl::InlinedVector<int64_t, 8> ReverseIota(int64_t n) {
+  absl::InlinedVector<int64_t, 8> ret(n);
+  absl::c_generate(ret, [n = ret.size()]() mutable { return --n; });
+  return ret;
+}
+
 IrArray::Index IrArray::Index::SourceIndexOfBitcast(
     const Shape& shape, const Shape& operand_shape,
     llvm::IRBuilder<>* builder) const {
@@ -332,29 +344,52 @@ IrArray::Index IrArray::Index::SourceIndexOfBitcast(
     return SourceIndexOfReshape(shape, operand_shape, builder);
   }
 
-  // If we have a linear index, we can definitely use it because we know the
-  // operation is a bitcast. This will recompute the multi-dimensional index for
-  // the operand based on the linear index.
-  if (linear() != nullptr) {
-    return Index(linear(), operand_shape, builder);
+  if (std::optional<std::vector<int64_t>> dimensions =
+          ShapeUtil::DeduceTransposeDimensionsForBitcast(operand_shape,
+                                                         shape)) {
+    return SourceIndexOfTranspose(shape, operand_shape, *dimensions);
   }
 
-  // First linearize the index coming from the output of the bitcast. We want
-  // the physical index of the element in the buffer. This is like Linearize,
-  // but takes the layout into account.
-  int64_t scale = 1;
-  llvm::Value* linear_index = GetConstantWithIndexType(0);
-  for (auto dimension : LayoutUtil::MinorToMajor(shape)) {
-    linear_index = builder->CreateAdd(
-        linear_index,
-        builder->CreateMul(multidim_[dimension],
-                           GetConstantWithIndexType(scale), "",
-                           /*HasNUW=*/true, /*HasNSW=*/true),
-        "", /*HasNUW=*/true, /*HasNSW=*/true);
-    scale *= shape.dimensions(dimension);
-  }
+  // Every bitcast from A to B can be represented as a sequence of:
+  // 1) Transpose to a normalized layout of A
+  // 2) Reshape to a normalized layout of B
+  // 3) Transpose from (2) to B
+  //
+  // Steps (1) and (3) can be skipped if the layout is already descending.
+  // Such a sequence of index transformations is markedly faster than the
+  // previous approach of linearizing and delinearizing the entire index.
+  Shape normalized_operand_shape =
+      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+          operand_shape);
 
-  return Index(linear_index, operand_shape, builder);
+  std::vector<int64_t> transpose_dims_to_normalized_operand_shape =
+      ComposePermutations(operand_shape.layout().minor_to_major(),
+                          ReverseIota(operand_shape.rank()));
+
+  // We need to go from target `shape` to an index of `operand_shape`.
+  std::vector<int64_t> transpose_perm =
+      ComposePermutations(ReverseIota(shape.rank()),
+                          InversePermutation(shape.layout().minor_to_major()));
+
+  // Has same rank as output shape.
+  Shape reshape_shape = ShapeUtil::MakeShapeWithDescendingLayout(
+      shape.element_type(),
+      ComposePermutations(shape.dimensions(),
+                          InversePermutation(transpose_perm)));
+  Index transposed_index =
+      absl::c_is_sorted(transpose_perm)
+          ? *this
+          : SourceIndexOfTranspose(shape, reshape_shape, transpose_perm);
+
+  CHECK(ShapeUtil::ReshapeIsBitcast(reshape_shape, normalized_operand_shape,
+                                    /*ignore_element_type=*/true));
+  Index out = transposed_index.SourceIndexOfReshape(
+      reshape_shape, normalized_operand_shape, builder);
+  return absl::c_is_sorted(transpose_dims_to_normalized_operand_shape)
+             ? out
+             : out.SourceIndexOfTranspose(
+                   normalized_operand_shape, operand_shape,
+                   transpose_dims_to_normalized_operand_shape);
 }
 
 IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
@@ -502,12 +537,11 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
   CHECK_GT(index.size(), 0);
   std::vector<llvm::Value*> gep_indices(
       1, llvm::ConstantInt::get(index[0]->getType(), 0));
-  for (int64_t i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
+  for (int64_t i = 0; i < shape_.rank(); ++i) {
     int64_t dimension = LayoutUtil::Major(shape_.layout(), i);
     gep_indices.push_back(actual_index[dimension]);
   }
-  return b->CreateInBoundsGEP(base_ptr_->getType()->getPointerElementType(),
-                              base_ptr_, gep_indices,
+  return b->CreateInBoundsGEP(pointee_type_, base_ptr_, gep_indices,
                               llvm_ir::AsStringRef(name));
 }
 
@@ -530,8 +564,7 @@ llvm::Value* IrArray::EmitReadArrayElement(const Index& index,
   llvm::Value* element_address =
       EmitArrayElementAddress(index, b, name, use_linear_index);
   llvm::LoadInst* load =
-      b->CreateLoad(element_address->getType()->getPointerElementType(),
-                    element_address, llvm_ir::AsStringRef(name));
+      b->CreateLoad(element_type_, element_address, llvm_ir::AsStringRef(name));
   AnnotateLoadStoreInstructionWithMetadata(load);
   return load;
 }
@@ -550,7 +583,8 @@ IrArray IrArray::CastToShape(const Shape& new_shape,
   llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
   llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
   IrArray new_irarray(
-      b->CreatePointerCast(base_ptr_, new_ir_type->getPointerTo()), new_shape);
+      b->CreatePointerCast(base_ptr_, new_ir_type->getPointerTo()), new_ir_type,
+      new_shape);
   new_irarray.metadata_ = metadata_;
   return new_irarray;
 }

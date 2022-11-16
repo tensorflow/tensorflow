@@ -109,7 +109,7 @@ TYPED_TEST(MultinomialTest, TestMultiBatch) {
   m.PopulateTensor<Float>(m.logits(),
                           std::vector<Float>(9, static_cast<Float>(0.0f)));
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto output = m.GetOutput<Int>();
   EXPECT_EQ(output.size(), kNumSamples * 3);
 
@@ -140,7 +140,7 @@ TYPED_TEST(MultinomialTest, TestSampleHighLogOdds) {
   m.PopulateTensor<Float>(m.logits(),
                           {static_cast<Float>(0.0f), static_cast<Float>(1.0f),
                            static_cast<Float>(0.0f)});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto output = m.GetOutput<Int>();
   EXPECT_EQ(output.size(), kNumSamples);
 
@@ -164,7 +164,7 @@ TYPED_TEST(MultinomialTest, TestVeryLowLogOdds) {
   m.PopulateTensor<Float>(
       m.logits(), {static_cast<Float>(-1000.0f), static_cast<Float>(-1000.0f),
                    static_cast<Float>(0.0f)});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto output = m.GetOutput<Int>();
   EXPECT_EQ(output.size(), kNumSamples);
 
@@ -188,9 +188,9 @@ TYPED_TEST(MultinomialTest, TestSamplesDifferent) {
   std::vector<Float> logits(kNumLogits, static_cast<Float>(0.0f));
   m.PopulateTensor<Float>(m.logits(), logits);
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto output1 = m.GetOutput<Int>();
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto output2 = m.GetOutput<Int>();
 
   bool successive_samples_are_different = false;
@@ -215,7 +215,7 @@ TYPED_TEST(MultinomialTest, TestSamplesPrecise) {
       {static_cast<Float>(1000.0), static_cast<float>(1001.0)});
   m.PopulateTensor<Float>(m.logits(), logits);
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto output = m.GetOutput<Int>();
   int c0 = std::count(output.begin(), output.end(), 0);
   int c1 = std::count(output.begin(), output.end(), 1);

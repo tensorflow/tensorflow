@@ -19,10 +19,10 @@ limitations under the License.
 
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -43,7 +43,7 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
       cast_result_to_fp16 = true;
       lhs = FPCast(lhs, b()->getFloatTy());
       rhs = FPCast(rhs, b()->getFloatTy());
-      ABSL_FALLTHROUGH_INTENDED;
+      [[fallthrough]];
     case F32:
       function_name = "atan2f";
       break;
@@ -78,7 +78,7 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
     case F16:
       cast_result_to_fp16 = true;
       value = FPCast(value, b()->getFloatTy());
-      ABSL_FALLTHROUGH_INTENDED;
+      [[fallthrough]];
     case F32:
       function_name = "tanhf";
       break;

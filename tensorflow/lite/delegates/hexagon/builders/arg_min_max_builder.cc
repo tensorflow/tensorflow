@@ -26,7 +26,7 @@ TfLiteStatus ArgMinMaxOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                                   const TfLiteIntArray* outputs,
                                                   TfLiteContext* context) {
   if (inputs->size != 2) {
-    context->ReportError(context, "Expecting 2 inputs %d != 2\n", inputs->size);
+    TF_LITE_KERNEL_LOG(context, "Expecting 2 inputs %d != 2\n", inputs->size);
     return kTfLiteError;
   }
 
@@ -39,9 +39,9 @@ TfLiteStatus ArgMinMaxOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   const int axis_tensor_id = inputs->data[1];
   const auto& axis = context->tensors[axis_tensor_id];
   if (axis.allocation_type != kTfLiteMmapRo) {
-    context->ReportError(context,
-                         "Axis tensor doesn't have correct allocation type: %s",
-                         axis.name);
+    TF_LITE_KERNEL_LOG(context,
+                       "Axis tensor doesn't have correct allocation type: %s",
+                       axis.name);
     return kTfLiteError;
   }
 

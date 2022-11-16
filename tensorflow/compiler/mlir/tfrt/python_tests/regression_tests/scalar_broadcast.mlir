@@ -7,5 +7,5 @@ func.func @test(%V__0 : tensor<i1> { python_test_attrs.static_type = tensor<i1> 
   %5 = "tf.Elu"(%4) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<f32>) -> tensor<f32>
   %6 = "tf.Div"(%V__1, %5) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<f32>, tensor<f32>) -> tensor<f32>
   %7 = "tf.Select"(%0, %6, %V__1) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
-  return %7 : tensor<f32>
+  func.return %7 : tensor<f32>
 }

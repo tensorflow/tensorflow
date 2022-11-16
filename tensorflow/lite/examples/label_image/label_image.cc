@@ -33,6 +33,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -126,7 +127,7 @@ class DelegateProviders {
                      "XNNPACK delegate isn't supported on the platform!";
       } else {
         params_.Set<bool>("use_xnnpack", true);
-        params_.Set<bool>("num_threads", s.number_of_threads);
+        params_.Set<int32_t>("num_threads", s.number_of_threads);
       }
     }
   }
@@ -186,11 +187,11 @@ void PrintProfilingInfo(const profiling::ProfileEvent* e,
   //      5.352, Node   5, OpCode   4, DEPTHWISE_CONV_2D
 
   LOG(INFO) << std::fixed << std::setw(10) << std::setprecision(3)
-            << (e->end_timestamp_us - e->begin_timestamp_us) / 1000.0
-            << ", Subgraph " << std::setw(3) << std::setprecision(3)
-            << subgraph_index << ", Node " << std::setw(3)
-            << std::setprecision(3) << op_index << ", OpCode " << std::setw(3)
-            << std::setprecision(3) << registration.builtin_code << ", "
+            << (e->elapsed_time) / 1000.0 << ", Subgraph " << std::setw(3)
+            << std::setprecision(3) << subgraph_index << ", Node "
+            << std::setw(3) << std::setprecision(3) << op_index << ", OpCode "
+            << std::setw(3) << std::setprecision(3) << registration.builtin_code
+            << ", "
             << EnumNameBuiltinOperator(
                    static_cast<BuiltinOperator>(registration.builtin_code));
 }
@@ -310,7 +311,7 @@ void RunInference(Settings* settings,
                  << interpreter->tensor(input)->type << " yet";
       exit(-1);
   }
-  auto profiler = absl::make_unique<profiling::Profiler>(
+  auto profiler = std::make_unique<profiling::Profiler>(
       settings->max_profiling_buffer_entries);
   interpreter->SetProfiler(profiler.get());
 

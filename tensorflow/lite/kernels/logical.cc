@@ -68,7 +68,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteType type = input1->type;
   if (type != kTfLiteBool) {
-    context->ReportError(context, "Logical ops only support bool type.");
+    TF_LITE_KERNEL_LOG(context, "Logical ops only support bool type.");
     return kTfLiteError;
   }
   output->type = type;

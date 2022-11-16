@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CONV_CANONICALIZATION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CONV_CANONICALIZATION_H_
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -41,8 +41,10 @@ class ConvCanonicalization : public HloModulePass {
   absl::string_view name() const override {
     return "convolution-canonicalization";
   }
-
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   const TargetMachineFeatures& target_machine_features_;

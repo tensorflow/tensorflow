@@ -1,14 +1,8 @@
 # Tests of TensorFlow kernels written using the Python API.
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-
-package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],
-)
+package(licenses = ["notice"])
 
 tf_py_test(
     name = "barrier_ops_test",
@@ -150,6 +144,7 @@ tf_py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:test_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python/checkpoint:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/saved_model:load",
@@ -165,8 +160,6 @@ tf_py_test(
     grpc_enabled = True,
     tags = [
         "no_windows",  # TODO(b/192259628)
-        "noasan",  # TODO(b/164696004)
-        "notsan",  # TODO(b/164696004)
     ],
     deps = [
         "//tensorflow/python:array_ops",

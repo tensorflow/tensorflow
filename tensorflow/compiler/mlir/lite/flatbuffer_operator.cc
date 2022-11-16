@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 
+#include <string>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -109,10 +110,15 @@ static tflite::Padding ConvertTFL_PaddingAttrForOptionWriter(
 }
 
 static tflite::MirrorPadMode ConvertTFL_MirrorPaddingAttrForOptionWriter(
-    llvm::StringRef str, flatbuffers::FlatBufferBuilder* builder) {
-  return llvm::StringSwitch<tflite::MirrorPadMode>(str)
-      .Case("REFLECT", tflite::MirrorPadMode_REFLECT)
-      .Case("SYMMETRIC", tflite::MirrorPadMode_SYMMETRIC);
+    mlir::TFL::MirrorPaddingType padding,
+    flatbuffers::FlatBufferBuilder* builder) {
+  switch (padding) {
+    case mlir::TFL::MirrorPaddingType::REFLECT:
+      return tflite::MirrorPadMode_REFLECT;
+    case mlir::TFL::MirrorPaddingType::SYMMETRIC:
+      return tflite::MirrorPadMode_SYMMETRIC;
+  }
+  llvm_unreachable("invalid mirror_pad_enum in conversion.");
 }
 
 static tflite::TensorType ConvertDerivedTypeAttrForOptionWriter(
@@ -176,7 +182,7 @@ static bool ConvertBoolAttrForOptionWriter(
 // an input. If value is not specified, false is set for the attribute.
 static bool ConvertBoolAttrForOptionWriter(
     mlir::Optional<bool> b, flatbuffers::FlatBufferBuilder* builder) {
-  return b.hasValue() ? b.getValue() : false;
+  return b.has_value() ? b.getValue() : false;
 }
 
 static flatbuffers::Offset<flatbuffers::String> ConvertStrAttrForOptionWriter(
@@ -206,10 +212,15 @@ ConvertTFL_FullyConnectedOptionsWeightFormatAttrForOptionWriter(
 }
 
 static tflite::LSTMKernelType ConvertTFL_LSTMKernelTypeAttrForOptionWriter(
-    llvm::StringRef str, flatbuffers::FlatBufferBuilder* builder) {
-  return llvm::StringSwitch<tflite::LSTMKernelType>(str)
-      .Case("FULL", tflite::LSTMKernelType_FULL)
-      .Case("BASIC", tflite::LSTMKernelType_BASIC);
+    mlir::TFL::LSTMKernelType kernel_type,
+    flatbuffers::FlatBufferBuilder* builder) {
+  switch (kernel_type) {
+    case mlir::TFL::LSTMKernelType::FULL:
+      return tflite::LSTMKernelType_FULL;
+    case mlir::TFL::LSTMKernelType::BASIC:
+      return tflite::LSTMKernelType_BASIC;
+  }
+  llvm_unreachable("invalid lstm_kernel_type in conversion.");
 }
 
 static mlir::Attribute BuildBoolAttr(bool value, mlir::Builder builder) {
@@ -270,14 +281,31 @@ static mlir::Attribute BuildTFL_FullyConnectedOptionsWeightFormatAttr(
 
 static mlir::Attribute BuildTFL_LSTMKernelTypeAttr(tflite::LSTMKernelType value,
                                                    mlir::Builder builder) {
-  const char* option_name = tflite::EnumNameLSTMKernelType(value);
-  return builder.getStringAttr(option_name);
+  mlir::TFL::LSTMKernelType kernel_type;
+  switch (value) {
+    case tflite::LSTMKernelType_FULL:
+      kernel_type = mlir::TFL::LSTMKernelType::FULL;
+      break;
+    case tflite::LSTMKernelType_BASIC:
+      kernel_type = mlir::TFL::LSTMKernelType::BASIC;
+      break;
+  }
+  return mlir::TFL::LSTMKernelTypeAttr::get(builder.getContext(), kernel_type);
 }
 
 static mlir::Attribute BuildTFL_MirrorPaddingAttr(tflite::MirrorPadMode value,
                                                   mlir::Builder builder) {
-  const char* option_name = tflite::EnumNameMirrorPadMode(value);
-  return builder.getStringAttr(option_name);
+  mlir::TFL::MirrorPaddingType padding;
+  switch (value) {
+    case tflite::MirrorPadMode_REFLECT:
+      padding = mlir::TFL::MirrorPaddingType::REFLECT;
+      break;
+    case tflite::MirrorPadMode_SYMMETRIC:
+    default:
+      padding = mlir::TFL::MirrorPaddingType::SYMMETRIC;
+      break;
+  }
+  return mlir::TFL::MirrorPaddingTypeAttr::get(builder.getContext(), padding);
 }
 
 static mlir::Attribute BuildTFL_PaddingAttr(tflite::Padding value,
@@ -295,14 +323,11 @@ Status mlir::CustomOptionsToAttributes(
   std::string content;
   content.assign(reinterpret_cast<const char*>(custom_options.data()),
                  custom_options.size());
-  ShapedType type = RankedTensorType::get(
-      {static_cast<int64_t>(custom_options.size())}, builder.getIntegerType(8));
   attributes->emplace_back(builder.getNamedAttr(
       "custom_option",
-      OpaqueElementsAttr::get(builder.getContext()->getLoadedDialect("tfl"),
-                              type, content)));
+      mlir::TFL::ConstBytesAttr::get(builder.getContext(), content)));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Pull in FlatBuffer writers for TFLite generated using TableGen

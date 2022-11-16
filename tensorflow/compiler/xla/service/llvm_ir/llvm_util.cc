@@ -43,11 +43,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/byte_order.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -121,27 +119,28 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
   }
 }
 
-llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Value* index,
-                                   llvm::IRBuilder<>* b) {
+llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
+                                   llvm::Value* index, llvm::IRBuilder<>* b) {
   llvm::Type* array_type = array->getType();
   CHECK(array_type->isPointerTy());
   llvm::PointerType* array_type_as_pointer =
       llvm::cast<llvm::PointerType>(array_type);
+  CHECK(array_type_as_pointer->isOpaqueOrPointeeTypeMatches(element_type));
   VLOG(2) << "EmitBufferIndexingGEP with type="
           << llvm_ir::DumpToString(*array_type)
           << " array=" << llvm_ir::DumpToString(*array)
           << " index=" << llvm_ir::DumpToString(*index);
 
   return b->CreateInBoundsGEP(
-      array_type_as_pointer->getPointerElementType(), array,
+      element_type, array,
       llvm::isa<llvm::GlobalVariable>(array)
           ? llvm::ArrayRef<llvm::Value*>({b->getInt64(0), index})
           : index);
 }
 
-llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, int64_t index,
-                                   llvm::IRBuilder<>* b) {
-  return EmitBufferIndexingGEP(array, b->getInt64(index), b);
+llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
+                                   int64_t index, llvm::IRBuilder<>* b) {
+  return EmitBufferIndexingGEP(array, element_type, b->getInt64(index), b);
 }
 
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
@@ -258,8 +257,7 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
                                            llvm::Module* module) {
   const char* data = static_cast<const char*>(literal.untyped_data());
-  CHECK_EQ(module->getDataLayout().isLittleEndian(),
-           tensorflow::port::kLittleEndian);
+  CHECK_EQ(module->getDataLayout().isLittleEndian(), tsl::port::kLittleEndian);
   return llvm::ConstantDataArray::getString(
       module->getContext(), llvm::StringRef(data, literal.size_bytes()),
       /*AddNull=*/false);
@@ -572,14 +570,12 @@ std::map<int, llvm::MDNode*> MergeMetadata(
 static Status CreateAndWriteStringToFile(const std::string& directory_name,
                                          const std::string& file_name,
                                          const std::string& text) {
-  std::unique_ptr<tensorflow::WritableFile> f;
-  TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->RecursivelyCreateDir(directory_name));
-  TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->NewWritableFile(file_name, &f));
+  std::unique_ptr<tsl::WritableFile> f;
+  TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(directory_name));
+  TF_RETURN_IF_ERROR(tsl::Env::Default()->NewWritableFile(file_name, &f));
   TF_RETURN_IF_ERROR(f->Append(text));
   TF_RETURN_IF_ERROR(f->Close());
-  return Status::OK();
+  return OkStatus();
 }
 
 void DumpIrIfEnabled(const HloModule& hlo_module,
@@ -690,8 +686,8 @@ llvm::Value* RngGetAndUpdateState(uint64_t delta, llvm::Module* module,
                                   llvm::IRBuilder<>* builder) {
   llvm::GlobalVariable* state_ptr =
       GetOrCreateVariableForRngState(module, builder);
-  llvm::LoadInst* state_value_old = builder->CreateLoad(
-      state_ptr->getType()->getPointerElementType(), state_ptr, "load_state");
+  llvm::LoadInst* state_value_old =
+      builder->CreateLoad(state_ptr->getValueType(), state_ptr, "load_state");
   llvm::Value* state_value_new = builder->CreateAdd(
       state_value_old,
       llvm::ConstantInt::get(state_value_old->getType(), delta));

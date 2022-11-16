@@ -51,7 +51,7 @@ class BatchMatMulOp : public XlaOpKernel {
  private:
   bool adj_x_;
   bool adj_y_;
-  absl::optional<xla::PrimitiveType> preferred_element_type_;
+  std::optional<xla::PrimitiveType> preferred_element_type_;
 };
 
 REGISTER_XLA_OP(Name("BatchMatMul"), BatchMatMulOp);

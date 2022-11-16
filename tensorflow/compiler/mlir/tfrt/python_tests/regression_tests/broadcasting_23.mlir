@@ -19,5 +19,5 @@ func.func @test(%V__0: tensor<?x?xf32> { python_test_attrs.static_type = tensor<
   %17 = "tf.Softsign"(%16) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?xf32>) -> tensor<?x?xf32>
   %18 = "tf.Rsqrt"(%17) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?xf32>) -> tensor<?x?xf32>
   %19 = "tf.Log"(%18) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?xf32>) -> tensor<?x?xf32>
-  return %19 : tensor<?x?xf32>
+  func.return %19 : tensor<?x?xf32>
 }

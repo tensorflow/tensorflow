@@ -36,12 +36,12 @@ class TensorArraySideEffectAnalysis {
 
   // Return if the function contains only non-side-effecting ops or TensorArray
   // ops.
-  bool HasAtMostTensorArrayEffect(mlir::FuncOp func_op) const {
+  bool HasAtMostTensorArrayEffect(mlir::func::FuncOp func_op) const {
     return set_.count(func_op) > 0;
   }
 
  private:
-  llvm::DenseSet<mlir::FuncOp> set_;
+  llvm::DenseSet<mlir::func::FuncOp> set_;
 };
 
 }  // namespace tfrt_compiler

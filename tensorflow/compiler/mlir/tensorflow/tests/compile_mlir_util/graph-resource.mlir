@@ -1,12 +1,12 @@
 // RUN: tf-mlir-translate -mlir-tf-graph-to-hlo-text %s -tf-input-shapes=2:2 -tf-input-data-types=DT_FLOAT,DT_FLOAT -tf-xla-input-types=parameter,resource -tf-xla-emit-return-tuple | FileCheck %s
 
 module attributes {tf.versions = {producer = 511 : i32}} {
-  func @main(%arg0: tensor<*xf32>, %arg1: tensor<*x!tf_type.resource>) {
+  func.func @main(%arg0: tensor<*xf32>, %arg1: tensor<*x!tf_type.resource>) {
     tf_executor.graph {
       %control = tf_executor.island wraps "tf.AssignVariableOp"(%arg1, %arg0) : (tensor<*x!tf_type.resource>, tensor<*xf32>) -> ()
       tf_executor.fetch %control : !tf_executor.control
     }
-    return
+    func.return
   }
 }
 

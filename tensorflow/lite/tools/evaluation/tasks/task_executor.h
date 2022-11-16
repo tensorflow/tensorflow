@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_EVALUATION_TASKS_TASK_EXECUTOR_H_
 #define TENSORFLOW_LITE_TOOLS_EVALUATION_TASKS_TASK_EXECUTOR_H_
 
+#include <optional>
+
 #include "absl/types/optional.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
@@ -29,13 +31,13 @@ class TaskExecutor {
   virtual ~TaskExecutor() {}
 
   // If the run is successful, the latest metrics will be returned.
-  absl::optional<EvaluationStageMetrics> Run(int* argc, char* argv[]);
+  std::optional<EvaluationStageMetrics> Run(int* argc, char* argv[]);
 
  protected:
   // Returns a list of commandline flags that this task defines.
   virtual std::vector<Flag> GetFlags() = 0;
 
-  virtual absl::optional<EvaluationStageMetrics> RunImpl() = 0;
+  virtual std::optional<EvaluationStageMetrics> RunImpl() = 0;
 
   DelegateProviders delegate_providers_;
 };

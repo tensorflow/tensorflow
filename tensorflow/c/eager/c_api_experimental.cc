@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 
 using tensorflow::string;
 
@@ -567,11 +568,11 @@ void TFE_OpSetCancellationManager(TFE_Op* op,
                                   TF_Status* status) {
   tensorflow::unwrap(op)->SetCancellationManager(
       tensorflow::unwrap(cancellation_manager));
-  status->status = tensorflow::Status::OK();
+  status->status = ::tensorflow::OkStatus();
 }
 
-TFE_Executor* TFE_NewExecutor(bool is_async) {
-  return new TFE_Executor(is_async);
+TFE_Executor* TFE_NewExecutor(bool is_async, bool enable_streaming_enqueue) {
+  return new TFE_Executor(is_async, enable_streaming_enqueue);
 }
 
 void TFE_DeleteExecutor(TFE_Executor* executor) { delete executor; }
@@ -626,7 +627,7 @@ void TFE_ContextGetFunctionDef(TFE_Context* ctx, const char* function_name,
   buf->data_deallocator = [](void* data, size_t length) {
     tensorflow::port::Free(data);
   };
-  status->status = tensorflow::Status::OK();
+  status->status = ::tensorflow::OkStatus();
 }
 
 TF_Tensor* TFE_AllocateHostTensor(TFE_Context* ctx, TF_DataType dtype,
@@ -752,7 +753,7 @@ void TFE_GetExecutedOpNames(TFE_Context* ctx, TF_Buffer* buf,
   buf->data_deallocator = [](void* data, size_t length) {
     tensorflow::port::Free(data);
   };
-  status->status = tensorflow::Status::OK();
+  status->status = ::tensorflow::OkStatus();
 }
 
 void TFE_SetLogicalCpuDevices(TFE_Context* ctx, int num_cpus,
@@ -784,7 +785,7 @@ void TFE_InsertConfigKeyValue(TFE_Context* ctx, const char* key,
                               const char* value, TF_Status* status) {
   tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
       tensorflow::unwrap(ctx)->GetDistributedManager();
-  tensorflow::CoordinationServiceAgent* coord_agent =
+  tsl::CoordinationServiceAgent* coord_agent =
       dist_mgr->GetCoordinationServiceAgent();
   if (coord_agent == nullptr) {
     status->status = tensorflow::errors::FailedPrecondition(
@@ -798,7 +799,7 @@ void TFE_GetConfigKeyValue(TFE_Context* ctx, const char* key,
                            TF_Buffer* value_buf, TF_Status* status) {
   tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
       tensorflow::unwrap(ctx)->GetDistributedManager();
-  tensorflow::CoordinationServiceAgent* coord_agent =
+  tsl::CoordinationServiceAgent* coord_agent =
       dist_mgr->GetCoordinationServiceAgent();
   if (coord_agent == nullptr) {
     status->status = tensorflow::errors::FailedPrecondition(
@@ -809,7 +810,7 @@ void TFE_GetConfigKeyValue(TFE_Context* ctx, const char* key,
   status->status = status_or_value.status();
   if (!status_or_value.ok()) return;
 
-  const std::string& value_string = status_or_value.ValueOrDie();
+  const std::string& value_string = status_or_value.value();
   void* data = tensorflow::port::Malloc(value_string.length());
   value_string.copy(static_cast<char*>(data), value_string.length(), 0);
   value_buf->data = data;
@@ -823,7 +824,7 @@ void TFE_DeleteConfigKeyValue(TFE_Context* ctx, const char* key,
                               TF_Status* status) {
   tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
       tensorflow::unwrap(ctx)->GetDistributedManager();
-  tensorflow::CoordinationServiceAgent* coord_agent =
+  tsl::CoordinationServiceAgent* coord_agent =
       dist_mgr->GetCoordinationServiceAgent();
   if (coord_agent == nullptr) {
     status->status = tensorflow::errors::FailedPrecondition(
@@ -837,7 +838,7 @@ void TFE_ReportErrorToCluster(TFE_Context* ctx, int error_code,
                               const char* error_message, TF_Status* status) {
   tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
       tensorflow::unwrap(ctx)->GetDistributedManager();
-  tensorflow::CoordinationServiceAgent* coord_agent =
+  tsl::CoordinationServiceAgent* coord_agent =
       dist_mgr->GetCoordinationServiceAgent();
   if (coord_agent == nullptr) {
     status->status = tensorflow::errors::FailedPrecondition(
@@ -847,4 +848,45 @@ void TFE_ReportErrorToCluster(TFE_Context* ctx, int error_code,
   tensorflow::Status s(static_cast<tensorflow::error::Code>(error_code),
                        error_message);
   status->status = coord_agent->ReportError(s);
+}
+
+void TFE_GetTaskStates(TFE_Context* ctx, const TF_Buffer& tasks, void* states,
+                       TF_Status* status) {
+  tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
+      tensorflow::unwrap(ctx)->GetDistributedManager();
+  tsl::CoordinationServiceAgent* coord_agent =
+      dist_mgr->GetCoordinationServiceAgent();
+  if (coord_agent == nullptr) {
+    status->status = tensorflow::errors::FailedPrecondition(
+        "Coordination service is not enabled.");
+    return;
+  }
+  std::vector<tensorflow::CoordinatedTask> task_vec(tasks.length);
+  auto* task_iter = static_cast<const tensorflow::CoordinatedTask*>(tasks.data);
+  for (size_t i = 0; i < tasks.length; ++i) {
+    task_vec[i].set_job_name(task_iter->job_name());
+    task_vec[i].set_task_id(task_iter->task_id());
+    ++task_iter;
+  }
+  auto results = coord_agent->GetTaskState(task_vec);
+  if (!results.ok()) {
+    status->status = results.status();
+    return;
+  }
+  auto* state_iter = static_cast<TF_Status*>(states);
+  for (size_t i = 0; i < tasks.length; ++i) {
+    const auto& result = (*results)[i];
+    TF_Status s;
+    TF_SetStatus(&s, static_cast<TF_Code>(result.error_code()),
+                 result.error_message().data());
+    if (TF_GetCode(&s) != TF_Code::TF_OK) {
+      tensorflow::CoordinationServiceError error;
+      *error.mutable_source_task() = result.error_payload().source_task();
+      TF_SetPayload(&s, tensorflow::CoordinationErrorPayloadKey().data(),
+                    error.SerializeAsString().c_str());
+    }
+    *state_iter = std::move(s);
+    ++state_iter;
+  }
+  status->status = tensorflow::OkStatus();
 }

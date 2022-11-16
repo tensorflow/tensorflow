@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_DCE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_DCE_H_
 
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
@@ -35,7 +35,10 @@ class HloModuleDCE : public HloModulePass {
 
   // Run the pass on the given module. Returns whether the module was changed
   // (instructions were removed).
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
 }  // namespace xla

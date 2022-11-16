@@ -17,7 +17,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def LegalizeTF : Pass<"xla-legalize-tf", "mlir::FuncOp"> {
+def LegalizeTF : Pass<"xla-legalize-tf", "mlir::func::FuncOp"> {
   let summary = "Legalize from TF dialect's or HLO dialect's control flow.";
 
   let description = [{
@@ -48,12 +48,35 @@ def LegalizeTF : Pass<"xla-legalize-tf", "mlir::FuncOp"> {
   ];
 
   let constructor = "mlir::mhlo::createLegalizeTFPass()";
-  let dependentDialects = ["arith::ArithmeticDialect, chlo::HloClientDialect",
-                           "memref::MemRefDialect", "mhlo::MhloDialect",
-                           "shape::ShapeDialect", "func::FuncDialect"];
+  let dependentDialects = ["arith::ArithDialect, chlo::ChloDialect",
+                           "mhlo::MhloDialect",
+                           "quant::QuantizationDialect",
+                           "shape::ShapeDialect",
+                           "func::FuncDialect",
+                           "sparse_tensor::SparseTensorDialect"];
 }
 
-def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::FuncOp"> {
+def LegalizeTFModulePass : Pass<"xla-fallback-legalize-tf-module-pass", "ModuleOp"> {
+  let summary = "Legalize whitelisted Ops using TF2XLA fallback for ops that "
+      "must also be able to create new functions.";
+
+  let description = [{
+    Legalizes whitelisted Ops from TF dialect to HLO dialect using TF2XLA
+    fallback for ops that must be allowed to create new functions.
+  }];
+  let options = [
+    Option<"device_type_", "device-type", "std::string",
+        /*default=*/"\"INVALID_DEVICE_TYPE\"",
+        "The device type used by TF2XLA fallback. Required.">,
+  ];
+
+  let constructor = "mlir::mhlo::createLegalizeTFModulePass()";
+  let dependentDialects = ["arith::ArithDialect, chlo::ChloDialect",
+                           "mhlo::MhloDialect",
+                           "shape::ShapeDialect", "func::FuncDialect", "sparse_tensor::SparseTensorDialect"];
+}
+
+def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::func::FuncOp"> {
   let summary = "Legalize from TF dialect's or HLO dialect's control flow.";
 
   let description = [{
@@ -67,16 +90,16 @@ def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::FuncOp"> {
   ];
 
   let constructor = "mlir::mhlo::createLegalizeTFNoFallbackPass()";
-  let dependentDialects = ["arith::ArithmeticDialect", "chlo::HloClientDialect",
-                           "memref::MemRefDialect", "mhlo::MhloDialect",
-                           "shape::ShapeDialect", "func::FuncDialect"];
+  let dependentDialects = ["arith::ArithDialect", "chlo::ChloDialect",
+                           "mhlo::MhloDialect",
+                           "shape::ShapeDialect", "func::FuncDialect", "sparse_tensor::SparseTensorDialect"];
 }
 
 def LegalizeTFControlFlow : Pass<"xla-legalize-tf-control-flow", "ModuleOp"> {
   let summary = "Legalize from TF dialect's to HLO dialect's control flow.";
 
   let constructor = "mlir::mhlo::createLegalizeTFControlFlowPass()";
-  let dependentDialects = ["mhlo::MhloDialect"];
+  let dependentDialects = ["mhlo::MhloDialect", "sparse_tensor::SparseTensorDialect"];
 }
 
 def LegalizeTfTypesPass : Pass<"xla-legalize-tf-types"> {
@@ -101,5 +124,5 @@ def LegalizeTFCollective : Pass<"xla-legalize-tf-collective", "ModuleOp"> {
   let summary = "Legalize TF/XLA collective ops (TensorFlow dialect) to the HLO dialect";
 
   let constructor = "mlir::mhlo::CreateLegalizeTFCollectivePass()";
-  let dependentDialects = ["mhlo::MhloDialect"];
+  let dependentDialects = ["mhlo::MhloDialect", "sparse_tensor::SparseTensorDialect"];
 }

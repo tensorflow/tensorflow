@@ -1,10 +1,13 @@
 load(
     "//tensorflow/lite:build_def.bzl",
+    "tflite_cc_library_with_c_headers_test",
     "tflite_cc_shared_object",
     "tflite_copts",
     "tflite_custom_c_library",
+    "tflite_self_contained_libs_test_suite",
 )
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -41,32 +44,20 @@ tflite_cc_shared_object(
     ],
 )
 
-cc_library(
-    name = "c_api_internal",
-    hdrs = ["c_api_internal.h"],
-    copts = tflite_copts(),
-    visibility = ["//visibility:private"],
-    deps = [
-        ":common",
-        "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/core/api",
-    ],
-)
-
-cc_library(
+tflite_cc_library_with_c_headers_test(
     name = "c_api",
-    hdrs = ["c_api.h"],
+    hdrs = [
+        "c_api.h",
+    ],
     copts = tflite_copts(),
     deps = [
-        ":c_api_types",
         ":c_api_without_op_resolver",
-        "//tensorflow/lite:create_op_resolver_with_builtin_ops",
+        "//tensorflow/lite/core/c:c_api",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
-cc_library(
+tflite_cc_library_with_c_headers_test(
     name = "c_api_for_testing",
     testonly = True,
     srcs = ["c_api_for_testing.cc"],
@@ -74,114 +65,203 @@ cc_library(
     deps = [
         ":c_api",
         ":c_api_internal",
+        "//tensorflow/lite/core/c:c_api",
     ],
 )
 
-cc_library(
+# TODO(b/248514738): Deprecate this target in favour
+# of //third_party/tensorflow/lite/core/c:c_api_without_op_resolver after all known existing uses of
+# those targets have been changed to instead refer to the new target.
+# Same as ":c_api", but doesn't link in the default CreateOpResolver implementation.
+tflite_cc_library_with_c_headers_test(
     name = "c_api_without_op_resolver",
-    srcs = ["c_api.cc"],
     hdrs = ["c_api.h"],
     copts = tflite_copts(),
+    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
-        ":c_api_internal",
         ":c_api_types",
-        "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite:create_op_resolver_header",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite:version",
-        "//tensorflow/lite/delegates:interpreter_utils",
-        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-        "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/core/c:c_api_without_op_resolver",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
-cc_library(
+# TODO(b/248514738): Deprecate this target in favour
+# of //third_party/tensorflow/lite/core/c:c_api_without_op_resolver_without_alwayslink after all
+# known existing uses of those targets have been changed to instead refer to the new target.
+# Same as ":c_api_without_op_resolver", but without alwayslink=1.
+tflite_cc_library_with_c_headers_test(
+    name = "c_api_without_op_resolver_without_alwayslink",
+    hdrs = ["c_api.h"],
+    copts = tflite_copts(),
+    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
+    deps = [
+        "//tensorflow/lite/core/c:c_api_without_op_resolver_without_alwayslink",
+    ],
+)
+
+tflite_cc_library_with_c_headers_test(
     name = "c_api_experimental",
-    srcs = ["c_api_experimental.cc"],
-    hdrs = ["c_api_experimental.h"],
+    srcs = [
+        "c_api_opaque.cc",
+    ],
+    hdrs = [
+        "c_api_experimental.h",
+        "c_api_opaque.h",
+    ],
     copts = tflite_copts(),
     deps = [
         ":c_api",
-        ":c_api_internal",
+        ":c_api_opaque_internal",
+        ":c_api_types",
         ":common",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/core/c:c_api",
+        "//tensorflow/lite/core/c:c_api_experimental",
+        "//tensorflow/lite/kernels:kernel_util",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
-cc_library(
+# Same as ":c_api_experimental", but without linking in the default CreateOpResolver implementation.
+tflite_cc_library_with_c_headers_test(
+    name = "c_api_experimental_without_op_resolver",
+    srcs = [
+        "c_api_opaque.cc",
+    ],
+    hdrs = [
+        "c_api_experimental.h",
+        "c_api_opaque.h",
+    ],
+    aspect_hints = ["//tools/build_defs/swift:auto_module"],
+    copts = tflite_copts(),
+    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
+    deps = [
+        ":c_api_opaque_internal",
+        ":c_api_types",
+        ":c_api_without_op_resolver",
+        ":common",
+        "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver",
+        "//tensorflow/lite/core/c:c_api_without_op_resolver",
+        "//tensorflow/lite/kernels:kernel_util",
+    ],
+    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
+)
+
+# Same as ":c_api_experimental", but without linking in the default CreateOpResolver implementation.
+tflite_cc_library_with_c_headers_test(
+    name = "c_api_experimental_without_op_resolver_without_alwayslink",
+    srcs = [
+        "c_api_opaque.cc",
+    ],
+    hdrs = [
+        "c_api_experimental.h",
+        "c_api_opaque.h",
+    ],
+    aspect_hints = ["//tools/build_defs/swift:auto_module"],
+    copts = tflite_copts(),
+    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
+    deps = [
+        ":c_api_opaque_internal_without_alwayslink",
+        ":c_api_types",
+        ":c_api_without_op_resolver_without_alwayslink",
+        ":common",
+        "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver_without_alwayslink",
+        "//tensorflow/lite/core/c:c_api_without_op_resolver_without_alwayslink",
+        "//tensorflow/lite/kernels:kernel_util",
+    ],
+)
+
+tflite_cc_library_with_c_headers_test(
     name = "c_api_types",
     hdrs = ["c_api_types.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite/core/c:c_api_types",
+    ],
 )
 
-cc_test(
-    name = "c_api_test",
-    size = "small",
-    srcs = ["c_api_test.cc"],
+cc_library(
+    name = "c_api_internal",
+    srcs = ["c_api_internal.cc"],
+    hdrs = ["c_api_internal.h"],
     copts = tflite_copts(),
-    data = [
+    visibility = [
+        "//tensorflow/lite/core/c:__subpackages__",
+        "//tensorflow/lite/delegates/utils:__pkg__",
+    ],
+    deps = [
+        ":common",
+        ":common_internal",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core/api",
+    ],
+)
+
+filegroup(
+    name = "c_api_test_builtin_op_models",
+    testonly = 1,
+    srcs = [
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/add_quantized.bin",
     ],
-    deps = [
-        ":c_api",
-        ":common",
-        "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest_main",
+)
+
+# TODO(b/248514738): Deprecate this target in favour
+# of //third_party/tensorflow/lite/core/c:c_api_test after all known existing uses of those targets
+# have been changed to instead refer to the new target.
+test_suite(
+    name = "c_api_test",
+    tests = [
+        "//tensorflow/lite/core/c:c_api_test",
     ],
 )
 
 tflite_custom_c_library(
     name = "selectively_built_c_api_test_lib",
     testonly = 1,
-    models = [
-        "//tensorflow/lite:testdata/add.bin",
-        "//tensorflow/lite:testdata/add_quantized.bin",
+    experimental = True,
+    models = [":c_api_test_builtin_op_models"],
+    visibility = [
+        "//tensorflow/lite/core/c:__subpackages__",
     ],
-    visibility = ["//visibility:private"],
 )
 
-cc_test(
+# TODO(b/248514738): Deprecate this target in favour
+# of //third_party/tensorflow/lite/core/c:selectively_built_c_api_test after all known existing uses
+# of those targets have been changed to instead refer to the new target.
+test_suite(
     name = "selectively_built_c_api_test",
-    size = "small",
-    srcs = ["c_api_test.cc"],
-    copts = tflite_copts(),
-    data = [
-        "//tensorflow/lite:testdata/add.bin",
-        "//tensorflow/lite:testdata/add_quantized.bin",
+    tests = [
+        "//tensorflow/lite/core/c:selectively_built_c_api_test",
     ],
-    deps = [
-        ":common",
-        ":selectively_built_c_api_test_lib",
-        "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest_main",
+)
+
+test_suite(
+    name = "c_api_experimental_test",
+    tests = [
+        "//tensorflow/lite/core/c:c_api_experimental_test",
     ],
 )
 
 cc_test(
-    name = "c_api_experimental_test",
+    name = "c_api_signature_runner_test",
     size = "small",
-    srcs = ["c_api_experimental_test.cc"],
+    srcs = ["c_api_signature_runner_test.cc"],
     copts = tflite_copts(),
-    data = ["//tensorflow/lite:testdata/add.bin"],
+    data = ["//tensorflow/lite:testdata/multi_signatures.bin"],
     deps = [
         ":c_api",
         ":c_api_experimental",
-        ":common",
-        "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/delegates:delegate_test_util",
-        "//tensorflow/lite/testing:util",
+        "//tensorflow/lite/core/c:c_api",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
-cc_library(
+tflite_cc_library_with_c_headers_test(
     name = "common",
-    srcs = ["common.cc"],
+    srcs = [],
     hdrs = [
         "builtin_op_data.h",
         "common.h",
@@ -190,47 +270,104 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":c_api_types",
+        "//tensorflow/lite:tflite_kernel_use_xnnpack_optional",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+    ] + select({
+        "//tensorflow/lite:tensorflow_profiler_config": [
+            "//tensorflow/lite:macros",
+            "//tensorflow/lite:tensorflow_profiler_logger_shim",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "common_internal",
+    srcs = ["common_internal.cc"],
+    hdrs = ["common_internal.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
     ],
-    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
+    deps = [
+        ":c_api_types",
+        ":common",
+    ],
+)
+
+cc_library(
+    name = "c_api_opaque_internal",
+    srcs = ["c_api_opaque_internal.cc"],
+    hdrs = ["c_api_opaque_internal.h"],
+    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
+    visibility = [
+        "//visibility:private",
+    ],
+    deps = [
+        ":c_api_types",
+        ":c_api_without_op_resolver",
+        ":common",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
+    ],
+)
+
+# Same as c_api_opaque_internal, but depends on the
+# '_without_alwayslink' variant of ':c_api_without_op_resolver'.
+cc_library(
+    name = "c_api_opaque_internal_without_alwayslink",
+    srcs = ["c_api_opaque_internal.cc"],
+    hdrs = ["c_api_opaque_internal.h"],
+    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
+    visibility = [
+        "//visibility:private",
+    ],
+    deps = [
+        ":c_api_types",
+        ":c_api_without_op_resolver_without_alwayslink",
+        ":common",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
+    ],
 )
 
 # For use with library targets that can't use relative paths.
 exports_files([
     "c_api.h",
     "c_api_experimental.h",
+    "c_api_opaque.h",
     "c_api_types.h",
     "common.h",
 ])
 
-# For use in selective build rule for C API.
 filegroup(
-    name = "c_api_srcs",
+    name = "tensorflowlite_c_api_hdrs_filegroup",
     srcs = [
-        "c_api.cc",
-        "c_api_internal.h",
+        "c_api.h",
+        "c_api_types.h",
+        "common.h",
     ],
+)
+
+alias(
+    name = "tensorflowlite_c_impl_hdrs_filegroup",
+    actual = "//tensorflow/lite/core/c:headers_filegroup",
 )
 
 # Test the C extension API code.
-cc_test(
+test_suite(
     name = "common_test",
-    size = "small",
-    srcs = ["common_test.cc"],
-    deps = [
-        ":c_api_types",
-        ":common",
-        "@com_google_googletest//:gtest_main",
+    tests = [
+        "//tensorflow/lite/core/c:common_test",
     ],
 )
 
-cc_test(
+test_suite(
     name = "builtin_op_data_test",
-    size = "small",
-    srcs = ["builtin_op_data_test.cc"],
-    copts = ["-Wno-unused-variable"],
-    deps = [
-        ":common",
-        "@com_google_googletest//:gtest_main",
+    tests = [
+        "//tensorflow/lite/core/c:builtin_op_data_test",
     ],
 )
 
@@ -243,9 +380,21 @@ cc_test(
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/multi_signatures.bin",
     ],
+    tags = [
+        # Testing on Android uses "--gunit_output=xml:test.xml" runtime flag,
+        # but this test is C code, not C++, and hence doesn't use GUnit,
+        # so doesn't support that flag.
+        "tflite_not_portable_android",
+    ],
     deps = [
         ":c_api",
         ":c_api_experimental",
+        ":c_api_types",
         ":common",
+        "//tensorflow/lite/core/c:c_api",
     ],
 )
+
+tflite_self_contained_libs_test_suite(name = "self_contained_libs_test_suite")
+
+tflite_portable_test_suite()

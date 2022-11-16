@@ -23,8 +23,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/ir/importexport/export.h"
-#include "tensorflow/core/ir/importexport/import.h"
+#include "tensorflow/core/ir/importexport/graphdef_export.h"
+#include "tensorflow/core/ir/importexport/graphdef_import.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace mlir {
@@ -39,8 +39,8 @@ tensorflow::Status RunTransformOnGraph(
   // to avoid overhead of creating threadpool that won't be used.
   MLIRContext context(MLIRContext::Threading::DISABLED);
   TF_ASSIGN_OR_RETURN(OwningOpRef<ModuleOp> module,
-                      ImportGraphAndFunctionsToMlir(
-                          &context, *graph, debug_info, graph->flib_def()));
+                      ImportGraphAndFunctionsToMlir(&context, debug_info,
+                                                    *graph, graph->flib_def()));
 
   PassManager pm(&context, mlir::PassManager::Nesting::Explicit);
   // Construct passes.
@@ -52,9 +52,8 @@ tensorflow::Status RunTransformOnGraph(
 
   // Export and replace Graph.
   tensorflow::GraphDef graphdef;
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      tensorflow::ExportMlirToGraphdef(*module, &graphdef),
-      "when exporting MLIR module to GraphDef");
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(ConvertToGraphDef(*module, &graphdef),
+                                  "when exporting MLIR module to GraphDef");
   graph->Clear();
   graph->mutable_flib_def()->Clear();
   tensorflow::GraphConstructorOptions opts;

@@ -17,15 +17,18 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verify_suitable_for_graph_export.h"
 
 namespace mlir {
 namespace TF {
 namespace {
 
+#define GEN_PASS_DEF_VERIFYSUITABLEFOREXPORTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class VerifySuitableForExportPass
-    : public VerifySuitableForExportPassBase<VerifySuitableForExportPass> {
+    : public impl::VerifySuitableForExportPassBase<
+          VerifySuitableForExportPass> {
  public:
   void runOnOperation() override {
     if (failed(tensorflow::VerifyExportSuitable(getOperation())))

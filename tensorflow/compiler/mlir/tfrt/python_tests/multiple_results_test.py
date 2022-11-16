@@ -33,14 +33,14 @@ class MultipleResultsTest(test.TestCase):
   def test_two_results(self):
     for specialize in specializations:
       mlir_function = """
-        func @test(%arg0: tensor<?xf32>) -> (tensor<?xf32>, tensor<?xf32>) {
+        func.func @test(%arg0: tensor<?xf32>) -> (tensor<?xf32>, tensor<?xf32>) {
           %0 = "tf.Const"() { value = dense<1.0> : tensor<f32> }
                : () -> tensor<f32>
           %1 = "tf.AddV2"(%arg0, %0)
                : (tensor<?xf32>, tensor<f32>) -> tensor<?xf32>
           %2 = "tf.AddV2"(%1, %0)
                : (tensor<?xf32>, tensor<f32>) -> tensor<?xf32>
-          return %1, %2 : tensor<?xf32>, tensor<?xf32>
+          func.return %1, %2 : tensor<?xf32>, tensor<?xf32>
         }"""
 
       compiled = jitrt.compile(mlir_function, 'test', specialize)
@@ -55,7 +55,7 @@ class MultipleResultsTest(test.TestCase):
   def test_three_results(self):
     for specialize in specializations:
       mlir_function = """
-        func @test(%arg0: tensor<?xf32>) ->
+        func.func @test(%arg0: tensor<?xf32>) ->
             (tensor<?xf32>, tensor<?xf32>, tensor<?xf32>) {
           %0 = "tf.Const"() { value = dense<1.0> : tensor<f32> }
                : () -> tensor<f32>
@@ -65,7 +65,7 @@ class MultipleResultsTest(test.TestCase):
                : (tensor<?xf32>, tensor<f32>) -> tensor<?xf32>
           %3 = "tf.AddV2"(%2, %0)
                : (tensor<?xf32>, tensor<f32>) -> tensor<?xf32>
-          return %1, %2, %3 : tensor<?xf32>, tensor<?xf32>, tensor<?xf32>
+          func.return %1, %2, %3 : tensor<?xf32>, tensor<?xf32>, tensor<?xf32>
         }"""
 
       compiled = jitrt.compile(mlir_function, 'test', specialize)
@@ -81,12 +81,12 @@ class MultipleResultsTest(test.TestCase):
   def test_same_tensor_returned_twice(self):
     for specialize in specializations:
       mlir_function = """
-        func @test(%arg0: tensor<?xf32>) -> (tensor<?xf32>, tensor<?xf32>) {
+        func.func @test(%arg0: tensor<?xf32>) -> (tensor<?xf32>, tensor<?xf32>) {
           %0 = "tf.Const"() { value = dense<1.0> : tensor<f32> }
                : () -> tensor<f32>
           %1 = "tf.AddV2"(%arg0, %0)
                : (tensor<?xf32>, tensor<f32>) -> tensor<?xf32>
-          return %1, %1 : tensor<?xf32>, tensor<?xf32>
+          func.return %1, %1 : tensor<?xf32>, tensor<?xf32>
         }"""
 
       compiled = jitrt.compile(mlir_function, 'test', specialize)

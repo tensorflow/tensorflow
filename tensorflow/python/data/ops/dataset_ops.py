@@ -16,13 +16,11 @@
 import abc
 import functools
 import multiprocessing
-import sys
+import queue
 import threading
 import warnings
 
 import numpy as np
-import six
-from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.core.framework import dataset_options_pb2
@@ -44,7 +42,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed as core_random_seed
-from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -63,8 +60,9 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.training.tracking import base as tracking_base
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import base as tracking_base
+from tensorflow.python.trackable import resource as resource_lib
 from tensorflow.python.types import trace
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
@@ -95,6 +93,7 @@ parsing_ops = lazy_loader.LazyLoader(
     "parsing_ops", globals(),
     "tensorflow.python.ops.parsing_ops")
 
+
 ops.NotDifferentiable("ReduceDataset")
 
 # A constant that can be used to enable auto-tuning.
@@ -106,6 +105,9 @@ tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
 # Constants representing infinite and unknown cardinalities.
 INFINITE = -1
 UNKNOWN = -2
+COMPRESSION_GZIP = "GZIP"
+COMPRESSION_SNAPPY = "NONE"
+DATASET_SPEC_FILENAME = "dataset_spec.pb"
 tf_export("data.INFINITE_CARDINALITY").export_constant(__name__, "INFINITE")
 tf_export("data.UNKNOWN_CARDINALITY").export_constant(__name__, "UNKNOWN")
 
@@ -130,9 +132,11 @@ def _get_type(value):
 
 
 @tf_export("data.Dataset", v1=[])
-@six.add_metaclass(abc.ABCMeta)
-class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
-                composite_tensor.CompositeTensor):
+class DatasetV2(
+    collections_abc.Iterable,
+    tracking_base.Trackable,
+    composite_tensor.CompositeTensor,
+    metaclass=abc.ABCMeta):
   """Represents a potentially large set of elements.
 
   The `tf.data.Dataset` API supports writing descriptive and efficient input
@@ -307,7 +311,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
 
     Returns:
       A dictionary mapping the node name of an asset constant to a tracked
-      `tracking.Asset` object.
+      `asset.Asset` object.
     """
     asset_tracker = {}
     for node in graph_def.node:
@@ -324,7 +328,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
           node_value = parsing_ops.parse_tensor(
               tensor_proto.SerializeToString(), dtypes.string).numpy()
         asset_tracker[node.name] = ([
-            self._track_trackable(tracking.Asset(n),
+            self._track_trackable(asset.Asset(n),
                                   name=node.name + "_" + str(i), overwrite=True)
             for i, n in enumerate(node_value)
         ])
@@ -469,6 +473,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       # parallelism or asynchrony.
       options = options_lib.Options()
       options.autotune.enabled = False
+      options.experimental_optimization.filter_parallelization = False
       options.experimental_optimization.map_and_batch_fusion = False
       options.experimental_optimization.map_parallelization = False
       dataset = _OptionsDataset(self, options)
@@ -611,7 +616,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     for component_spec in nest.flatten(self.element_spec):
       if not isinstance(
           component_spec,
-          (tensor_spec.TensorSpec, ragged_tensor.RaggedTensorSpec)):
+          (tensor_spec.TensorSpec, ragged_tensor.RaggedTensorSpec,
+           sparse_tensor_lib.SparseTensorSpec, structure.NoneTensorSpec)):
         raise TypeError(
             f"`tf.data.Dataset.as_numpy_iterator()` is not supported for "
             f"datasets that produce values of type {component_spec.value_type}")
@@ -805,9 +811,12 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     Returns:
       Dataset: A `Dataset`.
     """
-    return TensorSliceDataset(tensors, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops ->
+    # from_tensor_slices_op -> dataset_ops).
+    from tensorflow.python.data.ops import from_tensor_slices_op  # pylint: disable=g-import-not-at-top
+    return from_tensor_slices_op.from_tensor_slices(tensors, name)
 
-  class _GeneratorState(object):
+  class _GeneratorState:
     """Stores outstanding iterators created from a Python generator.
 
     This class keeps track of potentially multiple iterators that may have
@@ -1033,14 +1042,11 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
           # their values.
           try:
             flattened_values = nest.flatten_up_to(output_types, values)
-          except (TypeError, ValueError):
-            six.reraise(
-                TypeError,
-                TypeError(
-                    f"`generator` yielded an element that did not match the "
-                    f"expected structure. The expected structure was "
-                    f"{output_types}, but the yielded element was {values}."),
-                sys.exc_info()[2])
+          except (TypeError, ValueError) as e:
+            raise TypeError(
+                f"`generator` yielded an element that did not match the "
+                f"expected structure. The expected structure was "
+                f"{output_types}, but the yielded element was {values}.") from e
           ret_arrays = []
           for ret, dtype in zip(flattened_values, flattened_types):
             try:
@@ -1048,14 +1054,11 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
                   script_ops.FuncRegistry._convert(  # pylint: disable=protected-access
                       ret,
                       dtype=dtype.as_numpy_dtype))
-            except (TypeError, ValueError):
-              six.reraise(
-                  TypeError,
-                  TypeError(
-                      f"`generator` yielded an element that could not be "
-                      f"converted to the expected type. The expected type was "
-                      f"{dtype.name}, but the yielded element was {ret}."),
-                  sys.exc_info()[2])
+            except (TypeError, ValueError) as e:
+              raise TypeError(
+                  f"`generator` yielded an element that could not be "
+                  f"converted to the expected type. The expected type was "
+                  f"{dtype.name}, but the yielded element was {ret}.") from e
 
           # Additional type and shape checking to ensure that the components of
           # the generated element match the `output_types` and `output_shapes`
@@ -1102,15 +1105,12 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
 
           try:
             values = structure.normalize_element(values, output_signature)
-          except (TypeError, ValueError):
-            six.reraise(
-                TypeError,
-                TypeError(
-                    f"`generator` yielded an element that did not match the "
-                    f"expected structure. The expected structure was "
-                    f"{output_signature}, but the yielded element was "
-                    f"{values}."),
-                sys.exc_info()[2])
+          except (TypeError, ValueError) as e:
+            raise TypeError(
+                f"`generator` yielded an element that did not match the "
+                f"expected structure. The expected structure was "
+                f"{output_signature}, but the yielded element was "
+                f"{values}.") from e
 
           values_spec = structure.type_spec_from_value(values)
 
@@ -1253,9 +1253,12 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      Dataset: A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
     """
-    return ZipDataset(datasets, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops -> zip_op ->
+    # dataset_ops).
+    from tensorflow.python.data.ops import zip_op  # pylint: disable=g-import-not-at-top
+    return zip_op.zip(datasets, name)
 
   def concatenate(self, dataset, name=None):
     """Creates a `Dataset` by concatenating the given dataset with this dataset.
@@ -1283,9 +1286,101 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      Dataset: A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
     """
     return ConcatenateDataset(self, dataset, name=name)
+
+  @staticmethod
+  def counter(start=0, step=1, dtype=dtypes.int64, name=None):
+    """Creates a `Dataset` that counts from `start` in steps of size `step`.
+
+    Unlike `tf.data.Dataset.range`, which stops at some ending number,
+    `tf.data.Dataset.counter` produces elements indefinitely.
+
+    >>> dataset = tf.data.experimental.Counter().take(5)
+    >>> list(dataset.as_numpy_iterator())
+    [0, 1, 2, 3, 4]
+    >>> dataset.element_spec
+    TensorSpec(shape=(), dtype=tf.int64, name=None)
+    >>> dataset = tf.data.experimental.Counter(dtype=tf.int32)
+    >>> dataset.element_spec
+    TensorSpec(shape=(), dtype=tf.int32, name=None)
+    >>> dataset = tf.data.experimental.Counter(start=2).take(5)
+    >>> list(dataset.as_numpy_iterator())
+    [2, 3, 4, 5, 6]
+    >>> dataset = tf.data.experimental.Counter(start=2, step=5).take(5)
+    >>> list(dataset.as_numpy_iterator())
+    [2, 7, 12, 17, 22]
+    >>> dataset = tf.data.experimental.Counter(start=10, step=-1).take(5)
+    >>> list(dataset.as_numpy_iterator())
+    [10, 9, 8, 7, 6]
+
+    Args:
+      start: (Optional.) The starting value for the counter. Defaults to 0.
+      step: (Optional.) The step size for the counter. Defaults to 1.
+      dtype: (Optional.) The data type for counter elements. Defaults to
+        `tf.int64`.
+      name: (Optional.) A name for the tf.data operation.
+
+    Returns:
+      A `Dataset` of scalar `dtype` elements.
+    """
+    # Loaded lazily due to a circular dependency (dataset_ops -> counter_op
+    # -> dataset_ops).
+    from tensorflow.python.data.ops import counter_op  # pylint: disable=g-import-not-at-top
+    return counter_op.counter(start, step, dtype, name=name)
+
+  def rebatch(self, batch_size, drop_remainder=False, name=None):
+    """Creates a `Dataset` that rebatches the elements from this dataset.
+
+    `rebatch(N)` is functionally equivalent to `unbatch().batch(N)`, but is
+    more efficient, performing one copy instead of two.
+
+    >>> ds = tf.data.Dataset.range(6)
+    >>> ds = ds.batch(2)
+    >>> ds = ds.rebatch(3)
+    >>> list(ds.as_numpy_iterator())
+    [array([0, 1, 2]), array([3, 4, 5])]
+
+    >>> ds = tf.data.Dataset.range(7)
+    >>> ds = ds.batch(4)
+    >>> ds = ds.rebatch(3)
+    >>> list(ds.as_numpy_iterator())
+    [array([0, 1, 2]), array([3, 4, 5]), array([6])]
+
+    >>> ds = tf.data.Dataset.range(7)
+    >>> ds = ds.batch(2)
+    >>> ds = ds.rebatch(3, drop_remainder=True)
+    >>> list(ds.as_numpy_iterator())
+    [array([0, 1, 2]), array([3, 4, 5])]
+
+    If the `batch_size` argument is a list, `rebatch` cycles through the list
+    to determine the size of each batch.
+
+    >>> ds = tf.data.Dataset.range(8)
+    >>> ds = ds.batch(4)
+    >>> ds = ds.rebatch([2, 1, 1])
+    >>> list(ds.as_numpy_iterator())
+    [array([0, 1]), array([2]), array([3]), array([4, 5]), array([6]),
+    array([7])]
+
+    Args:
+      batch_size: A `tf.int64` scalar or vector, representing the size of
+        batches to produce. If this argument is a vector, these values are
+        cycled through in round robin fashion.
+      drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
+        whether the last batch should be dropped in the case it has fewer than
+        `batch_size[cycle_index]` elements; the default behavior is not to drop
+        the smaller batch.
+      name: (Optional.) A name for the tf.data operation.
+
+    Returns:
+      A `Dataset` of scalar `dtype` elements.
+    """
+    # Loaded lazily due to a circular dependency (dataset_ops ->
+    # rebatch_op -> dataset_ops).
+    from tensorflow.python.data.ops import rebatch_op  # pylint: disable=g-import-not-at-top
+    return rebatch_op.rebatch(self, batch_size, drop_remainder, name=name)
 
   def prefetch(self, buffer_size, name=None):
     """Creates a `Dataset` that prefetches elements from this dataset.
@@ -1313,7 +1408,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       name: Optional. A name for the tf.data transformation.
 
     Returns:
-      Dataset: A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
     """
     if DEBUG_MODE:
       return self
@@ -1380,7 +1475,12 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       with ops.control_dependencies([assert_not_empty]):
         matching_files = array_ops.identity(matching_files)
 
-      dataset = TensorSliceDataset(matching_files, is_files=True, name=name)
+      # TODO(b/240947712): Remove lazy import after this method is factored out.
+      # Loaded lazily due to a circular dependency (dataset_ops ->
+      # from_tensor_slices_op -> dataset_ops).
+      from tensorflow.python.data.ops import from_tensor_slices_op  # pylint: disable=g-import-not-at-top
+      dataset = from_tensor_slices_op.TensorSliceDataset(
+          matching_files, is_files=True, name=name)
       if issubclass(Dataset, DatasetV1):
         dataset = DatasetV1Adapter(dataset)
       if shuffle:
@@ -1410,7 +1510,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      Dataset: A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
     """
     return RepeatDataset(self, count, name=name)
 
@@ -1442,12 +1542,16 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       name: Optional. A name for the tf.data operations used by `enumerate`.
 
     Returns:
-      Dataset: A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
     """
 
     max_value = np.iinfo(dtypes.int64.as_numpy_dtype).max
-    return Dataset.zip((Dataset.range(start, max_value, name=name), self),
-                       name=name)
+    range_dataset = Dataset.range(start, max_value, name=name)
+    # Replicate the range component so that each split is enumerated
+    # independently. This avoids the need for prohibitively expensive
+    # cross-split coordination.
+    range_dataset = _apply_rewrite(range_dataset, "replicate_on_split")
+    return Dataset.zip((range_dataset, self), name=name)
 
   def shuffle(self,
               buffer_size,
@@ -1516,7 +1620,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      Dataset: A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
     """
     return ShuffleDataset(
         self, buffer_size, seed, reshuffle_each_iteration, name=name)
@@ -1528,9 +1632,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     either in the specified file or in memory. Subsequent iterations will
     use the cached data.
 
-    Note: For the cache to be finalized, the input dataset must be iterated
-    through in its entirety. Otherwise, subsequent iterations will not use
-    cached data.
+    Note: To guarantee that the cache gets finalized, the input dataset must be
+    iterated through in its entirety, until it raises StopIteration. Otherwise,
+    subsequent iterations may not use cached data.
 
     >>> dataset = tf.data.Dataset.range(5)
     >>> dataset = dataset.map(lambda x: x**2)
@@ -1570,7 +1674,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      Dataset: A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
     """
     return CacheDataset(self, filename, name=name)
 
@@ -1590,7 +1694,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      Dataset: A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
     """
     return TakeDataset(self, count, name=name)
 
@@ -1610,7 +1714,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      Dataset: A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
     """
     return SkipDataset(self, count, name=name)
 
@@ -1655,7 +1759,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       sharding strategy within a complete pipeline:
 
     ```python
-    d = Dataset.list_files(pattern)
+    d = Dataset.list_files(pattern, shuffle=False)
     d = d.shard(num_workers, worker_index)
     d = d.repeat(num_epochs)
     d = d.shuffle(shuffle_buffer_size)
@@ -1671,7 +1775,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      Dataset: A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
 
     Raises:
       InvalidArgumentError: if `num_shards` or `index` are illegal values.
@@ -1682,6 +1786,151 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         in an error during a session.run call.)
     """
     return ShardDataset(self, num_shards, index, name=name)
+
+  def save(self,
+           path,
+           compression=None,
+           shard_func=None,
+           checkpoint_args=None):
+    """Saves the content of the given dataset.
+
+      Example usage:
+
+      >>> import tempfile
+      >>> path = os.path.join(tempfile.gettempdir(), "saved_data")
+      >>> # Save a dataset
+      >>> dataset = tf.data.Dataset.range(2)
+      >>> dataset.save(path)
+      >>> new_dataset = tf.data.Dataset.load(path)
+      >>> for elem in new_dataset:
+      ...   print(elem)
+      tf.Tensor(0, shape=(), dtype=int64)
+      tf.Tensor(1, shape=(), dtype=int64)
+
+      The saved dataset is saved in multiple file "shards". By default, the
+      dataset output is divided to shards in a round-robin fashion but custom
+      sharding can be specified via the `shard_func` function. For example, you
+      can save the dataset to using a single shard as follows:
+
+      ```python
+      dataset = make_dataset()
+      def custom_shard_func(element):
+        return np.int64(0)
+      dataset.save(
+          path="/path/to/data", ..., shard_func=custom_shard_func)
+      ```
+
+      To enable checkpointing, pass in `checkpoint_args` to the `save` method
+      as follows:
+
+      ```python
+      dataset = tf.data.Dataset.range(100)
+      save_dir = "..."
+      checkpoint_prefix = "..."
+      step_counter = tf.Variable(0, trainable=False)
+      checkpoint_args = {
+        "checkpoint_interval": 50,
+        "step_counter": step_counter,
+        "directory": checkpoint_prefix,
+        "max_to_keep": 20,
+      }
+      dataset.save(dataset, save_dir, checkpoint_args=checkpoint_args)
+      ```
+
+      NOTE: The directory layout and file format used for saving the dataset is
+      considered an implementation detail and may change. For this reason,
+      datasets saved through `tf.data.Dataset.save` should only be consumed
+      through `tf.data.Dataset.load`, which is guaranteed to be
+      backwards compatible.
+
+    Args:
+     path: Required. A directory to use for saving the dataset.
+     compression: Optional. The algorithm to use to compress data when writing
+          it. Supported options are `GZIP` and `NONE`. Defaults to `NONE`.
+     shard_func: Optional. A function to control the mapping of dataset
+          elements to file shards. The function is expected to map elements of
+          the input dataset to int64 shard IDs. If present, the function will be
+          traced and executed as graph computation.
+     checkpoint_args: Optional args for checkpointing which will be passed into
+          the `tf.train.CheckpointManager`. If `checkpoint_args` are not
+          specified, then checkpointing will not be performed. The `save()`
+          implementation creates a `tf.train.Checkpoint` object internally, so
+          users should not set the `checkpoint` argument in `checkpoint_args`.
+
+    Raises:
+      ValueError if `checkpoint` is passed into `checkpoint_args`.
+    """
+    # Loaded lazily due to a circular dependency
+    # dataset_ops->save_ops->dataset_ops
+    from tensorflow.python.data.ops import save_op  # pylint: disable=g-import-not-at-top
+    save_op.save(self, path, compression, shard_func, checkpoint_args)
+
+  @staticmethod
+  def load(path, element_spec=None, compression=None, reader_func=None):
+    """Loads a previously saved dataset.
+
+    Example usage:
+
+    >>> import tempfile
+    >>> path = os.path.join(tempfile.gettempdir(), "saved_data")
+    >>> # Save a dataset
+    >>> dataset = tf.data.Dataset.range(2)
+    >>> tf.data.Dataset.save(dataset, path)
+    >>> new_dataset = tf.data.Dataset.load(path)
+    >>> for elem in new_dataset:
+    ...   print(elem)
+    tf.Tensor(0, shape=(), dtype=int64)
+    tf.Tensor(1, shape=(), dtype=int64)
+
+
+    If the default option of sharding the saved dataset was used, the element
+    order of the saved dataset will be preserved when loading it.
+
+    The `reader_func` argument can be used to specify a custom order in which
+    elements should be loaded from the individual shards. The `reader_func` is
+    expected to take a single argument -- a dataset of datasets, each containing
+    elements of one of the shards -- and return a dataset of elements. For
+    example, the order of shards can be shuffled when loading them as follows:
+
+    ```python
+    def custom_reader_func(datasets):
+      datasets = datasets.shuffle(NUM_SHARDS)
+      return datasets.interleave(lambda x: x, num_parallel_calls=AUTOTUNE)
+
+    dataset = tf.data.Dataset.load(
+        path="/path/to/data", ..., reader_func=custom_reader_func)
+    ```
+
+    Args:
+      path: Required. A path pointing to a previously saved dataset.
+      element_spec: Optional. A nested structure of `tf.TypeSpec` objects
+        matching the structure of an element of the saved dataset and specifying
+        the type of individual element components. If not provided, the nested
+        structure of `tf.TypeSpec` saved with the saved dataset is used. Note
+        that this argument is required in graph mode.
+      compression: Optional. The algorithm to use to decompress the data when
+        reading it. Supported options are `GZIP` and `NONE`. Defaults to `NONE`.
+      reader_func: Optional. A function to control how to read data from shards.
+        If present, the function will be traced and executed as graph
+        computation.
+
+    Returns:
+      A `tf.data.Dataset` instance.
+
+    Raises:
+      FileNotFoundError: If `element_spec` is not specified and the saved nested
+        structure of `tf.TypeSpec` can not be located with the saved dataset.
+      ValueError: If `element_spec` is not specified and the method is executed
+        in graph mode.
+    """
+    # Loaded lazily due to a circular dependency
+    # dataset_ops->load_ops->dataset_ops
+    from tensorflow.python.data.ops import load_op  # pylint: disable=g-import-not-at-top
+    return load_op.load(
+        path=path,
+        element_spec=element_spec,
+        compression=compression,
+        reader_func=reader_func)
 
   def batch(self,
             batch_size,
@@ -1736,21 +1985,13 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      Dataset: A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
     """
-    if num_parallel_calls is None or DEBUG_MODE:
-      if deterministic is not None and not DEBUG_MODE:
-        warnings.warn("The `deterministic` argument has no effect unless the "
-                      "`num_parallel_calls` argument is specified.")
-      return BatchDataset(self, batch_size, drop_remainder, name=name)
-    else:
-      return ParallelBatchDataset(
-          self,
-          batch_size,
-          drop_remainder,
-          num_parallel_calls,
-          deterministic,
-          name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops -> batch_op ->
+    # dataset_ops).
+    from tensorflow.python.data.ops import batch_op  # pylint: disable=g-import-not-at-top,redefined-outer-name
+    return batch_op.batch(self, batch_size, drop_remainder, num_parallel_calls,
+                          deterministic, name)
 
   def padded_batch(self,
                    batch_size,
@@ -1863,7 +2104,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      Dataset: A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
 
     Raises:
       ValueError: If a component has an unknown rank, and the `padded_shapes`
@@ -1872,20 +2113,119 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         types is documented in
         https://www.tensorflow.org/guide/data#dataset_structure.
     """
-    if padded_shapes is None:
-      padded_shapes = get_legacy_output_shapes(self)
-      for i, shape in enumerate(nest.flatten(padded_shapes)):
-        # A `tf.TensorShape` is only false if its *rank* is unknown.
-        if not shape:
-          raise ValueError(f"You must provide `padded_shapes` argument because "
-                           f"component {i} has unknown rank.")
-    return PaddedBatchDataset(
-        self,
-        batch_size,
-        padded_shapes,
-        padding_values,
-        drop_remainder,
-        name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops ->
+    # padded_batch_op -> dataset_ops).
+    from tensorflow.python.data.ops import padded_batch_op  # pylint: disable=g-import-not-at-top
+    return padded_batch_op.padded_batch(self, batch_size, padded_shapes,
+                                        padding_values, drop_remainder, name)
+
+  def ragged_batch(self,
+                   batch_size,
+                   drop_remainder=False,
+                   row_splits_dtype=dtypes.int64,
+                   name=None):
+    """Combines consecutive elements of this dataset into `tf.RaggedTensor`s.
+
+    Like `tf.data.Dataset.batch`, the components of the resulting element will
+    have an additional outer dimension, which will be `batch_size` (or
+    `N % batch_size` for the last element if `batch_size` does not divide the
+    number of input elements `N` evenly and `drop_remainder` is `False`). If
+    your program depends on the batches having the same outer dimension, you
+    should set the `drop_remainder` argument to `True` to prevent the smaller
+    batch from being produced.
+
+    Unlike `tf.data.Dataset.batch`, the input elements to be batched may have
+    different shapes:
+
+    *  If an input element is a `tf.Tensor` whose static `tf.TensorShape` is
+    fully defined, then it is batched as normal.
+    *  If an input element is a `tf.Tensor` whose static `tf.TensorShape`
+    contains one or more axes with unknown size (i.e., `shape[i]=None`), then
+    the output will contain a `tf.RaggedTensor` that is ragged up to any of such
+    dimensions.
+    *  If an input element is a `tf.RaggedTensor` or any other type, then it is
+    batched as normal.
+
+    Example:
+
+    >>> dataset = tf.data.Dataset.range(6)
+    >>> dataset = dataset.map(lambda x: tf.range(x))
+    >>> dataset.element_spec.shape
+    TensorShape([None])
+    >>> dataset = dataset.ragged_batch(2)
+    >>> for batch in dataset:
+    ...   print(batch)
+    <tf.RaggedTensor [[], [0]]>
+    <tf.RaggedTensor [[0, 1], [0, 1, 2]]>
+    <tf.RaggedTensor [[0, 1, 2, 3], [0, 1, 2, 3, 4]]>
+
+    Args:
+      batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+        consecutive elements of this dataset to combine in a single batch.
+      drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
+        whether the last batch should be dropped in the case it has fewer than
+        `batch_size` elements; the default behavior is not to drop the smaller
+        batch.
+      row_splits_dtype: The dtype that should be used for the `row_splits` of
+        any new ragged tensors.  Existing `tf.RaggedTensor` elements do not have
+        their row_splits dtype changed.
+      name: (Optional.) A string indicating a name for the `tf.data` operation.
+
+    Returns:
+      A new `Dataset` with the transformation applied as described above.
+    """
+    # Loaded lazily due to a circular dependency (dataset_ops ->
+    # ragged_batch_op -> dataset_ops).
+    from tensorflow.python.data.ops import ragged_batch_op  # pylint: disable=g-import-not-at-top
+    return ragged_batch_op.ragged_batch(self, batch_size, drop_remainder,
+                                        row_splits_dtype, name)
+
+  def sparse_batch(self, batch_size, row_shape, name=None):
+    """Combines consecutive elements into `tf.sparse.SparseTensor`s.
+
+    Like `Dataset.padded_batch()`, this transformation combines multiple
+    consecutive elements of the dataset, which might have different
+    shapes, into a single element. The resulting element has three
+    components (`indices`, `values`, and `dense_shape`), which
+    comprise a `tf.sparse.SparseTensor` that represents the same data. The
+    `row_shape` represents the dense shape of each row in the
+    resulting `tf.sparse.SparseTensor`, to which the effective batch size is
+    prepended. For example:
+
+    ```python
+    # NOTE: The following examples use `{ ... }` to represent the
+    # contents of a dataset.
+    a = { ['a', 'b', 'c'], ['a', 'b'], ['a', 'b', 'c', 'd'] }
+
+    a.apply(tf.data.experimental.dense_to_sparse_batch(
+        batch_size=2, row_shape=[6])) ==
+    {
+        ([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1]],  # indices
+         ['a', 'b', 'c', 'a', 'b'],                 # values
+         [2, 6]),                                   # dense_shape
+        ([[0, 0], [0, 1], [0, 2], [0, 3]],
+         ['a', 'b', 'c', 'd'],
+         [1, 6])
+    }
+    ```
+
+    Args:
+      batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+        consecutive elements of this dataset to combine in a single batch.
+      row_shape: A `tf.TensorShape` or `tf.int64` vector tensor-like object
+        representing the equivalent dense shape of a row in the resulting
+        `tf.sparse.SparseTensor`. Each element of this dataset must have the
+        same rank as `row_shape`, and must have size less than or equal to
+        `row_shape` in each dimension.
+      name: (Optional.) A string indicating a name for the `tf.data` operation.
+
+    Returns:
+      A new `Dataset` with the transformation applied as described above.
+    """
+    # Loaded lazily due to a circular dependency (dataset_ops ->
+    # sparse_batch_op -> dataset_ops).
+    from tensorflow.python.data.ops import sparse_batch_op  # pylint: disable=g-import-not-at-top
+    return sparse_batch_op.sparse_batch(self, batch_size, row_shape, name)
 
   def map(self,
           map_func,
@@ -2038,7 +2378,7 @@ name=None))
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      Dataset: A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
     """
     if num_parallel_calls is None or DEBUG_MODE:
       if deterministic is not None and not DEBUG_MODE:
@@ -2072,8 +2412,7 @@ name=None))
 
     >>> dataset = tf.data.Dataset.from_tensor_slices(
     ...     [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-    >>> dataset = dataset.flat_map(
-    ...     lambda x: tf.data.Dataset.from_tensor_slices(x))
+    >>> dataset = dataset.flat_map(tf.data.Dataset.from_tensor_slices)
     >>> list(dataset.as_numpy_iterator())
     [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
@@ -2086,9 +2425,35 @@ name=None))
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      Dataset: A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
     """
     return FlatMapDataset(self, map_func, name=name)
+
+  def ignore_errors(self, log_warning=False, name=None):
+    """Drops elements that cause errors.
+
+    >>> dataset = tf.data.Dataset.from_tensor_slices([1., 2., 0., 4.])
+    >>> dataset = dataset.map(lambda x: tf.debugging.check_numerics(1. / x, ""))
+    >>> list(dataset.as_numpy_iterator())
+    Traceback (most recent call last):
+    ...
+    InvalidArgumentError: ... Tensor had Inf values
+    >>> dataset = dataset.ignore_errors()
+    >>> list(dataset.as_numpy_iterator())
+    [1.0, 0.5, 0.25]
+
+    Args:
+      log_warning: (Optional.) A bool indicating whether or not ignored errors
+        should be logged to stderr. Defaults to `False`.
+      name: (Optional.) A string indicating a name for the `tf.data` operation.
+
+    Returns:
+      A new `Dataset` with the transformation applied as described above.
+    """
+    # Loaded lazily due to a circular dependency (dataset_ops ->
+    # ignore_errors_op -> dataset_ops).
+    from tensorflow.python.data.ops import ignore_errors_op  # pylint: disable=g-import-not-at-top
+    return ignore_errors_op.ignore_errors(self, log_warning, name)
 
   def interleave(self,
                  map_func,
@@ -2196,7 +2561,7 @@ name=None))
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      Dataset: A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
     """
     if block_length is None:
       block_length = 1
@@ -2239,10 +2604,12 @@ name=None))
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      Dataset: The `Dataset` containing the elements of this dataset for which
-          `predicate` is `True`.
+      A new `Dataset` with the transformation applied as described above.
     """
-    return FilterDataset(self, predicate, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops -> filter_op ->
+    # dataset_ops).
+    from tensorflow.python.data.ops import filter_op  # pylint: disable=g-import-not-at-top
+    return filter_op.filter(self, predicate, name)
 
   def apply(self, transformation_func):
     """Applies a transformation function to this dataset.
@@ -2263,8 +2630,7 @@ name=None))
         returns a `Dataset`.
 
     Returns:
-      Dataset: The `Dataset` returned by applying `transformation_func` to this
-          dataset.
+      A new `Dataset` with the transformation applied as described above.
     """
     dataset = transformation_func(self)
     if not isinstance(dataset, DatasetV2):
@@ -2294,7 +2660,7 @@ name=None))
     Since windows are datasets, they can be iterated over:
 
     >>> for window in dataset:
-    ...   print([item.numpy() for item in window])
+    ...   print(list(window.as_numpy_iterator()))
     [0, 1, 2]
     [3, 4, 5]
     [6]
@@ -2390,8 +2756,7 @@ name=None))
 
     For example, to turn each window into a dense tensor:
 
-    >>> size = 3
-    >>> dataset = tf.data.Dataset.range(7).window(size, shift=1,
+    >>> dataset = tf.data.Dataset.range(7).window(3, shift=1,
     ...                                           drop_remainder=True)
     >>> batched = dataset.flat_map(lambda x:x.batch(3))
     >>> for batch in batched:
@@ -2417,12 +2782,14 @@ name=None))
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      Dataset: A `Dataset` of (nests of) windows. Each window is a finite
-        datasets of flat elements.
+      A new `Dataset` with the transformation applied as described above.
     """
-    if shift is None:
-      shift = size
-    return WindowDataset(self, size, shift, stride, drop_remainder, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops -> window_op ->
+    # dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import window_op
+    return window_op._window(self, size, shift, stride, drop_remainder, name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def reduce(self, initial_state, reduce_func, name=None):
     """Reduces the input dataset to a single element.
@@ -2691,7 +3058,7 @@ name=None))
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
     """
     normalized_dataset = normalize_to_dense(self)
     return _UnbatchDataset(normalized_dataset, name=name)
@@ -2717,7 +3084,7 @@ name=None))
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      Dataset: A `Dataset` with the given options.
+      A new `Dataset` with the transformation applied as described above.
 
     Raises:
       ValueError: when an option is set more than once to a non-default value
@@ -2799,7 +3166,7 @@ name=None))
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
 
     Raises:
       ValueError: if neither or both of {`window_size`, `window_size_func`} are
@@ -2890,7 +3257,7 @@ name=None))
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
 
     Raises:
       ValueError: if `len(bucket_batch_sizes) != len(bucket_boundaries) + 1`.
@@ -2977,7 +3344,7 @@ name=None))
 
     >>> ds1 = tf.data.Dataset.random(seed=4).take(10)
     >>> ds2 = tf.data.Dataset.random(seed=4).take(10)
-    >>> print(list(ds2.as_numpy_iterator())==list(ds2.as_numpy_iterator()))
+    >>> print(list(ds1.as_numpy_iterator())==list(ds2.as_numpy_iterator()))
     True
 
     Args:
@@ -3069,7 +3436,7 @@ name=None))
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
     """
 
     project_func = None
@@ -3122,7 +3489,7 @@ name=None))
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
     """
 
     return _ScanDataset(
@@ -3143,7 +3510,7 @@ name=None))
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
     """
 
     return _TakeWhileDataset(self, predicate, name=name)
@@ -3166,10 +3533,14 @@ name=None))
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      A `Dataset`.
+      A new `Dataset` with the transformation applied as described above.
     """
-
-    return _UniqueDataset(self, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops -> unique_op ->
+    # dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import unique_op
+    return unique_op._unique(self, name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def rejection_resample(self,
                          class_func,
@@ -3177,32 +3548,29 @@ name=None))
                          initial_dist=None,
                          seed=None,
                          name=None):
-    """A transformation that resamples a dataset to a target distribution.
+    """Resamples elements to reach a target distribution.
 
-    Lets consider the following example where a dataset with an initial data
-    distribution of `init_dist` needs to be resampled into a dataset with
-    `target_dist` distribution.
+    Note: This implementation can reject **or repeat** elements in order to
+    reach the `target_dist`. So, in some cases, the output `Dataset` may be
+    larger than the input `Dataset`.
 
     >>> initial_dist = [0.6, 0.4]
-    >>> num_classes = len(initial_dist)
-    >>> num_samples = 1000
-    >>> data_np = np.random.choice(num_classes, num_samples, p=initial_dist)
-    >>> dataset = tf.data.Dataset.from_tensor_slices(data_np)
+    >>> n = 1000
+    >>> elems = np.random.choice(len(initial_dist), size=n, p=initial_dist)
+    >>> dataset = tf.data.Dataset.from_tensor_slices(elems)
+    >>> zero, one = np.bincount(list(dataset.as_numpy_iterator())) / n
 
-    The value of `x` will be close to `{0: 50000, 1: 50000}` as per the
-    `initial_dist` distribution.
+    Following from `initial_dist`, `zero` is ~0.6 and `one` is ~0.4.
 
     >>> target_dist = [0.5, 0.5]
-    >>> resampled_dataset = dataset.rejection_resample(
+    >>> dataset = dataset.rejection_resample(
     ...    class_func=lambda x: x,
     ...    target_dist=target_dist,
     ...    initial_dist=initial_dist)
-    >>> resampled_dataset = resampled_dataset.map(
-    ...     lambda class_func_result, data: data)
+    >>> dataset = dataset.map(lambda class_func_result, data: data)
+    >>> zero, one = np.bincount(list(dataset.as_numpy_iterator())) / n
 
-
-    The value distribution of classes in the resampled_distribution will be now
-    be close to the target distribution.
+    Following from `target_dist`, `zero` is ~0.5 and `one` is ~0.5.
 
     Args:
       class_func: A function mapping an element of the input dataset to a scalar
@@ -3215,8 +3583,10 @@ name=None))
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
-      A `Dataset`
+      A new `Dataset` with the transformation applied as described above.
     """
+
+    # TODO(b/245793127): Consider switching back to the 'v1' implementation.
 
     target_dist_t = ops.convert_to_tensor(target_dist, name="target_dist")
     target_dist_t = math_ops.cast(target_dist_t, dtypes.float32)
@@ -3311,11 +3681,11 @@ name=None))
         seed that will be used to create the distribution. See
         `tf.random.set_seed` for behavior.
       stop_on_empty_dataset: If `True`, sampling stops if it encounters an empty
-        dataset. If `False`, it skips empty datasets. It is recommended to set
-        it to `True`. Otherwise, the distribution of samples starts off as the
-        user intends, but may change as input datasets become empty. This can be
-        difficult to detect since the dataset starts off looking correct.
-        Default to `False` for backward compatibility.
+        dataset. If `False`, it continues sampling and skips any empty datasets.
+        It is recommended to set it to `True`. Otherwise, the distribution of
+        samples starts off as the user intends, but may change as input datasets
+        become empty. This can be difficult to detect since the dataset starts
+        off looking correct. Default to `False` for backward compatibility.
 
     Returns:
       A dataset that interleaves elements from `datasets` at random, according
@@ -3448,8 +3818,7 @@ name=None))
         Defaults to `True`.
 
     Returns:
-      A dataset that interleaves elements from `datasets` according to the
-      values of `choice_dataset`.
+      A new `Dataset` with the transformation applied as described above.
 
     Raises:
       TypeError: If `datasets` or `choice_dataset` has the wrong type.
@@ -3465,6 +3834,10 @@ name=None))
       raise TypeError(f"Invalid `choice_dataset`. Elements of `choice_dataset` "
                       f"must be scalar `tf.int64` tensors but are "
                       f"{choice_dataset.element_spec}.")
+    # Replicate the `choice_dataset` component so that each split makes choices
+    # independently. This avoids the need for prohibitively expensive
+    # cross-split coordination.
+    choice_dataset = _apply_rewrite(choice_dataset, "replicate_on_split")
     # pylint: disable=protected-access
     return _DirectedInterleaveDataset(choice_dataset, datasets,
                                       stop_on_empty_dataset)
@@ -3585,9 +3958,9 @@ class DatasetV1(DatasetV2):
             "you are calling `make_one_shot_iterator()` captures a stateful "
             "object, such as a `tf.Variable` or `tf.lookup.StaticHashTable`, "
             "which is not supported. Use `make_initializable_iterator()` "
-            "instead.".format(err))
+            "instead.".format(err)) from None
       else:
-        six.reraise(ValueError, err)
+        raise
 
     with ops.colocate_with(self._variant_tensor):
       # pylint: disable=protected-access
@@ -3961,7 +4334,10 @@ class DatasetV1(DatasetV2):
       Dataset: The `Dataset` containing the elements of this dataset for which
           `predicate` is `True`.
     """
-    return FilterDataset(self, predicate, use_legacy_function=True)
+    # Loaded lazily due to a circular dependency (dataset_ops -> filter_op ->
+    # dataset_ops).
+    from tensorflow.python.data.ops import filter_op  # pylint: disable=g-import-not-at-top
+    return filter_op.FilterDataset(self, predicate, use_legacy_function=True)
 
   @functools.wraps(DatasetV2.apply)
   def apply(self, transformation_func):
@@ -4020,7 +4396,7 @@ def _ensure_same_dataset_graph(dataset):
   """Walks the dataset graph to ensure all datasets come from the same graph."""
   # pylint: disable=protected-access
   current_graph = ops.get_default_graph()
-  bfs_q = Queue.Queue()
+  bfs_q = queue.Queue()
   bfs_q.put(dataset)
   visited = []
   while not bfs_q.empty():
@@ -4122,6 +4498,23 @@ def make_initializable_iterator(dataset, shared_name=None):
 @tf_export("data.experimental.get_structure")
 def get_structure(dataset_or_iterator):
   """Returns the type signature for elements of the input dataset / iterator.
+
+  For example, to get the structure of a `tf.data.Dataset`:
+
+  >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+  >>> tf.data.experimental.get_structure(dataset)
+  TensorSpec(shape=(), dtype=tf.int32, name=None)
+
+  >>> dataset = tf.data.experimental.from_list([(1, 'a'), (2, 'b'), (3, 'c')])
+  >>> tf.data.experimental.get_structure(dataset)
+  (TensorSpec(shape=(), dtype=tf.int32, name=None),
+   TensorSpec(shape=(), dtype=tf.string, name=None))
+
+  To get the structure of an `tf.data.Iterator`:
+
+  >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+  >>> tf.data.experimental.get_structure(iter(dataset))
+  TensorSpec(shape=(), dtype=tf.int32, name=None)
 
   Args:
     dataset_or_iterator: A `tf.data.Dataset` or an `tf.data.Iterator`.
@@ -4453,7 +4846,7 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
             self._dataset_shape == other._dataset_shape)
 
 
-class _NumpyIterator(object):
+class _NumpyIterator:
   """Iterator over a dataset with elements converted to numpy."""
 
   __slots__ = ["_iterator"]
@@ -4480,7 +4873,7 @@ class _NumpyIterator(object):
     return self.__next__()
 
 
-class _VariantTracker(tracking.CapturableResource):
+class _VariantTracker(resource_lib.CapturableResource):
   """Allows export of functions capturing a Dataset in SavedModels.
 
   When saving a SavedModel, `tf.saved_model.save` traverses the object
@@ -4522,6 +4915,15 @@ class _VariantTracker(tracking.CapturableResource):
     return children
 
 
+# TODO(b/254291122): Remove.
+# Loaded lazily due to a circular dependency (dataset_ops ->
+# batch_op -> dataset_ops).
+batch_op = lazy_loader.LazyLoader(
+    "batch_op", globals(),
+    "tensorflow.python.data.ops.batch_op")
+BatchDataset = batch_op.BatchDataset
+
+
 class TensorDataset(DatasetSource):
   """A `Dataset` with a single element."""
 
@@ -4536,39 +4938,6 @@ class TensorDataset(DatasetSource):
         output_shapes=structure.get_flat_tensor_shapes(self._structure),
         metadata=self._metadata.SerializeToString())
     super(TensorDataset, self).__init__(variant_tensor)
-
-  @property
-  def element_spec(self):
-    return self._structure
-
-
-class TensorSliceDataset(DatasetSource):
-  """A `Dataset` of slices from a dataset element."""
-
-  def __init__(self, element, is_files=False, name=None):
-    """See `Dataset.from_tensor_slices()` for details."""
-    element = structure.normalize_element(element)
-    batched_spec = structure.type_spec_from_value(element)
-    self._tensors = structure.to_batched_tensor_list(batched_spec, element)
-    if not self._tensors:
-      raise ValueError("Invalid `element`. `element` should not be empty.")
-    self._structure = nest.map_structure(
-        lambda component_spec: component_spec._unbatch(), batched_spec)  # pylint: disable=protected-access
-    self._name = name
-
-    batch_dim = tensor_shape.Dimension(
-        tensor_shape.dimension_value(self._tensors[0].get_shape()[0]))
-    for t in self._tensors[1:]:
-      batch_dim.assert_is_compatible_with(
-          tensor_shape.Dimension(
-              tensor_shape.dimension_value(t.get_shape()[0])))
-
-    variant_tensor = gen_dataset_ops.tensor_slice_dataset(
-        self._tensors,
-        output_shapes=structure.get_flat_tensor_shapes(self._structure),
-        is_files=is_files,
-        metadata=self._metadata.SerializeToString())
-    super(TensorSliceDataset, self).__init__(variant_tensor)
 
   @property
   def element_spec(self):
@@ -4672,40 +5041,6 @@ class _GeneratorDataset(DatasetSource):
     return "Dataset.from_generator()"
 
 
-class ZipDataset(DatasetV2):
-  """A `Dataset` that zips its inputs together."""
-
-  def __init__(self, datasets, name=None):
-    """See `Dataset.zip()` for details."""
-    for ds in nest.flatten(datasets):
-      if not isinstance(ds, DatasetV2):
-        if isinstance(ds, list):
-          raise TypeError("Invalid `datasets`. `datasets` is expected to be a "
-                          "(nested) structure of `tf.data.Dataset` objects. "
-                          "Python `list` is not supported and you should use "
-                          "`tuple` instead.")
-        else:
-          raise TypeError(f"Invalid `datasets`. `datasets` is expected to be a "
-                          f"(nested) structure of `tf.data.Dataset` objects "
-                          f"but encountered object of type {type(ds)}.")
-    self._datasets = datasets
-    self._structure = nest.pack_sequence_as(
-        self._datasets,
-        [ds.element_spec for ds in nest.flatten(self._datasets)])
-    self._name = name
-    variant_tensor = gen_dataset_ops.zip_dataset(
-        [ds._variant_tensor for ds in nest.flatten(self._datasets)],
-        **self._common_args)
-    super(ZipDataset, self).__init__(variant_tensor)
-
-  def _inputs(self):
-    return nest.flatten(self._datasets)
-
-  @property
-  def element_spec(self):
-    return self._structure
-
-
 class ConcatenateDataset(DatasetV2):
   """A `Dataset` that concatenates its input with given dataset."""
 
@@ -4795,7 +5130,7 @@ class RangeDataset(DatasetSource):
       self._stop = self._build_tensor(args[1], "stop")
       self._step = self._build_tensor(args[2], "step")
     else:
-      raise ValueError(f"Invalid `args`. The lenght of `args` should be "
+      raise ValueError(f"Invalid `args`. The length of `args` should be "
                        f"between 1 and 3 but was {len(args)}.")
     if "output_type" in kwargs:
       self._output_type = kwargs["output_type"]
@@ -4920,309 +5255,6 @@ class ShardDataset(UnaryUnchangedStructureDataset):
         index=self._index,
         **self._common_args)
     super(ShardDataset, self).__init__(input_dataset, variant_tensor)
-
-
-class BatchDataset(UnaryDataset):
-  """A `Dataset` that batches contiguous elements from its input."""
-
-  def __init__(self, input_dataset, batch_size, drop_remainder, name=None):
-    """See `Dataset.batch()` for details."""
-    self._input_dataset = input_dataset
-    self._batch_size = ops.convert_to_tensor(
-        batch_size, dtype=dtypes.int64, name="batch_size")
-    self._drop_remainder = ops.convert_to_tensor(
-        drop_remainder, dtype=dtypes.bool, name="drop_remainder")
-
-    constant_drop_remainder = tensor_util.constant_value(self._drop_remainder)
-    # pylint: disable=protected-access
-    if constant_drop_remainder:
-      # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
-      # or `False` (explicitly retaining the remainder).
-      # pylint: disable=g-long-lambda
-      constant_batch_size = tensor_util.constant_value(self._batch_size)
-      self._structure = nest.map_structure(
-          lambda component_spec: component_spec._batch(constant_batch_size),
-          input_dataset.element_spec)
-    else:
-      self._structure = nest.map_structure(
-          lambda component_spec: component_spec._batch(None),
-          input_dataset.element_spec)
-
-    self._name = name
-    variant_tensor = gen_dataset_ops.batch_dataset_v2(
-        input_dataset._variant_tensor,
-        batch_size=self._batch_size,
-        drop_remainder=self._drop_remainder,
-        **self._common_args)
-    super(BatchDataset, self).__init__(input_dataset, variant_tensor)
-
-  @property
-  def element_spec(self):
-    return self._structure
-
-
-class ParallelBatchDataset(UnaryDataset):
-  """A `Dataset` that batches contiguous elements from its input in parallel."""
-
-  def __init__(self,
-               input_dataset,
-               batch_size,
-               drop_remainder,
-               num_parallel_calls,
-               deterministic,
-               name=None):
-    """See `Dataset.batch()` for details."""
-    self._input_dataset = input_dataset
-    self._batch_size = ops.convert_to_tensor(
-        batch_size, dtype=dtypes.int64, name="batch_size")
-    self._drop_remainder = ops.convert_to_tensor(
-        drop_remainder, dtype=dtypes.bool, name="drop_remainder")
-    self._num_parallel_calls = ops.convert_to_tensor(
-        num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
-    if deterministic is None:
-      self._deterministic = "default"
-    elif deterministic:
-      self._deterministic = "true"
-    else:
-      self._deterministic = "false"
-
-    constant_drop_remainder = tensor_util.constant_value(self._drop_remainder)
-    # pylint: disable=protected-access
-    if constant_drop_remainder:
-      # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
-      # or `False` (explicitly retaining the remainder).
-      # pylint: disable=g-long-lambda
-      constant_batch_size = tensor_util.constant_value(self._batch_size)
-      self._structure = nest.map_structure(
-          lambda component_spec: component_spec._batch(constant_batch_size),
-          input_dataset.element_spec)
-    else:
-      self._structure = nest.map_structure(
-          lambda component_spec: component_spec._batch(None),
-          input_dataset.element_spec)
-
-    self._name = name
-    variant_tensor = gen_dataset_ops.parallel_batch_dataset(
-        input_dataset._variant_tensor,
-        batch_size=self._batch_size,
-        num_parallel_calls=self._num_parallel_calls,
-        drop_remainder=self._drop_remainder,
-        deterministic=self._deterministic,
-        **self._common_args)
-
-    super(ParallelBatchDataset, self).__init__(input_dataset, variant_tensor)
-
-  @property
-  def element_spec(self):
-    return self._structure
-
-
-def _is_padded_shape_compatible_with(padded_shape, input_component_shape):
-  """Returns `True` if `input_component_shape` can be padded to `padded_shape`.
-
-  Args:
-    padded_shape: A `tf.TensorShape`.
-    input_component_shape: A `tf.TensorShape`.
-
-  Returns:
-    `True` if `input_component_shape` can be padded to `padded_shape`, otherwise
-    `False`.
-  """
-
-  if padded_shape.dims is None or input_component_shape.dims is None:
-    return True
-  if len(padded_shape.dims) != len(input_component_shape.dims):
-    return False
-  for padded_dim, input_dim in zip(
-      padded_shape.dims, input_component_shape.dims):
-    if (padded_dim.value is not None and input_dim.value is not None
-        and padded_dim.value < input_dim.value):
-      return False
-  return True
-
-
-def _padded_shape_to_tensor(padded_shape, input_component_shape):
-  """Converts `padded_shape` to a `tf.Tensor` representing that shape.
-
-  Args:
-    padded_shape: A shape-like object, which may be a `tf.TensorShape`, a Python
-      sequence, or a 1-D `tf.Tensor` of `tf.int64` elements.
-    input_component_shape: A `tf.TensorShape`, with which `padded_shape` must
-      be compatible.
-
-  Returns:
-    A 1-D `tf.Tensor` of `tf.int64` elements, representing `padded_shape`.
-
-  Raises:
-    ValueError: If `padded_shape` is not a shape or not compatible with
-      `input_component_shape`.
-    TypeError: If `padded_shape` is not convertible to a `tf.int64` tensor.
-  """
-  try:
-    # Try to convert the `padded_shape` to a `tf.TensorShape`
-    padded_shape_as_shape = tensor_shape.as_shape(padded_shape)
-    # We will return the "canonical" tensor representation, which uses
-    # `-1` in place of `None`.
-    ret = ops.convert_to_tensor(
-        [dim if dim is not None else -1
-         for dim in padded_shape_as_shape.as_list()], dtype=dtypes.int64)
-  except (TypeError, ValueError):
-    # The argument was not trivially convertible to a
-    # `tf.TensorShape`, so fall back on the conversion to tensor
-    # machinery.
-    ret = ops.convert_to_tensor(padded_shape, preferred_dtype=dtypes.int64)
-    if ret.shape.dims is not None and len(ret.shape.dims) != 1:
-      six.reraise(ValueError, ValueError(
-          f"Padded shape {padded_shape} must be a `tf.int64` vector tensor, "
-          f"but its shape was {ret.shape}."), sys.exc_info()[2])
-    if ret.dtype != dtypes.int64:
-      six.reraise(
-          TypeError,
-          TypeError(f"Padded shape {padded_shape} must be a `tf.int64` vector "
-                    f"tensor, but its element type was {ret.dtype.name}."),
-          sys.exc_info()[2])
-    padded_shape_as_shape = tensor_util.constant_value_as_shape(ret)
-
-  if not _is_padded_shape_compatible_with(padded_shape_as_shape,
-                                          input_component_shape):
-    raise ValueError(f"The padded shape {padded_shape_as_shape} is not "
-                     f"compatible with the shape {input_component_shape} of "
-                     f"the corresponding input component.")
-
-  return ret
-
-
-def _padding_value_to_tensor(value, output_type):
-  """Converts the padding value to a tensor.
-
-  Args:
-    value: The padding value.
-    output_type: Its expected dtype.
-
-  Returns:
-    A scalar `Tensor`.
-
-  Raises:
-    ValueError: if the padding value is not a scalar.
-    TypeError: if the padding value's type does not match `output_type`.
-  """
-  value = ops.convert_to_tensor(value, name="padding_value")
-  if not value.shape.is_compatible_with(tensor_shape.TensorShape([])):
-    raise ValueError(f"Invalid `padding_values`. `padding_values` values "
-                     f"should be scalars, but got {value.shape}.")
-  if value.dtype != output_type:
-    raise TypeError(f"Invalid `padding_values`. `padding_values` values "
-                    f"type {value.dtype} does not match type {output_type} "
-                    f"of the corresponding input component.")
-  return value
-
-
-def _padding_values_or_default(padding_values, input_dataset):
-  """Returns padding values with None elements replaced with default values."""
-
-  def make_zero(t):
-    if t.base_dtype == dtypes.string:
-      return ""
-    elif t.base_dtype == dtypes.variant:
-      raise TypeError("Unable to create default padding value for a component "
-                      "of type 'variant'.")
-    elif t.base_dtype == dtypes.bfloat16:
-      # Special case `bfloat16` because it is not supported by NumPy.
-      return constant_op.constant(0, dtype=dtypes.bfloat16)
-    else:
-      return np.zeros_like(t.as_numpy_dtype())
-
-  def value_or_default(value, default):
-    return default if value is None else value
-
-  default_padding = nest.map_structure(
-      make_zero,
-      get_legacy_output_types(input_dataset))
-  return nest.map_structure_up_to(padding_values, value_or_default,
-                                  padding_values, default_padding)
-
-
-class PaddedBatchDataset(UnaryDataset):
-  """A `Dataset` that batches and pads contiguous elements from its input."""
-
-  def __init__(self,
-               input_dataset,
-               batch_size,
-               padded_shapes,
-               padding_values,
-               drop_remainder,
-               name=None):
-    """See `Dataset.batch()` for details."""
-    self._input_dataset = input_dataset
-
-    def check_types(component_spec):
-      if not isinstance(component_spec, tensor_spec.TensorSpec):
-        raise TypeError(f"`padded_batch` is only supported for datasets that "
-                        f"produce tensor elements but the input dataset "
-                        f"produces elements of unsupported type "
-                        f"{component_spec.value_type()}.")
-
-    nest.map_structure(check_types, input_dataset.element_spec)
-    self._input_dataset = input_dataset
-    self._batch_size = ops.convert_to_tensor(
-        batch_size, dtype=dtypes.int64, name="batch_size")
-    padding_values = _padding_values_or_default(padding_values, input_dataset)
-
-    input_shapes = get_legacy_output_shapes(input_dataset)
-    flat_padded_shapes = nest.flatten_up_to(input_shapes, padded_shapes)
-
-    flat_padded_shapes_as_tensors = []
-
-    for input_component_shape, padded_shape in zip(
-        nest.flatten(input_shapes), flat_padded_shapes):
-      flat_padded_shapes_as_tensors.append(
-          _padded_shape_to_tensor(padded_shape, input_component_shape))
-
-    self._padded_shapes = nest.pack_sequence_as(input_shapes,
-                                                flat_padded_shapes_as_tensors)
-
-    # If padding_values is a single element and input_shapes is a structure,
-    # "broadcast" padding_values to the same structure as input_shapes.
-    if nest.is_nested(input_shapes) and not nest.is_nested(padding_values):
-      padding_values = nest.map_structure(lambda _: padding_values,
-                                          input_shapes)
-
-    self._padding_values = nest.map_structure_up_to(
-        input_shapes, _padding_value_to_tensor, padding_values,
-        get_legacy_output_types(input_dataset))
-    self._drop_remainder = ops.convert_to_tensor(
-        drop_remainder, dtype=dtypes.bool, name="drop_remainder")
-
-    def _padded_shape_to_batch_shape(s):
-      return tensor_shape.TensorShape([
-          tensor_util.constant_value(self._batch_size)
-          if smart_cond.smart_constant_value(self._drop_remainder) else None
-      ]).concatenate(tensor_util.constant_value_as_shape(s))
-
-    output_shapes = nest.map_structure(
-        _padded_shape_to_batch_shape, self._padded_shapes)
-    self._structure = structure.convert_legacy_structure(
-        get_legacy_output_types(self._input_dataset), output_shapes,
-        get_legacy_output_classes(self._input_dataset))
-
-    self._name = name
-    # pylint: disable=protected-access
-    variant_tensor = gen_dataset_ops.padded_batch_dataset_v2(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        batch_size=self._batch_size,
-        padded_shapes=[
-            ops.convert_to_tensor(s, dtype=dtypes.int64)
-            for s in nest.flatten(self._padded_shapes)
-        ],
-        padding_values=nest.flatten(self._padding_values),
-        drop_remainder=self._drop_remainder,
-        output_shapes=structure.get_flat_tensor_shapes(self._structure),
-        metadata=self._metadata.SerializeToString())
-    super(PaddedBatchDataset, self).__init__(input_dataset, variant_tensor)
-
-  @property
-  def element_spec(self):
-    return self._structure
 
 
 class MapDataset(UnaryDataset):
@@ -5463,42 +5495,6 @@ class ParallelInterleaveDataset(UnaryDataset):
     return "Dataset.interleave()"
 
 
-class FilterDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` that filters its input according to a predicate function."""
-
-  def __init__(self,
-               input_dataset,
-               predicate,
-               use_legacy_function=False,
-               name=None):
-    """See `Dataset.filter()` for details."""
-    self._input_dataset = input_dataset
-    wrapped_func = structured_function.StructuredFunctionWrapper(
-        predicate,
-        self._transformation_name(),
-        dataset=input_dataset,
-        use_legacy_function=use_legacy_function)
-    if not wrapped_func.output_structure.is_compatible_with(
-        tensor_spec.TensorSpec([], dtypes.bool)):
-      raise ValueError(f"Invalid `predicate`. `predicate` must return a "
-                       f"`tf.bool` scalar tensor, but its return type is "
-                       f"{wrapped_func.output_structure}.")
-    self._predicate = wrapped_func
-    self._name = name
-    variant_tensor = gen_dataset_ops.filter_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        other_arguments=self._predicate.function.captured_inputs,
-        predicate=self._predicate.function,
-        **self._common_args)
-    super(FilterDataset, self).__init__(input_dataset, variant_tensor)
-
-  def _functions(self):
-    return [self._predicate]
-
-  def _transformation_name(self):
-    return "Dataset.filter()"
-
-
 class PrefetchDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that asynchronously prefetches its input."""
 
@@ -5520,49 +5516,6 @@ class PrefetchDataset(UnaryUnchangedStructureDataset):
           slack_period=slack_period,
           **self._common_args)
     super(PrefetchDataset, self).__init__(input_dataset, variant_tensor)
-
-
-class WindowDataset(UnaryDataset):
-  """A dataset that creates window datasets from the input elements."""
-
-  def __init__(self,
-               input_dataset,
-               size,
-               shift,
-               stride,
-               drop_remainder,
-               name=None):
-    """See `window()` for more details."""
-    self._input_dataset = input_dataset
-    self._size = ops.convert_to_tensor(size, dtype=dtypes.int64, name="size")
-    self._shift = ops.convert_to_tensor(shift, dtype=dtypes.int64, name="shift")
-    self._stride = ops.convert_to_tensor(
-        stride, dtype=dtypes.int64, name="stride")
-    self._drop_remainder = ops.convert_to_tensor(
-        drop_remainder, dtype=dtypes.bool, name="drop_remainder")
-    self._structure = nest.pack_sequence_as(
-        get_legacy_output_classes(input_dataset), [
-            DatasetSpec(  # pylint: disable=g-complex-comprehension
-                structure.convert_legacy_structure(
-                    output_type, output_shape, output_class))
-            for output_class, output_shape, output_type in zip(
-                nest.flatten(get_legacy_output_classes(input_dataset)),
-                nest.flatten(get_legacy_output_shapes(input_dataset)),
-                nest.flatten(get_legacy_output_types(input_dataset)))
-        ])
-    self._name = name
-    variant_tensor = gen_dataset_ops.window_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        size=self._size,
-        shift=self._shift,
-        stride=self._stride,
-        drop_remainder=self._drop_remainder,
-        **self._common_args)
-    super(WindowDataset, self).__init__(input_dataset, variant_tensor)
-
-  @property
-  def element_spec(self):
-    return self._structure
 
 
 class _OptionsDataset(UnaryUnchangedStructureDataset):
@@ -6013,24 +5966,6 @@ class _TakeWhileDataset(UnaryUnchangedStructureDataset):
     return "Dataset.take_while()"
 
 
-class _UniqueDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` contains the unique elements from its input."""
-
-  def __init__(self, input_dataset, name=None):
-    """See `unique()` for details."""
-    self._input_dataset = input_dataset
-    for ty in nest.flatten(get_legacy_output_types(input_dataset)):
-      if ty not in (dtypes.int32, dtypes.int64, dtypes.string):
-        raise TypeError(
-            f"`unique()` does not support type {ty}, only `tf.int32`, "
-            f"`tf.int64`, and `tf.string` are supported.")
-    self._name = name
-    variant_tensor = ged_ops.unique_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        **self._common_args)
-    super(_UniqueDataset, self).__init__(input_dataset, variant_tensor)
-
-
 class _SnapshotDataset(UnaryUnchangedStructureDataset):
   """A dataset that allows saving and re-use of already processed data."""
 
@@ -6265,6 +6200,14 @@ class _DirectedInterleaveDataset(DatasetV2):
   @property
   def element_spec(self):
     return self._element_spec
+
+
+def _apply_rewrite(dataset, rewrite):
+  # pylint: disable=protected-access
+  return _VariantDataset(
+      gen_dataset_ops.rewrite_dataset(dataset._variant_tensor, rewrite,
+                                      **dataset._flat_structure),
+      dataset.element_spec)
 
 
 def _collect_resource_inputs(op):

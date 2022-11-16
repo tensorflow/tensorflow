@@ -1,0 +1,17 @@
+path: "tensorflow.distribute.experimental.PreemptionCheckpointHandler"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.failure_handling.failure_handling.PreemptionCheckpointHandler\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "total_run_calls"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'cluster_resolver\', \'checkpoint_or_checkpoint_manager\', \'checkpoint_dir\', \'termination_config\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "run"
+    argspec: "args=[\'self\', \'distributed_train_function\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+}

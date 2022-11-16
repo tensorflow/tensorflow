@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_DATA_SERVICE_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_DATA_SERVICE_OPS_H_
 
+#include <string>
+
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/kernels/data/iterator_ops.h"
 
 namespace tensorflow {
 namespace data {
@@ -37,6 +38,8 @@ class RegisterDatasetOp : public OpKernel {
       "external_state_policy";
   static constexpr const char* const kElementSpec = "element_spec";
   static constexpr const char* const kMetadata = "metadata";
+  static constexpr const char* const kRequestedDatasetId =
+      "requested_dataset_id";
   static constexpr const char* const kTimeoutMs = "timeout_ms";
 
   explicit RegisterDatasetOp(OpKernelConstruction* ctx);
@@ -44,9 +47,11 @@ class RegisterDatasetOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  private:
-  SerializationContext::ExternalStatePolicy external_state_policy_;
+  int op_version_;
+  ExternalStatePolicy external_state_policy_;
   std::string element_spec_;
   std::string serialized_metadata_;
+  std::string requested_dataset_id_;
 };
 
 }  // namespace data

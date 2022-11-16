@@ -16,7 +16,9 @@ limitations under the License.
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
 
 #include "tensorflow/lite/c/common.h"
@@ -53,7 +55,8 @@ bool IsLogicalSupportedType(const TfLiteType type) {
 }
 
 bool IsAbsSupportedType(const TfLiteType type) {
-  return type == kTfLiteFloat32 || type == kTfLiteInt8 || type == kTfLiteInt16;
+  return type == kTfLiteFloat32 || type == kTfLiteInt8 ||
+         type == kTfLiteInt16 || type == kTfLiteInt32;
 }
 
 bool IsRsqrtSupportedType(const TfLiteType type) {
@@ -232,6 +235,8 @@ TfLiteStatus AbsEval(TfLiteContext* context, TfLiteNode* node) {
       return input->quantization.type == kTfLiteNoQuantization
                  ? AbsInt16EvalImpl(context, node, type)
                  : AbsEvalQuantized<int16_t>(context, node, type);
+    case kTfLiteInt32:
+      return EvalImpl<int32_t>(context, node, std::abs<int32_t>, type);
     default:
       TF_LITE_KERNEL_LOG(context, "Current data type %s is not supported.",
                          TfLiteTypeGetName(type));

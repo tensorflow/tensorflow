@@ -7,8 +7,8 @@ tf_class {
   is_instance: "<class \'keras.engine.base_layer_v1.Layer\'>"
   is_instance: "<class \'keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.autotrackable.AutoTrackable\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<class \'keras.utils.version_utils.LayerVersionSelector\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -173,7 +173,7 @@ tf_class {
   }
   member_method {
     name: "call"
-    argspec: "args=[\'self\', \'inputs\', \'training\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'self\', \'inputs\', \'training\', \'mask\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "compute_mask"

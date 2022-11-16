@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/loader.h"
 
+#include <string>
 #include <unordered_set>
 
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/cc/saved_model/fingerprinting.h"
 #include "tensorflow/cc/saved_model/loader_util.h"
 #include "tensorflow/cc/saved_model/metrics.h"
 #include "tensorflow/cc/saved_model/reader.h"
@@ -34,6 +36,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/file_system_helper.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
@@ -97,7 +101,7 @@ static Status ValidateNode(const NodeDef& node) {
         "Saved model contains node \"", node.name(),
         "\" which is a constant tensor but no value has been provided");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 static Status ValidateFunctionNotRecursive(const FunctionDef& function) {
@@ -110,7 +114,7 @@ static Status ValidateFunctionNotRecursive(const FunctionDef& function) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 static Status ValidateSavedTensors(const GraphDef& graph_def) {
@@ -126,12 +130,11 @@ static Status ValidateSavedTensors(const GraphDef& graph_def) {
       }
 
       // Also check that there is no recursivity in the library
-      // TODO(mihaimaruseac): Do more than self-recursivity
       TF_RETURN_IF_ERROR(ValidateFunctionNotRecursive(function));
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Tensor CreateStringTensor(const string& value) {
@@ -217,7 +220,7 @@ Status RunInitOp(const RunOptions& run_options, const string& export_dir,
     return RunOnce(run_options, inputs, {}, {init_op_name},
                    nullptr /* outputs */, &run_metadata, session);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RunRestore(const RunOptions& run_options, const string& export_dir,
@@ -234,11 +237,14 @@ Status RunRestore(const RunOptions& run_options, const string& export_dir,
   // variables are stored in the variables.data-?????-of-????? files.
   const string variables_index_path = io::JoinPath(
       variables_directory, MetaFilename(kSavedModelVariablesFilename));
-  if (!Env::Default()->FileExists(variables_index_path).ok()) {
+  TF_ASSIGN_OR_RETURN(
+      bool variables_index_exists,
+      internal::FileExists(Env::Default(), variables_index_path));
+  if (!variables_index_exists) {
     LOG(INFO) << "The specified SavedModel has no variables; no checkpoints "
                  "were restored. File does not exist: "
               << variables_index_path;
-    return Status::OK();
+    return OkStatus();
   }
   const string variables_path =
       io::JoinPath(variables_directory, kSavedModelVariablesFilename);
@@ -284,7 +290,7 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
       session_options, bundle->meta_graph_def, &bundle->session));
   TF_RETURN_IF_ERROR(RestoreSession(run_options, bundle->meta_graph_def,
                                     export_dir, &bundle->session));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LoadSavedModel(const SessionOptions& session_options,
@@ -292,6 +298,13 @@ Status LoadSavedModel(const SessionOptions& session_options,
                       const std::unordered_set<string>& tags,
                       SavedModelBundle* const bundle) {
   metrics::SavedModelReadApi(kCCLoadLabel).IncrementBy(1);
+  auto fingerprint_proto =
+      saved_model::fingerprinting::ReadSavedModelFingerprint(export_dir);
+  if (fingerprint_proto.ok()) {
+    // Set gauge cell with graph_def_checksum.
+    metrics::SavedModelReadFingerprint().Set(
+        std::to_string(fingerprint_proto->saved_model_checksum()));
+  }
 
   // TODO(robson): Add tests for the counters.
   const uint64 start_microseconds = Env::Default()->NowMicros();
@@ -450,7 +463,7 @@ Status RestoreSession(const RunOptions& run_options,
   // Record wall time spent in init op.
   load_latency_by_stage->GetCell(export_dir, "init_graph")
       ->Add(GetLatencyMicroseconds(graph_init_start_microseconds));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LoadSavedModel(const SessionOptions& session_options,
@@ -475,7 +488,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
   *bundle = SavedModelBundleLite(
       absl::make_unique<LiteSessionWrapper>(std::move(legacy_bundle.session)),
       std::move(*legacy_bundle.meta_graph_def.mutable_signature_def()));
-  return Status::OK();
+  return OkStatus();
 }
 
 bool MaybeSavedModelDirectory(const string& export_dir) {

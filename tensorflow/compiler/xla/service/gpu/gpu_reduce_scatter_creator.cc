@@ -15,23 +15,26 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_reduce_scatter_creator.h"
 
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/reduce_scatter_utils.h"
 
 namespace xla {
 namespace gpu {
 
-StatusOr<bool> ReduceScatterCreator::Run(HloModule *module) {
+StatusOr<bool> ReduceScatterCreator::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
   const HloModuleConfig &config = module->config();
   int64_t next_channel_id = hlo_query::NextChannelId(*module);
 
   bool changed = false;
-  for (HloComputation *computation : module->MakeNonfusionComputations()) {
+  for (HloComputation *computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction *instruction :
          computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() != HloOpcode::kAllReduce) {
@@ -72,7 +75,7 @@ StatusOr<bool> ReduceScatterCreator::Run(HloModule *module) {
       }
       scatter_shape.set_dimensions(split_dim, scatter_dim_size);
 
-      absl::optional<int64_t> channel_id;
+      std::optional<int64_t> channel_id;
       if (ar->channel_id()) {
         // We cannot reuse the channel_id on all-reduce for reduce-scatter.
         channel_id = next_channel_id++;

@@ -20,8 +20,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 namespace gpu {
@@ -66,7 +66,7 @@ Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   VLOG(2) << "Infeeding to GPU complete";
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace gpu

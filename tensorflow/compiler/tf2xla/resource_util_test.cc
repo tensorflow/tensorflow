@@ -37,7 +37,7 @@ ResourceUsageAnalysis::NodeInfo node_info_from_string(absl::string_view s) {
 
   ResourceUsageAnalysis::NodeInfo node_info;
   if (tokens[0].empty()) {
-    node_info.function_name_ = absl::nullopt;
+    node_info.function_name_ = std::nullopt;
   } else {
     node_info.function_name_ = std::move(tokens[0]);
   }
@@ -50,11 +50,11 @@ void AnalyzeAndVerify(
     const GraphDef& graphdef, FunctionLibraryDefinition* flib_def,
     const absl::flat_hash_map<std::string, absl::flat_hash_set<std::string>>&
         expected) {
-  auto graph = absl::make_unique<Graph>(flib_def);
+  auto graph = std::make_unique<Graph>(flib_def);
   TF_EXPECT_OK(
       ConvertGraphDefToGraph(GraphConstructorOptions(), graphdef, graph.get()));
 
-  auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+  auto pflr = std::make_unique<ProcessFunctionLibraryRuntime>(
       nullptr, Env::Default(), /*config=*/nullptr, TF_GRAPH_DEF_VERSION,
       flib_def, OptimizerOptions());
   FunctionLibraryRuntime* lib_runtime =
@@ -375,7 +375,7 @@ TEST(ResourceOpAnalyzerTest, MultipleResourceMultipleUserWithPassThrough) {
 }
 
 TEST(ResourceOpAnalyzerTest, ResourcePassThroughFunction) {
-  auto library = absl::make_unique<FunctionDefLibrary>();
+  auto library = std::make_unique<FunctionDefLibrary>();
   /*
    *  pass_through_function:
    *
@@ -429,7 +429,7 @@ TEST(ResourceOpAnalyzerTest, ResourcePassThroughFunction) {
 }
 
 TEST(ResourceOpAnalyzerTest, ResourceUserInFunction) {
-  auto library = absl::make_unique<FunctionDefLibrary>();
+  auto library = std::make_unique<FunctionDefLibrary>();
   /*
    *  resource_user_function:
    *
@@ -482,7 +482,7 @@ TEST(ResourceOpAnalyzerTest, ResourceUserInFunction) {
 }
 
 TEST(ResourceOpAnalyzerTest, ResourceSourceInFunction) {
-  auto library = absl::make_unique<FunctionDefLibrary>();
+  auto library = std::make_unique<FunctionDefLibrary>();
   /*
    *  resource_source_function:
    *

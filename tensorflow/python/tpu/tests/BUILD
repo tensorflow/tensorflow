@@ -1,6 +1,6 @@
 # Description: Tests defined for Cloud TPUs
 
-load("//tensorflow:tensorflow.bzl", "pytype_library")  # buildifier: disable=same-origin-load
+load("//tensorflow:pytype.default.bzl", "pytype_library")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
@@ -20,6 +20,8 @@ pytype_library(
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/tpu:tpu_embedding",
+        "//tensorflow/python/tpu:tpu_embedding_for_serving",
+        "//tensorflow/python/tpu:tpu_embedding_v1",
         "//tensorflow/python/tpu:tpu_embedding_v2",
         "//tensorflow/python/tpu:tpu_strategy_util",
         "//third_party/py/numpy",
@@ -285,5 +287,68 @@ tpu_py_test(
     srcs_version = "PY3",
     deps = [
         ":tpu_embedding_v2_correctness_base_test",
+    ],
+)
+
+tpu_py_test(
+    name = "tpu_embedding_v2_initialization_test",
+    srcs = [
+        "tpu_embedding_v2_initialization_test.py",
+    ],
+    disable_experimental = True,
+    disable_mlir_bridge = False,
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":tpu_embedding_v2_correctness_base_test",
+    ],
+)
+
+### tpu embedding v1 tests
+
+tpu_py_test(
+    name = "tpu_embedding_v1_checkpoint_test",
+    srcs = [
+        "tpu_embedding_v1_checkpoint_test.py",
+    ],
+    disable_mlir_bridge = False,
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        ":tpu_embedding_base_test",
+    ],
+)
+
+tpu_py_test(
+    name = "tpu_embedding_v1_correctness_test",
+    srcs = [
+        "tpu_embedding_v1_correctness_test.py",
+    ],
+    disable_mlir_bridge = False,
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        ":tpu_embedding_base_test",
+    ],
+)
+
+tpu_py_test(
+    name = "tpu_initialization_test",
+    srcs = [
+        "tpu_initialization_test.py",
+    ],
+    disable_mlir_bridge = False,
+    disable_tfrt = False,
+    disable_v3_4chips = False,
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = [
+        "no_oss",
+        "noasan",
+    ],
+    deps = [
+        "//tensorflow/python/tpu:tpu_py",
     ],
 )

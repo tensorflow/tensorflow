@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/toco/logging/conversion_log_util.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -34,18 +35,18 @@ using ::testing::UnorderedElementsAre;
 TEST(ConversionLogUtilTest, TestGetOperatorNames) {
   Model model;
   // Built-in ops.
-  model.operators.push_back(absl::make_unique<ConvOperator>());
-  model.operators.push_back(absl::make_unique<MeanOperator>());
-  model.operators.push_back(absl::make_unique<NegOperator>());
+  model.operators.push_back(std::make_unique<ConvOperator>());
+  model.operators.push_back(std::make_unique<MeanOperator>());
+  model.operators.push_back(std::make_unique<NegOperator>());
   // Flex ops.
-  auto avg_pool_3d = absl::make_unique<TensorFlowUnsupportedOperator>();
+  auto avg_pool_3d = std::make_unique<TensorFlowUnsupportedOperator>();
   avg_pool_3d->tensorflow_op = "AvgPool3D";
   tensorflow::NodeDef node_def;
   node_def.set_op("AvgPool3D");
   node_def.SerializeToString(&avg_pool_3d->tensorflow_node_def);
   model.operators.push_back(std::move(avg_pool_3d));
   // Custom ops.
-  auto my_custom_op = absl::make_unique<TensorFlowUnsupportedOperator>();
+  auto my_custom_op = std::make_unique<TensorFlowUnsupportedOperator>();
   my_custom_op->tensorflow_op = "MyAwesomeCustomOp";
   model.operators.push_back(std::move(my_custom_op));
 
@@ -65,9 +66,9 @@ TEST(ConversionLogUtilTest, TestCountOperatorsByType) {
   conv1->inputs.push_back(conv1_filter_name);
   conv1->outputs.push_back(conv1_output_name);
   auto& array_map = model.GetMutableArrayMap();
-  array_map[conv1_input_name] = std::unique_ptr<Array>(new Array);
-  array_map[conv1_filter_name] = std::unique_ptr<Array>(new Array);
-  array_map[conv1_output_name] = std::unique_ptr<Array>(new Array);
+  array_map[conv1_input_name] = std::make_unique<Array>();
+  array_map[conv1_filter_name] = std::make_unique<Array>();
+  array_map[conv1_output_name] = std::make_unique<Array>();
 
   // 2nd Conv operator.
   std::unique_ptr<ConvOperator> conv2(new ConvOperator());
@@ -77,31 +78,31 @@ TEST(ConversionLogUtilTest, TestCountOperatorsByType) {
   conv2->inputs.push_back(conv2_input_name);
   conv2->inputs.push_back(conv2_filter_name);
   conv2->outputs.push_back(conv2_output_name);
-  array_map[conv2_input_name] = std::unique_ptr<Array>(new Array);
-  array_map[conv2_filter_name] = std::unique_ptr<Array>(new Array);
-  array_map[conv2_output_name] = std::unique_ptr<Array>(new Array);
+  array_map[conv2_input_name] = std::make_unique<Array>();
+  array_map[conv2_filter_name] = std::make_unique<Array>();
+  array_map[conv2_output_name] = std::make_unique<Array>();
 
   // Mean operator.
   std::unique_ptr<MeanOperator> mean(new MeanOperator());
   const std::string mean_input_name = "mean_input";
   mean->inputs.push_back(mean_input_name);
-  array_map[mean_input_name] = std::unique_ptr<Array>(new Array);
+  array_map[mean_input_name] = std::make_unique<Array>();
 
   // 1st flex operator 'AvgPool3D'.
-  auto avg_pool_3d = absl::make_unique<TensorFlowUnsupportedOperator>();
+  auto avg_pool_3d = std::make_unique<TensorFlowUnsupportedOperator>();
   avg_pool_3d->tensorflow_op = "AvgPool3D";
   tensorflow::NodeDef node_def;
   node_def.set_op("AvgPool3D");
   node_def.SerializeToString(&avg_pool_3d->tensorflow_node_def);
 
   // 2nd flex operator 'EluGrad'.
-  auto elu_grad = absl::make_unique<TensorFlowUnsupportedOperator>();
+  auto elu_grad = std::make_unique<TensorFlowUnsupportedOperator>();
   elu_grad->tensorflow_op = "EluGrad";
   node_def.set_op("EluGrad");
   node_def.SerializeToString(&elu_grad->tensorflow_node_def);
 
   // 1st custom operator 'MyAwesomeCustomOp'.
-  auto my_custom_op = absl::make_unique<TensorFlowUnsupportedOperator>();
+  auto my_custom_op = std::make_unique<TensorFlowUnsupportedOperator>();
   my_custom_op->tensorflow_op = "MyAwesomeCustomOp";
 
   model.operators.push_back(std::move(conv1));
@@ -131,13 +132,13 @@ TEST(ConversionLogUtilTest, TestGetInputAndOutputTypes) {
   const std::string input2 = "conv_filter";
   const std::string input3 = "feature";
   const std::string output = "softmax";
-  array_map[input1] = std::unique_ptr<Array>(new Array);
+  array_map[input1] = std::make_unique<Array>();
   array_map[input1]->data_type = ArrayDataType::kFloat;
-  array_map[input2] = std::unique_ptr<Array>(new Array);
+  array_map[input2] = std::make_unique<Array>();
   array_map[input2]->data_type = ArrayDataType::kFloat;
-  array_map[input3] = std::unique_ptr<Array>(new Array);
+  array_map[input3] = std::make_unique<Array>();
   array_map[input3]->data_type = ArrayDataType::kInt16;
-  array_map[output] = std::unique_ptr<Array>(new Array);
+  array_map[output] = std::make_unique<Array>();
   array_map[output]->data_type = ArrayDataType::kFloat;
 
   InputArray input_arrays[3];
@@ -167,13 +168,13 @@ TEST(ConversionLogUtilTest, TestGetOpSignatures) {
   conv->inputs.push_back(conv_input_name);
   conv->inputs.push_back(conv_filter_name);
   conv->outputs.push_back(conv_output_name);
-  array_map[conv_input_name] = std::unique_ptr<Array>(new Array);
+  array_map[conv_input_name] = std::make_unique<Array>();
   array_map[conv_input_name]->data_type = ArrayDataType::kFloat;
   array_map[conv_input_name]->copy_shape({4, 4, 3});
-  array_map[conv_filter_name] = std::unique_ptr<Array>(new Array);
+  array_map[conv_filter_name] = std::make_unique<Array>();
   array_map[conv_filter_name]->data_type = ArrayDataType::kFloat;
   array_map[conv_filter_name]->copy_shape({2, 2});
-  array_map[conv_output_name] = std::unique_ptr<Array>(new Array);
+  array_map[conv_output_name] = std::make_unique<Array>();
   array_map[conv_output_name]->data_type = ArrayDataType::kFloat;
   array_map[conv_output_name]->copy_shape({4, 4, 2});
 
@@ -182,27 +183,27 @@ TEST(ConversionLogUtilTest, TestGetOpSignatures) {
   std::unique_ptr<MeanOperator> mean(new MeanOperator());
   mean->inputs.push_back(mean_input_name);
   mean->outputs.push_back(mean_output_name);
-  array_map[mean_input_name] = std::unique_ptr<Array>(new Array);
-  array_map[mean_output_name] = std::unique_ptr<Array>(new Array);
+  array_map[mean_input_name] = std::make_unique<Array>();
+  array_map[mean_output_name] = std::make_unique<Array>();
 
   const std::string avg_pool_3d_output_name = "avg_pool_output";
-  auto avg_pool_3d = absl::make_unique<TensorFlowUnsupportedOperator>();
+  auto avg_pool_3d = std::make_unique<TensorFlowUnsupportedOperator>();
   avg_pool_3d->tensorflow_op = "AvgPool3D";
   tensorflow::NodeDef node_def;
   node_def.set_op("AvgPool3D");
   node_def.SerializeToString(&avg_pool_3d->tensorflow_node_def);
   avg_pool_3d->inputs.push_back(conv_output_name);
   avg_pool_3d->outputs.push_back(avg_pool_3d_output_name);
-  array_map[avg_pool_3d_output_name] = std::unique_ptr<Array>(new Array);
+  array_map[avg_pool_3d_output_name] = std::make_unique<Array>();
   array_map[avg_pool_3d_output_name]->data_type = ArrayDataType::kInt32;
   array_map[avg_pool_3d_output_name]->copy_shape({2, 2});
 
   const std::string custom_op_output_name = "custom_op_output";
-  auto my_custom_op = absl::make_unique<TensorFlowUnsupportedOperator>();
+  auto my_custom_op = std::make_unique<TensorFlowUnsupportedOperator>();
   my_custom_op->tensorflow_op = "MyAwesomeCustomOp";
   my_custom_op->inputs.push_back(avg_pool_3d_output_name);
   my_custom_op->outputs.push_back(custom_op_output_name);
-  array_map[custom_op_output_name] = std::unique_ptr<Array>(new Array);
+  array_map[custom_op_output_name] = std::make_unique<Array>();
   array_map[custom_op_output_name]->data_type = ArrayDataType::kFloat;
   array_map[custom_op_output_name]->copy_shape({3});
 

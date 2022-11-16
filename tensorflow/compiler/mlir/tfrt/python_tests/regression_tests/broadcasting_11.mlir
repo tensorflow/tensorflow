@@ -19,5 +19,5 @@ func.func @test(%V__0: tensor<?x?xf32> { python_test_attrs.static_type = tensor<
   %17 = "tf.Rint"(%16) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   %18 = "tf.Add"(%3, %17) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   %19 = "tf.Relu6"(%18) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
-  return %19 : tensor<?x?x?xf32>
+  func.return %19 : tensor<?x?x?xf32>
 }

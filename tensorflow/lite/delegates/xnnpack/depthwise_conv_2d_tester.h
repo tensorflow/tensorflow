@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -217,6 +218,12 @@ class DepthwiseConv2DTester {
     return *this;
   }
 
+  inline DepthwiseConv2DTester& WeightsCache(
+      TfLiteXNNPackDelegateWeightsCache* weights_cache) {
+    weights_cache_ = weights_cache;
+    return *this;
+  }
+
   void Test(TfLiteDelegate* delegate) const;
 
  private:
@@ -246,6 +253,7 @@ class DepthwiseConv2DTester {
   ::tflite::Padding padding_ = ::tflite::Padding_VALID;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
+  TfLiteXNNPackDelegateWeightsCache* weights_cache_ = nullptr;
 };
 
 }  // namespace xnnpack

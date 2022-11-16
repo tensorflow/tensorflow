@@ -196,6 +196,9 @@ bool CopyShapesAndTypesAttrs(const NodeDef& from, NodeDef* to_node);
 // Checks whether the op has a "sloppy" attribute.
 bool HasSloppyAttr(const string& op);
 
+// Checks whether the op has a "replicate_on_split" attribute.
+bool HasReplicateOnSplitAttr(const string& op);
+
 // Checks whether the op has a "deterministic" attribute.
 bool HasDeterministicAttr(const string& op);
 

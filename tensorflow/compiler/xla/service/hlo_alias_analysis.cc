@@ -27,16 +27,16 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_buffer.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -58,7 +58,7 @@ void ComputeInputOutputAliasedValues(const HloValue& value,
   // instruction.
   for (const HloPosition& pos : value.positions()) {
     if (pos.instruction == entry_computation.root_instruction()) {
-      absl::optional<HloInputOutputAliasConfig::Alias> aliased_input =
+      std::optional<HloInputOutputAliasConfig::Alias> aliased_input =
           io_alias_config.GetAliasedParameter(pos.index);
       if (aliased_input) {
         aliased_values.insert(
@@ -172,10 +172,10 @@ void ComputeInPlaceOperationAliasedValues(const HloValue& value,
     for (const auto& operand_and_output_index :
          HloDataflowAnalysis::GetInPlaceInputOutputPairs(instruction)) {
       if (position.index == operand_and_output_index.second) {
-        const HloUse& operand = operand_and_output_index.first;
+        const HloOperandIndex& operand_index = operand_and_output_index.first;
         const HloValue& operand_value = dataflow.GetUniqueValueAt(
-            instruction->operand(operand.operand_number),
-            operand.operand_index);
+            instruction->operand(operand_index.operand_number),
+            operand_index.operand_index);
         VLOG(3) << " operand value " << operand_value << " aliases.";
         aliased_values.insert(&operand_value);
       }
@@ -185,7 +185,9 @@ void ComputeInPlaceOperationAliasedValues(const HloValue& value,
   for (const HloUse& use : value.GetUses()) {
     for (const auto& operand_and_output_index :
          HloDataflowAnalysis::GetInPlaceInputOutputPairs(use.instruction)) {
-      if (use == operand_and_output_index.first) {
+      const HloOperandIndex& operand_index = operand_and_output_index.first;
+      if (use.operand_number == operand_index.operand_number &&
+          use.operand_index == operand_index.operand_index) {
         const HloValue& use_value = dataflow.GetUniqueValueAt(
             use.instruction, operand_and_output_index.second);
         VLOG(3) << " use value " << use_value << " aliases.";
@@ -195,8 +197,8 @@ void ComputeInPlaceOperationAliasedValues(const HloValue& value,
   }
 }
 
-// Compute and return a set of values that the given value must be aliased with
-// due to HLO aliasing rules (including the value itself).
+// Compute and return a set of values that the given value must be aliased
+// with due to HLO aliasing rules (including the value itself).
 FlatValueSet ComputeAliasedValues(const HloValue& value,
                                   const HloDataflowAnalysis& dataflow) {
   if (VLOG_IS_ON(2)) {
@@ -243,8 +245,8 @@ std::vector<HloBuffer> CreateBuffers(const HloDataflowAnalysis& dataflow) {
     }
 
     // Use the largest set to collect the union of the aliased sets (as it is
-    // more efficient to merge smaller sets into larger). Break ties using value
-    // ID to maintain determinism.
+    // more efficient to merge smaller sets into larger). Break ties using
+    // value ID to maintain determinism.
     auto key = [](const auto& set_and_id) {
       return std::make_pair(set_and_id.first->size(), -set_and_id.second);
     };
@@ -337,7 +339,7 @@ Status HloAliasAnalysis::Verify() const {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 std::string HloAliasAnalysis::ToString() const {

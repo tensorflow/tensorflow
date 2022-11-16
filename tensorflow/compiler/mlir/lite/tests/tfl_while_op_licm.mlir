@@ -1,7 +1,7 @@
 // RUN: tf-opt -loop-invariant-code-motion %s -o - | FileCheck %s
 
 // CHECK: while_1([[ARG0:%[^ :]*]]: tensor<i32>, [[ARG1:%[^ :]*]]: tensor<1xf32>)
-func @while_1(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+func.func @while_1(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
   // CHECK: [[CST:%[^ ]*]] = arith.constant dense<1> : tensor<i32>
   // CHECK: "tfl.while"([[ARG0]], [[ARG1]])
   // CHECK: (tensor<i32>, tensor<1xf32>) -> (tensor<i32>, tensor<1xf32>)
@@ -22,5 +22,5 @@ func @while_1(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
       "tfl.yield"(%1, %2) : (tensor<*xi32>, tensor<*xf32>) -> ()
     }
   ) : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>, tensor<1xf32>) loc("WhileOp")
-  return %0#1 : tensor<1xf32>
+  func.return %0#1 : tensor<1xf32>
 }

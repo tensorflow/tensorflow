@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MEMORY_SPACE_PROPAGATION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MEMORY_SPACE_PROPAGATION_H_
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -28,7 +28,10 @@ class MemorySpacePropagation : public HloModulePass {
  public:
   ~MemorySpacePropagation() override = default;
   absl::string_view name() const override { return "memory-space-propagation"; }
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // Given the shape index (operand or output) and its corresponding instruction

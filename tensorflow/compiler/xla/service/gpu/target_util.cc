@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/IR/MDBuilder.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -37,8 +37,8 @@ using absl::StrCat;
 // those device functions.
 struct TargetIntrinsics {
   llvm::Intrinsic::ID nvptx_intrinsic;
-  absl::variant<llvm::Intrinsic::ID,
-                std::function<llvm::CallInst*(llvm::IRBuilder<>*)>>
+  std::variant<llvm::Intrinsic::ID,
+               std::function<llvm::CallInst*(llvm::IRBuilder<>*)>>
       amdgpu_intrinsic_or_function;
 };
 
@@ -78,25 +78,29 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
       return {llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_x,
               [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
                 return EmitDeviceFunctionCall("__ockl_get_local_size",
-                                              {b_->getInt32(0)}, {U32}, U64, {},
-                                              b_);
+                                              {b_->getInt32(0)}, {U32}, U64,
+                                              {b_->getContext()}, b_);
               }};
     }
     case TargetIntrinsicID::kBlockDimy: {
       return {llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_y,
               [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
                 return EmitDeviceFunctionCall("__ockl_get_local_size",
-                                              {b_->getInt32(1)}, {U32}, U64, {},
-                                              b_);
+                                              {b_->getInt32(1)}, {U32}, U64,
+                                              {b_->getContext()}, b_);
               }};
     }
     case TargetIntrinsicID::kBlockDimz: {
       return {llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_z,
               [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
                 return EmitDeviceFunctionCall("__ockl_get_local_size",
-                                              {b_->getInt32(2)}, {U32}, U64, {},
-                                              b_);
+                                              {b_->getInt32(2)}, {U32}, U64,
+                                              {b_->getContext()}, b_);
               }};
+    }
+    case TargetIntrinsicID::kGroupBarrierId: {
+      return {llvm::Intrinsic::nvvm_bar_warp_sync,
+              llvm::Intrinsic::amdgcn_wave_barrier};
     }
   }
 }
@@ -194,8 +198,8 @@ std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
 llvm::CallInst* EmitDeviceFunctionCall(
     const std::string& callee_name, absl::Span<llvm::Value* const> operands,
     absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
-    absl::Span<const llvm::Attribute::AttrKind> attributes,
-    llvm::IRBuilder<>* b, absl::string_view name) {
+    const llvm::AttrBuilder& attributes, llvm::IRBuilder<>* b,
+    absl::string_view name) {
   std::vector<llvm::Type*> ir_input_types;
   llvm::Module* module = b->GetInsertBlock()->getModule();
   for (PrimitiveType input_type : input_types) {
@@ -214,9 +218,7 @@ llvm::CallInst* EmitDeviceFunctionCall(
           ->getOrInsertFunction(callee_name, callee_type)
           .getCallee());
 
-  for (auto attribute : attributes) {
-    callee->addFnAttr(attribute);
-  }
+  callee->addFnAttrs(attributes);
 
   return b->CreateCall(callee, llvm_ir::AsArrayRef(operands), name.data());
 }
@@ -232,13 +234,13 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
     llvm_intrinsic_id = gpu_intrinsic_id.nvptx_intrinsic;
   } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
     llvm::Intrinsic::ID* llvm_intrinsic_id_ptr =
-        absl::get_if<llvm::Intrinsic::ID>(
+        std::get_if<llvm::Intrinsic::ID>(
             &gpu_intrinsic_id.amdgpu_intrinsic_or_function);
     if (llvm_intrinsic_id_ptr) {
       llvm_intrinsic_id = *llvm_intrinsic_id_ptr;
     } else {
       std::function<llvm::CallInst*(llvm::IRBuilder<>*)>* builder_func =
-          absl::get_if<std::function<llvm::CallInst*(llvm::IRBuilder<>*)>>(
+          std::get_if<std::function<llvm::CallInst*(llvm::IRBuilder<>*)>>(
               &gpu_intrinsic_id.amdgpu_intrinsic_or_function);
       return (*builder_func)(b);
     }

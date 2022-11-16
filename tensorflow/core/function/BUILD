@@ -1,7 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
 package(
@@ -34,8 +34,8 @@ cc_library(
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/framework:op_def_proto_cc",
         "//tensorflow/core/ir:Dialect",
-        "//tensorflow/core/ir/importexport:export",
-        "//tensorflow/core/ir/importexport:import",
+        "//tensorflow/core/ir/importexport:graphdef_export",
+        "//tensorflow/core/ir/importexport:graphdef_import",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
@@ -60,9 +60,12 @@ cc_library(
         "runtime_client.h",
         "//tensorflow/c/eager:pywrap_required_hdrs",
         "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
+        "//tensorflow/core/config:flags_headers",
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
+        "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
+        "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
     ],
 )
 
@@ -94,7 +97,6 @@ tf_cc_test(
 tf_python_pybind_extension(
     name = "runtime_client_pybind",
     srcs = ["runtime_client_pybind.cc"],
-    module_name = "runtime_client_pybind",
     deps = [
         ":runtime_client_headers",
         "@pybind11",
@@ -102,17 +104,17 @@ tf_python_pybind_extension(
     ] + if_static(
         extra_deps = [
             "//tensorflow/core/framework:function_proto_cc",
-            "//tensorflow/core/protobuf:coordination_service_proto_cc",
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
+            "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
         ],
         otherwise = [
             "//tensorflow/core/framework:function_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:coordination_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
+            "//tensorflow/tsl/protobuf:coordination_service_proto_cc_headers_only",
         ],
     ),
 )
@@ -124,6 +126,7 @@ pytype_strict_library(
         "runtime_client.py",
     ],
     srcs_version = "PY3",
+    visibility = [":__subpackages__"],
     deps = [
         ":runtime_client_pybind",
         "//tensorflow/core/framework:function_proto_py",

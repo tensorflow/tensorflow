@@ -29,18 +29,18 @@ namespace {
 // Define test modules that are deserialized to module ops.
 static const char *const module_with_add =
     R"(module {
-func @main(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x4x5xf32>) -> tensor<3x4x5xf32> {
+func.func @main(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x4x5xf32>) -> tensor<3x4x5xf32> {
   %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<3x4x5xf32>, tensor<3x4x5xf32>) -> tensor<3x4x5xf32>
-  return %0 : tensor<3x4x5xf32>
+  func.return %0 : tensor<3x4x5xf32>
 }
 }
 )";
 
 static const char *const module_with_sub =
     R"(module {
-func @main(%arg0: tensor<7x8x9xi8>, %arg1: tensor<7x8x9xi8>) -> tensor<7x8x9xi8> {
+func.func @main(%arg0: tensor<7x8x9xi8>, %arg1: tensor<7x8x9xi8>) -> tensor<7x8x9xi8> {
   %0 = "tf.Sub"(%arg0, %arg1) : (tensor<7x8x9xi8>, tensor<7x8x9xi8>) -> tensor<7x8x9xi8>
-  return %0 : tensor<7x8x9xi8>
+  func.return %0 : tensor<7x8x9xi8>
 }
 }
 )";

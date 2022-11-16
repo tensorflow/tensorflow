@@ -189,12 +189,6 @@ bool IsIm2ColRequired(const TfLiteTensor* input, TfLiteConvParams* params,
   // Return early as basic requirement is not met
   if (!need_im2col) return false;
 
-  // Special case for Hybrid, as it supports only non-dilated im2col currently
-  const bool is_hybrid_non_dilated = is_hybrid && need_non_dilated_im2col;
-  const bool is_quantized = input->type == kTfLiteUInt8 ||
-                            input->type == kTfLiteInt8 ||
-                            input->type == kTfLiteInt16;
-
   switch (kernel_type) {
     case kReference:
       if (is_hybrid) {
@@ -204,13 +198,12 @@ bool IsIm2ColRequired(const TfLiteTensor* input, TfLiteConvParams* params,
       }
     case kGenericOptimized:
     case kCblasOptimized:
-      if (is_hybrid && !need_non_dilated_im2col) {
-        return false;
-      } else {
-        return true;
-      }
+      // `need_im2col` is always satisfied.
+      return true;
     case kMultithreadOptimized:
-      if (is_hybrid_non_dilated || is_quantized ||
+      if (input->type == kTfLiteUInt8 ||  //
+          input->type == kTfLiteInt8 ||   //
+          input->type == kTfLiteInt16 ||  // quantized.
           !data->supports_multithreaded_kernel) {
         return true;
       } else {
@@ -500,11 +493,11 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
 
     TfLiteIntArray* im2col_size = TfLiteIntArrayCreate(4);
 
-    int input_depth = input->dims->data[3];
+    auto filter_input_channel = filter->dims->data[3];
     im2col_size->data[0] = output_size->data[0];
     im2col_size->data[1] = output_size->data[1];
     im2col_size->data[2] = output_size->data[2];
-    im2col_size->data[3] = input_depth * filter_height * filter_width;
+    im2col_size->data[3] = filter_input_channel * filter_height * filter_width;
 
     TfLiteTensor* im2col =
         &context->tensors[node->temporaries->data[data->im2col_index]];
@@ -525,13 +518,15 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
     // transpose, we allocate the buffer with a two-dimensional shape, where one
     // dimension is the number of elements in each filter, and the second is the
     // total number of filters.
-    int input_depth = input->dims->data[3];
-    hwcn_weights_size->data[0] = (filter_height * filter_width * input_depth);
+    auto filter_input_channel = filter->dims->data[3];
+    hwcn_weights_size->data[0] =
+        (filter_height * filter_width * filter_input_channel);
     hwcn_weights_size->data[1] = channels_out;
 
     TfLiteTensor* hwcn_weights =
         &context->tensors[node->temporaries->data[data->hwcn_weights_index]];
     hwcn_weights->type = input_type;
+    hwcn_weights->name = "Conv_hwcn_weights";
     hwcn_weights->allocation_type = kTfLiteArenaRwPersistent;
 
     auto hwcn_weights_status =
@@ -628,6 +623,7 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
           context,
           GetTemporarySafe(context, node, data->row_sums_index, &row_sums));
       row_sums->type = kTfLiteInt32;
+      row_sums->name = "Conv_row_sums";
       row_sums->allocation_type = kTfLiteArenaRwPersistent;
       // See above comment for the need to allocate for height of inputs.
       const int row_sums_dims[1] = {channels_out};

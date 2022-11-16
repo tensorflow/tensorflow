@@ -141,7 +141,7 @@ TYPED_TEST_SUITE(WhereOpTest, MyTypes);
 
 TYPED_TEST(WhereOpTest, ScalarValueFail) {
   ConstInputWhereOpModel<bool> m(false, {TensorType_INT64, {}});
-  EXPECT_EQ(m.InvokeUnchecked(), kTfLiteError);
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
 }
 
 TYPED_TEST(WhereOpTest, SelectFromVectorNoResult) {
@@ -149,7 +149,7 @@ TYPED_TEST(WhereOpTest, SelectFromVectorNoResult) {
                         {TensorType_INT64, {}});
   m.PopulateTensor<TypeParam>(
       m.input(), GetCompatibleData<TypeParam>({false, false, false}));
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput().size(), 0);
 }
 
@@ -158,7 +158,7 @@ TYPED_TEST(WhereOpTest, SelectFromVector) {
                         {TensorType_INT64, {}});
   m.PopulateTensor<TypeParam>(
       m.input(), GetCompatibleData<TypeParam>({true, false, true}));
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 2}));
 }
 
@@ -169,7 +169,7 @@ TYPED_TEST(WhereOpTest, SelectFromMatrixNoResult) {
       m.input(), GetCompatibleData<TypeParam>({false, false, false,  //
                                                false, false, false,  //
                                                false, false, false}));
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetOutput().size(), 0);
 }
 
@@ -178,7 +178,7 @@ TYPED_TEST(WhereOpTest, SelectFromMatrix1) {
                         {TensorType_INT64, {}});
   m.PopulateTensor<TypeParam>(
       m.input(), GetCompatibleData<TypeParam>({true, false, true}));
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0,  //
                                                2, 0}));
 }
@@ -190,7 +190,7 @@ TYPED_TEST(WhereOpTest, SelectFromMatrix2) {
       m.input(), GetCompatibleData<TypeParam>({true, true, false,   //
                                                true, false, false,  //
                                                true, false, true}));
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0,  //
                                                0, 1,  //
                                                1, 0,  //
@@ -206,7 +206,7 @@ TYPED_TEST(WhereOpTest, SelectFromMatrix3) {
       GetCompatibleData<TypeParam>({true, false, false, true, true,   //
                                     false, true, true, false, false,  //
                                     true, false, true, false, false}));
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0,  //
                                                0, 3,  //
                                                0, 4,  //
@@ -222,7 +222,7 @@ TYPED_TEST(WhereOpTest, SelectFromRank3TensorNoResult) {
   m.PopulateTensor<TypeParam>(
       m.input(), GetCompatibleData<TypeParam>({false, false, false, false,  //
                                                false, false, false, false}));
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetOutput().size(), 0);
 }
 
@@ -232,7 +232,7 @@ TYPED_TEST(WhereOpTest, SelectFromRank3Tensor1) {
   m.PopulateTensor<TypeParam>(
       m.input(), GetCompatibleData<TypeParam>({true, false, true,  //
                                                false, false, true}));
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0,  //
                                                0, 0, 2,  //
                                                1, 0, 2}));
@@ -244,7 +244,7 @@ TYPED_TEST(WhereOpTest, SelectFromRank3Tensor2) {
   m.PopulateTensor<TypeParam>(
       m.input(), GetCompatibleData<TypeParam>({true, true, false, true,  //
                                                false, false, true, true}));
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0,  //
                                                0, 0, 1,  //
                                                0, 1, 1,  //
@@ -259,7 +259,7 @@ TYPED_TEST(WhereOpTest, SelectFromRank3Tensor3) {
       m.input(),
       GetCompatibleData<TypeParam>({true, true, false, true, false, false,  //
                                     false, false, true, false, true, true}));
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0,  //
                                                0, 0, 1,  //
                                                0, 1, 1,  //

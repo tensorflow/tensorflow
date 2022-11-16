@@ -14,7 +14,7 @@
 # ==============================================================================
 """Test configs for conv_with_shared_weights."""
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -61,15 +61,15 @@ def make_conv_with_shared_weights_tests(options):
     # Construct 2 Conv2D operations which use exactly the same input and
     # weights.
     result1 = tf.nn.conv2d(
-        conv_input,
-        filter_tensor,
+        input=conv_input,
+        filters=filter_tensor,
         strides=parameters["strides"],
         dilations=parameters["dilations"],
         padding=parameters["padding"],
         data_format=parameters["data_format"])
     result2 = tf.nn.conv2d(
-        conv_input,
-        filter_tensor,
+        input=conv_input,
+        filters=filter_tensor,
         strides=parameters["strides"],
         dilations=parameters["dilations"],
         padding=parameters["padding"],

@@ -27,12 +27,12 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -41,7 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -256,7 +256,10 @@ class LayoutAssignment : public HloModulePass {
 
   // Assign layouts to the given module. Returns whether the module was changed
   // (any layouts were changed).
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Class encapsulating the layout constraints of the values in a HLO
   // computation.
@@ -379,6 +382,10 @@ class LayoutAssignment : public HloModulePass {
                           bool mandatory, bool dfs, int64_t priority);
   bool reverse_computation_order() const { return reverse_computation_order_; }
 
+  ComputationLayout& saved_entry_computation_layout() {
+    return saved_entry_computation_layout_;
+  }
+
  protected:
   // These methods, invoked by PropagateConstraints, propagate a layout
   // constraint to its neighbors (i.e. operands and users) in order to minimize
@@ -403,7 +410,7 @@ class LayoutAssignment : public HloModulePass {
   // Called after layouts of an instruction have been finalized to allow
   // subclasses to check for platform specific assumptions.
   virtual Status Verify(const HloInstruction* instruction) {
-    return Status::OK();
+    return OkStatus();
   }
 
   Status PropagateUnconstraintedBuffers(LayoutConstraints* constraints);
@@ -487,7 +494,7 @@ class LayoutAssignment : public HloModulePass {
   // all mandatory constraints have been added via AddMandatoryConstraints
   // and before propagating constraints.
   virtual Status AddBackendConstraints(LayoutConstraints* constraints) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Construct constraints and assign layouts to all instructions in the
@@ -516,7 +523,9 @@ class LayoutAssignment : public HloModulePass {
 
   // Check that all layouts in the module have been set and satisfy all
   // necessary conditions.
-  Status CheckLayouts(HloModule* module);
+  Status CheckLayouts(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Computes the ComputationLayout of the given constraints based of the
   // layouts assigned to parameters and root instruction. Also propagate
@@ -527,7 +536,9 @@ class LayoutAssignment : public HloModulePass {
   Status ClearComputationLayouts(HloComputation* computation);
 
   // Clears the side effects of a previous pass, like added copy instructions.
-  Status ClearPreviousPassSideEffects(HloModule* module);
+  Status ClearPreviousPassSideEffects(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Propagates the layouts computed by the layout assignment pass on the given
   // computation, to the computation layout passed in to this API.
@@ -606,8 +617,7 @@ class LayoutAssignment : public HloModulePass {
   // receiving propagated default layouts.
   absl::flat_hash_set<const HloInstruction*> unconstrained_layout_instructions_;
 
-  std::function<bool(const HloInstruction*)>
-      instruction_can_change_layout_func_;
+  HloPredicate instruction_can_change_layout_func_;
 
   // CallGraph of the module, used to track callsites of each computation.
   std::unique_ptr<CallGraph> call_graph_;

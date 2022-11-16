@@ -4,5 +4,5 @@ func.func @test(%V__0 : tensor<?x?xi32> { python_test_attrs.static_type = tensor
   %2 = "tf.BitwiseOr"(%1, %V__0) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xi32>, tensor<?x?xi32>) -> tensor<?x?x?xi32>
   %dims3 = "tf.Const"() { value = dense<[0]> : tensor<1xi32>, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : () -> tensor<1xi32>
   %3 = "tf.Mean"(%2, %dims3) { keep_dims = true, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xi32>, tensor<1xi32>) -> tensor<?x?x?xi32>
-  return %3 : tensor<?x?x?xi32>
+  func.return %3 : tensor<?x?x?xi32>
 }

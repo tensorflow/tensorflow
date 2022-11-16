@@ -24,8 +24,23 @@ wget "https://bootstrap.pypa.io/get-pip.py"
 rm "get-pip.py"
 "${PYTHON}" -m ensurepip --upgrade
 
-# TODO(mihaimaruseac): Assume Python3. Need to redo logic when Python4 is released
 PYTHON_VERSION=$(echo ${PIP##*.})  # only the last number, eg. 10
+
+JAX_PACKAGES=(
+  "wheel"
+  "cloudpickle"
+  "colorama>=0.4.4"
+  "matplotlib"
+  "pillow>=9.1.0"
+  "rich"
+  "absl-py"
+  "scipy"
+  "portpicker"
+  "six"
+  "opt-einsum"
+  "auditwheel"
+  "msgpack"
+)
 
 PACKAGES=(
   "absl-py"
@@ -40,10 +55,10 @@ PACKAGES=(
   "grpcio"
   "h5py"
   "keras-nightly"
-  "keras_preprocessing"
   "libclang"
   "markdown"
   "pandas"
+  "packaging"
   "portpicker"
   "protobuf"
   "psutil"
@@ -66,12 +81,18 @@ PACKAGES=(
 "${PIP}" "install" "--upgrade" "pip"
 "${PIP}" "install" "--upgrade" "setuptools" "virtualenv"
 
-"${PIP_INSTALL[@]}" "${PACKAGES[@]}"
+if [[ "$2" == "jax" ]]; then
+  "${PIP_INSTALL[@]}" "${JAX_PACKAGES[@]}"
+else
+  "${PIP_INSTALL[@]}" "${PACKAGES[@]}"
+fi
 
 # Special casing by version of Python
 # E.g., numpy supports py3.10 only from 1.21.3
 if [[ ${PYTHON_VERSION} -eq 10 ]]; then
   "${PIP_INSTALL[@]}" "numpy==1.21.3"
+elif [[ ${PYTHON_VERSION} -eq 11 ]]; then
+  "${PIP_INSTALL[@]}" "numpy==1.23.4"
 else
   "${PIP_INSTALL[@]}" "numpy==1.19"
 fi

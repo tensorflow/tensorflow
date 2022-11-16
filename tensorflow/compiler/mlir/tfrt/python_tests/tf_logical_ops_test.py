@@ -28,10 +28,10 @@ specializations = [
 
 def logical_op_1d(op_name):
   return f"""
-  func @test(%arg0: tensor<?xi1>, %arg1: tensor<?xi1>) -> tensor<?xi1> {{
+  func.func @test(%arg0: tensor<?xi1>, %arg1: tensor<?xi1>) -> tensor<?xi1> {{
     %0 = "tf.{op_name}"(%arg0, %arg1)
         : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
-    return %0 : tensor<?xi1>
+    func.return %0 : tensor<?xi1>
   }}"""
 
 

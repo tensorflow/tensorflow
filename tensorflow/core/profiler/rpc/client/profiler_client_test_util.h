@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // GRPC client to perform on-demand profiling
 
-#ifndef TENSORFLOW_CORE_PROFILER_RPC_CLIENT_PROFILER_CLIENT_TEST_H_
-#define TENSORFLOW_CORE_PROFILER_RPC_CLIENT_PROFILER_CLIENT_TEST_H_
+#ifndef TENSORFLOW_CORE_PROFILER_RPC_CLIENT_PROFILER_CLIENT_TEST_UTIL_H_
+#define TENSORFLOW_CORE_PROFILER_RPC_CLIENT_PROFILER_CLIENT_TEST_UTIL_H_
 
 #include <memory>
 #include <string>
@@ -28,9 +28,9 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
-#include "tensorflow/core/profiler/profiler_options.pb.h"
-#include "tensorflow/core/profiler/profiler_service.pb.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
+#include "tensorflow/tsl/profiler/protobuf/profiler_options.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/profiler_service.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -78,4 +78,4 @@ inline ::testing::Matcher<absl::Duration> DurationApproxLess(
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PROFILER_RPC_CLIENT_PROFILER_CLIENT_TEST_H_
+#endif  // TENSORFLOW_CORE_PROFILER_RPC_CLIENT_PROFILER_CLIENT_TEST_UTIL_H_

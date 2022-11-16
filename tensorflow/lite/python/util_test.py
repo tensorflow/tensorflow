@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +17,6 @@
 import os
 from absl.testing import parameterized
 import numpy as np
-from six.moves import range
 import tensorflow as tf
 
 from tensorflow.lite.python import util

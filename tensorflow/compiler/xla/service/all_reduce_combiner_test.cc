@@ -16,26 +16,23 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
 
 #include <memory>
+#include <vector>
 
-#include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tests/test_utils.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
 
-using absl::nullopt;
+using std::nullopt;
 using ::testing::AllOf;
 namespace op = xla::testing::opcode_matchers;
 int64_t kMaxCombineCount = 256;
@@ -56,7 +53,7 @@ int64_t AllReduceCount(const HloModule& module) {
 }
 
 // inputs[i] will be some op producing a shape of size sizes_in_kib[i] which
-// feeds into a a all reduce op in all_reduces[i]. Returns a tuple
+// feeds into all reduce op in all_reduces[i]. Returns a tuple
 // of the all_reduces.
 HloInstruction* MakeCrossReplicaReductions(
     std::vector<int64_t> sizes_in_kib, std::vector<HloComputation*> reductions,
@@ -343,6 +340,15 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_EQ(AllReduceCount(*module), 2);
   EXPECT_TRUE(changed);
+
+  // Verify that the sharding is combined correctly.
+  const HloInstruction* param0 =
+      module->entry_computation()->parameter_instruction(0);
+  ASSERT_EQ(param0->user_count(), 1);
+  const HloInstruction* combined_ar = param0->users().front();
+  ASSERT_EQ(combined_ar->opcode(), HloOpcode::kAllReduce);
+  EXPECT_THAT(combined_ar, testing::opcode_matchers::Sharding(
+                               "{{maximal device=0}, {maximal device=0}}"));
 }
 
 TEST_F(AllReduceCombinerTest, DoNotCombineCrossShardAndCrossReplicaInSPMD) {

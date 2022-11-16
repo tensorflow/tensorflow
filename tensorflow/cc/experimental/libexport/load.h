@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_EXPERIMENTAL_LIBEXPORT_LOAD_H_
 #define TENSORFLOW_CC_EXPERIMENTAL_LIBEXPORT_LOAD_H_
 
+#include <string>
+
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -63,6 +66,17 @@ class TFPackage {
   // the low-level, serialized format.
   const SavedObjectGraph& GetObjectGraph();
 
+  // Retrieves a specific GraphDef node by name.
+  //
+  // GraphDef nodes are stored as a repeating list of nodes.  At module load
+  // time, a module may have constants that need to be restored.  To restore
+  // these constants, they are looked up in the GraphDef's nodes by their name.
+  // Since we may need to load many constants, we create a hash map of these
+  // names to their corresponding nodes at load time in order to look them up
+  // in constant time.
+  tensorflow::StatusOr<const tensorflow::NodeDef*> GetGraphDefNode(
+      std::string name);
+
   // Returns a list of function defs in the SavedModel.
   const protobuf::RepeatedPtrField<FunctionDef>& GetFunctionDefs();
 
@@ -73,10 +87,20 @@ class TFPackage {
     return variable_reader_.get();
   }
 
+  // Returns whether or not we found a valid checkpoint when loading the
+  // package.
+  bool HasCheckpoint() { return has_checkpoint_; }
+
+  // Returns the path to the variables file.
+  const std::string GetVariablesFilepath() { return variables_filepath_; }
+
  private:
   SavedModel saved_model_proto_;
   TrackableObjectGraph trackable_object_graph_;
   std::unique_ptr<tensorflow::BundleReader> variable_reader_;
+  std::string variables_filepath_;
+  bool has_checkpoint_;
+  absl::flat_hash_map<std::string, const NodeDef*> graph_def_nodes_by_name_;
 };
 
 }  // namespace libexport

@@ -19,6 +19,7 @@ import numpy as np
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
@@ -165,19 +166,27 @@ class FilterTest(test_base.DatasetTestBase, parameterized.TestCase):
 class FilterCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                            parameterized.TestCase):
 
-  def _build_filter_range_graph(self, div):
-    return dataset_ops.Dataset.range(100).filter(
+  def _build_filter_range_dataset(self, div, options=None):
+    dataset = dataset_ops.Dataset.range(100).filter(
         lambda x: math_ops.not_equal(math_ops.mod(x, div), 2))
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def test(self, verify_fn):
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, symbolic_checkpoint):
     div = 3
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
     num_outputs = sum(x % 3 != 2 for x in range(100))
-    verify_fn(self, lambda: self._build_filter_range_graph(div), num_outputs)
+    verify_fn(self, lambda: self._build_filter_range_dataset(div, options),
+              num_outputs)
 
-  def _build_filter_dict_graph(self):
+  def _build_filter_dict_dataset(self):
     return dataset_ops.Dataset.range(10).map(lambda x: {
         "foo": x * 2,
         "bar": x**2
@@ -189,9 +198,9 @@ class FilterCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                          checkpoint_test_base.default_test_combinations()))
   def testDict(self, verify_fn):
     num_outputs = sum((x**2) % 2 == 0 for x in range(10))
-    verify_fn(self, self._build_filter_dict_graph, num_outputs)
+    verify_fn(self, self._build_filter_dict_dataset, num_outputs)
 
-  def _build_sparse_filter(self):
+  def _build_sparse_filter_dataset(self):
 
     def _map_fn(i):
       return sparse_tensor.SparseTensor(
@@ -207,7 +216,7 @@ class FilterCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       combinations.times(test_base.default_test_combinations(),
                          checkpoint_test_base.default_test_combinations()))
   def testSparse(self, verify_fn):
-    verify_fn(self, self._build_sparse_filter, num_outputs=5)
+    verify_fn(self, self._build_sparse_filter_dataset, num_outputs=5)
 
 
 if __name__ == "__main__":

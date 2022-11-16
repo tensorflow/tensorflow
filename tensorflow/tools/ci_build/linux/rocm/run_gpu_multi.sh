@@ -25,7 +25,7 @@ echo "Bazel will use ${N_BUILD_JOBS} concurrent build job(s) and ${N_TEST_JOBS} 
 echo ""
 
 # First positional argument (if any) specifies the ROCM_INSTALL_DIR
-ROCM_INSTALL_DIR=/opt/rocm-5.0.0
+ROCM_INSTALL_DIR=/opt/rocm-5.1.0
 if [[ -n $1 ]]; then
     ROCM_INSTALL_DIR=$1
 fi

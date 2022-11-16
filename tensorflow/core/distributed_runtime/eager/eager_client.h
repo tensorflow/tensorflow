@@ -17,9 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_EAGER_CLIENT_H_
 
 #include "tensorflow/core/distributed_runtime/call_options.h"
-#include "tensorflow/core/lib/core/refcount.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 
 namespace tensorflow {
@@ -64,7 +63,8 @@ class EagerClient : public core::RefCounted {
   // is invoked and keeps it open until some error condition.
   // Similarly to the methods above, the request can be deleted as soon as
   // StreamingEnqueueAsync returns.
-  virtual void StreamingEnqueueAsync(CallOptions* call_opts,
+  virtual void StreamingEnqueueAsync(bool enable_streaming_enqueue,
+                                     CallOptions* call_opts,
                                      const EnqueueRequest* request,
                                      EnqueueResponse* response,
                                      StatusCallback done) = 0;

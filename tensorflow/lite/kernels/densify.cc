@@ -61,6 +61,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, op_context.input->sparsity != nullptr);
 
   op_context.output->type = op_context.input->type;
+  op_context.output->name = "Densify_output";
   op_context.output->allocation_type = kTfLiteArenaRwPersistent;
 
   return context->ResizeTensor(context, op_context.output,
@@ -98,8 +99,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
 
     default:
-      context->ReportError(context, "Type %d not supported.",
-                           op_context.input->type);
+      TF_LITE_KERNEL_LOG(context, "Type %d not supported.",
+                         op_context.input->type);
       return kTfLiteError;
   }
 

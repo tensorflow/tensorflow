@@ -23,6 +23,7 @@ limitations under the License.
 #define TF_OP_BASE
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.td"
 
@@ -30,7 +31,7 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.td"
 // TensorFlow dialect definitions
 //===----------------------------------------------------------------------===//
 
-def TF_Dialect : Dialect {
+def TensorFlowDialect : Dialect {
   let name = "tf";
 
   let description = [{
@@ -47,8 +48,6 @@ TODO: Make invariants more structured so that we can reference them in ops.
   }];
 
   let cppNamespace = "::mlir::TF";
-
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 //===----------------------------------------------------------------------===//
@@ -69,9 +68,13 @@ def TF_SameOperandsAndResultElementTypeResolveRef : NativeOpTrait<
 
 // Op has the same operand and result types after resolving reference types
 // (i.e., after converting reference types to their corresponding TensorFlow or
-// standard types).
-def TF_SameOperandsAndResultTypeResolveRef : NativeOpTrait<
-  "TF::SameOperandsAndResultTypeResolveRef">;
+// standard types). Also, this allows compatible types so it is legal to have
+// tensor<*xf32> and tensor<4xf32> types.
+def TF_SameOperandsAndResultTypeResolveRef : TraitList<
+  InferTensorType.traits #
+  [
+    NativeOpTrait<"TF::SameOperandsAndResultTypeResolveRef">
+  ]>;
 
 // Layout agnostic operations do not depend on the operands data layout (data
 // format), as an example all element wise operations are layout agnostic.
@@ -90,6 +93,20 @@ def TF_CwiseBinary : NativeOpTrait<"TF::CwiseBinary">;
 
 // Coefficient wise unary operation, for example tf.Sqrt operation.
 def TF_CwiseUnary : NativeOpTrait<"TF::CwiseUnary">;
+
+// op op X == op X (unary) / X op X == X (binary)
+// This version requires TF_SameOperandsAndResultTypeResolveRef trait unlike
+// the core implementation requiring SameOperandsAndResultType.
+//
+// This shouldn't be used for side effecting ops.
+def TF_Idempotent : NativeOpTrait<"TF::IsIdempotent">;
+
+// op op X == X
+// This version requires TF_SameOperandsAndResultTypeResolveRef trait unlike
+// the core implementation requiring SameOperandsAndResultType.
+//
+// This shouldn't be used for side effecting ops.
+def TF_Involution : NativeOpTrait<"TF::IsInvolution">;
 
 // Variant of broadcastable trait that considers TF's subtype behavior.
 class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[
@@ -169,6 +186,8 @@ def TF_SendResource : TF_ResourceBase<"Send">;
 def TF_RecvResource : TF_ResourceBase<"Recv">;
 def TF_TPUExecuteResource : TF_ResourceBase<"TPUExecute">;
 def TF_RandomGeneratorResource : TF_ResourceBase<"RandomGenerator">;
+def TF_XlaHostComputeResource : TF_ResourceBase<"XlaHostCompute">;
+def TF_CollectiveReduceOrderingResource : TF_ResourceBase<"CollectiveReduceOrdering">;
 
 // Fake resource, see `TF_MustExecute` below.
 def TF_MustExecuteResource : TF_ResourceBase<"MustExecute">;
@@ -227,10 +246,14 @@ def TF_TPUEmbeddingReadEffect : MemoryEffects<[MemRead<TF_TPUEmbeddingResource>]
 
 def TF_SendSideEffect : MemoryEffects<[MemWrite<TF_SendResource>]>;
 def TF_RecvSideEffect : MemoryEffects<[MemWrite<TF_RecvResource>]>;
+def TF_XlaHostComputeSideEffect : MemoryEffects<[MemWrite<TF_XlaHostComputeResource>]>;
 
 def TF_TPUExecuteSideEffect : MemoryEffects<[MemWrite<TF_TPUExecuteResource>]>;
 
 def TF_RandomGeneratorSideEffect : MemoryEffects<[MemWrite<TF_RandomGeneratorResource>]>;
+
+// Special effect for keeping `CollectiveReduce` ops in order.
+def TF_CollectiveReduceOrderingEffect : MemoryEffects<[MemWrite<TF_CollectiveReduceOrderingResource>]>;
 
 // Trait for enforcing that a side-effecting op is executed, even if it would be
 // considered dead by MLIR (see b/195782952).
@@ -245,7 +268,7 @@ def TF_MustExecute : MemoryEffects<[MemWrite<TF_MustExecuteResource>]>;
 //===----------------------------------------------------------------------===//
 
 class TF_Op<string mnemonic, list<Trait> traits = []> :
-    Op<TF_Dialect, mnemonic, traits>;
+    Op<TensorFlowDialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow attribute definitions
@@ -383,6 +406,12 @@ def TF_Quint16 : AnyTypeOf<
 def TF_Quantized : AnyTypeOf<
   [TF_Qint8, TF_Qint16, TF_Qint32, TF_Quint8, TF_Quint16], "quantized">;
 
+def TF_Qint8Tensor : TensorOf<[TF_Qint8]>;
+def TF_Qint16Tensor : TensorOf<[TF_Qint16]>;
+def TF_Qint32Tensor : TensorOf<[TF_Qint32]>;
+def TF_Quint8Tensor : TensorOf<[TF_Quint8]>;
+def TF_Quint16Tensor : TensorOf<[TF_Quint16]>;
+
 //===----------------------------------------------------------------------===//
 // Floating-point types (including corresponding reference types)
 
@@ -476,16 +505,6 @@ def TF_Tensor : TensorOf<[TF_ElementType]>;
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// Tensorflow devices metadata
-
-// Tensorflow GPU device metadata.
-def TF_GpuDeviceMetadata : StructAttr<"GpuDeviceMetadata", TF_Dialect, [
-    // GPU device compute capability: major:minor.
-    StructFieldAttr<"cc_major", I32Attr>,
-    StructFieldAttr<"cc_minor", I32Attr>
-]>;
-
-//===----------------------------------------------------------------------===//
 // String attribute constraints
 
 // A string attribute whose value are one of the values in `cases`.
@@ -535,7 +554,7 @@ class TF_DerivedOperandTypeListAttr<int idx> : DerivedAttr<
   "return {mlir::OperandElementTypeIterator(values.begin()), "
           "mlir::OperandElementTypeIterator(values.end())};",
   [{
-    ArrayAttr::get($_ctx, 
+    ArrayAttr::get($_ctxt,
     [&]() {
       llvm::SmallVector<Attribute, 4> ret;
       for (auto t : $_self)
@@ -555,11 +574,11 @@ class TF_DerivedOperandShapeListAttr<int idx> : DerivedAttr<
   "return {mlir::TF::OperandShapeIterator(values.begin()), "
           "mlir::TF::OperandShapeIterator(values.end())};",
   [{
-    ArrayAttr::get($_ctx,
+    ArrayAttr::get($_ctxt,
       [&](){
         llvm::SmallVector<Attribute, 4> ret;
         for (auto shape : $_self)
-          ret.push_back(mlir::TF::ShapeAttr::get($_ctx, shape));
+          ret.push_back(mlir::TF::ShapeAttr::get($_ctxt, shape));
         return ret;
       }())
   }]
@@ -591,7 +610,7 @@ class TF_DerivedResultTypeListAttr<int idx> : DerivedAttr<
   "return {mlir::ResultElementTypeIterator(values.begin()), "
           "mlir::ResultElementTypeIterator(values.end())};",
   [{
-    ArrayAttr::get($_ctx, 
+    ArrayAttr::get($_ctxt,
     [&]() {
       llvm::SmallVector<Attribute, 4> ret;
       for (auto t : $_self)
@@ -611,11 +630,11 @@ class TF_DerivedResultShapeListAttr<int idx> : DerivedAttr<
   "return {mlir::TF::ResultShapeIterator(values.begin()), "
           "mlir::TF::ResultShapeIterator(values.end())};",
   [{
-    ArrayAttr::get($_ctx,
+    ArrayAttr::get($_ctxt,
       [&](){
         llvm::SmallVector<Attribute, 4> ret;
         for (auto shape : $_self)
-          ret.push_back(mlir::TF::ShapeAttr::get($_ctx, shape));
+          ret.push_back(mlir::TF::ShapeAttr::get($_ctxt, shape));
         return ret;
       }())
   }]
@@ -624,7 +643,7 @@ class TF_DerivedResultShapeListAttr<int idx> : DerivedAttr<
 // A derived attribute that returns the shape of the first result type.
 def TF_DerivedResultShapeAttr : DerivedAttr<"ShapedType",
   "return (*getOperation()->result_type_begin()).cast<ShapedType>();",
-  [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
+  [{ mlir::TF::ShapeAttr::get($_ctxt, $_self) }]>;
 
 def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {
   let returnType = "Type";

@@ -109,7 +109,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
@@ -136,7 +136,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -180,7 +180,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
          std::make_pair(kPreserveCardinality,
                         preserve_cardinality_attr)},  // Attrs
         output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -213,6 +213,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       if (deregister_fn_) deregister_fn_();
     }
 
+    bool SymbolicCheckpointCompatible() const override { return true; }
+
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
       interleave_depth_ = ctx->interleave_depth();
@@ -220,14 +222,16 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = GetAutotuneDefaultParallelism(ctx);
       }
-      cancellation_manager_ = absl::make_unique<CancellationManager>();
+      cancellation_manager_ = std::make_unique<CancellationManager>();
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
           [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
       IteratorContext::Params params(ctx);
       params.cancellation_manager = cancellation_manager_.get();
+      IteratorContext iter_ctx(params);
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
-          IteratorContext(params), this, prefix(), &input_impl_));
+          &iter_ctx, this, prefix(), &input_impl_));
+      ctx->MergeCheckpoint(iter_ctx.checkpoint());
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
@@ -264,11 +268,12 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       if (result->output_allocated) {
         RecordBufferDequeue(ctx, result->output);
       }
+      ctx->MergeCheckpoint(result->checkpoint);
       TF_RETURN_IF_ERROR(
           ProcessBatch(dataset()->batch_size_, result->num_elements,
                        dataset()->drop_remainder_, result->status, ctx,
                        out_tensors, end_of_sequence, &result->output));
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -284,6 +289,12 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
                         IteratorStateWriter* writer) override {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
+      if (ctx->symbolic_checkpoint()) {
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCallCounter), 0));
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(full_name(kBatchResultsSize), 0));
+        return OkStatus();
+      }
       mutex_lock l(*mu_);
       // Wait for all in-flight calls to complete.
       while (num_calls_ > 0) {
@@ -298,7 +309,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       for (size_t i = 0; i < batch_results_.size(); ++i) {
         TF_RETURN_IF_ERROR(WriteBatchResult(writer, i));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -314,7 +325,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       for (int i = 0; i < batch_results_size; ++i) {
         TF_RETURN_IF_ERROR(ReadBatchResult(ctx, reader, i));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -350,7 +361,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
           : end_of_input(false),
             num_elements(0),
             output_allocated(false),
-            status(Status::OK()),
+            status(OkStatus()),
             status_offset(-1),
             num_calls(batch_size),
             uid(tensorflow::EnvTime::NowNanos()) {}
@@ -380,6 +391,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       int64_t status_offset TF_GUARDED_BY(mu);
       // Counts the number of outstanding calls for this batch.
       int64_t num_calls TF_GUARDED_BY(&Iterator::mu_);
+      MemoryCheckpoint checkpoint TF_GUARDED_BY(mu);
       const uint64 uid = -1;
     };
 
@@ -415,6 +427,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       bool return_early;
       {
         mutex_lock l(result->mu);
+        result->checkpoint.Merge(ctx->checkpoint());
         result->end_of_input = result->end_of_input || end_of_input;
         result->status.Update(status);
         return_early = result->end_of_input || !result->status.ok();
@@ -511,7 +524,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
         const std::shared_ptr<std::vector<Tensor>>& return_values) {
       mutex_lock l(result->mu);
       if (result->output_allocated) {
-        return Status::OK();
+        return OkStatus();
       }
       const size_t num_components = return_values->size();
       result->output.reserve(num_components);
@@ -530,7 +543,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       }
       RecordBufferEnqueue(ctx.get(), result->output);
       result->output_allocated = true;
-      return Status::OK();
+      return OkStatus();
     }
 
     void RunnerThread(const std::shared_ptr<IteratorContext>& ctx)
@@ -624,7 +637,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       if (result->output_allocated) {
         RecordBufferEnqueue(ctx, result->output);
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status WriteBatchResult(IteratorStateWriter* writer, size_t index)
@@ -654,7 +667,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           WriteStatus(prefix(), strings::StrCat(batch_prefix, "_", kStatus),
                       result->status, writer));
-      return Status::OK();
+      return OkStatus();
     }
 
     // Used for coordination between the main thread, the runner thread, and
@@ -682,8 +695,6 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     // `batch_results_`, call `RecordBufferEnqueue` or `RecordBufferDequeue`
     // respectively.
     std::deque<std::shared_ptr<BatchResult>> batch_results_ TF_GUARDED_BY(*mu_);
-    // Background thread used for coordinating input processing.
-    std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
     // Determines whether the transformation has been cancelled.
     bool cancelled_ TF_GUARDED_BY(*mu_) = false;
     // Identifies the number of callers currently waiting for a batch result.
@@ -700,6 +711,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     // tree. We record the interleave depth so that it can be included in the
     // trace metadata.
     int64 interleave_depth_ = -1;
+    // Background thread used for coordinating input processing. The thread
+    // should be destroyed before the variables it accesses are destroyed.
+    std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
   };
 
   const DatasetBase* const input_;

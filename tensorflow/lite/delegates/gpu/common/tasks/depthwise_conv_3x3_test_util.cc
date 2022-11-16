@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_3x3_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -53,7 +54,7 @@ absl::Status DepthwiseConv3x3SimpleWeightsTest(TestExecutionEnvironment* env) {
       DepthwiseConv3x3 operation =
           CreateDepthwiseConv3x3(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<DepthwiseConv3x3>(std::move(operation)),
+          src_tensor, std::make_unique<DepthwiseConv3x3>(std::move(operation)),
           BHWC(1, 2, 2, 2), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({6.0f, 16.0f, 8.0f, 16.0f, 10.0f, 16.0f, 12.0f, 16.0f},
@@ -91,7 +92,7 @@ absl::Status DepthwiseConv3x3Test(TestExecutionEnvironment* env) {
       DepthwiseConv3x3 operation =
           CreateDepthwiseConv3x3(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<DepthwiseConv3x3>(std::move(operation)),
+          src_tensor, std::make_unique<DepthwiseConv3x3>(std::move(operation)),
           BHWC(1, 2, 2, 2), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(
           {40.5f, 67.5f, 16.5f, 35.5f, 40.5f, 67.5f, 16.5f, 35.5f},

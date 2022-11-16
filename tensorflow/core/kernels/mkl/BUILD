@@ -24,7 +24,7 @@ MKL_SHORT_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core/framework:bounds_check",
     "//tensorflow/core/kernels:ops_util",
-    "//tensorflow/core/util:mkl_util",
+    "//tensorflow/core/util:onednn_env_vars",
 ] + mkl_deps()
 
 MKL_DEPS = MKL_SHORT_DEPS + [
@@ -35,7 +35,7 @@ MKL_DEPS = MKL_SHORT_DEPS + [
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/kernels:concat_lib",
     "//tensorflow/core/kernels:conv_2d",
-    "//tensorflow/core/kernels:eigen_contraction_kernel",
+    "//tensorflow/tsl/framework/contraction:eigen_contraction_kernel",
     "//tensorflow/core/kernels:fill_functor",
     "//tensorflow/core/kernels:gather_functor",
     "//tensorflow/core/kernels:transpose_functor",
@@ -54,7 +54,7 @@ MKL_TEST_DEPS = [
     "//tensorflow/core:testlib",
     "//tensorflow/core/kernels:ops_testutil",
     "//tensorflow/core/kernels:ops_util",
-    "//tensorflow/core/util:mkl_util",
+    "//tensorflow/core/util:onednn_env_vars",
 ]
 
 tf_mkl_kernel_library(
@@ -77,7 +77,9 @@ tf_mkl_kernel_library(
         "mkl_batch_matmul_helper.h",
         "mkl_matmul_ops_common.h",
     ],
-    deps = ["//tensorflow/core/kernels/linalg:einsum_op"] + MKL_DEPS,
+    deps = [
+        "//tensorflow/core/kernels/linalg:einsum_op",
+    ] + MKL_DEPS,
 )
 
 tf_mkl_kernel_library(
@@ -112,11 +114,17 @@ tf_cc_test_mkl(
     linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_conv_op",
+        ":mkl_kernel_util",
         "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:direct_session",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core/kernels:quantization_utils",
         "//tensorflow/core/kernels:quantized_ops",
+        "//tensorflow/core/kernels:bias_op",
+        "//tensorflow/core/kernels:conv_ops",
+        "//tensorflow/core/kernels:depthwise_conv_op",
+        "//tensorflow/core/kernels:relu_op",
     ] + MKL_TEST_DEPS,
 )
 
@@ -296,7 +304,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:transpose_functor",
         "//tensorflow/core/util:image_resizer_state",
-        "//tensorflow/core/util:mkl_util",
+        "//tensorflow/core/util:onednn_env_vars",
     ] + mkl_deps(),
 )
 
@@ -335,6 +343,13 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
+    name = "mkl_fused_mish_op",
+    hdrs = ["mkl_eltwise_activation_base_op.h"],
+    prefix = "mkl_fused_mish",
+    deps = MKL_DEPS,
+)
+
+tf_mkl_kernel_library(
     name = "mkl_softmax_op",
     prefix = "mkl_softmax",
     deps = MKL_SHORT_DEPS + ["//third_party/eigen3"],
@@ -343,9 +358,7 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_tmp_bf16_ops",
     prefix = "mkl_tmp_bf16_ops",
-    deps = MKL_DEPS + [
-        "//tensorflow/core/kernels:no_op",
-    ],
+    deps = MKL_DEPS,
 )
 
 tf_mkl_kernel_library(
@@ -498,4 +511,13 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
     ] + MKL_TEST_DEPS,
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_kernel_util",
+    srcs = ["mkl_kernel_util.h"],
+    deps = MKL_DEPS + [
+        ":mkl_quantize_op",
+        "//tensorflow/core:direct_session",
+    ],
 )

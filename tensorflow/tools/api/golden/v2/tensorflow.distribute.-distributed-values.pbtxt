@@ -1,9 +1,8 @@
 path: "tensorflow.distribute.DistributedValues"
 tf_class {
-  is_instance: "<class \'tensorflow.python.distribute.values.DistributedValues\'>"
+  is_instance: "<class \'tensorflow.python.types.distribute.DistributedValues\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'values\'], varargs=None, keywords=None, defaults=None"
   }
 }

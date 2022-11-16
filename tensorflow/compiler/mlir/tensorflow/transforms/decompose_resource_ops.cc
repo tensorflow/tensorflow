@@ -93,7 +93,7 @@ class DecomposeRngReadAndSkipOp : public RewritePattern {
     auto rng_op = cast<RngReadAndSkipOp>(op);
 
     DenseIntElementsAttr alg_constant;
-    if (!matchPattern(rng_op.alg(), m_Constant(&alg_constant))) {
+    if (!matchPattern(rng_op.getAlg(), m_Constant(&alg_constant))) {
       return rewriter.notifyMatchFailure(
           op, "unable to determine algorithm statically");
     }
@@ -103,11 +103,14 @@ class DecomposeRngReadAndSkipOp : public RewritePattern {
     }
 
     uint64_t alg_value = ((*alg_constant.value_begin<APInt>()).getZExtValue());
-    tensorflow::Algorithm alg;
+    tensorflow::ConcreteRngAlgorithm alg;
     if (tensorflow::RNG_ALG_PHILOX == alg_value) {
-      alg = tensorflow::RNG_ALG_PHILOX;
+      alg = tensorflow::ConcreteRngAlgorithm::RNG_ALG_PHILOX;
     } else if (tensorflow::RNG_ALG_THREEFRY == alg_value) {
-      alg = tensorflow::RNG_ALG_THREEFRY;
+      alg = tensorflow::ConcreteRngAlgorithm::RNG_ALG_THREEFRY;
+    } else if (tensorflow::RNG_ALG_AUTO_SELECT == alg_value) {
+      // For AUTO_SELECT, we'll manage the counter as if it's for Philox.
+      alg = tensorflow::ConcreteRngAlgorithm::RNG_ALG_PHILOX;
     } else {
       return rewriter.notifyMatchFailure(op, "unsupported alg");
     }
@@ -120,7 +123,7 @@ class DecomposeRngReadAndSkipOp : public RewritePattern {
       return rewriter.notifyMatchFailure(op, "unexpected op type");
     }
 
-    if (!HasResourceSubtype(rng_op.resource())) {
+    if (!HasResourceSubtype(rng_op.getResource())) {
       return rewriter.notifyMatchFailure(op, "missing resource subtype");
     }
 
@@ -128,7 +131,7 @@ class DecomposeRngReadAndSkipOp : public RewritePattern {
     int state_size = counter_size + tensorflow::RNG_KEY_SIZE;
     RankedTensorType res_type =
         RankedTensorType::get({state_size}, state_element_type);
-    if (res_type != GetResourceSubtype(rng_op.resource())) {
+    if (res_type != GetResourceSubtype(rng_op.getResource())) {
       return rewriter.notifyMatchFailure(op, "unexpected resource subtype");
     }
 
@@ -136,7 +139,7 @@ class DecomposeRngReadAndSkipOp : public RewritePattern {
 
     // Read the state value from the resource.
     Value state =
-        rewriter.create<ReadVariableOp>(loc, res_type, rng_op.resource());
+        rewriter.create<ReadVariableOp>(loc, res_type, rng_op.getResource());
 
     // Extract the key and counter from the state.
     RankedTensorType word_type = RankedTensorType::get({}, state_element_type);
@@ -154,7 +157,7 @@ class DecomposeRngReadAndSkipOp : public RewritePattern {
     RankedTensorType u64_scalar = RankedTensorType::get({}, u64);
     Value step_size = rewriter.create<ConstOp>(loc, GetScalarOfType(u64, 256));
     Value increment =
-        rewriter.create<MulOp>(loc, u64_scalar, step_size, rng_op.delta());
+        rewriter.create<MulOp>(loc, u64_scalar, step_size, rng_op.getDelta());
 
     // Increment the counter.
     SmallVector<Value, 4> pack_args;
@@ -175,7 +178,7 @@ class DecomposeRngReadAndSkipOp : public RewritePattern {
     // Save the new state value to the resource.
     pack_args.push_back(key);
     Value new_state = rewriter.create<PackOp>(loc, res_type, pack_args);
-    rewriter.create<AssignVariableOp>(loc, rng_op.resource(), new_state);
+    rewriter.create<AssignVariableOp>(loc, rng_op.getResource(), new_state);
 
     // Pad the original state as necessary to fill the output shape.
     int pad = tensorflow::RNG_MAX_COUNTER_SIZE - counter_size;

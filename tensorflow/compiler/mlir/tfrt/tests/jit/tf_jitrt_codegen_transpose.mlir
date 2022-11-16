@@ -2,7 +2,7 @@
 
 // Verify that transpose codegen is working within the pipeline.
 
-func @transpose_2d(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func.func @transpose_2d(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %0 = "tf.Const"()
        {value = dense<[1, 0]> : tensor<2xi64>,
         device = "/job:localhost/replica:0/task:0/device:CPU:0"}
@@ -10,7 +10,7 @@ func @transpose_2d(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %1 = "tf.Transpose"(%arg0, %0)
        {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
        : (tensor<?x?xf32>, tensor<2xi64>) -> tensor<?x?xf32>
-  return %1 : tensor<?x?xf32>
+  func.return %1 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL:   func @transpose_2d
@@ -56,12 +56,12 @@ func @transpose_2d(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
 
 // -----
 
-func @transpose_3d_021(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+func.func @transpose_3d_021(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
   %0 = "tf.Const"() { value = dense<[0, 2, 1]> : tensor<3xi64> }
     : () -> tensor<3xi64>
   %1 = "tf.Transpose"(%arg0, %0)
     : (tensor<?x?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
-  return %1 : tensor<?x?x?xf32>
+  func.return %1 : tensor<?x?x?xf32>
 }
 
 // CHECK-LABEL:   func @transpose_3d
@@ -108,12 +108,12 @@ func @transpose_3d_021(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
 
 // -----
 
-func @transpose_3d_201(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+func.func @transpose_3d_201(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
   %0 = "tf.Const"() { value = dense<[2, 0, 1]> : tensor<3xi64> }
     : () -> tensor<3xi64>
   %1 = "tf.Transpose"(%arg0, %0)
     : (tensor<?x?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
-  return %1 : tensor<?x?x?xf32>
+  func.return %1 : tensor<?x?x?xf32>
 }
 
 // CHECK-LABEL:   func @transpose_3d_201
@@ -160,12 +160,12 @@ func @transpose_3d_201(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
 
 // -----
 
-func @transpose_3d_210(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+func.func @transpose_3d_210(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
   %0 = "tf.Const"() { value = dense<[2, 1, 0]> : tensor<3xi64> }
     : () -> tensor<3xi64>
   %1 = "tf.Transpose"(%arg0, %0)
     : (tensor<?x?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
-  return %1 : tensor<?x?x?xf32>
+  func.return %1 : tensor<?x?x?xf32>
 }
 
 // CHECK-LABEL:   func @transpose_3d_210
@@ -212,12 +212,12 @@ func @transpose_3d_210(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
 
 // -----
 
-func @transpose_3d_120(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+func.func @transpose_3d_120(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
   %0 = "tf.Const"() { value = dense<[1, 2, 0]> : tensor<3xi64> }
     : () -> tensor<3xi64>
   %1 = "tf.Transpose"(%arg0, %0)
     : (tensor<?x?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
-  return %1 : tensor<?x?x?xf32>
+  func.return %1 : tensor<?x?x?xf32>
 }
 
 // CHECK-LABEL:   func @transpose_3d_120
@@ -264,12 +264,12 @@ func @transpose_3d_120(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
 
 // -----
 
-func @transpose_3d_102(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+func.func @transpose_3d_102(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
   %0 = "tf.Const"() { value = dense<[1, 0, 2]> : tensor<3xi64> }
     : () -> tensor<3xi64>
   %1 = "tf.Transpose"(%arg0, %0)
     : (tensor<?x?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
-  return %1 : tensor<?x?x?xf32>
+  func.return %1 : tensor<?x?x?xf32>
 }
 
 // CHECK-LABEL:   func @transpose_3d_102

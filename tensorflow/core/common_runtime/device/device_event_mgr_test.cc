@@ -109,7 +109,7 @@ class TestTensorBuffer : public TensorBuffer {
 namespace {
 
 TEST(EventMgr, Empty) {
-  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).ValueOrDie();
+  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).value();
   TEST_EventMgr em(stream_exec, GPUOptions());
   TEST_EventMgrHelper th(&em);
   EXPECT_EQ(0, th.queue_size());
@@ -118,7 +118,7 @@ TEST(EventMgr, Empty) {
 
 // Tests that WarnIfInCallback() triggers correctly.
 TEST(EventMgr, WarnIfInCallback) {
-  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).ValueOrDie();
+  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).value();
   TEST_EventMgr em(stream_exec, GPUOptions());
   TEST_EventMgrHelper th(&em);
   std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
@@ -150,7 +150,8 @@ class GPUDeviceTestHelper {
     gpu_.reset(reinterpret_cast<BaseGPUDevice*>(device_.release()));
     gpu_allocator_ = GPUProcessState::singleton()->GetGPUAllocator(
         GPUOptions(), TfDeviceId(0), memory_limit, /*peer_gpu_ids=*/{});
-    host_allocator_ = GPUProcessState::singleton()->GetGpuHostAllocator(0);
+    host_allocator_ = GPUProcessState::singleton()->GetGpuHostAllocator(
+        /*options=*/{}, /*numa_node=*/0);
   }
 
   BaseGPUDevice* gpu() { return gpu_.get(); }
@@ -312,8 +313,7 @@ class EMBenchmarkHelper {
       add_inputs_[0] = TensorValue(&gpu_inputs_[0]);
       add_inputs_[1] = TensorValue(&gpu_inputs_[1]);
     }
-    params->inputs = &add_inputs_;
-    params->input_alloc_attrs = nullptr;
+    params->inputs = add_inputs_;
     SetOutputAttrs(params, &allocator_attrs_);
   }
 
@@ -437,7 +437,7 @@ static void BM_no_ops(::testing::benchmark::State& state) {
   const int threads = state.range(0);
   const int iters = state.max_iterations;
 
-  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).ValueOrDie();
+  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).value();
   std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
   CHECK(stream);
   stream->Init();

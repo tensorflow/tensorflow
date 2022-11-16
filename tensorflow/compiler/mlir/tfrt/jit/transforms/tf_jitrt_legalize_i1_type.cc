@@ -34,7 +34,6 @@ using mlir::ConversionPatternRewriter;
 using mlir::ConversionTarget;
 using mlir::DenseElementsAttr;
 using mlir::DenseIntElementsAttr;
-using mlir::FuncOp;
 using mlir::IntegerType;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
@@ -49,8 +48,9 @@ using mlir::ShapedType;
 using mlir::Type;
 using mlir::TypeConverter;
 using mlir::Value;
+using mlir::func::FuncOp;
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_JITRTLEGALIZEI1TYPES
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 static Optional<Type> PromoteI1ToI8(Type input_type) {
@@ -174,7 +174,7 @@ struct I1ToI8GenericConversionPattern : public ConversionPattern {
       rewriter.applySignatureConversion(new_region, signature_conv);
     }
 
-    Operation *new_op = rewriter.createOperation(new_op_state);
+    Operation *new_op = rewriter.create(new_op_state);
     rewriter.replaceOp(op, new_op->getResults());
     return mlir::success();
   }
@@ -189,7 +189,7 @@ static void populateI1TypeConversionPatterns(I1TypeConverter &type_converter,
 }
 
 struct JitRtLegalizeI1TypesPass
-    : public JitRtLegalizeI1TypesBase<JitRtLegalizeI1TypesPass> {
+    : public impl::JitRtLegalizeI1TypesBase<JitRtLegalizeI1TypesPass> {
   void runOnOperation() override {
     MLIRContext &context = getContext();
     I1TypeConverter type_converter;

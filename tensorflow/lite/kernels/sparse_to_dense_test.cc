@@ -98,7 +98,7 @@ TEST_P(SparseToDenseOpModelTest, ZeroDimensionTest) {
   m.PopulateTensor<int32_t>(m.indices(), {3});
   m.PopulateTensor<int32_t>(m.output_shape(), {5});
   m.PopulateTensor<float>(m.values(), {7});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   ASSERT_EQ(m.IsDynamicOutput(), GetParam() == TestType::kDynamic);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 7, 0}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({5}));
@@ -110,7 +110,7 @@ TEST_P(SparseToDenseOpModelTest, OneDimensionTest) {
   m.PopulateTensor<int32_t>(m.indices(), {1, 3, 5});
   m.PopulateTensor<int32_t>(m.output_shape(), {7});
   m.PopulateTensor<float>(m.values(), {2, 4, 6});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   ASSERT_EQ(m.IsDynamicOutput(), GetParam() == TestType::kDynamic);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 2, 0, 4, 0, 6, 0}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({7}));
@@ -122,7 +122,7 @@ TEST_P(SparseToDenseOpModelTest, TwoDimensionsTest) {
   m.PopulateTensor<int32_t>(m.indices(), {0, 0, 0, 1, 2, 1, 2, 0, 1});
   m.PopulateTensor<int32_t>(m.output_shape(), {3, 3, 3});
   m.PopulateTensor<float>(m.values(), {2, 4, 6});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   ASSERT_EQ(m.IsDynamicOutput(), GetParam() == TestType::kDynamic);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -136,7 +136,7 @@ TEST_P(SparseToDenseOpModelTest, Int64IndexTest) {
   m.PopulateTensor<int64_t>(m.indices(), {0, 0, 0, 1, 2, 1, 2, 0, 1});
   m.PopulateTensor<int32_t>(m.output_shape(), {3, 3, 3});
   m.PopulateTensor<float>(m.values(), {2, 4, 6});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   ASSERT_EQ(m.IsDynamicOutput(), GetParam() == TestType::kDynamic);
   EXPECT_THAT(
       m.GetOutput(),
@@ -151,7 +151,7 @@ TEST_P(SparseToDenseOpModelTest, DefaultValueTest) {
   m.PopulateTensor<int32_t>(m.indices(), {0, 0, 0, 1, 2, 1, 2, 0, 1});
   m.PopulateTensor<int32_t>(m.output_shape(), {3, 3, 3});
   m.PopulateTensor<float>(m.values(), {2, 4, 6});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   ASSERT_EQ(m.IsDynamicOutput(), GetParam() == TestType::kDynamic);
   EXPECT_THAT(
       m.GetOutput(),
@@ -166,7 +166,7 @@ TEST_P(SparseToDenseOpModelTest, Int32ValueTest) {
   m.PopulateTensor<int32_t>(m.indices(), {0, 0, 0, 1, 2, 1, 2, 0, 1});
   m.PopulateTensor<int32_t>(m.output_shape(), {3, 3, 3});
   m.PopulateTensor<int32_t>(m.values(), {2, 4, 6});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   ASSERT_EQ(m.IsDynamicOutput(), GetParam() == TestType::kDynamic);
   EXPECT_THAT(
       m.GetOutput(),
@@ -181,7 +181,7 @@ TEST_P(SparseToDenseOpModelTest, Int64ValueTest) {
   m.PopulateTensor<int32_t>(m.indices(), {0, 0, 0, 1, 2, 1, 2, 0, 1});
   m.PopulateTensor<int32_t>(m.output_shape(), {3, 3, 3});
   m.PopulateTensor<int64_t>(m.values(), {2, 4, 6});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   ASSERT_EQ(m.IsDynamicOutput(), GetParam() == TestType::kDynamic);
   EXPECT_THAT(
       m.GetOutput(),
@@ -196,7 +196,7 @@ TEST_P(SparseToDenseOpModelTest, Int8ValueTest) {
   m.PopulateTensor<int32_t>(m.indices(), {0, 0, 0, 1, 2, 1, 2, 0, 1});
   m.PopulateTensor<int32_t>(m.output_shape(), {3, 3, 3});
   m.PopulateTensor<int8_t>(m.values(), {2, 4, 6});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   ASSERT_EQ(m.IsDynamicOutput(), GetParam() == TestType::kDynamic);
   EXPECT_THAT(
       m.GetOutput(),
@@ -211,7 +211,7 @@ TEST_P(SparseToDenseOpModelTest, UInt8ValueTest) {
   m.PopulateTensor<int32_t>(m.indices(), {0, 0, 0, 1, 2, 1, 2, 0, 1});
   m.PopulateTensor<int32_t>(m.output_shape(), {3, 3, 3});
   m.PopulateTensor<uint8_t>(m.values(), {2, 4, 6});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   ASSERT_EQ(m.IsDynamicOutput(), GetParam() == TestType::kDynamic);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,

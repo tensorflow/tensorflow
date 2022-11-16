@@ -15,20 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/prefetch_autotuner.h"
 
-#include <memory>
-
 #include "tensorflow/core/framework/model.h"
 
 namespace tensorflow {
 namespace data {
 
-PrefetchAutotuner::PrefetchAutotuner(std::shared_ptr<model::Model> model,
-                                     std::shared_ptr<model::Node> prefetch_node,
-                                     int64_t initial_buffer_size,
+PrefetchAutotuner::PrefetchAutotuner(int64_t initial_buffer_size,
                                      int64_t buffer_size_min)
-    : model_(model),
-      prefetch_node_(prefetch_node),
-      buffer_limit_(initial_buffer_size) {
+    : buffer_limit_(initial_buffer_size) {
   if (initial_buffer_size == model::kAutotune) {
     mode_ = Mode::kUpswing;
     buffer_limit_ = std::max(int64_t{1}, buffer_size_min);
@@ -40,7 +34,6 @@ namespace {
 // limits less than the threshold, an exponential increase is used, while for
 // limits greater than or equal to the threshold, a linear increase is used.
 size_t kBufferLimitThreshold = 2048;
-
 }  // namespace
 
 void PrefetchAutotuner::RecordConsumption(size_t current_buffer_size) {
@@ -54,18 +47,10 @@ void PrefetchAutotuner::RecordConsumption(size_t current_buffer_size) {
       return;
     case Mode::kDownswing:
       if (current_buffer_size == 0) {
-        double new_buffer_limit = buffer_limit_;
         if (buffer_limit_ >= static_cast<int64_t>(kBufferLimitThreshold)) {
-          new_buffer_limit += kBufferLimitThreshold;
+          buffer_limit_ += kBufferLimitThreshold;
         } else {
-          new_buffer_limit *= 2;
-        }
-        if (model_ != nullptr && prefetch_node_ != nullptr &&
-            model_->AllocateBufferedBytes(
-                prefetch_node_->MaximumBufferedBytes() *
-                (new_buffer_limit - buffer_limit_) /
-                static_cast<double>(buffer_limit_))) {
-          buffer_limit_ = new_buffer_limit;
+          buffer_limit_ *= 2;
         }
         mode_ = Mode::kUpswing;
       }

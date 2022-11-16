@@ -47,6 +47,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@ThreadingOptions
 
 @@assert_cardinality
+@@at
 @@bucket_by_sequence_length
 @@cardinality
 @@choose_from_datasets
@@ -56,6 +57,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@distribute
 @@enable_debug_mode
 @@enumerate_dataset
+@@from_list
 @@from_variant
 @@get_next_as_optional
 @@get_single_element
@@ -106,6 +108,7 @@ from tensorflow.python.data.experimental.ops.counter import Counter
 from tensorflow.python.data.experimental.ops.distribute import SHARD_HINT
 from tensorflow.python.data.experimental.ops.enumerate_ops import enumerate_dataset
 from tensorflow.python.data.experimental.ops.error_ops import ignore_errors
+from tensorflow.python.data.experimental.ops.from_list import from_list
 from tensorflow.python.data.experimental.ops.get_single_element import get_single_element
 from tensorflow.python.data.experimental.ops.grouping import bucket_by_sequence_length
 from tensorflow.python.data.experimental.ops.grouping import group_by_reducer
@@ -124,6 +127,7 @@ from tensorflow.python.data.experimental.ops.lookup_ops import table_from_datase
 from tensorflow.python.data.experimental.ops.parsing_ops import parse_example_dataset
 from tensorflow.python.data.experimental.ops.prefetching_ops import copy_to_device
 from tensorflow.python.data.experimental.ops.prefetching_ops import prefetch_to_device
+from tensorflow.python.data.experimental.ops.random_access import at
 from tensorflow.python.data.experimental.ops.random_ops import RandomDataset
 from tensorflow.python.data.experimental.ops.readers import CsvDataset
 from tensorflow.python.data.experimental.ops.readers import make_batched_features_dataset

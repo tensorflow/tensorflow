@@ -1,4 +1,5 @@
-# Return the options to use for a C++ library or binary build.
+#
+# Returns the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -17,6 +18,12 @@ load(
     "cc_test",
 )
 load(
+    "//tensorflow/tsl:tsl.bzl",
+    "tsl_gpu_library",
+    _clean_dep = "clean_dep",
+    _if_cuda_or_rocm = "if_cuda_or_rocm",
+)
+load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",
 )
@@ -28,7 +35,6 @@ load(
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
-    "if_rocm_is_configured",
     "rocm_copts",
 )
 load(
@@ -40,7 +46,12 @@ load(
 load(
     "//third_party/mkl_dnn:build_defs.bzl",
     "if_mkldnn_aarch64_acl",
+    "if_mkldnn_aarch64_acl_openmp",
     "if_mkldnn_openmp",
+)
+load(
+    "//third_party/compute_library:build_defs.bzl",
+    "if_enable_acl",
 )
 load(
     "//third_party/llvm_openmp:openmp.bzl",
@@ -56,7 +67,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.9.0"
+VERSION = "2.12.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
@@ -65,16 +76,7 @@ two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 # external project.
 workspace_root = Label("//:WORKSPACE").workspace_root or "."
 
-def clean_dep(target):
-    """Returns string to 'target' in @org_tensorflow repository.
-
-    Use this function when referring to targets in the @org_tensorflow
-    repository from macros that may be called from external repositories.
-    """
-
-    # A repo-relative label is resolved relative to the file in which the
-    # Label() call appears, i.e. @org_tensorflow.
-    return str(Label(target))
+clean_dep = _clean_dep
 
 def if_oss(oss_value, google_value = []):
     """Returns one of the arguments based on the non-configurable build env.
@@ -274,6 +276,12 @@ def if_windows_cuda(a, otherwise = []):
         "//conditions:default": otherwise,
     })
 
+def if_not_fuchsia(a):
+    return select({
+        clean_dep("//tensorflow:fuchsia"): [],
+        "//conditions:default": a,
+    })
+
 def if_linux_x86_64(a):
     return select({
         clean_dep("//tensorflow:linux_x86_64"): a,
@@ -320,6 +328,18 @@ def if_registration_v2(if_true, if_false = []):
 def if_portable(if_true, if_false = []):
     return if_true
 
+ADDITIONAL_API_INDEXABLE_SETTINGS = []
+
+# We are never indexing generated code in the OSS build, but still
+# return a select() for consistency.
+def if_indexing_source_code(
+        if_true,  # @unused
+        if_false):
+    """Return a select() on whether or not we are building for source code indexing."""
+    return select({
+        "//conditions:default": if_false,
+    })
+
 # Linux systems may required -lrt linker flag for e.g. clock_gettime
 # see https://github.com/tensorflow/tensorflow/issues/15129
 def lrt_if_needed():
@@ -333,6 +353,15 @@ def lrt_if_needed():
 
 def get_win_copts(is_external = False):
     WINDOWS_COPTS = [
+        # copybara:uncomment_begin(no MSVC flags in google)
+        # "-DPLATFORM_WINDOWS",
+        # "-DEIGEN_HAS_C99_MATH",
+        # "-DTENSORFLOW_USE_EIGEN_THREADPOOL",
+        # "-DEIGEN_AVOID_STL_ARRAY",
+        # "-Iexternal/gemmlowp",
+        # "-Wno-sign-compare",
+        # "-DNOGDI",
+        # copybara:uncomment_end_and_comment_begin
         "/DPLATFORM_WINDOWS",
         "/DEIGEN_HAS_C99_MATH",
         "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
@@ -349,11 +378,19 @@ def get_win_copts(is_external = False):
         "/DNOGDI",
         # Also see build:windows lines in tensorflow/opensource_only/.bazelrc
         # where we set some other options globally.
+        # copybara:comment_end
     ]
+
     if is_external:
-        return WINDOWS_COPTS + ["/UTF_COMPILE_LIBRARY"]
+        return WINDOWS_COPTS + [if_oss(
+            "/UTF_COMPILE_LIBRARY",
+            "-UTF_COMPILE_LIBRARY",
+        )]
     else:
-        return WINDOWS_COPTS + ["/DTF_COMPILE_LIBRARY"]
+        return WINDOWS_COPTS + [if_oss(
+            "/DTF_COMPILE_LIBRARY",
+            "-DTF_COMPILE_LIBRARY",
+        )]
 
 def tf_copts(
         android_optimization_level_override = "-O2",
@@ -390,7 +427,9 @@ def tf_copts(
         # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
-        if_mkldnn_aarch64_acl(["-DENABLE_ONEDNN_OPENMP", "-DDNNL_AARCH64_USE_ACL=1"]) +
+        if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
+        if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
+        if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
         if_android_arm(["-mfpu=neon"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
@@ -649,10 +688,13 @@ def tf_binary_dynamic_kernel_deps(kernels):
 # so we generate multiple cc_binary targets with all name patterns when necessary.
 # TODO(pcloudy): Remove this workaround when https://github.com/bazelbuild/bazel/issues/4570
 # is done and cc_shared_library is available.
+SHARED_LIBRARY_NAME_PATTERN_LINUX = "lib%s.so%s"
+SHARED_LIBRARY_NAME_PATTERN_MACOS = "lib%s%s.dylib"
+SHARED_LIBRARY_NAME_PATTERN_WINDOWS = "%s%s.dll"
 SHARED_LIBRARY_NAME_PATTERNS = [
-    "lib%s.so%s",  # On Linux, shared libraries are usually named as libfoo.so
-    "lib%s%s.dylib",  # On macos, shared libraries are usually named as libfoo.dylib
-    "%s%s.dll",  # On Windows, shared libraries are usually named as foo.dll
+    SHARED_LIBRARY_NAME_PATTERN_LINUX,
+    SHARED_LIBRARY_NAME_PATTERN_MACOS,
+    SHARED_LIBRARY_NAME_PATTERN_WINDOWS,
 ]
 
 def tf_cc_shared_object(
@@ -691,6 +733,8 @@ def tf_cc_shared_object(
             name + longsuffix,
         )]
 
+    testonly = kwargs.pop("testonly", default = False)
+
     for name_os, name_os_major, name_os_full in names:
         # Windows DLLs cant be versioned
         if name_os.endswith(".dll"):
@@ -720,6 +764,7 @@ def tf_cc_shared_object(
             data_extra = tf_binary_additional_data_deps()
 
         cc_binary(
+            exec_properties = if_google({"cpp_link.mem": "16g"}, {}),
             name = name_os_full,
             srcs = srcs + framework_so,
             deps = deps,
@@ -737,6 +782,7 @@ def tf_cc_shared_object(
                     "-Wl,-soname," + soname,
                 ],
             }),
+            testonly = testonly,
             visibility = visibility,
             **kwargs
         )
@@ -751,135 +797,178 @@ def tf_cc_shared_object(
                 "//conditions:default": [":lib%s.so%s" % (name, longsuffix)],
             }),
             visibility = visibility,
+            testonly = testonly,
         )
 
 # buildozer: disable=function-docstring-args
-def tf_cc_shared_library(
+def tf_cc_shared_library_opensource(
         name,
         srcs = [],
+        dynamic_deps = [],
         static_deps = [],
         deps = [],
+        roots = [],
+        exports_filter = [],
         data = [],
         copts = [],
         linkopts = lrt_if_needed(),
         additional_linker_inputs = [],
         linkstatic = True,
-        framework_so = tf_binary_additional_srcs(),
+        framework_so = [clean_dep("//tensorflow:libtensorflow_framework_import_lib")],
         soversion = None,
         per_os_targets = False,  # TODO(rostam): Should be deprecated.
         win_def_file = None,
         visibility = None):
     """Configures the shared object file for TensorFlow."""
-    if soversion != None:
-        suffix = "." + str(soversion).split(".")[0]
-        longsuffix = "." + str(soversion)
-    else:
-        suffix = ""
-        longsuffix = ""
-
-    if per_os_targets:
-        names = [
-            (
-                pattern % (name, ""),
-                pattern % (name, suffix),
-                pattern % (name, longsuffix),
-            )
-            for pattern in SHARED_LIBRARY_NAME_PATTERNS
-        ]
-    else:
-        names = [(
-            name,
-            name + suffix,
-            name + longsuffix,
-        )]
-
+    data_extra = tf_binary_additional_data_deps() if framework_so != [] else []
+    names = _get_shared_library_name_os_version_matrix(
+        name,
+        per_os_targets = per_os_targets,
+        version = soversion,
+    )
     for name_os, name_os_major, name_os_full in names:
-        # Windows DLLs cannot be versioned.
-        if name_os.endswith(".dll"):
-            name_os_major = name_os
-            name_os_full = name_os
-
-        soname = name_os_major.split("/")[-1]
-
-        data_extra = []
-        if framework_so != []:
-            data_extra = tf_binary_additional_data_deps()
-
-        cc_library_name = name_os_full + "_cclib"
-        cc_library(
-            name = cc_library_name,
-            srcs = srcs + framework_so,
-            deps = deps,
+        soname = name_os_major.split("/")[-1]  # Uses major version for soname.
+        user_link_flags = linkopts + _rpath_user_link_flags(name_os_full) + select({
+            clean_dep("//tensorflow:ios"): [
+                "-Wl,-install_name,@rpath/" + soname,
+            ],
+            clean_dep("//tensorflow:macos"): [
+                "-Wl,-install_name,@rpath/" + soname,
+            ],
+            clean_dep("//tensorflow:windows"): [],
+            "//conditions:default": [
+                "-Wl,-soname," + soname,
+            ],
+        })
+        _tf_cc_shared_library_opensource(
+            name_os_full,
+            additional_linker_inputs = additional_linker_inputs,
             copts = copts,
+            data = data + data_extra,
+            deps = deps + framework_so,
+            dynamic_deps = dynamic_deps,
+            exports_filter = exports_filter,
             linkstatic = linkstatic,
+            roots = roots,
+            shared_lib_name = name_os_full,
+            srcs = srcs,
+            static_deps = static_deps,
+            user_link_flags = user_link_flags,
+            visibility = visibility,
             win_def_file = win_def_file,
         )
 
-        win_linker_inputs = [win_def_file] if win_def_file else []
-        cc_shared_library_name = name_os_full + "_ccsharedlib"
-        shared_lib_name = name_os_full + "_sharedlibname"
-        cc_shared_library(
-            name = cc_shared_library_name,
-            roots = [cc_library_name],
-            static_deps = static_deps,
-            data = data + data_extra,
-            shared_lib_name = shared_lib_name,
-            user_link_flags = linkopts + _rpath_user_link_flags(shared_lib_name) + select({
-                clean_dep("//tensorflow:ios"): [
-                    "-Wl,-install_name,@rpath/" + soname,
-                ],
-                clean_dep("//tensorflow:macos"): [
-                    "-Wl,-install_name,@rpath/" + soname,
-                ],
-                clean_dep("//tensorflow:windows"): [
-                    "/DEF:$(location :%s)" % win_def_file,
-                    "/ignore:4070",
-                ] if win_def_file else [],
-                "//conditions:default": [
-                    "-Wl,-soname," + soname,
-                ],
-            }),
-            additional_linker_inputs = additional_linker_inputs + win_linker_inputs,
-            visibility = visibility,
-        )
-        native.alias(
-            name = shared_lib_name,
-            actual = cc_shared_library_name,
-            visibility = visibility,
-        )
-        filegroup(
-            name = name_os_full,
-            srcs = [shared_lib_name],
-            output_group = "custom_name_shared_library",
-        )
-
         if name_os != name_os_major:
-            native.genrule(
-                name = name_os + "_sym",
-                outs = [name_os],
-                srcs = [name_os_major],
-                output_to_bindir = 1,
-                cmd = "ln -sf $$(basename $<) $@",
-            )
-            native.genrule(
-                name = name_os_major + "_sym",
-                outs = [name_os_major],
+            filegroup_name = name_os_full + "_filegroup"
+            filegroup(
+                name = filegroup_name,
                 srcs = [name_os_full],
-                output_to_bindir = 1,
-                cmd = "ln -sf $$(basename $<) $@",
+                output_group = "main_shared_library_output",
+                visibility = visibility,
             )
+            _create_symlink(name_os, name_os_major, visibility = visibility)
+            _create_symlink(name_os_major, filegroup_name, visibility = visibility)
 
-    flat_names = [item for sublist in names for item in sublist]
-    if name not in flat_names:
+    if name not in [item for sublist in names for item in sublist]:
         native.filegroup(
             name = name,
             srcs = select({
-                clean_dep("//tensorflow:windows"): [":%s.dll" % (name)],
-                clean_dep("//tensorflow:macos"): [":lib%s%s.dylib" % (name, longsuffix)],
-                "//conditions:default": [":lib%s.so%s" % (name, longsuffix)],
+                clean_dep("//tensorflow:windows"): [":%s" % get_versioned_shared_library_name_windows(name, soversion)],
+                clean_dep("//tensorflow:macos"): [":%s" % get_versioned_shared_library_name_macos(name, soversion)],
+                "//conditions:default": [":%s" % get_versioned_shared_library_name_linux(name, soversion)],
             }),
             visibility = visibility,
         )
+
+def _tf_cc_shared_library_opensource(
+        name,
+        additional_linker_inputs = None,
+        copts = None,
+        data = None,
+        deps = None,
+        dynamic_deps = None,
+        exports_filter = None,
+        linkstatic = False,
+        roots = None,
+        shared_lib_name = None,
+        srcs = None,
+        static_deps = None,
+        user_link_flags = None,
+        visibility = None,
+        win_def_file = None):
+    cc_library_name = name + "_cclib"
+    cc_library(
+        name = cc_library_name,
+        srcs = srcs,
+        data = data,
+        deps = deps,
+        copts = copts,
+        linkstatic = linkstatic,
+    )
+    cc_shared_library(
+        name = name,
+        roots = [cc_library_name] + roots,
+        exports_filter = exports_filter,
+        dynamic_deps = dynamic_deps,
+        static_deps = static_deps,
+        shared_lib_name = shared_lib_name,
+        user_link_flags = user_link_flags,
+        additional_linker_inputs = additional_linker_inputs,
+        visibility = visibility,
+        win_def_file = if_windows(win_def_file, otherwise = None),
+    )
+
+def _create_symlink(src, dest, visibility = None):
+    native.genrule(
+        name = src + "_sym",
+        outs = [src],
+        srcs = [dest],
+        output_to_bindir = 1,
+        cmd = "ln -sf $$(basename $<) $@",
+        visibility = visibility,
+    )
+
+def _get_shared_library_name_os_version_matrix(name, per_os_targets = False, version = None):
+    if per_os_targets:
+        names = [
+            (get_versioned_shared_library_name_linux(name), get_versioned_shared_library_name_linux(name, version, True), get_versioned_shared_library_name_linux(name, version)),
+            (get_versioned_shared_library_name_macos(name), get_versioned_shared_library_name_macos(name, version, True), get_versioned_shared_library_name_macos(name, version)),
+            (get_versioned_shared_library_name_windows(name), get_versioned_shared_library_name_windows(name, version, True), get_versioned_shared_library_name_windows(name, version)),
+        ]
+    else:
+        names = [(name, name + get_suffix_major_version(version), name + get_suffix_version(version))]
+    return names
+
+def get_versioned_shared_library_name_linux(name, version = None, major = False):
+    if major:
+        name = SHARED_LIBRARY_NAME_PATTERN_LINUX % (name, get_suffix_major_version(version))
+    else:
+        name = SHARED_LIBRARY_NAME_PATTERN_LINUX % (name, get_suffix_version(version))
+    return name
+
+def get_versioned_shared_library_name_macos(name, version = None, major = False):
+    if major:
+        name = SHARED_LIBRARY_NAME_PATTERN_MACOS % (name, get_suffix_major_version(version))
+    else:
+        name = SHARED_LIBRARY_NAME_PATTERN_MACOS % (name, get_suffix_version(version))
+    return name
+
+def get_versioned_shared_library_name_windows(name, version = None, major = False):
+    _ = version  # buildifier: disable=unused-variable
+    _ = major  # buildifier: disable=unused-variable
+    return SHARED_LIBRARY_NAME_PATTERN_WINDOWS % (name, "")
+
+def get_suffix_version(version):
+    return "." + str(version) if version else ""
+
+def get_suffix_major_version(version):
+    return "." + extract_major_version(version) if version else ""
+
+def extract_major_version(version):
+    return str(version).split(".", 1)[0]
+
+# Export open source version of tf_cc_shared_library under base name as well.
+tf_cc_shared_library = tf_cc_shared_library_opensource
 
 # Links in the framework shared object
 # (//third_party/tensorflow:libtensorflow_framework.so) when not building
@@ -895,6 +984,7 @@ def tf_cc_binary(
         kernels = [],
         per_os_targets = False,  # Generate targets with SHARED_LIBRARY_NAME_PATTERNS
         visibility = None,
+        default_copts = [],
         **kwargs):
     if kernels:
         added_data_deps = tf_binary_dynamic_kernel_dsos()
@@ -913,7 +1003,7 @@ def tf_cc_binary(
     for name_os in names:
         cc_binary(
             name = name_os,
-            copts = copts,
+            copts = default_copts + copts,
             srcs = srcs + tf_binary_additional_srcs(),
             deps = deps + tf_binary_dynamic_kernel_deps(kernels) + mkl_dep + if_static(
                 extra_deps = [],
@@ -965,51 +1055,6 @@ def tf_native_cc_binary(
             ],
         }) + linkopts + _rpath_linkopts(name) + lrt_if_needed(),
         **kwargs
-    )
-
-# buildozer: disable=function-docstring-args
-def tf_native_cc_shared_library(
-        name,
-        srcs = [],
-        data = [],
-        static_deps = [],
-        deps = [],
-        copts = tf_copts(),
-        linkopts = [],
-        defines = [],
-        visibility = None):
-    """ A simple wrap around cc_shared_library rule."""
-    cc_library_name = name + "_cclib"
-    cc_library(
-        name = cc_library_name,
-        srcs = srcs,
-        deps = deps,
-        copts = copts,
-        defines = defines,
-    )
-    cc_shared_library_name = name + "_ccsharedlib"
-    cc_shared_library(
-        name = cc_shared_library_name,
-        roots = [cc_library_name],
-        static_deps = static_deps,
-        data = data,
-        shared_lib_name = name,
-        user_link_flags = select({
-            clean_dep("//tensorflow:windows"): [],
-            clean_dep("//tensorflow:macos"): [
-                "-lm",
-            ],
-            "//conditions:default": [
-                "-lpthread",
-                "-lm",
-            ],
-        }) + linkopts + _rpath_user_link_flags(name) + lrt_if_needed(),
-        visibility = visibility,
-    )
-    native.alias(
-        name = name,
-        actual = cc_shared_library_name,
-        visibility = visibility,
     )
 
 def tf_gen_op_wrapper_cc(
@@ -1212,7 +1257,8 @@ def tf_gen_op_wrapper_py(
         cc_linkopts = lrt_if_needed(),
         api_def_srcs = [],
         compatible_with = [],
-        testonly = False):
+        testonly = False,
+        copts = []):
     _ = require_shape_functions  # Unused.
     if op_whitelist and op_allowlist:
         fail("op_whitelist is deprecated. Only use op_allowlist.")
@@ -1232,7 +1278,7 @@ def tf_gen_op_wrapper_py(
         deps = [str(Label("//tensorflow/core:" + name + "_op_lib"))]
     tf_cc_binary(
         name = tool_name,
-        copts = tf_copts(),
+        copts = copts + tf_copts(),
         linkopts = if_not_windows(["-lm", "-Wl,-ldl"]) + cc_linkopts,
         linkstatic = 1,  # Faster to link this one-time-use binary dynamically
         visibility = [clean_dep("//tensorflow:internal")],
@@ -1331,7 +1377,6 @@ def tf_cc_test(
         srcs,
         deps,
         data = [],
-        linkstatic = 0,
         extra_copts = [],
         suffix = "",
         linkopts = lrt_if_needed(),
@@ -1353,6 +1398,7 @@ def tf_cc_test(
                 "-lpthread",
                 "-lm",
             ],
+            clean_dep("//third_party/compute_library:build_with_acl"): ["-fopenmp"],
         }) + linkopts + _rpath_linkopts(name),
         deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
             [
@@ -1363,19 +1409,16 @@ def tf_cc_test(
                tf_binary_dynamic_kernel_dsos() +
                tf_binary_additional_srcs(),
         exec_properties = tf_exec_properties(kwargs),
-        # Nested select() statements seem not to be supported when passed to
-        # linkstatic, and we already have a cuda select() passed in to this
-        # function.
-        linkstatic = linkstatic or select({
-            # cc_tests with ".so"s in srcs incorrectly link on Darwin unless
-            # linkstatic=1 (https://github.com/bazelbuild/bazel/issues/3450).
-            # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
-            clean_dep("//tensorflow:macos"): 1,
-            "//conditions:default": 0,
-        }),
         **kwargs
     )
 
+register_extension_info(
+    extension = tf_cc_test,
+    label_regex_for_dep = "{extension_name}",
+)
+
+# TODO(jakeharmon): Replace with or implement in terms of tsl_gpu_cc_test, which doesn't add a
+# dependency on core:common_runtime
 def tf_gpu_cc_test(
         name,
         srcs = [],
@@ -1472,7 +1515,6 @@ def tf_gpu_only_cc_test(
         tags = [],
         data = [],
         size = "medium",
-        linkstatic = 0,
         args = [],
         kernels = [],
         linkopts = []):
@@ -1493,13 +1535,6 @@ def tf_gpu_only_cc_test(
         data = data + tf_binary_dynamic_kernel_dsos(),
         deps = [":" + gpu_lib_name],
         linkopts = if_not_windows(["-lpthread", "-lm"]) + linkopts + _rpath_linkopts(name),
-        linkstatic = linkstatic or select({
-            # cc_tests with ".so"s in srcs incorrectly link on Darwin
-            # unless linkstatic=1.
-            # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
-            clean_dep("//tensorflow:macos"): 1,
-            "//conditions:default": 0,
-        }),
         tags = tags,
         exec_properties = tf_exec_properties({"tags": tags}),
     )
@@ -1679,7 +1714,7 @@ def tf_gpu_kernel_library(
         hdrs = hdrs,
         copts = copts,
         deps = deps + if_cuda([
-            clean_dep("//tensorflow/stream_executor/cuda:cudart_stub"),
+            clean_dep("//tensorflow/tsl/cuda:cudart_stub"),
         ]) + if_cuda_or_rocm([
             clean_dep("//tensorflow/core:gpu_lib"),
         ]),
@@ -1687,45 +1722,10 @@ def tf_gpu_kernel_library(
         **kwargs
     )
 
-def tf_gpu_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs):
-    """Generate a cc_library with a conditional set of CUDA dependencies.
-
-    When the library is built with --config=cuda:
-
-    - Both deps and cuda_deps are used as dependencies.
-    - The cuda runtime is added as a dependency (if necessary).
-    - The library additionally passes -DGOOGLE_CUDA=1 to the list of copts.
-    - In addition, when the library is also built with TensorRT enabled, it
-        additionally passes -DGOOGLE_TENSORRT=1 to the list of copts.
-
-    Args:
-      cuda_deps: BUILD dependencies which will be linked if and only if:
-        '--config=cuda' is passed to the bazel command line.
-      deps: dependencies which will always be linked.
-      copts: copts always passed to the cc_library.
-      **kwargs: Any other argument to cc_library.
-    """
-    if not deps:
-        deps = []
-    if not cuda_deps:
-        cuda_deps = []
-
-    kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
-    deps = deps + if_cuda_or_rocm(cuda_deps)
-    cc_library(
-        deps = deps + if_cuda([
-            clean_dep("//tensorflow/stream_executor/cuda:cudart_stub"),
-            "@local_config_cuda//cuda:cuda_headers",
-        ]) + if_rocm_is_configured([
-            "@local_config_rocm//rocm:rocm_headers",
-        ]),
-        copts = (copts + if_cuda(["-DGOOGLE_CUDA=1", "-DNV_CUDNN_DISABLE_EXCEPTION"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
-        **kwargs
-    )
+tf_gpu_library = tsl_gpu_library
 
 # terminology changes: saving tf_cuda_* definition for compatibility
-def tf_cuda_library(*args, **kwargs):
-    tf_gpu_library(*args, **kwargs)
+tf_cuda_library = tsl_gpu_library
 
 def tf_kernel_library(
         name,
@@ -1734,6 +1734,7 @@ def tf_kernel_library(
         gpu_srcs = None,
         hdrs = None,
         deps = None,
+        gpu_deps = None,
         alwayslink = 1,
         copts = None,
         gpu_copts = None,
@@ -1767,6 +1768,8 @@ def tf_kernel_library(
         hdrs = []
     if not deps:
         deps = []
+    if not gpu_deps:
+        gpu_deps = []
     if not copts:
         copts = []
     if not gpu_copts:
@@ -1807,7 +1810,7 @@ def tf_kernel_library(
         tf_gpu_kernel_library(
             name = name + "_gpu",
             srcs = gpu_srcs,
-            deps = deps,
+            deps = deps + gpu_deps,
             copts = gpu_copts,
             **kwargs
         )
@@ -1822,7 +1825,7 @@ def tf_kernel_library(
         hdrs = hdrs,
         textual_hdrs = textual_hdrs,
         copts = copts,
-        cuda_deps = cuda_deps,
+        cuda_deps = cuda_deps + gpu_deps,
         linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
         alwayslink = alwayslink,
         deps = deps,
@@ -2057,6 +2060,8 @@ def _collect_deps_aspect_impl(target, ctx):
         all_deps += ctx.rule.attr.deps
     if hasattr(ctx.rule.attr, "data"):
         all_deps += ctx.rule.attr.data
+    if hasattr(ctx.rule.attr, "roots"):
+        all_deps += ctx.rule.attr.roots
     for dep in all_deps:
         direct.append(dep.label)
         if hasattr(dep, "tf_collected_deps"):
@@ -2064,7 +2069,7 @@ def _collect_deps_aspect_impl(target, ctx):
     return struct(tf_collected_deps = depset(direct = direct, transitive = transitive))
 
 collect_deps_aspect = aspect(
-    attr_aspects = ["deps", "data"],
+    attr_aspects = ["deps", "data", "roots"],
     implementation = _collect_deps_aspect_impl,
 )
 
@@ -2116,9 +2121,20 @@ check_deps = rule(
     },
 )
 
-def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [], copts = [], **kwargs):
-    """Helper to build a dynamic library (.so) from the sources containing implementations of custom ops and kernels.
-      """
+def tf_custom_op_library(
+        name,
+        srcs = [],
+        gpu_srcs = [],
+        deps = [],
+        gpu_deps = None,
+        linkopts = [],
+        copts = [],
+        **kwargs):
+    """Helper to build a dynamic library (.so) from the sources containing implementations of custom ops and kernels."""
+
+    if not gpu_deps:
+        gpu_deps = []
+
     deps = deps + if_cuda_or_rocm([
         clean_dep("//tensorflow/core:stream_executor_headers_lib"),
     ]) + if_cuda([
@@ -2140,7 +2156,7 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
             srcs = gpu_srcs,
             copts = copts + tf_copts() + _cuda_copts() + rocm_copts() +
                     if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
-            deps = deps,
+            deps = deps + gpu_deps,
             **kwargs
         )
         deps = deps + [":" + basename + "_gpu"]
@@ -2257,13 +2273,17 @@ _append_init_to_versionscript = rule(
 # This macro should only be used for pywrap_tensorflow_internal.so.
 # It was copied and refined from the original tf_py_wrap_cc_opensource rule.
 # buildozer: disable=function-docstring-args
-def pywrap_tensorflow_macro(
+def pywrap_tensorflow_macro_opensource(
         name,
         srcs = [],
+        roots = [],
         deps = [],
+        dynamic_deps = [],
+        static_deps = [],
+        exports_filter = [],
         copts = [],
         version_script = None,
-        **kwargs):
+        win_def_file = None):
     """Builds the pywrap_tensorflow_internal shared object."""
     module_name = name.split("/")[-1]
 
@@ -2273,7 +2293,7 @@ def pywrap_tensorflow_macro(
 
     # TODO(b/137885063): tf_cc_shared_object needs to be cleaned up; we really
     # shouldn't be passing a name qualified with .so here.
-    cc_library_name = cc_library_base + ".so"
+    cc_shared_library_name = cc_library_base + ".so"
     cc_library_pyd_name = "/".join(
         name.split("/")[:-1] + ["_" + module_name + ".pyd"],
     )
@@ -2309,27 +2329,10 @@ def pywrap_tensorflow_macro(
             "$(location %s.lds)" % vscriptname,
         ],
     })
-    extra_deps += select({
-        clean_dep("//tensorflow:windows"): [],
-        "//conditions:default": [
-            "%s.lds" % vscriptname,
-        ],
-    })
+    additional_linker_inputs = if_windows([], otherwise = ["%s.lds" % vscriptname])
 
-    # Due to b/149224972 we have to add libtensorflow_framework.so
-    # as a dependency so the linker doesn't try and optimize and
-    # remove it from pywrap_tensorflow_internal.so
-    # Issue: https://github.com/tensorflow/tensorflow/issues/34117
-    # Fix: https://github.com/tensorflow/tensorflow/commit/5caa9e83798cb510c9b49acee8a64efdb746207c
-    extra_deps += if_static(
-        extra_deps = [],
-        otherwise = [
-            clean_dep("//tensorflow:libtensorflow_framework_import_lib"),
-        ],
-    )
-
-    tf_cc_shared_object(
-        name = cc_library_name,
+    tf_cc_shared_library_opensource(
+        name = cc_shared_library_name,
         srcs = srcs,
         # framework_so is no longer needed as libtf.so is included via the extra_deps.
         framework_so = [],
@@ -2340,8 +2343,13 @@ def pywrap_tensorflow_macro(
         ]),
         linkopts = extra_linkopts,
         linkstatic = 1,
+        roots = roots,
         deps = deps + extra_deps,
-        **kwargs
+        dynamic_deps = dynamic_deps,
+        static_deps = static_deps,
+        exports_filter = exports_filter,
+        win_def_file = win_def_file,
+        additional_linker_inputs = additional_linker_inputs,
     )
 
     # When a non-versioned .so is added as a 'src' to a bazel target, it uses
@@ -2357,14 +2365,14 @@ def pywrap_tensorflow_macro(
         name_os = pattern % (cc_library_base, "")
         native.genrule(
             name = name_os + "_rule",
-            srcs = [":" + cc_library_name],
+            srcs = [":" + cc_shared_library_name],
             outs = [name_os],
             cmd = "cp $< $@",
         )
 
     native.genrule(
         name = "gen_" + cc_library_pyd_name,
-        srcs = [":" + cc_library_name],
+        srcs = [":" + cc_shared_library_name],
         outs = [cc_library_pyd_name],
         cmd = "cp $< $@",
     )
@@ -2389,9 +2397,12 @@ def pywrap_tensorflow_macro(
         srcs_version = "PY3",
         data = select({
             clean_dep("//tensorflow:windows"): [":" + cc_library_pyd_name],
-            "//conditions:default": [":" + cc_library_name],
+            "//conditions:default": [":" + cc_shared_library_name],
         }),
     )
+
+# Export open source version of pywrap_tensorflow_macro under base name as well.
+pywrap_tensorflow_macro = pywrap_tensorflow_macro_opensource
 
 # This macro is for running python tests against system installed pip package
 # on Windows.
@@ -2410,10 +2421,6 @@ def pywrap_tensorflow_macro(
 #    //third_party/tensorflow/tools/pip_package:win_pip_package_marker for specific reasons.
 # 2. When --define=no_tensorflow_py_deps=false (by default), it's a normal py_test.
 def py_test(deps = [], data = [], kernels = [], exec_properties = None, **kwargs):
-    # Python version placeholder
-    if kwargs.get("python_version", None) == "PY3":
-        kwargs["tags"] = kwargs.get("tags", []) + ["no_oss_py2"]
-
     if not exec_properties:
         exec_properties = tf_exec_properties(kwargs)
 
@@ -2505,6 +2512,8 @@ def tf_py_test(
         if to_add not in deps and clean_dep(to_add) not in deps:
             deps.append(clean_dep(to_add))
 
+    env = kwargs.pop("env", {})
+
     # Python version placeholder
     kwargs.setdefault("srcs_version", "PY3")
     py_test(
@@ -2521,9 +2530,14 @@ def tf_py_test(
         visibility = [clean_dep("//tensorflow:internal")] +
                      additional_visibility,
         deps = depset(deps + xla_test_true_list),
+        env = env,
         **kwargs
     )
     if tfrt_enabled_internal:
+        tfrt_env = {}
+        tfrt_env.update(env)
+        tfrt_env["EXPERIMENTAL_ENABLE_TFRT"] = "1"
+
         # None `main` defaults to `name` + ".py" in `py_test` target. However, since we
         # are appending _tfrt. it becomes `name` + "_tfrt.py" effectively. So force
         # set `main` argument without `_tfrt`.
@@ -2531,6 +2545,7 @@ def tf_py_test(
             main = name + ".py"
 
         py_test(
+            env = tfrt_env,
             name = name + "_tfrt",
             size = size,
             srcs = srcs,
@@ -2543,7 +2558,7 @@ def tf_py_test(
             tags = tags + ["tfrt"],
             visibility = [clean_dep("//tensorflow:internal")] +
                          additional_visibility,
-            deps = depset(deps + xla_test_true_list + ["//tensorflow/python:is_tfrt_test_true"]),
+            deps = depset(deps + xla_test_true_list),
             **kwargs
         )
 
@@ -2629,6 +2644,11 @@ def gpu_py_test(
 # terminology changes: saving cuda_* definition for compatibility
 def cuda_py_test(*args, **kwargs):
     gpu_py_test(*args, **kwargs)
+
+register_extension_info(
+    extension = gpu_py_test,
+    label_regex_for_dep = "{extension_name}_cpu",
+)
 
 def py_tests(
         name,
@@ -2850,11 +2870,12 @@ def pybind_library(
     )
 
 # buildozer: disable=function-docstring-args
-def pybind_extension(
+def pybind_extension_opensource(
         name,
         srcs,
-        module_name,
+        module_name = None,
         hdrs = [],
+        dynamic_deps = [],
         static_deps = [],
         deps = [],
         additional_exported_symbols = [],
@@ -2884,6 +2905,7 @@ def pybind_extension(
         sname = name[p + 1:]
         prefix = name[:p + 1]
     so_file = "%s%s.so" % (prefix, sname)
+    filegroup_name = "%s_filegroup" % name
     pyd_file = "%s%s.pyd" % (prefix, sname)
     exported_symbols = [
         "init%s" % sname,
@@ -2915,18 +2937,13 @@ def pybind_extension(
         testonly = testonly,
     )
 
-    # TODO(b/146808376): Add libtensorflow_framework.so to `dynamic_deps`.
-    # If we are to link to libtensorflow_framework.so, add it as a source.
-    if link_in_framework:
-        srcs += tf_binary_additional_srcs()
-
-    # TODO(b/146808376): Add `or link_in_framework`
     if static_deps:
         cc_library_name = so_file + "_cclib"
         cc_library(
             name = cc_library_name,
             hdrs = hdrs,
-            srcs = srcs,
+            srcs = srcs + hdrs,
+            data = data,
             deps = deps,
             compatible_with = compatible_with,
             copts = copts + [
@@ -2942,20 +2959,15 @@ def pybind_extension(
             features = features + ["-use_header_modules"],
             restricted_to = restricted_to,
             testonly = testonly,
-            win_def_file = win_def_file,
+            visibility = visibility,
         )
 
-        win_linker_inputs = if_windows([win_def_file] if win_def_file else [])
-        cc_shared_library_name = name + "_ccsharedlib"
         cc_shared_library(
-            name = cc_shared_library_name,
+            name = so_file,
             roots = [cc_library_name],
+            dynamic_deps = dynamic_deps,
             static_deps = static_deps,
-            data = data,
-            additional_linker_inputs = [
-                exported_symbols_file,
-                version_script_file,
-            ] + win_linker_inputs,
+            additional_linker_inputs = [exported_symbols_file, version_script_file],
             compatible_with = compatible_with,
             deprecation = deprecation,
             features = features + ["-use_header_modules"],
@@ -2970,49 +2982,28 @@ def pybind_extension(
                     "-Wl,-w",
                     "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
                 ],
-                clean_dep("//tensorflow:windows"): [
-                    "/DEF:$(location %s)" % win_def_file,
-                    "/ignore:4070",
-                ] if win_def_file else [],
+                clean_dep("//tensorflow:windows"): [],
                 "//conditions:default": [
                     "-Wl,--version-script",
                     "$(location %s)" % version_script_file,
                 ],
             }),
             visibility = visibility,
-        )
-        native.alias(
-            name = so_file,
-            actual = cc_shared_library_name,
-            compatible_with = compatible_with,
-            deprecation = deprecation,
-            features = features + ["-use_header_modules"],
-            restricted_to = restricted_to,
-            testonly = testonly,
-            visibility = visibility,
+            win_def_file = if_windows(win_def_file, otherwise = None),
         )
 
+        # cc_shared_library can generate more than one file.
         # Solution to avoid the error "variable '$<' : more than one input file."
-        filegroup_name = name + "_filegroup"
         filegroup(
             name = filegroup_name,
             srcs = [so_file],
-            output_group = "custom_name_shared_library",
-            testonly = testonly,
-        )
-        native.genrule(
-            name = name + "_pyd_copy",
-            srcs = [filegroup_name],
-            outs = [pyd_file],
-            cmd = "cp $< $@",
-            output_to_bindir = True,
-            visibility = visibility,
-            deprecation = deprecation,
-            restricted_to = restricted_to,
-            compatible_with = compatible_with,
+            output_group = "main_shared_library_output",
             testonly = testonly,
         )
     else:
+        if link_in_framework:
+            srcs += tf_binary_additional_srcs()
+
         cc_binary(
             name = so_file,
             srcs = srcs + hdrs,
@@ -3053,18 +3044,26 @@ def pybind_extension(
             restricted_to = restricted_to,
             compatible_with = compatible_with,
         )
-        native.genrule(
-            name = name + "_pyd_copy",
-            srcs = [so_file],
-            outs = [pyd_file],
-            cmd = "cp $< $@",
-            output_to_bindir = True,
-            visibility = visibility,
-            deprecation = deprecation,
-            restricted_to = restricted_to,
-            compatible_with = compatible_with,
-            testonly = testonly,
+
+        # For Windows, emulate the above filegroup with the shared object.
+        native.alias(
+            name = filegroup_name,
+            actual = so_file,
         )
+
+    # For Windows only.
+    native.genrule(
+        name = name + "_pyd_copy",
+        srcs = [filegroup_name],
+        outs = [pyd_file],
+        cmd = "cp $< $@",
+        output_to_bindir = True,
+        visibility = visibility,
+        deprecation = deprecation,
+        restricted_to = restricted_to,
+        compatible_with = compatible_with,
+        testonly = testonly,
+    )
 
     native.py_library(
         name = name,
@@ -3082,9 +3081,29 @@ def pybind_extension(
         compatible_with = compatible_with,
     )
 
-def tf_python_pybind_static_deps():
+# Export open source version of pybind_extension under base name as well.
+pybind_extension = pybind_extension_opensource
+
+# Note: we cannot add //third_party/tf_runtime:__subpackages__ here,
+# because that builds all of tf_runtime's packages, and some of them
+# are known not to build on big endian systems.
+# See b/148087476 and
+# https://github.com/tensorflow/tensorflow/issues/57844.
+# TODO(b/254083070): remove this definition once the packages move to TSL.
+def tsl_async_value_deps():
+    return [
+        "@tf_runtime//:async_value",
+        "@tf_runtime//:dtype",
+        "@tf_runtime//:support",
+        "@tf_runtime//:concurrent_vector",
+        "@tf_runtime//:ref_count",
+        "@tf_runtime//third_party/llvm_derived:unique_any",
+        "@tf_runtime//third_party/llvm_derived:in_place",
+    ]
+
+def tf_python_pybind_static_deps(testonly = False):
     # TODO(b/146808376): Reduce the dependencies to those that are really needed.
-    return if_oss([
+    static_deps = [
         "//:__subpackages__",
         "@FP16//:__subpackages__",
         "@FXdiv//:__subpackages__",
@@ -3097,13 +3116,12 @@ def tf_python_pybind_static_deps():
         "@com_github_googlecloudplatform_tensorflow_gcp_tools//:__subpackages__",
         "@com_github_grpc_grpc//:__subpackages__",
         "@com_google_absl//:__subpackages__",
-        "@com_google_benchmark//:__subpackages__",  # testonly
         "@com_google_googleapis//:__subpackages__",
-        "@com_google_googletest//:__subpackages__",  # testonly
         "@com_google_protobuf//:__subpackages__",
         "@com_googlesource_code_re2//:__subpackages__",
         "@compute_library//:__subpackages__",
         "@cpuinfo//:__subpackages__",
+        "@cudnn_frontend_archive//:__subpackages__",  #  TFRT integration for TensorFlow.
         "@curl//:__subpackages__",
         "@dlpack//:__subpackages__",
         "@double_conversion//:__subpackages__",
@@ -3119,7 +3137,6 @@ def tf_python_pybind_static_deps():
         "@icu//:__subpackages__",
         "@jsoncpp_git//:__subpackages__",
         "@libjpeg_turbo//:__subpackages__",
-        "@libxsmm_archive//:__subpackages__",
         "@llvm-project//:__subpackages__",
         "@llvm_openmp//:__subpackages__",
         "@llvm_terminfo//:__subpackages__",
@@ -3135,6 +3152,7 @@ def tf_python_pybind_static_deps():
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@mkl_dnn_v1//:__subpackages__",
         "@nsync//:__subpackages__",
+        "@nccl_archive//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
@@ -3143,49 +3161,64 @@ def tf_python_pybind_static_deps():
         "@ruy//:__subpackages__",
         "@snappy//:__subpackages__",
         "@sobol_data//:__subpackages__",
+        "@stablehlo//:__subpackages__",
         "@upb//:__subpackages__",
         "@zlib//:__subpackages__",
-    ])
+    ]
+    static_deps += tsl_async_value_deps()
+    static_deps += [] if not testonly else [
+        "@com_google_benchmark//:__subpackages__",
+        "@com_google_googletest//:__subpackages__",
+    ]
+    return if_oss(static_deps)
 
 # buildozer: enable=function-docstring-args
-def tf_python_pybind_extension(
+def tf_python_pybind_extension_opensource(
         name,
         srcs,
-        module_name,
+        module_name = None,
         hdrs = [],
-        static_deps = None,
         deps = [],
+        dynamic_deps = [],
+        static_deps = [],
         compatible_with = None,
         copts = [],
         defines = [],
         features = [],
-        testonly = None,
-        visibility = None):
-    """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
+        testonly = False,
+        visibility = None,
+        win_def_file = None):
+    """A wrapper macro for pybind_extension_opensource that is used in tensorflow/python/BUILD.
 
     Please do not use it anywhere else as it may behave unexpectedly. b/146445820
 
     It is used for targets under //third_party/tensorflow/python that link
     against libtensorflow_framework.so and pywrap_tensorflow_internal.so.
     """
-    pybind_extension(
+    extended_deps = deps + if_mkl_ml(["//third_party/mkl:intel_binary_blob"])
+    extended_deps += [] if dynamic_deps else if_windows([], ["//tensorflow:libtensorflow_framework_import_lib"]) + tf_binary_pybind_deps()
+    pybind_extension_opensource(
         name,
         srcs,
-        module_name,
+        module_name = module_name,
         hdrs = hdrs,
+        dynamic_deps = dynamic_deps,
         static_deps = static_deps,
-        deps = deps + tf_binary_pybind_deps() + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
+        deps = extended_deps,
         compatible_with = compatible_with,
         copts = copts,
         defines = defines,
         features = features,
-        link_in_framework = True,
         testonly = testonly,
         visibility = visibility,
+        win_def_file = win_def_file,
     )
 
-def tf_pybind_cc_library_wrapper(name, deps, visibility = None, **kwargs):
-    """Wrapper for cc_library and proto dependencies used by tf_python_pybind_extension.
+# Export open source version of tf_python_pybind_extension under base name as well.
+tf_python_pybind_extension = tf_python_pybind_extension_opensource
+
+def tf_pybind_cc_library_wrapper_opensource(name, deps, visibility = None, **kwargs):
+    """Wrapper for cc_library and proto dependencies used by tf_python_pybind_extension_opensource.
 
     This wrapper ensures that cc libraries' and protos' headers are made
     available to pybind code, without creating ODR violations in the dynamically
@@ -3194,35 +3227,10 @@ def tf_pybind_cc_library_wrapper(name, deps, visibility = None, **kwargs):
     """
     cc_header_only_library(name = name, deps = deps, visibility = visibility, **kwargs)
 
-def if_cuda_or_rocm(if_true, if_false = []):
-    """Shorthand for select()'ing whether to build for either CUDA or ROCm.
+# Export open source version of tf_pybind_cc_library_wrapper under base name as well.
+tf_pybind_cc_library_wrapper = tf_pybind_cc_library_wrapper_opensource
 
-      Returns a select statement which evaluates to
-         if_true if we're building with either CUDA or ROCm enabled.
-         if_false, otherwise.
-
-      Sometimes a target has additional CUDa or ROCm specific dependencies.
-      The `if_cuda` / `if_rocm` functions are used to specify these additional
-      dependencies. For eg, see the `//tensorflow/core/kernels:bias_op` target
-
-      If the same additional dependency is needed for both CUDA and ROCm
-      (for eg. `reduction_ops` dependency for the `bias_op` target above),
-      then specifying that dependency in both `if_cuda` and `if_rocm` will
-      result in both those functions returning a select statement, which contains
-      the same dependency, which then leads to a duplicate dependency bazel error.
-
-      In order to work around this error, any additional dependency that is common
-      to both the CUDA and ROCm platforms, should be specified using this function.
-      Doing so will eliminate the cause of the bazel error (i.e. the  same
-      dependency showing up in two different select statements)
-
-      """
-    return select({
-        "@local_config_cuda//cuda:using_nvcc": if_true,
-        "@local_config_cuda//cuda:using_clang": if_true,
-        "@local_config_rocm//rocm:using_hipcc": if_true,
-        "//conditions:default": if_false,
-    })
+if_cuda_or_rocm = _if_cuda_or_rocm
 
 def tf_monitoring_framework_deps(link_to_tensorflow_framework = True):
     """Get the monitoring libs that will be linked to the tensorflow framework.
@@ -3277,6 +3285,12 @@ def tf_enable_mlir_bridge():
 
 def tfcompile_target_cpu():
     return ""
+
+def tfcompile_dfsan_enabled():
+    return False
+
+def tfcompile_dfsan_abilists():
+    return []
 
 def tf_external_workspace_visible(visibility):
     # External workspaces can see this target.

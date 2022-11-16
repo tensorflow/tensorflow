@@ -21,6 +21,7 @@ import sys
 import traceback
 
 import numpy as np
+from functools import partial
 
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.core.framework import full_type_pb2
@@ -1076,9 +1077,13 @@ def _wrap_and_tile_variants(tensor, length):
   return wrap(tensor)
 
 
-def _fallback_converter(pfor_input, warn=True):
+def _fallback_converter(pfor_input, root_cause="", warn=False):
+  msg = ("Using a while_loop for converting "
+         f"{pfor_input.op_type} cause {root_cause}")
   if warn:
-    logging.warning("Using a while_loop for converting %s", pfor_input.op_type)
+    logging.warning(msg)
+  else:
+    logging.debug(msg)
   output_dtypes = [x.dtype for x in pfor_input.outputs]
   iters = pfor_input.pfor.loop_len_vector[0]
 
@@ -1274,7 +1279,8 @@ class PFor:
                fallback_to_while_loop,
                all_indices=None,
                all_indices_partitioned=False,
-               pfor_config=None):
+               pfor_config=None,
+               warn=False):
     """Creates an object to rewrite a parallel-for loop.
 
     Args:
@@ -1294,6 +1300,7 @@ class PFor:
         control flow construct where not all the pfor iterations are guaranteed
         to be active.
       pfor_config: PForConfig object used while constructing the loop body.
+      warn: Whether or not to warn on while loop conversions.
     """
     assert isinstance(loop_var, ops.Tensor)
     assert loop_var.op.type == "PlaceholderWithDefault"
@@ -1313,6 +1320,7 @@ class PFor:
     self._pfor_ops = set(pfor_ops)
     self._pfor_op_ids = set(x._id for x in pfor_ops)
     self._fallback_to_while_loop = fallback_to_while_loop
+    self._warn = warn
     self._pfor_config = pfor_config
 
   def op_is_inside_loop(self, op):
@@ -1591,6 +1599,7 @@ class PFor:
           else:
             converter = _pfor_converter_registry.get(y_op.type, None)
           if converter is None:
+            root_cause = (f"there is no registered converter for this op.")
             has_variant_outputs = any(x.dtype == dtypes.variant for x in
                                       y_op.outputs)
             has_vectorized_variant_inputs = any(
@@ -1598,7 +1607,8 @@ class PFor:
                 y_op.inputs)
             if (self._fallback_to_while_loop and not has_variant_outputs
                 and not has_vectorized_variant_inputs):
-              converter = _fallback_converter
+              converter = partial(
+                  _fallback_converter, root_cause=root_cause, warn=self._warn)
             else:
               message = (f"No pfor vectorization defined for {y_op.type}\n"
                          f"{y_op}\n inputs: {converted_inputs}.")
@@ -1619,7 +1629,8 @@ class PFor:
                   y_op.inputs)
               if (self._fallback_to_while_loop
                   and not has_vectorized_variant_inputs):
-                new_outputs = _fallback_converter(pfor_inputs)
+                new_outputs = _fallback_converter(
+                    pfor_inputs, root_cause=str(e))
               else:
                 raise ValueError(str(e)).with_traceback(sys.exc_info()[2])
           except Exception as e:  # pylint: disable=broad-except
@@ -2418,6 +2429,14 @@ def _convert_pad(pfor_input):
   return wrap(array_ops.pad(t, paddings, mode="CONSTANT"), True)
 
 
+@RegisterPFor("PadV2")
+def _convert_pad_v2(pfor_input):
+  t = pfor_input.stacked_input(0)
+  paddings = pfor_input.unstacked_input(1)
+  paddings = array_ops.concat([[[0, 0]], paddings], 0)
+  return wrap(array_ops.pad_v2(t, paddings, mode="CONSTANT"), True)
+
+
 @RegisterPFor("Split")
 def _convert_split(pfor_input):
   split_dim = pfor_input.unstacked_input(0)
@@ -2532,11 +2551,12 @@ def _convert_gather(pfor_input):
   if param_stacked:
     pfor_input.stack_inputs(stack_indices=[1])
     indices = pfor_input.stacked_input(1)
-
-    output = array_ops.gather(
-        param, indices,
-        axis=array_ops.where(axis >= 0, axis + 1, axis),
-        batch_dims=(batch_dims + 1 if batch_dims >= 0 else batch_dims))
+    if isinstance(axis, ops.Tensor):
+      axis = array_ops.where(axis >= 0, axis + 1, axis)
+    else:
+      axis = axis + 1 if axis >= 0 else axis
+    batch_dims = batch_dims + 1 if batch_dims >= 0 else batch_dims
+    output = array_ops.gather(param, indices, axis=axis, batch_dims=batch_dims)
     return wrap(output, True)
 
 
@@ -4255,7 +4275,7 @@ def _convert_tensor_scatter_update(pfor_input):
 
   # Tile the loop count range for the batch dimensions (all except the first and
   # last dimensions of indices).
-  # Rank(indices) >= 3 always for this function so we always have atleast 1.
+  # Rank(indices) >= 3 always for this function so we always have at least 1.
   tile_multiplier = array_ops.tensor_scatter_nd_update(
       indices_shape, [[0], [indices_rank - 1]], [1, 1])
   meta_index = array_ops.tile(loop_count, tile_multiplier)
@@ -4584,6 +4604,51 @@ def _convert_if(pfor_input):
     return [wrap(t, True) for t in outputs]
 
 
+@RegisterPFor("Case")
+@RegisterPFor("StatelessCase")
+def _convert_stateless_case(pfor_input):
+  branch_idx, is_stacked, _ = pfor_input.input(0)
+  branches = pfor_input.get_attr("branches")
+  inputs = pfor_input.inputs[1:]
+
+  if is_stacked:
+    logging.info("Running stacked flow")
+
+    # Compute loop indices for the different branches
+    switch_indices = data_flow_ops.dynamic_partition(
+        pfor_input.pfor.all_indices, branch_idx, len(branches))
+    if pfor_input.pfor.all_indices_partitioned:
+      partitioned_indices = data_flow_ops.dynamic_partition(
+          math_ops.range(pfor_input.pfor.loop_len_vector[0]), branch_idx,
+          len(branches))
+    else:
+      partitioned_indices = switch_indices
+    # Partition inputs
+    input_list = []
+    for indices in partitioned_indices:
+      input_list.append(_partition_inputs_for_indices(inputs, indices))
+
+    outputs = []
+    for (b, indices, inputs) in zip(branches, switch_indices, input_list):
+      out = _outputs_for_branch(b.name, indices, pfor_input, inputs)
+      outputs.extend(out)
+
+    out = data_flow_ops.dynamic_stitch(partitioned_indices, outputs)
+    return [wrap(out, True)]
+  else:
+    new_branches = []
+    for b in branches:
+      def new_function(func=b.name):
+        return _outputs_for_branch(func, None, pfor_input,
+                                   pfor_input.inputs[1:])
+
+      new_branches.append(new_function)
+
+    outputs = []
+    outputs = control_flow_ops.switch_case(branch_idx, new_branches)
+    return [wrap(t, True) for t in outputs]
+
+
 class WhileV2:
   """Object for vectorizing V2 while_loop op."""
 
@@ -4647,6 +4712,7 @@ class WhileV2:
                 "While loop conversion is only supported for TensorLists. Got "
                 f"another variant {inp.t}, probably an optional. Please file "
                 "a bug.")
+
           # For TensorLists, the input format is:
           #
           #   List[user_list_len, Tensor[loop_len, ...]]
@@ -4659,7 +4725,7 @@ class WhileV2:
           # vectorization" format, so we want to keep it that way as much as
           # possible. We'll accumulate finished iterations (only relevant for
           # pfor-loop-variant while_loop conditions) in an accumulator with
-          # type:
+          # type :
           #
           #   List[user_list_len, List[loop_len, Tensor[...]]]
           #

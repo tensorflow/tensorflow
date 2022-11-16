@@ -83,7 +83,7 @@ class FuzzSession {
   // can't be put into the constructor.
   Status InitIfNeeded() {
     if (initialized_) {
-      return Status::OK();
+      return OkStatus();
     }
     initialized_ = true;
 

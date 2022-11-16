@@ -81,7 +81,7 @@ class PendingCounts {
   // Create a new PendingCounts object that can hold the state of
   // all the Handles allocated from "final_allocator".
   explicit PendingCounts(Layout layout)
-      : num_bytes_(layout.next_offset_), bytes_(new char[num_bytes_]) {
+      : num_bytes_(layout.next_offset_), bytes_(new char[num_bytes_]()) {
     if (num_bytes_ >= sizeof(LargeCounts)) {
       CHECK_EQ(uintptr_t(bytes_) % alignof(LargeCounts), 0);
     }
@@ -177,6 +177,13 @@ class PendingCounts {
       }
     }
   }
+  struct AdjustResult {
+    int dead_count;
+    int pending_count;
+
+    AdjustResult(int dead_count, int pending_count)
+        : dead_count(dead_count), pending_count(pending_count) {}
+  };
   int decrement_pending(Handle h, int v) {
     DCHECK_GE(pending(h), v);
     if (h.is_large_) {
@@ -193,6 +200,7 @@ class PendingCounts {
       return c.pending;
     }
   }
+
   // Mark a merge node as live
   // REQUIRES: Node corresponding to "h" is a merge node
   void mark_live(Handle h) {
@@ -241,19 +249,126 @@ class PendingCounts {
     }
   }
 
-  struct AdjustResult {
-    bool any_dead;
-    bool any_pending;
+  // Mark a merge node as live. Please note that the pending count it returns
+  // is before the update.
+  AdjustResult adjust_for_mark_live(Handle h) {
+    if (h.is_large_) {
+      std::atomic<LargeCounts>* c_ptr = Large(h);
+      auto c = c_ptr->load(std::memory_order_relaxed);
+      auto ret_pending = 0;
+      if (PENDING_NOTREADY == NodeStateForStruct(c)) {
+        ret_pending = c.pending;
+        c.pending &= ~static_cast<int>(0x1);
+        c_ptr->store(c, std::memory_order_relaxed);
+      }
+      return AdjustResult(c.dead_count, ret_pending);
+    } else {
+      std::atomic<PackedCounts>* c_ptr = Packed(h);
+      auto c = c_ptr->load(std::memory_order_relaxed);
+      auto ret_pending = 0;
+      if (PENDING_NOTREADY == NodeStateForStruct(c)) {
+        static_assert(7 == kMaxCountForPackedCounts,
+                      "Live flag incorrect for max packed count");
+        ret_pending = c.pending;
+        c.pending &= 0x6;
+        c_ptr->store(c, std::memory_order_relaxed);
+      }
+      return AdjustResult(c.dead_count, ret_pending);
+    }
+  }
 
-    AdjustResult(bool any_dead, bool any_pending)
-        : any_dead(any_dead), any_pending(any_pending) {}
-  };
+  // The same as the above, but performs the operation atomically. This
+  // is thread-safe to run concurrently with other threads.
+  AdjustResult adjust_for_mark_live_atomic(Handle h) {
+    if (h.is_large_) {
+      std::atomic<LargeCounts>* c_ptr = Large(h);
+      auto old_val = c_ptr->load(std::memory_order_relaxed);
+      while (true) {
+        auto new_val = old_val;
+        auto ret_pending = 0;
+        // Only do anything if the node hasn't already started executing.
+        if (PENDING_NOTREADY == NodeStateForStruct(new_val)) {
+          ret_pending = old_val.pending;
+          new_val.pending &= ~static_cast<int>(0x1);
+        }
+        AdjustResult ret(old_val.dead_count, ret_pending);
+        if (TF_PREDICT_TRUE(c_ptr->compare_exchange_weak(old_val, new_val)))
+          return ret;
+      }
+    } else {
+      std::atomic<PackedCounts>* c_ptr = Packed(h);
+      auto old_val = c_ptr->load(std::memory_order_relaxed);
+      while (true) {
+        auto new_val = old_val;
+        auto ret_pending = 0;
+        // Only do anything if the node hasn't already started executing.
+        if (PENDING_NOTREADY == NodeStateForStruct(new_val)) {
+          static_assert(7 == kMaxCountForPackedCounts,
+                        "Live flag incorrect for max packed count");
+          ret_pending = old_val.pending;
+          new_val.pending &= 0x6;
+        }
+        AdjustResult ret(old_val.dead_count, ret_pending);
+        if (TF_PREDICT_TRUE(c_ptr->compare_exchange_weak(old_val, new_val)))
+          return ret;
+      }
+    }
+  }
+
+  // A streamlined routine that does several pieces of bookkeeping at
+  // once.  Equivalent to:
+  //    increment_dead_count(h);
+  //    return {dead_count(h) pending(h)};
+  AdjustResult adjust_for_increment_dead(Handle h) {
+    if (h.is_large_) {
+      return adjust_for_increment_dead_shared(Large(h));
+    } else {
+      return adjust_for_increment_dead_shared(Packed(h));
+    }
+  }
+
+  // The same as the above, but performs the operation atomically. This
+  // is thread-safe to run concurrently with other threads.
+  AdjustResult adjust_for_increment_dead_atomic(Handle h) {
+    if (h.is_large_) {
+      return adjust_for_increment_dead_shared_atomic(Large(h));
+    } else {
+      return adjust_for_increment_dead_shared_atomic(Packed(h));
+    }
+  }
+
+  // A streamlined routine that does several pieces of bookkeeping at
+  // once.  Equivalent to:
+  //    decrement_pending(h, decrement_pending);
+  //    return {dead_count(h) pending(h)};
+  AdjustResult adjust_for_decrement_pending(Handle h, int decrement_pending) {
+    DCHECK_GE(pending(h), decrement_pending);
+    if (h.is_large_) {
+      return adjust_for_decrement_pending_shared(Large(h), decrement_pending);
+    } else {
+      return adjust_for_decrement_pending_shared(Packed(h), decrement_pending);
+    }
+  }
+
+  // The same as the above, but performs the operation atomically. This
+  // is thread-safe to run concurrently with other threads.
+  AdjustResult adjust_for_decrement_pending_atomic(Handle h,
+                                                   int decrement_pending) {
+    DCHECK_GE(pending(h), decrement_pending);
+    if (h.is_large_) {
+      return adjust_for_decrement_pending_shared_atomic(Large(h),
+                                                        decrement_pending);
+    } else {
+      return adjust_for_decrement_pending_shared_atomic(Packed(h),
+                                                        decrement_pending);
+    }
+  }
 
   // A streamlined routine that does several pieces of bookkeeping at
   // once.  Equivalent to:
   //    if (increment_dead) increment_dead_count(h);
   //    decrement_pending(h, 1);
-  //    return {dead_count(h) > 0, pending(h) > 0};
+  //    return {dead_count(h), pending(h)};
   AdjustResult adjust_for_activation(Handle h, bool increment_dead) {
     DCHECK_GE(pending(h), 1);
     if (h.is_large_) {
@@ -286,12 +401,68 @@ class PendingCounts {
 
  private:
   template <typename T>
+  inline AdjustResult adjust_for_increment_dead_shared(std::atomic<T>* c) {
+    T val = c->load(std::memory_order_relaxed);
+    auto ret_pending = 0;
+    // Only do anything if the node hasn't already started executing.
+    if (PENDING_NOTREADY == NodeStateForStruct(val)) {
+      val.dead_count++;
+      ret_pending = val.pending;
+      c->store(val, std::memory_order_relaxed);
+    }
+    return AdjustResult(val.dead_count, ret_pending);
+  }
+
+  template <typename T>
+  inline AdjustResult adjust_for_increment_dead_shared_atomic(
+      std::atomic<T>* c) {
+    T old_val = c->load(std::memory_order_relaxed);
+    while (true) {
+      auto new_val = old_val;
+      auto ret_pending = 0;
+      // Only do anything if the node hasn't already started executing.
+      if (PENDING_NOTREADY == NodeStateForStruct(new_val)) {
+        ret_pending = new_val.pending;
+        new_val.dead_count++;
+      }
+      AdjustResult ret(new_val.dead_count, ret_pending);
+      if (TF_PREDICT_TRUE(c->compare_exchange_weak(old_val, new_val)))
+        return ret;
+    }
+  }
+
+  template <typename T>
+  inline AdjustResult adjust_for_decrement_pending_shared(
+      std::atomic<T>* c, int decrement_pending) {
+    T val = c->load(std::memory_order_relaxed);
+    DCHECK_GE(val.pending, decrement_pending);
+    val.pending -= decrement_pending;
+    c->store(val, std::memory_order_relaxed);
+    return AdjustResult(val.dead_count, val.pending);
+  }
+
+  template <typename T>
+  inline AdjustResult adjust_for_decrement_pending_shared_atomic(
+      std::atomic<T>* c, int decrement_pending) {
+    T old_val = c->load(std::memory_order_relaxed);
+    while (true) {
+      T new_val = old_val;
+      DCHECK_GE(new_val.pending, decrement_pending);
+      new_val.pending -= decrement_pending;
+      AdjustResult ret(new_val.dead_count, new_val.pending);
+      if (TF_PREDICT_TRUE(c->compare_exchange_weak(old_val, new_val)))
+        return ret;
+    }
+  }
+
+  template <typename T>
   inline AdjustResult adjust_for_activation_shared(std::atomic<T>* c,
                                                    bool increment_dead) {
     T val = c->load(std::memory_order_relaxed);
     if (increment_dead && PENDING_NOTREADY == NodeStateForStruct(val)) {
       val.dead_count++;
     }
+    DCHECK_GE(val.pending, 1);
     val.pending--;
     c->store(val, std::memory_order_relaxed);
     return AdjustResult(val.dead_count, val.pending);
@@ -306,6 +477,7 @@ class PendingCounts {
       if (increment_dead && PENDING_NOTREADY == NodeStateForStruct(new_val)) {
         new_val.dead_count++;
       }
+      DCHECK_GE(new_val.pending, 1);
       new_val.pending--;
       AdjustResult ret(new_val.dead_count, new_val.pending);
       if (TF_PREDICT_TRUE(c->compare_exchange_weak(old_val, new_val)))

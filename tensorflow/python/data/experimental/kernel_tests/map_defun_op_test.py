@@ -20,7 +20,7 @@ from absl.testing import parameterized
 from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import map_defun
 from tensorflow.python.data.kernel_tests import test_base
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -46,7 +46,8 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(_test_combinations())
   def testNoIntraOpLimit(self):
 
-    @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
     def simple_fn(x):
       return x * 2 + 3
 
@@ -61,7 +62,8 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(_test_combinations())
   def testMapDefunSimple(self):
 
-    @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
     def simple_fn(x):
       return x * 2 + 3
 
@@ -74,7 +76,8 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(_test_combinations())
   def testMapDefunMismatchedTypes(self):
 
-    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
     def fn(x):
       return math_ops.cast(x, dtypes.float64)
 
@@ -88,7 +91,8 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testMapDefunReduceDim(self):
     # Tests where the output has a different rank from the input
 
-    @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
     def fn(x):
       return array_ops.gather(x, 0)
 
@@ -101,7 +105,8 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(_test_combinations())
   def testMapDefunMultipleOutputs(self):
 
-    @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
     def fn(x):
       return (x, math_ops.cast(x * 2 + 3, dtypes.float64))
 
@@ -115,7 +120,8 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(_test_combinations())
   def testMapDefunShapeInference(self):
 
-    @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
     def fn(x):
       return x
 
@@ -127,7 +133,8 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(_test_combinations())
   def testMapDefunPartialShapeInference(self):
 
-    @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
     def fn(x):
       return x
 
@@ -138,7 +145,7 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(_test_combinations())
   def testMapDefunRaisesErrorOnRuntimeShapeMismatch(self):
 
-    @function.defun(input_signature=[
+    @def_function.function(input_signature=[
         tensor_spec.TensorSpec(None, dtypes.int32),
         tensor_spec.TensorSpec(None, dtypes.int32)
     ])
@@ -158,7 +165,8 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(_test_combinations())
   def testMapDefunRaisesDefunError(self):
 
-    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
     def fn(x):
       with ops.control_dependencies([check_ops.assert_equal(x, 0)]):
         return array_ops.identity(x)
@@ -171,7 +179,8 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(_test_combinations())
   def testMapDefunCancelledCorrectly(self):
 
-    @function.defun(input_signature=[tensor_spec.TensorSpec([5], dtypes.int64)])
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([5], dtypes.int64)])
     def defun(x):
       # x has leading dimension 5, this will raise an error
       return array_ops.gather(x, 10)
@@ -188,7 +197,8 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(_test_combinations())
   def testMapDefunWithUnspecifiedOutputShape(self):
 
-    @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
     def simple_fn(x):
       res = x * 2 + 3
       return (res, res + 1, res + 2)
@@ -206,7 +216,7 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(_test_combinations())
   def testMapDefunWithDifferentOutputShapeEachRun(self):
 
-    @function.defun(
+    @def_function.function(
         input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
     def simple_fn(x):
       return x * 2 + 3
@@ -221,7 +231,8 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(_test_combinations())
   def testMapDefunWithWrongOutputShape(self):
 
-    @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
     def simple_fn(x):
       return x * 2 + 3
 
@@ -234,7 +245,7 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(_test_combinations())
   def testMapDefunWithInvalidInput(self):
 
-    @function.defun(
+    @def_function.function(
         input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
     def simple_fn(x):
       return x * 2
@@ -253,7 +264,8 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testMapDefunWithParentCancellation(self):
     # Checks that a cancellation of the parent graph is threaded through to
     # MapDefunOp correctly.
-    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
     def simple_fn(x):
       del x
       queue = data_flow_ops.FIFOQueue(10, dtypes.int32, ())
@@ -275,7 +287,8 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testMapDefunWithCapturedInputs(self):
     c = constant_op.constant(2)
 
-    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
     def fn(x):
       return x + c
 
@@ -287,7 +300,7 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(_test_combinations())
   def testMapDefunWithVariantTensor(self):
 
-    @function.defun(
+    @def_function.function(
         input_signature=[tensor_spec.TensorSpec([], dtypes.variant)])
     def fn(x):
       return x
@@ -314,7 +327,8 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
         indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
     serialized = sparse_ops.serialize_sparse_v2(st, out_type=dtypes.variant)
 
-    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
     def fn(x):
       del x
       return serialized
@@ -332,7 +346,8 @@ class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(_test_combinations())
   def testMapDefunWithStrTensor(self):
 
-    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def fn(x):
       return x
 

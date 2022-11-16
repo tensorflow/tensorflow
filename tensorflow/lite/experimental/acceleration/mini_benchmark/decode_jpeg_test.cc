@@ -40,7 +40,7 @@ const int kDecodedSize = kHeight * kWidth * kChannels;
 class DecodeJPEGOpModel : public SingleOpModel {
  public:
   DecodeJPEGOpModel(const TensorData& input, const TensorData& output,
-                    int num_images, int height, int width) {
+                    int num_images, int height, int width, int channels) {
     input_id_ = AddInput(input);
     output_id_ = AddOutput(output);
     flexbuffers::Builder fbb;
@@ -48,6 +48,7 @@ class DecodeJPEGOpModel : public SingleOpModel {
       fbb.Int("num_images", num_images);
       fbb.Int("height", height);
       fbb.Int("width", width);
+      fbb.Int("channels", channels);
     });
     fbb.Finish();
     SetCustomOp("DECODE_JPEG", fbb.GetBuffer(),
@@ -81,11 +82,12 @@ TEST(DecodeJpegTest, TestMultipleJPEGImages) {
       g_tflite_acceleration_test_card_jpeg_len);
   const int kNumImages = 2;
   DecodeJPEGOpModel model({TensorType_STRING, {kNumImages}},
-                          {TensorType_UINT8, {}}, kNumImages, kHeight, kWidth);
+                          {TensorType_UINT8, {}}, kNumImages, kHeight, kWidth,
+                          kChannels);
   model.PopulateStringTensor(model.input_buffer_id(),
                              {chessboard_image, test_card_image});
 
-  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   // Check output values and shape.
   ASSERT_THAT(model.GetOutputShape(),

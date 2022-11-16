@@ -26,13 +26,13 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -152,6 +152,10 @@ class HloValue : public BufferValue {
     return uses_.MaybeInitAndGet(
         [this](std::vector<HloUse>& uses) { ComputeUses(uses); });
   }
+
+  // Returns true if this has a position that is the root of the given
+  // computation.
+  bool IsRootOf(const HloComputation* computation) const;
 
   // Get whether this HloValue is live out of the module.
   bool live_out_of_module() const { return live_out_of_module_; }
@@ -276,6 +280,11 @@ class InstructionValueSet : public ShapeTree<HloValueSet> {
   // Sets this value set to the union of the given value sets. Returns whether
   // this value set changed.
   bool AssignUnionOf(absl::Span<const InstructionValueSet* const> inputs);
+
+  // Sets this value set to the input value set at the given index. Returns
+  // whether this value set changed.
+  bool AssignUnionOf(const InstructionValueSet& input,
+                     ShapeIndexView input_index);
 
   // Returns true if any value sets for any subshape element is not a
   // singleton.

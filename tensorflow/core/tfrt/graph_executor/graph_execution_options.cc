@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 
+#include <ostream>
+
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+// TODO(b/200579737): using FunctionRegistry is simpler than the OSS trick.
 #include "tensorflow/core/tfrt/utils/bridge_graph_analysis.h"
 
 namespace tensorflow {
@@ -31,20 +34,23 @@ tensorflow::SessionOptions CreateDefaultSessionOptions(
 
   // The following configs are constant.
 
-  // Avoid grappler logic that lowers to v1 control flow.
+  // Setting use_tfrt to true avoids grappler logic that lowers to v1 control
+  // flow. Note that other function inlining (e.g. on StatefulPartitionedCall)
+  // is still enabled.
   config.mutable_experimental()->set_use_tfrt(true);
-  config.mutable_graph_options()
-      ->mutable_optimizer_options()
-      ->set_do_function_inlining(false);
+  if (options.enable_grappler_function_optimizer) {
+    config.mutable_graph_options()
+        ->mutable_rewrite_options()
+        ->set_function_optimization(tensorflow::RewriterConfig::ON);
+  } else {
+    config.mutable_graph_options()
+        ->mutable_rewrite_options()
+        ->set_function_optimization(tensorflow::RewriterConfig::OFF);
+  }
   // Do not skip grappler optimization even for small graphs.
   config.mutable_graph_options()
       ->mutable_rewrite_options()
       ->set_min_graph_nodes(-1);
-  // Disable function inlining because it may cause restore graphs to be removed
-  // as we optimize all graphs together.
-  config.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_function_optimization(tensorflow::RewriterConfig::OFF);
 
   return session_options;
 }
@@ -65,7 +71,24 @@ void UpdateTpuTargetByBridgeCompatibility(
           tensorflow::TfrtTpuInfraTarget::kTpurt;
     }
   }
+  if (!tfrt::CheckSpmdGraph(graph_def).ok()) {
+    options.compile_options.tpu_target =
+        tensorflow::TfrtTpuInfraTarget::kTfFallback;
+  }
   LOG(INFO) << "TFRT uses TPU target " << options.compile_options.tpu_target;
+}
+
+std::ostream& operator<<(std::ostream& os,
+                         const GraphExecutionOptions& options) {
+  return os << "{"
+            << "run_placer_grappler_on_functions = "
+            << options.run_placer_grappler_on_functions
+            << ", enable_grappler_function_optimizer = "
+            << options.enable_grappler_function_optimizer
+            << ", enable_tfrt_gpu = " << options.enable_tfrt_gpu
+            << ", runtime = " << options.runtime
+            << ", model_metadata = " << options.model_metadata.DebugString()
+            << ", compile_options = " << options.compile_options << "}";
 }
 
 }  // namespace tfrt_stub

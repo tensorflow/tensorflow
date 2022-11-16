@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
@@ -112,7 +113,7 @@ class FillOpTest : public ::testing::TestWithParam<TestType> {};
 TEST_P(FillOpTest, FillInt32) {
   FillOpModel<int32_t, int32_t> m(TensorType_INT32, {2}, {2, 3}, -11,
                                   GetParam());
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-11, -11, -11, -11, -11, -11}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
 }
@@ -120,7 +121,7 @@ TEST_P(FillOpTest, FillInt32) {
 TEST_P(FillOpTest, FillInt64) {
   FillOpModel<int64_t, int64_t> m(TensorType_INT64, {2}, {2, 4}, 1LL << 45,
                                   GetParam());
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({1LL << 45, 1LL << 45, 1LL << 45, 1LL << 45,
                                 1LL << 45, 1LL << 45, 1LL << 45, 1LL << 45}));
@@ -130,7 +131,16 @@ TEST_P(FillOpTest, FillInt64) {
 TEST_P(FillOpTest, FillFloat) {
   FillOpModel<int64_t, float> m(TensorType_INT64, {3}, {2, 2, 2}, 4.0,
                                 GetParam());
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
+}
+
+TEST_P(FillOpTest, FillFloat16) {
+  FillOpModel<int64_t, Eigen::half> m(TensorType_INT64, {3}, {2, 2, 2},
+                                      Eigen::half(4.0f), GetParam());
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
@@ -139,7 +149,7 @@ TEST_P(FillOpTest, FillFloat) {
 TEST_P(FillOpTest, FillFloatInt32Dims) {
   FillOpModel<int32_t, float> m(TensorType_INT32, {3}, {2, 2, 2}, 4.0,
                                 GetParam());
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
@@ -147,7 +157,7 @@ TEST_P(FillOpTest, FillFloatInt32Dims) {
 
 TEST_P(FillOpTest, FillOutputScalar) {
   FillOpModel<int64_t, float> m(TensorType_INT64, {0}, {}, 4.0, GetParam());
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({4.0}));
   EXPECT_THAT(m.GetOutputShape(), IsEmpty());
 }
@@ -155,7 +165,7 @@ TEST_P(FillOpTest, FillOutputScalar) {
 TEST_P(FillOpTest, FillBool) {
   FillOpModel<int64_t, bool> m(TensorType_INT64, {3}, {2, 2, 2}, true,
                                GetParam());
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({true, true, true, true, true,
                                                true, true, true}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
@@ -164,7 +174,7 @@ TEST_P(FillOpTest, FillBool) {
 TEST(FillOpTest, FillString) {
   FillOpModel<int64_t, std::string> m(TensorType_INT64, {3}, {2, 2, 2}, "AB",
                                       TestType::kDynamic);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({"AB", "AB", "AB", "AB", "AB",
                                                "AB", "AB", "AB"}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
@@ -173,7 +183,7 @@ TEST(FillOpTest, FillString) {
 TEST_P(FillOpTest, FillInt8) {
   FillOpModel<int64_t, int8_t> m(TensorType_INT64, {3}, {2, 2, 2}, 5,
                                  GetParam());
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
 }
@@ -191,7 +201,7 @@ void QuantizedFill(float value) {
 
   QuantizedFillOpModel<int32_t, quant_type> m(TensorType_INT32, {2}, {2, 3},
                                               tensor_data, value);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   constexpr float epsilon = 0.01f;
   const float min_value = tensor_data.min - epsilon;

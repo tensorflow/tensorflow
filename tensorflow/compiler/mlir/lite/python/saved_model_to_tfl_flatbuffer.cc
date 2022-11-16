@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/saved_model_to_tfl_flatbuffer.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/types/span.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -45,15 +47,14 @@ limitations under the License.
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
 Status HandleInputOutputArraysWithModule(
     const toco::ModelFlags& model_flags,
     mlir::OwningOpRef<mlir::ModuleOp>* module) {
-  mlir::FuncOp entry_function = nullptr;
-  for (auto func : module->get().getOps<mlir::FuncOp>()) {
+  mlir::func::FuncOp entry_function = nullptr;
+  for (auto func : module->get().getOps<mlir::func::FuncOp>()) {
     if (auto tf_attrs =
             func->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function")) {
       // TODO(b/184697652): There could be multiple entry functions. Let's
@@ -122,7 +123,7 @@ Status HandleInputOutputArraysWithModule(
                                      ") does not exist in the given graph");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,

@@ -55,8 +55,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       output->type = kTfLiteInt64;
       break;
     default:
-      context->ReportError(context, "Unknown shape output data type: %d",
-                           params->out_type);
+      TF_LITE_KERNEL_LOG(context, "Unknown shape output data type: %d",
+                         params->out_type);
       return kTfLiteError;
   }
 

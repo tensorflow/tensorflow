@@ -13,5 +13,5 @@ func.func @test(%V__0: tensor<?xf32> { python_test_attrs.static_type = tensor<1x
   %11 = "tf.Erf"(%V__3) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>) -> tensor<?xf32>
   %12 = "tf.ClipByValue"(%4, %10, %11) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>, tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   %13 = "tf.Round"(%12) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>) -> tensor<?xf32>
-  return %13 : tensor<?xf32>
+  func.return %13 : tensor<?xf32>
 }

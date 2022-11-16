@@ -98,7 +98,7 @@ std::vector<std::unique_ptr<Device>> CreateCPUDevices(
     for (int di = 0; di < num_devices_per_worker; ++di) {
       string dev_name = strings::StrCat("/job:worker/replica:0/task:", wi,
                                         "/device:CPU:", di);
-      devices.push_back(absl::make_unique<ThreadPoolDevice>(
+      devices.push_back(std::make_unique<ThreadPoolDevice>(
           sess_opts, dev_name, mem_limit, dev_locality, cpu_allocator()));
     }
   }
@@ -141,11 +141,11 @@ std::vector<std::unique_ptr<Device>> CreateGPUDevices() {
 
 std::unique_ptr<CollectiveTestEnv> CreateCollectiveTestEnv(
     int num_workers, int num_devices_per_worker, DeviceType device_type) {
-  auto test_env = absl::make_unique<CollectiveTestEnv>();
-  test_env->param_resolver = absl::make_unique<TestParamResolver>();
+  auto test_env = std::make_unique<CollectiveTestEnv>();
+  test_env->param_resolver = std::make_unique<TestParamResolver>();
   // We don't create CollecticeExecutor from the CollecticeExecutorMgr so we
   // don't need to pass rma.
-  test_env->col_exec_mgr = absl::make_unique<TestCollectiveExecutorMgr>(
+  test_env->col_exec_mgr = std::make_unique<TestCollectiveExecutorMgr>(
       test_env->param_resolver.get(), /*rma=*/nullptr);
   test_env->num_workers = num_workers;
   test_env->num_devices_per_worker = num_devices_per_worker;
@@ -165,10 +165,10 @@ std::unique_ptr<CollectiveTestEnv> CreateCollectiveTestEnv(
   } else {
     LOG(FATAL) << "Unsupported device_type " << device_type;
   }
-  test_env->device_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+  test_env->device_mgr = std::make_unique<StaticDeviceMgr>(std::move(devices));
 
   test_env->device_resolver =
-      absl::make_unique<DeviceResolverLocal>(test_env->device_mgr.get());
+      std::make_unique<DeviceResolverLocal>(test_env->device_mgr.get());
   test_env->work_queue =
       std::make_shared<UnboundedWorkQueue>(Env::Default(), "test");
   // BaseCollectiveExecutor takes the ownership of remote_access.
@@ -265,7 +265,7 @@ Tensor CopyTensorToDevice(Device* device, const Tensor& tensor) {
   } else if (device->device_type() == DEVICE_GPU) {
     Tensor copied(device->GetAllocator(AllocatorAttributes()), tensor.dtype(),
                   tensor.shape());
-    auto* dev_info = device->tensorflow_gpu_device_info();
+    auto* dev_info = device->tensorflow_accelerator_device_info();
     CHECK(dev_info);
     TF_CHECK_OK(dev_info->default_context->CopyCPUTensorToDeviceSync(
         &tensor, device, &copied));
@@ -279,7 +279,7 @@ Tensor CopyTensorToHost(Device* device, const Tensor& tensor) {
     return tensor;
   } else if (device->device_type() == DEVICE_GPU) {
     Tensor copied(tensor.dtype(), tensor.shape());
-    auto* dev_info = device->tensorflow_gpu_device_info();
+    auto* dev_info = device->tensorflow_accelerator_device_info();
     CHECK(dev_info);
     TF_CHECK_OK(dev_info->default_context->CopyDeviceTensorToCPUSync(
         &tensor, "" /*tensor_name*/, device, &copied));
@@ -321,11 +321,11 @@ Status RunCollective(CollectiveTestEnv* test_env, CollectiveParams* col_params,
   op_params.cancellation_manager = &cancellation_manager;
   gtl::InlinedVector<TensorValue, 4> inputs;
   inputs.push_back(TensorValue(&input_buffer));
-  op_params.inputs = &inputs;
+  op_params.inputs = inputs;
   gtl::InlinedVector<AllocatorAttributes, 4> input_aa({AllocatorAttributes()});
-  op_params.input_alloc_attrs = &input_aa;
+  op_params.input_alloc_attrs = input_aa;
   DeviceContext* dev_ctx = nullptr;
-  auto* dev_info = device->tensorflow_gpu_device_info();
+  auto* dev_info = device->tensorflow_accelerator_device_info();
   if (dev_info) {
     dev_ctx = dev_info->default_context;
     dev_ctx->Ref();

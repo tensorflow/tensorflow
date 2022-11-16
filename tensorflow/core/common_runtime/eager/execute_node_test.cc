@@ -56,7 +56,7 @@ TEST(ExecuteNodeTest, ExecuteNodeArgs) {
   StaticDeviceMgr device_mgr(
       DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:0"));
   Device* device0 = device_mgr.ListDevices().at(0);
-  auto remote_device_mgr = absl::make_unique<DynamicDeviceMgr>();
+  auto remote_device_mgr = std::make_unique<DynamicDeviceMgr>();
   std::vector<std::unique_ptr<Device>> remote_devices;
   remote_devices.emplace_back(
       DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:1"));
@@ -76,7 +76,7 @@ TEST(ExecuteNodeTest, ExecuteNodeArgs) {
       &device_mgr, false, nullptr, nullptr);
 
   // Set a RemoteMgr to the EagerContext.
-  auto remote_mgr = absl::make_unique<eager::RemoteMgr>(
+  auto remote_mgr = std::make_unique<eager::RemoteMgr>(
       /*is_master=*/true, ctx);
   TF_ASSERT_OK(ctx->InitializeRemoteMaster(
       /*server=*/nullptr, /*worker_env=*/nullptr,

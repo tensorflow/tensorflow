@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace mlir {
 static mlir::Operation* ExtractOnlyOp(mlir::ModuleOp module) {
-  mlir::FuncOp fn = module.lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp fn = module.lookupSymbol<mlir::func::FuncOp>("main");
   if (!fn) return nullptr;
 
   if (!llvm::hasSingleElement(fn)) return nullptr;
@@ -61,14 +61,14 @@ static LogicalResult MlirToTfNodeDef(ModuleOp module,
     return failure();
   }
 
-  output << node_def_or.ValueOrDie()->DebugString();
+  output << node_def_or.value()->DebugString();
   return success();
 }
 
 // Test only translation to convert a simple MLIR module with a single TF
 // dialect op to NodeDef.
 static TranslateFromMLIRRegistration translate_from_mlir_registration(
-    "test-only-mlir-to-tf-nodedef", MlirToTfNodeDef,
-    mlir::RegisterAllTensorFlowDialects);
+    "test-only-mlir-to-tf-nodedef", "test-only-mlir-to-tf-nodedef",
+    MlirToTfNodeDef, mlir::RegisterAllTensorFlowDialects);
 
 }  // namespace mlir

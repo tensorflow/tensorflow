@@ -25,26 +25,29 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
 // TODO(b/181653482): Fix for interprocedural collectives as well.
-StatusOr<bool> CollectivesScheduleLinearizer::Run(HloModule* module) {
+StatusOr<bool> CollectivesScheduleLinearizer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     std::unique_ptr<HloReachabilityMap> reachability =
         HloReachabilityMap::Build(computation);
     HloCollectiveInstruction* prev = nullptr;

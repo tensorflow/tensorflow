@@ -1,0 +1,54 @@
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo/dialect/StablehloAttrs.td
+--- stablehlo/stablehlo/dialect/StablehloAttrs.td
++++ stablehlo/stablehlo/dialect/StablehloAttrs.td
+@@ -20,7 +20,10 @@
+ include "mlir/IR/OpBase.td"
+ include "mlir/IR/TensorEncoding.td"
+ 
+-def StableHLO_Dim : ArrayRefParameter<"int64_t", "Dimension">;
++def StableHLO_Dim : ArrayRefParameter<"int64_t", "Dimension"> {
++  let parser = "mlir::stablehlo::parseIntArray($_parser)";
++  let printer = "mlir::stablehlo::printIntArray($_printer, $_self)";
++}
+ 
+ def StableHLO_ScatterDimensionNumbers : AttrDef<StableHLO_Dialect, "ScatterDimensionNumbers"> {
+   let cppNamespace = "::mlir::stablehlo";
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -4509,6 +4509,21 @@
+   return success();
+ }
+ 
++FailureOr<SmallVector<int64_t>> parseIntArray(AsmParser& parser) {
++  SmallVector<int64_t> ints;
++  auto parse =
++      parser.parseCommaSeparatedList({}, [&] {
++        ints.emplace_back();
++        return parser.parseInteger(ints.back());
++      });
++  if (!failed(parse)) return ints;
++  return {{}};
++}
++
++void printIntArray(AsmPrinter& printer, ArrayRef<int64_t> ints) {
++  llvm::interleaveComma(ints, printer);
++}
++
+ /// Parse a custom attribute that resembles a struct of the form
+ /// <
+ ///   foo = something_parsed_by_custom_parser,
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
+--- stablehlo/stablehlo/dialect/StablehloOps.h
++++ stablehlo/stablehlo/dialect/StablehloOps.h
+@@ -183,6 +183,9 @@
+                                   DenseIntElementsAttr &rhsDilation,
+                                   DenseElementsAttr &windowReversal);
+ 
++// Print and parse IntArrays
++FailureOr<SmallVector<int64_t>> parseIntArray(AsmParser &parser);
++void printIntArray(AsmPrinter &printer, ArrayRef<int64_t> ints);
+ }  // end namespace stablehlo
+ }  // end namespace mlir
+ 
+

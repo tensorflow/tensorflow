@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -30,7 +30,8 @@ class CodegenTestBase : public HloTestBase {
  protected:
   // Compiles hlo_module with the JIT compiler.
   StatusOr<std::unique_ptr<Executable>> CompileToExecutable(
-      std::unique_ptr<HloModule> hlo_module);
+      std::unique_ptr<HloModule> hlo_module,
+      bool run_optimization_passes = true);
 
   // Compiles hlo_module with the AOT compiler.
   StatusOr<std::unique_ptr<AotCompilationResult>> CompileToAotCompilationResult(

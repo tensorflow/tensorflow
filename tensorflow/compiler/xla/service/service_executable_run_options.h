@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/stream_executor/stream_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 namespace xla {
 
@@ -53,7 +53,7 @@ class ServiceExecutableRunOptions {
   StatusOr<StreamPool::Ptr> BorrowStream(int device_ordinal) const {
     return borrow_stream_
                ? borrow_stream_(device_ordinal)
-               : Status(tensorflow::error::UNIMPLEMENTED, "No stream cache");
+               : Status(tsl::error::UNIMPLEMENTED, "No stream cache");
   }
 
  private:

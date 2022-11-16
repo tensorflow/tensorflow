@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/quantize_model.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -74,10 +77,14 @@ TensorType GetBiasTensorType(TensorType& activation_type) {
 
 class QuantizeModelTest : public testing::Test {
  protected:
-  QuantizeModelTest() {
-    input_model_ = ReadModel(internal::kConvModelWith0Plus10Weights);
+  QuantizeModelTest()
+      : QuantizeModelTest(ReadModel(internal::kConvModelWith0Plus10Weights)) {}
+
+  explicit QuantizeModelTest(std::unique_ptr<FlatBufferModel> input_model) {
+    input_model_ = std::move(input_model);
     readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
+    model_ =
+        *std::move(std::unique_ptr<tflite::ModelT>(readonly_model_->UnPack()));
   }
 
   std::unique_ptr<FlatBufferModel> input_model_;
@@ -128,13 +135,10 @@ void ExpectSameModels(const ModelT& model, const ModelT& expected_model) {
 class QuantizeConvModelTest : public QuantizeModelTest,
                               public testing::WithParamInterface<TensorType> {
  protected:
-  QuantizeConvModelTest() {
-    tensor_type_ = GetParam();
-    bias_type_ = GetBiasTensorType(tensor_type_);
-    input_model_ = ReadModel(internal::kConvModelWith0Plus10Weights);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeConvModelTest()
+      : QuantizeModelTest(ReadModel(internal::kConvModelWith0Plus10Weights)),
+        tensor_type_(GetParam()),
+        bias_type_(GetBiasTensorType(tensor_type_)) {}
   TensorType tensor_type_;
   TensorType bias_type_;
 };
@@ -400,11 +404,8 @@ TEST_P(QuantizeConvModelTest, Uint8InputAndOutput) {
 
 class QuantizeConvNoBiasModelTest : public QuantizeModelTest {
  protected:
-  QuantizeConvNoBiasModelTest() {
-    input_model_ = ReadModel(internal::kConvModelWithNoBias);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeConvNoBiasModelTest()
+      : QuantizeModelTest(ReadModel(internal::kConvModelWithNoBias)) {}
 };
 
 TEST_F(QuantizeConvNoBiasModelTest, QuantizationSucceeds) {
@@ -420,11 +421,8 @@ TEST_F(QuantizeConvNoBiasModelTest, QuantizationSucceeds) {
 class QuantizeConcatModelTest : public QuantizeModelTest,
                                 public testing::WithParamInterface<TensorType> {
  protected:
-  QuantizeConcatModelTest() {
-    input_model_ = ReadModel(internal::kFloatConcatMax5Max10Max10);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeConcatModelTest()
+      : QuantizeModelTest(ReadModel(internal::kFloatConcatMax5Max10Max10)) {}
 
   void SetUp() override {
     tensor_type_ = GetParam();
@@ -537,11 +535,8 @@ INSTANTIATE_TEST_SUITE_P(QuantizeConcatModelInst, QuantizeConcatModelTest,
                                             TensorType_INT16}));
 class QuantizeSplitModelTest : public QuantizeModelTest {
  protected:
-  QuantizeSplitModelTest() {
-    input_model_ = ReadModel(internal::kModelSplit);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeSplitModelTest()
+      : QuantizeModelTest(ReadModel(internal::kModelSplit)) {}
 };
 
 // There are two outputs for split with different scales, the resulting model
@@ -605,11 +600,9 @@ TEST_F(QuantizeSplitModelTest, QuantizeSplit) {
 
 class QuantizeConvModel1Test : public QuantizeModelTest {
  protected:
-  QuantizeConvModel1Test() {
-    input_model_ = ReadModel(internal::kConvModelWithMinus128Plus127Weights);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeConvModel1Test()
+      : QuantizeModelTest(
+            ReadModel(internal::kConvModelWithMinus128Plus127Weights)) {}
 };
 
 TEST_F(QuantizeConvModel1Test, VerifyConvQuantizationWithUnitScale) {
@@ -709,13 +702,10 @@ TEST_F(QuantizeConvModel1Test, VerifyConvQuantizationWithUnitScale) {
 class QuantizeConvModel2Test : public QuantizeModelTest,
                                public testing::WithParamInterface<TensorType> {
  protected:
-  QuantizeConvModel2Test() {
-    tensor_type_ = GetParam();
-    bias_type_ = GetBiasTensorType(tensor_type_);
-    input_model_ = ReadModel(internal::kConvModelWith0Plus10Weights);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeConvModel2Test()
+      : QuantizeModelTest(ReadModel(internal::kConvModelWith0Plus10Weights)),
+        tensor_type_(GetParam()),
+        bias_type_(GetBiasTensorType(tensor_type_)) {}
 
   TensorType tensor_type_;
   TensorType bias_type_;
@@ -934,11 +924,9 @@ TEST_P(QuantizeConvModel2Test, VerifyConvDisablePerChannelQuantization) {
 
 class QuantizeSoftmaxTest : public QuantizeModelTest {
  protected:
-  QuantizeSoftmaxTest() {
-    input_model_ = ReadModel(internal::kSingleSoftmaxModelMinMinus5MaxPlus5);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeSoftmaxTest()
+      : QuantizeModelTest(
+            ReadModel(internal::kSingleSoftmaxModelMinMinus5MaxPlus5)) {}
 };
 
 TEST_F(QuantizeSoftmaxTest, VerifySoftmaxQuantization) {
@@ -996,11 +984,9 @@ TEST_F(QuantizeSoftmaxTest, VerifySoftmaxQuantization) {
 
 class QuantizeAvgPoolTest : public QuantizeModelTest {
  protected:
-  QuantizeAvgPoolTest() {
-    input_model_ = ReadModel(internal::kSingleAvgPoolModelMinMinus5MaxPlus5);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeAvgPoolTest()
+      : QuantizeModelTest(
+            ReadModel(internal::kSingleAvgPoolModelMinMinus5MaxPlus5)) {}
 };
 
 TEST_F(QuantizeAvgPoolTest, VerifyAvgPoolQuantization) {
@@ -1058,11 +1044,8 @@ TEST_F(QuantizeAvgPoolTest, VerifyAvgPoolQuantization) {
 
 class QuantizeMultiInputAddWithReshapeTest : public QuantizeModelTest {
  protected:
-  QuantizeMultiInputAddWithReshapeTest() {
-    input_model_ = ReadModel(internal::kMultiInputAddWithReshape);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeMultiInputAddWithReshapeTest()
+      : QuantizeModelTest(ReadModel(internal::kMultiInputAddWithReshape)) {}
 };
 
 TEST_F(QuantizeMultiInputAddWithReshapeTest, VerifyReshapeQuantization) {
@@ -1171,13 +1154,10 @@ TEST_F(QuantizeMultiInputAddWithReshapeTest, VerifyAddQuantization) {
 class QuantizeConstInputTest : public QuantizeModelTest,
                                public testing::WithParamInterface<TensorType> {
  protected:
-  QuantizeConstInputTest() {
-    tensor_type_ = GetParam();
-    bias_type_ = GetBiasTensorType(tensor_type_);
-    input_model_ = ReadModel(internal::kConstInputAddModel);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeConstInputTest()
+      : QuantizeModelTest(ReadModel(internal::kConstInputAddModel)),
+        tensor_type_(GetParam()),
+        bias_type_(GetBiasTensorType(tensor_type_)) {}
 
   TensorType tensor_type_;
   TensorType bias_type_;
@@ -1232,11 +1212,8 @@ TEST_P(QuantizeConstInputTest, VerifyConstOpInput) {
 }
 class QuantizeArgMaxTest : public QuantizeModelTest {
  protected:
-  QuantizeArgMaxTest() {
-    input_model_ = ReadModel(internal::kModelWithArgMaxOp);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeArgMaxTest()
+      : QuantizeModelTest(ReadModel(internal::kModelWithArgMaxOp)) {}
 };
 
 TEST_F(QuantizeArgMaxTest, VerifyArgMax) {
@@ -1276,11 +1253,8 @@ TEST_F(QuantizeArgMaxTest, VerifyArgMax) {
 
 class QuantizeLSTMTest : public QuantizeModelTest {
  protected:
-  QuantizeLSTMTest() {
-    input_model_ = ReadModel(internal::kLstmCalibrated);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeLSTMTest()
+      : QuantizeModelTest(ReadModel(internal::kLstmCalibrated)) {}
 };
 
 TEST_F(QuantizeLSTMTest, VerifyLSTM) {
@@ -1301,11 +1275,8 @@ TEST_F(QuantizeLSTMTest, VerifyLSTM) {
 
 class QuantizeLSTM2Test : public QuantizeModelTest {
  protected:
-  QuantizeLSTM2Test() {
-    input_model_ = ReadModel(internal::kLstmCalibrated2);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeLSTM2Test()
+      : QuantizeModelTest(ReadModel(internal::kLstmCalibrated2)) {}
 };
 
 TEST_F(QuantizeLSTM2Test, VerifyLSTM) {
@@ -1326,11 +1297,9 @@ TEST_F(QuantizeLSTM2Test, VerifyLSTM) {
 
 class QuantizeUnidirectionalSequenceLSTMTest : public QuantizeModelTest {
  protected:
-  QuantizeUnidirectionalSequenceLSTMTest() {
-    input_model_ = ReadModel(internal::kUnidirectionalSequenceLstmCalibrated);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeUnidirectionalSequenceLSTMTest()
+      : QuantizeModelTest(
+            ReadModel(internal::kUnidirectionalSequenceLstmCalibrated)) {}
 };
 
 TEST_F(QuantizeUnidirectionalSequenceLSTMTest,
@@ -1353,11 +1322,8 @@ TEST_F(QuantizeUnidirectionalSequenceLSTMTest,
 
 class QuantizeSVDFTest : public QuantizeModelTest {
  protected:
-  QuantizeSVDFTest() {
-    input_model_ = ReadModel(internal::kSvdfCalibrated);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeSVDFTest()
+      : QuantizeModelTest(ReadModel(internal::kSvdfCalibrated)) {}
 };
 
 TEST_F(QuantizeSVDFTest, VerifySVDF) {
@@ -1413,11 +1379,7 @@ TEST_F(QuantizeSVDFTest, VerifySVDF) {
 
 class QuantizeFCTest : public QuantizeModelTest {
  protected:
-  QuantizeFCTest() {
-    input_model_ = ReadModel(internal::kModelWithFCOp);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeFCTest() : QuantizeModelTest(ReadModel(internal::kModelWithFCOp)) {}
 };
 
 TEST_F(QuantizeFCTest, VerifyFC) {
@@ -1467,13 +1429,10 @@ class QuantizeCustomOpTest
     : public QuantizeModelTest,
       public ::testing::WithParamInterface<tflite::TensorType> {
  protected:
-  QuantizeCustomOpTest() {
-    tensor_type_ = GetParam();
-    bias_type_ = GetBiasTensorType(tensor_type_);
-    input_model_ = ReadModel(internal::kModelMixed);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeCustomOpTest()
+      : QuantizeModelTest(ReadModel(internal::kModelMixed)),
+        tensor_type_(GetParam()),
+        bias_type_(GetBiasTensorType(tensor_type_)) {}
 
   TensorType tensor_type_;
   TensorType bias_type_;
@@ -1511,11 +1470,8 @@ INSTANTIATE_TEST_SUITE_P(QuantizeCustomOpTest, QuantizeCustomOpTest,
 
 class QuantizeOp16x8Test : public QuantizeModelTest {
  protected:
-  QuantizeOp16x8Test() {
-    input_model_ = ReadModel(internal::kModelMixed16x8);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeOp16x8Test()
+      : QuantizeModelTest(ReadModel(internal::kModelMixed16x8)) {}
 };
 
 TEST_F(QuantizeOp16x8Test, VerifyMixedQuantization16x8) {
@@ -1546,11 +1502,7 @@ TEST_F(QuantizeOp16x8Test, VerifyMixedQuantization16x8) {
 
 class QuantizePackTest : public QuantizeModelTest {
  protected:
-  QuantizePackTest() {
-    input_model_ = ReadModel(internal::kModelPack);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizePackTest() : QuantizeModelTest(ReadModel(internal::kModelPack)) {}
 };
 
 TEST_F(QuantizePackTest, VerifyPack) {
@@ -1610,11 +1562,7 @@ class QuantizeMinimumMaximumTest
     : public QuantizeModelTest,
       public testing::WithParamInterface<const char*> {
  protected:
-  QuantizeMinimumMaximumTest() {
-    input_model_ = ReadModel(GetParam());
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeMinimumMaximumTest() : QuantizeModelTest(ReadModel(GetParam())) {}
 };
 
 TEST_P(QuantizeMinimumMaximumTest, VerifyMinimumMaximum) {
@@ -1686,11 +1634,8 @@ INSTANTIATE_TEST_SUITE_P(MinimumMaximumTestInst, QuantizeMinimumMaximumTest,
 
 class QuantizeUnpackTest : public QuantizeModelTest {
  protected:
-  QuantizeUnpackTest() {
-    input_model_ = ReadModel(internal::kModelWithUnpack);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeUnpackTest()
+      : QuantizeModelTest(ReadModel(internal::kModelWithUnpack)) {}
 };
 TEST_F(QuantizeUnpackTest, VerifyUnpack) {
   auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
@@ -1734,11 +1679,8 @@ TEST_F(QuantizeUnpackTest, VerifyUnpack) {
 
 class QuantizeTransposeTest : public QuantizeModelTest {
  protected:
-  QuantizeTransposeTest() {
-    input_model_ = ReadModel(internal::kModelWithTranspose);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeTransposeTest()
+      : QuantizeModelTest(ReadModel(internal::kModelWithTranspose)) {}
 };
 
 TEST_F(QuantizeTransposeTest, VerifyTranspose) {
@@ -1778,11 +1720,7 @@ TEST_F(QuantizeTransposeTest, VerifyTranspose) {
 
 class QuantizeQatTest : public QuantizeModelTest {
  protected:
-  QuantizeQatTest() {
-    input_model_ = ReadModel(internal::kQatModelWithFc);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeQatTest() : QuantizeModelTest(ReadModel(internal::kQatModelWithFc)) {}
 };
 
 TEST_F(QuantizeQatTest, VerifySingleQuantize) {
@@ -1838,13 +1776,11 @@ class QuantizeBroadcastToModelTest
     : public QuantizeModelTest,
       public testing::WithParamInterface<TensorType> {
  protected:
-  QuantizeBroadcastToModelTest() {
-    tensor_type_ = GetParam();
-    bias_type_ = GetBiasTensorType(tensor_type_);
-    input_model_ = ReadModel(internal::kModelWithBroadcastToOp);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeBroadcastToModelTest()
+      : QuantizeModelTest(ReadModel(internal::kModelWithBroadcastToOp)),
+        tensor_type_(GetParam()),
+        bias_type_(GetBiasTensorType(tensor_type_)) {}
+
   TensorType tensor_type_;
   TensorType bias_type_;
 };
@@ -1907,13 +1843,10 @@ class QuantizeGatherNDModelTest
     : public QuantizeModelTest,
       public testing::WithParamInterface<TensorType> {
  protected:
-  QuantizeGatherNDModelTest() {
-    tensor_type_ = GetParam();
-    bias_type_ = GetBiasTensorType(tensor_type_);
-    input_model_ = ReadModel(internal::kModelWithGatherNDOp);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeGatherNDModelTest()
+      : QuantizeModelTest(ReadModel(internal::kModelWithGatherNDOp)),
+        tensor_type_(GetParam()),
+        bias_type_(GetBiasTensorType(tensor_type_)) {}
 
   TensorType tensor_type_;
   TensorType bias_type_;
@@ -1972,11 +1905,8 @@ TEST_P(QuantizeGatherNDModelTest, QuantizeGatherND) {
 
 class QuantizeWhereModelTest : public QuantizeModelTest {
  protected:
-  QuantizeWhereModelTest() {
-    input_model_ = ReadModel(internal::kModelWithWhereOp);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeWhereModelTest()
+      : QuantizeModelTest(ReadModel(internal::kModelWithWhereOp)) {}
 };
 
 TEST_F(QuantizeWhereModelTest, QuantizeWhere) {
@@ -2045,14 +1975,13 @@ class QuantizeResourcesModelTest
     : public QuantizeModelTest,
       public testing::WithParamInterface<TestType> {
  protected:
-  QuantizeResourcesModelTest() {
+  QuantizeResourcesModelTest()
+      : QuantizeModelTest(
+            ReadModel(internal::kModelWithResourceVarsCalibrated)) {
     TestType obj = GetParam();
     tensor_type_ = obj.tensor_type;
     modify_range_ = obj.modify_range;
     bias_type_ = GetBiasTensorType(tensor_type_);
-    input_model_ = ReadModel(internal::kModelWithResourceVarsCalibrated);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_, nullptr);
     if (modify_range_ != ModifyRangeType::kNone) {
       ModifyRange(&model_);
     }
@@ -2189,10 +2118,8 @@ class QuantizeConcatConstModelTest
     : public QuantizeModelTest,
       public testing::WithParamInterface<TensorType> {
  protected:
-  QuantizeConcatConstModelTest() {
-    input_model_ = ReadModel(internal::kFloatConcatMax5Max10Max10);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
+  QuantizeConcatConstModelTest()
+      : QuantizeModelTest(ReadModel(internal::kFloatConcatMax5Max10Max10)) {
     // Make one of the values constant.
     MakeInputConstant(&model_);
   }
@@ -2296,14 +2223,12 @@ INSTANTIATE_TEST_SUITE_P(QuantizeConcatConstModelTest,
 class BiasInputTest : public QuantizeModelTest,
                       public testing::WithParamInterface<BiasTestType> {
  protected:
-  BiasInputTest() {
+  BiasInputTest()
+      : QuantizeModelTest(ReadModel(internal::kConvModelWith0Plus10Weights)) {
     BiasTestType obj = GetParam();
     tensor_type_ = obj.tensor_type;
     bias_type_ = obj.bias_type;
     is_valid_bias_type_ = obj.is_valid_bias_type;
-    input_model_ = ReadModel(internal::kConvModelWith0Plus10Weights);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
   }
   TensorType tensor_type_;
   TensorType bias_type_;

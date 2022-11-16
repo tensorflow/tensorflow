@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <fenv.h>  // NOLINT
+
 #include <cmath>
 #include <limits>
 
@@ -172,10 +174,7 @@ class Exhaustive32BitOrLessUnaryTest
     : public ExhaustiveUnaryTest<T>,
       public ::testing::WithParamInterface<std::pair<int64_t, int64_t>> {
  public:
-  // Sets error parameters appropriately for testing sin/cos.
-  void SetParamsForSinCos();
-
-  // Sets error parameters appropriately for testing sin/cos.
+  // Sets error parameters appropriately for testing tan.
   void SetParamsForTan();
 
  protected:
@@ -336,15 +335,6 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Expm1, {
 // pow(x, 0.5), but this is not true for x == -inf.
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(PowOneHalf, {
   EvaluateOp fn = +[](float x) { return std::pow(x, 0.5f); };
-  // TODO(b/123837116): Enable the test for all values after fixing the bug.
-  if (platform_ != "Host" && platform_ != "CUDA") {
-    fn = +[](float x) {
-      if (x == -std::numeric_limits<float>::infinity()) {
-        return std::nanf("");
-      }
-      return std::pow(x, 0.5f);
-    };
-  }
   Run([](XlaOp x) { return Pow(x, ScalarLike(x, 0.5)); }, fn);
 })
 
@@ -472,112 +462,43 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Tanh, {
   Run(Tanh, std::tanh, error_spec_gen);
 })
 
-template <PrimitiveType T>
-void Exhaustive32BitOrLessUnaryTest<T>::SetParamsForSinCos() {
-  if (this->platform_ == "Host" || this->platform_ == "CUDA") {
-    return;
-  }
-
-  // Non CPU/GPU targets may have used the Cody-Waite range reduction technique
-  // and will not provide meaningful results for sin/cos/tan if magnitudes
-  // exceed 2**p.
-  const int kFirstWrongVal = 1 << 16;
-  if (T == F32) {
-    this->known_incorrect_fn_ = [](int64_t v) {
-      float f = BitCast<float>(static_cast<uint32_t>(v));
-      return std::abs(f) > kFirstWrongVal;
-    };
-  } else if (T == BF16) {
-    this->known_incorrect_fn_ = [](int64_t v) {
-      float f = static_cast<float>(BitCast<bfloat16>(static_cast<uint16_t>(v)));
-      return std::abs(f) > kFirstWrongVal;
-    };
-  } else if (T == F16) {
-    this->known_incorrect_fn_ = [](int64_t v) {
-      float f = static_cast<float>(BitCast<half>(static_cast<uint16_t>(v)));
-      return std::abs(f) > kFirstWrongVal;
-    };
-  }
-}
-
-template <PrimitiveType T>
-void Exhaustive32BitOrLessUnaryTest<T>::SetParamsForTan() {
-  if (this->platform_ == "Host" || this->platform_ == "CUDA") {
-    return;
-  }
-
-  // Non CPU/GPU targets may have used the Cody-Waite range reduction technique
-  // and will not provide meaningful results for sin/cos/tan if magnitudes
-  // exceed 2**p.
-  if (T == F32) {
-    this->known_incorrect_fn_ = [](int64_t v) {
-      float f = BitCast<float>(static_cast<uint32_t>(v));
-      return std::abs(f) > (1 << 13);
-    };
-  } else if (T == BF16) {
-    this->known_incorrect_fn_ = [](int64_t v) {
-      float f = static_cast<float>(BitCast<bfloat16>(static_cast<uint16_t>(v)));
-      return std::abs(f) > (1 << 16);
-    };
-  } else if (T == F16) {
-    this->known_incorrect_fn_ = [](int64_t v) {
-      float f = static_cast<float>(BitCast<half>(static_cast<uint16_t>(v)));
-      return std::abs(f) > (1 << 15);
-    };
-  }
-}
-
 UNARY_TEST_F32(Cos, {
-  SetParamsForSinCos();
   Run(
       Cos, std::cos, +[](NativeT) {
-        return ErrorSpec{0.001, 0.001};
+        // This error spec corresponds to a maximum relative error of 2 ULP.
+        return ErrorSpec(0, 2 * std::numeric_limits<float>::epsilon());
       });
 })
 
-UNARY_TEST_F16(Cos, {
-  SetParamsForSinCos();
-  Run(Cos, std::cos);
-})
+UNARY_TEST_F16(Cos, { Run(Cos, std::cos); })
 
-UNARY_TEST_BF16(Cos, {
-  SetParamsForSinCos();
-  Run(Cos, std::cos);
-})
+UNARY_TEST_BF16(Cos, { Run(Cos, std::cos); })
 
 UNARY_TEST_F32(Sin, {
-  SetParamsForSinCos();
   Run(
       Sin, std::sin, +[](NativeT) {
-        return ErrorSpec{0.001, 0.001};
+        // This error spec corresponds to a maximum relative error of 2 ULP.
+        return ErrorSpec(0, 2 * std::numeric_limits<float>::epsilon());
       });
 })
 
-UNARY_TEST_F16(Sin, {
-  SetParamsForSinCos();
-  Run(Sin, std::sin);
-})
+UNARY_TEST_F16(Sin, { Run(Sin, std::sin); })
 
-UNARY_TEST_BF16(Sin, {
-  SetParamsForSinCos();
-  Run(Sin, std::sin);
-})
+UNARY_TEST_BF16(Sin, { Run(Sin, std::sin); })
 
 UNARY_TEST_F32(Tan, {
-  SetParamsForTan();
   Run(
       Tan, std::tan, +[](NativeT) {
-        return ErrorSpec{0.001, 0.001};
+        // This error spec corresponds to a maximum relative error of 4 ULP.
+        return ErrorSpec(0, 4 * std::numeric_limits<float>::epsilon());
       });
 })
 
 UNARY_TEST_F16(Tan, {
-  SetParamsForTan();
   Run(Tan, std::tan);
 })
 
 UNARY_TEST_BF16(Tan, {
-  SetParamsForTan();
   Run(Tan, std::tan);
 })
 
@@ -658,6 +579,14 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Lgamma, {
 })
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Round, { Run(Round, std::round); })
+
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(RoundNearestEven, {
+  ErrorSpecGen error_spec_gen = +[](NativeT) { return ErrorSpec{0.0, 0.0}; };
+  int curr_direction = fegetround();
+  fesetround(FE_TONEAREST);
+  Run(RoundNearestEven, std::nearbyint, error_spec_gen);
+  fesetround(curr_direction);
+})
 
 INSTANTIATE_TEST_SUITE_P(F32, ExhaustiveF32UnaryTest,
                          ::testing::ValuesIn(CreateExhaustiveF32Ranges()));

@@ -10,10 +10,11 @@ package_group(
     name = "friends",
     packages = [
         # Authorized users go here.
+        # copybara:uncomment "//learning/infra/mira/...",
         # copybara:uncomment "//learning/serving/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
+        # copybara:uncomment "//learning/brain/tfrt/cpp_tests/tpu_model/...",
         # copybara:uncomment "//learning/brain/tfrt/tfrt_session/...",
-        # copybara:uncomment "//third_party/auroraml/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/runtime_fallback/runtime/...",
         "//tensorflow_serving/...",
@@ -96,6 +97,7 @@ cc_library(
         ":run_handler",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",

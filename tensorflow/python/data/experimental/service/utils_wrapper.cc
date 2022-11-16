@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "Python.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/core/data/service/py_utils.h"
@@ -21,4 +23,7 @@ limitations under the License.
 PYBIND11_MODULE(_pywrap_utils, m) {
   m.def("TF_DATA_DefaultProtocol",
         []() -> std::string { return tensorflow::data::DefaultProtocol(); });
+  m.def("TF_DATA_DefaultDataTransferProtocol", []() -> std::string {
+    return tensorflow::data::DefaultDataTransferProtocol();
+  });
 };

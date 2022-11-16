@@ -12,5 +12,5 @@ func.func @test(%V__0: tensor<?x?xf32>
         keep_dims = false,
         device = "/job:localhost/replica:0/task:0/device:CPU:0"
       } : (tensor<?x?xi1>, tensor<1xi32>) -> tensor<?xi1>
-  return %1 : tensor<?xi1>
+  func.return %1 : tensor<?xi1>
 }

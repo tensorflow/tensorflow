@@ -35,10 +35,9 @@ struct OpData {
   bool cond_has_dynamic_output_tensors;
   bool body_has_dynamic_output_tensors;
   bool body_use_shallow_copy;
-  bool subgraphs_allocated;
+  // set when Prepare_impl() is called.
+  bool subgraphs_prepared;
 };
-
-constexpr size_t kThresholdShallowCopy = 1 * 1024 * 1024;  // 1 MBytes.
 
 namespace {
 
@@ -212,7 +211,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   op_data->cond_has_dynamic_output_tensors = false;
   op_data->body_has_dynamic_output_tensors = false;
   op_data->body_use_shallow_copy = false;
-  op_data->subgraphs_allocated = false;
+  op_data->subgraphs_prepared = false;
   return op_data;
 }
 
@@ -220,7 +219,7 @@ void Free(TfLiteContext* context, void* buffer) {
   delete reinterpret_cast<OpData*>(buffer);
 }
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus Prepare_impl(TfLiteContext* context, TfLiteNode* node) {
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
   int num_inputs = node->inputs->size;
   // The number of outputs should be the same as number of inputs.
@@ -271,8 +270,32 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       context, CopyTensorsShapeAndType(
                    context, this_subgraph, TfLiteIntArrayView(node->inputs),
                    body_subgraph, body_subgraph->inputs(), true));
+
+  bool input_has_resource_or_variant_tensor = false;
+  for (int i = 0; i < num_inputs; ++i) {
+    if (IsResourceOrVariant(
+            body_subgraph->tensor(body_subgraph->inputs()[i]))) {
+      input_has_resource_or_variant_tensor = true;
+      break;
+    }
+  }
+  if (this_subgraph->ShouldOptimizeMemoryForLargeTensors() &&
+      !input_has_resource_or_variant_tensor) {
+    // The current shallow copy requires to use dynamic tensors which introduces
+    // additional overheads. Therefore, use the method only if dynamic
+    // allocation is enabled.
+    op_data->body_use_shallow_copy = true;
+    op_data->body_has_dynamic_output_tensors = true;
+    // Make body inputs dynamic to use shallow copy with Eval_dynamic().
+    for (int i = 0; i < num_inputs; ++i) {
+      TfLiteTensor* body_input =
+          body_subgraph->tensor(body_subgraph->inputs()[i]);
+      SetTensorToDynamic(body_input);
+      body_input->bytes = 0;
+    }
+  }
+
   TF_LITE_ENSURE_OK(context, body_subgraph->AllocateTensors());
-  op_data->subgraphs_allocated = true;
   if (body_subgraph->HasDynamicTensors()) {
     op_data->body_has_dynamic_output_tensors = true;
   } else {
@@ -308,34 +331,28 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                         context->ResizeTensor(context, output, output_size));
     }
   }
-
-  // Calculate the size of body subgraph inputs.
-  size_t total_inputs_bytes = 0;
-  for (int i = 0; i < num_inputs; ++i) {
-    TfLiteTensor* body_input =
-        body_subgraph->tensor(body_subgraph->inputs()[i]);
-    total_inputs_bytes += body_input->bytes;
-  }
-
-  // Check if the total memory footprint of the body subgraph inputs is big
-  // enough to use shallow copy. The current shallow copy requires to use
-  // dynamic tensors which introduces additional overheads. Therefore, use the
-  // method only if copying tensors is expensive than the dynamic tensor usage
-  // overheads.
-  if (total_inputs_bytes > kThresholdShallowCopy) {
-    op_data->body_use_shallow_copy = true;
-    op_data->body_has_dynamic_output_tensors = true;
-    // Make body inputs dynamic to use shallow copy with Eval_dynamic().
-    for (int i = 0; i < num_inputs; ++i) {
-      TfLiteTensor* body_input =
-          body_subgraph->tensor(body_subgraph->inputs()[i]);
-      SetTensorToDynamic(body_input);
-      body_input->bytes = 0;
-    }
-    TF_LITE_ENSURE_OK(context, body_subgraph->AllocateTensors());
-  }
-
+  op_data->subgraphs_prepared = true;
   return kTfLiteOk;
+}
+
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  Subgraph* this_subgraph = reinterpret_cast<Subgraph*>(context->impl_);
+  if (this_subgraph->ShouldOptimizeMemoryForLargeTensors()) {
+    // Apply lazy initialization of WHILE kernel.
+    // Just make node output tensors dynamic.
+    int num_outputs = node->outputs->size;
+    for (int i = 0; i < num_outputs; ++i) {
+      TfLiteTensor* output;
+      TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, i, &output));
+      SetTensorToDynamic(output);
+    }
+    return kTfLiteOk;
+  }
+  return Prepare_impl(context, node);
+}
+
+TfLiteStatus Prepare_lazy(TfLiteContext* context, TfLiteNode* node) {
+  return Prepare_impl(context, node);
 }
 
 // Evaluate cond subgraph and set the result.
@@ -574,7 +591,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   Subgraph* cond_subgraph = (*subgraphs)[op_data->cond_subgraph_index].get();
   Subgraph* body_subgraph = (*subgraphs)[op_data->body_subgraph_index].get();
 
-  if (op_data->subgraphs_allocated == false) {
+  if (op_data->subgraphs_prepared == false) {
+    TF_LITE_ENSURE_OK(context, Prepare_lazy(context, node));
+  } else {
     TF_LITE_ENSURE_OK(context, cond_subgraph->AllocateTensors());
     TF_LITE_ENSURE_OK(context, body_subgraph->AllocateTensors());
   }
@@ -585,9 +604,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, Eval_static(context, node));
   }
 
-  TF_LITE_ENSURE_OK(context, cond_subgraph->ReleaseNonPersistentMemory());
-  TF_LITE_ENSURE_OK(context, body_subgraph->ReleaseNonPersistentMemory());
-  op_data->subgraphs_allocated = false;
+  if (!this_subgraph->ShouldPreserveAllTensors()) {
+    TF_LITE_ENSURE_OK(context, cond_subgraph->ReleaseMemory());
+    TF_LITE_ENSURE_OK(context, body_subgraph->ReleaseMemory());
+  }
 
   return kTfLiteOk;
 }

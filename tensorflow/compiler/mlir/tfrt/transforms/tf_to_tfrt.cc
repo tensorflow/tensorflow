@@ -32,9 +32,14 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/iterator_range.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -52,6 +57,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/opdefs/tf_jitrt_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_clustering.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/attr_lowering_utils.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/corert_converter.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/fallback_converter.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
@@ -82,6 +88,7 @@ constexpr char kTFRTDeviceAttr[] = "tfrt.device";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kHostAttr[] = "host";
 constexpr char kDeviceTypeTpu[] = "TPU";
+constexpr int64_t kDefaultCheapCost = 1;
 
 void getDependentConversionDialects(mlir::DialectRegistry &registry) {
   registry.insert<tfrt::corert::CoreRTDialect, mlir::func::FuncDialect,
@@ -91,7 +98,7 @@ void getDependentConversionDialects(mlir::DialectRegistry &registry) {
 }
 
 mlir::Value GetFunctionInputChain(mlir::Operation *op) {
-  auto func_op = op->getParentOfType<mlir::FuncOp>();
+  auto func_op = op->getParentOfType<mlir::func::FuncOp>();
   return func_op.getArgument(0);
 }
 
@@ -150,7 +157,8 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
     // Remove the function attributes, which have already been processed.
     for (const auto &key : func_attr_keys) op->removeAttr(key);
 
-    mlir::ArrayAttr op_attrs = corert_converter_.CreateOpAttrs(op->getAttrs());
+    Builder builder(op->getContext());
+    mlir::ArrayAttr op_attrs = CreateTfrtOpAttrs(op->getAttrs(), builder);
     if (!op_attrs) return op->emitWarning("failed to lower attributes.");
 
     mlir::StringAttr op_name =
@@ -251,14 +259,24 @@ mlir::LogicalResult FallbackExecuteOpConversion::ConvertToFallbackExecuteOp(
       rewriter.getI64IntegerAttr(fallback_converter.GetNextFallbackKey());
 
   // Query cost analysis to assign costs.
-  auto cost = rewriter.getI64IntegerAttr(cost_analysis_.GetCost(op));
+  IntegerAttr cost;
+  auto parsed_device_name =
+      corert_converter_.ParseDeviceName(device.getValue());
+  if (parsed_device_name && parsed_device_name->device_type == DEVICE_GPU) {
+    // For GPU ops, the host only needs to dispatch them to GPUs, which should
+    // be relatively cheap for the host.
+    cost = rewriter.getI64IntegerAttr(kDefaultCheapCost);
+  } else {
+    cost = rewriter.getI64IntegerAttr(
+        cost_analysis_.GetCost(op, fallback_key.getInt()));
+  }
 
-  if (mlir::MemoryEffectOpInterface::hasNoEffect(op)) {
+  if (mlir::isMemoryEffectFree(op)) {
     auto new_op = rewriter.create<tfrt::fallback_async::ExecuteOp>(
         op->getLoc(), result_types, new_operands, device, op_attrs,
         op_func_attrs, fallback_key, op_name, cost);
     fallback_converter.RegisterFallbackOp(new_op);
-    rewriter.replaceOp(op, new_op.results());
+    rewriter.replaceOp(op, new_op.getResults());
   } else {
     auto in_chain = corert_converter_.GetLocalSideEffectChain(op, &rewriter);
     auto out_chain = in_chain;
@@ -271,7 +289,7 @@ mlir::LogicalResult FallbackExecuteOpConversion::ConvertToFallbackExecuteOp(
           op->getLoc(), result_types, new_operands, device, op_attrs,
           op_func_attrs, fallback_key, op_name, cost);
       fallback_converter.RegisterFallbackOp(new_op);
-      rewriter.replaceOp(op, new_op.results());
+      rewriter.replaceOp(op, new_op.getResults());
     } else {
       // Create tfrt_fallback.executeop.seq if it is a side-effecting op.
       auto new_op = rewriter.create<tfrt::fallback_async::ExecuteOpSeq>(
@@ -279,8 +297,8 @@ mlir::LogicalResult FallbackExecuteOpConversion::ConvertToFallbackExecuteOp(
           new_operands, device, op_attrs, op_func_attrs, fallback_key, op_name,
           cost);
       fallback_converter.RegisterFallbackOp(new_op);
-      rewriter.replaceOp(op, new_op.results());
-      out_chain = new_op.out_op_chain();
+      rewriter.replaceOp(op, new_op.getResults());
+      out_chain = new_op.getOutOpChain();
     }
 
     // Register the converted op so that it can be retrieved by successors.
@@ -310,21 +328,21 @@ mlir::LogicalResult FallbackExecuteOpConversion::ConvertToCoreRTExecuteOp(
       corert_converter_.ConvertOpHandler(op, op_handler_name, &rewriter);
   if (!op_handler) return failure();
 
-  if (mlir::MemoryEffectOpInterface::hasNoEffect(op)) {
+  if (mlir::isMemoryEffectFree(op)) {
     auto new_op = rewriter.create<tfrt::corert::ExecuteOp>(
         op->getLoc(), result_types, op_handler, new_operands, op_attrs,
         op_func_attrs, op_name);
-    rewriter.replaceOp(op, new_op.results());
+    rewriter.replaceOp(op, new_op.getResults());
   } else {
     // Create corert.executeop.seq if it is a side-effecting op.
     auto new_op = rewriter.create<tfrt::corert::ExecuteOpSeq>(
         op->getLoc(), corert_converter_.chain_type(), result_types, op_handler,
         corert_converter_.GetLocalSideEffectChain(op, &rewriter), new_operands,
         op_attrs, op_func_attrs, op_name);
-    rewriter.replaceOp(op, new_op.results());
+    rewriter.replaceOp(op, new_op.getResults());
 
     // Register the converted op so that it can be retrieved by successors.
-    corert_converter_.RegisterLocalSideEffectChain(op, new_op.out_op_chain());
+    corert_converter_.RegisterLocalSideEffectChain(op, new_op.getOutOpChain());
   }
 
   return success();
@@ -342,15 +360,15 @@ class FallbackConstOpConversion
       mlir::TF::ConstOp op, OpAdaptor adaptor,
       mlir::ConversionPatternRewriter &rewriter) const override {
     // Some data types are handled separately using a fast path.
-    if (corert_converter_.IsSupportedNumericDType(op.dtype()) ||
-        op.dtype().isa<mlir::TF::StringType>())
+    if (IsSupportedTfrtNumericDType(op.getDtype()) ||
+        op.getDtype().isa<mlir::TF::StringType>())
       return failure();
 
     // For other data types that do not have a fast path (eg. quantized types),
     // we convert it to serialized tensor proto.
 
     tensorflow::TensorProto tensor_proto;
-    auto status = ConvertToTensorProto(op.value(), &tensor_proto);
+    auto status = ConvertToTensorProto(op.getValue(), &tensor_proto);
     if (!status.ok()) return op.emitError(status.error_message());
 
     rewriter.replaceOpWithNewOp<tfrt::fallback_async::ConstTensorProtoOp>(
@@ -393,10 +411,10 @@ class FallbackSetResourceOp
     auto new_op = rewriter.create<tfrt::fallback_async::SetResourceOp>(
         op.getLoc(), corert_converter_.chain_type(),
         corert_converter_.GetLocalSideEffectChain(op, &rewriter),
-        new_operands[0], device.getValue(), op.index());
+        new_operands[0], device.getValue(), op.getIndex());
 
     // Register the converted op so that it can be retrieved by successors.
-    corert_converter_.RegisterLocalSideEffectChain(op, new_op.out_ch());
+    corert_converter_.RegisterLocalSideEffectChain(op, new_op.getOutCh());
 
     rewriter.eraseOp(op);
 
@@ -430,9 +448,9 @@ class FallbackGetResourceOp
 
     auto new_op = rewriter.create<tfrt::fallback_async::GetResourceOp>(
         op.getLoc(), corert_converter_.chain_type(), result_types, ready_chain,
-        device.getValue(), op.indices());
+        device.getValue(), op.getIndices());
 
-    rewriter.replaceOp(op, new_op.results());
+    rewriter.replaceOp(op, new_op.getResults());
 
     return success();
   }
@@ -479,22 +497,22 @@ class TFDeviceRemoteRunOpConversion
     mlir::Value in_op_chain =
         corert_converter_.GetLocalSideEffectChain(op, &rewriter);
     mlir::Value task_handle = corert_converter_.GetTaskHandle(
-        op.getOperation(), op.host(), &rewriter);
+        op.getOperation(), op.getHost(), &rewriter);
     mlir::Value remote_chain_mgr =
         corert_converter_.GetRemoteChainManager(op, &rewriter);
     mlir::Type remote_obj_id_ty =
         rewriter.getType<tfrt::dist::RemoteObjectIdType>();
     ModuleOp module = op->getParentOfType<ModuleOp>();
     SymbolTable symtab(module);
-    FuncOp callee = symtab.lookup<FuncOp>(op.callee());
+    func::FuncOp callee = symtab.lookup<func::FuncOp>(op.getCallee());
     if (!callee) {
-      op.emitOpError("callee function ") << op.callee() << " is not found";
+      op.emitOpError("callee function ") << op.getCallee() << " is not found";
       return failure();
     }
     StringAttr host = callee->getAttrOfType<StringAttr>(kHostAttr);
     if (!host) {
       op.emitOpError("callee function ")
-          << op.callee() << " should have the host attribute";
+          << op.getCallee() << " should have the host attribute";
       return failure();
     }
 
@@ -504,7 +522,7 @@ class TFDeviceRemoteRunOpConversion
     // TFRT dialect.
     arguments.push_back(corert_converter_.GetRemoteSideEffectChain(
         op, host.getValue(), &rewriter));
-    for (mlir::Value argument : op.callee_args()) {
+    for (mlir::Value argument : op.getCalleeArgs()) {
       arguments.push_back(argument);
     }
 
@@ -519,16 +537,16 @@ class TFDeviceRemoteRunOpConversion
     auto remote_execute_func_op =
         rewriter.create<tfrt::dist::RemoteExecuteFuncOp>(
             op.getLoc(), corert_converter_.chain_type(), result_types,
-            in_op_chain, distributed_context, task_handle, op.callee(),
+            in_op_chain, distributed_context, task_handle, op.getCallee(),
             arguments);
-    rewriter.replaceOp(op, remote_execute_func_op.results().drop_front(1));
+    rewriter.replaceOp(op, remote_execute_func_op.getResults().drop_front(1));
 
     auto set_chain_op = rewriter.create<tfrt::dist::SetChainForTaskHandleOp>(
         op.getLoc(), corert_converter_.chain_type(),
-        remote_execute_func_op.out_op_chain(), remote_chain_mgr, task_handle,
-        remote_execute_func_op.results().front());
-    corert_converter_.RegisterLocalSideEffectChain(op,
-                                                   set_chain_op.out_op_chain());
+        remote_execute_func_op.getOutOpChain(), remote_chain_mgr, task_handle,
+        remote_execute_func_op.getResults().front());
+    corert_converter_.RegisterLocalSideEffectChain(
+        op, set_chain_op.getOutOpChain());
 
     return success();
   }
@@ -553,16 +571,6 @@ class FallbackBatchFunctionOpConversion
       ConversionPatternRewriter &rewriter) const override {
     corert_converter_.MaterializeDerivedAttributes(op);
 
-    // Remove the device attribute for fallback, as currently fallback will
-    // select device automatically.
-    //
-    // TODO(chky): The device attribute should be passed explicitly. This can be
-    // once we change the kernel implementation to choose device based on
-    // attributes.
-    op->removeAttr(rewriter.getStringAttr(kDeviceAttr));
-
-    SymbolRefAttr f = op.fAttr();
-
     llvm::SmallVector<NamedAttribute, 12> attr_array;
     for (auto &key_and_value : op->getAttrs()) {
       StringRef name = key_and_value.getName();
@@ -571,29 +579,32 @@ class FallbackBatchFunctionOpConversion
       }
       attr_array.push_back(key_and_value);
     }
-    ArrayAttr op_attrs = corert_converter_.CreateOpAttrs(attr_array);
+
+    Builder builder(op.getContext());
+    ArrayAttr op_attrs = CreateTfrtOpAttrs(attr_array, builder);
     if (!op_attrs) return op.emitWarning("failed to lower attributes.");
 
-    llvm::SmallVector<Type, 4> result_types;
-    for (auto type : op.getResultTypes()) {
-      if (failed(corert_converter_.convertType(type, result_types)))
-        return failure();
-    }
+    mlir::StringAttr device = op->getAttrOfType<mlir::StringAttr>(kDeviceAttr);
+    if (!device || device.getValue().empty())
+      return op->emitWarning("failed to find a non-empty 'device' attribute");
+    auto parsed_device_name =
+        corert_converter_.ParseDeviceName(device.getValue());
+    if (!parsed_device_name)
+      return op->emitWarning("failed to parse the device name");
 
     llvm::SmallVector<mlir::Value, 4> new_operands;
-    if (mlir::failed(tfrt_compiler::ConvertCoreRTOperands(
-            op, adaptor.getOperands(), &new_operands, rewriter)))
+    if (mlir::failed(tfrt_compiler::ConvertFallbackOperands(
+            op, device.getValue(), adaptor.getOperands(), &new_operands,
+            rewriter)))
       return failure();
 
+    llvm::SmallVector<Type, 4> result_types(
+        op->getNumResults(), rewriter.getType<tfrt::fallback::TFTensorType>());
+
     auto new_op = rewriter.create<tfrt::fallback_async::BatchFunctionOp>(
-        op.getLoc(), corert_converter_.chain_type(), result_types,
-        corert_converter_.GetLocalSideEffectChain(op, &rewriter), new_operands,
-        f, op_attrs);
-    rewriter.replaceOp(op, new_op.results());
-
-    // Register the converted op so that it can be retrieved by successors.
-    corert_converter_.RegisterLocalSideEffectChain(op, new_op.out_op_chain());
-
+        op.getLoc(), result_types, new_operands, device, op.getFAttr(),
+        op_attrs);
+    rewriter.replaceOp(op, new_op.getResults());
     return success();
   }
 
@@ -614,8 +625,7 @@ class CoreRTConstDenseTensorOpConversion
   LogicalResult matchAndRewrite(
       mlir::TF::ConstOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    if (!corert_converter_.IsSupportedNumericDType(op.dtype()))
-      return failure();
+    if (!IsSupportedTfrtNumericDType(op.getDtype())) return failure();
 
     // Only CPU ops can be lowered using this conversion. If there is no device
     // assignment, this op is treated as a CPU op and can be lowered.
@@ -624,7 +634,7 @@ class CoreRTConstDenseTensorOpConversion
 
     auto new_op = rewriter.create<tfrt::corert::ConstDenseTensorOp>(
         op.getLoc(), corert_converter_.tensor_handle_type(),
-        op.value().cast<DenseElementsAttr>());
+        op.getValue().cast<DenseElementsAttr>());
     rewriter.replaceOp(op, new_op->getResult(0));
     return success();
   }
@@ -646,14 +656,14 @@ class CoreRTConstDenseTensorOpConversion
 // calling this function. The output chain is used to signal visibility of all
 // side-effects of this function.
 class TFRTFuncOpSignatureConversion
-    : public mlir::OpConversionPattern<mlir::FuncOp> {
+    : public mlir::OpConversionPattern<mlir::func::FuncOp> {
  public:
   TFRTFuncOpSignatureConversion(mlir::MLIRContext *ctx,
                                 mlir::TypeConverter *type_converter)
       : OpConversionPattern(ctx), type_converter_(*type_converter) {}
 
   LogicalResult matchAndRewrite(
-      mlir::FuncOp func_op, OpAdaptor adaptor,
+      mlir::func::FuncOp func_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     mlir::FunctionType type = func_op.getFunctionType();
 
@@ -737,9 +747,10 @@ class CoreRTConstStringTensorOpConversion
   LogicalResult matchAndRewrite(
       mlir::TF::ConstOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {  // NOLINT
-    if (!op.dtype().isa<mlir::TF::StringType>()) return failure();
+    if (!op.getDtype().isa<mlir::TF::StringType>()) return failure();
 
-    DenseStringElementsAttr attr = op.value().cast<DenseStringElementsAttr>();
+    DenseStringElementsAttr attr =
+        op.getValue().cast<DenseStringElementsAttr>();
 
     llvm::SmallVector<Attribute, 4> values;
     values.reserve(attr.getNumElements());
@@ -748,7 +759,7 @@ class CoreRTConstStringTensorOpConversion
           llvm::StringRef(element.data(), element.size())));
 
     // Create the shape attribute from the tensor shape.
-    ArrayRef<int64_t> shape = op.value().getType().getShape();
+    ArrayRef<int64_t> shape = op.getValue().getType().getShape();
     llvm::SmallVector<mlir::Attribute, 4> dims;
     dims.reserve(shape.size());
     auto i64_type = rewriter.getIntegerType(64);
@@ -759,7 +770,7 @@ class CoreRTConstStringTensorOpConversion
         op.getLoc(), corert_converter_.tensor_handle_type(),
         rewriter.getArrayAttr(dims), rewriter.getArrayAttr(values));
 
-    rewriter.replaceOp(op, new_op.result());
+    rewriter.replaceOp(op, new_op.getResult());
 
     return success();
   }
@@ -833,7 +844,8 @@ class CoreRTExecuteOpConversion : public mlir::OpConversionPattern<TF_Op> {
     // Remove the function attributes, which have already been processed.
     for (const auto &key : func_attr_keys) op->removeAttr(key);
 
-    ArrayAttr op_attrs = corert_converter_.CreateOpAttrs(op->getAttrs());
+    Builder builder(op.getContext());
+    ArrayAttr op_attrs = CreateTfrtOpAttrs(op->getAttrs(), builder);
     if (!op_attrs) return op.emitError("failed to lower attributes.");
 
     llvm::SmallVector<mlir::Value, 4> new_operands;
@@ -852,7 +864,7 @@ class CoreRTExecuteOpConversion : public mlir::OpConversionPattern<TF_Op> {
         op.getLoc(), result_types, op_handler, new_operands, op_attrs,
         op_func_attrs, op_name);
 
-    rewriter.replaceOp(op, new_op.results());
+    rewriter.replaceOp(op, new_op.getResults());
     return success();
   }
 
@@ -922,7 +934,7 @@ class TFRTCallOpConversion : public mlir::OpConversionPattern<CallOp> {
         new_operands);
     rewriter.replaceOp(op, new_op.getResults().drop_front());
 
-    if (!mlir::MemoryEffectOpInterface::hasNoEffect(op)) {
+    if (!mlir::isMemoryEffectFree(op)) {
       // Register the converted op so that it can be retrieved by successors.
       // TODO(chky): Add OpTraits or OpInterface, rather than assume first
       // result is a chain.
@@ -1001,15 +1013,18 @@ class TFRTCaseOpConversion : public mlir::OpConversionPattern<TF::CaseOp> {
   LogicalResult matchAndRewrite(
       TF::CaseOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    mlir::ArrayAttr branches = op.branches();
+    mlir::ArrayAttr branches = op.getBranches();
 
     llvm::SmallVector<mlir::Type, 4> result_types;
+    result_types.push_back(corert_converter_.chain_type());
     for (mlir::Type type : op->getResultTypes()) {
       if (failed(type_converter_.convertType(type, result_types)))
         return failure();
     }
 
     llvm::SmallVector<mlir::Value, 4> branch_operands;
+    branch_operands.push_back(
+        corert_converter_.GetLocalSideEffectChain(op, &rewriter));
     if (mlir::failed(ConvertFunctionCallOperands(
             op, adaptor.getOperands().drop_front(), &branch_operands, rewriter,
             func_use_fallback_tensor_)))
@@ -1037,11 +1052,9 @@ class TFRTCaseOpConversion : public mlir::OpConversionPattern<TF::CaseOp> {
             op.getLoc(), rewriter.getI32Type(), index_operand);
 
     auto new_op = rewriter.create<tfrt::compiler::CaseOp>(
-        op.getLoc(), corert_converter_.chain_type(), result_types, index_value,
-        branches, corert_converter_.GetLocalSideEffectChain(op, &rewriter),
-        branch_operands);
+        op.getLoc(), result_types, index_value, branches, branch_operands);
 
-    rewriter.replaceOp(op, new_op.branch_outputs());
+    rewriter.replaceOp(op, new_op.getBranchOutputs().drop_front());
     return success();
   }
 
@@ -1081,8 +1094,8 @@ class TFRTCondOpConversion : public mlir::OpConversionPattern<mlir::TF::IfOp> {
   mlir::LogicalResult matchAndRewrite(
       mlir::TF::IfOp op, OpAdaptor adaptor,
       mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::FlatSymbolRefAttr then_branch = op.then_branchAttr();
-    mlir::FlatSymbolRefAttr else_branch = op.else_branchAttr();
+    mlir::FlatSymbolRefAttr then_branch = op.getThenBranchAttr();
+    mlir::FlatSymbolRefAttr else_branch = op.getElseBranchAttr();
 
     llvm::SmallVector<Type, 4> result_types;
     result_types.push_back(rewriter.getType<tfrt::compiler::ChainType>());
@@ -1113,7 +1126,7 @@ class TFRTCondOpConversion : public mlir::OpConversionPattern<mlir::TF::IfOp> {
     // The first result is a !tfrt.chain.
     rewriter.replaceOp(op, new_op.getResults().drop_front(1));
 
-    if (!mlir::MemoryEffectOpInterface::hasNoEffect(op)) {
+    if (!mlir::isMemoryEffectFree(op)) {
       // Register the converted op so that it can be retrieved by successors.
       // TODO(chky): Add OpTraits or OpInterface, rather than assume first
       // result is a chain.
@@ -1184,8 +1197,8 @@ class TFRTWhileOpConversion
   mlir::LogicalResult matchAndRewrite(
       mlir::TF::WhileOp op, OpAdaptor adaptor,
       mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::FlatSymbolRefAttr cond_fn = op.condAttr();
-    mlir::FlatSymbolRefAttr body_fn = op.bodyAttr();
+    mlir::FlatSymbolRefAttr cond_fn = op.getCondAttr();
+    mlir::FlatSymbolRefAttr body_fn = op.getBodyAttr();
 
     llvm::SmallVector<Type, 4> while_arg_result_types;
     // Insert a chain for side effects as the first argument/result.
@@ -1206,7 +1219,7 @@ class TFRTWhileOpConversion
 
     // Create the predicate function that calls the original cond function and
     // in addition convert the result to a boolean value.
-    mlir::FuncOp pred_fn =
+    mlir::func::FuncOp pred_fn =
         GetPredicateFunction(op, cond_fn, while_arg_result_types, rewriter);
     if (!pred_fn) return failure();
 
@@ -1229,7 +1242,7 @@ class TFRTWhileOpConversion
     auto pred_chain = call_pred_fn.getResult(0);
     auto first_iteration_bool_cond = call_pred_fn.getResult(1);
 
-    mlir::FuncOp new_body_fn = GetWhileBodyFunction(
+    mlir::func::FuncOp new_body_fn = GetWhileBodyFunction(
         op, body_fn, pred_fn, while_arg_result_types, rewriter);
 
     // Use the pred chain as the chain to the while body. The rest args should
@@ -1238,7 +1251,7 @@ class TFRTWhileOpConversion
     while_args[0] = pred_chain;
 
     int64_t parallel_iterations =
-        enable_while_parallel_iterations_ ? op.parallel_iterations() : 1;
+        enable_while_parallel_iterations_ ? op.getParallelIterations() : 1;
 
     auto new_op = rewriter.create<tfrt::compiler::WhileOp>(
         op.getLoc(), while_arg_result_types, first_iteration_bool_cond,
@@ -1248,7 +1261,7 @@ class TFRTWhileOpConversion
 
     if (!has_at_most_tensor_array_effect) out_chain = new_op.getResult(0);
 
-    if (!mlir::MemoryEffectOpInterface::hasNoEffect(op)) {
+    if (!mlir::isMemoryEffectFree(op)) {
       // Register the converted op so that it can be retrieved by successors.
       // TODO(chky): Add OpTraits or OpInterface, rather than assume first
       // result is a chain.
@@ -1265,14 +1278,14 @@ class TFRTWhileOpConversion
                op.body_function());
   }
 
-  mlir::FuncOp GetPredicateFunction(
+  mlir::func::FuncOp GetPredicateFunction(
       mlir::TF::WhileOp op, mlir::FlatSymbolRefAttr cond_fn,
       mlir::TypeRange arg_types,
       mlir::ConversionPatternRewriter &rewriter) const;
 
-  mlir::FuncOp GetWhileBodyFunction(
+  mlir::func::FuncOp GetWhileBodyFunction(
       mlir::TF::WhileOp op, mlir::FlatSymbolRefAttr body_fn,
-      mlir::FuncOp pred_fn, mlir::TypeRange arg_types,
+      mlir::func::FuncOp pred_fn, mlir::TypeRange arg_types,
       mlir::ConversionPatternRewriter &rewriter) const;
 
   mlir::TypeConverter &type_converter_;
@@ -1293,17 +1306,17 @@ class TFRTWhileOpConversion
 //  return %ch0, %cond_bool
 // }
 //
-mlir::FuncOp TFRTWhileOpConversion::GetPredicateFunction(
+mlir::func::FuncOp TFRTWhileOpConversion::GetPredicateFunction(
     mlir::TF::WhileOp op, mlir::FlatSymbolRefAttr cond_fn,
     mlir::TypeRange arg_types,
     mlir::ConversionPatternRewriter &rewriter) const {
   std::string pred_fn_name = cond_fn.getValue().str() + "/tfrt_predicate";
 
-  if (auto pred_fn = symbol_table_.lookup<mlir::FuncOp>(pred_fn_name)) {
+  if (auto pred_fn = symbol_table_.lookup<mlir::func::FuncOp>(pred_fn_name)) {
     return pred_fn;
   }
 
-  auto func_op = op->getParentOfType<mlir::FuncOp>();
+  auto func_op = op->getParentOfType<mlir::func::FuncOp>();
 
   mlir::ConversionPatternRewriter::InsertionGuard insertion_guard(rewriter);
   rewriter.setInsertionPointAfter(func_op);
@@ -1314,7 +1327,7 @@ mlir::FuncOp TFRTWhileOpConversion::GetPredicateFunction(
   auto func_type = rewriter.getFunctionType(arg_types, pred_result_types);
 
   auto pred_fn =
-      rewriter.create<mlir::FuncOp>(op.getLoc(), pred_fn_name, func_type);
+      rewriter.create<mlir::func::FuncOp>(op.getLoc(), pred_fn_name, func_type);
 
   auto *block = pred_fn.addEntryBlock();
   rewriter.setInsertionPointToStart(block);
@@ -1354,21 +1367,21 @@ mlir::FuncOp TFRTWhileOpConversion::GetPredicateFunction(
 //   tfrt.return %ch1, %result, %cond_bool
 // }
 //
-mlir::FuncOp TFRTWhileOpConversion::GetWhileBodyFunction(
+mlir::func::FuncOp TFRTWhileOpConversion::GetWhileBodyFunction(
     mlir::TF::WhileOp op, mlir::FlatSymbolRefAttr original_body_fn,
-    mlir::FuncOp pred_fn, mlir::TypeRange arg_types,
+    mlir::func::FuncOp pred_fn, mlir::TypeRange arg_types,
     mlir::ConversionPatternRewriter &rewriter) const {
   int64_t parallel_iterations =
-      enable_while_parallel_iterations_ ? op.parallel_iterations() : 1;
+      enable_while_parallel_iterations_ ? op.getParallelIterations() : 1;
 
   std::string body_fn_name = original_body_fn.getValue().str() + "/tfrt_body_" +
                              absl::StrCat(parallel_iterations);
 
-  if (auto body_fn = symbol_table_.lookup<mlir::FuncOp>(body_fn_name)) {
+  if (auto body_fn = symbol_table_.lookup<mlir::func::FuncOp>(body_fn_name)) {
     return body_fn;
   }
 
-  auto func_op = op->getParentOfType<mlir::FuncOp>();
+  auto func_op = op->getParentOfType<mlir::func::FuncOp>();
 
   mlir::ConversionPatternRewriter::InsertionGuard insertion_guard(rewriter);
   rewriter.setInsertionPointAfter(func_op);
@@ -1382,7 +1395,7 @@ mlir::FuncOp TFRTWhileOpConversion::GetWhileBodyFunction(
   body_result_types.push_back(rewriter.getI1Type());
   auto func_type = rewriter.getFunctionType(arg_types, body_result_types);
   auto body_fn =
-      rewriter.create<mlir::FuncOp>(op.getLoc(), body_fn_name, func_type);
+      rewriter.create<mlir::func::FuncOp>(op.getLoc(), body_fn_name, func_type);
   if (parallel_iterations > 1) {
     // Disable stream merging by setting cost threshold to 1. The key to
     // parallelize while iterations is to execute iteration index handling (e.g.
@@ -1467,7 +1480,7 @@ class JitRtCallToJitRtCompileAndExecuteConversion
 
     // Replace jitrt.call operation with a tf_jitrt.fallback.execute operation.
     rewriter.replaceOpWithNewOp<tf_jitrt::FallbackExecuteOp>(
-        call, result_types, call.callee(), fallback_operands, kJitRtDevice);
+        call, result_types, call.getCallee(), fallback_operands, kJitRtDevice);
 
     return success();
   }
@@ -1486,8 +1499,9 @@ void SetUpTFToTFRTConversionLegality(mlir::ConversionTarget *target,
   target->addIllegalDialect<TF::TensorFlowDialect>();
   target->addIllegalDialect<tf_device::TensorFlowDeviceDialect>();
   target->addIllegalDialect<tfrt::jitrt::JitRuntimeDialect>();
-  target->addDynamicallyLegalOp<mlir::FuncOp>([func_type_converter,
-                                               chain_type](FuncOp op) {
+  target->addDynamicallyLegalOp<mlir::func::FuncOp>([func_type_converter,
+                                                     chain_type](
+                                                        func::FuncOp op) {
     auto func_type = op.getFunctionType();
     if (func_type.getNumInputs() == 0 || func_type.getInput(0) != chain_type)
       return false;
@@ -1619,6 +1633,8 @@ class TfToTfrtConversionPass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TfToTfrtConversionPass)
+
   TfToTfrtConversionPass() = default;
   explicit TfToTfrtConversionPass(const TfrtPipelineOptions &options) {
     target_tpurt_ = options.target_tpurt;
@@ -1639,7 +1655,7 @@ class TfToTfrtConversionPass
   TfToTfrtConversionPass(const TfToTfrtConversionPass &) {}
 
   mlir::LogicalResult runOnFunction(
-      mlir::FuncOp func,
+      mlir::func::FuncOp func,
       const mlir::TF::SideEffectAnalysis::Info &side_effect_analysis,
       const tfrt_compiler::TensorArraySideEffectAnalysis
           &tensor_array_side_effect_analysis,
@@ -1690,9 +1706,9 @@ class TfToTfrtConversionPass
 
     mlir::SymbolTable symbol_table(module);
 
-    auto func_op_range = module.getOps<mlir::FuncOp>();
-    llvm::SmallVector<mlir::FuncOp, 4> func_ops(func_op_range.begin(),
-                                                func_op_range.end());
+    auto func_op_range = module.getOps<mlir::func::FuncOp>();
+    llvm::SmallVector<mlir::func::FuncOp, 4> func_ops(func_op_range.begin(),
+                                                      func_op_range.end());
     for (auto func : func_ops) {
       if (!func.isExternal()) {
         if (mlir::failed(runOnFunction(
@@ -1725,7 +1741,7 @@ class TfToTfrtConversionPass
   // Chain all dangling values (ie. values with no users) together and merge it
   // with the first returned chain. This merged chain can be used to signal the
   // completion of all execution including side-effets.
-  void ChainDanglingValuesinFunction(mlir::FuncOp func_op) {
+  void ChainDanglingValuesinFunction(mlir::func::FuncOp func_op) {
     auto &block = func_op.front();
 
     llvm::SmallVector<mlir::Value, 2> dangling_values;
@@ -1771,7 +1787,7 @@ class TfToTfrtConversionPass
 
     auto chain_type = builder.getType<tfrt::compiler::ChainType>();
 
-    auto func_op = builder.create<mlir::FuncOp>(
+    auto func_op = builder.create<mlir::func::FuncOp>(
         module.getLoc(), "_tfrt_fallback_init",
         mlir::FunctionType::get(module.getContext(), /*inputs=*/chain_type,
                                 /*results=*/chain_type));
@@ -1801,12 +1817,13 @@ class TfToTfrtConversionPass
     // Compile all kernels in parallell.
     module.walk([&](tf_jitrt::FallbackExecuteOp execute) {
       // Do not compiled the same kernel multiple times.
-      if (kernels.contains(execute.kernel())) return;
+      if (kernels.contains(execute.getKernel())) return;
 
       auto compile = builder.create<tf_jitrt::FallbackCompileOp>(
-          execute.getLoc(), chain_type, execute.kernel(), execute.device());
+          execute.getLoc(), chain_type, execute.getKernel(),
+          execute.getDevice());
       compiled.push_back(compile.getResult());
-      kernels.insert(compile.kernel());
+      kernels.insert(compile.getKernel());
     });
 
     // Wait for the compilation completion before returning from init function.
@@ -1823,19 +1840,19 @@ class TfToTfrtConversionPass
   int64_t GetNumArgs(mlir::Operation *fallback_op) {
     if (auto execute_op =
             llvm::dyn_cast<tfrt::fallback_async::ExecuteOp>(fallback_op)) {
-      return execute_op.operands().size();
+      return execute_op.getArgs().size();
     } else if (auto execute_op_seq =
                    llvm::dyn_cast<tfrt::fallback_async::ExecuteOpSeq>(
                        fallback_op)) {
-      return execute_op_seq.operands().size();
+      return execute_op_seq.getArgs().size();
     } else if (auto execute_op_allocator =
                    llvm::dyn_cast<tfrt::fallback_async::ExecuteOpWithAllocator>(
                        fallback_op)) {
-      return execute_op_allocator.operands().size();
+      return execute_op_allocator.getArgs().size();
     } else if (auto execute_op_seq_allocator = llvm::dyn_cast<
                    tfrt::fallback_async::ExecuteOpSeqWithAllocator>(
                    fallback_op)) {
-      return execute_op_seq_allocator.operands().size();
+      return execute_op_seq_allocator.getArgs().size();
     }
     llvm_unreachable("invalid fallback op type");
   }
@@ -1929,7 +1946,9 @@ class TfToTfrtConversionPass
 void AddTfDeviceAssignmentPasses(mlir::OpPassManager &pm,
                                  const TfrtPipelineOptions &options) {
   pm.addPass(mlir::TF::CreateConstantOpDeviceAssignmentPass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::TF::CreateTFDeviceAssignmentByFuncAttrPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateSimpleTFDeviceAssignmentPass(options.default_device));
 }
 
@@ -1965,7 +1984,7 @@ class OutlineJitRtClustersPass
  private:
   struct CompiledModule {
     ModuleOp module;
-    FuncOp entrypoint;
+    func::FuncOp entrypoint;
     llvm::SetVector<Value> operands;
   };
 
@@ -1988,7 +2007,7 @@ class OutlineJitRtClustersPass
   // Mapping from the outlined module string representation to the module itself
   // and an entrypoint function. Used to deduplicate identical modules during
   // the `tf_device.cluster` outlining.
-  llvm::StringMap<std::pair<ModuleOp, FuncOp>> outlined_;
+  llvm::StringMap<std::pair<ModuleOp, func::FuncOp>> outlined_;
 };
 
 OutlineJitRtClustersPass::CompiledModule
@@ -2010,7 +2029,7 @@ OutlineJitRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
 
   // Find out the cluster arguments and their types.
   llvm::SetVector<Value> live_ins;
-  getUsedValuesDefinedAbove(cluster.body(), cluster.body(), live_ins);
+  getUsedValuesDefinedAbove(cluster.getBody(), cluster.getBody(), live_ins);
 
   llvm::SmallVector<Type, 4> operand_types;
   operand_types.reserve(live_ins.size());
@@ -2019,13 +2038,14 @@ OutlineJitRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
   // Create a function in the compiled module.
   auto compiled_func_type =
       FunctionType::get(ctx, operand_types, cluster->getResultTypes());
-  auto compiled_func = FuncOp::create(loc, "compute", compiled_func_type);
+  auto compiled_func = func::FuncOp::create(loc, "compute", compiled_func_type);
   compiled_module_symbol_table.insert(compiled_func);
 
   // Replace uses of live-in values within cluster region with block arguments.
   Block *compiled_func_block = compiled_func.addEntryBlock();
   for (auto p : llvm::zip(live_ins, compiled_func_block->getArguments()))
-    replaceAllUsesInRegionWith(std::get<0>(p), std::get<1>(p), cluster.body());
+    replaceAllUsesInRegionWith(std::get<0>(p), std::get<1>(p),
+                               cluster.getBody());
 
   // Move all operations in cluster into compiled_func's entry block.
   auto &cluster_body = cluster.GetBody().getOperations();
@@ -2047,6 +2067,13 @@ OutlineJitRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
   // Operations in the cluster can be in different order, however define the
   // identical Tensorflow programs, with current approach we'll not be able
   // to detect duplicates like this.
+
+  // Remove location attribute attached to Tensorflow operations to be able to
+  // deduplicate compiled clusters with the same set of operations.
+  //
+  // TODO(ezhulenev): Figure out how to propagate locations for error reporting,
+  // right now JitRt will ignore them anyway.
+  compiled_module.walk([](Operation *op) { op->removeAttr("_class"); });
 
   // Serialize prepared module to string.
   std::string serialized;
@@ -2073,7 +2100,7 @@ OutlineJitRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
 
 LogicalResult OutlineJitRtClustersPass::SetEntrypointConstraints(
     CompiledModule &compiled) {
-  FuncOp func = compiled.entrypoint;
+  func::FuncOp func = compiled.entrypoint;
 
   // Functions outlined from jitrt device clusters must have a single block.
   assert(func.getBody().getBlocks().size() == 1 && "expected single block");
@@ -2093,7 +2120,7 @@ LogicalResult OutlineJitRtClustersPass::SetEntrypointConstraints(
     if (auto constraint = constraints.GetConstraint(func.getArgument(i))) {
       auto constraint_name = mlir::StringAttr::get(
           &getContext(), llvm::formatv("{0}", *constraint).str());
-      func.setArgAttr(i, "jitrt.constraint", constraint_name);
+      func.setArgAttr(i, "rt.constraint", constraint_name);
     }
   }
 
@@ -2108,7 +2135,7 @@ LogicalResult OutlineJitRtClustersPass::OutlineClusterOp(
 
   CompiledModule compiled_module =
       CreateCompiledModule(cluster, max_arg_size, symbol_table);
-  FuncOp compiled_func = compiled_module.entrypoint;
+  func::FuncOp compiled_func = compiled_module.entrypoint;
 
   // Add constraints to the entrypoint arguments.
   if (failed(SetEntrypointConstraints(compiled_module))) return failure();
@@ -2138,9 +2165,9 @@ void OutlineJitRtClustersPass::runOnOperation() {
   // Keep track of the maximum argument size for each function with tf_device
   // cluster operations in the function body. We need to pass it to the compiled
   // module to correctly compute its cost later.
-  llvm::DenseMap<mlir::FuncOp, int64_t> max_arg_size_map;
+  llvm::DenseMap<mlir::func::FuncOp, int64_t> max_arg_size_map;
 
-  auto get_max_arg_size = [&](mlir::FuncOp func) -> int64_t {
+  auto get_max_arg_size = [&](mlir::func::FuncOp func) -> int64_t {
     auto it = max_arg_size_map.find(func);
     if (it != max_arg_size_map.end()) return it->second;
     return max_arg_size_map[func] = tf_jitrt::GetMaxArgSize(func);
@@ -2154,7 +2181,8 @@ void OutlineJitRtClustersPass::runOnOperation() {
       return WalkResult::advance();
 
     // Get the maximum argument size of the parent function.
-    mlir::FuncOp parent_func = cluster->getParentOfType<mlir::FuncOp>();
+    mlir::func::FuncOp parent_func =
+        cluster->getParentOfType<mlir::func::FuncOp>();
     int64_t max_arg_size = get_max_arg_size(parent_func);
 
     if (failed(OutlineClusterOp(cluster, max_arg_size, &symbol_table)))
@@ -2190,27 +2218,28 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
   //
   // TODO(b/191304670): Remove this pass once the shape_invariant attribute is
   // set correctly in the upstream.
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       tfrt_compiler::CreateSetShapeInvariantInWhileOps());
 
   // We pass the MLIR module through the TF standard pipeline, which for
   // instances does shape inference, canonicalization, inlining, etc.
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::tf_executor::CreateTFExecutorGraphPruningPass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::tf_executor::CreateTFExecutorIslandCoarseningPass());
 
   AddTfDeviceAssignmentPasses(pm, options);
 
   // Here we perform TFRT specific optimization before standard TF optimization,
   // as TFRT-specific optimization may create more opportunities.
-  pm.addNestedPass<mlir::FuncOp>(tfrt_compiler::CreateOptimizeTfForTfrtPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      tfrt_compiler::CreateOptimizeTfForTfrtPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createSymbolDCEPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateTFOptimizePass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::TF::CreateTFOptimizePass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
 
   AddTfDeviceAssignmentPasses(pm, options);
 
@@ -2239,7 +2268,7 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
 
   // Apply standard optimization after optimizing control flow ops.
   pm.addPass(mlir::createInlinerPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
 
   // TODO(b/187876545): An extra shape inference pass is added because it does
   // not work well with tf.Identity op that remove ref type. So we work around
@@ -2247,7 +2276,7 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
   // variable conversion. We should remove this after b/187876545 is fixed.
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateLaunchToDeviceAttributePass());
 
   // After all standard passes run layout optimization to assign optimal data
@@ -2260,22 +2289,22 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
   // not affect CPU performance as it does not change the number of ops, nor
   // does it change the types of the ops.
   layout_optimization_options.skip_fold_transpose_in_ops = true;
-  mlir::TF::CreateLayoutOptimizationPipeline(pm.nest<mlir::FuncOp>(),
+  mlir::TF::CreateLayoutOptimizationPipeline(pm.nest<mlir::func::FuncOp>(),
                                              layout_optimization_options);
 
   // Run canonicalization pipeline to remove unused constants and bypassed
   // transpose operations left in the IR after layout optimization.
-  pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
 
   // Decompose resource ops as resource variables will be converted to tensors
   // directly.
   if (options.decompose_resource_ops)
-    pm.addNestedPass<mlir::FuncOp>(
+    pm.addNestedPass<mlir::func::FuncOp>(
         mlir::TFDevice::CreateDecomposeResourceOpsPass());
 
   AddTfDeviceAssignmentPasses(pm, options);
 
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateTensorDeviceCopyConversionPass());
 
   // Outline auto-fusion clusters into tf_device.cluster_operations and then
@@ -2283,7 +2312,7 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
   // as operands, so we disable these passes if we can have native ops after
   // lowering.
   if (!options.enable_native_ops) {
-    pm.addNestedPass<mlir::FuncOp>(CreateTfJitRtClusteringPass(
+    pm.addNestedPass<mlir::func::FuncOp>(CreateTfJitRtClusteringPass(
         options.auto_fusion_oplist, options.auto_fusion_min_cluster_size));
 
     // Sink small constants into the outlined clusters to reduce the number of
@@ -2298,7 +2327,7 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
       return mlir::succeeded(IsCompilableConstant(value));
     };
 
-    pm.addNestedPass<mlir::FuncOp>(
+    pm.addNestedPass<mlir::func::FuncOp>(
         mlir::TFDevice::CreateClusterConstantSinkingPass(is_compilable_const));
 
     // Outline formed JIT compiled device clusters into function.
@@ -2315,17 +2344,18 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
   (void)success;
 
   if (parsed_name.has_type && parsed_name.type == DEVICE_GPU)
-    pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateGpuOpFusionPass());
+    pm.addNestedPass<mlir::func::FuncOp>(mlir::TF::CreateGpuOpFusionPass());
 
   if (parsed_name.has_type && parsed_name.type == DEVICE_CPU)
-    pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateFusedKernelMatcherPass());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::TF::CreateFusedKernelMatcherPass());
 
   if (options.tpu_fuse_ops) {
-    pm.addNestedPass<mlir::FuncOp>(
+    pm.addNestedPass<mlir::func::FuncOp>(
         tfrt_compiler::CreateFuseTpuCompileAndExecutePass());
     // Remove ops for the input to _TPUCompileMlirOp, which are no longer needed
     // after CreateFuseTpuCompileAndExecutePass
-    pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+    pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   }
 
   AddTfDeviceAssignmentPasses(pm, options);
@@ -2343,10 +2373,10 @@ void CreateTfExecutorToTfrtPipelineHelper(mlir::OpPassManager &pm,
 
   // Run optimizer on the MLIR module in CoreRT dialect.
   if (options.enable_optimizer) {
-    pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+    pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createInlinerPass());
-    pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
-    pm.addNestedPass<mlir::FuncOp>(
+    pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
+    pm.addNestedPass<mlir::func::FuncOp>(
         tfrt_compiler::CreateInsertFallbackTensorCopyPass());
   }
 }

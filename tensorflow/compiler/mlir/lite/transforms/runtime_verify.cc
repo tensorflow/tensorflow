@@ -16,27 +16,22 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
 namespace mlir {
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_interface.h.inc"
 namespace TFL {
 namespace {
+#define GEN_PASS_DEF_RUNTIMEVERIFYPASS
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // This pass verifies that the TFL ops meet the TFL runtime constraints.
 class RuntimeVerifyPass
-    : public mlir::PassWrapper<RuntimeVerifyPass, OperationPass<FuncOp>> {
+    : public impl::RuntimeVerifyPassBase<RuntimeVerifyPass> {
  public:
-  explicit RuntimeVerifyPass() {}
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RuntimeVerifyPass)
 
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-runtime-verify";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "TFLite runtime verification";
-  }
+  explicit RuntimeVerifyPass() {}
 
  private:
   void runOnOperation() override;
@@ -52,11 +47,9 @@ void RuntimeVerifyPass::runOnOperation() {
 }  // namespace
 
 // Verifies TFL runtime constraints.
-std::unique_ptr<OperationPass<FuncOp>> CreateRuntimeVerifyPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateRuntimeVerifyPass() {
   return std::make_unique<RuntimeVerifyPass>();
 }
-
-static PassRegistration<RuntimeVerifyPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

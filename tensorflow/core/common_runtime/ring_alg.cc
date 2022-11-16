@@ -115,7 +115,7 @@ Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
   if (col_params->instance.impl_details.max_subdivs_per_device == -1) {
     col_params->instance.impl_details.subdiv_offsets = {0};
     VLOG(2) << "Limiting to 1 subdivision as max_subdivs_per_device == -1";
-    return Status::OK();
+    return OkStatus();
   }
 
   if (col_params->instance.shape.num_elements() == 0) {
@@ -173,7 +173,7 @@ Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
             << tensor_size << " chunk_size " << chunk_size;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -252,7 +252,7 @@ Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
   }
 
   VLOG(2) << collective_util::SubdivPermDebugString(*col_params);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RingAlg::InitializeCollectiveContext(
@@ -266,12 +266,13 @@ Status RingAlg::InitializeCollectiveContext(
 }
 
 string RingAlg::TensorDebugString(const Tensor& tensor) {
-  const DeviceBase::AcceleratorDeviceInfo* gpu_device_info =
-      col_ctx_->op_ctx->device()->tensorflow_gpu_device_info();
-  if (gpu_device_info) {
+  const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info =
+      col_ctx_->op_ctx->device()->tensorflow_accelerator_device_info();
+  if (accelerator_device_info) {
     Tensor cpu_tensor(tensor.dtype(), tensor.shape());
-    Status st = gpu_device_info->default_context->CopyDeviceTensorToCPUSync(
-        &tensor, "" /*tensor_name*/, col_ctx_->device, &cpu_tensor);
+    Status st =
+        accelerator_device_info->default_context->CopyDeviceTensorToCPUSync(
+            &tensor, "" /*tensor_name*/, col_ctx_->device, &cpu_tensor);
     DCHECK(st.ok());
     return cpu_tensor.SummarizeValue(64);
   } else {
@@ -299,8 +300,7 @@ void RingAlg::StartAbort(const Status& s) {
   // well and there's then no need to abort.
   if (abort_started) {
     if (col_ctx_->op_ctx->cancellation_manager() == nullptr ||
-        (!col_ctx_->op_ctx->cancellation_manager()->IsCancelled() &&
-         !col_ctx_->op_ctx->cancellation_manager()->IsCancelling())) {
+        !col_ctx_->op_ctx->cancellation_manager()->IsCancelRequested()) {
       col_ctx_->col_exec->StartAbort(s);
     }
   }

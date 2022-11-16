@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -174,10 +173,10 @@ class RemoteValueImpl(RemoteValue):
     self._status_available_event = threading.Event()
     self._status = RemoteValueStatus.NOT_READY
 
-  def _set_aborted(self):
+  def _set_aborted(self, error):
     self._status = RemoteValueStatus.ABORTED
     self._values = None
-    self._error = None
+    self._error = error
 
     # Wake up any waiting thread and clear the event.
     self._status_available_event.set()
@@ -193,10 +192,10 @@ class RemoteValueImpl(RemoteValue):
     self._error = None
     self._status_available_event.set()
 
-  def _set_error(self, exception):
+  def _set_error(self, error):
     self._status = RemoteValueStatus.READY
     self._values = None
-    self._error = exception
+    self._error = error
     self._status_available_event.set()
 
   def _get_values(self):
@@ -446,6 +445,7 @@ class PerWorkerDatasetFromDataset(PerWorkerDatasetFromDatasetFunction):
 
 
 def get_per_worker_dataset(dataset_or_dataset_fn, coordinator):
+  """Returns a per-worker dataset from a dataset or a dataset function."""
   if callable(dataset_or_dataset_fn):
     return PerWorkerDatasetFromDatasetFunction(dataset_or_dataset_fn,
                                                coordinator)

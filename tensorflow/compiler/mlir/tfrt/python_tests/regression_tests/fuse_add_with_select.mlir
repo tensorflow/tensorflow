@@ -14,5 +14,5 @@ func.func @test(
   %2 = "tf.AddV2"(%0, %1) {
         device = "/job:localhost/replica:0/task:0/device:CPU:0"
       } : (tensor<1xi64>, tensor<1xi64>) -> tensor<1xi64>
-  return %2 : tensor<1xi64>
+  func.return %2 : tensor<1xi64>
 }

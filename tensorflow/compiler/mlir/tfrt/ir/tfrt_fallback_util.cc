@@ -19,7 +19,7 @@ limitations under the License.
 namespace tfrt {
 namespace fallback_async {
 
-bool IsArgConsumedByFallback(mlir::FuncOp func, int arg_index) {
+bool IsArgConsumedByFallback(mlir::func::FuncOp func, int arg_index) {
   auto arg = func.getArgument(arg_index);
 
   // Return true if any user is a fallback op. It is more interesting to know
@@ -35,7 +35,7 @@ bool IsArgConsumedByFallback(mlir::FuncOp func, int arg_index) {
 }
 
 void ForEachArgConsumedByFallback(
-    mlir::FuncOp func, llvm::function_ref<void(int arg_index)> action) {
+    mlir::func::FuncOp func, llvm::function_ref<void(int arg_index)> action) {
   for (int arg_index = 0; arg_index < func.getNumArguments(); ++arg_index) {
     if (IsArgConsumedByFallback(func, arg_index)) action(arg_index);
   }
@@ -44,7 +44,7 @@ void ForEachArgConsumedByFallback(
 void ForEachArgConsumedByFallback(
     mlir::ModuleOp module,
     llvm::function_ref<void(llvm::StringRef func_name, int arg_index)> action) {
-  for (auto func : module.getOps<mlir::FuncOp>()) {
+  for (auto func : module.getOps<mlir::func::FuncOp>()) {
     ForEachArgConsumedByFallback(
         func, [func_name = func.getName(), action](int arg_index) {
           action(func_name, arg_index);

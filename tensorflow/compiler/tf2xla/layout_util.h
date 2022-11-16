@@ -23,10 +23,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -36,11 +36,21 @@ class XlaShapeLayoutHelpers {
   // The return value of LayoutPreferenceFn can be used in
   // XlaHelper::ShapeRepresentationFn.
   typedef std::function<XlaLayoutPreference(const TensorShape&, DataType,
-                                            absl::optional<XlaArgument::Kind>)>
+                                            std::optional<XlaArgument::Kind>)>
       LayoutPreferenceFn;
 
   // A bundle of LayoutPreferenceFn and ShapeRepresentationFn.
   struct ShapeDeterminationFns {
+    // Use no preference function, and identity shape representation function,
+    // as default value.
+    ShapeDeterminationFns();
+
+    ShapeDeterminationFns(
+        LayoutPreferenceFn layout_preference_fn,
+        XlaHelpers::ShapeRepresentationFn shape_representation_fn)
+        : layout_preference_fn(layout_preference_fn),
+          shape_representation_fn(shape_representation_fn) {}
+
     LayoutPreferenceFn layout_preference_fn;
     XlaHelpers::ShapeRepresentationFn shape_representation_fn;
   };
@@ -51,15 +61,8 @@ XlaShapeLayoutHelpers::LayoutPreferenceFn UseNoPreferenceLayoutFn();
 
 // Rewrites the layout of xla_shape if there is tiled sharding.
 Status RewriteLayoutWithShardedShape(
-    const absl::optional<xla::HloSharding>& sharding, bool use_fast_memory,
+    const std::optional<xla::HloSharding>& sharding, bool use_fast_memory,
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
-    xla::Shape* xla_shape);
-
-// TODO(b/203254951): remove after migration is done.
-// Same as above but use kNoPreference layout.
-Status RewriteLayoutWithShardedShape(
-    const absl::optional<xla::HloSharding>& sharding, bool use_fast_memory,
-    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     xla::Shape* xla_shape);
 
 // Adds reshapes to fix the layout of an output, if a shape_representation_fn or
@@ -67,14 +70,7 @@ Status RewriteLayoutWithShardedShape(
 StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
     xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
-    absl::optional<xla::OpSharding> sharding, bool fast_mem);
-
-// TODO(b/203254951): remove after migration is done.
-// Same as above but use kNoPreference layout.
-StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
-    xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
-    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
-    absl::optional<xla::OpSharding> sharding, bool fast_mem);
+    std::optional<xla::OpSharding> sharding, bool fast_mem);
 
 }  // namespace tensorflow
 

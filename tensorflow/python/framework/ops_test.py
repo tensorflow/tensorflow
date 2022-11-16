@@ -23,10 +23,12 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.client import session
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -661,6 +663,13 @@ def _apply_op(g, *args, **kwargs):
 
 class OperationTest(test_util.TensorFlowTestCase):
 
+  def testTraceback(self):
+    g = ops.Graph()
+    op1 = ops.Operation(
+        ops._NodeDef("None", "op1"), g, [],
+        [dtypes.float32_ref, dtypes.float32])
+    self.assertIn("testTraceback", op1.traceback[-1])
+
   @test_util.run_deprecated_v1
   def testNoInputs(self):
     op = test_ops.float_output_string_output(name="myop").a.op
@@ -950,6 +959,20 @@ class OperationTest(test_util.TensorFlowTestCase):
     # TODO(skyewm): add node_def check
     self.assertEqual(op.get_attr("foo"), 2)
 
+  @test_util.run_v2_only
+  def testSetFullType(self):
+    @def_function.function
+    def test_fn():
+      ds = dataset_ops.Dataset.range(3)._variant_tensor
+
+      ds.op.experimental_set_type(
+          full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_PRODUCT))
+
+      self.assertEqual(ds.op.node_def.experimental_type.type_id,
+                       full_type_pb2.TFT_PRODUCT)
+
+    test_fn()
+
   # TODO(nolivia): test all error cases
   def testAddControlInput(self):
     with ops.Graph().as_default():
@@ -1085,7 +1108,7 @@ class OperationTest(test_util.TensorFlowTestCase):
   @test_util.run_v1_only("b/120545219")
   def testAddWhileInput(self):
 
-    @eager_function.defun
+    @def_function.function
     def test():
       output = control_flow_ops.while_loop(lambda x: x < 3, lambda x: x + 1,
                                            [1])
@@ -1230,6 +1253,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(op.graph, g)
     self.assertEqual(x.consumers(), [op])
     self.assertIsNotNone(op.traceback)
+    self.assertIn("testBasic", op.traceback[-1])
     self.assertEqual(g.get_operation_by_name("myop"), op)
     self.assertEqual(g.get_tensor_by_name("myop:0"), op.outputs[0])
 
@@ -2051,10 +2075,17 @@ class MultithreadedGraphStateTest(test_util.TensorFlowTestCase):
       t.join()
 
     gd = g.as_graph_def()
-    self.assertProtoEqualsVersion("""
-      node { name: "ColocateWithMe_0" op: "FloatOutput" }
-      node { name: "ColocateWithMe_1" op: "FloatOutput" }
-      node { name: "ColocateWithMe_2" op: "FloatOutput" }
+    self.assertProtoEqualsVersion(
+        """
+      node { name: "ColocateWithMe_0" op: "FloatOutput"
+             attr { key: "_has_manual_control_dependencies"
+                    value { b: true } } }
+      node { name: "ColocateWithMe_1" op: "FloatOutput"
+             attr { key: "_has_manual_control_dependencies"
+                    value { b: true } } }
+      node { name: "ColocateWithMe_2" op: "FloatOutput"
+             attr { key: "_has_manual_control_dependencies"
+                    value { b: true } } }
       node { name: "FloatOutput_0" op: "FloatOutput"
              input: "^ColocateWithMe_0" }
       node { name: "FloatOutput_1" op: "FloatOutput"
@@ -2211,33 +2242,6 @@ class CollectionTest(test_util.TensorFlowTestCase):
       ops.add_to_collection("key", 100)
       # Collections are ordered.
       self.assertEqual([90, 100], ops.get_collection("key"))
-
-  def test_defun(self):
-    with context.eager_mode():
-
-      @eager_function.defun
-      def defun():
-        ops.add_to_collection("int", 1)
-        ops.add_to_collection("tensor", constant_op.constant(2))
-
-        @eager_function.defun
-        def inner_defun():
-          self.assertEqual(ops.get_collection("int"), [1])
-          three = ops.get_collection("tensor")[0] + ops.get_collection("int")[0]
-          ops.add_to_collection("int", 2)
-          self.assertEqual(ops.get_collection("int"), [1, 2])
-          ops.add_to_collection("foo", "bar")
-          self.assertEqual(ops.get_collection("foo"), ["bar"])
-          return three
-
-        self.assertEqual(ops.get_collection("int"), [1])
-        three = inner_defun()
-        self.assertEqual(ops.get_collection("int"), [1])
-        self.assertEqual(ops.get_collection("foo"), [])
-        return three
-
-      three = defun()
-      self.assertEqual(three.numpy(), 3)
 
 
 ops.NotDifferentiable("FloatOutput")
@@ -2499,6 +2503,31 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
       b = _apply_op(g, "Identity", [a], [dtypes.float32])
 
     self.assertEqual(b.op.control_inputs, [])
+
+  def testMonitoringAttributeAddedWhenUsingManualControlDep(self):
+    g = ops.Graph()
+    a = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+    b = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+    with g.control_dependencies([a]):
+      c = _apply_op(g, "Identity", [b], [dtypes.float32])
+
+    with g.control_dependencies([b]):
+      d = _apply_op(g, "Identity", [b], [dtypes.float32])
+
+    # Validate that the monitoring attribute is set to track usage of the
+    # `control_dependencies(...)` API.
+    self.assertEqual(c.op.control_inputs, [a.op])
+    with self.assertRaises(ValueError):
+      c.op.get_attr("_has_manual_control_dependencies")
+    self.assertEqual(a.op.get_attr("_has_manual_control_dependencies"), True)
+
+    # Validate that the monitoring attribute is set to track usage of the
+    # `control_dependencies(...)` API even when the manual control deps actually
+    # happened to be pruned at runtime.
+    self.assertEqual(d.op.control_inputs, [])
+    with self.assertRaises(ValueError):
+      d.op.get_attr("_has_manual_control_dependencies")
+    self.assertEqual(b.op.get_attr("_has_manual_control_dependencies"), True)
 
 
 class OpScopeTest(test_util.TensorFlowTestCase):
@@ -2778,77 +2807,6 @@ class InitScopeTest(test_util.TensorFlowTestCase):
         self.assertTrue(context.eager_mode())
       self.assertTrue(context.eager_mode())
 
-  def testEscapesDefunWhenInEagerMode(self):
-
-    def function_with_variables():
-      with ops.init_scope():
-        self.v = resource_variable_ops.ResourceVariable(3)
-      return self.v.assign_add(1)
-
-    with context.eager_mode():
-      # Each invocation of function_with_variables recreates a variable.
-      self.assertEqual(4, int(function_with_variables()))
-      self.assertEqual(4, int(function_with_variables()))
-
-      compiled = eager_function.defun(function_with_variables)
-      # The init_scope in function_with_variables lifts the variable out
-      # of the graph function constructed by defun; hence,
-      # compiled now appears to be stateful.
-      self.assertEqual(4, int(compiled()))
-      self.assertEqual(5, int(compiled()))
-
-  def testEscapesDefunWhenInGraphMode(self):
-    def function_with_variables(name):
-      with ops.init_scope():
-        _ = variable_scope.get_variable(name, shape=(1,))
-
-    g = ops.Graph()
-    with g.as_default():
-      with self.cached_session():
-        # First ensure that graphs that are not building functions are
-        # not escaped.
-        function_with_variables("foo")
-        with self.assertRaisesRegex(ValueError,
-                                    r"Variable foo already exists.*"):
-          # This will fail because reuse is not set to True.
-          function_with_variables("foo")
-
-        compiled = eager_function.defun(function_with_variables)
-        compiled("bar")
-        self.assertEqual(
-            len(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)), 2)
-
-        # The second call to `compiled` should not create variables: the
-        # init_scope has lifted the variable creation code out of the defun.
-        compiled("bar")
-        self.assertEqual(
-            len(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)), 2)
-
-  def testEscapesNestedDefun(self):
-
-    def inner_function():
-      with ops.init_scope():
-        self.v = resource_variable_ops.ResourceVariable(1)
-      return self.v.assign_add(2)
-
-    def outer_function(inner=None):
-      with ops.init_scope():
-        self.v0 = resource_variable_ops.ResourceVariable(0)
-      return self.v0.assign_add(1) + inner()
-
-    with context.eager_mode():
-      # Each invocation of outer_function recreates variables.
-      self.assertEqual(4, int(outer_function(inner=inner_function)))
-      self.assertEqual(4, int(outer_function(inner=inner_function)))
-
-      compiled_inner = eager_function.defun(inner_function)
-      compiled_outer = eager_function.defun(outer_function)
-      # The init_scope lifts variables out of the graph functions
-      # constructed by defun; hence, compiled_outer should now appear to be
-      # stateful.
-      self.assertEqual(4, int(compiled_outer(inner=compiled_inner)))
-      self.assertEqual(7, int(compiled_outer(inner=compiled_inner)))
-
   @test_util.run_v1_only("b/120545219")
   def testFallsBackToGlobalGraphWhenAllGraphsAreBuildingFunctions(self):
     with context.graph_mode():
@@ -2922,7 +2880,7 @@ class InitScopeTest(test_util.TensorFlowTestCase):
 
       foo()
       self.assertEqual(ops.get_name_scope(), "")
-      foo_compiled = eager_function.defun(foo)
+      foo_compiled = def_function.function(foo)
       foo_compiled()
       self.assertEqual(ops.get_name_scope(), "")
 

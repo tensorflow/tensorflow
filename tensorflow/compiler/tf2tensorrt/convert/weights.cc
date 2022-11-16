@@ -53,7 +53,7 @@ Status TRT_ShapedWeights::SetShape(DimsAdapter dims) {
     return errors::Internal("SetShape would change number of elements");
   }
   shape_ = std::move(dims);
-  return Status::OK();
+  return OkStatus();
 }
 
 size_t TRT_ShapedWeights::size_bytes() const {
@@ -66,6 +66,9 @@ size_t TRT_ShapedWeights::size_bytes() const {
     case nvinfer1::DataType::kHALF:
       data_type_size = 2;
       break;
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    case nvinfer1::DataType::kUINT8:
+#endif
     case nvinfer1::DataType::kINT8:
     case nvinfer1::DataType::kBOOL:
       data_type_size = 1;
@@ -82,20 +85,22 @@ string TRT_ShapedWeights::DebugString() const {
 }
 
 TRT_TensorOrWeights::TRT_TensorOrWeights(ITensorProxyPtr tensor)
-    : tensor_proxy_ptr_(tensor), initialized_(true), is_tensor_(true) {}
+    : tensor_proxy_ptr_(tensor),
+      initialized_(true),
+      arg_type_(TRT_ArgumentType::TENSOR) {}
 
 TRT_TensorOrWeights::TRT_TensorOrWeights(ITensorProxyPtr tensor, int batch_size)
     : tensor_proxy_ptr_(tensor),
       batch_size_(batch_size),
       initialized_(true),
-      is_tensor_(true) {}
+      arg_type_(TRT_ArgumentType::TENSOR) {}
 
 TRT_TensorOrWeights::TRT_TensorOrWeights(nvinfer1::ITensor* tensor,
                                          int batch_size)
     : tensor_proxy_ptr_(tensor),
       batch_size_(batch_size),
       initialized_(true),
-      is_tensor_(true) {}
+      arg_type_(TRT_ArgumentType::TENSOR) {}
 
 TRT_TensorOrWeights::TRT_TensorOrWeights(nvinfer1::DataType trt_dtype,
                                          const nvinfer1::Dims& trt_dims,
@@ -103,24 +108,33 @@ TRT_TensorOrWeights::TRT_TensorOrWeights(nvinfer1::DataType trt_dtype,
     : tensor_proxy_ptr_(new SimpleITensor(trt_dtype, trt_dims)),
       batch_size_(batch_size),
       initialized_(true),
-      is_tensor_(true) {}
+      arg_type_(TRT_ArgumentType::TENSOR) {}
 
 TRT_TensorOrWeights::TRT_TensorOrWeights(const TRT_ShapedWeights& weights)
-    : weights_(weights), initialized_(true), is_tensor_(false) {}
+    : weights_(weights),
+      initialized_(true),
+      arg_type_(TRT_ArgumentType::WEIGHTS) {}
+
+TRT_TensorOrWeights::TRT_TensorOrWeights(const ResourceHandle& resource)
+    : resource_(resource),
+      initialized_(true),
+      arg_type_(TRT_ArgumentType::RESOURCE) {}
 
 TRT_TensorOrWeights::TRT_TensorOrWeights(const TRT_TensorOrWeights& rhs)
     : tensor_proxy_ptr_(rhs.tensor_proxy_ptr_),
       batch_size_(rhs.batch_size_),
+      resource_(rhs.resource_),
       weights_(rhs.weights_),
       initialized_(rhs.initialized_),
-      is_tensor_(rhs.is_tensor_) {}
+      arg_type_(rhs.arg_type_) {}
 
 void TRT_TensorOrWeights::operator=(const TRT_TensorOrWeights& rhs) {
   tensor_proxy_ptr_ = rhs.tensor_proxy_ptr_;
   batch_size_ = rhs.batch_size_;
   weights_ = rhs.weights_;
+  resource_ = rhs.resource_;
   initialized_ = rhs.initialized_;
-  is_tensor_ = rhs.is_tensor_;
+  arg_type_ = rhs.arg_type_;
 }
 
 ITensorProxyPtr TRT_TensorOrWeights::tensor() const {
@@ -128,23 +142,38 @@ ITensorProxyPtr TRT_TensorOrWeights::tensor() const {
   return tensor_proxy_ptr_;
 }
 
+ResourceHandle TRT_TensorOrWeights::resource() const {
+  DCHECK(is_resource());
+  return resource_;
+}
+
 nvinfer1::Dims TRT_TensorOrWeights::GetTrtDims() const {
-  if (is_tensor()) {
-    return tensor()->getDimensions();
+  switch (arg_type_) {
+    case TRT_ArgumentType::TENSOR:
+      return tensor()->getDimensions();
+    case TRT_ArgumentType::WEIGHTS:
+      return weights().Shape().AsTrtDims();
+    case TRT_ArgumentType::RESOURCE:
+      return {0, {}};  // Scalar.
   }
-  return weights().Shape().AsTrtDims();
 }
 
 Status TRT_TensorOrWeights::GetTfType(DataType* tf_type) const {
-  if (is_tensor()) {
-    nvinfer1::DataType trt_type = tensor()->getType();
-    return TrtTypeToTfType(trt_type, tf_type);
+  if (!initialized_) {
+    return errors::Internal("The object is not initialized");
   }
-  if (is_weights()) {
-    *tf_type = weights().GetTensor().dtype();
-    return Status::OK();
+  switch (arg_type_) {
+    case TRT_ArgumentType::TENSOR: {
+      nvinfer1::DataType trt_type = tensor()->getType();
+      return TrtTypeToTfType(trt_type, tf_type);
+    }
+    case TRT_ArgumentType::WEIGHTS:
+      *tf_type = weights().GetTensor().dtype();
+      return OkStatus();
+    case TRT_ArgumentType::RESOURCE:
+      *tf_type = DataType::DT_RESOURCE;
+      return OkStatus();
   }
-  return errors::Internal("The object is probably not initialized");
 }
 
 string TRT_TensorOrWeights::DebugString() const {

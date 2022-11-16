@@ -1,0 +1,11 @@
+path: "tensorflow.types.experimental.distributed"
+tf_module {
+  member {
+    name: "Mirrored"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "PerReplica"
+    mtype: "<type \'type\'>"
+  }
+}

@@ -19,26 +19,29 @@ limitations under the License.
 
 #include <limits>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/collective_decomposer_utils.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
 
-StatusOr<bool> ReduceScatterDecomposer::Run(HloModule *module) {
+StatusOr<bool> ReduceScatterDecomposer::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
   bool changed = false;
   int64_t next_channel_id = hlo_query::NextChannelId(*module);
 
-  for (HloComputation *computation : module->MakeNonfusionComputations()) {
+  for (HloComputation *computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction *instruction :
          computation->MakeInstructionPostOrder()) {
       auto *rs = DynCast<HloReduceScatterInstruction>(instruction);
@@ -46,7 +49,7 @@ StatusOr<bool> ReduceScatterDecomposer::Run(HloModule *module) {
         continue;
       }
 
-      absl::optional<int64_t> channel_id;
+      std::optional<int64_t> channel_id;
       if (rs->channel_id()) {
         channel_id = next_channel_id++;
       }
@@ -63,10 +66,11 @@ StatusOr<bool> ReduceScatterDecomposer::Run(HloModule *module) {
           CollectiveOpGroupMode group_mode,
           GetCollectiveOpGroupMode(rs->channel_id().has_value(),
                                    rs->use_global_device_ids()));
-      TF_ASSIGN_OR_RETURN(std::vector<HloInstruction *> start_indices,
-                          CreateStartIndicesForCollectiveDecomposition(
-                              group_mode, rs->replica_groups(), rs->shape(),
-                              rs->scatter_dimension(), computation));
+      TF_ASSIGN_OR_RETURN(
+          std::vector<HloInstruction *> start_indices,
+          CreateStartIndicesForCollectiveDecomposition(
+              group_mode, rs->replica_groups(), rs->shape(),
+              rs->scatter_dimension(), computation, update_layout_));
 
       HloInstruction *ds =
           computation->AddInstruction(HloInstruction::CreateDynamicSlice(

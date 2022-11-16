@@ -1,10 +1,6 @@
 # Experimental Unified APIs for Eager and Graph modes.
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_python_pybind_extension")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -15,7 +11,6 @@ tf_python_pybind_extension(
     name = "_unified_api",
     srcs = ["unified_api.cc"],
     features = ["-layering_check"],
-    module_name = "_unified_api",
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:lib",
@@ -31,7 +26,6 @@ tf_python_pybind_extension(
     name = "_tape",
     srcs = ["tape.cc"],
     features = ["-layering_check"],
-    module_name = "_tape",
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:lib",
@@ -46,7 +40,6 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_math_ops",
     srcs = ["math_ops.cc"],
-    module_name = "_math_ops",
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
@@ -63,7 +56,6 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_nn_ops",
     srcs = ["nn_ops.cc"],
-    module_name = "_nn_ops",
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",

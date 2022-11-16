@@ -16,8 +16,6 @@
 
 import collections
 
-import six
-
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import state_ops
@@ -333,15 +331,14 @@ def _get_grouped_variables(vars_to_warm_start):
       `Variables`, or a list of strings.
   """
   # TODO(b/143899805): Remove unicode checks when deprecating Python2.
-  if isinstance(vars_to_warm_start,
-                six.string_types) or vars_to_warm_start is None:
+  if isinstance(vars_to_warm_start, str) or vars_to_warm_start is None:
     # Both vars_to_warm_start = '.*' and vars_to_warm_start = None will match
     # everything (in TRAINABLE_VARIABLES) here.
     logging.info("Warm-starting variables only in TRAINABLE_VARIABLES.")
     list_of_vars = ops.get_collection(
         ops.GraphKeys.TRAINABLE_VARIABLES, scope=vars_to_warm_start)
   elif isinstance(vars_to_warm_start, list):
-    if all(isinstance(v, six.string_types) for v in vars_to_warm_start):
+    if all(isinstance(v, str) for v in vars_to_warm_start):
       list_of_vars = []
       for v in vars_to_warm_start:
         list_of_vars += ops.get_collection(
@@ -482,7 +479,7 @@ def warm_start(ckpt_to_initialize_from,
 
   # Group the vocabless vars into one call to init_from_checkpoint.
   vocabless_vars = {}
-  for var_name, variable in six.iteritems(grouped_variables):
+  for var_name, variable in grouped_variables.items():
     prev_var_name = var_name_to_prev_var_name.get(var_name)
     if prev_var_name:
       prev_var_name_used.add(var_name)

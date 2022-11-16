@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -158,6 +159,12 @@ Status ComputeTheoreticalJacobianTranspose(
         TF_RETURN_IF_ERROR(session.Run(feed_list, dxs, &dxout));
 
         for (int x_idx = 0; x_idx < x_num; x_idx++) {
+          if (x_shapes[x_idx] != dxout[x_idx].shape()) {
+            return errors::Internal("Gradient for input ", x_idx,
+                                    " expected shape ",
+                                    x_shapes[x_idx].DebugString(), " but was ",
+                                    dxout[x_idx].shape().DebugString());
+          }
           const int64_t x_size = x_shapes[x_idx].num_elements();
           auto jacobian = (*jacobian_ts)[x_idx * y_num + y_idx].matrix<JAC_T>();
           auto dx_flat = dxout[x_idx].flat<X_T>();
@@ -173,7 +180,7 @@ Status ComputeTheoreticalJacobianTranspose(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status EvaluateGraph(ClientSession* session, const OutputList& xs,
@@ -198,7 +205,7 @@ Status EvaluateGraph(ClientSession* session, const OutputList& xs,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename X_T, typename Y_T, typename JAC_T>
@@ -262,7 +269,7 @@ Status ComputeNumericJacobianTranspose(const Scope& scope, const OutputList& xs,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // The Jacobian is always a real-valued matrix.
@@ -356,13 +363,13 @@ Status ComputeGradientErrorInternal(const Scope& scope, const OutputList& xs,
         // (Note that std::max may ignore NaN arguments.)
         if (std::isnan(cur_error)) {
           *max_error = cur_error;
-          return Status::OK();
+          return OkStatus();
         }
         *max_error = std::max(*max_error, cur_error);
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

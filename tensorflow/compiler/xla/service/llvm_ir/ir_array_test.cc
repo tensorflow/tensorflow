@@ -22,13 +22,19 @@ namespace llvm_ir {
 namespace {
 
 TEST(IrArrayTest, TestShapeIsCompatible) {
-  xla::Shape a = ShapeUtil::MakeShapeWithLayout(F32, {1, 10, 20}, {2, 1, 0});
-  xla::Shape b = ShapeUtil::MakeShapeWithLayout(F32, {1, 10, 20}, {2, 0, 1});
-  xla::Shape c = ShapeUtil::MakeShapeWithLayout(F32, {10, 1, 20}, {2, 1, 0});
+  xla::Shape a =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 10, 20}, {2, 1, 0});
+  xla::Shape b =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 10, 20}, {2, 0, 1});
+  xla::Shape c =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 1, 20}, {2, 1, 0});
 
-  xla::Shape d = ShapeUtil::MakeShapeWithLayout(F32, {1, 10, 30}, {2, 1, 0});
-  xla::Shape e = ShapeUtil::MakeShapeWithLayout(F32, {1, 10, 30}, {2, 0, 1});
-  xla::Shape f = ShapeUtil::MakeShapeWithLayout(F32, {10, 1, 30}, {2, 1, 0});
+  xla::Shape d =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 10, 30}, {2, 1, 0});
+  xla::Shape e =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 10, 30}, {2, 0, 1});
+  xla::Shape f =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 1, 30}, {2, 1, 0});
 
   EXPECT_TRUE(IrArray::Index::ShapeIsCompatible(a, b));
   EXPECT_TRUE(IrArray::Index::ShapeIsCompatible(a, c));

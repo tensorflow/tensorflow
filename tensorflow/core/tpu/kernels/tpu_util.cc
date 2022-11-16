@@ -16,8 +16,8 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/core/platform/random.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -83,7 +83,7 @@ Status DynamicShapesToTensorShapes(const OpInputList& dynamic_shapes,
     TF_RETURN_IF_ERROR(
         ShapeTensorToTensorShape(dynamic_shapes[i], &(*shapes)[i]));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
@@ -95,7 +95,7 @@ Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
         ShapeTensorToTensorShape(dynamic_shape.tensor(), &(*shapes)[i]));
     ++i;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 xla::StatusOr<std::unique_ptr<::grpc::ServerBuilder>> CreateServerBuilder(

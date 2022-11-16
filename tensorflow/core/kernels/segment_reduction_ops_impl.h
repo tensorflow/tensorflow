@@ -48,8 +48,8 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/core/util/gpu_solvers.h"
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
@@ -299,15 +299,9 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
           context, context->allocate_output(0, output_shape, &output), done);
 
       bool use_deterministic_kernels =
-#if defined(PLATFORM_WINDOWS)
-          // See comment in segment_reduction_ops_gpu_0.cu.cc regarding Windows
-          // CI build error.
-          false;
-#else
           UseDeterministicSegmentReductions() ||
           (!SegmentReductionFunctor::atomic_reduction_is_associative &&
            OpDeterminismRequired());
-#endif
 
       // The determinism check is here, rather than inside the functor (as it is
       // for the unsorted segment reduction ops) because the done callback
@@ -334,8 +328,9 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       done();
     };
 
-    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-        stream, create_and_check_output);
+    context->device()
+        ->tensorflow_accelerator_device_info()
+        ->event_mgr->ThenExecute(stream, create_and_check_output);
   }
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -489,9 +484,9 @@ class UnsortedSegmentReductionOp : public OpKernel {
                 errors::InvalidArgument("Input num_segments == ", output_rows,
                                         " must not be negative."));
     TensorShape output_shape;
-    output_shape.AddDim(output_rows);
+    OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(output_rows));
     for (int i = segment_ids.dims(); i < data.dims(); i++) {
-      output_shape.AddDim(data.dim_size(i));
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(data.dim_size(i)));
     }
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
@@ -946,8 +941,9 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
           errors::Internal(type_string() +
                            ": failed to copy last_segment_id from device"),
           done);
-      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-          stream, create_and_check_output);
+      context->device()
+          ->tensorflow_accelerator_device_info()
+          ->event_mgr->ThenExecute(stream, create_and_check_output);
     }
   }
 

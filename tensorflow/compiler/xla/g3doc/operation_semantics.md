@@ -228,8 +228,11 @@ size `m` and spatial sizes `w` and `h`):
 \frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h
 \left( \nabla y_{ijkl} \frac{x_{ijkl} - \mu_l}{\sigma^2_l+\epsilon} \right)
 \\\\
+d_l&=
+\frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \nabla y_{ijkl}
+\\\\
 \nabla x_{ijkl} &= \frac{\gamma_{l}}{\sqrt{\sigma^2_{l}+\epsilon}}
-\left( \nabla y_{ijkl} - \mathrm{mean}(\nabla y) - c_l (x_{ijkl} - \mu_{l})
+\left( \nabla y_{ijkl} - d_l - c_l (x_{ijkl} - \mu_{l})
 \right)
 \\\\
 \nabla \gamma_l &= \sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \left( \nabla y_{ijkl}
@@ -861,6 +864,16 @@ The output shape has these dimensions, in this order:
 *   `spatial_dims`: One value for each valid placement of the convolutional
     window.
 
+<div style="width:95%; margin:-5px; margin-bottom:-60px; margin-top:-20px;">
+<img style="width:100%" src="./images/batch_group_counts.svg">
+</div>
+
+The figure above shows how `batch_group_count` field works. Effectively, we
+slice each lhs batch into `batch_group_count` groups, and do the same for the
+output features. Then, for each of these groups we do pairwise convolutions and
+concatenate the output along the output feature dimension. The operational
+semantics of all the other dimensions (feature and spatial) remain the same.
+
 The valid placements of the convolutional window are determined by the strides
 and the size of the base area after padding.
 
@@ -933,13 +946,6 @@ then b == f32[3]{0.0, 1.0, 2.0}
 ## CrossReplicaSum
 
 Performs `AllReduce` with a summation computation.
-
-## OptimizationBarrier
-
-Blocks any optimization pass from moving computations across the barrier.
-
-Ensures that all inputs are evaluated before any operators that depend on the
-barrier's outputs.
 
 ## CustomCall
 
@@ -1397,6 +1403,9 @@ using the comparison operator of the element type of `operand`.
 
 <b>`Tanh(operand)`</b> Element-wise hyperbolic tangent `x -> tanh(x)`.
 
+<b>`Round(operand)`</b> Element-wise rounding, ties away from zero.
+
+<b>`RoundNearestEven(operand)`</b> Element-wise rounding, ties to nearest even.
 
 Arguments | Type    | Semantics
 --------- | ------- | ---------------------------
@@ -1673,8 +1682,8 @@ the formal description) and "Offset Mapping" (`remapped_offset_dims` in the
 formal description) into [`X`,`0`] and [`0`,`O`<sub>`0`</sub>] respectively,
 adding up to [`X`,`O`<sub>`0`</sub>]. In other words, the output index
 [`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`O`<sub>`0`</sub>] maps to the input index
-[`GatherIndices`[`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`0`],`X`] which gives us
-the semantics for `tf.gather_nd`.
+[`GatherIndices`[`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`0`],`O`<sub>`0`</sub>]
+which gives us the semantics for `tf.gather_nd`.
 
 `slice_sizes` for this case is `[1,11]`.  Intuitively this means that every
 index `X` in the gather indices array picks an entire row and the result is the
@@ -1735,7 +1744,7 @@ let product:f32[] = reduce_product(padded_v_five);
 
 // Changing padding size will yield different result.
 // sum == 1 + 2 + 3 + 4 + 5 + 6
-let sum':f32[] = reduce_sum(padded_v_six);
+let sum:f32[] = reduce_sum(padded_v_six);
 ```
 
 ## GetTupleElement
@@ -1863,6 +1872,13 @@ For example: `Map(op1, op2, op3, computation, par1)` maps `elem_out <-
 computation(elem1, elem2, elem3, par1)` at each (multi-dimensional) index in the
 input arrays to produce the output array.
 
+## OptimizationBarrier
+
+Blocks any optimization pass from moving computations across the barrier.
+
+Ensures that all inputs are evaluated before any operators that depend on the
+barrier's outputs.
+
 ## Pad
 
 See also
@@ -1926,7 +1942,7 @@ XlaOp for the received data.
 The client API of `Recv` operation represents synchronous communication.
 However, the instruction is internally decomposed into 2 HLO instructions
 (`Recv` and `RecvDone`) to enable asynchronous data transfers. See also
-[`HloInstruction::CreateRecv` and `HloInstruction::CreateRecvDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/service/hlo_instruction.h).
+[`HloInstruction::CreateRecv` and `HloInstruction::CreateRecvDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/hlo/ir/hlo_instruction.h).
 
 <b>`Recv(const Shape& shape, int64 channel_id)`</b>
 
@@ -2258,7 +2274,7 @@ XlaComputation max;
   auto y = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "y");
   auto x = builder.Parameter(1, ShapeUtil::MakeShape(F32, {}), "x");
   builder.Max(y, x);
-  max = builder.Build().ConsumeValueOrDie();
+  max = builder.Build().value();
 }
 
 // Create a ReduceWindow computation with the max reduction computation.
@@ -2502,26 +2518,37 @@ Available values for `algorithm`:
 
 ## Scatter
 
-The XLA scatter operation generates a result which is the value of the input
-array `operand`, with several slices (at indices specified by `scatter_indices`)
-updated with the values in `updates` using `update_computation`.
+The XLA scatter operation generates a sequence of results which are the values
+of the input array `operands`, with several slices (at indices specified by
+`scatter_indices`) updated with the sequence of values in `updates` using
+`update_computation`.
 
 See also
 [`XlaBuilder::Scatter`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
-<b> `scatter(operand, scatter_indices, updates, update_computation, index_vector_dim, update_window_dims, inserted_window_dims, scatter_dims_to_operand_dims)` </b>
+<b> `scatter(operands..., scatter_indices, updates..., update_computation,
+index_vector_dim, update_window_dims, inserted_window_dims,
+scatter_dims_to_operand_dims)` </b>
 
-Arguments                      | Type                | Semantics
------------------------------- | ------------------- | ---------
-`operand`                      | `XlaOp`             | Array to be scattered into.
-`scatter_indices`              | `XlaOp`             | Array containing the starting indices of the slices that must be scattered to.
-`updates`                      | `XlaOp`             | Array containing the values that must be used for scattering.
-`update_computation`           | `XlaComputation`    | Computation to be used for combining the existing values in the input array and the updates during scatter. This computation should be of type `(T, T) -> T`.
-`index_vector_dim`             | `int64`             | The dimension in `scatter_indices` that contains the starting indices.
-`update_window_dims`           | `ArraySlice<int64>` | The set of dimensions in `updates` shape that are _window dimensions_.
-`inserted_window_dims`         | `ArraySlice<int64>` | The set of _window dimensions_ that must be inserted into `updates` shape.
-`scatter_dims_to_operand_dims` | `ArraySlice<int64>` | A dimensions map from the scatter indices to the operand index space. This array is interpreted as mapping `i` to `scatter_dims_to_operand_dims[i]` . It has to be one-to-one and total.
-`indices_are_sorted`           | `bool`              | Whether the indices are guaranteed to be sorted by the caller.
+Arguments                      | Type                  | Semantics
+------------------------------ | --------------------- | ---------
+`operands`                     | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N` to be scattered into.
+`scatter_indices`              | `XlaOp`               | Array containing the starting indices of the slices that must be scattered to.
+`updates`                      | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N`. `updates[i]` contains the values that must be used for scattering `operands[i]`.
+`update_computation`           | `XlaComputation`      | Computation to be used for combining the existing values in the input array and the updates during scatter. This computation should be of type `T_0, ..., T_N, T_0, ..., T_N -> Collate(T_0, ..., T_N)`.
+`index_vector_dim`             | `int64`               | The dimension in `scatter_indices` that contains the starting indices.
+`update_window_dims`           | `ArraySlice<int64>`   | The set of dimensions in `updates` shape that are *window dimensions*.
+`inserted_window_dims`         | `ArraySlice<int64>`   | The set of *window dimensions* that must be inserted into `updates` shape.
+`scatter_dims_to_operand_dims` | `ArraySlice<int64>`   | A dimensions map from the scatter indices to the operand index space. This array is interpreted as mapping `i` to `scatter_dims_to_operand_dims[i]` . It has to be one-to-one and total.
+`indices_are_sorted`           | `bool`                | Whether the indices are guaranteed to be sorted by the caller.
+
+Where:
+
+* N is required to be greater or equal to 1.
+* `operands`[`0`], ..., `operands`[`N-1`] must all have the same dimensions.
+* `updates`[`0`], ..., `updates`[`N-1`] must all have the same dimensions.
+* If `N = 1`, `Collate(T)` is `T`.
+* If `N > 1`, `Collate(T_0, ..., T_N)` is a tuple of `N` elements of type `T`.
 
 If `index_vector_dim` is equal to `scatter_indices.rank` we implicitly consider
 `scatter_indices` to have a trailing `1` dimension.
@@ -2532,10 +2559,11 @@ order.
 
 The arguments of scatter should follow these constraints:
 
--   `updates` array must be of rank `update_window_dims.size +
+-   Each `updates` array must be of rank `update_window_dims.size +
     scatter_indices.rank - 1`.
 
--   Bounds of dimension `i` in `updates` must conform to the following:
+-   Bounds of dimension `i` in each `updates` array must conform to the
+    following:
 
     -   If `i` is present in `update_window_dims` (i.e. equal to
         `update_window_dims`[`k`] for some `k`), then the bound of dimension `i`
@@ -2561,11 +2589,12 @@ The arguments of scatter should follow these constraints:
     `inserted_window_dims.size`.
 
 -   `scatter_dims_to_operand_dims.size` must be equal to
-    `scatter_indices`[`index_vector_dim`], and its values must be in the range
-    `[0, operand.rank)`.
+    `scatter_indices.shape.dims`[`index_vector_dim`], and its values must be in
+    the range `[0, operand.rank)`.
 
-For a given index `U` in the `updates` array, the corresponding index `I` in the
-`operand` array into which this update has to be applied is computed as follows:
+For a given index `U` in each `updates` array, the corresponding index `I` in
+the corresponding `operands` array into which this update has to be applied is
+computed as follows:
 
 1.  Let `G` = { `U`[`k`] for `k` in `update_scatter_dims` }. Use `G` to look up
     an index vector `S` in the `scatter_indices` array such that `S`[`i`] =
@@ -2576,9 +2605,9 @@ For a given index `U` in the `updates` array, the corresponding index `I` in the
     1.  `S`<sub>`in`</sub>[`scatter_dims_to_operand_dims`[`k`]] = `S`[`k`] if
         `k` < `scatter_dims_to_operand_dims.size`.
     2.  `S`<sub>`in`</sub>[`_`] = `0` otherwise.
-3.  Create an index `W`<sub>`in`</sub> into `operand` by scattering the indices
-    at `update_window_dims` in `U` according to `inserted_window_dims`. More
-    formally:
+3.  Create an index `W`<sub>`in`</sub> into each `operands` array by scattering
+    the indices at `update_window_dims` in `U` according to
+    `inserted_window_dims`. More formally:
     1.  `W`<sub>`in`</sub>[`window_dims_to_operand_dims`(`k`)] = `U`[`k`] if `k`
         is in `update_window_dims`, where `window_dims_to_operand_dims` is the
         monotonic function with domain [`0`, `update_window_dims.size`) and
@@ -2592,15 +2621,17 @@ For a given index `U` in the `updates` array, the corresponding index `I` in the
 
 In summary, the scatter operation can be defined as follows.
 
--   Initialize `output` with `operand`, i.e. for all indices `O` in the
-    `operand` array: \
-    `output`[`O`] = `operand`[`O`]
--   For every index `U` in the `updates` array and the corresponding index `O`
-    in the `operand` array, if `O` is a valid index for `output`: \
-    `output`[`O`] = `update_computation`(`output`[`O`], `updates`[`U`])
+-   Initialize `output` with `operands`, i.e. for all indices `J`, for all
+    indices `O` in the `operands`[`J`] array: \
+    `output`[`J`][`O`] = `operands`[`J`][`O`]
+-   For every index `U` in the `updates`[`J`] array and the corresponding index
+    `O` in the `operand`[`J`] array, if `O` is a valid index for `output`: \
+    `(output`[`0`][`O`], ..., `output`[`N-1`][`O`])
+    =`update_computation`(`output`[`0`][`O`], ...,
+    ,`output`[`N-1`][`O`],`updates`[`0`][`U`], ...,`updates`[`N-1`][`U`])
 
 The order in which updates are applied is non-deterministic. So, when multiple
-indices in `updates` refer to the same index in `operand`, the corresponding
+indices in `updates` refer to the same index in `operands`, the corresponding
 value in `output` will be non-deterministic.
 
 Note that the first parameter that is passed into the `update_computation` will
@@ -2767,7 +2798,7 @@ that shares the same channel handle. Does not return any data.
 Similar to the `Recv` operation, the client API of `Send` operation represents
 synchronous communication, and is internally decomposed into 2 HLO instructions
 (`Send` and `SendDone`) to enable asynchronous data transfers. See also
-[`HloInstruction::CreateSend` and `HloInstruction::CreateSendDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/service/hlo_instruction.h).
+[`HloInstruction::CreateSend` and `HloInstruction::CreateSendDone`](https://www.tensorflow.org/code/tensorflow/compiler/xla/hlo/ir/hlo_instruction.h).
 
 <b>`Send(HloInstruction operand, int64 channel_id)`</b>
 
@@ -2814,7 +2845,7 @@ rank as the input and contains the values inside a bounding box within the input
 array where the dimensions and indices of the bounding box are given as
 arguments to the slice operation.
 
-<b> `Slice(operand, start_indices, limit_indices)` </b>
+<b> `Slice(operand, start_indices, limit_indices, strides)` </b>
 
 | Arguments       | Type                | Semantics                            |
 | --------------- | ------------------- | ------------------------------------ |
@@ -2913,8 +2944,9 @@ tuple `([1, 3], [50, 42], [1.1, -3.0])`.
 
 If `is_stable` is set to true, the sort is guaranteed to be stable, that is, if
 there are elements which are considered to be equal by the comparator, the
-relative order of the equal values is preserved. By default, `is_stable` is set
-to false.
+relative order of the equal values is preserved. Two elements `e1` and `e2` are
+equal if and only if `comparator(e1, e2) = comparator(e2, e1) = false`. By
+default, `is_stable` is set to false.
 
 ## Transpose
 

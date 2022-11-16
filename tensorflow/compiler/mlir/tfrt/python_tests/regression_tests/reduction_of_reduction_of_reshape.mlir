@@ -5,5 +5,5 @@ func.func @test(%V__0 : tensor<i64> { python_test_attrs.static_type = tensor<i64
   %2 = "tf.Sum"(%1, %dims2) { keep_dims = true, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xi64>, tensor<2xi32>) -> tensor<?x?x?xi64>
   %dims3 = "tf.Const"() { value = dense<[0]> : tensor<1xi32>, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : () -> tensor<1xi32>
   %3 = "tf.Mean"(%2, %dims3) { keep_dims = true, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xi64>, tensor<1xi32>) -> tensor<?x?x?xi64>
-  return %3 : tensor<?x?x?xi64>
+  func.return %3 : tensor<?x?x?xi64>
 }

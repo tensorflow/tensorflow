@@ -17,12 +17,12 @@ limitations under the License.
 
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/convert/post_process_single_host_xplane.h"
 
 namespace tensorflow {
 namespace profiler {
 
-// Post process XSpaces collected locally from multiple profilers.
-void PostProcessSingleHostXSpace(XSpace* space, uint64 start_time_ns);
+using tsl::profiler::PostProcessSingleHostXSpace;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

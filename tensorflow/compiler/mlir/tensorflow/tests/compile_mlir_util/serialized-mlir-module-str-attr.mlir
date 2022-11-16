@@ -1,6 +1,6 @@
 // RUN: tf-mlir-translate -mlir-tf-str-attr-to-mlir %s -mlir-print-debuginfo -mlir-print-local-scope | FileCheck %s
 
-"\0A\0Amodule attributes {tf.versions = {producer = 888 : i32}} {\0A func @main(%arg0: tensor<?xi32>) -> tensor<?xi32> {\0A %0 = \22tf.Identity\22(%arg0) : (tensor<?xi32>) -> tensor<?xi32> loc(unknown)\0A return %0 : tensor<?xi32> loc(unknown)\0A } loc(unknown)\0A} loc(unknown)"
+"\0A\0Amodule attributes {tf.versions = {producer = 888 : i32}} {\0A func.func @main(%arg0: tensor<?xi32>) -> tensor<?xi32> {\0A %0 = \22tf.Identity\22(%arg0) : (tensor<?xi32>) -> tensor<?xi32> loc(unknown)\0A return %0 : tensor<?xi32> loc(unknown)\0A } loc(unknown)\0A} loc(unknown)"
 
 // Test simple serialized computation consisting of a function named `main`
 // with a tf.Identity op forwarding the function single argument to the function

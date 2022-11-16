@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/gpu_event_stats.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -74,47 +75,41 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
     LOG(WARNING) << "GPU trace was not collected.";
     return;
   }
-  std::vector<const XPlane*> host_planes = FindPlanesWithNames(
-      xspace, {kCuptiDriverApiPlaneName, kRoctracerApiPlaneName});
-  DCHECK_LE(host_planes.size(), 1);
+  const XPlane* host_plane = FindPlaneWithName(xspace, kHostThreadsPlaneName);
+  DCHECK_NE(host_plane, nullptr);
 
   absl::flat_hash_map<int64_t /*correlation_id*/, CorrelationInfo>
       correlation_info_map;
-  for (const XPlane* host_plane : host_planes) {
-    absl::flat_hash_map<uint32_t /*device_id*/, DeviceStepStats*>
-        sync_dev_stats_map;
-    XPlaneVisitor plane = CreateTfXPlaneVisitor(host_plane);
-    plane.ForEachLine([&](const XLineVisitor& line) {
-      uint32_t thread_id = line.Id();
-      line.ForEachEvent([&](const XEventVisitor& event) {
-        if (event.Name() == "cuStreamSynchronize") {
-          auto device_id_stat = event.GetStat(StatType::kDeviceId);
-          if (device_id_stat.has_value()) {
-            uint32_t device_ordinal = device_id_stat->IntOrUintValue();
-            DeviceStepStats* sync_dev_stats =
-                sync_dev_stats_map[device_ordinal];
-            if (sync_dev_stats == nullptr) {
-              sync_dev_stats = step_stats->add_dev_stats();
-              sync_dev_stats->set_device(
-                  absl::StrCat("/device:GPU:", device_ordinal, "/sync"));
-            }
-            NodeExecStats* ns = sync_dev_stats->add_node_stats();
-            SetNodeTimes(event, ns);
-            ns->set_node_name(std::string(event.Name()));
-            ns->set_timeline_label(absl::StrCat("ThreadId ", thread_id));
-            ns->set_thread_id(thread_id);
+
+  absl::flat_hash_map<uint32_t /*device_id*/, DeviceStepStats*>
+      sync_dev_stats_map;
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(host_plane);
+  plane.ForEachLine([&](const XLineVisitor& line) {
+    uint32_t thread_id = line.Id();
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      LaunchEventStats stats(&event);
+      if (event.Name() == "cuStreamSynchronize") {
+        if (stats.device_id.has_value()) {
+          uint32_t device_ordinal = stats.device_id.value();
+          DeviceStepStats* sync_dev_stats = sync_dev_stats_map[device_ordinal];
+          if (sync_dev_stats == nullptr) {
+            sync_dev_stats = step_stats->add_dev_stats();
+            sync_dev_stats->set_device(
+                absl::StrCat("/device:GPU:", device_ordinal, "/sync"));
           }
-        } else {
-          auto correlation_id_stat = event.GetStat(StatType::kCorrelationId);
-          if (correlation_id_stat.has_value()) {
-            int64_t correlation_id = correlation_id_stat->IntValue();
-            uint64_t enqueue_time_ns = event.TimestampNs();
-            correlation_info_map[correlation_id] = {thread_id, enqueue_time_ns};
-          }
+          NodeExecStats* ns = sync_dev_stats->add_node_stats();
+          SetNodeTimes(event, ns);
+          ns->set_node_name(std::string(event.Name()));
+          ns->set_timeline_label(absl::StrCat("ThreadId ", thread_id));
+          ns->set_thread_id(thread_id);
         }
-      });
+      } else if (stats.correlation_id.has_value()) {
+        int64_t correlation_id = stats.correlation_id.value();
+        uint64_t enqueue_time_ns = event.TimestampNs();
+        correlation_info_map[correlation_id] = {thread_id, enqueue_time_ns};
+      }
     });
-  }
+  });
   for (const XPlane* device_plane : device_planes) {
     absl::flat_hash_map<std::pair<int64_t /*stream_id*/, GpuEventType>,
                         DeviceStepStats*>
@@ -127,36 +122,14 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
     plane.ForEachLine([&](const XLineVisitor& line) {
       uint32_t stream_id = line.Id();
       line.ForEachEvent([&](const XEventVisitor& event) {
-        int64_t correlation_id = -1;
-        absl::string_view tf_op_fullname;
-        absl::string_view kernel_details;
-        absl::string_view memcpy_details;
-        event.ForEachStat([&](const XStatVisitor& stat) {
-          if (!stat.Type().has_value()) return;
-          switch (stat.Type().value()) {
-            case StatType::kCorrelationId:
-              correlation_id = stat.IntValue();
-              break;
-            case StatType::kTfOp:
-              tf_op_fullname = stat.StrOrRefValue();
-              break;
-            case StatType::kKernelDetails:
-              kernel_details = stat.StrOrRefValue();
-              break;
-            case StatType::kMemcpyDetails:
-              memcpy_details = stat.StrOrRefValue();
-              break;
-            default:
-              break;
-          }
-        });
+        GpuEventStats stats(&event);
 
         auto ns = absl::make_unique<NodeExecStats>();
         SetNodeTimes(event, ns.get());
 
         // Get launch information if available.
-        if (correlation_id > 0) {
-          auto it = correlation_info_map.find(correlation_id);
+        if (stats.correlation_id.has_value()) {
+          auto it = correlation_info_map.find(stats.correlation_id.value());
           if (it != correlation_info_map.end()) {
             const CorrelationInfo& correlation_info = it->second;
             ns->set_scheduled_micros(
@@ -166,13 +139,13 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
         }
 
         absl::string_view node_name =
-            !tf_op_fullname.empty() ? tf_op_fullname : event.Name();
+            stats.IsTfOp() ? stats.tf_op_fullname : event.Name();
         ns->set_node_name(std::string(node_name));
 
-        if (!kernel_details.empty()) {
+        if (stats.IsKernel()) {
           absl::string_view kernel_name = event.Name();
           ns->set_timeline_label(
-              absl::StrCat(kernel_name, " ", kernel_details));
+              absl::StrCat(kernel_name, " ", stats.kernel_details));
           DeviceStepStats*& stream_dev_stats =
               stream_dev_stats_map[{stream_id, GpuEventType::kKernel}];
           if (stream_dev_stats == nullptr) {
@@ -188,10 +161,10 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
           }
           all_streams_dev_stats->add_node_stats()->Swap(ns.get());
 
-        } else if (!memcpy_details.empty()) {
+        } else if (stats.IsMemCpy()) {
           absl::string_view memcpy_name = event.Name();
           ns->set_timeline_label(
-              absl::StrCat(memcpy_name, " ", memcpy_details));
+              absl::StrCat(memcpy_name, " ", stats.memcpy_details));
           GpuEventType gpu_event_type = ParseMemcpyName(memcpy_name);
           DCHECK_NE(gpu_event_type, GpuEventType::kUnknown);
           DeviceStepStats*& stream_dev_stats =

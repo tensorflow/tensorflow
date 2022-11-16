@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/parse_example/example_proto_fast_parsing.h"
 
+#include <algorithm>
+#include <utility>
+
 namespace tensorflow {
 namespace example {
 

@@ -39,6 +39,8 @@ namespace {
 struct TestResourceAliasAnalysis
     : public TF::PerFunctionAggregateAnalysisConsumerPass<
           TestResourceAliasAnalysis, TF::ResourceAliasAnalysis> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TestResourceAliasAnalysis)
+
   StringRef getArgument() const final {
     return "tf-test-resource-alias-analysis";
   }
@@ -48,7 +50,7 @@ struct TestResourceAliasAnalysis
            "purpose.";
   }
 
-  void runOnFunction(FuncOp func,
+  void runOnFunction(func::FuncOp func,
                      const TF::ResourceAliasAnalysis::Info& analysis) {
     int64_t next_id = 0;
     llvm::SmallDenseMap<Value, int64_t, 8> ids;

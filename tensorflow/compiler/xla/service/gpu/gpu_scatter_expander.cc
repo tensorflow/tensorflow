@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_scatter_expander.h"
 
 #include "absl/algorithm/container.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
@@ -26,8 +26,10 @@ namespace xla {
 bool GpuScatterExpander::InstructionMatchesPattern(HloInstruction* inst) {
   // TODO(b/129698548): Scattering elements larger than 64 bits is not
   // supported by XLA:GPU.
+  // TODO(b/227486631): Variadic scatter is not yet supported by GPU.
   return inst->opcode() == HloOpcode::kScatter &&
-         primitive_util::BitWidth(inst->shape().element_type()) > 64;
+         (inst->shape().IsTuple() ||
+          primitive_util::BitWidth(inst->shape().element_type()) > 64);
 }
 
 }  // namespace xla

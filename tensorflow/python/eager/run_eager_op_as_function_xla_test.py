@@ -14,7 +14,7 @@
 # ==============================================================================
 """Tests for wrapping an eager op in a call op at runtime."""
 from tensorflow.compiler.tests import xla_test
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import resource_variable_ops
@@ -34,7 +34,7 @@ class RunEagerOpAsFunctionXlaTest(xla_test.XLATestCase):
     with self.test_scope():
       v = resource_variable_ops.ResourceVariable(1.0)
 
-      @function.defun
+      @def_function.function
       def f():
         return v.read_value()
 

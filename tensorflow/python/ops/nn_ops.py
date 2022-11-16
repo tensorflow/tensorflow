@@ -131,6 +131,37 @@ For example:
 >>> # 'VALID' means to use no padding in conv2d (we already padded inp)
 >>> output2 = tf.nn.conv2d(inp, filter, strides, padding='VALID')
 >>> tf.debugging.assert_equal(output, output2)
+
+### Difference between convolution and pooling layers
+How padding is used in convolution layers and pooling layers is different. For
+convolution layers, padding is filled with values of zero, and padding is
+multiplied with kernels. For pooling layers, padding is excluded from the
+computation. For example when applying average pooling to a 4x4 grid, how much
+padding is added will not impact the output. Here is an example that
+demonstrates the difference.
+
+>>> x_in = np.array([[
+...   [[2], [2]],
+...   [[1], [1]],
+...   [[1], [1]]]])
+>>> kernel_in = np.array([  # simulate the avg_pool with conv2d
+...  [ [[0.25]], [[0.25]] ],
+...  [ [[0.25]], [[0.25]] ]])
+>>> x = tf.constant(x_in, dtype=tf.float32)
+>>> kernel = tf.constant(kernel_in, dtype=tf.float32)
+>>> conv_out = tf.nn.conv2d(x, kernel, strides=[1, 1, 1, 1], padding='SAME')
+>>> pool_out = tf.nn.avg_pool(x, [2, 2], strides=[1, 1, 1, 1], padding='SAME')
+>>> print(conv_out.shape, pool_out.shape)
+(1, 3, 2, 1) (1, 3, 2, 1)
+>>> tf.reshape(conv_out, [3, 2]).numpy()  # conv2d takes account of padding
+array([[1.5 , 0.75],
+       [1.  , 0.5 ],
+       [0.5 , 0.25]], dtype=float32)
+>>> tf.reshape(pool_out, [3, 2]).numpy()  # avg_pool excludes padding
+array([[1.5, 1.5],
+       [1. , 1. ],
+       [1. , 1. ]], dtype=float32)
+
 """
 
 import functools
@@ -1865,8 +1896,8 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
     A `Tensor` with the same type as `value`.
     Output shape with `'VALID'` padding is:
 
-        [batch, height - 2 * (filter_width - 1),
-         width - 2 * (filter_height - 1), out_channels].
+        [batch, height - rate * (filter_width - 1),
+         width - rate * (filter_height - 1), out_channels].
 
     Output shape with `'SAME'` padding is:
 
@@ -2267,7 +2298,7 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
   ...   [[0], [0], [3], [1], [2]], ]])
   >>> kernel_in = np.array([
   ...  [ [[2, 0.1]], [[3, 0.2]] ],
-  ...  [ [[0, 0.3]],[[1, 0.4]] ], ])
+  ...  [ [[0, 0.3]], [[1, 0.4]] ], ])
   >>> x = tf.constant(x_in, dtype=tf.float32)
   >>> kernel = tf.constant(kernel_in, dtype=tf.float32)
   >>> tf.nn.conv2d(x, kernel, strides=[1, 1, 1, 1], padding='VALID')
@@ -5697,7 +5728,8 @@ def _dropout(x, rate, noise_shape, uniform_sampler, dummy_rng_step, name,
     # than or equal to `rate`.
     random_tensor = uniform_sampler(shape=noise_shape, dtype=x_dtype)
     keep_mask = random_tensor >= rate
-    ret = gen_math_ops.mul(ret, gen_math_ops.cast(keep_mask, x_dtype))
+    zero_tensor = constant_op.constant(0, dtype=x_dtype)
+    ret = array_ops.where_v2(keep_mask, ret, zero_tensor)
     if not is_executing_eagerly:
       ret.set_shape(x.get_shape())
     return ret
@@ -5757,6 +5789,136 @@ def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-buil
     indices: The indices of `values` within the last dimension of `input`.
   """
   return gen_nn_ops.top_kv2(input, k=k, sorted=sorted, name=name)
+
+
+@tf_export("math.approx_max_k", "nn.approx_max_k")
+@dispatch.add_dispatch_support
+def approx_max_k(operand,
+                 k,
+                 reduction_dimension=-1,
+                 recall_target=0.95,
+                 reduction_input_size_override=-1,
+                 aggregate_to_topk=True,
+                 name=None):
+  """Returns max `k` values and their indices of the input `operand` in an approximate manner.
+
+  See https://arxiv.org/abs/2206.14286 for the algorithm details. This op is
+  only optimized on TPU currently.
+
+  Args:
+    operand : Array to search for max-k. Must be a floating number type.
+    k : Specifies the number of max-k.
+    reduction_dimension : Integer dimension along which to search. Default: -1.
+    recall_target : Recall target for the approximation.
+    reduction_input_size_override : When set to a positive value, it overrides
+      the size determined by `operand[reduction_dim]` for evaluating the recall.
+      This option is useful when the given `operand` is only a subset of the
+      overall computation in SPMD or distributed pipelines, where the true input
+      size cannot be deferred by the `operand` shape.
+    aggregate_to_topk : When true, aggregates approximate results to top-k. When
+      false, returns the approximate results. The number of the approximate
+      results is implementation defined and is greater equals to the specified
+      `k`.
+    name: Optional name for the operation.
+
+  Returns:
+    Tuple of two arrays. The arrays are the max `k` values and the
+    corresponding indices along the `reduction_dimension` of the input
+    `operand`. The arrays' dimensions are the same as the input `operand`
+    except for the `reduction_dimension`: when `aggregate_to_topk` is true,
+    the reduction dimension is `k`; otherwise, it is greater equals to `k`
+    where the size is implementation-defined.
+
+  We encourage users to wrap `approx_max_k` with jit. See the following
+  example for maximal inner production search (MIPS):
+
+  >>> import tensorflow as tf
+  >>> @tf.function(jit_compile=True)
+  ... def mips(qy, db, k=10, recall_target=0.95):
+  ...   dists = tf.einsum('ik,jk->ij', qy, db)
+  ...   # returns (f32[qy_size, k], i32[qy_size, k])
+  ...   return tf.nn.approx_max_k(dists, k=k, recall_target=recall_target)
+  >>>
+  >>> qy = tf.random.uniform((256,128))
+  >>> db = tf.random.uniform((2048,128))
+  >>> dot_products, neighbors = mips(qy, db, k=20)
+  """
+  return gen_nn_ops.approx_top_k(
+      operand,
+      k=k,
+      reduction_dimension=reduction_dimension,
+      recall_target=recall_target,
+      is_max_k=True,
+      reduction_input_size_override=reduction_input_size_override,
+      aggregate_to_topk=aggregate_to_topk,
+      name=name)
+
+
+@tf_export("math.approx_min_k", "nn.approx_min_k")
+@dispatch.add_dispatch_support
+def approx_min_k(operand,
+                 k,
+                 reduction_dimension=-1,
+                 recall_target=0.95,
+                 reduction_input_size_override=-1,
+                 aggregate_to_topk=True,
+                 name=None):
+  """Returns min `k` values and their indices of the input `operand` in an approximate manner.
+
+  See https://arxiv.org/abs/2206.14286 for the algorithm details. This op is
+  only optimized on TPU currently.
+
+  Args:
+    operand : Array to search for min-k. Must be a floating number type.
+    k : Specifies the number of min-k.
+    reduction_dimension: Integer dimension along which to search. Default: -1.
+    recall_target: Recall target for the approximation.
+    reduction_input_size_override : When set to a positive value, it overrides
+      the size determined by `operand[reduction_dim]` for evaluating the recall.
+      This option is useful when the given `operand` is only a subset of the
+      overall computation in SPMD or distributed pipelines, where the true input
+      size cannot be deferred by the `operand` shape.
+    aggregate_to_topk: When true, aggregates approximate results to top-k. When
+      false, returns the approximate results. The number of the approximate
+      results is implementation defined and is greater equals to the specified
+      `k`.
+    name: Optional name for the operation.
+
+  Returns:
+    Tuple of two arrays. The arrays are the least `k` values and the
+    corresponding indices along the `reduction_dimension` of the input
+    `operand`.  The arrays' dimensions are the same as the input `operand`
+    except for the `reduction_dimension`: when `aggregate_to_topk` is true,
+    the reduction dimension is `k`; otherwise, it is greater equals to `k`
+    where the size is implementation-defined.
+
+  We encourage users to wrap `approx_min_k` with jit. See the following example
+  for nearest neighbor search over the squared l2 distance:
+
+  >>> import tensorflow as tf
+  >>> @tf.function(jit_compile=True)
+  ... def l2_ann(qy, db, half_db_norms, k=10, recall_target=0.95):
+  ...   dists = half_db_norms - tf.einsum('ik,jk->ij', qy, db)
+  ...   return tf.nn.approx_min_k(dists, k=k, recall_target=recall_target)
+  >>>
+  >>> qy = tf.random.uniform((256,128))
+  >>> db = tf.random.uniform((2048,128))
+  >>> half_db_norms = tf.norm(db, axis=1) / 2
+  >>> dists, neighbors = l2_ann(qy, db, half_db_norms)
+
+  In the example above, we compute `db_norms/2 - dot(qy, db^T)` instead of
+  `qy^2 - 2 dot(qy, db^T) + db^2` for performance reason. The former uses less
+  arithmetics and produces the same set of neighbors.
+  """
+  return gen_nn_ops.approx_top_k(
+      operand,
+      k=k,
+      reduction_dimension=reduction_dimension,
+      recall_target=recall_target,
+      is_max_k=False,
+      reduction_input_size_override=reduction_input_size_override,
+      aggregate_to_topk=aggregate_to_topk,
+      name=name)
 
 
 def nth_element(input, n, reverse=False, name=None):  # pylint: disable=redefined-builtin
@@ -6317,10 +6479,37 @@ def in_top_k(predictions, targets, k, name=None):
 @tf_export("math.in_top_k", "nn.in_top_k", v1=[])
 @dispatch.add_dispatch_support
 def in_top_k_v2(targets, predictions, k, name=None):
+  """Outputs whether the targets are in the top `K` predictions.
+
+  This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+  prediction for the target class is finite (not inf, -inf, or nan) and among
+  the top `k` predictions among all predictions for example `i`.
+  `predictions` does not have to be normalized.
+
+  Note that the behavior of `InTopK` differs from the `TopK` op in its handling
+  of ties; if multiple classes have the same prediction value and straddle the
+  top-`k` boundary, all of those classes are considered to be in the top `k`.
+
+  >>> target = tf.constant([0, 1, 3])
+  >>> pred = tf.constant([
+  ...  [1.2, -0.3, 2.8, 5.2],
+  ...  [0.1, 0.0, 0.0, 0.0],
+  ...  [0.0, 0.5, 0.3, 0.3]],
+  ...  dtype=tf.float32)
+  >>> print(tf.math.in_top_k(target, pred, 2))
+  tf.Tensor([False  True  True], shape=(3,), dtype=bool)
+
+  Args:
+    targets: A `batch_size` vector of class ids. Must be `int32` or `int64`.
+    predictions: A `batch_size` x `classes` tensor of type `float32`.
+    k: An `int`. The parameter to specify search space.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` with the same shape of `targets` with type of `bool`. Each
+      element specifies if the target falls into top-k predictions.
+  """
   return in_top_k(predictions, targets, k, name)
-
-
-in_top_k_v2.__doc__ = in_top_k.__doc__
 
 
 tf_export(v1=["nn.quantized_avg_pool"])(

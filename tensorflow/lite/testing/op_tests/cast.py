@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for cast."""
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -43,6 +43,10 @@ def make_cast_tests(options):
       "output_dtype": [tf.int8],
       "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
   }, {
+      "input_dtype": [tf.uint16],
+      "output_dtype": [tf.float32],
+      "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+  }, {
       "input_dtype": [tf.uint32],
       "output_dtype": [tf.int32],
       "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
@@ -53,6 +57,14 @@ def make_cast_tests(options):
   }, {
       "input_dtype": [tf.int8],
       "output_dtype": [tf.uint8],
+      "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+  }, {
+      "input_dtype": [tf.uint16],
+      "output_dtype": [tf.int16],
+      "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+  }, {
+      "input_dtype": [tf.int16],
+      "output_dtype": [tf.uint16],
       "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
   }]
 

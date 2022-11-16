@@ -64,7 +64,7 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
       *handle = next_handle_;
       next_handle_++;
     }
-    done(Status::OK());
+    done(OkStatus());
   }
 
   void Run(const FunctionLibraryRuntime::Options& opts,
@@ -152,13 +152,13 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
               } else {
                 rendezvous_ref_counts_[step_id] = 1;
               }
-              return Status::OK();
+              return OkStatus();
             },
             [this](const int64_t step_id) {
               CHECK(rendezvous_ref_counts_.find(step_id) !=
                     rendezvous_ref_counts_.end());
               rendezvous_ref_counts_[step_id]--;
-              return Status::OK();
+              return OkStatus();
             }}));
   }
 
@@ -176,9 +176,9 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   Tensor GPUToCPU(const Tensor& device_tensor) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     CHECK(gpu_device_);
-    CHECK(gpu_device_->tensorflow_gpu_device_info() != nullptr);
+    CHECK(gpu_device_->tensorflow_accelerator_device_info() != nullptr);
     DeviceContext* device_context =
-        gpu_device_->tensorflow_gpu_device_info()->default_context;
+        gpu_device_->tensorflow_accelerator_device_info()->default_context;
 
     Tensor cpu_tensor(device_tensor.dtype(), device_tensor.shape());
     CHECK(device_context
@@ -194,9 +194,9 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   Tensor CPUToGPU(const Tensor& cpu_tensor) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     CHECK(gpu_device_);
-    CHECK(gpu_device_->tensorflow_gpu_device_info() != nullptr);
+    CHECK(gpu_device_->tensorflow_accelerator_device_info() != nullptr);
     DeviceContext* device_context =
-        gpu_device_->tensorflow_gpu_device_info()->default_context;
+        gpu_device_->tensorflow_accelerator_device_info()->default_context;
 
     Tensor device_tensor(gpu_device_->GetAllocator({}), cpu_tensor.dtype(),
                          cpu_tensor.shape(), {});
@@ -261,7 +261,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     EXPECT_TRUE(errors::IsNotFound(status)) << "Actual status: " << status;
     EXPECT_TRUE(absl::StrContains(status.error_message(), "not found."));
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Run(const string& name, FunctionLibraryRuntime::Options opts,
@@ -308,7 +308,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     for (size_t i = 0; i < rets.size(); ++i) {
       *rets[i] = out[i];
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   std::unique_ptr<DynamicDeviceMgr> device_mgr_;
@@ -874,7 +874,7 @@ class TestFunctionPackedArgs : public FunctionArgsInterface {
   Status GetLocalArg(const FunctionArgIndex& index,
                      Tensor* val) const override {
     *val = *packed_args_.at(index.index).at(index.sub_index).tensor;
-    return Status::OK();
+    return OkStatus();
   };
 
   std::vector<Tensor> GetLocalTensors() const override { return {}; }

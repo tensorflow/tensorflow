@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_READER_H_
-#define TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_READER_H_
+#ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CALIBRATION_READER_H_
+#define TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CALIBRATION_READER_H_
 
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/model.h"
@@ -53,4 +53,4 @@ class CalibrationReader {
 }  // namespace calibration
 }  // namespace optimize
 }  // namespace tflite
-#endif  // TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_READER_H_
+#endif  // TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CALIBRATION_READER_H_

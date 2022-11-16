@@ -22,5 +22,5 @@ func.func @test(%V__0: tensor<?x?x?xf32> { python_test_attrs.static_type = tenso
   %20 = "tf.Add"(%17, %19) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   %21 = "tf.Sub"(%16, %20) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   %22 = "tf.Square"(%21) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
-  return %22 : tensor<?x?x?xf32>
+  func.return %22 : tensor<?x?x?xf32>
 }

@@ -13,40 +13,51 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 
+#include "absl/time/time.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/platform/blocking_counter.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 
 namespace tensorflow {
 namespace {
 
 constexpr char kCoordinationServiceType[] = "standalone";
 
-void ConfigCoordinationService(tensorflow::ServerDef* server_def) {
+void ConfigCoordinationService(tensorflow::ServerDef* server_def,
+                               bool agent_destruction_without_shutdown = false,
+                               bool enable_health_check = false) {
+  // Set the number of threads here since in some environment the default number
+  // of threads may be small which could cause RPC to hang.
+  server_def->mutable_default_session_config()
+      ->set_inter_op_parallelism_threads(10);
   auto coord_config = server_def->mutable_default_session_config()
                           ->mutable_experimental()
                           ->mutable_coordination_config();
   coord_config->set_service_type(kCoordinationServiceType);
   coord_config->set_service_leader("/job:worker/replica:0/task:0");
-  coord_config->set_heartbeat_timeout_in_ms(5 * 1000);  // 5 seconds
+  coord_config->set_agent_destruction_without_shutdown(
+      agent_destruction_without_shutdown);
+  coord_config->set_heartbeat_timeout_in_ms(
+      absl::ToInt64Milliseconds(absl::Seconds(5)));
+  coord_config->set_shutdown_barrier_timeout_in_ms(
+      absl::ToInt64Milliseconds(absl::Seconds(5)));
+  coord_config->set_enable_health_check(enable_health_check);
 }
 
 string SetConfigKeyValueFn() {
@@ -102,13 +113,14 @@ string GetConfigKeyValueFn() {
   return fdef.SerializeAsString();
 }
 
-// TODO(hanyangtay): Figure out how to simulate network failure in a thread.
-// This test no longer works as agents gracefully disconnect upon destruction.
-TEST(CAPI, DISABLED_MultiClientCoordinationService) {
+TEST(CAPI, MultiClientCoordinationService) {
   const int cluster_size = 3;
   tensorflow::ServerDef server_def =
       GetMultiClientServerDef("worker", cluster_size);
-  ConfigCoordinationService(&server_def);
+  // Agent needs to be destroyed without shutdown to simulate network failure,
+  // which would trigger stale heartbeat detection on the service-side.
+  ConfigCoordinationService(&server_def,
+                            /*agent_destruction_without_shutdown=*/true);
   auto worker_thread_fn = [&](int worker_id) {
     tensorflow::ServerDef server_def_copy = server_def;
     // By default, server_def has task index set to 0.
@@ -129,12 +141,11 @@ TEST(CAPI, DISABLED_MultiClientCoordinationService) {
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
     // Normal execution: all cluster members are online.
-    std::this_thread::sleep_for(std::chrono::seconds(5));
     TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
     TFE_ExecutorWaitForAllPendingNodes(executor, status);
     ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
-    // Sleep for 10 seconds and run colletive ops on cluster except worker/1.
+    // Sleep for 10 seconds and run collective ops on cluster except worker/1.
     // Since worker/1 thread directly exits here, its heartbeat will expire,
     // leading to UnavailableError on leader and then propagate to all other
     // members in cluster.
@@ -453,6 +464,31 @@ TEST_P(SingleClientCoordinationServiceTest, TestSetGetConfigInOp) {
   TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
   EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
 
+  // Try to get value of a nonexistent key.
+  TFE_Op* get_op = TFE_NewOp(ctx, "TestGetConfigKeyValue", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_TensorHandle* get_key = TestScalarTensorHandle(ctx, tstring("test_key"));
+  TFE_OpAddInput(get_op, get_key, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  // This get op is non-blocking.
+  TFE_OpSetAttrBool(get_op, "blocking", false);
+  TFE_TensorHandle* retvals[1];
+  int num_retvals = 1;
+  // Run get op from task2.
+  TFE_OpSetDevice(get_op, task2_name, status);
+  // Since we are using async executor, TFE_Execute only returns the enqueue
+  // status, and TFE_ExecutorWaitForAllPendingNodes will return the real error.
+  TFE_Execute(get_op, retvals, &num_retvals, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+  TFE_ExecutorWaitForAllPendingNodes(executor, status);
+  EXPECT_EQ(TF_NOT_FOUND, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteTensorHandle(retvals[0]);
+  TFE_DeleteOp(get_op);
+  // Reset executor and status.
+  TFE_ExecutorClearError(executor);
+  TF_SetStatus(status, TF_OK, "");
+
   TFE_Op* set_op = TFE_NewOp(ctx, "TestSetConfigKeyValue", status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_TensorHandle* set_key = TestScalarTensorHandle(ctx, tstring("test_key"));
@@ -464,24 +500,22 @@ TEST_P(SingleClientCoordinationServiceTest, TestSetGetConfigInOp) {
   // Run set op from task1
   TFE_OpSetDevice(set_op, task1_name, status);
   ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
-  int num_retvals = 0;
+  num_retvals = 0;
   TFE_Execute(set_op, nullptr, &num_retvals, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteTensorHandle(set_key);
   TFE_DeleteTensorHandle(set_val);
   TFE_DeleteOp(set_op);
 
-  TFE_Op* get_op = TFE_NewOp(ctx, "TestGetConfigKeyValue", status);
+  TFE_Op* get_op2 = TFE_NewOp(ctx, "TestGetConfigKeyValue", status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TFE_TensorHandle* get_key = TestScalarTensorHandle(ctx, tstring("test_key"));
-  TFE_OpAddInput(get_op, get_key, status);
+  TFE_OpAddInput(get_op2, get_key, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
-  TFE_TensorHandle* retvals[1];
+  TFE_OpSetAttrBool(get_op2, "blocking", true);
   num_retvals = 1;
   // Run get op from task2
-  TFE_OpSetDevice(get_op, task2_name, status);
-  TFE_Execute(get_op, retvals, &num_retvals, status);
+  TFE_OpSetDevice(get_op2, task2_name, status);
+  TFE_Execute(get_op2, retvals, &num_retvals, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   TF_Tensor* t = TFE_TensorHandleResolve(retvals[0], status);
@@ -492,7 +526,7 @@ TEST_P(SingleClientCoordinationServiceTest, TestSetGetConfigInOp) {
   TFE_DeleteTensorHandle(get_key);
   TFE_DeleteTensorHandle(retvals[0]);
   TF_DeleteTensor(t);
-  TFE_DeleteOp(get_op);
+  TFE_DeleteOp(get_op2);
 
   const string& set_fdef = SetConfigKeyValueFn();
   TFE_ContextAddFunctionDef(ctx, set_fdef.data(), set_fdef.size(), status);
@@ -543,7 +577,6 @@ TEST_P(SingleClientCoordinationServiceTest, TestSetGetConfigInOp) {
 
   // Since we created async executor, op status is eventually reported at
   // the sync barrier.
-  TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
   TFE_ExecutorWaitForAllPendingNodes(executor, status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteStatus(status);

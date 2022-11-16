@@ -86,6 +86,9 @@ TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
     case kTfLiteInt16:
       copyCast(in, out->data.i16, num_elements);
       break;
+    case kTfLiteUInt16:
+      copyCast(in, out->data.ui16, num_elements);
+      break;
     case kTfLiteUInt8:
       copyCast(in, out->data.uint8, num_elements);
       break;
@@ -124,6 +127,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return copyToTensor(context, input->data.i32, output, num_elements);
     case kTfLiteUInt32:
       return copyToTensor(context, input->data.u32, output, num_elements);
+    case kTfLiteUInt16:
+      return copyToTensor(context, input->data.ui16, output, num_elements);
     case kTfLiteInt16:
       return copyToTensor(context, input->data.i16, output, num_elements);
     case kTfLiteUInt8:

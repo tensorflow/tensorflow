@@ -21,6 +21,7 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -30,7 +31,7 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -105,7 +106,7 @@ int main(int argc, char** argv) {
   // Load the MLIR module.
   mlir::DialectRegistry registry;
   registry.insert<mlir::TF::TensorFlowDialect, mlir::TFL::TensorFlowLiteDialect,
-                  mlir::arith::ArithmeticDialect, mlir::func::FuncDialect>();
+                  mlir::arith::ArithDialect, mlir::func::FuncDialect>();
   mlir::MLIRContext context(registry);
 
   llvm::SourceMgr source_mgr;
@@ -115,7 +116,7 @@ int main(int argc, char** argv) {
   if (!module) return 1;
 
   // TODO(jpienaar): Expand to support inputs.
-  mlir::FuncOp main = module->lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp main = module->lookupSymbol<mlir::func::FuncOp>("main");
   QCHECK(main) << "No 'main' function specified.";
   if (main.getFunctionType().getNumInputs() != 0)
     LOG(QFATAL) << "NYI: Only nullary functions supported.";

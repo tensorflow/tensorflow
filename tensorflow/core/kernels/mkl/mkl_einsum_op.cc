@@ -101,32 +101,36 @@ struct MklEinsumHelper {
     if (lhs.NumElements() == 0 || rhs.NumElements() == 0) {
       functor::SetZeroFunctor<Device, T> f;
       f(ctx->eigen_device<Device>(), output->flat<T>());
-      return Status::OK();
+      return OkStatus();
     }
 
     // Compute parameters for DNNL matmul primitive.
     MklBatchMatMulHelper bmm;
-    auto params = bmm.CreateMatMulParams(lhs.shape(), rhs.shape(), out_shape,
-                                         trans_x, trans_y);
+    string prefix = "einsum";
+    auto params = bmm.CreateMatMulParams(prefix, lhs.shape(), rhs.shape(),
+                                         out_shape, trans_x, trans_y);
 
     // Create or retrieve matmul primitive from cache.
     MklMatMulPrimitive<T, T, T>* matmul_prim =
         MklMatMulPrimitiveFactory<T, T, T, T>::Get(
             *params, false /* value for do_not_cache */);
+
+    UserScratchPad<unsigned char> scratch_pad;
+    scratch_pad.AllocateSPTensor(matmul_prim, ctx);
     // Execute matmul primitive.
     std::shared_ptr<stream> cpu_stream;
     MklDnnThreadPool eigen_tp(ctx);
     cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
 
     matmul_prim->Execute(cpu_stream, lhs.flat<T>().data(), rhs.flat<T>().data(),
-                         output->flat<T>().data());
+                         output->flat<T>().data(), scratch_pad.Get());
 
     Tensor output_reshaped;
     if (output->dims() != 3) {
       TF_RETURN_IF_ERROR(EinsumHelper::ReshapeToRank3(
           *output, bcast.output_batch_size(), &output_reshaped));
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -135,7 +139,7 @@ class MklEinsum : public OpKernel {
  public:
   explicit MklEinsum(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("equation", &mkl_equation_));
-    OP_REQUIRES_OK(c, EinsumHelper::ParseEquation(
+    OP_REQUIRES_OK(c, ParseEinsumEquation(
                           mkl_equation_, &mkl_input_labels_,
                           &mkl_output_labels_, &mkl_label_types_,
                           &mkl_input_label_counts_, &mkl_output_label_counts_,
@@ -150,7 +154,7 @@ class MklEinsum : public OpKernel {
 
     OperandLabels input_labels(mkl_input_labels_);
     Labels output_labels(mkl_output_labels_);
-    std::vector<EinsumHelper::DimensionType> label_types(mkl_label_types_);
+    std::vector<EinsumDimensionType> label_types(mkl_label_types_);
     OperandLabelCounts input_label_counts(mkl_input_label_counts_);
     LabelCounts output_label_counts(mkl_output_label_counts_);
     LabelToDimSizes label_to_dim_sizes;
@@ -195,11 +199,11 @@ class MklEinsum : public OpKernel {
     // All batch dimensions should be present in the contracted result. First
     // the broadcasting dimensions, then the named batch dimensions.
     for (int label = 0; label < num_labels; ++label) {
-      if (label_types[label] == EinsumHelper::kBroadcasting)
+      if (label_types[label] == EinsumDimensionType::kBroadcasting)
         result_labels.push_back(label);
     }
     for (int label = 0; label < num_labels; ++label) {
-      if (label_types[label] == EinsumHelper::kBatch)
+      if (label_types[label] == EinsumDimensionType::kBatch)
         result_labels.push_back(label);
     }
     for (int i = 0; i < num_inputs; ++i) {
@@ -261,22 +265,22 @@ class MklEinsum : public OpKernel {
   string mkl_equation_;
   OperandLabels mkl_input_labels_;
   Labels mkl_output_labels_;
-  std::vector<EinsumHelper::DimensionType> mkl_label_types_;
+  std::vector<EinsumDimensionType> mkl_label_types_;
   OperandLabelCounts mkl_input_label_counts_;
   LabelCounts mkl_output_label_counts_;
   gtl::InlinedVector<bool, 2> mkl_input_has_ellipsis_;
   bool mkl_output_has_ellipsis_ = false;
 };
 
+#ifndef DNNL_AARCH64_USE_ACL
 #define REGISTER_EINSUM_MKL(TYPE)                                             \
   REGISTER_KERNEL_BUILDER(Name("_MklEinsum")                                  \
                               .Device(DEVICE_CPU)                             \
                               .TypeConstraint<TYPE>("T")                      \
                               .Label(mkl_op_registry::kMklNameChangeOpLabel), \
                           MklEinsum<CPUDevice, TYPE>)
-#ifdef ENABLE_MKL
 TF_CALL_float(REGISTER_EINSUM_MKL);
 TF_CALL_bfloat16(REGISTER_EINSUM_MKL);
-#endif  // ENABLE_MKL
+#endif  // !DNNL_AARCH64_USE_ACL
 }  // namespace tensorflow
 #endif  // INTEL_MKL

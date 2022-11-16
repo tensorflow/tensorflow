@@ -16,25 +16,25 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 
 #include <algorithm>
+#include <memory>
 #include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -115,13 +115,6 @@ bool MayUseOperandValue(int64_t operand_number, const ShapeIndex& index,
       // transparently.
       CHECK_EQ(operand_number, 0);
       return index.empty();
-    case HloOpcode::kTupleSelect:
-      // Select does not use any nested elements of its selected-from operands
-      // (operand 1 and 2)
-      CHECK_GE(operand_number, 0);
-      CHECK_LE(operand_number, 2);
-      return operand_number == 0 || index.empty();
-
     case HloOpcode::kDomain:
     case HloOpcode::kTuple:
       // These instructions always pass through their operands transparently.
@@ -157,10 +150,7 @@ void HloValue::SetPositions(absl::Span<const HloPosition> positions) {
   positions_.insert(positions_.end(), positions.begin(), positions.end());
   // Update liveout status of this HloValue.
   live_out_of_module_ |=
-      absl::c_any_of(positions_, [](const HloPosition& position) {
-        return position.instruction->IsRoot() &&
-               position.instruction->parent()->IsEntryComputation();
-      });
+      IsRootOf(defining_instruction()->GetModule()->entry_computation());
 }
 
 void HloValue::ComputeUses(std::vector<HloUse>& uses) const {
@@ -196,6 +186,13 @@ void HloValue::ComputeUses(std::vector<HloUse>& uses) const {
       }
     }
   }
+}
+
+bool HloValue::IsRootOf(const HloComputation* computation) const {
+  return absl::c_any_of(positions_, [&](const HloPosition& position) {
+    return position.instruction->IsRoot() &&
+           position.instruction->parent() == computation;
+  });
 }
 
 std::ostream& operator<<(std::ostream& out, const HloValue& value) {
@@ -281,6 +278,20 @@ bool InstructionValueSet::AssignUnionOf(
       input_value_sets.push_back(&input->element(index));
     }
     changed |= value_set.AssignUnionOf(input_value_sets);
+  }
+
+  return changed;
+}
+
+bool InstructionValueSet::AssignUnionOf(const InstructionValueSet& input,
+                                        ShapeIndexView input_index) {
+  bool changed = false;
+  for (auto& [index, value_set] : *this) {
+    ShapeIndex source_index(input_index);
+    for (auto i : index) {
+      source_index.push_back(i);
+    }
+    changed |= value_set.AssignUnionOf({&input.element(source_index)});
   }
 
   return changed;

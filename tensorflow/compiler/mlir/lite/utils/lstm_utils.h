@@ -48,7 +48,7 @@ constexpr char kCoupleInputForgetGates[] = "CoupleInputForgetGates";
 // This class sets the layer norm coefficients to NoneType.
 class ConvertLSTMCellSimpleToFusedLSTM {
  public:
-  explicit ConvertLSTMCellSimpleToFusedLSTM(mlir::FuncOp fused_func_op)
+  explicit ConvertLSTMCellSimpleToFusedLSTM(mlir::func::FuncOp fused_func_op)
       : fused_func_op_(fused_func_op),
         couple_input_forget_gates_(false),
         builder_(fused_func_op.getBody()) {}
@@ -102,7 +102,7 @@ class ConvertLSTMCellSimpleToFusedLSTM {
   virtual void SetOutputLayerNormCoefficients();
 
   // specified state
-  FuncOp fused_func_op_;
+  func::FuncOp fused_func_op_;
   Value input_;
   Value weight_;
   Value bias_;
@@ -176,7 +176,7 @@ class ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM
     : public ConvertLSTMCellSimpleToFusedLSTM {
  public:
   explicit ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM(
-      mlir::FuncOp fused_func_op)
+      mlir::func::FuncOp fused_func_op)
       : ConvertLSTMCellSimpleToFusedLSTM(fused_func_op) {}
 
   // not copyable.
@@ -208,7 +208,8 @@ class ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM
   SmallVector<int64_t, 1> layer_norm_size_values_;
 };
 
-LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder);
+LogicalResult ConvertKerasLSTMLayer(mlir::func::FuncOp func_op,
+                                    OpBuilder* builder);
 
 }  // end namespace TFL
 }  // end namespace mlir

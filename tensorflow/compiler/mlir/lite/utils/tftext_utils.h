@@ -35,7 +35,7 @@ namespace mlir {
 namespace TFL {
 
 // Fuse TF.Text APIs annotated by tf.function to a TFLite custom op.
-LogicalResult ConvertTFTextAPI(mlir::FuncOp func, llvm::StringRef api,
+LogicalResult ConvertTFTextAPI(mlir::func::FuncOp func, llvm::StringRef api,
                                mlir::TF::FuncAttr attr);
 
 // Check if TF.Text Tensorflow ops are registered.

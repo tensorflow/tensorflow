@@ -114,6 +114,12 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
           " BN: TF FusedBatchNorm* operations."
           " FUSIBLE: All TF operations that XLA can fuse (All the above). "
           "You can also put any TF operation name, e.g. 'FUSIBLE,MatMul'."),
+      Flag("tf_xla_cluster_exclude_ops",
+           &mark_for_compilation_flags->tf_xla_cluster_exclude_ops,
+           "(experimental) "
+           "Exclude the operations from auto-clustering. "
+           "If multiple, separate them with commas."
+           " Where, Some_other_ops"),
       Flag("tf_xla_clustering_debug",
            &mark_for_compilation_flags->tf_xla_clustering_debug,
            "Dump graphs during XLA compilation."),
@@ -145,7 +151,11 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
       Flag("tf_xla_disable_strict_signature_checks",
            &mark_for_compilation_flags->tf_xla_disable_strict_signature_checks,
            "If true, entires loaded into the XLA compile cache will not have "
-           "their signatures checked strictly. Defaults to false.")};
+           "their signatures checked strictly. Defaults to false."),
+      Flag("tf_xla_persistent_cache_prefix",
+           &mark_for_compilation_flags->tf_xla_persistent_cache_prefix,
+           "Specifies the persistance cache prefix. Default is "
+           "\"xla_compile_cache\"")};
   flag_list->insert(flag_list->end(), new_flags.begin(), new_flags.end());
 }
 
@@ -153,12 +163,17 @@ void AllocateAndParseJitRtFlags() {
   jitrt_flags = new JitRtFlags;
   jitrt_flags->always_specialize = false;
   jitrt_flags->cost_driven_async_parallel_for = false;
+  jitrt_flags->log_query_of_death = false;
   jitrt_flags->vectorize = false;
+  jitrt_flags->enable_crash_reproducer = false;
   jitrt_flag_list = new std::vector<Flag>({
       Flag("always_specialize", &jitrt_flags->always_specialize, ""),
       Flag("cost_driven_async_parallel_for",
            &jitrt_flags->cost_driven_async_parallel_for, ""),
+      Flag("log_query_of_death", &jitrt_flags->log_query_of_death, ""),
       Flag("vectorize", &jitrt_flags->vectorize, ""),
+      Flag("enable_crash_reproducer", &jitrt_flags->enable_crash_reproducer,
+           ""),
   });
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_JITRT_FLAGS", *jitrt_flag_list);
 }
@@ -189,6 +204,8 @@ void AllocateAndParseFlags() {
   mark_for_compilation_flags->tf_xla_deterministic_cluster_names = false;
   mark_for_compilation_flags->tf_xla_persistent_cache_directory = "";
   mark_for_compilation_flags->tf_xla_disable_strict_signature_checks = false;
+  mark_for_compilation_flags->tf_xla_persistent_cache_prefix =
+      "xla_compile_cache";
 
   device_flags = new XlaDeviceFlags;
   device_flags->tf_xla_compile_on_demand = false;
@@ -211,7 +228,6 @@ void AllocateAndParseFlags() {
   // bridge, on a per-graph basis).
   bool enable_mlir_bridge = false;
   bool enable_mlir_bridge_is_explicit = false;
-  bool mlir_bridge_safe_mode = false;
   bool enable_mlir_merge_control_flow_pass = true;
   bool enable_mlir_convert_control_to_data_outputs_pass = false;
   auto setter_for_jitter_tensor_names = [](string sequence) {
@@ -278,12 +294,6 @@ void AllocateAndParseFlags() {
             &enable_mlir_convert_control_to_data_outputs_pass,
             "Enables `tf-executor-convert-control-to-data-outputs` pass for "
             "MLIR-Based TensorFlow Compiler Bridge."),
-       Flag(
-           "tf_mlir_bridge_safe_mode", &mlir_bridge_safe_mode,
-           "When tf_mlir_enable_mlir_bridge is true, this field can enable "
-           "the MLIR bridge's safe mode. When the MLIR bridge is in safe mode, "
-           "it only runs for graphs that use features MLIR bridge currently "
-           "supports."),
        Flag("tf_dump_graphs_in_tfg", &use_tfg_graph_dumper,
             "When tf_dump_graphs_in_tfg is true, graphs after transformations "
             "are dumped in MLIR TFG dialect and not in GraphDef")});
@@ -294,15 +304,10 @@ void AllocateAndParseFlags() {
   mlir_flags = new MlirCommonFlags;
   if (!enable_mlir_bridge_is_explicit) {
     mlir_flags->tf_mlir_enable_mlir_bridge =
-        (mlir_bridge_safe_mode)
-            ? ConfigProto::Experimental::
-                  MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED
-            : ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
+        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
   } else if (enable_mlir_bridge) {
     mlir_flags->tf_mlir_enable_mlir_bridge =
-        (mlir_bridge_safe_mode)
-            ? ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED
-            : ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
+        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
   } else {
     mlir_flags->tf_mlir_enable_mlir_bridge =
         ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
@@ -379,7 +384,7 @@ const JitRtFlags& GetJitRtFlags() {
 }
 
 ConfigProto::Experimental::MlirBridgeRollout GetMlirBridgeRolloutState(
-    absl::optional<const ConfigProto> config_proto) {
+    std::optional<const ConfigProto> config_proto) {
   // TF1 graphs that do not override Sessions's ConfigProto and TF2 graphs
   // can enable/disable the graph via tf_mlir_enable_mlir_bridge.
   auto tf_mlir_enable_mlir_bridge =
@@ -417,6 +422,8 @@ void AppendMarkForCompilationPassFlags(std::vector<Flag>* flag_list) {
 static std::atomic<bool> xla_compilation_disabled(false);
 
 void DisableXlaCompilation() { xla_compilation_disabled = true; }
+
+void EnableXlaCompilation() { xla_compilation_disabled = false; }
 
 bool FailOnXlaCompilation() { return xla_compilation_disabled; }
 

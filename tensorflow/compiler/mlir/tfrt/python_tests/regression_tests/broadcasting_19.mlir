@@ -12,5 +12,5 @@ func.func @test(%V__0: tensor<?xf32> { python_test_attrs.static_type = tensor<1x
   %10 = "tf.Atan2"(%V__0, %V__0) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   %11 = "tf.Atan2"(%9, %10) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   %12 = "tf.FloorMod"(%11, %V__2) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
-  return %12 : tensor<?xf32>
+  func.return %12 : tensor<?xf32>
 }

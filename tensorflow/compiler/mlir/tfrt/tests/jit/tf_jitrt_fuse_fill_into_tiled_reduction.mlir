@@ -6,21 +6,22 @@
 #map1 = affine_map<(d0)[s0] -> (2, -d0 + s0)>
 #map2 = affine_map<(d0, d1) -> (d0, d1)>
 #map3 = affine_map<(d0, d1) -> (d0)>
-func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<?xf32> {
+func.func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %c4 = arith.constant 4 : index
   %c2 = arith.constant 2 : index
   %c1 = arith.constant 1 : index
   %0 = tensor.dim %lhs, %c0 : tensor<?x?xf32>
-  %1 = linalg.init_tensor [%0] : tensor<?xf32>
+  %1 = tensor.empty(%0) : tensor<?xf32>
   %fill = linalg.fill ins(%cst : f32) outs(%1 : tensor<?xf32>) -> tensor<?xf32>
   %3 = tensor.dim %lhs, %c0 : tensor<?x?xf32>
   %4 = tensor.dim %lhs, %c1 : tensor<?x?xf32>
   %5 = gml_st.loop (%i, %j) = (%c0, %c0) to (%3, %4) step (%c4, %c2)
-      ins (%lhs_ = %lhs: tensor<?x?xf32>, %rhs_ = %rhs: tensor<?x?xf32>)
-      outs (%fill_ = %fill: tensor<?xf32>)
-      iterators["parallel", "reduction"] {
+         ins (%lhs_ = %lhs: tensor<?x?xf32>, %rhs_ = %rhs: tensor<?x?xf32>)
+         outs (%fill_ = %fill: tensor<?xf32>)
+         iterators[#gml_st.iterator_type<parallel>,
+                   #gml_st.iterator_type<reduction>] {
     %6 = affine.min #map0(%i)[%3]
     %7 = affine.min #map1(%j)[%4]
     %8 = tensor.extract_slice %lhs_[%i, %j] [%6, %7] [1, 1]
@@ -46,7 +47,7 @@ func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<
       : tensor<?xf32> into tensor<?xf32>
     gml_st.yield %15 : tensor<?xf32>
   }
-  return %5 : tensor<?xf32>
+  func.return %5 : tensor<?xf32>
 }
 // CHECK-LABEL: func @reduce_row_sum_2d(
 // CHECK-SAME:    %[[LHS:.*]]: tensor<?x?xf32>,
@@ -59,8 +60,8 @@ func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<
 // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
 
 // CHECK:      %[[DIM_0:.*]] = tensor.dim %[[LHS]], %[[C0]] : [[TY_2D:.*]]
-// CHECK:      %[[INIT:.*]] = linalg.init_tensor [%[[DIM_0]]] : [[TY_1D:.*]]
-// CHECK:      %[[INIT_TILE:.*]] = linalg.init_tensor [4] : tensor<4xf32>
+// CHECK:      %[[INIT:.*]] = tensor.empty(%[[DIM_0]]) : [[TY_1D:.*]]
+// CHECK:      %[[INIT_TILE:.*]] = tensor.empty() : tensor<4xf32>
 // CHECK:      %[[FILL:.*]] = linalg.fill ins(%[[C0_F32]]{{.*}}outs(%[[INIT]]
 // CHECK:      %[[DIM_0_:.*]] = tensor.dim %[[LHS]], %[[C0]] : [[TY_2D]]
 // CHECK:      %[[DIM_1:.*]] = tensor.dim %[[LHS]], %[[C1]] : [[TY_2D]]
@@ -101,19 +102,20 @@ func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<
 #map0 = affine_map<(d0, d1) -> (d0, d1)>
 #map1 = affine_map<(d0, d1) -> (d0)>
 module  {
-  func @reduce_row_sum_2d_static(%in: tensor<8x16xf32>) -> tensor<8xf32> {
+  func.func @reduce_row_sum_2d_static(%in: tensor<8x16xf32>) -> tensor<8xf32> {
     %cst = arith.constant 0.000000e+00 : f32
     %c2 = arith.constant 2 : index
     %c4 = arith.constant 4 : index
     %c8 = arith.constant 8 : index
     %c16 = arith.constant 16 : index
     %c0 = arith.constant 0 : index
-    %0 = linalg.init_tensor [8] : tensor<8xf32>
+    %0 = tensor.empty() : tensor<8xf32>
     %fill = linalg.fill ins(%cst : f32) outs(%0 : tensor<8xf32>) -> tensor<8xf32>
     %2 = gml_st.loop (%i, %j) = (%c0, %c0) to (%c8, %c16) step (%c4, %c2)
            ins (%in_ = %in: tensor<8x16xf32>)
            outs (%fill_ = %fill: tensor<8xf32>)
-           iterators["parallel", "reduction"] {
+           iterators[#gml_st.iterator_type<parallel>,
+                     #gml_st.iterator_type<reduction>] {
       %3 = tensor.extract_slice %in_[%i, %j] [4, 2] [1, 1]
         : tensor<8x16xf32> to tensor<4x2xf32>
       %4 = tensor.extract_slice %fill_[%i] [4] [1]
@@ -131,7 +133,7 @@ module  {
         : tensor<4xf32> into tensor<8xf32>
       gml_st.yield %6 : tensor<8xf32>
     }
-    return %2 : tensor<8xf32>
+    func.return %2 : tensor<8xf32>
   }
 }
 // CHECK-LABEL: func @reduce_row_sum_2d_static
@@ -144,20 +146,21 @@ module  {
 #map1 = affine_map<(d0, d1) -> (d0, d1)>
 #map2 = affine_map<(d0, d1) -> (d1)>
 module  {
-  func @reduce_column_sum_2d(%in: tensor<?x?xf32>) -> tensor<?xf32> {
+  func.func @reduce_column_sum_2d(%in: tensor<?x?xf32>) -> tensor<?xf32> {
     %cst = arith.constant 0.000000e+00 : f32
     %c0 = arith.constant 0 : index
     %c4 = arith.constant 4 : index
     %c1 = arith.constant 1 : index
     %0 = tensor.dim %in, %c0 : tensor<?x?xf32>
-    %1 = linalg.init_tensor [%0] : tensor<?xf32>
+    %1 = tensor.empty(%0) : tensor<?xf32>
     %fill = linalg.fill ins(%cst : f32) outs(%1 : tensor<?xf32>) -> tensor<?xf32>
     %3 = tensor.dim %in, %c0 : tensor<?x?xf32>
     %4 = tensor.dim %in, %c1 : tensor<?x?xf32>
     %5 = gml_st.loop (%i, %j) = (%c0, %c0) to (%3, %4) step (%c4, %c4)
         ins (%in_ = %in: tensor<?x?xf32>)
         outs (%fill_ = %fill: tensor<?xf32>)
-        iterators["reduction", "parallel"] {
+        iterators[#gml_st.iterator_type<reduction>,
+                  #gml_st.iterator_type<parallel>] {
       %6 = affine.min #map0(%i)[%3]
       %7 = affine.min #map0(%j)[%4]
       %8 = tensor.extract_slice %in_[%i, %j] [%6, %7] [1, 1]
@@ -178,7 +181,7 @@ module  {
         : tensor<?xf32> into tensor<?xf32>
       gml_st.yield %12 : tensor<?xf32>
     }
-    return %5 : tensor<?xf32>
+    func.return %5 : tensor<?xf32>
   }
 }
 // CHECK-LABEL: func @reduce_column_sum_2d
@@ -190,8 +193,8 @@ module  {
 // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
 
 // CHECK:      %[[DIM_0:.*]] = tensor.dim %[[INPUT]], %[[C0]] : [[TY_2D:.*]]
-// CHECK:      %[[INIT:.*]] = linalg.init_tensor [%[[DIM_0]]] : [[TY_1D:.*]]
-// CHECK:      %[[INIT_TILE:.*]] = linalg.init_tensor [4] : tensor<4xf32>
+// CHECK:      %[[INIT:.*]] = tensor.empty(%[[DIM_0]]) : [[TY_1D:.*]]
+// CHECK:      %[[INIT_TILE:.*]] = tensor.empty() : tensor<4xf32>
 // CHECK:      %[[FILL:.*]] = linalg.fill ins(%[[C0_F32]]{{.*}}outs(%[[INIT]]
 // CHECK:      %[[DIM_0_:.*]] = tensor.dim %[[INPUT]], %[[C0]] : [[TY_2D]]
 // CHECK:      %[[DIM_1:.*]] = tensor.dim %[[INPUT]], %[[C1]] : [[TY_2D]]

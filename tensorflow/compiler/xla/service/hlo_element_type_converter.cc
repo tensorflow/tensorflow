@@ -20,17 +20,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace {
@@ -113,7 +113,9 @@ HloElementTypeConverter::HloElementTypeConverter(
 
 // This routine converts the arithmetic operations in the given module that use
 // eliminate_type_ to operations that use replace_with_type_.
-StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
+StatusOr<bool> HloElementTypeConverter::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
       3, "HloElementTypeConverter::Run(), before:\n" + module->ToString());
 
@@ -123,7 +125,7 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
 
   HloCloneContext context(module);
   bool changed = false;
-  for (auto* computation : module->computations()) {
+  for (auto* computation : module->computations(execution_threads)) {
     for (auto* hlo : computation->MakeInstructionPostOrder()) {
       const auto opcode = hlo->opcode();
       // These are ops where it does not make sense to convert them.

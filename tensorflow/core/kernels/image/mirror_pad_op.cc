@@ -224,6 +224,7 @@ namespace functor {
   DECLARE_GPU_SPEC(T, int64_t, 5);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
+TF_CALL_bfloat16(DECLARE_GPU_SPECS);
 #undef DECLARE_GPU_SPECS
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
@@ -244,6 +245,7 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
                           MirrorPadOp<GpuDevice, T, int64>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
+TF_CALL_bfloat16(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -297,13 +299,21 @@ class MirrorPadGradOp : public OpKernel {
     TensorShape output_shape;
     typename TTypes<Tpaddings>::ConstMatrix paddings = in1.matrix<Tpaddings>();
     for (int d = 0; d < dims; ++d) {
-      const Tpaddings before = paddings(d, 0);  // Pad before existing elements.
-      const Tpaddings after = paddings(d, 1);   // Pad after existing elements.
+      const int64_t before = paddings(d, 0);  // Pad before existing elements.
+      const int64_t after = paddings(d, 1);   // Pad after existing elements.
       OP_REQUIRES(context, before >= 0 && after >= 0,
                   errors::InvalidArgument(
                       "Paddings must be non-negative: ", before, ", ", after));
 
-      const int64_t out_size = in0.dim_size(d) - (before + after);
+      const int64_t in_size = in0.dim_size(d);
+      const int64_t total_padding = before + after;
+      OP_REQUIRES(
+          context, total_padding < in_size && total_padding >= 0,
+          errors::InvalidArgument(
+              "Total paddings must be less than the input dimension size: ",
+              total_padding, " was not less than ", in_size));
+
+      const int64_t out_size = in_size - total_padding;
       if (offset_ == 0) {  // SYMMETRIC mode.
         OP_REQUIRES(context, before <= out_size && after <= out_size,
                     errors::InvalidArgument("paddings must be no greater "
@@ -431,6 +441,7 @@ namespace functor {
   DECLARE_GPU_SPEC(T, int64_t, 5);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
+TF_CALL_bfloat16(DECLARE_GPU_SPECS);
 #undef DECLARE_GPU_SPECS
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
@@ -451,6 +462,7 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
                           MirrorPadGradOp<GpuDevice, T, int64>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
+TF_CALL_bfloat16(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

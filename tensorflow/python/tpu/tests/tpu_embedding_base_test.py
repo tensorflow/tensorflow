@@ -396,12 +396,17 @@ class TPUEmbeddingBaseTest(parameterized.TestCase, test.TestCase):
       activation_friends_gold = np.stack([activation_friends_gold] *
                                          self.batch_size * num_replicas)
     else:
-      activation_watched_gold = np.concatenate(
-          [activation_watched_gold] * (num_replicas // self.batch_size))
-      activation_favorited_gold = np.concatenate(
-          [activation_favorited_gold] * (num_replicas // self.batch_size))
-      activation_friends_gold = np.concatenate(
-          [activation_friends_gold] * (num_replicas // self.batch_size))
+      if num_replicas == 1:
+        activation_watched_gold = activation_watched_gold0
+        activation_favorited_gold = activation_favorited_gold0
+        activation_friends_gold = activation_friends_gold0
+      else:
+        activation_watched_gold = np.concatenate(
+            [activation_watched_gold] * (num_replicas // self.batch_size))
+        activation_favorited_gold = np.concatenate(
+            [activation_favorited_gold] * (num_replicas // self.batch_size))
+        activation_friends_gold = np.concatenate(
+            [activation_friends_gold] * (num_replicas // self.batch_size))
 
     loss_gold = [loss_gold0] * num_replicas
 
@@ -641,7 +646,7 @@ class TPUEmbeddingBaseTest(parameterized.TestCase, test.TestCase):
     return loss
 
   def _get_variable(self, variable):
-    if isinstance(variable, tpu_embedding_v2.TPUShardedVariable):
+    if isinstance(variable, tpu_embedding_v2.TPUEmbeddingVariable):
       return variable.variables[0]
     return variable
 

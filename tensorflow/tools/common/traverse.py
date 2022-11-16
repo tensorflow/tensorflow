@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,8 +16,6 @@
 
 import enum
 import sys
-
-import six
 
 from tensorflow.python.util import tf_inspect
 
@@ -44,7 +41,7 @@ def _traverse_internal(root, visit, stack, path):
   except ImportError:
     # Children could be missing for one of two reasons:
     # 1. On some Python installations, some modules do not support enumerating
-    #    members (six in particular), leading to import errors.
+    #    members, leading to import errors.
     # 2. Children are lazy-loaded.
     try:
       children = []
@@ -65,8 +62,7 @@ def _traverse_internal(root, visit, stack, path):
     if any(child is item for item in new_stack):  # `in`, but using `is`
       continue
 
-    child_path = six.ensure_str(path) + '.' + six.ensure_str(
-        name) if path else name
+    child_path = path + '.' + name if path else name
     _traverse_internal(child, visit, new_stack, child_path)
 
 

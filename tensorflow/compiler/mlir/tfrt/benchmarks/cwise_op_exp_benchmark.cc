@@ -18,9 +18,9 @@ limitations under the License.
 namespace tensorflow {
 
 static const char* mlir_input = R"(
-func @exp_1d(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+func.func @exp_1d(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "tf.Exp"(%arg0): (tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 )";
 

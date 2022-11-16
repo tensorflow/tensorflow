@@ -224,14 +224,15 @@ class FusedMatMulOpTest : public OpsTestBase {
         [&](const Tensor& input_data, const Tensor& filter_data,
             const Tensor& bias_data, Tensor* out) {
           RunMatMulWithBias(input_data, filter_data, bias_data, transpose_a,
-                            transpose_b, out);
+                            transpose_b, out, /*allow_gpu_device=*/true);
         };
 
     const BiasAddGraphRunner run_fused =
         [&](const Tensor& input_data, const Tensor& filter_data,
             const Tensor& bias_data, Tensor* out) {
           RunFusedMatMulOp(input_data, filter_data, {bias_data}, {"BiasAdd"},
-                           transpose_a, transpose_b, out);
+                           transpose_a, transpose_b, out,
+                           /*allow_gpu_device=*/true);
         };
 
     VerifyBiasAddTensorsNear(m, k, n, run_default, run_fused);
@@ -247,7 +248,8 @@ class FusedMatMulOpTest : public OpsTestBase {
                                                const Tensor& bias_data,
                                                Tensor* out) {
       RunMatMulWithBiasAndActivation(input_data, filter_data, bias_data,
-                                     transpose_a, transpose_b, activation, out);
+                                     transpose_a, transpose_b, activation, out,
+                                     /*allow_gpu_device=*/activation == "Relu");
     };
 
     const BiasAddGraphRunner run_fused = [&](const Tensor& input_data,
@@ -255,7 +257,8 @@ class FusedMatMulOpTest : public OpsTestBase {
                                              const Tensor& bias_data,
                                              Tensor* out) {
       RunFusedMatMulOp(input_data, filter_data, {bias_data},
-                       {"BiasAdd", activation}, transpose_a, transpose_b, out);
+                       {"BiasAdd", activation}, transpose_a, transpose_b, out,
+                       /*allow_gpu_device=*/activation == "Relu");
     };
 
     VerifyBiasAddTensorsNear(m, k, n, run_default, run_fused);

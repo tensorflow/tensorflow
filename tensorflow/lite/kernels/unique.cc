@@ -112,7 +112,7 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
                       TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteUniqueParams*>(node->builtin_data);
   if (params == nullptr) {
-    context->ReportError(context, "Null params passed");
+    TF_LITE_KERNEL_LOG(context, "Null params passed");
     return kTfLiteError;
   }
   switch (params->index_out_type) {
@@ -121,7 +121,7 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
     case kTfLiteInt64:
       return EvalImpl<T, int64_t>(context, input, node);
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Unique index output array can only be Int32 or In64, requested: %s",
           TfLiteTypeGetName(params->index_out_type));
@@ -160,8 +160,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_STATUS(EvalImpl<uint8_t>(context, input, node));
       break;
     default:
-      context->ReportError(context, "Currently Unique doesn't support type: %s",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Currently Unique doesn't support type: %s",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;

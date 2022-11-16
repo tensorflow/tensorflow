@@ -249,7 +249,7 @@ class SVDFOpTest : public ::testing::TestWithParam<bool> {
       float* batch_end = batch_start + svdf_input_size * svdf_num_batches;
       svdf->SetInput(0, batch_start, batch_end);
 
-      svdf->Invoke();
+      ASSERT_EQ(svdf->Invoke(), kTfLiteOk);
 
       const float* golden_start =
           golden_output + i * svdf_num_units * svdf_num_batches;
@@ -594,7 +594,7 @@ TEST_F(SVDFOpTest, BlackBoxTestInteger) {
 
   for (int sequence_index = 0; sequence_index < 12; ++sequence_index) {
     svdf.SetInput(input_sequences[sequence_index]);
-    svdf.Invoke();
+    ASSERT_EQ(svdf.Invoke(), kTfLiteOk);
     const std::vector<int8_t> res = svdf.GetOutput();
     EXPECT_THAT(res, ElementsAreArray(expected_output[sequence_index]));
   }

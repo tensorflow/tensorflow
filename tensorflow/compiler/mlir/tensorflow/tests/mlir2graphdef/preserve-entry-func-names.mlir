@@ -1,6 +1,6 @@
 // RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
-func @main(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>) -> tensor<10xi32>
+func.func @main(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>) -> tensor<10xi32>
 attributes {tf.entry_function = {inputs = "foo,bar", outputs = "Add"}} {
   %graph = tf_executor.graph {
     // This node would be renamed to bar1 [note: if imported from TF graphdef this would not be possible]
@@ -10,7 +10,7 @@ attributes {tf.entry_function = {inputs = "foo,bar", outputs = "Add"}} {
     %4:2 = tf_executor.island wraps "tf.Add"(%arg0, %3) {T = "tfdtype$DT_INT32", device = ""} : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32> loc("Add")
     tf_executor.fetch %4#0 : tensor<10xi32>
   }
-  return %graph : tensor<10xi32>
+  func.return %graph : tensor<10xi32>
 }
 
 // CHECK: name: "foo"

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MAP_INLINER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MAP_INLINER_H_
 
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -31,7 +31,10 @@ class MapInliner : public HloModulePass {
 
   // Run map inlining on the given computation. Returns whether the computation
   // was changed.
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
 }  // namespace xla

@@ -1,5 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
@@ -18,6 +18,7 @@ td_library(
     ],
     includes = ["include"],
     deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
         "@llvm-project//mlir:CallInterfacesTdFiles",
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
@@ -104,6 +105,7 @@ cc_library(
         ":AttributesIncGen",
         ":DialectIncGen",
         ":TypesIncGen",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",

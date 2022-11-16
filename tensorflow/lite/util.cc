@@ -34,9 +34,9 @@ namespace tflite {
 namespace {
 
 TfLiteStatus UnresolvedOpInvoke(TfLiteContext* context, TfLiteNode* node) {
-  context->ReportError(context,
-                       "Encountered an unresolved custom op. Did you miss "
-                       "a custom op or delegate?");
+  TF_LITE_KERNEL_LOG(context,
+                     "Encountered an unresolved custom op. Did you miss "
+                     "a custom op or delegate?");
   return kTfLiteError;
 }
 
@@ -60,9 +60,9 @@ TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input) {
                                       input.data());
 }
 
-TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int rank, const int* dims) {
-  TfLiteIntArray* output = TfLiteIntArrayCreate(rank);
-  for (size_t i = 0; i < rank; i++) {
+TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int ndims, const int* dims) {
+  TfLiteIntArray* output = TfLiteIntArrayCreate(ndims);
+  for (size_t i = 0; i < ndims; i++) {
     output->data[i] = dims[i];
   }
   return output;
@@ -135,9 +135,15 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
     case kTfLiteFloat64:
       *bytes = sizeof(double);
       break;
+    case kTfLiteInt4:
+      // TODO(b/246647008): Multiplying this value by the number of elements
+      // does not yield the size of a tensor when 4-bit values are packed
+      // 2 to a byte.
+      *bytes = sizeof(int8_t);
+      break;
     default:
       if (context) {
-        context->ReportError(
+        TF_LITE_KERNEL_LOG(
             context,
             "Type %d is unsupported. Only float16, float32, float64, int8, "
             "int16, int32, int64, uint8, uint64, bool, complex64 and "

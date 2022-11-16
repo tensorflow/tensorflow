@@ -20,28 +20,30 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_COMPILER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_COMPILER_H_
 
+#include <any>
 #include <functional>
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -91,7 +93,16 @@ class AotCompilationOptions {
   virtual int64_t num_cores() const { return 0; }
   virtual bool use_spmd_partitioning() const { return false; }
   virtual bool use_auto_spmd_partitioning() const { return false; }
+  virtual std::vector<int64_t> auto_spmd_partitioning_mesh_shape() const {
+    return {};
+  }
+  virtual std::vector<int64_t> auto_spmd_partitioning_mesh_ids() const {
+    return {};
+  }
   virtual bool deduplicate_hlo() const { return false; }
+  virtual PrecisionConfig::Precision matrix_unit_operand_precision() const {
+    return PrecisionConfig::DEFAULT;
+  }
 
   // Optional allocator that may be used for allocating temp space on the device
   // during compilation.
@@ -134,10 +145,12 @@ class AotCompilationOptions {
   se::StreamExecutor* executor() const { return executor_; }
   void set_executor(se::StreamExecutor* executor) { executor_ = executor; }
 
-  // Optional session_id and cache key may be used to trigger recompilation
+  // Optional profile_version and cache key may be used to trigger recompilation
   // when a compilation cache is used.
-  uint64_t session_id() const { return session_id_; }
-  void set_session_id(uint64_t session_id) { session_id_ = session_id; }
+  int64_t profile_version() const { return profile_version_; }
+  void set_profile_version(int64_t profile_version) {
+    profile_version_ = profile_version;
+  }
 
   absl::string_view cache_key() const { return cache_key_; }
   void set_cache_key(absl::string_view cache_key) {
@@ -149,6 +162,24 @@ class AotCompilationOptions {
     run_backend_only_ = run_backend_only;
   }
 
+  bool sanitize_dataflow() const { return sanitize_dataflow_; }
+  void set_sanitize_dataflow(bool sanitize_dataflow) {
+    sanitize_dataflow_ = sanitize_dataflow;
+  }
+
+  const std::vector<std::string>& sanitize_abilists_dataflow() const {
+    return sanitize_abilists_dataflow_;
+  }
+  void set_sanitize_abilists_dataflow(
+      const std::vector<std::string>& abilists) {
+    sanitize_abilists_dataflow_ = abilists;
+  }
+
+  const std::any& target_config() const { return target_config_; }
+  void set_target_config(std::any target_config) {
+    target_config_ = std::move(target_config);
+  }
+
  protected:
   AotCompilationOptions();
 
@@ -156,14 +187,18 @@ class AotCompilationOptions {
   se::Platform::Id platform_id_;
   se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   DebugOptions debug_options_;
-  absl::optional<DeviceAssignment> static_device_assignment_;
+  std::optional<DeviceAssignment> static_device_assignment_;
   std::vector<std::vector<bool>> fusion_config_;
   FusionConfigCollection fusion_config_collection_ =
       FusionConfigCollection::kOff;
   se::StreamExecutor* executor_ = nullptr;
-  uint64_t session_id_ = 0;
+  int64_t profile_version_ = 0;
   std::string cache_key_;
   bool run_backend_only_ = false;
+  bool sanitize_dataflow_ = false;
+  std::vector<std::string> sanitize_abilists_dataflow_;
+  // Contains target-specific information required by AOT compilation.
+  std::any target_config_;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time
@@ -204,7 +239,11 @@ class Compiler {
     se::DeviceMemoryAllocator* device_allocator = nullptr;
 
     // An optional thread pool for parallel compilation.
-    tensorflow::thread::ThreadPool* thread_pool = nullptr;
+    tsl::thread::ThreadPool* thread_pool = nullptr;
+
+    std::function<StatusOr<std::pair<std::vector<Shape>, Shape>>(
+        const HloModule& module)>
+        layout_canonicalization_callback = {};
   };
 
   virtual ~Compiler() {}
@@ -282,7 +321,7 @@ class Compiler {
   //
   // The stream executor is passed in to provide information about the hardware
   // that the backend configurations would be targeting.
-  virtual std::vector<std::unique_ptr<tensorflow::protobuf::Message>>
+  virtual std::vector<std::unique_ptr<tsl::protobuf::Message>>
   ComputeBackendConfigs(const HloInstruction& hlo,
                         se::StreamExecutor* executor) const;
 
@@ -292,9 +331,8 @@ class Compiler {
   //
   // The stream executor is passed in to provide information about the hardware
   // that the backend configurations would be targeting.
-  virtual std::unique_ptr<tensorflow::protobuf::Message>
-  ComputeDefaultBackendConfig(const HloInstruction& hlo,
-                              se::StreamExecutor* executor) const;
+  virtual std::unique_ptr<tsl::protobuf::Message> ComputeDefaultBackendConfig(
+      const HloInstruction& hlo, se::StreamExecutor* executor) const;
 
   // Compiles the HLO module group for ahead-of-time execution.  This is
   // intended for use in static compilation.
@@ -339,8 +377,14 @@ class Compiler {
     };
   }
 
-  virtual Shape DeviceShapeRepresentation(const Shape& shape) const {
+  virtual Shape DefaultDeviceShapeRepresentation(const Shape& shape) const {
     return shape;
+  }
+
+  // Returns an AotCompilationResult of the executable for serialization.
+  virtual StatusOr<std::unique_ptr<AotCompilationResult>> Export(
+      Executable* executable) const {
+    return Unimplemented("Export unimplemented");
   }
 
  private:

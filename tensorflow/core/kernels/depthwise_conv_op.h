@@ -20,6 +20,10 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/util/tensor_format.h"
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/core/platform/stream_executor.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 namespace tensorflow {
 
 struct DepthwiseArgs {
@@ -80,6 +84,8 @@ struct LaunchDepthwiseConvBackpropFilterOp {
                   TensorFormat data_format);
 };
 
+bool UseCudnnWith16BitFloat(OpKernelContext* ctx, DataType dtype);
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T>
 struct LaunchDepthwiseConvOp<Eigen::GpuDevice, T> {
@@ -101,7 +107,6 @@ struct LaunchDepthwiseConvBackpropFilterOp<Eigen::GpuDevice, T> {
                   const T* out_backprop, const T* input, T* filter_backprop,
                   TensorFormat data_format);
 };
-bool DisableDepthwiseConvDeterminismExceptions();
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

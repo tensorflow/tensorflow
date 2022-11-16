@@ -86,16 +86,6 @@ from tensorflow.python.keras.layers.dense_attention import Attention
 # Embedding layers.
 from tensorflow.python.keras.layers.embeddings import Embedding
 
-# Einsum-based dense layer/
-from tensorflow.python.keras.layers.einsum_dense import EinsumDense
-
-# Multi-head Attention layer.
-from tensorflow.python.keras.layers.multi_head_attention import MultiHeadAttention
-
-# Locally-connected layers.
-from tensorflow.python.keras.layers.local import LocallyConnected1D
-from tensorflow.python.keras.layers.local import LocallyConnected2D
-
 # Merge layers.
 from tensorflow.python.keras.layers.merge import Add
 from tensorflow.python.keras.layers.merge import Subtract
@@ -113,14 +103,6 @@ from tensorflow.python.keras.layers.merge import maximum
 from tensorflow.python.keras.layers.merge import minimum
 from tensorflow.python.keras.layers.merge import concatenate
 from tensorflow.python.keras.layers.merge import dot
-
-# Noise layers.
-from tensorflow.python.keras.layers.noise import AlphaDropout
-from tensorflow.python.keras.layers.noise import GaussianNoise
-from tensorflow.python.keras.layers.noise import GaussianDropout
-
-# Kernelized layers.
-from tensorflow.python.keras.layers.kernelized import RandomFourierFeatures
 
 # Pooling layers.
 from tensorflow.python.keras.layers.pooling import MaxPooling1D

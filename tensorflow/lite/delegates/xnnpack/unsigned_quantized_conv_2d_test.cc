@@ -113,6 +113,47 @@ TEST(UnsignedQuantizedConv2D, 3x3Stride2) {
       std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
   auto input_rng =
       std::bind(std::uniform_int_distribution<int32_t>(5, 25), std::ref(rng));
+  auto channel_per_group_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
+  auto groups_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 8), std::ref(rng));
+
+  auto groups = groups_rng();
+  QuantizedConv2DTester()
+      .InputZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .KernelZeroPoint(kernel_zero_point_rng())
+      .BatchSize(batch_rng())
+      .InputHeight(input_rng())
+      .InputWidth(input_rng())
+      .InputChannels(groups * channel_per_group_rng())
+      .OutputChannels(groups * channel_per_group_rng())
+      .Groups(groups)
+      .KernelHeight(3)
+      .KernelWidth(3)
+      .StrideHeight(2)
+      .StrideWidth(2)
+      .SamePadding()
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(UnsignedQuantizedConv2D, Grouped) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
+                                      std::numeric_limits<uint8_t>::min(),
+                                      std::numeric_limits<uint8_t>::max()),
+                                  std::ref(rng));
+  auto kernel_zero_point_rng = std::bind(
+      std::uniform_int_distribution<int32_t>(100, 150), std::ref(rng));
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
+  auto input_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(5, 25), std::ref(rng));
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 

@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/toco/toco_cmdline_flags.h"
+
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -21,10 +24,9 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
 #include "absl/types/optional.h"
-#include "tensorflow/lite/toco/toco_cmdline_flags.h"
-#include "tensorflow/lite/toco/toco_port.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/lite/toco/toco_port.h"
 
 namespace toco {
 
@@ -238,11 +240,10 @@ void EnforceFlagRequirement(const T& flag, const std::string& flag_name,
 // Gets the value from the flag if specified. Returns default if the
 // FlagRequirement is kUseDefault.
 template <typename T>
-absl::optional<T> GetFlagValue(const Arg<T>& flag,
-                               FlagRequirement requirement) {
+std::optional<T> GetFlagValue(const Arg<T>& flag, FlagRequirement requirement) {
   if (flag.specified()) return flag.value();
   if (requirement == FlagRequirement::kUseDefault) return flag.default_value();
-  return absl::optional<T>();
+  return std::optional<T>();
 }
 
 }  // namespace

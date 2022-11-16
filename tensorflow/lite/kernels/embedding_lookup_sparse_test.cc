@@ -23,7 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -94,7 +94,7 @@ TEST(EmbeddingLookupSparseOpTest, SimpleTest) {
   m.SetInput({1, 3, 0}, {0, 0, 2, 0, 2, 1}, {3, 2}, {1.0, 2.0, 4.0});
   m.Set3DWeightMatrix(
       [](int i, int j, int k) { return i + j / 10.0f + k / 100.0f; });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({
@@ -110,7 +110,7 @@ TEST(EmbeddingLookupSparseOpTest, SimpleTestMean) {
   m.SetInput({1, 3, 0}, {0, 0, 2, 0, 2, 1}, {3, 2}, {1.0, 2.0, 4.0});
   m.Set3DWeightMatrix(
       [](int i, int j, int k) { return i + j / 10.0f + k / 100.0f; });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({
@@ -126,7 +126,7 @@ TEST(EmbeddingLookupSparseOpTest, SimpleTestSqrtn) {
   m.SetInput({1, 3, 0}, {0, 0, 2, 0, 2, 1}, {3, 2}, {1.0, 2.0, 4.0});
   m.Set3DWeightMatrix(
       [](int i, int j, int k) { return i + j / 10.0f + k / 100.0f; });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({
@@ -146,7 +146,7 @@ TEST(EmbeddingLookupSparseOpTest, Indices3DTest) {
              {1.0, 2.0, 4.0});
   m.Set3DWeightMatrix(
       [](int i, int j, int k) { return i + j / 10.0f + k / 100.0f; });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({

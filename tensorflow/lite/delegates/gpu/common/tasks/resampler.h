@@ -21,7 +21,8 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-GPUOperation CreateResampler(const OperationDef& definition);
+GPUOperation CreateResampler(const GpuInfo& gpu_info,
+                             const OperationDef& definition);
 
 }  // namespace gpu
 }  // namespace tflite

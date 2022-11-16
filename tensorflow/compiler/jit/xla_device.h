@@ -144,7 +144,7 @@ class XlaDevice : public LocalDevice {
     // Set of devices to use. This controls which of the devices on the given
     // platform will have resources allocated. For GPUs this will be
     // filled from visible_gpu_devices list from session configuration.
-    absl::optional<std::set<int>> allowed_devices;
+    std::optional<std::set<int>> allowed_devices;
   };
 
   // Creates a new XLA Device.
@@ -188,9 +188,9 @@ class XlaDevice : public LocalDevice {
   // Get the device context given the index.
   StatusOr<XlaDeviceContext*> GetDeviceContextWithIndex(int index);
 
-  // Instructs this XlaDevice to set a GpuDeviceInfo, which holds extra
+  // Instructs this XlaDevice to set a AcceleratorDeviceInfo, which holds extra
   // information for GPU and TPU devices.
-  Status UseGpuDeviceInfo() TF_LOCKS_EXCLUDED(mu_);
+  Status UseAcceleratorDeviceInfo() TF_LOCKS_EXCLUDED(mu_);
 
   // Instructs this XlaDevice to return 'sync_on_completion' for
   // AllowsSyncOnCompletion().
@@ -259,13 +259,13 @@ class XlaDevice : public LocalDevice {
   // A list of the device context accessed by all users of the XlaDevice, set by
   // calls to EnsureDeviceContextOk. The number of device conetexts is based on
   // the number of shape representation functions in XlaDevice::Options. If
-  // gpu_device_info_ is non-null, this pointer is also filled in to that
-  // struct. XlaDeviceContext is a ref-counted object.
+  // accelerator_device_info_ is non-null, this pointer is also filled in to
+  // that struct. XlaDeviceContext is a ref-counted object.
   std::vector<XlaDeviceContext*> device_contexts_ TF_GUARDED_BY(mu_);
 
   // Holds extra information for GPU and TPU devices, e.g. the device context.
-  bool use_gpu_device_info_ TF_GUARDED_BY(mu_) = false;
-  std::unique_ptr<DeviceBase::AcceleratorDeviceInfo> gpu_device_info_
+  bool use_accelerator_device_info_ TF_GUARDED_BY(mu_) = false;
+  std::unique_ptr<DeviceBase::AcceleratorDeviceInfo> accelerator_device_info_
       TF_GUARDED_BY(mu_);
 
   // Thread pool used for running closures
@@ -281,7 +281,7 @@ class XlaDevice : public LocalDevice {
   // Set of devices to use. This controls which of the devices on the given
   // platform will have resources allocated. For GPUs this will be
   // filled from visible_gpu_devices list from session configuration.
-  absl::optional<std::set<int>> allowed_devices_;
+  std::optional<std::set<int>> allowed_devices_;
 
   const bool use_global_compute_stream_;
 
@@ -300,6 +300,11 @@ struct XlaDeviceOpRegistrations {
   std::vector<std::unique_ptr<kernel_factory::OpKernelRegistrar>>
       op_kernel_registrars;
 };
+
+XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(
+    const char* device, const char* jit_device,
+    OpKernel* (*factory)(OpKernelConstruction*), StringPiece kernel_class_name);
+
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
                                                    const char* jit_device);
 

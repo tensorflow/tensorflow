@@ -129,7 +129,11 @@ DLDevice GetDlContext(TFE_TensorHandle* h, TF_Status* status) {
   if (device_type == "CPU") {
     ctx.device_type = DLDeviceType::kDLCPU;
   } else if (device_type == "GPU") {
+#if TENSORFLOW_USE_ROCM
+    ctx.device_type = DLDeviceType::kDLROCM;
+#else
     ctx.device_type = DLDeviceType::kDLCUDA;
+#endif
   } else {
     status->status = tensorflow::errors::InvalidArgument(
         "Unsupported Device Type for dlpack");
@@ -146,6 +150,8 @@ absl::optional<std::string> DeviceNameFromDlContext(const DLDevice& ctx,
       return "CPU:0";
     case DLDeviceType::kDLCUDA:
       return absl::StrCat("GPU:", ctx.device_id);
+    case DLDeviceType::kDLROCM:
+      return absl::StrCat("GPU:", ctx.device_id);
     default:
       return absl::nullopt;
   }
@@ -159,51 +165,51 @@ Status TfDataTypeFormDlDataType(const DLDataType& dtype,
       switch (dtype.bits) {
         case 8:
           *tf_dtype = TF_DataType::TF_UINT8;
-          return Status::OK();
+          return OkStatus();
         case 16:
           *tf_dtype = TF_DataType::TF_UINT16;
-          return Status::OK();
+          return OkStatus();
         case 32:
           *tf_dtype = TF_DataType::TF_UINT32;
-          return Status::OK();
+          return OkStatus();
         case 64:
           *tf_dtype = TF_DataType::TF_UINT64;
-          return Status::OK();
+          return OkStatus();
         default:
           return tensorflow::errors::InvalidArgument("Unsupported UInt bits: ",
                                                      dtype.bits);
       }
-      return Status::OK();
+      return OkStatus();
     case DLDataTypeCode::kDLInt:
       switch (dtype.bits) {
         case 8:
           *tf_dtype = TF_DataType::TF_INT8;
-          return Status::OK();
+          return OkStatus();
         case 16:
           *tf_dtype = TF_DataType::TF_INT16;
-          return Status::OK();
+          return OkStatus();
         case 32:
           *tf_dtype = TF_DataType::TF_INT32;
-          return Status::OK();
+          return OkStatus();
         case 64:
           *tf_dtype = TF_DataType::TF_INT64;
-          return Status::OK();
+          return OkStatus();
         default:
           return tensorflow::errors::InvalidArgument("Unsupported Int bits: ",
                                                      dtype.bits);
       }
-      return Status::OK();
+      return OkStatus();
     case DLDataTypeCode::kDLFloat:
       switch (dtype.bits) {
         case 16:
           *tf_dtype = TF_DataType::TF_HALF;
-          return Status::OK();
+          return OkStatus();
         case 32:
           *tf_dtype = TF_DataType::TF_FLOAT;
-          return Status::OK();
+          return OkStatus();
         case 64:
           *tf_dtype = TF_DataType::TF_DOUBLE;
-          return Status::OK();
+          return OkStatus();
         default:
           return tensorflow::errors::InvalidArgument("Unsupported Float bits: ",
                                                      dtype.bits);
@@ -213,7 +219,7 @@ Status TfDataTypeFormDlDataType(const DLDataType& dtype,
       switch (dtype.bits) {
         case 16:
           *tf_dtype = TF_DataType::TF_BFLOAT16;
-          return Status::OK();
+          return OkStatus();
         default:
           return tensorflow::errors::InvalidArgument(
               "Unsupported BFloat bits: ", dtype.bits);
@@ -223,10 +229,10 @@ Status TfDataTypeFormDlDataType(const DLDataType& dtype,
       switch (dtype.bits) {
         case 64:
           *tf_dtype = TF_DataType::TF_COMPLEX64;
-          return Status::OK();
+          return OkStatus();
         case 128:
           *tf_dtype = TF_DataType::TF_COMPLEX128;
-          return Status::OK();
+          return OkStatus();
         default:
           return tensorflow::errors::InvalidArgument(
               "Unsupported Complex bits: ", dtype.bits);

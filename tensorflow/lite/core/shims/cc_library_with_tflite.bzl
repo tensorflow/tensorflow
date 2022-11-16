@@ -103,6 +103,31 @@ def cc_library_with_tflite(
         **kwargs
     )
 
+def cc_library_with_stable_tflite_abi(
+        deps = [],
+        non_stable_abi_deps = [],
+        stable_abi_deps = [],  # @unused
+        **kwargs):
+    """Defines a cc_library that uses the TFLite shims.
+
+    This is a proxy method for cc_library_with_tflite() for targets that use
+    the TFLite shims.
+
+    Args:
+      deps: Same as for cc_library_with_tflite.
+      non_stable_abi_deps: dependencies that will be enabled only when NOT
+        using TFLite with stable ABI.  This should be used for dependencies
+        arising from code inside '#if !TFLITE_WITH_STABLE_ABI'.
+      stable_abi_deps: dependencies that will be enabled only when using TFLite
+        with stable ABI. This should be used for dependencies arising from code
+        inside '#if TFLITE_WITH_STABLE_ABI'.
+      **kwargs: Additional cc_library_with_tflite parameters.
+    """
+    cc_library_with_tflite(
+        deps = deps + non_stable_abi_deps,
+        **kwargs
+    )
+
 def cc_test_with_tflite(
         name,
         deps = [],
@@ -237,6 +262,7 @@ def jni_binary_with_tflite(
 def custom_c_library_with_tflite(
         name,
         models = [],
+        experimental = False,
         **kwargs):
     """Generates a tflite c library, stripping off unused operators.
 
@@ -247,16 +273,29 @@ def custom_c_library_with_tflite(
         models: List of models. This TFLite build will only include
             operators used in these models. If the list is empty, all builtin
             operators are included.
+        experimental: Whether to include experimental APIs or not.
        **kwargs: kwargs to cc_library_with_tflite.
     """
     tflite_custom_c_library(
         name = "%s_c_api" % name,
         models = models,
+        experimental = experimental,
     )
+
+    if experimental:
+        hdrs = [
+            "//tensorflow/lite/core/shims:c/c_api.h",
+            "//tensorflow/lite/core/shims:c/c_api_experimental.h",
+            "//tensorflow/lite/core/shims:c/c_api_opaque.h",
+        ]
+    else:
+        hdrs = [
+            "//tensorflow/lite/core/shims:c/c_api.h",
+        ]
 
     cc_library_with_tflite(
         name = name,
-        hdrs = ["//tensorflow/lite/core/shims:c/c_api.h"],
+        hdrs = hdrs,
         copts = tflite_copts_warnings(),
         deps = [
             ":%s_c_api" % name,

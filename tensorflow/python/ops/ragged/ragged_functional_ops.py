@@ -114,7 +114,7 @@ def map_flat_values(op, *args, **kwargs):
                        "convert them to compatible dtypes.")
 
     partition_lists = [
-        [p.with_row_splits_dtype(dtypes.int64)
+        [p.with_dtype(dtypes.int64)
          for p in partition_list]  # pylint: disable=g-complex-comprehension
         for partition_list in partition_lists
     ]

@@ -22,9 +22,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "absl/functional/function_ref.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 
 namespace xla {
 
@@ -184,7 +185,7 @@ class CallGraphNode {
 // computation in the module.
 class CallGraph {
  public:
-  using VisitorFunction = std::function<Status(const CallGraphNode&)>;
+  using VisitorFunction = absl::FunctionRef<Status(const CallGraphNode&)>;
 
   // Builds and returns a call graph for the given HLO module.
   static std::unique_ptr<CallGraph> Build(const HloModule* module);
@@ -200,7 +201,7 @@ class CallGraph {
   // in post order (callees before callers). If visit_unreachable_nodes is true
   // then all nodes in the call graph are visited. Otherwise only those nodes
   // reachable from the entry computation are visited.
-  Status VisitNodes(const VisitorFunction& visitor_func,
+  Status VisitNodes(VisitorFunction visitor_func,
                     bool visit_unreachable_nodes = true) const;
 
   // Returns true if 'a' dominates 'b' in the call graph. Computation 'a'
@@ -252,7 +253,8 @@ class CallGraph {
 
   // Returns a vector of instructions calling the passed computation.
   // (Often a vector of size 1.)
-  std::vector<HloInstruction*> GetComputationCallers(HloComputation* c);
+  std::vector<HloInstruction*> GetComputationCallers(
+      const HloComputation* c) const;
 
   std::string ToString() const;
 
@@ -274,7 +276,7 @@ class CallGraph {
   // nodes to 'visited' as each node is visited. Skips nodes already in
   // 'visited'.
   Status VisitNodesInternal(
-      const VisitorFunction& visitor_func, const CallGraphNode& node,
+      VisitorFunction visitor_func, const CallGraphNode& node,
       absl::flat_hash_set<const CallGraphNode*>* visited) const;
 
   // Recursive helper for computing whether 'a' dominates 'b' in the call

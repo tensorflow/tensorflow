@@ -55,6 +55,12 @@ TEST(MetricsTest, TestCheckpointWrite) {
   EXPECT_EQ(CheckpointWriteDuration("foo").value().num(), 1);
 }
 
+TEST(MetricsTest, TestAsyncCheckpointWrite) {
+  EXPECT_EQ(AsyncCheckpointWriteDuration("foo").value().num(), 0);
+  AsyncCheckpointWriteDuration("foo").Add(100);
+  EXPECT_EQ(AsyncCheckpointWriteDuration("foo").value().num(), 1);
+}
+
 TEST(MetricsTest, TestTrainingTimeSaved) {
   EXPECT_EQ(TrainingTimeSaved("foo").value(), 0);
   TrainingTimeSaved("foo").IncrementBy(100);
@@ -65,6 +71,22 @@ TEST(MetricsTest, TestCheckpointSize) {
   EXPECT_EQ(CheckpointSize("foo", 10).value(), 0);
   CheckpointSize("foo", 10).IncrementBy(1);
   EXPECT_EQ(CheckpointSize("foo", 10).value(), 1);
+}
+
+TEST(MetricsTest, TestWriteFingerprint) {
+  EXPECT_EQ(SavedModelWriteFingerprint().value(), "");
+  SavedModelWriteFingerprint().Set("foo");
+  EXPECT_EQ(SavedModelWriteFingerprint().value(), "foo");
+  SavedModelWriteFingerprint().Set("bar");
+  EXPECT_EQ(SavedModelWriteFingerprint().value(), "bar");
+}
+
+TEST(MetricsTest, TestReadFingerprint) {
+  EXPECT_EQ(SavedModelReadFingerprint().value(), "");
+  SavedModelReadFingerprint().Set("foo");
+  EXPECT_EQ(SavedModelReadFingerprint().value(), "foo");
+  SavedModelReadFingerprint().Set("bar");
+  EXPECT_EQ(SavedModelReadFingerprint().value(), "bar");
 }
 
 }  // namespace metrics

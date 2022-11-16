@@ -28,8 +28,9 @@ DEFINE_BINARY8(mul, Eigen::half, int8, int16, int64, uint8, uint16, uint32,
 DEFINE_BINARY5(mul_no_nan, Eigen::half, float, double, complex64, complex128);
 #endif
 
-// TODO(b/179783573): Also disable the float, double and complex kernels.
-DEFINE_BINARY4(mul, float, double, complex64, complex128);
+// TODO(b/179783573): Also disable the bfloat16, float, double and complex
+// kernels.
+DEFINE_BINARY5(mul, bfloat16, float, double, complex64, complex128);
 }  // namespace functor
 }  // namespace tensorflow
 

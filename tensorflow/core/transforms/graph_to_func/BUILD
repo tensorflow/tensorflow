@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
@@ -14,7 +14,6 @@ cc_library(
     srcs = ["graph_to_func.cc"],
     hdrs = ["graph_to_func.h"],
     deps = [
-        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -27,12 +26,12 @@ cc_library(
 
 cc_library(
     name = "Pass",
-    srcs = ["graph_to_func_pass.cc"],
-    hdrs = ["graph_to_func_pass.h"],
+    srcs = ["pass.cc"],
+    hdrs = ["pass.h"],
     deps = [
         ":GraphToFunc",
         "//tensorflow/core/ir:Dialect",
-        "//tensorflow/core/transforms:PassDetail",
+        "//tensorflow/core/transforms:PassIncGen",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",

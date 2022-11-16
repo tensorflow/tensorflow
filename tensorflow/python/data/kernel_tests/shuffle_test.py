@@ -18,13 +18,14 @@ import functools
 
 from absl.testing import parameterized
 import numpy as np
-
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.experimental.ops import iterator_ops as contrib_iterator_ops
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -35,9 +36,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
-from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -344,7 +343,7 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testShuffleV2InFunction(self):
     counter_var = variables.Variable(0)
 
-    @function.defun
+    @def_function.function
     def consume():
       ds = dataset_ops.Dataset.range(10)
       ds = ds.shuffle(1)

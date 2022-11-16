@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -668,7 +668,8 @@ class LRNGradOp : public OpKernel {
         in_image.dim_size(0) == batch && in_image.dim_size(1) == rows &&
             in_image.dim_size(2) == cols && in_image.dim_size(3) == depth &&
             out_image.dim_size(0) == batch && out_image.dim_size(1) == rows &&
-            out_image.dim_size(2) == cols && out_image.dim_size(3) == depth,
+            out_image.dim_size(2) == cols && out_image.dim_size(3) == depth &&
+            out_image.dims() == 4,
         errors::InvalidArgument(
             "input_grads, input_image, and out_image should have the same "
             "shape"));

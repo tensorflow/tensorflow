@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_TUNING_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_TUNING_UTILS_H_
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 
 namespace xla {
 
@@ -29,7 +29,7 @@ using BufferInterval =
 // This function converts sorted_buffer_intervals to order-customized buffer
 // intervals respecting a given memory space assignment autotuning config.
 void CustomizeSortedBufferInterval(
-    absl::optional<std::vector<uint64_t>> memory_space_assignment_config,
+    std::optional<std::vector<uint64_t>> memory_space_assignment_config,
     std::vector<BufferInterval>& sorted_buffer_intervals);
 
 }  // namespace memory_space_assignment

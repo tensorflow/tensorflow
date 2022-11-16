@@ -30,9 +30,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -56,13 +56,13 @@ class BackendOptions {
   // Sets the allowed_devices for selectively constructing stream executors
   // on the platform.
   BackendOptions& set_allowed_devices(
-      const absl::optional<std::set<int>>& allowed_devices);
-  const absl::optional<std::set<int>>& allowed_devices() const;
+      const std::optional<std::set<int>>& allowed_devices);
+  const std::optional<std::set<int>>& allowed_devices() const;
 
  private:
   se::Platform* platform_ = nullptr;
   int intra_op_parallelism_threads_ = -1;
-  absl::optional<std::set<int>> allowed_devices_;
+  std::optional<std::set<int>> allowed_devices_;
 };
 
 // Class which encapsulates an XLA backend. It includes everything necessary
@@ -70,7 +70,7 @@ class BackendOptions {
 //
 // It also offers a pooling API for creation/use of initialized streams:
 //
-//    StreamPool::Ptr stream = backend->BorrowStream().ConsumeValueOrDie();
+//    StreamPool::Ptr stream = backend->BorrowStream().value();
 class Backend {
  public:
   // Creates a new backend.
@@ -151,7 +151,7 @@ class Backend {
   // For the host platform, returns the configured eigen threadpool device to be
   // used for scheduling work. For other platforms, returns NULL.
   const Eigen::ThreadPoolDevice* eigen_intra_op_thread_pool_device() const;
-  tensorflow::thread::ThreadPool* eigen_intra_op_thread_pool() const;
+  tsl::thread::ThreadPool* eigen_intra_op_thread_pool() const;
 
   // Resets the devices associated with this backend.
   Status ResetDevices();

@@ -77,7 +77,7 @@ LogicalResult TFAllocOp::verify() {
   // Check that the total number of operands matches the number of dynamic
   // dimensions specified in the memref type.
   unsigned result_dyn_dims = op.getType().getNumDynamicDims();
-  unsigned dyn_sizes_count = op.dyn_sizes().size();
+  unsigned dyn_sizes_count = op.getDynSizes().size();
   if (dyn_sizes_count != result_dyn_dims)
     return op.emitOpError()
            << "`dyn_sizes` count " << dyn_sizes_count
@@ -94,6 +94,24 @@ Optional<Operation *> TFAllocOp::buildDealloc(OpBuilder &builder, Value alloc) {
 }
 
 Optional<Value> TFAllocOp::buildClone(OpBuilder &builder, Value alloc) {
+  // TODO(herhut): We should have our own clone op if one of these survives.
+  return builder.create<mlir::bufferization::CloneOp>(alloc.getLoc(), alloc)
+      .getResult();
+}
+
+//===----------------------------------------------------------------------===//
+// JITExecuteOp
+//===----------------------------------------------------------------------===//
+
+Optional<Operation *> JITExecuteOp::buildDealloc(OpBuilder &builder,
+                                                 Value alloc) {
+  auto funcop = alloc.getParentRegion()->getParentOfType<func::FuncOp>();
+  return builder
+      .create<TFDeallocOp>(alloc.getLoc(), funcop.getArgument(0), alloc)
+      .getOperation();
+}
+
+Optional<Value> JITExecuteOp::buildClone(OpBuilder &builder, Value alloc) {
   // TODO(herhut): We should have our own clone op if one of these survives.
   return builder.create<mlir::bufferization::CloneOp>(alloc.getLoc(), alloc)
       .getResult();

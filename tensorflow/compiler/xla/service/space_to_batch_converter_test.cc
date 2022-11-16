@@ -18,10 +18,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -50,7 +50,7 @@ ENTRY computation {
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(
       SpaceToBatchController{true, true, true, true, 8});
-  ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(converter.Run(module.get()).value());
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Transpose());
   EXPECT_THAT(root->operand(0), op::Slice());
@@ -86,7 +86,7 @@ ENTRY computation {
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(
       SpaceToBatchController{true, true, true, true, 8});
-  ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(converter.Run(module.get()).value());
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Transpose());
 
@@ -131,7 +131,7 @@ TEST_F(SpaceToBatchConverterTest, SimpleBatch1WithReduceWindow) {
       SpaceToBatchController{true, true, true, true, 8});
   // Test that a reduce window consumer with different rank won't freeze the
   // compiler.
-  ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(converter.Run(module.get()).value());
 }
 
 TEST_F(SpaceToBatchConverterTest, SimpleBatch2) {
@@ -150,7 +150,7 @@ TEST_F(SpaceToBatchConverterTest, SimpleBatch2) {
 
   SpaceToBatchConverter converter(
       SpaceToBatchController{true, true, true, true, 1});
-  ASSERT_FALSE(converter.Run(module.get()).ValueOrDie());
+  ASSERT_FALSE(converter.Run(module.get()).value());
 }
 
 TEST_F(SpaceToBatchConverterTest, UnpropagatableOp) {
@@ -173,7 +173,7 @@ TEST_F(SpaceToBatchConverterTest, UnpropagatableOp) {
 
   SpaceToBatchConverter converter(
       SpaceToBatchController{true, true, true, true, 1});
-  ASSERT_FALSE(converter.Run(module.get()).ValueOrDie());
+  ASSERT_FALSE(converter.Run(module.get()).value());
 }
 
 TEST_F(SpaceToBatchConverterTest, Batch1WithStrideAndPad) {
@@ -193,7 +193,7 @@ TEST_F(SpaceToBatchConverterTest, Batch1WithStrideAndPad) {
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(
       SpaceToBatchController{true, true, true, true, 4});
-  ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(converter.Run(module.get()).value());
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Transpose());
   EXPECT_THAT(root->operand(0), op::Slice());
@@ -229,7 +229,7 @@ ENTRY computation {
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(
       SpaceToBatchController{true, true, true, true, 8});
-  ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(converter.Run(module.get()).value());
 
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Transpose());

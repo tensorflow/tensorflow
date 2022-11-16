@@ -50,7 +50,7 @@ NodeDef ToNodeDef(NodeDefBuilder&& builder) {
 }
 
 void ExpectSuccess(const NodeDef& good, const OpDef& op_def) {
-  EXPECT_EQ(Status::OK(), ValidateNodeDef(good, op_def))
+  EXPECT_EQ(OkStatus(), ValidateNodeDef(good, op_def))
       << "NodeDef: " << SummarizeNodeDef(good)
       << "; OpDef: " << SummarizeOpDef(op_def);
 }
@@ -161,7 +161,8 @@ TEST(NodeDefUtilTest, Out) {
   ExpectFailure(bad, op,
                 "Value for attr 'T' of string is not in the list of allowed "
                 "values: float, double, int32, uint8, int16, int8, complex64, "
-                "int64, qint8, quint8, qint32, bfloat16, uint16, complex128, "
+                "int64, qint8, quint8, qint32, bfloat16, qint16, quint16, "
+                "uint16, complex128, "
                 "half, uint32, uint64");
 }
 
@@ -317,7 +318,7 @@ TEST(NodeDefUtilTest, Device) {
 }
 
 void ExpectValidSyntax(const NodeDef& good) {
-  EXPECT_EQ(Status::OK(), ValidateExternalNodeDefSyntax(good))
+  EXPECT_EQ(OkStatus(), ValidateExternalNodeDefSyntax(good))
       << "NodeDef: " << SummarizeNodeDef(good);
 }
 

@@ -4,9 +4,9 @@
 // RUN: tf-mlir-translate -mlir-tf-to-hlo-text-via-builder %s -tf-input-shapes=: | FileCheck -check-prefix=NO_RET_TUPLE %s
 
 module attributes {tf.versions = {producer = 179 : i32}} {
-  func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+  func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
     %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-    return %0 : tensor<f32>
+    func.return %0 : tensor<f32>
   }
 }
 

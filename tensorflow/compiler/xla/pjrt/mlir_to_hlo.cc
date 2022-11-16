@@ -18,36 +18,42 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/xla/mlir/utils/error_util.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 
 namespace xla {
 
 Status MlirToXlaComputation(mlir::ModuleOp module,
                             XlaComputation& xla_computation,
                             bool use_tuple_args, bool return_tuple) {
-  mlir::StatusScopedDiagnosticHandler diagnostic_handler(module->getContext());
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(module->getContext());
   {
     mlir::PassManager pm(module->getContext());
-    pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass(
-        /*legalize_broadcasts=*/true, /*expand_compositions=*/true));
-    pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+    pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::mhlo::createLegalizeSparseChloToLinalgPass());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::mhlo::createChloLegalizeToHloPass(
+            /*legalize_broadcasts=*/true, /*expand_compositions=*/true));
+    pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
     // In order to export to XLA, we must sink constants to control flow
     // regions, since XLA uses functional control flow.
-    pm.addNestedPass<mlir::FuncOp>(
+    pm.addNestedPass<mlir::func::FuncOp>(
         mlir::mhlo::createSinkConstantsToControlFlowPass());
     if (failed(pm.run(module))) {
       VLOG(1) << "MHLO->HLO lowering passes failed.";
       module->dump();
-      return diagnostic_handler.ConsumeStatus();
+      return FromAbslStatus(diagnostic_handler.ConsumeStatus());
     }
 
     VLOG(5) << "MHLO module after lowering, before HLO import ";
@@ -58,14 +64,11 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
 
   HloProto proto;
   mlir::MlirToHloConversionOptions options;
-  // We don't want the conversion to muck with our operator names.
-  options.legalize_node_names = false;
-  TF_RETURN_IF_ERROR(
-      ConvertMlirHloToHlo(module, &proto, use_tuple_args, return_tuple,
-                          /*shape_representation_fn=*/nullptr, options));
+  TF_RETURN_IF_ERROR(ConvertMlirHloToHlo(module, &proto, use_tuple_args,
+                                         return_tuple, options));
 
   xla_computation = XlaComputation(std::move(*proto.mutable_hlo_module()));
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
@@ -73,18 +76,20 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
   mlir::OwningOpRef<mlir::ModuleOp> module;
   context.loadDialect<mlir::func::FuncDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
-  context.loadDialect<mlir::chlo::HloClientDialect>();
-  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
+  context.loadDialect<mlir::chlo::ChloDialect>();
+  context.loadDialect<mlir::sparse_tensor::SparseTensorDialect>();
+  context.loadDialect<mlir::stablehlo::StablehloDialect>();
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(&context);
   module = mlir::parseSourceString<mlir::ModuleOp>(
       llvm::StringRef(mlir_module_str.data(), mlir_module_str.size()),
       &context);
   if (!module) {
-    return diagnostic_handler.ConsumeStatus();
+    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
   }
   if (failed(module->verifyInvariants())) {
     VLOG(1) << "MLIR verification failed.";
     module->dump();
-    return diagnostic_handler.ConsumeStatus();
+    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
   }
   return std::move(module);
 }

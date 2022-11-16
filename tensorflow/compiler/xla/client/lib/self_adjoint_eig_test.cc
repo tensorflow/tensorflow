@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 
@@ -109,7 +109,7 @@ class SelfAdjointEigTest : public ClientLibraryTestBase {
 };
 
 XlaOp GetAverageAbsoluteError(XlaOp m1, XlaOp m2, XlaBuilder* builder) {
-  Shape shape = builder->GetShape(m1).ValueOrDie();
+  Shape shape = builder->GetShape(m1).value();
   int64_t size = ShapeUtil::ElementsIn(shape);
   return ReduceAll(Abs(m1 - m2), ConstantR0WithType(builder, F32, 0),
                    CreateScalarAddComputation(F32, builder)) /
@@ -117,7 +117,7 @@ XlaOp GetAverageAbsoluteError(XlaOp m1, XlaOp m2, XlaBuilder* builder) {
 }
 
 XlaOp ComputeMatmulVWVt(SelfAdjointEigResult result, XlaBuilder* builder) {
-  Shape shape = builder->GetShape(result.v).ValueOrDie();
+  Shape shape = builder->GetShape(result.v).value();
   absl::Span<const int64_t> out_dims = shape.dimensions();
   std::vector<int64_t> broadcast_dims(shape.rank() - 1);
   std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);

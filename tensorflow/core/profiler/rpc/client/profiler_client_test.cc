@@ -23,8 +23,8 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/profiler_service.pb.h"
 #include "tensorflow/core/profiler/rpc/client/profiler_client_test_util.h"
+#include "tensorflow/tsl/profiler/protobuf/profiler_service.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -128,7 +128,7 @@ TEST(RemoteProfilerSession, LongDuration) {
 
   absl::Time approx_start = absl::Now();
   // Empirically determined value.
-  absl::Duration grace = absl::Seconds(20);
+  absl::Duration grace = absl::Seconds(1);
   absl::Duration max_duration = duration + grace;
   const absl::Time deadline = approx_start + max_duration;
 

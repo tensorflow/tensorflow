@@ -16,6 +16,7 @@
 
 @class TFLDelegate;
 @class TFLInterpreterOptions;
+@class TFLSignatureRunner;
 @class TFLTensor;
 
 NS_ASSUME_NONNULL_BEGIN
@@ -84,8 +85,12 @@ typedef NS_ENUM(NSUInteger, TFLInterpreterErrorCode) {
 /** The total number of output tensors. 0 if the interpreter creation failed. */
 @property(nonatomic, readonly) NSUInteger outputTensorCount;
 
+/** An ordered list of the SignatureDef exported method names available in the model. */
+@property(nonatomic, readonly) NSArray<NSString *> *signatureKeys;
+
 /** Unavailable. */
 - (instancetype)init NS_UNAVAILABLE;
++ (instancetype)new NS_UNAVAILABLE;
 
 /**
  * Initializes a new TensorFlow Lite interpreter instance with the given model file path and the
@@ -195,6 +200,17 @@ typedef NS_ENUM(NSUInteger, TFLInterpreterErrorCode) {
  * @return Whether memory allocation is successful. Returns NO if an error occurred.
  */
 - (BOOL)allocateTensorsWithError:(NSError **)error;
+
+/**
+ * Returns a new signature runner instance for the signature with the given key in the model.
+ *
+ * @param key The signature key.
+ * @param error An optional error parameter populated when there is an error creating the signature
+ * runner.
+ *
+ * @return A new signature runner instance for the signature with given key.
+ */
+- (nullable TFLSignatureRunner *)signatureRunnerWithKey:(NSString *)key error:(NSError **)error;
 
 @end
 

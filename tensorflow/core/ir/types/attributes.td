@@ -19,6 +19,7 @@ limitations under the License.
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/SubElementInterfaces.td"
 include "tensorflow/core/ir/types/dialect.td"
+include "mlir/IR/BuiltinAttributeInterfaces.td"
 
 // Base class for TFType dialect attributes.
 class TFType_Attr<string name, list<Trait> traits = []>
@@ -189,6 +190,29 @@ def TFType_FullTypeId : I32EnumAttr<"FullTypeId", "", [
   //   TFT_LITERAL[TFT_INT32]{1} is the compile-time constant 1.
   I32EnumAttrCase<"TFT_LITERAL", 1003, "literal">,
 
+  // Encoding types describe a value of a certain type, encoded as a different
+  // type.
+  //
+  // Parametrization:
+  //   TFT_ENCODED[<encoded type>, <encoding type>]
+  //   * <encoded type> may be any type
+  //   * <encoding type> may be any type
+  //
+  // Examples:
+  //   TFT_ENCODING[TFT_INT32, TFT_STRING] is an integer encoded as string.
+  I32EnumAttrCase<"TFT_ENCODED", 1004, "encoded">,
+
+  // The type of "shape tensors" where the runtime value is the shape of
+  // some tensor(s), i.e. the output of tf.shape.
+  // Shape tensors have special, host-only placement, in contrast to
+  // TFT_TENSOR[TFT_INT32] which is the type of a normal numeric tensor
+  // with no special placement.
+  //
+  // Examples:
+  //   TFT_SHAPE_TENSOR[TFT_INT32] is the most common
+  //   TFT_SHAPE_TENSOR[TFT_INT64] is also allowed
+  I32EnumAttrCase<"TFT_SHAPE_TENSOR", 1005, "shape_tensor">,
+
   // Type attributes. These always appear in the parametrization of a type,
   // never alone. For example, there is no such thing as a "bool" TensorFlow
   // object (for now).
@@ -249,6 +273,15 @@ def TFType_FullTypeId : I32EnumAttr<"FullTypeId", "", [
   // Parametrization: TFT_RAGGED[<element_type>].
   I32EnumAttrCase<"TFT_RAGGED", 10103, "ragged">,
 
+  // Iterators created by tf.data ops and APIs. Very similar to Datasets, except
+  // they are mutable.
+  //
+  //
+  // Parametrization: TFT_ITERATOR[<element type>].
+  //   * <element type> may be a concrete type or a type symbol. It represents
+  //     the data type of the elements produced by the dataset.
+  I32EnumAttrCase<"TFT_ITERATOR", 10104, "iterator">,
+
   // A mutex lock tensor, produced by tf.raw_ops.MutexLock.
   // Unlike strict execution models, where ownership of a lock is denoted by
   // "running after the lock has been acquired", in non-strict mode, lock
@@ -300,10 +333,7 @@ def TFType_FullTypeAttr : AttrDef<TFTypeDialect, "FullType"> {
 // FuncAttr
 //===----------------------------------------------------------------------===//
 
-def TFType_FuncAttr : TFType_Attr<"Func", [
-    DeclareAttrInterfaceMethods<SubElementAttrInterface,
-        ["replaceImmediateSubAttribute"]>
-  ]> {
+def TFType_FuncAttr : TFType_Attr<"Func", [SubElementAttrInterface]> {
   let mnemonic = "func";
   let summary = "Models the `AttrValue.value.func` proto attribute value as a "
     "pair of SymbolRef and DictionaryAttr";
@@ -366,8 +396,6 @@ def TFGraph_TypeOrPlaceholder
 
 def TFType_ShapeAttrDef : TFType_Attr<"Shape"> {
   let mnemonic = "shape";
-  let returnType = "ShapeAttr";
-  let convertFromStorage = "$_self.cast<ShapeAttr>()";
   let summary = "A shape either unranked or is modelled an array of int64";
   let description = [{
     This attributes matches the `ShapedType` MLIR Type content into an attribute
@@ -417,8 +445,6 @@ def TFGraph_ShapesAttr
 
 def TFType_VersionAttr : TFType_Attr<"Version"> {
   let mnemonic = "version";
-  let returnType = "VersionAttr";
-  let convertFromStorage = "$_self.cast<VersionAttr>()";
   let summary = "An Attribute describing the version for a TensorFlow Graph";
   let parameters = (ins
     "int32_t":$producer,
@@ -427,5 +453,42 @@ def TFType_VersionAttr : TFType_Attr<"Version"> {
   );
   let hasCustomAssemblyFormat = 1;
 }
+
+//===----------------------------------------------------------------------===//
+// Tensorflow devices metadata
+//===----------------------------------------------------------------------===//
+
+// Tensorflow GPU device metadata.
+def TFType_GpuDeviceMetadata : TFType_Attr<"GpuDeviceMetadata"> {
+  let mnemonic = "gpu_device_metadata";
+  let summary = "Attribute that specifies a GPU's compute capability";
+  let parameters = (ins "int32_t":$cc_major, "int32_t":$cc_minor);
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+//===----------------------------------------------------------------------===//
+// TensorProtoAttr
+//===----------------------------------------------------------------------===//
+
+def TF_TensorProtoAttr : TFType_Attr<"TensorProto", [ElementsAttrInterface, TypedAttrInterface]> {
+  let mnemonic = "tensor_proto";
+
+  let summary = "Attribute that stores TensorFlow TensorProto debug string";
+
+  let parameters = (ins AttributeSelfTypeParameter<"", "ShapedType">:$type,
+                        StringRefParameter<"">:$value);
+  let builders = [
+    AttrBuilderWithInferredContext<(ins "ShapedType":$type,
+                                        "StringRef":$value), [{
+      return $_get(type.getContext(), type, value);
+    }]>,
+  ];
+  let extraClassDeclaration = [{
+    using ValueType = StringRef;
+  }];
+
+  let hasCustomAssemblyFormat = 1;
+}
+
 
 #endif

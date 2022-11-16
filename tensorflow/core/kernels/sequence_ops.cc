@@ -20,6 +20,7 @@ limitations under the License.
 #include <cmath>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -37,10 +38,8 @@ struct RangeFunctor<CPUDevice, T> {
   void operator()(OpKernelContext* context, int64_t size, T start, T delta,
                   typename TTypes<T>::Flat output) const {
     (void)context;
-    T val = start;
     for (int64_t i = 0; i < size; ++i) {
-      output(i) = T(val);
-      val += delta;
+      output(i) = start + static_cast<T>(i) * delta;
     }
   }
 };
@@ -91,18 +90,19 @@ class RangeOp : public OpKernel {
           errors::InvalidArgument(
               "Requires start >= limit when delta < 0: ", start, "/", limit));
     }
-    auto size_auto = (std::is_integral<T>::value
-                          ? (Eigen::numext::abs(limit - start) +
-                             Eigen::numext::abs(delta) - T(1)) /
-                                Eigen::numext::abs(delta)
-                          : Eigen::numext::ceil(
-                                Eigen::numext::abs((limit - start) / delta)));
-    OP_REQUIRES(
-        context, size_auto <= std::numeric_limits<int64_t>::max(),
-        errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
-                                std::numeric_limits<int64_t>::max()));
-
-    int64_t size = static_cast<int64_t>(size_auto);
+    int64_t size;
+    if (std::is_integral<T>::value) {
+      size = Eigen::divup(Eigen::numext::abs(limit - start),
+                          Eigen::numext::abs(delta));
+    } else {
+      auto size_auto =
+          Eigen::numext::ceil(Eigen::numext::abs((limit - start) / delta));
+      OP_REQUIRES(
+          context, size_auto <= std::numeric_limits<int64_t>::max(),
+          errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
+                                  std::numeric_limits<int64_t>::max()));
+      size = static_cast<int64_t>(size_auto);
+    }
 
     TensorShape shape;
     OP_REQUIRES_OK(context, shape.AddDimWithStatus(size));

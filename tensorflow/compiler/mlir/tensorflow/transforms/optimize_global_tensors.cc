@@ -36,13 +36,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 
 namespace mlir {
 namespace tf_saved_model {
 namespace {
+
+#define GEN_PASS_DEF_OPTIMIZEGLOBALTENSORSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
 struct OptimizeGlobalTensorsPass
-    : public OptimizeGlobalTensorsPassBase<OptimizeGlobalTensorsPass> {
+    : public impl::OptimizeGlobalTensorsPassBase<OptimizeGlobalTensorsPass> {
   void runOnOperation() override;
 };
 
@@ -50,7 +52,7 @@ struct OptimizeGlobalTensorsPass
 // This struct tracks which funcs (and which argument to that func) the global
 // tensor is bound to.
 struct GlobalTensorUse {
-  mutable FuncOp func;
+  mutable func::FuncOp func;
   size_t arg_index;
 };
 
@@ -61,7 +63,7 @@ bool IsImmutable(GlobalTensorOp global_tensor,
                  ArrayRef<GlobalTensorUse> global_tensor_uses,
                  const TF::ResourceAnalyzer& resource_analyzer) {
   // Global tensor is already known to be immutable.
-  if (!global_tensor.is_mutable()) {
+  if (!global_tensor.getIsMutable()) {
     return false;
   }
   // An exported global tensor that is not already known to be immutable might
@@ -84,7 +86,7 @@ GlobalTensorUsesMap CreateGlobalTensorUsesMap(ModuleOp module) {
   GlobalTensorUsesMap global_tensor_uses;
 
   SymbolTable symbol_table(module);
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     for (size_t i = 0, e = func.getNumArguments(); i < e; i++) {
       auto sym =
           func.getArgAttrOfType<SymbolRefAttr>(i, "tf_saved_model.bound_input");
@@ -135,7 +137,7 @@ void EraseUnusedGlobalTensors(ModuleOp module,
 }
 
 void EraseUnusedBoundInputs(ModuleOp module) {
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     llvm::BitVector args_to_erase(func.getNumArguments());
     for (int i = 0, e = func.getNumArguments(); i < e; i++) {
       if (func.getArgAttr(i, "tf_saved_model.bound_input") &&

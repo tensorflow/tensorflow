@@ -33,7 +33,7 @@ class TfSelect(test.TestCase):
   def test_select_1d(self):
     for specialize in specializations:
       mlir_function = """
-        func @test(%arg0: tensor<?xf32>)
+        func.func @test(%arg0: tensor<?xf32>)
                -> (tensor<?xf32>, tensor<?xi1>, tensor<?xf32>)
         {
           %c = "tf.Const"() {value = dense<0.0> : tensor<f32>}
@@ -44,7 +44,7 @@ class TfSelect(test.TestCase):
                : (tensor<?xf32>, tensor<f32>) -> tensor<?xi1>
           %2 = "tf.Select"(%1, %0, %arg0)
                : (tensor<?xi1>, tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
-          return %0, %1, %2 : tensor<?xf32>, tensor<?xi1>, tensor<?xf32>
+          func.return %0, %1, %2 : tensor<?xf32>, tensor<?xi1>, tensor<?xf32>
         }"""
 
       compiled = jitrt.compile(mlir_function, 'test', specialize)

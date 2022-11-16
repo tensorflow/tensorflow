@@ -8,8 +8,8 @@ module  {
     // CHECK: tf_executor.island(%[[CONTROL]]) wraps "tf.Const"()
     // CHECK: tf_executor.LoopCond
     // CHECK: tf_executor.Switch
-    // CHECK: tf_executor.Exit
     // CHECK: tf_executor.NextIteration.Sink[%[[TOKEN]]]
+    // CHECK: tf_executor.Exit
     %Const, %ctl = Const name("Const") {dtype = i32, value = dense<0> : tensor<i32>} : () -> (tensor<i32>)
     %Enter, %ctl_0 = Enter(%Const) name("while/Enter") {T = i32, frame_name = "while/while_context", is_constant = false, parallel_iterations = 10 : i64} : (tensor<i32>) -> (tensor<*xi32>)
     %NextIteration, %ctl_1 = NextIteration(%Add) name("while/NextIteration") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)

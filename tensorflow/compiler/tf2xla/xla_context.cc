@@ -29,9 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -94,7 +94,7 @@ const xla::XlaComputation* XlaContext::GetOrCreateMax(const DataType type) {
     auto y =
         xla::Parameter(&b, 1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
     xla::Max(x, y);
-    return b.Build().ConsumeValueOrDie();
+    return b.Build().value();
   });
 }
 
@@ -110,7 +110,7 @@ const xla::XlaComputation* XlaContext::GetOrCreateMin(const DataType type) {
     auto y =
         xla::Parameter(&b, 1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
     xla::Min(x, y);
-    return b.Build().ConsumeValueOrDie();
+    return b.Build().value();
   });
 }
 
@@ -126,7 +126,29 @@ const xla::XlaComputation* XlaContext::GetOrCreateAdd(const DataType type) {
     auto y =
         xla::Parameter(&b, 1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
     xla::Add(x, y);
-    return b.Build().ConsumeValueOrDie();
+    return b.Build().value();
+  });
+}
+
+const xla::XlaComputation* XlaContext::GetOrCreateLogAddExp(
+    const DataType type) {
+  return LookupOrCreate(type, &log_add_exp_func_, [type] {
+    const string type_string = DataTypeString(type);
+    VLOG(1) << "Building LogAddExp() for " << type_string;
+    xla::XlaBuilder b("log_add_exp<" + type_string + ">");
+    xla::PrimitiveType xla_type;
+    TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
+    auto x =
+        xla::Parameter(&b, 0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
+    auto y =
+        xla::Parameter(&b, 1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
+    auto max = xla::Max(x, y);
+    auto min = xla::Min(x, y);
+    auto inner = xla::Select(xla::Not(xla::IsFinite(max)),
+                             xla::Neg(xla::Abs(max)), xla::Sub(min, max));
+
+    xla::Add(max, xla::Log1p(xla::Exp(inner)));
+    return b.Build().value();
   });
 }
 
@@ -142,7 +164,7 @@ const xla::XlaComputation* XlaContext::GetOrCreateMul(const DataType type) {
     auto y =
         xla::Parameter(&b, 1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
     xla::Mul(x, y);
-    return b.Build().ConsumeValueOrDie();
+    return b.Build().value();
   });
 }
 
@@ -173,7 +195,7 @@ Status XlaContext::RecordCollectiveInfoFromNestedCompilationResult(
                                 result.collective_info->group_size)
         .status();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<int64_t> XlaContext::RecordCollectiveInfo(int group_key,

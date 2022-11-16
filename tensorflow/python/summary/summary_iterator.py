@@ -61,7 +61,7 @@ def summary_iterator(path):
   for e in tf.compat.v1.train.summary_iterator(path to events file):
       for v in e.summary.value:
           if v.tag == 'loss':
-              print(v.simple_value)
+              print(tf.make_ndarray(v.tensor))
   ```
   Example: Continuously check for new summary values.
 
@@ -71,7 +71,7 @@ def summary_iterator(path):
     for e in summaries:
         for v in e.summary.value:
             if v.tag == 'loss':
-                print(v.simple_value)
+                print(tf.make_ndarray(v.tensor))
     # Wait for a bit before checking the file for any new events
     time.sleep(wait time)
   ```

@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/tiled_dot_emitter.h"
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/cpu/vector_support_library.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 
@@ -950,7 +950,9 @@ void TiledSmallGemmEmitter::EmitTiledGemm(
 }
 
 llvm::Type* GetPointerToElementType(llvm::Type* pointer_type) {
-  llvm::Type* type = pointer_type->getPointerElementType();
+  if (pointer_type->isOpaquePointerTy()) return pointer_type;
+
+  llvm::Type* type = pointer_type->getNonOpaquePointerElementType();
   while (auto* array_type = llvm::dyn_cast<llvm::ArrayType>(type)) {
     type = array_type->getElementType();
   }

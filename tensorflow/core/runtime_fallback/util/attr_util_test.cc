@@ -68,7 +68,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST_P(ParseTfDataTypeTest, Ok) {
   DataType data_type;
-  ASSERT_EQ(ParseTfDataType(GetParam().str_val, &data_type), Status::OK());
+  ASSERT_EQ(ParseTfDataType(GetParam().str_val, &data_type), OkStatus());
   EXPECT_EQ(data_type, GetParam().dtype);
 }
 
@@ -206,7 +206,7 @@ TEST(UtilsTest, ParseTensorAttrValueOk) {
                                 int_val: 1
                                 int_val: 1
                                 int_val: 1)pb";
-  ASSERT_EQ(ParseTensorAttrValue(tensor_str, &tensor), Status::OK());
+  ASSERT_EQ(ParseTensorAttrValue(tensor_str, &tensor), OkStatus());
   EXPECT_EQ(tensor.dtype(), DT_INT32);
   EXPECT_EQ(tensor.NumElements(), 4);
 }
@@ -221,7 +221,7 @@ TEST(UtilsTest, ParseTensorAttrValueReturnsInvalidArgument) {
 
 TEST(UtilsTest, ParseTensorShapeAttrValueOk) {
   std::vector<int64_t> dims;
-  ASSERT_THAT(ParseTensorShapeAttrValue("[1,2,3]", &dims), Status::OK());
+  ASSERT_THAT(ParseTensorShapeAttrValue("[1,2,3]", &dims), OkStatus());
   EXPECT_THAT(dims, ElementsAre(Eq(1), Eq(2), Eq(3)));
 }
 
@@ -242,10 +242,10 @@ TEST(UtilsTest, ParseTensorShapeAttrValueInvalidArgumentEmptyString) {
 
 TEST(UtilsTest, ParseBoolAttrValueOk) {
   bool bool_val;
-  ASSERT_THAT(ParseBoolAttrValue("false", &bool_val), Status::OK());
+  ASSERT_THAT(ParseBoolAttrValue("false", &bool_val), OkStatus());
   EXPECT_FALSE(bool_val);
 
-  ASSERT_THAT(ParseBoolAttrValue("true", &bool_val), Status::OK());
+  ASSERT_THAT(ParseBoolAttrValue("true", &bool_val), OkStatus());
   EXPECT_TRUE(bool_val);
 }
 
@@ -257,7 +257,7 @@ TEST(UtilsTest, ParseBoolAttrValueInvalidArgument) {
 
 TEST(UtilsTest, ParseIntAttrValueOk) {
   int64_t int_val;
-  ASSERT_THAT(ParseIntAttrValue("42", &int_val), Status::OK());
+  ASSERT_THAT(ParseIntAttrValue("42", &int_val), OkStatus());
   EXPECT_EQ(int_val, 42);
 }
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -30,9 +31,11 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Analysis/shape_component_analysis.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Analysis/shape_component_analysis.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace tensorflow {
 namespace {
@@ -43,7 +46,6 @@ using llvm::SmallVector;
 using mlir::AffineExpr;
 using mlir::AffineMap;
 using mlir::failure;
-using mlir::FuncOp;
 using mlir::Location;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
@@ -58,76 +60,18 @@ using mlir::ValueRange;
 using mlir::arith::ConstantIndexOp;
 using mlir::arith::ConstantOp;
 using mlir::arith::IndexCastOp;
+using mlir::func::FuncOp;
 
 namespace linalg = mlir::linalg;
 namespace mhlo = mlir::mhlo;
 namespace shape = mlir::shape;
 namespace tensor = mlir::tensor;
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_SYMBOLICSHAPEOPTIMIZATION
+#define GEN_PASS_DECL_SYMBOLICSHAPEOPTIMIZATION
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 // -------------------------------------------------------------------------- //
-
-// Rewrite shape.cstr_broadcastable with constant witness if can prove that
-// shapes are broadcastable from the symbolic shapes.
-
-class CstrBroadcastableOpLowering
-    : public mlir::OpRewritePattern<shape::CstrBroadcastableOp> {
- public:
-  using Base = OpRewritePattern<shape::CstrBroadcastableOp>;
-
-  explicit CstrBroadcastableOpLowering(MLIRContext* ctx);
-
-  LogicalResult matchAndRewrite(shape::CstrBroadcastableOp op,
-                                mlir::PatternRewriter& rewriter) const override;
-};
-
-CstrBroadcastableOpLowering::CstrBroadcastableOpLowering(MLIRContext* ctx)
-    : Base(ctx) {}
-
-// Returns true if all of bcasted_shapes can be broadcasted with output_shape.
-bool isKnownBroadcastable(ShapeComponentAnalysis& analysis,
-                          ValueRange bcasted_shapes, Value output_shape) {
-  auto output_shape_dims = analysis.GetValueInfo(output_shape);
-  if (!output_shape_dims) return false;
-  for (Value shape : bcasted_shapes) {
-    auto shape_dims = analysis.GetValueInfo(shape);
-    if (!shape_dims) return false;
-    // Iterate backwards over the smallest input shape.
-    for (auto zip : llvm::zip(llvm::reverse(*output_shape_dims),
-                              llvm::reverse(*shape_dims))) {
-      const auto& first = std::get<0>(zip);
-      const auto& second = std::get<1>(zip);
-      // TODO(ezhulenev): What to do with dimensions statically known to be
-      // zero?
-      // Numpy can only broadcast [0] with [1], however Tensorflow can broadcast
-      // [0] with any dimension size, and produces dimension of size [0].
-      // Currently we'll conservatively return failure and will not proceed with
-      // a rewrite.
-      if (first.isConstant(0) || second.isConstant(0)) return false;
-      // If either shape has a static one dimension the broadcast will always
-      // succeed.
-      if (first.isConstant(1) || second.isConstant(1)) continue;
-      // Otherwise dims have to be equal.
-      if (first != second) return false;
-    }
-  }
-  return true;
-}
-
-LogicalResult CstrBroadcastableOpLowering::matchAndRewrite(
-    shape::CstrBroadcastableOp op, mlir::PatternRewriter& rewriter) const {
-  ShapeComponentAnalysis shape_component_analysis;
-  if (!isKnownBroadcastable(shape_component_analysis, op.getShapes(),
-                            op.getShapes().front()))
-    return failure();
-
-  // Replace constraint with a true witness.
-  rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op, true);
-
-  return success();
-}
 
 // Replace shape.broadcast with a shape if it's statically known.
 class BroadcastOpLowering final
@@ -147,7 +91,7 @@ llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis& analysis,
   // First find the input shape with the largest rank.
   SmallVector<ArrayRef<ShapeComponentAnalysis::SymbolicExpr>> shapes_found;
   size_t maxRank = 0;
-  for (const auto &shape : llvm::enumerate(shapes)) {
+  for (const auto& shape : llvm::enumerate(shapes)) {
     auto found_shape = analysis.GetValueInfo(shape.value());
     if (!found_shape) return {};
     shapes_found.push_back(*found_shape);
@@ -161,8 +105,8 @@ llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis& analysis,
   SmallVector<const ShapeComponentAnalysis::SymbolicExpr*> joined_dimensions(
       maxRank);
   SmallVector<std::pair<Value, int64_t>> shape_and_rank_for_dim(maxRank);
-  for (const auto &shape : llvm::enumerate(shapes_found)) {
-    for (const auto &dim : llvm::enumerate(llvm::reverse(shape.value()))) {
+  for (const auto& shape : llvm::enumerate(shapes_found)) {
+    for (const auto& dim : llvm::enumerate(llvm::reverse(shape.value()))) {
       // 1 dimensions don't contribute to the final result.
       if (dim.value().isConstant(1)) continue;
       // If it's not a 1 dimension it will be present in the result. Remember
@@ -179,7 +123,7 @@ llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis& analysis,
     }
   }
   // If the output is the same as one of the inputs just return that.
-  if (llvm::is_splat(shape_and_rank_for_dim) &&
+  if (llvm::all_equal(shape_and_rank_for_dim) &&
       shape_and_rank_for_dim[0].first) {
     return shape_and_rank_for_dim[0].first;
   }
@@ -268,23 +212,23 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
     mhlo::DynamicBroadcastInDimOp op, mlir::PatternRewriter& rewriter) const {
   MLIRContext* ctx = getContext();
 
-  auto in_type = op.operand().getType().dyn_cast<RankedTensorType>();
+  auto in_type = op.getOperand().getType().dyn_cast<RankedTensorType>();
   auto out_type = op.getResult().getType().dyn_cast<RankedTensorType>();
   if (!in_type || !out_type) return failure();
 
   // Check that broadcast is right-aligned (numpy style), so that operand
   // dimensions broadcasted to match inner-most dimensions of the output.
-  auto bcast_dims = op.broadcast_dimensions().getValues<int64_t>();
+  auto bcast_dims = op.getBroadcastDimensions().getValues<int64_t>();
   auto expected_bcast_dims = llvm::seq<int64_t>(
       out_type.getRank() - in_type.getRank(), out_type.getRank());
   if (!llvm::equal(bcast_dims, expected_bcast_dims)) return failure();
 
   ShapeComponentAnalysis shape_component_analysis;
   auto input_map = isNonExpandingBroadcast(
-      shape_component_analysis, op.operand(), op.output_dimensions());
+      shape_component_analysis, op.getOperand(), op.getOutputDimensions());
   if (!input_map) return failure();
 
-  // Resolve dynamic output dimensions for the `linalg.init_tensor` operation.
+  // Resolve dynamic output dimensions for the `tensor.empty` operation.
   SmallVector<Value> output_dyn_dimensions;
   Location loc = op.getLoc();
   int64_t rank = out_type.getRank();
@@ -296,7 +240,7 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
 
     // Resolve the dynamic size of the output dimension.
     Value output_dyn_dim = rewriter.create<tensor::ExtractOp>(
-        loc, op.output_dimensions(),
+        loc, op.getOutputDimensions(),
         ValueRange{rewriter.create<ConstantIndexOp>(loc, d)});
 
     // Symbolic shape analysis might have given us an i32 or i64. Cast to index.
@@ -307,21 +251,22 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
     output_dyn_dimensions.push_back(output_dyn_dim);
   }
 
-  // Create a linalg.tensor_init operation to initialize output.
-  Value init = rewriter.create<linalg::InitTensorOp>(loc, output_dyn_dimensions,
-                                                     out_type.getShape(),
-                                                     out_type.getElementType());
+  // Create a tensor.empty operation to initialize output.
+  Value emptyTensor = rewriter.create<tensor::EmptyOp>(
+      loc, out_type.getShape(), out_type.getElementType(),
+      output_dyn_dimensions);
 
   // Output indexing map is an identity with `rank` number of loops.
   AffineMap output_map = AffineMap::getMultiDimIdentityMap(rank, ctx);
 
   // All iterators are parallel.
-  SmallVector<llvm::StringRef> iterator_types(rank, "parallel");
+  SmallVector<mlir::utils::IteratorType> iterator_types(
+      rank, mlir::utils::IteratorType::parallel);
 
   rewriter.replaceOpWithNewOp<linalg::GenericOp>(
-      op, /*resultTensorTypes=*/TypeRange{init.getType()},
-      /*inputs=*/ValueRange{op.operand()},
-      /*outputs=*/ValueRange{init},
+      op, /*resultTensorTypes=*/TypeRange{emptyTensor.getType()},
+      /*inputs=*/ValueRange{op.getOperand()},
+      /*outputs=*/ValueRange{emptyTensor},
       /*indexingMaps=*/llvm::makeArrayRef({*input_map, output_map}),
       /*iteratorTypes=*/iterator_types,
       [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {
@@ -336,7 +281,8 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
 // -------------------------------------------------------------------------- //
 
 struct SymbolicShapeOptimizationPass
-    : public SymbolicShapeOptimizationBase<SymbolicShapeOptimizationPass> {
+    : public impl::SymbolicShapeOptimizationBase<
+          SymbolicShapeOptimizationPass> {
   SymbolicShapeOptimizationPass() = default;
 
   explicit SymbolicShapeOptimizationPass(bool constraints_only) {
@@ -347,8 +293,6 @@ struct SymbolicShapeOptimizationPass
     MLIRContext* ctx = &getContext();
     mlir::RewritePatternSet patterns(ctx);
 
-    // Rewrite constraints based on the symbolic shapes.
-    patterns.add<CstrBroadcastableOpLowering>(ctx);
     // Rewrite shape.broadcast based on the symbolic shapes.
     patterns.add<BroadcastOpLowering>(ctx);
 

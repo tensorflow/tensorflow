@@ -81,8 +81,13 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
                 errors::InvalidArgument("In[0] is not a matrix"));
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(weight_tf_shape),
                 errors::InvalidArgument("In[1] is not a matrix"));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(bias_tensor.shape()),
-                errors::InvalidArgument("Biases must be 1D"));
+    for (int i = 0; i < bias_tensor.dims() - 1; i++) {
+      OP_REQUIRES(
+          ctx, bias_tensor.dim_size(i) == 1,
+          errors::InvalidArgument("For bias_dims > 1, all except the "
+                                  "last dimension (channel) must be 1, got: ",
+                                  bias_tensor.shape().DebugString()));
+    }
 
     // Expression: [batch, k] * [k, channel] + [channel] = [batch, channel]
     //
@@ -99,7 +104,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
         errors::InvalidArgument(
             "Matrix size-incompatible: In[0]: ", src_tf_shape.DebugString(),
             ", In[1]: ", weight_tf_shape.DebugString()));
-    OP_REQUIRES(ctx, bias_tensor.shape().dim_size(0) == channel,
+    OP_REQUIRES(ctx, bias_tensor.dim_size(bias_tensor.dims() - 1) == channel,
                 errors::InvalidArgument(
                     "Must provide as many biases as the channel size: ",
                     bias_tensor.shape().DebugString(), " vs. ", channel));
@@ -121,14 +126,10 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
     MklDnnMatMulFwdParams matmul_params(
         src_dims, weight_dims, bias_dims, dst_dims, src_format,
         (this->is_weight_const_) ? memory::format_tag::any : weight_format,
-        memory::format_tag::nc);
+        memory::format_tag::nc, this->is_weight_const_);
     // Extend the basic parameters for data types and fusions.
     ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
-#ifdef DNNL_AARCH64_USE_ACL
-    // Specifics of ACL: a primitive per constant weights ptr
-    matmul_params.weight_address = const_cast<void*>(
-        static_cast<const void*>(weight_tensor.flat<T>().data()));
-#endif
+
     MklDnnMatMulFwdPrimitive<T, T, T, T, T>* matmul_prim =
         MklDnnMatMulFwdPrimitiveFactory<T, T, T, T, T>::Get(matmul_params, 0);
 
@@ -258,9 +259,13 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
       auto st = ExecuteSingleThreadedGemm(batch, channel, k, sizeof(T));
       MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
       cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
+
+      UserScratchPad<unsigned char> scratch_pad;
+      scratch_pad.AllocateSPTensor(matmul_prim, ctx);
+
       // Execute fused matmul op.
       matmul_prim->Execute(src_data, weight_data, bias_data, dst_data,
-                           cpu_stream);
+                           scratch_pad.Get(), cpu_stream);
     } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +

@@ -42,8 +42,8 @@ NodeDef MakeNode(
         const std::pair<std::string, FunctionDefHelper::AttrValueWrapper>>
         attrs) {
   NodeDef node;
-  node.set_name(name);
-  node.set_op(op);
+  node.set_name(std::string(name));
+  node.set_op(std::string(op));
   for (const auto& input : inputs) node.add_input(input);
   for (const auto& attr : attrs)
     node.mutable_attr()->insert({attr.first, attr.second.proto});
@@ -131,12 +131,13 @@ Status XlaCompilationCacheSerializeTest::ExecuteWithBatch(const GraphDef& graph,
     EXPECT_NEAR(golden_output_tensors[0].flat<float>()(i),
                 output_tensors[0].flat<float>()(i), 1e-3);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status
 XlaCompilationCacheSerializeTest::AlterPersistentCacheEntryHloModuleNames(
-    absl::string_view persistent_cache_dir_path) {
+    absl::string_view persistent_cache_dir_path,
+    absl::string_view file_prefix) {
   Env* env = Env::Default();
   std::vector<string> file_names;
   TF_RETURN_IF_ERROR(
@@ -144,7 +145,8 @@ XlaCompilationCacheSerializeTest::AlterPersistentCacheEntryHloModuleNames(
 
   bool altered = false;
   for (const auto& file_name : file_names) {
-    if (absl::EndsWith(file_name, ".pb")) {
+    if (absl::EndsWith(file_name, ".pb") &&
+        absl::StartsWith(file_name, file_prefix)) {
       XlaSerializedCacheEntry entry;
       auto file_path = io::JoinPath(persistent_cache_dir_path, file_name);
       TF_RETURN_IF_ERROR(ReadTextOrBinaryProto(env, file_path, &entry));
@@ -159,7 +161,7 @@ XlaCompilationCacheSerializeTest::AlterPersistentCacheEntryHloModuleNames(
     return errors::NotFound(
         "Did not find any persistent XLA compilation cache entries to alter.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

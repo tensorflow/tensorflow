@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/coreml/builders/op_builder.h"
 
+#include <functional>
+#include <memory>
 #include <string>
 
 #include "tensorflow/lite/builtin_ops.h"
@@ -201,7 +203,7 @@ TensorID OpBuilder::GetOutput(TfLiteContext* context) {
 
 void OpBuilder::AddInput(const std::string& input_name) {
   if (layer_ == nullptr) {
-    layer_.reset(new CoreML::Specification::NeuralNetworkLayer);
+    layer_ = std::make_unique<CoreML::Specification::NeuralNetworkLayer>();
   }
   *layer_->mutable_input()->Add() = input_name;
 }

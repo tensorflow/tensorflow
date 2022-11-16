@@ -21,16 +21,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features_fake.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -62,9 +62,9 @@ class CpuLayoutAssignmentTest : public HloTestBase {
 
 TEST_F(CpuLayoutAssignmentTest, DotWithConstantRhsTensor) {
   auto builder = HloComputation::Builder(TestName());
-  Shape lhs_shape = ShapeUtil::MakeShapeWithLayout(F32, {12}, {0});
+  Shape lhs_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {12}, {0});
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {12, 24});
-  Shape result_shape = ShapeUtil::MakeShapeWithLayout(F32, {24}, {0});
+  Shape result_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {24}, {0});
   auto dot_lhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, lhs_shape, "param0"));
   auto dot_rhs = builder.AddInstruction(
@@ -97,9 +97,9 @@ TEST_F(CpuLayoutAssignmentTest, MultipleDotsWithSameConstantRhsTensor0) {
   // Two dot products have the same constant as the RHS, and both those dot
   // products can be optimized if the constant has a column-major layout.
   auto builder = HloComputation::Builder(TestName());
-  Shape lhs_shape = ShapeUtil::MakeShapeWithLayout(F32, {12}, {0});
+  Shape lhs_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {12}, {0});
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {12, 24});
-  Shape result_shape = ShapeUtil::MakeShapeWithLayout(F32, {24}, {0});
+  Shape result_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {24}, {0});
   auto dot_a_lhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, lhs_shape, "param0"));
   auto dot_b_lhs = builder.AddInstruction(
@@ -139,11 +139,13 @@ TEST_F(CpuLayoutAssignmentTest, MultipleDotsWithSameConstantRhsTensor1) {
   // Two dot products have the same constant as the RHS, but only one of the two
   // dot products can be optimized if the constant has a column-major layout.
   auto builder = HloComputation::Builder(TestName());
-  Shape lhs_a_shape = ShapeUtil::MakeShapeWithLayout(F32, {1, 12}, {0, 1});
-  Shape lhs_b_shape = ShapeUtil::MakeShapeWithLayout(F32, {2, 12}, {0, 1});
-  Shape rhs_shape = ShapeUtil::MakeShapeWithLayout(F32, {12, 24}, {0, 1});
-  Shape result_a_shape = ShapeUtil::MakeShapeWithLayout(F32, {1, 24}, {0, 1});
-  Shape result_b_shape = ShapeUtil::MakeShapeWithLayout(F32, {2, 24}, {0, 1});
+  Shape lhs_a_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 12}, {0, 1});
+  Shape lhs_b_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 12}, {0, 1});
+  Shape rhs_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {12, 24}, {0, 1});
+  Shape result_a_shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 24}, {0, 1});
+  Shape result_b_shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 24}, {0, 1});
   auto dot_a_lhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, lhs_a_shape, "param0"));
   auto dot_b_lhs = builder.AddInstruction(
@@ -181,9 +183,10 @@ TEST_F(CpuLayoutAssignmentTest, MultipleDotsWithSameConstantRhsTensor1) {
 
 TEST_F(CpuLayoutAssignmentTest, DotWithConstantLhsTensor) {
   auto builder = HloComputation::Builder(TestName());
-  Shape lhs_shape = ShapeUtil::MakeShapeWithLayout(F32, {1, 12}, {0, 1});
-  Shape rhs_shape = ShapeUtil::MakeShapeWithLayout(F32, {12, 24}, {0, 1});
-  Shape result_shape = ShapeUtil::MakeShapeWithLayout(F32, {1, 24}, {0, 1});
+  Shape lhs_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 12}, {0, 1});
+  Shape rhs_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {12, 24}, {0, 1});
+  Shape result_shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 24}, {0, 1});
   auto dot_lhs = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateFromShape(lhs_shape)));
   auto dot_rhs = builder.AddInstruction(
@@ -214,9 +217,10 @@ TEST_F(CpuLayoutAssignmentTest, DotWithConstantRhsTensorThroughGTE) {
   // This is a case we could theoretically optimize at some point, but today we
   // don't.
   auto builder = HloComputation::Builder(TestName());
-  Shape lhs_shape = ShapeUtil::MakeShapeWithLayout(F32, {1, 12}, {0, 1});
-  Shape rhs_shape = ShapeUtil::MakeShapeWithLayout(F32, {12, 24}, {0, 1});
-  Shape other_shape = ShapeUtil::MakeShapeWithLayout(F32, {100, 24}, {0, 1});
+  Shape lhs_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 12}, {0, 1});
+  Shape rhs_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {12, 24}, {0, 1});
+  Shape other_shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {100, 24}, {0, 1});
 
   auto constant_shape = ShapeUtil::MakeTupleShape({other_shape, rhs_shape});
   auto constant = builder.AddInstruction(
@@ -454,16 +458,16 @@ ENTRY BatchDotLayoutMustBeRowMajor {
   HloComputation* computation = module->entry_computation();
 
   ComputationLayout computation_layout(computation->ComputeProgramShape());
-  *computation_layout.mutable_parameter_layout(0) =
-      ShapeLayout(ShapeUtil::MakeShapeWithLayout(F32, {10, 1, 10}, {2, 1, 0}));
-  *computation_layout.mutable_parameter_layout(1) =
-      ShapeLayout(ShapeUtil::MakeShapeWithLayout(F32, {10, 10, 1}, {2, 1, 0}));
-  *computation_layout.mutable_result_layout() =
-      ShapeLayout(ShapeUtil::MakeShapeWithLayout(F32, {10, 1, 1}, {1, 2, 0}));
+  *computation_layout.mutable_parameter_layout(0) = ShapeLayout(
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 1, 10}, {2, 1, 0}));
+  *computation_layout.mutable_parameter_layout(1) = ShapeLayout(
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 10, 1}, {2, 1, 0}));
+  *computation_layout.mutable_result_layout() = ShapeLayout(
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 1, 1}, {1, 2, 0}));
   AssignLayouts(module.get(), &computation_layout);
 
   Shape expected_shape =
-      ShapeUtil::MakeShapeWithLayout(F32, {10, 1, 1}, {2, 1, 0});
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 1, 1}, {2, 1, 0});
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Copy(op::ShapeWithLayout(expected_shape)));
   EXPECT_THAT(

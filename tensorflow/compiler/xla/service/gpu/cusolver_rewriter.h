@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUSOLVER_REWRITER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUSOLVER_REWRITER_H_
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_context.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -32,7 +32,10 @@ class GpusolverRewriter : public HloModulePass {
   GpusolverRewriter();
   absl::string_view name() const override { return "gpusolver-rewriter"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   StatusOr<bool> RunOnComputation(HloComputation* computation);

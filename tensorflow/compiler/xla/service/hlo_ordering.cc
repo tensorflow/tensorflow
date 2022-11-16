@@ -21,14 +21,14 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -143,7 +143,7 @@ HloOrdering::ExecutionConstraint HloOrdering::GetExecutionConstraint(
 
 bool HloOrdering::IsDefinedBefore(const HloValue& a, const HloValue& b) const {
   // Entry parameter should always be defined before other instructions.
-  const HloModule* module = b.defining_instruction()->parent()->parent();
+  const HloModule* module = b.defining_instruction()->GetModule();
   if (b.defining_instruction()->parent() == module->entry_computation() &&
       b.defining_instruction()->opcode() == HloOpcode::kParameter) {
     return false;
@@ -430,15 +430,10 @@ bool HloOrdering::LiveRangeStrictlyBefore(
     return false;
   }
 
-  if (a.instruction()->parent() == b.instruction()->parent()) {
-    for (const HloPosition& position : a.positions()) {
-      if (position.instruction ==
-          a.instruction()->parent()->root_instruction()) {
-        VLOG(4) << a << " is live out of computation and defined before " << b
-                << " which is in same computation";
-        return false;
-      }
-    }
+  if (a.IsRootOf(b.instruction()->parent())) {
+    VLOG(4) << a << " is live out of computation and defined before " << b
+            << " which is in same computation";
+    return false;
   }
 
   return true;

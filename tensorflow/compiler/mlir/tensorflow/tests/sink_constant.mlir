@@ -1,7 +1,7 @@
 // RUN: tf-opt %s -tf-device-constant-sinking | FileCheck %s
 
 // CHECK-LABEL: func @sink_const
-func @sink_const(%arg0 : tensor<16xf32>) -> (tensor<16xf32>, tensor<f32>) {
+func.func @sink_const(%arg0 : tensor<16xf32>) -> (tensor<16xf32>, tensor<f32>) {
   // Verify that the constant are sunk in the tf_device.cluster region using them
   // and removed if no other use is left.
 
@@ -36,6 +36,6 @@ func @sink_const(%arg0 : tensor<16xf32>) -> (tensor<16xf32>, tensor<f32>) {
     }
     tf_executor.fetch %res : tensor<16xf32>
   }
-  return %3, %2 : tensor<16xf32>, tensor<f32>
+  func.return %3, %2 : tensor<16xf32>, tensor<f32>
 }
 

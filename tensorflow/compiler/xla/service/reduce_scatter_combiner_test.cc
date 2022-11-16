@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <utility>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -40,7 +40,7 @@ class ReduceScatterCombinerTest : public HloTestBase {
     if (!changed.ok()) {
       return changed.status();
     }
-    EXPECT_EQ(changed.ValueOrDie(), expect_change);
+    EXPECT_EQ(changed.value(), expect_change);
     return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 
@@ -139,6 +139,40 @@ ENTRY main {
   rs0 = f32[4] reduce-scatter(p0), replica_groups={{0,1}}, dimensions={0}, to_apply=sum
   rs1 = f32[4] reduce-scatter(p1), replica_groups={{1,0}}, dimensions={0}, to_apply=sum
   ROOT t = (f32[4], f32[4]) tuple(rs0, rs1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          RunPass(hlo_string, /*expect_change=*/false));
+}
+
+TEST_F(ReduceScatterCombinerTest, DoNotCombineWithoutReductionKind) {
+  absl::string_view hlo_string = R"(
+HloModule TestModule
+
+region_0 {
+  Arg_1 = bf16[] parameter(1)
+  Arg_0 = bf16[] parameter(0)
+  convert_1 = f32[] convert(Arg_1)
+  convert_0 = f32[] convert(Arg_0)
+  add0 = f32[] add(convert_1, convert_0)
+  ROOT convert_2 = bf16[] convert(add0)
+}
+
+region_1 {
+  Arg_1 = bf16[] parameter(1)
+  Arg_0 = bf16[] parameter(0)
+  convert_1 = f32[] convert(Arg_1)
+  convert_0 = f32[] convert(Arg_0)
+  add0 = f32[] add(convert_1, convert_0)
+  ROOT convert_2 = bf16[] convert(add0)
+}
+
+ENTRY entry{
+ param0 = bf16[512,256]{1,0} parameter(0)
+ param1 = bf16[512,256]{1,0} parameter(1)
+ reduce-scatter.0 = bf16[512,256]{1,0} reduce-scatter(param0), replica_groups={{0}}, dimensions={0}, to_apply=region_0
+ reduce-scatter.1 = bf16[512,256]{1,0} reduce-scatter(param1), replica_groups={{0}}, dimensions={0}, to_apply=region_1
+ ROOT add.0 = tuple(reduce-scatter.0, reduce-scatter.1)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,

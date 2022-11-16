@@ -30,6 +30,8 @@ class AttrView {
   string VariableType() const;
   string AttrNameString() const;
   string VariableStrLen() const;
+  string VariableSpanData() const;
+  string VariableSpanLen() const;
   string DefaultValue() const;
   string InputArg(bool with_default_value) const;
   string SetterMethod() const;

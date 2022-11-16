@@ -18,27 +18,26 @@ limitations under the License.
 #include <algorithm>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/collective_combiner_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
-#include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace {
@@ -48,7 +47,7 @@ namespace {
 // all_gather_dimension.
 Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine) {
   if (to_combine.size() < 2) {
-    return Status::OK();
+    return OkStatus();
   }
   VLOG(1) << "Combined " << to_combine.size() << " AllGather ops";
 
@@ -58,7 +57,7 @@ Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine) {
 
   // Create a single bigger AllGather of the operands of the smaller AllGather.
   std::vector<HloInstruction*> operands;
-  std::vector<Shape> output_shapes;
+  std::vector<const Shape*> output_shapes;
   VLOG(1) << "Combining set";
   for (HloInstruction* hlo : to_combine) {
     VLOG(1) << "Set element: " << hlo->ToString();
@@ -69,7 +68,7 @@ Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine) {
     TF_RET_CHECK(hlo->shape().IsArray());
     for (HloInstruction* operand : hlo->operands()) {
       operands.push_back(operand);
-      output_shapes.push_back(hlo->shape());
+      output_shapes.push_back(&hlo->shape());
     }
   }
 
@@ -77,17 +76,16 @@ Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine) {
   // AllGather ops with more than one operand produce a tuple.
   TF_RET_CHECK(operands.size() >= 2);
   combined = computation.AddInstruction(HloInstruction::CreateAllGather(
-      ShapeUtil::MakeTupleShape(output_shapes), operands, all_gather_dimension,
-      to_combine.front()->replica_groups(),
+      ShapeUtil::MakeTupleShapeWithPtrs(output_shapes), operands,
+      all_gather_dimension, to_combine.front()->replica_groups(),
       /*constrain_layout=*/false, to_combine.front()->channel_id(),
       Cast<HloAllGatherInstruction>(to_combine.front())
           ->use_global_device_ids()));
 
   // We have to propagate the sharding manually because Domain instructions are
   // not guaranteed to preserve it for side effecting instructions.
-  if (to_combine.front()->has_sharding()) {
-    combined->set_sharding(to_combine.front()->sharding());
-  }
+  combined->set_sharding(
+      hlo_sharding_util::CreateTupleSharding(combined->shape(), to_combine));
   VLOG(1) << "Replacing with : " << combined->ToString();
 
   // Replace all the smaller AllGathers with elements of the tuple output
@@ -98,7 +96,7 @@ Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine) {
     TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
         to_combine[i], std::move(replace_with)));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // The group key encapsulates all of the properties which must match for it to
@@ -108,10 +106,10 @@ using GroupKey =
 
 // Returns a key that will be equal for instructions that might be combined, or
 // different if not.
-absl::optional<GroupKey> CombineKey(const HloInstruction* instruction,
-                                    const HloDomainMap& domain_map) {
+std::optional<GroupKey> CombineKey(const HloInstruction* instruction,
+                                   const HloDomainMap& domain_map) {
   if (instruction->opcode() != HloOpcode::kAllGather) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   const auto* ag = Cast<HloAllGatherInstruction>(instruction);
@@ -137,7 +135,9 @@ AllGatherCombiner::AllGatherCombiner(int64_t combine_threshold_in_bytes,
     : combine_threshold_in_bytes_(combine_threshold_in_bytes),
       combine_threshold_count_(combine_threshold_count) {}
 
-StatusOr<bool> AllGatherCombiner::Run(HloModule* module) {
+StatusOr<bool> AllGatherCombiner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running AllGatherCombiner with threshold of "
           << combine_threshold_in_bytes_ << " bytes";
 
@@ -154,7 +154,8 @@ StatusOr<bool> AllGatherCombiner::Run(HloModule* module) {
   }
 
   bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
     auto key_fn = [&domain_map](const HloInstruction* instruction) {

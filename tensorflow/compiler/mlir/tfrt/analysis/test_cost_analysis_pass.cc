@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/analysis/cost_analysis.h"
 
@@ -20,7 +21,7 @@ namespace tfrt_compiler {
 
 class TestCostAnalysis
     : public mlir::PassWrapper<TestCostAnalysis,
-                               mlir::OperationPass<mlir::FuncOp>> {
+                               mlir::OperationPass<mlir::func::FuncOp>> {
   llvm::StringRef getArgument() const final {
     return "tfrt-test-cost-analysis";
   }
@@ -31,8 +32,9 @@ class TestCostAnalysis
     const auto& cost_analysis = getAnalysis<CostAnalysis>();
 
     auto func_op = getOperation();
+    int64_t op_key = 0;
     for (auto& op : func_op.front()) {
-      op.emitRemark() << "Cost: " << cost_analysis.GetCost(&op);
+      op.emitRemark() << "Cost: " << cost_analysis.GetCost(&op, op_key++);
     }
   }
 };

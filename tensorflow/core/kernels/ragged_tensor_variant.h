@@ -74,7 +74,7 @@ Status RaggedTensorVariantZerosLike(OpKernelContext* c,
   y->set_nested_splits(x.nested_splits());
   TF_RETURN_IF_ERROR(
       ZerosLikeTensor<Device>(c, x.values(), y->mutable_values()));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Device>
@@ -102,7 +102,7 @@ Status RaggedTensorVariantBinaryAdd(OpKernelContext* c,
   out->set_nested_splits(x.nested_splits());
   TF_RETURN_IF_ERROR(BinaryAddTensors<Device>(c, x.values(), y.values(),
                                               out->mutable_values()));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

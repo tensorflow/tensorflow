@@ -24,7 +24,7 @@ using ::llvm::SmallVector;
 using ::llvm::StringRef;
 
 const char* kReductionIR = R"(
-  func @main(%input: {1}) -> {2} {
+  func.func @main(%input: {1}) -> {2} {
     %dim_to_reduce = "tf.Const"() {{
       value = {3} : {4},
       device = "/job:localhost/replica:0/task:0/device:CPU:0"
@@ -33,7 +33,7 @@ const char* kReductionIR = R"(
       keep_dims = false,
       device = "/job:localhost/replica:0/task:0/device:CPU:0"
     } : ({1}, {4}) -> {2}
-    return %result : {2}
+    func.return %result : {2}
   }
 )";
 

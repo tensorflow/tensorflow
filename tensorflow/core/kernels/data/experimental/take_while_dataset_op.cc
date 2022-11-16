@@ -29,6 +29,8 @@ namespace data {
 namespace experimental {
 namespace {
 
+constexpr char kInputImplEmpty[] = "input_impl_empty";
+
 class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit TakeWhileDatasetOp(OpKernelConstruction* ctx)
@@ -85,7 +87,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return Status::OK();
+      return OkStatus();
     }
 
     Status CheckExternalState() const override {
@@ -116,7 +118,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
           {std::make_pair("predicate", f_attr),
            std::make_pair("Targuments", other_arguments_types_attr)},
           output));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:
@@ -124,6 +126,8 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
      public:
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params) {}
+
+      bool SymbolicCheckpointCompatible() const override { return true; }
 
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
@@ -139,7 +143,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
           tf_shared_lock l(mu_);
           if (!input_impl_) {
             *end_of_sequence = true;
-            return Status::OK();
+            return OkStatus();
           }
           TF_RETURN_IF_ERROR(
               input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
@@ -147,7 +151,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
         if (*end_of_sequence) {
           mutex_lock l(mu_);
           input_impl_.reset();
-          return Status::OK();
+          return OkStatus();
         }
         std::vector<Tensor> result;
         TF_RETURN_IF_ERROR(instantiated_captured_func_->RunWithBorrowedArgs(
@@ -164,7 +168,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
           input_impl_.reset();
           out_tensors->clear();
         }
-        return Status::OK();
+        return OkStatus();
       }
 
      protected:
@@ -179,24 +183,26 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
         TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
             dataset()->captured_func_->CheckExternalState()));
         mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            full_name(kInputImplEmpty), static_cast<int64_t>(!input_impl_)));
         if (input_impl_) {
           TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-        } else {
-          TF_RETURN_IF_ERROR(
-              writer->WriteScalar(full_name("input_impls_empty"), ""));
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        if (reader->Contains(full_name("input_impls_empty"))) {
+        int64_t input_empty;
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(full_name(kInputImplEmpty), &input_empty));
+        if (static_cast<bool>(input_empty)) {
           input_impl_.reset();
         } else {
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         }
-        return Status::OK();
+        return OkStatus();
       }
 
      private:

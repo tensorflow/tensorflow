@@ -4,7 +4,7 @@
 // Tests single TensorFlow op is hoisted out and has the correct device assigned
 // by parent `tf_device.launch`.
 // CHECK-LABEL: func @single_op_launch
-func @single_op_launch() {
+func.func @single_op_launch() {
   tf_executor.graph {
     %0:5 = tf_executor.island {
       %a = "tf.opA"() : () -> tensor<i1>
@@ -17,7 +17,7 @@ func @single_op_launch() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:      %[[A:.*]] = "tf.opA"
@@ -31,7 +31,7 @@ func @single_op_launch() {
 // Tests multiple TensorFlow ops are hoisted out and all have the correct device
 // assigned by parent `tf_device.launch`.
 // CHECK-LABEL: func @multi_op_launch
-func @multi_op_launch() {
+func.func @multi_op_launch() {
   tf_executor.graph {
     %0:5 = tf_executor.island {
       %a = "tf.opA"() : () -> tensor<i1>
@@ -45,7 +45,7 @@ func @multi_op_launch() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:      %[[A:.*]] = "tf.opA"
@@ -60,7 +60,7 @@ func @multi_op_launch() {
 
 // Tests empty device string attributes are overwritten.
 // CHECK-LABEL: func @empty_device_op
-func @empty_device_op() {
+func.func @empty_device_op() {
   tf_executor.graph {
     %0:3 = tf_executor.island {
       %launch:2 = "tf_device.launch"() ({
@@ -71,7 +71,7 @@ func @empty_device_op() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:      [[A:%.+]]:2 = "tf.opA"
@@ -85,7 +85,7 @@ func @empty_device_op() {
 
 // Tests TensorFlow op with conflicting `device` attribute compared to parent
 // `tf_device.launch`.
-func @conflicting_device() {
+func.func @conflicting_device() {
   tf_executor.graph {
     %0 = tf_executor.island {
       // expected-error@+1 {{'tf_device.launch' op inner op has conflicting 'device' attribute, got 'GPU:0' but expected 'CPU:0'}}
@@ -97,7 +97,7 @@ func @conflicting_device() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 
@@ -105,7 +105,7 @@ func @conflicting_device() {
 
 
 // Tests TensorFlow op with bad `device` attribute already set.
-func @bad_tf_device_attr() {
+func.func @bad_tf_device_attr() {
   tf_executor.graph {
     %0 = tf_executor.island {
       // expected-error@+1 {{'tf_device.launch' op inner op has bad 'device' attribute}}
@@ -117,5 +117,5 @@ func @bad_tf_device_attr() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }

@@ -41,7 +41,9 @@ namespace {
 struct TestSideEffectAnalysisPass
     : public TF::PerFunctionAggregateAnalysisConsumerPass<
           TestSideEffectAnalysisPass, TF::SideEffectAnalysis> {
-  void runOnFunction(FuncOp func,
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TestSideEffectAnalysisPass)
+
+  void runOnFunction(func::FuncOp func,
                      const TF::SideEffectAnalysis::Info& analysis) {
     int64_t next_id = 0;
     llvm::SmallDenseMap<Operation*, int64_t, 8> ids;

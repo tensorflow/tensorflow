@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 
 package(licenses = ["notice"])
 
@@ -13,7 +13,6 @@ tf_python_pybind_extension(
         "ops.cc",
         "types.cc",
     ],
-    module_name = "mlir_wrapper",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
@@ -32,7 +31,6 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "filecheck_wrapper",
     srcs = ["filecheck_wrapper.cc"],
-    module_name = "filecheck_wrapper",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:pybind11_lib",

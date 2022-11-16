@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_TOPK_REWRITER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_TOPK_REWRITER_H_
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -33,14 +33,19 @@ class TopkRewriter : public HloModulePass {
 
   absl::string_view name() const override { return "topk-rewriter"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  protected:
   // Check if the sort instruction is in TopK.
-  absl::optional<int64_t> SortIsInTopK(HloInstruction* inst);
+  std::optional<int64_t> SortIsInTopK(HloInstruction* inst);
 
   // Transform to CustomCall.
-  StatusOr<bool> TransformToCustomCall(HloModule* module);
+  StatusOr<bool> TransformToCustomCall(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
  private:
   // Predicate that returns true if a sort instruction is profitable to be

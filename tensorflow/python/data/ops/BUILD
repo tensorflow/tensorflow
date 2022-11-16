@@ -17,13 +17,59 @@ py_library(
 )
 
 py_library(
+    name = "batch_op",
+    srcs = ["batch_op.py"],
+)
+
+py_library(
+    name = "counter_op",
+    srcs = ["counter_op.py"],
+    deps = [
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "padded_batch_op",
+    srcs = ["padded_batch_op.py"],
+)
+
+py_library(
+    name = "rebatch_op",
+    srcs = ["rebatch_op.py"],
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:tensor_util",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
     name = "dataset_ops",
     srcs = ["dataset_ops.py"],
     srcs_version = "PY3",
     deps = [
+        ":batch_op",
+        ":counter_op",
+        ":filter_op",
+        ":from_tensor_slices_op",
+        ":ignore_errors_op",
         ":iterator_ops",
+        ":load_ops",
         ":options",
+        ":padded_batch_op",
+        ":ragged_batch_op",
+        ":rebatch_op",
+        ":save_ops",
+        ":sparse_batch_op",
         ":structured_function",
+        ":unique_op",
+        ":window_op",
+        ":zip_op",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dataset_ops_gen",
@@ -49,8 +95,26 @@ py_library(
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/data/util:traverse",
         "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/trackable:asset",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:resource",
         "//third_party/py/numpy",
     ],
+)
+
+py_library(
+    name = "filter_op",
+    srcs = ["filter_op.py"],
+)
+
+py_library(
+    name = "from_tensor_slices_op",
+    srcs = ["from_tensor_slices_op.py"],
+)
+
+py_library(
+    name = "ignore_errors_op",
+    srcs = ["ignore_errors_op.py"],
 )
 
 py_library(
@@ -71,8 +135,74 @@ py_library(
         "//tensorflow/python/data/util:sparse",
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/trackable:base",
     ],
+)
+
+py_library(
+    name = "load_ops",
+    srcs = ["load_op.py"],
+    deps = [
+        ":structured_function",
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/util",
+    ],
+)
+
+py_library(
+    name = "ragged_batch_op",
+    srcs = ["ragged_batch_op.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/util:convert",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:structure",
+    ],
+)
+
+py_library(
+    name = "sparse_batch_op",
+    srcs = ["sparse_batch_op.py"],
+    srcs_version = "PY3",
+    deps = [
+    ],
+)
+
+py_library(
+    name = "save_ops",
+    srcs = ["save_op.py"],
+    deps = [
+        ":structured_function",
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/data/util:structure",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/util",
+    ],
+)
+
+py_library(
+    name = "unique_op",
+    srcs = ["unique_op.py"],
+)
+
+py_library(
+    name = "window_op",
+    srcs = ["window_op.py"],
+)
+
+py_library(
+    name = "zip_op",
+    srcs = ["zip_op.py"],
 )
 
 py_library(

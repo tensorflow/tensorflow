@@ -80,24 +80,24 @@ TensorHandle::PackedTensorHandleData::~PackedTensorHandleData() {
 
 Status TensorHandle::PackedTensorHandleData::Shape(TensorShape* shape) const {
   *shape = shape_;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TensorHandle::PackedTensorHandleData::NumDims(int* num_dims) const {
   *num_dims = shape_.dims();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TensorHandle::PackedTensorHandleData::Dim(int dim_index,
                                                  int64_t* dim) const {
   *dim = shape_.dim_size(dim_index);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TensorHandle::PackedTensorHandleData::NumElements(
     int64_t* num_elements) const {
   *num_elements = shape_.num_elements();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TensorHandle::PackedTensorHandleData::Unprotect() {
@@ -105,7 +105,7 @@ Status TensorHandle::PackedTensorHandleData::Unprotect() {
     TF_RETURN_IF_ERROR(absl::visit([](auto& data) { return data.Unprotect(); },
                                    handle->data_));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool TensorHandle::PackedTensorHandleData::IsReady() const {
@@ -134,7 +134,7 @@ Status TensorHandle::PackedTensorHandleData::WaitReady(
   for (auto* handle : handles_) {
     TF_RETURN_IF_ERROR(handle->WaitReady(caller));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void TensorHandle::PackedTensorHandleData::Poison(Status status) {
@@ -164,7 +164,7 @@ Status TensorHandle::PackedTensorHandleData::ExtractPackedHandle(
                                    handles_.size(), "), but got ", index);
   }
   *handle = handles_.at(index);
-  return Status::OK();
+  return OkStatus();
 }
 
 void TensorHandle::SetResourceHandleDtypeAndShape(
@@ -183,7 +183,7 @@ Status TensorHandle::GetResourceHandleDtypesAndShapes(
 
   if (Type() != LOCAL) {
     *result = handle_dtypes_and_shapes_;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Wait for this TensorHandle to be ready.
@@ -193,7 +193,7 @@ Status TensorHandle::GetResourceHandleDtypesAndShapes(
   TF_RETURN_IF_ERROR(data.WaitReady("TensorHandle::GetResourceHandleInfo"));
 
   *result = handle_dtypes_and_shapes_;
-  return Status::OK();
+  return OkStatus();
 }
 
 int TensorHandle::NumPackedHandles() const {
@@ -327,7 +327,7 @@ Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
       new TensorHandle(std::move(handles), composite_device, dtype, shape, ctx);
   (*packed_handle)
       ->SetResourceHandleDtypeAndShape(std::move(dtypes_and_shapes));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
@@ -523,7 +523,7 @@ Status TensorHandle::WaitUnknownDevice() const {
         },
         data_));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Device* TensorHandle::DeviceOrHostCPU(const EagerContext& ctx) const {
@@ -534,7 +534,7 @@ Status TensorHandle::Shape(tensorflow::TensorShape* shape) {
   if (!IsReady() && inference_shape_.IsFullyDefined()) {
     bool fill = inference_shape_.AsTensorShape(shape);
     DCHECK(fill);
-    return Status::OK();
+    return OkStatus();
   } else {
     return absl::visit([shape](auto& data) { return data.Shape(shape); },
                        data_);
@@ -555,11 +555,11 @@ Status TensorHandle::InferenceShape(
       dims_handle.push_back(inference_context->MakeDim(dims));
     }
     *shape_handle = inference_context->MakeShape(dims_handle);
-    return Status::OK();
+    return OkStatus();
   } else {
     if (inference_shape_.unknown_rank()) {
       *shape_handle = inference_context->UnknownShape();
-      return Status::OK();
+      return OkStatus();
     }
     std::vector<shape_inference::DimensionHandle> dims_handle(
         inference_shape_.dims());
@@ -567,7 +567,7 @@ Status TensorHandle::InferenceShape(
       dims_handle[i] = inference_context->MakeDim(inference_shape_.dim_size(i));
     }
     *shape_handle = inference_context->MakeShape(dims_handle);
-    return Status::OK();
+    return OkStatus();
   }
 }
 
@@ -593,7 +593,7 @@ void TensorHandle::SetInferenceShape(
 Status TensorHandle::CopyInferenceShape(TensorHandle* other) {
   if (IsReady()) {
     TF_RETURN_IF_ERROR(is_poisoned_);
-    return Status::OK();
+    return OkStatus();
   }
   if (other->IsReady()) {
     TensorShape other_shape;
@@ -602,14 +602,14 @@ Status TensorHandle::CopyInferenceShape(TensorHandle* other) {
   } else {
     inference_shape_ = other->inference_shape_;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TensorHandle::Shape(tensorflow::PartialTensorShape* shape) const {
   DCHECK(shape != nullptr);
   if (!IsReady() && !inference_shape_.unknown_rank()) {
     *shape = inference_shape_;
-    return Status::OK();
+    return OkStatus();
   } else {
     auto result = absl::visit(
         [](auto& data) {
@@ -621,14 +621,14 @@ Status TensorHandle::Shape(tensorflow::PartialTensorShape* shape) const {
     TF_RETURN_IF_ERROR(result.second);
     *shape = result.first;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TensorHandle::NumDims(int* num_dims) const {
   DCHECK(num_dims != nullptr);
   if (!IsReady() && !inference_shape_.unknown_rank()) {
     *num_dims = inference_shape_.dims();
-    return Status::OK();
+    return OkStatus();
   } else {
     return absl::visit(
         [num_dims](auto& data) { return data.NumDims(num_dims); }, data_);
@@ -640,7 +640,7 @@ Status TensorHandle::Dim(int dim_index, int64_t* dim) const {
   if (!IsReady() && !inference_shape_.unknown_rank() &&
       inference_shape_.dim_size(dim_index) != -1) {
     *dim = inference_shape_.dim_size(dim_index);
-    return Status::OK();
+    return OkStatus();
   } else {
     return absl::visit(
         [dim_index, dim](auto& data) { return data.Dim(dim_index, dim); },
@@ -652,7 +652,7 @@ Status TensorHandle::NumElements(int64_t* num_elements) const {
   DCHECK(num_elements != nullptr);
   if (!IsReady() && inference_shape_.IsFullyDefined()) {
     *num_elements = inference_shape_.num_elements();
-    return Status::OK();
+    return OkStatus();
   } else {
     return absl::visit(
         [num_elements](auto& data) { return data.NumElements(num_elements); },
@@ -702,7 +702,7 @@ Status TensorHandle::AddEmptyLocalMirror(const Device* d) {
   local_mirrors_.emplace(std::piecewise_construct, std::forward_as_tuple(d),
                          std::forward_as_tuple());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -788,7 +788,7 @@ Status TensorHandle::AddUnshapedRemoteMirror(const Device* d, int64_t op_id,
       std::piecewise_construct, std::forward_as_tuple(d->name()),
       std::forward_as_tuple(op_id, output_num, remote_task, ctx));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TensorHandle::AddResourceShapeMirror(const Device* d, int64_t op_id,
@@ -811,7 +811,7 @@ Status TensorHandle::AddResourceShapeMirror(const Device* d, int64_t op_id,
       std::forward_as_tuple(op_id, output_num, ctx->GetContextViewId(),
                             /*is_ready=*/true));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TensorHandle::SetRemoteShape(const TensorShape& shape, const Device* d,
@@ -830,7 +830,7 @@ Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
     tf_shared_lock l(mu_);
     auto remote_mirror = remote_mirrors_.find(d->name());
     if (remote_mirror == remote_mirrors_.end()) {
-      return Status::OK();
+      return OkStatus();
     }
     auto& mirror = remote_mirror->second;
     if (mirror.context_view_id() == context_view_id) {
@@ -845,7 +845,7 @@ Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
       LOG(WARNING) << "SetRemoteShape is ignored for a remote mirror that is "
                       "accociated with a newer context_view_id.";
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   DCHECK(Type() == REMOTE)
@@ -921,7 +921,7 @@ Status TensorHandle::AddLocalMirror(tensorflow::Tensor&& tensor,
     return errors::AlreadyExists("Attempted to add existing mirror.");
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TensorHandle::SetTensor(tensorflow::Tensor&& t, const Device* d) {
@@ -948,7 +948,7 @@ Status TensorHandle::SetTensor(tensorflow::Tensor&& t, const Device* d) {
     return mirror.SetTensor(std::move(t));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void TensorHandle::Poison(Status status, const Device* d) {
@@ -974,8 +974,8 @@ Status TensorHandle::CopyToDevice(const EagerContext& ctx,
                                   tensorflow::Tensor* output) const {
   tensorflow::Device* dstd = (d == nullptr) ? ctx.HostCPU() : d;
   tensorflow::Device* srcd = DeviceOrHostCPU(ctx);
-  const bool dst_cpu = dstd->tensorflow_gpu_device_info() == nullptr;
-  const bool src_cpu = srcd->tensorflow_gpu_device_info() == nullptr;
+  const bool dst_cpu = dstd->tensorflow_accelerator_device_info() == nullptr;
+  const bool src_cpu = srcd->tensorflow_accelerator_device_info() == nullptr;
   bool is_same_device =
       (srcd == dstd) || (srcd->name() == dstd->name()) || (dst_cpu && src_cpu);
 
@@ -983,7 +983,7 @@ Status TensorHandle::CopyToDevice(const EagerContext& ctx,
   TF_RETURN_IF_ERROR(Tensor(&src));
   if (is_same_device) {
     *output = *src;
-    return Status::OK();
+    return OkStatus();
   }
   if (!dst_cpu && (src->dtype() != tensorflow::DT_VARIANT &&
                    !tensorflow::DataTypeCanUseMemcpy(src->dtype()))) {
@@ -999,15 +999,17 @@ Status TensorHandle::CopyToDevice(const EagerContext& ctx,
   tensorflow::Tensor dst(dstd->GetAllocator(attr), src->dtype(), src->shape());
   if (src->shape().num_elements() == 0) {
     *output = dst;
-    return Status::OK();
+    return OkStatus();
   }
   tensorflow::DeviceContext* src_device_context = nullptr;
   if (!src_cpu) {
-    src_device_context = srcd->tensorflow_gpu_device_info()->default_context;
+    src_device_context =
+        srcd->tensorflow_accelerator_device_info()->default_context;
   }
   tensorflow::DeviceContext* dst_device_context = nullptr;
   if (!dst_cpu) {
-    dst_device_context = dstd->tensorflow_gpu_device_info()->default_context;
+    dst_device_context =
+        dstd->tensorflow_accelerator_device_info()->default_context;
   }
   // TODO(ashankar): The Sync() call below may be more aggressive than
   // necessary. It is based on knowledge of implementation details - that
@@ -1030,7 +1032,7 @@ Status TensorHandle::CopyToDevice(const EagerContext& ctx,
   n.WaitForNotification();
   if (status.ok()) {
     *output = dst;
-    return Status::OK();
+    return OkStatus();
   }
   return status;
 }

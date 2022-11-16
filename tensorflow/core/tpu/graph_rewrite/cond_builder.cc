@@ -77,7 +77,7 @@ Status CondBuilder::AddInput(const string& input_name, const DataType& type,
       graph_->NewName(strings::StrCat(name_, "/", input_name)), type, debug);
   TF_RETURN_IF_ERROR(b.Device(device).Build(graph_, input));
   graph_->AddEdge(pred(), 0, *input, 1);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

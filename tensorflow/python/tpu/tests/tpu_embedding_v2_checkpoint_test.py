@@ -16,7 +16,7 @@
 
 from absl.testing import parameterized
 import numpy as np
-
+from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -28,12 +28,12 @@ from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
+from tensorflow.python.tpu import tpu_embedding_for_serving
 from tensorflow.python.tpu import tpu_embedding_v2
 from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.tpu.tests import tpu_embedding_base_test
 from tensorflow.python.training import checkpoint_utils
-from tensorflow.python.training.tracking import util
 
 
 class TPUEmbeddingCheckpointTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):
@@ -292,7 +292,7 @@ class TPUEmbeddingCheckpointTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):
 
     @def_function.function
     def serve_tensors(features):
-      features = tpu_embedding_v2.cpu_embedding_lookup(
+      features = tpu_embedding_for_serving.cpu_embedding_lookup(
           features, None, cpu_mid_level.embedding_tables,
           cpu_mid_level._feature_config)
       return features[0]

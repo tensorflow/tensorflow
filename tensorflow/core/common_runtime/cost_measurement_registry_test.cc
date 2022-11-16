@@ -49,7 +49,7 @@ TEST(CostMeasurementRegistryTest, Basic) {
 
 TEST(CostMeasurementRegistryDeathTest, CrashWhenRegisterTwice) {
   const auto creator = [](const CostMeasurement::Context& context) {
-    return absl::make_unique<TestCostMeasurement>(context);
+    return std::make_unique<TestCostMeasurement>(context);
   };
   EXPECT_DEATH(
       CostMeasurementRegistry::RegisterCostMeasurement(kTestCostName, creator),

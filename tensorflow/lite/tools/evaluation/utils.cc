@@ -16,6 +16,22 @@ limitations under the License.
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
+#if defined(__APPLE__)
+#include "TargetConditionals.h"
+#if (TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR) || \
+    (TARGET_OS_OSX && TARGET_CPU_ARM64)
+// Only enable coreml delegate when using a real iPhone device or Apple Silicon.
+#define REAL_IPHONE_DEVICE
+#include "tensorflow/lite/delegates/coreml/coreml_delegate.h"
+#endif
+#endif
+
+#ifndef TFLITE_WITHOUT_XNNPACK
+#include "tensorflow/lite/core/shims/c/common.h"
+#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h"
+#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/xnnpack_plugin.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#endif  // !defined(TFLITE_WITHOUT_XNNPACK)
 
 #if !defined(_WIN32)
 #include <dirent.h>
@@ -88,26 +104,24 @@ TfLiteStatus GetSortedFileNames(
 #endif
 
 TfLiteDelegatePtr CreateNNAPIDelegate() {
-#if defined(__ANDROID__)
+#if TFLITE_SUPPORTS_NNAPI_DELEGATE
   return TfLiteDelegatePtr(
       NnApiDelegate(),
       // NnApiDelegate() returns a singleton, so provide a no-op deleter.
       [](TfLiteDelegate*) {});
-#else
+#else   // TFLITE_SUPPORTS_NNAPI_DELEGATE
   return tools::CreateNullDelegate();
-#endif  // defined(__ANDROID__)
+#endif  // TFLITE_SUPPORTS_NNAPI_DELEGATE
 }
 
+#if TFLITE_SUPPORTS_NNAPI_DELEGATE
 TfLiteDelegatePtr CreateNNAPIDelegate(StatefulNnApiDelegate::Options options) {
-#if defined(__ANDROID__)
   return TfLiteDelegatePtr(
       new StatefulNnApiDelegate(options), [](TfLiteDelegate* delegate) {
         delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
       });
-#else
-  return tools::CreateNullDelegate();
-#endif  // defined(__ANDROID__)
 }
+#endif  // TFLITE_SUPPORTS_NNAPI_DELEGATE
 
 #if TFLITE_SUPPORTS_GPU_DELEGATE
 TfLiteDelegatePtr CreateGPUDelegate(TfLiteGpuDelegateOptionsV2* options) {
@@ -160,33 +174,93 @@ TfLiteDelegatePtr CreateHexagonDelegate(
     TfLiteHexagonTearDown();
   });
 }
-#endif
+#endif  // TFLITE_ENABLE_HEXAGON
 
-#if defined(__s390x__) || defined(TFLITE_WITHOUT_XNNPACK)
+#ifdef TFLITE_WITHOUT_XNNPACK
 TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads) {
   return tools::CreateNullDelegate();
 }
-#else
+#else  // !defined(TFLITE_WITHOUT_XNNPACK)
+// This method replicates the implementation from
+// https://github.com/tensorflow/tensorflow/blob/55e3b5643a791c4cc320746649d455cacfadf6ed/tensorflow/lite/delegates/xnnpack/xnnpack_delegate.cc#L5235
+// to avoid having an entire copy of XNNPack.
+TfLiteXNNPackDelegateOptions XNNPackDelegateOptionsDefault() {
+  TfLiteXNNPackDelegateOptions options = {0};
+
+  // Quantized inference is enabled by default on Web platform
+#ifdef XNNPACK_DELEGATE_ENABLE_QS8
+  options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QS8;
+#endif  // XNNPACK_DELEGATE_ENABLE_QS8
+#ifdef XNNPACK_DELEGATE_ENABLE_QU8
+  options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QU8;
+#endif  // XNNPACK_DELEGATE_ENABLE_QU8
+
+  // Enable quantized inference for the delegate build used in unit tests.
+#ifdef XNNPACK_DELEGATE_TEST_MODE
+  options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QS8;
+  options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QU8;
+#endif  // XNNPACK_DELEGATE_TEST_MODE
+  return options;
+}
+
 TfLiteDelegatePtr CreateXNNPACKDelegate() {
   TfLiteXNNPackDelegateOptions xnnpack_options =
-      TfLiteXNNPackDelegateOptionsDefault();
+      XNNPackDelegateOptionsDefault();
   return CreateXNNPACKDelegate(&xnnpack_options);
 }
 
 TfLiteDelegatePtr CreateXNNPACKDelegate(
     const TfLiteXNNPackDelegateOptions* xnnpack_options) {
-  auto xnnpack_delegate = TfLiteXNNPackDelegateCreate(xnnpack_options);
-  return TfLiteDelegatePtr(xnnpack_delegate, [](TfLiteDelegate* delegate) {
-    TfLiteXNNPackDelegateDelete(delegate);
-  });
+  flatbuffers::FlatBufferBuilder flatbuffer_builder;
+  tflite::XNNPackSettingsBuilder xnnpack_settings_builder(flatbuffer_builder);
+  int num_threads = xnnpack_options->num_threads;
+  if (num_threads >= 0) {
+    xnnpack_settings_builder.add_num_threads(num_threads);
+  }
+  xnnpack_settings_builder.fbb_.AddElement<int32_t>(
+      XNNPackSettings::VT_FLAGS, static_cast<int32_t>(xnnpack_options->flags),
+      0);
+  flatbuffers::Offset<tflite::XNNPackSettings> xnnpack_settings =
+      xnnpack_settings_builder.Finish();
+  tflite::TFLiteSettingsBuilder tflite_settings_builder(flatbuffer_builder);
+  tflite_settings_builder.add_xnnpack_settings(xnnpack_settings);
+  tflite_settings_builder.add_delegate(tflite::Delegate_XNNPACK);
+  flatbuffers::Offset<tflite::TFLiteSettings> tflite_settings =
+      tflite_settings_builder.Finish();
+  flatbuffer_builder.Finish(tflite_settings);
+  const tflite::TFLiteSettings* tflite_settings_flatbuffer =
+      flatbuffers::GetRoot<tflite::TFLiteSettings>(
+          flatbuffer_builder.GetBufferPointer());
+  // Create an XNNPack delegate plugin using the settings from the flatbuffer.
+  const TfLiteOpaqueDelegatePlugin* delegate_plugin =
+      TfLiteXnnpackDelegatePluginCApi();
+  TfLiteOpaqueDelegate* delegate =
+      delegate_plugin->create(tflite_settings_flatbuffer);
+  void (*delegate_deleter)(TfLiteOpaqueDelegate*) = delegate_plugin->destroy;
+  return TfLiteDelegatePtr(delegate, delegate_deleter);
 }
 
 TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads) {
-  auto opts = TfLiteXNNPackDelegateOptionsDefault();
+  auto opts = XNNPackDelegateOptionsDefault();
   // Note that we don't want to use the thread pool for num_threads == 1.
   opts.num_threads = num_threads > 1 ? num_threads : 0;
   return CreateXNNPACKDelegate(&opts);
 }
 #endif
+
+TfLiteDelegatePtr CreateCoreMlDelegate() {
+#ifdef REAL_IPHONE_DEVICE
+  TfLiteCoreMlDelegateOptions coreml_options = {
+      .enabled_devices = TfLiteCoreMlDelegateAllDevices};
+  TfLiteDelegate* delegate = TfLiteCoreMlDelegateCreate(&coreml_options);
+  if (!delegate) {
+    return tools::CreateNullDelegate();
+  }
+  return TfLiteDelegatePtr(delegate, &TfLiteCoreMlDelegateDelete);
+#else
+  return tools::CreateNullDelegate();
+#endif  // REAL_IPHONE_DEVICE
+}
+
 }  // namespace evaluation
 }  // namespace tflite

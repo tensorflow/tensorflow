@@ -19,28 +19,28 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/dynamic_parameter_binding.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
+#include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/status_matchers.h"
-#include "tensorflow/stream_executor/device_description.h"
-#include "tensorflow/stream_executor/dnn.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using ::tensorflow::testing::IsOkAndHolds;
+using ::tsl::testing::IsOkAndHolds;
 
 class CudnnSupportUtilsTest : public HloTestBase {
  public:
@@ -54,7 +54,7 @@ class CudnnSupportUtilsTest : public HloTestBase {
         if (inst->IsCustomCall(target)) {
           VLOG(1) << inst->ToString();
           if (call != nullptr) {
-            return tensorflow::errors::FailedPrecondition(
+            return tsl::errors::FailedPrecondition(
                 "Found more than one custom call.");
           }
           call = Cast<HloCustomCallInstruction>(inst);
@@ -62,7 +62,7 @@ class CudnnSupportUtilsTest : public HloTestBase {
       }
     }
     if (call == nullptr) {
-      return tensorflow::errors::FailedPrecondition(
+      return tsl::errors::FailedPrecondition(
           "Did not find any matching custom call.");
     }
     return call;
@@ -81,7 +81,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
 
   HloCustomCallInstruction* conv;
   TF_ASSERT_OK_AND_ASSIGN(conv,
@@ -109,7 +109,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
 
   HloCustomCallInstruction* conv;
   TF_ASSERT_OK_AND_ASSIGN(conv,
@@ -140,7 +140,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                       .ValueOrDie();
+                       .value();
 
   HloCustomCallInstruction* conv;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -159,7 +159,7 @@ TEST_F(CudnnSupportUtilsTest,
               custom_call_target="__cudnn$convBackwardFilter"
     ROOT gte = f16[2,2,41,40] get-tuple-element(result), index=0
   })")
-                             .ValueOrDie();
+                             .value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleBwdFilter.get(), "__cudnn$convBackwardFilter"));
@@ -177,7 +177,7 @@ TEST_F(CudnnSupportUtilsTest,
               custom_call_target="__cudnn$convBackwardInput"
     ROOT gte = f16[10,20,30,41] get-tuple-element(result), index=0
   })")
-                            .ValueOrDie();
+                            .value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleBwdInput.get(), "__cudnn$convBackwardInput"));
@@ -197,7 +197,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                           .ValueOrDie();
+                           .value();
   HloCustomCallInstruction* conv;
   TF_ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleS8InOut.get(), "__cudnn$convForward"));
@@ -216,7 +216,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                              .ValueOrDie();
+                              .value();
   TF_ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleS8InF32Out.get(), "__cudnn$convForward"));
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
@@ -234,7 +234,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                               .ValueOrDie();
+                               .value();
   TF_ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleF32InF32Out.get(), "__cudnn$convForward"));
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
@@ -256,7 +256,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=2x2}, dim_labels=b012f_012io->b012f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   HloCustomCallInstruction* conv;
   TF_ASSERT_OK_AND_ASSIGN(conv,
                           GetCustomCall(module.get(), "__cudnn$convForward"));
@@ -279,7 +279,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=2x2 rhs_dilate=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   HloCustomCallInstruction* conv;
   TF_ASSERT_OK_AND_ASSIGN(conv,
                           GetCustomCall(module.get(), "__cudnn$convForward"));
@@ -301,7 +301,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=3x3}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                                     .ValueOrDie();
+                                     .value();
   HloCustomCallInstruction* conv;
   TF_ASSERT_OK_AND_ASSIGN(conv, GetCustomCall(moduleFilterCoversInput.get(),
                                               "__cudnn$convForward"));
@@ -320,7 +320,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=3x3}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                                           .ValueOrDie();
+                                           .value();
   TF_ASSERT_OK_AND_ASSIGN(conv,
                           GetCustomCall(moduleFilterAlmostCoversInput.get(),
                                         "__cudnn$convForward"));

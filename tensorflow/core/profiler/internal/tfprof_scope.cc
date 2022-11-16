@@ -20,8 +20,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_format.h"
-#include "tensorflow/c/c_api.h"
-#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
 #include "tensorflow/core/profiler/internal/tfprof_tensor.h"

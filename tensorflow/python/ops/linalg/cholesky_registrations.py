@@ -80,7 +80,7 @@ def _cholesky_block_diag(block_diag_operator):
       operators=[
           operator.cholesky() for operator in block_diag_operator.operators],
       is_non_singular=True,
-      is_self_adjoint=False,
+      is_self_adjoint=None,  # Let the operators passed in decide.
       is_square=True)
 
 
@@ -93,5 +93,5 @@ def _cholesky_kronecker(kronecker_operator):
       operators=[
           operator.cholesky() for operator in kronecker_operator.operators],
       is_non_singular=True,
-      is_self_adjoint=False,
+      is_self_adjoint=None,  # Let the operators passed in decide.
       is_square=True)

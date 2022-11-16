@@ -56,7 +56,7 @@ tensorflow::Status FunctionCache::GetOrAddFunction(
     auto& function_state = cache_[cache_key];
     if (function_state) {
       *result = FunctionCache::FunctionCacheResult{function_state, false};
-      return tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
   }
 
@@ -130,7 +130,7 @@ tensorflow::Status FunctionCache::GetOrAddFunction(
   }
 
   auto runner_table =
-      absl::make_unique<tensorflow::tfrt_stub::OpKernelRunnerTable>();
+      std::make_unique<tensorflow::tfrt_stub::OpKernelRunnerTable>();
   RCReference<RequestContext> request_ctx;
   TF_RETURN_IF_ERROR(request_ctx_fn(runner_table.get(), &request_ctx));
 
@@ -147,7 +147,7 @@ tensorflow::Status FunctionCache::GetOrAddFunction(
   // present in the cache at this moment due to race condition, overwrites it.
   cache_[cache_key] = entry;
   *result = FunctionCache::FunctionCacheResult{std::move(entry), true};
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace tf

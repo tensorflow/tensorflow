@@ -52,6 +52,8 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
                                                  bool enable_logging,
                                                  bool enable_inliner);
 
+// Runs all passes for non TPU (GPU and CPU) graph.
+tensorflow::Status RunTFXLABridge(ModuleOp module, bool enable_logging);
 }  // namespace TF
 
 }  // namespace mlir

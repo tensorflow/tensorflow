@@ -96,8 +96,17 @@ def anderson_darling(x):
   return -n - z / n
 
 
-def test_truncated_normal(assert_equal, assert_all_close, n, y,
-                          mean_atol=5e-4, median_atol=8e-4, variance_rtol=1e-3):
+def test_truncated_normal(assert_equal,
+                          assert_all_close,
+                          n,
+                          y,
+                          means=None,
+                          stddevs=None,
+                          minvals=None,
+                          maxvals=None,
+                          mean_atol=5e-4,
+                          median_atol=8e-4,
+                          variance_rtol=1e-3):
   """Tests truncated normal distribution's statistics."""
   def _normal_cdf(x):
     return .5 * math.erfc(-x / math.sqrt(2))
@@ -112,6 +121,18 @@ def test_truncated_normal(assert_equal, assert_all_close, n, y,
   b = 2.
   mu = 0.
   sigma = 1.
+
+  if minvals is not None:
+    a = minvals
+
+  if maxvals is not None:
+    b = maxvals
+
+  if means is not None:
+    mu = means
+
+  if stddevs is not None:
+    sigma = stddevs
 
   alpha = (a - mu) / sigma
   beta = (b - mu) / sigma

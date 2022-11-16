@@ -126,7 +126,11 @@ absl::Status CreateFunction(id<MTLDevice> device, const std::string& code,
   MTLCompileOptions* options = [[MTLCompileOptions alloc] init];
 
   // Runtime checks for the iOS version independently of minimum target iOS.
-  if (@available(macOS 10.14, iOS 12.0, tvOS 12.0, *)) {
+  if (@available(macOS 11.0, iOS 14.0, tvOS 14.0, *)) {
+    [options setLanguageVersion:MTLLanguageVersion2_3];
+  } else if (@available(macOS 10.15, iOS 13.0, tvOS 13.0, *)) {
+    [options setLanguageVersion:MTLLanguageVersion2_2];
+  } else if (@available(macOS 10.14, iOS 12.0, tvOS 12.0, *)) {
     [options setLanguageVersion:MTLLanguageVersion2_1];
   } else if (@available(macOS 10.13, iOS 11.0, tvOS 11.0, *)) {
     [options setLanguageVersion:MTLLanguageVersion2_0];
@@ -226,6 +230,8 @@ MTLPixelFormat DataTypeToRGBAPixelFormat(DataType type, bool normalized) {
       return MTLPixelFormatRGBA32Sint;
     case DataType::UINT32:
       return MTLPixelFormatRGBA32Uint;
+    case DataType::BOOL:
+      return MTLPixelFormatRGBA8Uint;
     default:
       return MTLPixelFormatInvalid;
   }

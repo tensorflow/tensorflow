@@ -23,6 +23,7 @@ cc_library(
         ":disable_prefetch_legacy_autotune",
         ":enable_gradient_descent",
         ":filter_fusion",
+        ":filter_parallelization",
         ":inject_prefetch",
         ":make_deterministic",
         ":make_sloppy",
@@ -33,6 +34,7 @@ cc_library(
         ":meta_optimizer",
         ":noop_elimination",
         ":parallel_batch",
+        ":replicate_on_split",
         ":shuffle_and_repeat_fusion",
         ":slack",
         ":use_private_thread_pool",
@@ -296,6 +298,45 @@ tf_cc_test(
     srcs = ["filter_fusion_test.cc"],
     deps = [
         ":filter_fusion",
+        ":graph_test_utils",
+        ":graph_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
+    name = "filter_parallelization",
+    srcs = ["filter_parallelization.cc"],
+    hdrs = [
+        "filter_parallelization.h",
+    ],
+    deps = [
+        ":function_utils",
+        ":graph_utils",
+        ":optimizer_base",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "filter_parallelization_test",
+    size = "small",
+    srcs = ["filter_parallelization_test.cc"],
+    deps = [
+        ":filter_parallelization",
         ":graph_test_utils",
         ":graph_utils",
         "//tensorflow/core:framework",
@@ -792,6 +833,37 @@ tf_cc_test(
         ":graph_test_utils",
         ":graph_utils",
         ":parallel_batch",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
+    name = "replicate_on_split",
+    srcs = ["replicate_on_split.cc"],
+    hdrs = ["replicate_on_split.h"],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "replicate_on_split_test",
+    size = "small",
+    srcs = ["replicate_on_split_test.cc"],
+    deps = [
+        ":graph_test_utils",
+        ":graph_utils",
+        ":replicate_on_split",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

@@ -1,4 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
+load("//tensorflow:tensorflow.bzl", "VERSION")
 
 package(
     default_visibility = [
@@ -32,8 +33,11 @@ pybind_extension(
         "tac_wrapper_pybind11.cc",
     ],
     hdrs = ["tac_wrapper.h"],
-    link_in_framework = True,
-    module_name = "_pywrap_tac_wrapper",
+    dynamic_deps = select({
+        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+        "//tensorflow:windows": [],
+        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+    }),
     static_deps = [
         "@arm_neon_2_x86_sse//:__subpackages__",
         "@bazel_tools//:__subpackages__",
@@ -55,6 +59,8 @@ pybind_extension(
         "@farmhash_gpu_archive//:__subpackages__",
         "@fft2d//:__subpackages__",
         "@flatbuffers//:__subpackages__",
+        "@FP16//:__subpackages__",
+        "@FXdiv//:__subpackages__",
         "@gemmlowp//:__subpackages__",
         "@gif//:__subpackages__",
         "@highwayhash//:__subpackages__",
@@ -62,7 +68,6 @@ pybind_extension(
         "@icu//:__subpackages__",
         "@jsoncpp_git//:__subpackages__",
         "@libjpeg_turbo//:__subpackages__",
-        "@libxsmm_archive//:__subpackages__",
         "@llvm_openmp//:__subpackages__",
         "@llvm-project//:__subpackages__",
         "@llvm_terminfo//:__subpackages__",
@@ -81,10 +86,12 @@ pybind_extension(
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
+        "@pthreadpool//:__subpackages__",
         "@pybind11//:__subpackages__",
         "@ruy//:__subpackages__",
         "@snappy//:__subpackages__",
         "@sobol_data//:__subpackages__",
+        "@stablehlo//:__subpackages__",
         "//:__subpackages__",
         "@upb//:__subpackages__",
         "@XNNPACK//:__subpackages__",

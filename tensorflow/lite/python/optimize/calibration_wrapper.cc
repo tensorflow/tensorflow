@@ -14,15 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/python/optimize/calibration_wrapper.h"
 
+#include <functional>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/optional.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
@@ -53,7 +56,7 @@ namespace {
 using python_utils::PyDecrefDeleter;
 
 std::unique_ptr<tflite::ModelT> CreateMutableModel(const tflite::Model& model) {
-  auto copied_model = absl::make_unique<tflite::ModelT>();
+  auto copied_model = std::make_unique<tflite::ModelT>();
   model.UnPackTo(copied_model.get(), nullptr);
   return copied_model;
 }
@@ -78,6 +81,8 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_INT32;
     case kTfLiteUInt32:
       return TensorType_UINT32;
+    case kTfLiteInt4:
+      return TensorType_INT4;
     case kTfLiteUInt8:
       return TensorType_UINT8;
     case kTfLiteInt8:
@@ -134,13 +139,13 @@ bool RegisterCustomOpByName(const char* registerer_name,
 // Returns the dimension from the stored list in the PyObject. If the given
 // PyObject is not a list, it will return absl::optional and set the Python
 // error message to notify users.
-absl::optional<std::vector<int>> ConvertInputShapeToVector(
+std::optional<std::vector<int>> ConvertInputShapeToVector(
     PyObject* input_shapes, size_t index) {
   PyObject* shape = PyList_GetItem(input_shapes, index);
   if (!shape || !PyList_Check(shape)) {
     PyErr_Format(PyExc_ValueError,
                  "Invalid %ld input shape: expected to be a list.", index);
-    return absl::nullopt;
+    return std::nullopt;
   }
   size_t size = PyList_Size(shape);
   std::vector<int> dims(size);
@@ -253,7 +258,7 @@ PyObject* CalibrationWrapper::Prepare(PyObject* input_shapes,
   }
 
   for (size_t i = 0; i < inputs_size; ++i) {
-    absl::optional<std::vector<int>> dims =
+    std::optional<std::vector<int>> dims =
         ConvertInputShapeToVector(input_shapes, i);
     if (!dims.has_value()) {
       return nullptr;
@@ -285,7 +290,7 @@ PyObject* CalibrationWrapper::Prepare(PyObject* input_shapes) {
   }
 
   for (size_t i = 0; i < inputs_size; ++i) {
-    absl::optional<std::vector<int>> dims =
+    std::optional<std::vector<int>> dims =
         ConvertInputShapeToVector(input_shapes, i);
     if (!dims.has_value()) {
       return nullptr;
@@ -655,7 +660,7 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
     *error_msg = "Invalid model";
     return nullptr;
   }
-  auto resolver = absl::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
+  auto resolver = std::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
   for (const auto& registerer : registerers_by_name) {
     if (!RegisterCustomOpByName(registerer.c_str(), resolver.get())) {
       *error_msg =

@@ -1,0 +1,65 @@
+op {
+  graph_op_name: "ApproxTopK"
+  endpoint {
+    name: "ApproxTopK"
+  }
+  in_arg {
+    name: "input"
+    description: "Array to search. Must be at least 1-D of the floating type"
+  }
+  out_arg {
+    name: "values"
+    description: <<END
+The min/max k values along the `reduction_dimension` of the `input` operand.
+The dimension are the same as the `input` operand except for the
+`reduction_dimension`: when `aggregate_to_topk` is true, the reduction
+dimension is `k`; otherwise, it is greater equals to `k` where the size is
+implementation-defined.
+END
+  }
+  out_arg {
+    name: "indices"
+    description: <<END
+The indices of `values` along the `reduction_dimension` of the `input` operand.
+END
+  }
+  attr {
+    name: "k"
+    description: "Specifies the number of min/max-k."
+  }
+  attr {
+    name: "reduction_dimension"
+    description: "Integer dimension along which to search. Default: -1."
+  }
+  attr {
+    name: "recall_target"
+    description: "Recall target for the approximation. Range in (0,1]"
+  }
+  attr {
+    name: "is_max_k"
+    description: "When true, computes max-k; otherwise computes min-k."
+  }
+  attr {
+    name: "reduction_input_size_override"
+    description: <<END
+When set to a positive value, it overrides the size determined by
+`input[reduction_dim]` for evaluating the recall. This option is useful when
+the given `input` is only a subset of the overall computation in SPMD or
+distributed pipelines, where the true input size cannot be deferred by the
+`input` shape.
+END
+  }
+  attr {
+    name: "aggregate_to_topk"
+    description: <<END
+When true, aggregates approximate results to top-k. When false, returns the
+approximate results. The number of the approximate results is implementation
+defined and is greater equals to the specified `k`.
+END
+  }
+  summary: "Returns min/max k values and their indices of the input operand in an approximate manner."
+  description: <<END
+See https://arxiv.org/abs/2206.14286 for the algorithm details.
+This op is only optimized on TPU currently.
+END
+}

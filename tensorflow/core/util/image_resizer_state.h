@@ -18,8 +18,8 @@ limitations under the License.
 // reduce code duplication and ensure consistency across the different
 // resizers, it performs the input validation.
 
-#ifndef TENSORFLOW_CORE_KERNELS_UTIL_IMAGE_RESIZER_STATE_H_
-#define TENSORFLOW_CORE_KERNELS_UTIL_IMAGE_RESIZER_STATE_H_
+#ifndef TENSORFLOW_CORE_UTIL_IMAGE_RESIZER_STATE_H_
+#define TENSORFLOW_CORE_UTIL_IMAGE_RESIZER_STATE_H_
 
 #define EIGEN_USE_THREADS
 #include <math.h>
@@ -40,7 +40,7 @@ namespace tensorflow {
 // CalculateResizeScale determines the float scaling factor.
 inline float CalculateResizeScale(int64_t in_size, int64_t out_size,
                                   bool align_corners) {
-  return (align_corners && out_size > 1)
+  return (align_corners && in_size > 1 && out_size > 1)
              ? (in_size - 1) / static_cast<float>(out_size - 1)
              : in_size / static_cast<float>(out_size);
 }
@@ -256,4 +256,4 @@ struct ImageResizerGradientState {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_UTIL_IMAGE_RESIZER_STATE_H_
+#endif  // TENSORFLOW_CORE_UTIL_IMAGE_RESIZER_STATE_H_

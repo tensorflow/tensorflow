@@ -245,13 +245,21 @@ def set_optimizer_experimental_options(options):
 def get_soft_device_placement():
   """Return status of soft device placement flag.
 
-  If enabled, an op will be placed on CPU if any of the following are true
-    1. there's no GPU implementation for the OP
+  If enabled, ops can be placed on different devices than the device explicitly
+  assigned by the user. This potentially has a large performance cost due to an
+  increase in data communication between devices.
+
+  Some cases where soft_device_placement would modify device assignment are:
+    1. no GPU/TPU implementation for the OP
     2. no GPU devices are known or registered
     3. need to co-locate with reftype input(s) which are from CPU
+    4. an OP can not be compiled by XLA.  Common for TPU which always requires
+         the XLA compiler.
 
-  If disabled, the placement is strict and CPU fallback is not allowed.
-  An error is raised when an Op cannot be placed onto its intended device.
+  For TPUs, if this option is true, a feature called automatic outside
+  compilation is enabled. Automatic outside compilation will move uncompilable
+  ops within a TPU program to instead run on the host. This can be used when
+  encountering compilation failures due to unsupported ops.
 
   Returns:
    A boolean indicating if soft placement is enabled.
@@ -263,10 +271,21 @@ def get_soft_device_placement():
 def set_soft_device_placement(enabled):
   """Enable or disable soft device placement.
 
-  If enabled, an op will be placed on CPU if any of the following are true
-    1. there's no GPU implementation for the OP
+  If enabled, ops can be placed on different devices than the device explicitly
+  assigned by the user. This potentially has a large performance cost due to an
+  increase in data communication between devices.
+
+  Some cases where soft_device_placement would modify device assignment are:
+    1. no GPU/TPU implementation for the OP
     2. no GPU devices are known or registered
     3. need to co-locate with reftype input(s) which are from CPU
+    4. an OP can not be compiled by XLA.  Common for TPU which always requires
+         the XLA compiler.
+
+  For TPUs, if this option is true, a feature called automatic outside
+  compilation is enabled. Automatic outside compilation will move uncompilable
+  ops within a TPU program to instead run on the host. This can be used when
+  encountering compilation failures due to unsupported ops.
 
   Note: by default soft device placement is enabled when running in eager mode
   (for convenience) and disabled in graph mode (for performance).
@@ -877,12 +896,6 @@ def set_logical_device_configuration(device, logical_devices):
 @tf_export('config.experimental.enable_mlir_bridge')
 def enable_mlir_bridge():
   """Enables experimental MLIR-Based TensorFlow Compiler Bridge.
-
-  DO NOT USE, DEV AND TESTING ONLY AT THE MOMENT.
-
-  NOTE: MLIR-Based TensorFlow Compiler is under active development and has
-  missing features, please refrain from using. This API exists for development
-  and testing only.
 
   TensorFlow Compiler Bridge (TF Bridge) is responsible for translating parts
   of TensorFlow graph into a form that can be accepted as an input by a backend

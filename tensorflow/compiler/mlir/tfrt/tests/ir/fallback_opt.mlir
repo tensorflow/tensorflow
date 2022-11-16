@@ -1,28 +1,28 @@
 // RUN: tf-tfrt-opt %s | tf-tfrt-opt | FileCheck %s --dump-input=fail
 
 // CHECK-LABEL: func @const_tensor_proto
-func @const_tensor_proto() -> !tfrt_fallback.tf_tensor {
+func.func @const_tensor_proto() -> !tfrt_fallback.tf_tensor {
   // CHECK: tfrt_fallback_async.const_tensor_proto "fake serialized proto"
   %0 = tfrt_fallback_async.const_tensor_proto "fake serialized proto"
   tfrt.return %0 : !tfrt_fallback.tf_tensor
 }
 
 // CHECK-LABEL: func @const_dense_tensor
-func @const_dense_tensor() -> !tfrt_fallback.tf_tensor {
+func.func @const_dense_tensor() -> !tfrt_fallback.tf_tensor {
   // CHECK: tfrt_fallback_async.const_dense_tensor
   %0 = tfrt_fallback_async.const_dense_tensor dense<0.0> : tensor<f32> {_tfrt_cost = 1 : i64}
   tfrt.return %0 : !tfrt_fallback.tf_tensor
 }
 
 // CHECK-LABEL: func @const_string_tensor
-func @const_string_tensor() -> !tfrt_fallback.tf_tensor {
+func.func @const_string_tensor() -> !tfrt_fallback.tf_tensor {
   // CHECK: tfrt_fallback_async.const_string_tensor
   %0 = tfrt_fallback_async.const_string_tensor {shape = [1, 2], value = ["const", "string"], _tfrt_cost = 1 : i64}
   tfrt.return %0 : !tfrt_fallback.tf_tensor
 }
 
 // CHECK-LABEL: func @convert
-func @convert() -> !corert.tensorhandle {
+func.func @convert() -> !corert.tensorhandle {
   %0 = corert.const_dense_tensor dense<0.0> : tensor<f32>
   // CHECK: tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor
   %1 = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %0 {_tfrt_cost = 1 : i64, device = "cpu"} : (!corert.tensorhandle) -> (!tfrt_fallback.tf_tensor)
@@ -34,7 +34,7 @@ func @convert() -> !corert.tensorhandle {
 }
 
 // CHECK-LABEL: func @predicate
-func @predicate() -> i1 {
+func.func @predicate() -> i1 {
   %0 = tfrt_fallback_async.const_dense_tensor dense<0.0> : tensor<f32> {_tfrt_cost = 1 : i64}
   // CHECK: tfrt_fallback_async.predicate
   %1 = tfrt_fallback_async.predicate %0 {_tfrt_cost = 1 : i64, device = "cpu"}
@@ -42,7 +42,7 @@ func @predicate() -> i1 {
 }
 
 // CHECK-LABEL: func @createop
-func @createop(%in_ch: !tfrt.chain) -> !tfrt.chain {
+func.func @createop(%in_ch: !tfrt.chain) -> !tfrt.chain {
 
   // CHECK: [[ch:%.*]] = tfrt_fallback_async.createop(%{{.*}}) key(100) device("cpu") "tf.AddV2"() {T = i32} num_args(2)
   %out_ch = tfrt_fallback_async.createop(%in_ch) key(100) device("cpu") "tf.AddV2"() {T = i32} num_args(2)
@@ -52,7 +52,7 @@ func @createop(%in_ch: !tfrt.chain) -> !tfrt.chain {
 }
 
 // CHECK-LABEL: func @fallback_resource
-func @fallback_resource(%ch0: !tfrt.chain) -> !tfrt.chain {
+func.func @fallback_resource(%ch0: !tfrt.chain) -> !tfrt.chain {
 
   %ra = tfrt_fallback_async.const_dense_tensor dense<0.0> : tensor<f32> {_tfrt_cost = 1 : i64}
   %rb = tfrt_fallback_async.const_dense_tensor dense<0.5> : tensor<f32> {_tfrt_cost = 1 : i64}
@@ -68,14 +68,14 @@ func @fallback_resource(%ch0: !tfrt.chain) -> !tfrt.chain {
 }
 
 // CHECK-LABEL: func @copy_if_small
-func @copy_if_small(%arg: !tfrt_fallback.tf_tensor) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor) {
+func.func @copy_if_small(%arg: !tfrt_fallback.tf_tensor) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor) {
   // CHECK: tfrt_fallback_async.copy_if_small {{%.*}} {_tfrt_cost = 1 : i64} : (!tfrt_fallback.tf_tensor) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
   %0:2 = tfrt_fallback_async.copy_if_small %arg {_tfrt_cost = 1 : i64} : (!tfrt_fallback.tf_tensor) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
   tfrt.return %0#0, %0#1 : !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor
 }
 
 // CHECK-LABEL: func @custom_allocator
-func @custom_allocator(%ch: !tfrt.chain, %arg: !tfrt_fallback.tf_tensor, %allocator: !tfrt_fallback.tf_allocator) -> (!tfrt.chain, !tfrt_fallback.tf_tensor) {
+func.func @custom_allocator(%ch: !tfrt.chain, %arg: !tfrt_fallback.tf_tensor, %allocator: !tfrt_fallback.tf_allocator) -> (!tfrt.chain, !tfrt_fallback.tf_tensor) {
   // CHECK: tfrt_fallback_async.executeop.allocator(%{{.*}}) key(200) cost(100) device("cpu") "tf.Cast"(%{{.*}}) {Truncate = false, T = f32} : 1
   %0 = tfrt_fallback_async.executeop.allocator(%allocator) key(200) cost(100) device("cpu") "tf.Cast"(%arg) {Truncate = false, T = f32} : 1
   // CHECK: tfrt_fallback_async.executeop.seq.allocator(%{{.*}}, %{{.*}}) key(201) cost(100) device("cpu") "tf.Cast"(%{{.*}}) {Truncate = false, T = i32} : 1

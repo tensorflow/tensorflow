@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/c/c_api.h"
-#include "tensorflow/lite/c/c_api_experimental.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/c_api_experimental.h"
+#include "tensorflow/lite/c/c_api_opaque.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api.h"
 
 // This file exists just to verify that the above header files above can build,
 // link, and run as "C" code.
@@ -28,6 +30,7 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stddef.h>
 
 static void CheckFailed(const char *expression, const char *filename,
                         int line_number) {
@@ -77,8 +80,8 @@ static void TestInferenceUsingSignature(void) {
 
   // (optional) Validate signatures
   ASSERT_EQ(TfLiteInterpreterGetSignatureCount(interpreter), 2);
-  ASSERT_STREQ(TfLiteInterpreterGetSignatureName(interpreter, 0), "add");
-  ASSERT_STREQ(TfLiteInterpreterGetSignatureName(interpreter, 1), "sub");
+  ASSERT_STREQ(TfLiteInterpreterGetSignatureKey(interpreter, 0), "add");
+  ASSERT_STREQ(TfLiteInterpreterGetSignatureKey(interpreter, 1), "sub");
 
   // Validate signature "add"
   TfLiteSignatureRunner* add_runner =
@@ -163,8 +166,8 @@ static void TestRepeatResizeInputTensor(void) {
   TfLiteInterpreterOptionsDelete(options);
 
   ASSERT_EQ(TfLiteInterpreterGetSignatureCount(interpreter), 2);
-  ASSERT_STREQ(TfLiteInterpreterGetSignatureName(interpreter, 0), "add");
-  ASSERT_STREQ(TfLiteInterpreterGetSignatureName(interpreter, 1), "sub");
+  ASSERT_STREQ(TfLiteInterpreterGetSignatureKey(interpreter, 0), "add");
+  ASSERT_STREQ(TfLiteInterpreterGetSignatureKey(interpreter, 1), "sub");
 
   TfLiteSignatureRunner* add_runner =
       TfLiteInterpreterGetSignatureRunner(interpreter, "add");
@@ -301,11 +304,51 @@ static void TestInferenceUsingInterpreter(void) {
   TfLiteModelDelete(model);
 }
 
+TfLiteStatus PrepareThatChecksExecutionPlanSizeEqualsTwo(
+    TfLiteOpaqueContext* context,
+    struct TfLiteOpaqueDelegateStruct* opaque_delegate, void* data) {
+  bool* delegate_prepared = (bool*)data;
+  *delegate_prepared = true;
+
+  TfLiteIntArray* execution_plan;
+  ASSERT_EQ(kTfLiteOk,
+            TfLiteOpaqueContextGetExecutionPlan(context, &execution_plan));
+  ASSERT_EQ(2, execution_plan->size);
+
+  return kTfLiteOk;
+}
+
+static void TestTfLiteOpaqueContextGetExecutionPlan(void) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+
+  // Create and install a delegate instance.
+  bool delegate_prepared = false;
+  TfLiteOpaqueDelegateBuilder opaque_delegate_builder = { NULL };
+  opaque_delegate_builder.data = &delegate_prepared;
+  opaque_delegate_builder.Prepare = PrepareThatChecksExecutionPlanSizeEqualsTwo;
+  struct TfLiteOpaqueDelegateStruct* opaque_delegate =
+      TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddOpaqueDelegate(options, opaque_delegate);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+
+  // The delegate should have been applied.
+  CHECK(delegate_prepared);
+
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteModelDelete(model);
+  TfLiteOpaqueDelegateDelete(opaque_delegate);
+}
+
 static void RunTests(void) {
   TestVersion();
   TestInferenceUsingSignature();
   TestRepeatResizeInputTensor();
   TestInferenceUsingInterpreter();
+  TestTfLiteOpaqueContextGetExecutionPlan();
 }
 
 int main(void) {

@@ -67,7 +67,12 @@ static bool ShouldBeFolded(Operation* inst) {
   int64_t operands_size = get_size(inst->getOperandTypes());
 
   constexpr int kSizeFactor = 2;
+// TODO(b/233827625): Remove TF_DISABLE_CONSTANT_FOLDING macro.
+#ifdef TF_DISABLE_CONSTANT_FOLDING
+  constexpr int64_t kResultsSizeThreshold = 0;
+#else
   constexpr int64_t kResultsSizeThreshold = (1 << 23);   // 1 MB
+#endif
   constexpr int64_t kOperandsSizeThreshold = (1 << 30);  // 1 GB
 
   return (operands_size <= kOperandsSizeThreshold) &&
@@ -84,7 +89,7 @@ LogicalResult ConstantFoldFallbackHook(
   // TensorFlow folding hook.
   if (inst->getNumResults() == 0 ||
       inst->hasTrait<OpTrait::TF::NoConstantFold>() ||
-      inst->getNumRegions() != 0 || !MemoryEffectOpInterface::hasNoEffect(inst))
+      inst->getNumRegions() != 0 || !isMemoryEffectFree(inst))
     return failure();
 
   // If any of the result types are variants, don't try to constant fold them.
@@ -143,9 +148,9 @@ LogicalResult ConstantFoldFallbackHook(
     // Only initialize single CPU.
     tensorflow::ConfigProto config_proto;
     // This is conceptually equal to what we do in python/eager/context.py but
-    // with all GPU devices ignored and CPU only set to 1.
+    // with all GPU/TPU devices ignored and CPU only set to 1.
     (*config_proto.mutable_device_count())["CPU"] = 1;
-    (*config_proto.mutable_device_count())["GPU"] = 0;
+    config_proto.add_device_filters("/device:CPU:*");
     std::unique_ptr<TF_Buffer, decltype(&TF_DeleteBuffer)> config(
         TF_NewBuffer(), TF_DeleteBuffer);
     DCHECK(config->data == nullptr);

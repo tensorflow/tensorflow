@@ -38,7 +38,7 @@ tfg.func @body(%arg0: tensor<f32>, %arg1: tensor<*xf32>) -> (tensor<*xf32>) {
 
 tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   %Index, %Arg, %ctl = Op : () -> (tensor<i32>, tensor<*xf32>)
-  // expected-error@+1 {{body function argument #0 dtype 'f32' does not match}}
+  // expected-error@+1 {{body function argument #0 type 'tensor<f32>' is not compatible}}
   %For, %ctl_0 = For(%Index, %Index, %Index, %Arg)
   {T = [f32], body = #tf_type.func<@body, {}>}
   : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>)
@@ -53,7 +53,7 @@ tfg.func @body(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> (tensor<i32>) {
 
 tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   %Index, %Arg, %ctl = Op : () -> (tensor<i32>, tensor<*xf32>)
-  // expected-error@+1 {{body function result #0 dtype 'i32' does not match}}
+  // expected-error@+1 {{body function result #0 type 'tensor<i32>' is not compatible}}
   %For, %ctl_0 = For(%Index, %Index, %Index, %Arg)
   {T = [f32], body = #tf_type.func<@body, {}>}
   : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>)
@@ -68,7 +68,7 @@ tfg.func @else() -> (tensor<f32>) {
 }
 
 tfg.func @test(%arg0: tensor<i1>) -> (tensor<i32>) {
-  // expected-error@+1 {{else function result #0 dtype 'f32' does not match}}
+  // expected-error@+1 {{else function result #0 type 'tensor<f32>' is not compatible}}
   %If, %ctl = If(%arg0) {
     Tcond = i1, Tin = [], Tout = [i32],
     else_branch = #tf_type.func<@else, {}>,
@@ -87,7 +87,7 @@ tfg.func @then() -> (tensor<f32>) {
 }
 
 tfg.func @test(%arg0: tensor<i1>) -> (tensor<i32>) {
-  // expected-error@+1 {{then function result #0 dtype 'f32' does not match}}
+  // expected-error@+1 {{then function result #0 type 'tensor<f32>' is not compatible}}
   %If, %ctl = If(%arg0) {
     Tcond = i1, Tin = [], Tout = [i32],
     else_branch = #tf_type.func<@else, {}>,
@@ -106,7 +106,7 @@ tfg.func @case() -> (tensor<f32>) {
 }
 
 tfg.func @test(%arg0: tensor<i32>) -> (tensor<i32>) {
-  // expected-error@+1 {{branch #0 function result #0 dtype 'f32' does not match}}
+  // expected-error@+1 {{branch #0 function result #0 type 'tensor<f32>' is not compatible}}
   %Case, %ctl = Case(%arg0) {
     Tin = [],
     Tout = [i32],
@@ -129,7 +129,7 @@ tfg.func @body(%arg0: tensor<f32>) -> (tensor<f32>) {
 }
 
 tfg.func @test(%arg0: tensor<i32>) -> (tensor<i32>) {
-  // expected-error@+1 {{body function argument #0 dtype 'f32' does not match}}
+  // expected-error@+1 {{body function argument #0 type 'tensor<f32>' is not compatible}}
   %While, %ctl = While(%arg0) {
     T = [i32], body = #tf_type.func<@body, {}>, cond = #tf_type.func<@cond, {}>,
     output_shapes = [#tf_type.shape<>], parallel_iterations = 10 : i64
@@ -150,7 +150,7 @@ tfg.func @cond(%arg0: tensor<f32>) -> (tensor<f32>) {
 }
 
 tfg.func @test(%arg0: tensor<i32>) -> (tensor<i32>) {
-  // expected-error@+1 {{cond function argument #0 dtype 'f32' does not match}}
+  // expected-error@+1 {{cond function argument #0 type 'tensor<f32>' is not compatible}}
   %While, %ctl = While(%arg0) {
     T = [i32], body = #tf_type.func<@body, {}>, cond = #tf_type.func<@cond, {}>,
     output_shapes = [#tf_type.shape<>], parallel_iterations = 10 : i64
@@ -172,7 +172,7 @@ tfg.func @test(%arg0: tensor<i1>, %arg1: tensor<i32>) -> (tensor<i32>) {
 // -----
 
 tfg.func @test(%arg0: tensor<i1>, %arg1: tensor<i32>) -> (tensor<i32>) {
-  // expected-error@+1 {{argument #0 expected to have dtype 'f32'}}
+  // expected-error@+1 {{argument #0 is incompatible with dtype 'f32'}}
   %If, %ctl = If(%arg0, %arg1) {
     Tcond = i1, Tin = [f32], Tout = [i32], output_shapes = [#tf_type.shape<>],
     then_branch = #tf_type.func<@then, {}>, else_branch = #tf_type.func<@else, {}>
@@ -194,7 +194,7 @@ tfg.func @test(%arg0: tensor<i1>, %arg1: tensor<i32>) -> (tensor<i32>) {
 // -----
 
 tfg.func @test(%arg0: tensor<i1>, %arg1: tensor<i32>) -> (tensor<i32>) {
-  // expected-error@+1 {{result #0 expected to have dtype 'f32'}}
+  // expected-error@+1 {{result #0 is incompatible with dtype 'f32'}}
   %If, %ctl = If(%arg0, %arg1) {
     Tcond = i1, Tin = [i32], Tout = [f32], output_shapes = [#tf_type.shape<>],
     then_branch = #tf_type.func<@then, {}>, else_branch = #tf_type.func<@else, {}>

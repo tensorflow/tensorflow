@@ -30,7 +30,6 @@ namespace Eigen {
  */
 template <typename T>
 struct scalar_sigmoid_fast_derivative_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_sigmoid_fast_derivative_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& y) const {
     const T one = T(1);
     return (one - y) * y;
@@ -64,7 +63,6 @@ struct functor_traits<scalar_sigmoid_fast_derivative_op<T> > {
  */
 template <typename T>
 struct scalar_tanh_fast_derivative_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_tanh_fast_derivative_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& y) const {
     const T one = T(1);
     return one - (y * y);
@@ -96,7 +94,6 @@ struct functor_traits<scalar_tanh_fast_derivative_op<T> > {
  */
 template <typename Scalar>
 struct scalar_clip_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_clip_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
   operator()(const Scalar& a, const Scalar& b) const {
     return numext::mini(numext::maxi(a, -b), b);

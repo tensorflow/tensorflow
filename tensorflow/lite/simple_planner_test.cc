@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/simple_planner.h"
 
+#include <algorithm>
 #include <cstdarg>
 #include <initializer_list>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -38,11 +40,13 @@ class TestOp {
   const std::vector<int>& inputs() const { return inputs_; }
   const std::vector<int>& outputs() const { return outputs_; }
   const std::vector<int>& temporaries() const { return temporaries_; }
+  const TfLiteRegistration& registration() const { return registration_; }
 
  private:
   std::vector<int> inputs_;
   std::vector<int> outputs_;
   std::vector<int> temporaries_;
+  TfLiteRegistration registration_;
 };
 
 // A test graph where inputs are processed by the given nodes to produce
@@ -68,6 +72,7 @@ class TestGraph {
         return lite;
       };
 
+      registrations_.push_back(node.registration());
       nodes_.push_back(TfLiteNode());
       nodes_.back().inputs = int_array(node.inputs());
       for (int t : node.inputs()) {
@@ -105,6 +110,9 @@ class TestGraph {
   const std::vector<int>& inputs() { return inputs_; }
   const std::vector<int>& outputs() { return outputs_; }
   const std::vector<int>& variables() { return variables_; }
+  const std::vector<TfLiteRegistration>& registrations() {
+    return registrations_;
+  }
 
   void SetVariables(const std::vector<int>& variables) {
     variables_ = variables;
@@ -121,6 +129,7 @@ class TestGraph {
  private:
   std::vector<TfLiteNode> nodes_;
   std::vector<TfLiteTensor> tensors_;
+  std::vector<TfLiteRegistration> registrations_;
   std::vector<int> inputs_;
   std::vector<int> outputs_;
   std::vector<int> variables_;
@@ -132,9 +141,13 @@ class TestGraphInfo : public GraphInfo {
   explicit TestGraphInfo(TestGraph* graph) : graph_(graph) {}
 
   size_t num_tensors() const override { return graph_->tensors()->size(); }
+  const TfLiteRegistration& registration(size_t index) const override {
+    return graph_->registrations()[index];
+  }
   TfLiteTensor* tensor(size_t index) override {
     return &graph_->tensors()->at(index);
   }
+  TfLiteTensor* tensors() override { return graph_->tensors()->data(); }
   size_t num_execution_nodes() const override { return graph_->nodes().size(); }
   size_t num_total_nodes() const override { return graph_->nodes().size(); }
   const TfLiteNode& node(size_t index) const override {
@@ -168,8 +181,8 @@ class SimplePlannerTest : public ::testing::Test {
   void SetGraph(TestGraph* graph, bool preserve_all_tensors = false) {
     graph_ = graph;
     context_.ReportError = ReportError;
-    planner_.reset(new SimplePlanner(
-        &context_, std::unique_ptr<GraphInfo>(new TestGraphInfo(graph))));
+    planner_ = std::make_unique<SimplePlanner>(
+        &context_, std::unique_ptr<GraphInfo>(new TestGraphInfo(graph)));
     CHECK(planner_->ResetAllocations() == kTfLiteOk);
     CHECK(planner_->PlanAllocations() == kTfLiteOk);
   }

@@ -337,13 +337,11 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testFunctionCacheLimited(self):
-    # Every time this test is executed, it will create a slightly larger Tensor
-    # and push it through Add's gradient. Since we check for new pyobjects after
-    # the warmup, retracing each time without cleaning up old traces fails the
-    # test. It works because of experimental_relax_shapes.
-    for _ in range(forwardprop._TRACE_COUNT_LIMIT):
-      execution_count = getattr(self, "_execution_count", 0)
-      self._execution_count = execution_count + 1
+    # Every time this loop is executed, it will create a slightly larger Tensor
+    # and push it through Add's gradient.
+    # We run TRACE_COUNT_LIMIT x 2 so that it is tested with both
+    # experimental_relax_shapes on and off.
+    for execution_count in range(forwardprop._TRACE_COUNT_LIMIT*2):
       x = array_ops.zeros([execution_count])
       with forwardprop.ForwardAccumulator(x, array_ops.ones_like(x)) as acc:
         y = x + x

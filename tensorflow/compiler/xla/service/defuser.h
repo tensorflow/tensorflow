@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <utility>
 
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -33,7 +33,10 @@ class Defuser : public HloModulePass {
 
   // Run defusion on the given module. Returns whether the module was
   // changed.
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
 }  // namespace xla

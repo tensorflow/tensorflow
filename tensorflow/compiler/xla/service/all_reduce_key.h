@@ -19,8 +19,8 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
 
@@ -34,7 +34,7 @@ using AllReduceKey =
                /*use_global_device_ids*/ bool,
                /*replica_groups*/ std::vector<std::vector<int64_t>>>;
 
-absl::optional<AllReduceKey> GetAllReduceKey(
+std::optional<AllReduceKey> GetAllReduceKey(
     const HloInstruction* instruction, const HloDomainMap* domain_map = nullptr,
     bool ignore_replica_groups = false);
 

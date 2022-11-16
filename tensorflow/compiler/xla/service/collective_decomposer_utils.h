@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
+
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_COLLECTIVE_DECOMPOSER_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_COLLECTIVE_DECOMPOSER_UTILS_H_
@@ -25,7 +27,8 @@ StatusOr<std::vector<HloInstruction *>>
 CreateStartIndicesForCollectiveDecomposition(
     CollectiveOpGroupMode group_mode,
     absl::Span<const ReplicaGroup> replica_groups, const Shape &shard_shape,
-    int64_t shard_dimension, HloComputation *computation);
+    int64_t shard_dimension, HloComputation *computation,
+    std::function<void(Shape &)> update_layout = nullptr);
 
 }  // namespace xla
 

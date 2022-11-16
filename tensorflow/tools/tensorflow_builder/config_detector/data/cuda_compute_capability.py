@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,12 +35,11 @@ import collections
 import difflib
 import os
 import re
+import urllib.request as urllib
 
 from absl import app
 from absl import flags
 
-import six
-import six.moves.urllib.request as urllib
 
 FLAGS = flags.FLAGS
 PATH_TO_DIR = "tensorflow/tools/tensorflow_builder/config_detector"
@@ -68,10 +66,9 @@ def retrieve_from_web(generate_csv=False):
       break
     else:
       gpu = re.search(r"<a href=.*>([\w\S\s\d\[\]\,]+[^*])</a>(<a href=.*)?.*",
-                      six.ensure_str(line))
+                      line)
       capability = re.search(
-          r"([\d]+).([\d]+)(/)?([\d]+)?(.)?([\d]+)?.*</td>.*",
-          six.ensure_str(line))
+          r"([\d]+).([\d]+)(/)?([\d]+)?(.)?([\d]+)?.*</td>.*", line)
       if gpu:
         matches.append(gpu.group(1))
       elif capability:
@@ -159,7 +156,7 @@ def create_gpu_capa_map(match_list,
         gpu = match
 
   if generate_csv:
-    f_name = six.ensure_str(filename) + ".csv"
+    f_name = filename + ".csv"
     write_csv_from_dict(f_name, gpu_capa)
 
   return gpu_capa
@@ -175,8 +172,8 @@ def write_csv_from_dict(filename, input_dict):
     filename: String that is the output file name.
     input_dict: Dictionary that is to be written out to a `.csv` file.
   """
-  f = open(PATH_TO_DIR + "/data/" + six.ensure_str(filename), "w")
-  for k, v in six.iteritems(input_dict):
+  f = open(PATH_TO_DIR + "/data/" + filename, "w")
+  for k, v in input_dict.items():
     line = k
     for item in v:
       line += "," + item
@@ -199,7 +196,7 @@ def check_with_golden(filename):
   Args:
     filename: String that is the name of the newly created file.
   """
-  path_to_file = PATH_TO_DIR + "/data/" + six.ensure_str(filename)
+  path_to_file = PATH_TO_DIR + "/data/" + filename
   if os.path.isfile(path_to_file) and os.path.isfile(CUDA_CC_GOLDEN_DIR):
     with open(path_to_file, "r") as f_new:
       with open(CUDA_CC_GOLDEN_DIR, "r") as f_golden:

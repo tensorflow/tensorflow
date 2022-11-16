@@ -52,15 +52,13 @@ ElementsAttr GetTensorValueAsElementsAttr(const tensorflow::Tensor& tensor,
   tensorflow::StatusOr<ElementsAttr> tensor_attr_or =
       tensorflow::ConvertTensor(tensor, &builder);
   if (!tensor_attr_or.ok()) return nullptr;
-  return tensor_attr_or.ValueOrDie();
+  return tensor_attr_or.value();
 }
 
-// Creates arith::ConstantOp which holds 'tensor_elements'.
-mlir::arith::ConstantOp GetConstOpFromElementsAttr(ElementsAttr tensor_elements,
-                                                   OpBuilder builder,
-                                                   Location loc) {
-  return builder.create<mlir::arith::ConstantOp>(loc, tensor_elements.getType(),
-                                                 tensor_elements);
+// Creates a constant op that holds 'tensor_elements'.
+TF::ConstOp GetConstOpFromElementsAttr(ElementsAttr tensor_elements,
+                                       OpBuilder builder, Location loc) {
+  return builder.create<TF::ConstOp>(loc, tensor_elements);
 }
 
 // Returns ElementsAttr which has the value held by 'resource_tensor'.
@@ -108,7 +106,7 @@ void PropagateUsage(
     PropagateUsage(read_variable_op, value);
   } else if (auto call = dyn_cast<CallOpInterface>(user_op)) {
     (*arguments_to_erase)[call].push_back(argument_index);
-    if (auto func = dyn_cast<FuncOp>(call.resolveCallable())) {
+    if (auto func = dyn_cast<func::FuncOp>(call.resolveCallable())) {
       (*arguments_to_erase)[func].push_back(argument_index);
       work_list->push_back(std::make_pair(&func.getRegion(), argument_index));
     }
@@ -121,7 +119,7 @@ void PropagateUsage(
     }
   } else if (auto if_op = dyn_cast<TF::IfRegionOp>(user_op)) {
     (*arguments_to_erase)[if_op].push_back(argument_index);
-    for (auto callee : {&if_op.then_branch(), &if_op.else_branch()}) {
+    for (auto callee : {&if_op.getThenBranch(), &if_op.getElseBranch()}) {
       work_list->push_back(std::make_pair(callee, argument_index));
     }
   } else if (auto while_op = dyn_cast<TF::WhileOp>(user_op)) {
@@ -132,7 +130,7 @@ void PropagateUsage(
     }
   } else if (auto while_op = dyn_cast<TF::WhileRegionOp>(user_op)) {
     (*arguments_to_erase)[while_op].push_back(argument_index);
-    for (auto callee : {&while_op.cond(), &while_op.body()}) {
+    for (auto callee : {&while_op.getCond(), &while_op.getBody()}) {
       work_list->push_back(std::make_pair(callee, argument_index));
     }
   }
@@ -181,12 +179,14 @@ void ReplaceVarWithConstant(
 // Helper that returns the FuncOp that is the SessionInit function which
 // will be called to initialize all resources.
 // Returns nullptr if no function is found.
-FuncOp GetSessionInitializerFunc(ModuleOp module) {
+func::FuncOp GetSessionInitializerFunc(ModuleOp module) {
   auto session_init_op = tf_saved_model::GetSessionInitializerOp(module);
   SymbolTable symbol_table(module);
-  if (session_init_op && !session_init_op.initializers().empty()) {
-    FuncOp init_func_op = symbol_table.lookup<mlir::FuncOp>(
-        session_init_op.initializers()[0].cast<FlatSymbolRefAttr>().getValue());
+  if (session_init_op && !session_init_op.getInitializers().empty()) {
+    func::FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
+        session_init_op.getInitializers()[0]
+            .cast<FlatSymbolRefAttr>()
+            .getValue());
     return init_func_op;
   }
   return nullptr;
@@ -218,7 +218,7 @@ std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef> GetResourceKey(
 // the session init function 'sesion_init_func'
 void RemoveVariablesInitializations(
     const llvm::SmallVector<TF::VarHandleOp, 4>& var_handle_ops,
-    FuncOp sesion_init_func) {
+    func::FuncOp sesion_init_func) {
   // We identify the variables using (device, container, shared_name) of the
   // resource. Capture them here and use them to identify the useless
   // initializations.
@@ -316,15 +316,15 @@ LogicalResult FreezeVariables(ModuleOp module, tensorflow::Session* session) {
     return failure();
   }
 
-  FuncOp session_init_func = GetSessionInitializerFunc(module);
+  func::FuncOp session_init_func = GetSessionInitializerFunc(module);
 
   TF::ResourceAnalyzer analyzer(module, /*skip_session_init=*/true);
   llvm::SmallVector<TF::VarHandleOp, 4> variables;
   // Capture list of all read only variables.
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     if (func == session_init_func) continue;
     for (auto var_handle_op : func.getOps<TF::VarHandleOp>()) {
-      if (!analyzer.IsPotentiallyWritten(var_handle_op.resource())) {
+      if (!analyzer.IsPotentiallyWritten(var_handle_op.getResource())) {
         variables.push_back(var_handle_op);
       }
     }
@@ -366,7 +366,7 @@ LogicalResult FreezeVariables(ModuleOp module, tensorflow::Session* session) {
   for (auto& items : arguments_to_erase) {
     auto* user_op = items.first;
     auto& args_to_erase = items.second;
-    if (auto func = dyn_cast<FuncOp>(user_op)) {
+    if (auto func = dyn_cast<func::FuncOp>(user_op)) {
       // To update a function we will need to:
       // 1) Remove the unused arguments from the function itself.
       // 2) Remove any returns that are not needed from the function terminator
@@ -390,20 +390,20 @@ LogicalResult FreezeVariables(ModuleOp module, tensorflow::Session* session) {
       while_op->erase();
     } else if (auto while_op = dyn_cast<TF::WhileRegionOp>(user_op)) {
       auto new_while_op = GetUpdatedWhileOp(
-          while_op, while_op.cond().getArgumentTypes(), args_to_erase);
-      new_while_op.cond().takeBody(while_op.cond());
-      new_while_op.body().takeBody(while_op.body());
+          while_op, while_op.getCond().getArgumentTypes(), args_to_erase);
+      new_while_op.getCond().takeBody(while_op.getCond());
+      new_while_op.getBody().takeBody(while_op.getBody());
       llvm::BitVector erase_indices;
-      UpdateTerminatorArguments(new_while_op.body(), args_to_erase,
+      UpdateTerminatorArguments(new_while_op.getBody(), args_to_erase,
                                 erase_indices);
       llvm::BitVector body_bit_vector(
-          new_while_op.body().front().getNumArguments());
+          new_while_op.getBody().front().getNumArguments());
       for (auto i : args_to_erase) body_bit_vector.set(i);
-      new_while_op.body().front().eraseArguments(body_bit_vector);
+      new_while_op.getBody().front().eraseArguments(body_bit_vector);
       llvm::BitVector cond_bit_vector(
-          new_while_op.cond().front().getNumArguments());
+          new_while_op.getCond().front().getNumArguments());
       for (auto i : args_to_erase) cond_bit_vector.set(i);
-      new_while_op.cond().front().eraseArguments(cond_bit_vector);
+      new_while_op.getCond().front().eraseArguments(cond_bit_vector);
       while_op->erase();
     } else {
       llvm::BitVector erase_indices(user_op->getNumOperands());

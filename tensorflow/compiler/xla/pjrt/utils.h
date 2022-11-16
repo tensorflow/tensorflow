@@ -19,8 +19,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
@@ -41,7 +41,7 @@ Status DetermineArgumentLayoutsFromCompileOptions(
     const XlaComputation& computation,
     std::function<StatusOr<Shape>(Shape)>
         choose_compact_layout_for_shape_function,
-    absl::optional<std::vector<Shape>>& argument_layouts,
+    std::optional<std::vector<Shape>>& argument_layouts,
     ExecutableBuildOptions* build_options,
     std::vector<const Shape*>* argument_layout_pointers);
 

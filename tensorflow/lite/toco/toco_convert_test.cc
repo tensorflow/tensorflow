@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/toco_convert.h"
+
+#include <string>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/testing/util.h"

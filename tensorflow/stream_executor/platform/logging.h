@@ -16,15 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_PLATFORM_LOGGING_H_
 #define TENSORFLOW_STREAM_EXECUTOR_PLATFORM_LOGGING_H_
 
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/stream_executor/platform/port.h"
-
-#if !(defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
-      defined(PLATFORM_GOOGLE_IOS) || defined(GOOGLE_LOGGING) ||      \
-      defined(__EMSCRIPTEN__) || defined(PLATFORM_CHROMIUMOS))
-
-#define PCHECK(invocation) CHECK(invocation)
-
-#endif
+#include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_PLATFORM_LOGGING_H_

@@ -83,10 +83,85 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_use_auto_spmd_partitioning(
   return *this;
 }
 
+ExecutableBuildOptions&
+ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_shape(
+    std::vector<int64_t> mesh_shape) {
+  auto_spmd_partitioning_mesh_shape_ = mesh_shape;
+  return *this;
+}
+
+ExecutableBuildOptions&
+ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_ids(
+    std::vector<int64_t> mesh_ids) {
+  auto_spmd_partitioning_mesh_ids_ = mesh_ids;
+  return *this;
+}
+
 ExecutableBuildOptions& ExecutableBuildOptions::set_deduplicate_hlo(
     bool deduplicate_hlo) {
   deduplicate_hlo_ = deduplicate_hlo;
   return *this;
+}
+
+StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto() const {
+  ExecutableBuildOptionsProto output;
+  output.set_device_ordinal(device_ordinal());
+  if (result_layout()) {
+    *output.mutable_result_layout() = result_layout()->ToProto();
+  }
+  if (has_debug_options()) {
+    *output.mutable_debug_options() = debug_options();
+  }
+  if (layout_canonicalization_callback_) {
+    return InvalidArgument(
+        "Cannot serialize "
+        "ExecutableBuildOptions::layout_canonicalization_callback");
+  }
+  output.set_num_replicas(num_replicas());
+  output.set_num_partitions(num_partitions());
+  output.set_use_spmd_partitioning(use_spmd_partitioning());
+  output.set_use_auto_spmd_partitioning(use_auto_spmd_partitioning());
+  output.set_deduplicate_hlo(deduplicate_hlo());
+  if (has_device_assignment()) {
+    TF_RETURN_IF_ERROR(
+        device_assignment().Serialize(output.mutable_device_assignment()));
+  }
+  output.set_alias_passthrough_params(alias_passthrough_params());
+  output.set_run_backend_only(run_backend_only());
+  output.set_allow_spmd_sharding_propagation_to_output(
+      allow_spmd_sharding_propagation_to_output());
+
+  return output;
+}
+
+StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
+    const ExecutableBuildOptionsProto& input) {
+  xla::ExecutableBuildOptions output;
+  if (input.device_ordinal() != -1) {
+    output.set_device_ordinal(input.device_ordinal());
+  }
+  if (input.has_result_layout()) {
+    output.set_result_layout(xla::Shape(input.result_layout()));
+  }
+  if (input.has_debug_options()) {
+    *output.mutable_debug_options() = input.debug_options();
+  }
+  output.set_num_replicas(input.num_replicas());
+  output.set_num_partitions(input.num_partitions());
+  output.set_use_spmd_partitioning(input.use_spmd_partitioning());
+  output.set_use_auto_spmd_partitioning(input.use_auto_spmd_partitioning());
+  output.set_deduplicate_hlo(input.deduplicate_hlo());
+  if (input.has_device_assignment()) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<xla::DeviceAssignment> assignment,
+        xla::DeviceAssignment::Deserialize(input.device_assignment()));
+    output.set_device_assignment(*assignment);
+  }
+  output.set_alias_passthrough_params(input.alias_passthrough_params());
+  output.set_run_backend_only(input.run_backend_only());
+  output.set_allow_spmd_sharding_propagation_to_output(
+      input.allow_spmd_sharding_propagation_to_output());
+  return output;
 }
 
 ExecutableBuildOptions& ExecutableBuildOptions::set_device_assignment(
@@ -128,6 +203,12 @@ ExecutionOptions CreateExecutionOptions(
       build_options.use_spmd_partitioning());
   execution_options.set_use_auto_spmd_partitioning(
       build_options.use_auto_spmd_partitioning());
+  for (auto t : build_options.auto_spmd_partitioning_mesh_shape()) {
+    execution_options.mutable_auto_spmd_partitioning_mesh_shape()->Add(t);
+  }
+  for (auto t : build_options.auto_spmd_partitioning_mesh_ids()) {
+    execution_options.mutable_auto_spmd_partitioning_mesh_ids()->Add(t);
+  }
   execution_options.set_deduplicate_hlo(build_options.deduplicate_hlo());
   execution_options.set_allow_spmd_sharding_propagation_to_output(
       build_options.allow_spmd_sharding_propagation_to_output());
