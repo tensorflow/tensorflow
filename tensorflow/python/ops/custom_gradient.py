@@ -62,7 +62,10 @@ def custom_gradient(f=None):
   ```python
   x = tf.constant(100.)
   y = log1pexp(x)
-  dy_dx = tf.GradientTape(y, x) # Will be NaN when evaluated.
+  
+  with tf.GradientTape(persistent=True) as tape:   # Will be NaN when evaluated.
+    dy_dx = tape.gradient(y,x)
+  print(dy_dx) 
   ```
 
   The gradient expression can be analytically simplified to provide numerical
