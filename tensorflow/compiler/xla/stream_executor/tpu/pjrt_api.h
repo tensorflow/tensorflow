@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
-namespace tensorflow {
+namespace stream_executor {
 namespace tpu {
 
 // Gets and sets the global map for PJRT_Api*. Not thread safe. `device_type` is
@@ -30,6 +30,6 @@ xla::StatusOr<const PJRT_Api*> PjrtApi(absl::string_view device_type);
 xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api);
 
 }  // namespace tpu
-}  // namespace tensorflow
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_PJRT_API_H_

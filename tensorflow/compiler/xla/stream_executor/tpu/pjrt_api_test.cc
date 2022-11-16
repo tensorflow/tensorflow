@@ -25,18 +25,18 @@ using ::tsl::testing::StatusIs;
 TEST(PjRtApiTest, SetAndGetGlobalPjRtApi) {
   PJRT_Api api;
 
-  TF_ASSERT_OK(tensorflow::tpu::SetPjrtApi("CPU", &api));
+  TF_ASSERT_OK(stream_executor::tpu::SetPjrtApi("CPU", &api));
   TF_ASSERT_OK_AND_ASSIGN(const PJRT_Api* output,
-                          tensorflow::tpu::PjrtApi("CPU"));
+                          stream_executor::tpu::PjrtApi("CPU"));
   TF_ASSERT_OK_AND_ASSIGN(const PJRT_Api* output_lowercase,
-                          tensorflow::tpu::PjrtApi("cpu"));
+                          stream_executor::tpu::PjrtApi("cpu"));
 
   EXPECT_EQ(output, &api);
   EXPECT_EQ(output_lowercase, &api);
-  EXPECT_THAT(tensorflow::tpu::SetPjrtApi("CPU", &api),
+  EXPECT_THAT(stream_executor::tpu::SetPjrtApi("CPU", &api),
               StatusIs(tensorflow::error::ALREADY_EXISTS,
                        HasSubstr("PJRT_Api already exists for device type")));
-  EXPECT_THAT(tensorflow::tpu::PjrtApi("TPU"),
+  EXPECT_THAT(stream_executor::tpu::PjrtApi("TPU"),
               StatusIs(tensorflow::error::NOT_FOUND,
                        HasSubstr("PJRT_Api not found for device type")));
 }

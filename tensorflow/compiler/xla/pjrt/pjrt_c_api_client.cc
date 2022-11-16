@@ -1089,7 +1089,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
   TF_RETURN_IF_ERROR(tensorflow::tpu::FindAndLoadTpuLibrary());
 #endif
   TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api,
-                      tensorflow::tpu::PjrtApi(device_type));
+                      stream_executor::tpu::PjrtApi(device_type));
   if (c_api == nullptr) {
     return InternalError("PJRT C API is nullptr");
   }

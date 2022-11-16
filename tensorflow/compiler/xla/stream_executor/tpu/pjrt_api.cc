@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
-namespace tensorflow {
+namespace stream_executor {
 namespace tpu {
 
 static auto* pjrt_apis =
@@ -55,4 +55,4 @@ xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api) {
 }
 
 }  // namespace tpu
-}  // namespace tensorflow
+}  // namespace stream_executor
