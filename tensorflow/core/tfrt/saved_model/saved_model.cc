@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/mla/mla_utils.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
@@ -214,44 +216,24 @@ tensorflow::Status RunInitializers(
   TF_RETURN_IF_ERROR(
       RunRuntimeInitializer(exec_ctx, bef_file, "_tfrt_fallback_init"));
 
-  for (const auto& init : initializers_and_signatures.initializers) {
-    // TODO(b/184771263): Consider using `GraphExecutionRunOnFunction()`
-    // instead.
-
-    auto* func = bef_file->GetFunction(init);
-    assert(func);
-
-    const auto& signature = initializers_and_signatures.signature_map.at(init);
-
-    auto ready_chain = tfrt::GetReadyChain();
-
-    // The actual arguments are the concat of side-effect chain and assets.
-    llvm::SmallVector<tfrt::AsyncValue*, 1> arguments;
-    auto cleanup = tensorflow::gtl::MakeCleanup([&]() {
-      for (auto* argument : arguments) argument->DropRef();
-    });
-
-    arguments.push_back(ready_chain.release());
-
-    for (const auto& capture : signature.captures) {
-      arguments.push_back(
-          tfrt::MakeAvailableAsyncValueRef<FallbackTensor>(capture).release());
-    }
-
-    assert(arguments.size() == func->argument_types().size());
-
-    llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 1> results;
-    results.resize(func->result_types().size());
-    assert(results.size() == 1);
-
-    func->Execute(exec_ctx, arguments, results);
-
-    // Wait for the function execution to finish, as well as the side-effects.
-    host->Await(results);
-
-    if (auto* error = results[0]->GetErrorIfPresent()) {
-      return CreateTfErrorStatus(tfrt::DecodedDiagnostic(*error));
-    }
+  for (const auto& initializer_name :
+       initializers_and_signatures.initializers) {
+    GraphExecutionOptions options(&runtime);
+    options.model_metadata = model_metadata;
+    auto* func = bef_file->GetFunction(initializer_name);
+    DCHECK(func);
+    const auto& signature =
+        initializers_and_signatures.signature_map.at(initializer_name);
+    std::vector<tensorflow::Tensor> outputs;
+    // TODO(b/259113169): The captures here are non-empty, but
+    // `GraphExecutionRunOnFunction()` expects captures to be empty, so they are
+    // passed as inputs here. Clean it up.
+    TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
+        options, /*run_options=*/{}, initializer_name, *func,
+        /*inputs=*/signature.captures,
+        /*captures=*/{}, &outputs, resource_context, runtime, fallback_state,
+        /*req_deadline_tracker=*/nullptr));
+    DCHECK(outputs.empty());
   }
 
   // After we initialized all the resources in the original graph, we can run
@@ -695,7 +677,7 @@ tensorflow::Status SavedModelImpl::Run(
   return GraphExecutionRunOnFunction(options_.graph_execution_options,
                                      run_options, name, *func, inputs, captures,
                                      outputs, resource_context, runtime(),
-                                     *fallback_state_, req_deadline_tracker_);
+                                     *fallback_state_, &req_deadline_tracker_);
 }
 
 struct SavedModelImpl::JoinedSignature {

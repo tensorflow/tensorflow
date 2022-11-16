@@ -150,7 +150,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
     std::vector<tensorflow::Tensor>* outputs,
     tfrt::ResourceContext* resource_context, const Runtime& runtime,
     const FallbackState& fallback_state,
-    tfrt::RequestDeadlineTracker& req_deadline_tracker) {
+    tfrt::RequestDeadlineTracker* req_deadline_tracker) {
   auto* host = runtime.core_runtime()->GetHostContext();
 
   TF_ASSIGN_OR_RETURN(
@@ -181,7 +181,11 @@ tensorflow::Status GraphExecutionRunOnFunction(
     if (absl::ToChronoTime(absl::Now()) > deadline) {
       return tensorflow::errors::DeadlineExceeded(kDeadlineExceededMessage);
     }
-    req_deadline_tracker.CancelRequestOnDeadline(
+    if (req_deadline_tracker == nullptr) {
+      return tensorflow::errors::InvalidArgument(
+          "req_deadline_tracker must be non-null");
+    }
+    req_deadline_tracker->CancelRequestOnDeadline(
         deadline, request_info->tfrt_request_context);
   }
 
@@ -400,7 +404,7 @@ tensorflow::Status GraphExecutor::Run(
       options_, run_options, loaded_client_graph.name, *func, flat_inputs,
       /*captures=*/{}, &flat_outputs,
       loaded_client_graph.resource_context.get(), runtime(), fallback_state_,
-      req_deadline_tracker_));
+      &req_deadline_tracker_));
 
   // Create the outputs from the actual function results, which are sorted
   // according to the output tensor names.
