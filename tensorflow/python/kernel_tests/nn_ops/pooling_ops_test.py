@@ -926,7 +926,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
                            padding):
     # double datatype is currently not supported for pooling ops
     # on the ROCm platform
-    for dtype in [np.float32, np.float16] \
+    for dtype in [np.float32, np.float16, dtypes.bfloat16.as_numpy_dtype] \
         + [np.float64] if not test.is_built_with_rocm() else []:
       # Generate numbers in a narrow range, so that there are many duplicates
       # in the input.
@@ -953,13 +953,14 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
       # The CPU version accumulates its gradient on fp16, so it's less
       # accurate than the GPU version that does the accumulation on fp32
       self.assertAllCloseAccordingToType(
-          cpu_val, gpu_val, half_rtol=0.01, half_atol=0.01)
+          cpu_val, gpu_val, half_rtol=0.01, half_atol=0.01,
+          bfloat16_rtol=0.02, bfloat16_atol=0.1)
 
   def _CompareMaxPoolingGradBk(self, input_shape, output_shape, ksize, strides,
                                padding):
     # double datatype is currently not supported for pooling ops
     # on the ROCm platform
-    for dtype in [np.float32, np.float16] \
+    for dtype in [np.float32, np.float16, dtypes.bfloat16.as_numpy_dtype] \
         + [np.float64] if not test.is_built_with_rocm() else []:
       # Generate numbers in a narrow range, so that there are many duplicates
       # in the input.
