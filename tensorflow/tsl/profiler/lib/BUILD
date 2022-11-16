@@ -190,11 +190,11 @@ cc_library(
         "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
         "@com_google_absl//absl/memory",
     ] + if_not_android([
+        ":profiler_collection",
         ":profiler_factory",
         ":profiler_interface",
         ":profiler_lock",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/lib:profiler_collection",
         "//tensorflow/tsl/profiler/convert:post_process_single_host_xplane",
         "//tensorflow/tsl/profiler/utils:time_utils",
     ]),
@@ -299,5 +299,16 @@ cc_library(
         ":traceme_encode",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "profiler_collection",
+    srcs = ["profiler_collection.cc"],
+    hdrs = ["profiler_collection.h"],
+    deps = [
+        ":profiler_interface",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )

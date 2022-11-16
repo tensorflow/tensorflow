@@ -107,17 +107,6 @@ cc_library(
 )
 
 cc_library(
-    name = "profiler_collection",
-    srcs = ["profiler_collection.cc"],
-    hdrs = ["profiler_collection.h"],
-    deps = [
-        ":profiler_interface",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-    ],
-)
-
-cc_library(
     name = "profiler_controller",
     hdrs = ["profiler_controller.h"],
     deps = [

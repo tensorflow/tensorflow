@@ -12,17 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_PROFILER_LIB_PROFILER_COLLECTION_H_
-#define TENSORFLOW_CORE_PROFILER_LIB_PROFILER_COLLECTION_H_
+#ifndef TENSORFLOW_TSL_PROFILER_LIB_PROFILER_COLLECTION_H_
+#define TENSORFLOW_TSL_PROFILER_LIB_PROFILER_COLLECTION_H_
 
 #include <memory>
 #include <vector>
 
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/lib/profiler_interface.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/profiler/lib/profiler_interface.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 
 // ProfilerCollection multiplexes ProfilerInterface calls into a collection of
@@ -43,6 +43,6 @@ class ProfilerCollection : public ProfilerInterface {
 };
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_PROFILER_LIB_PROFILER_COLLECTION_H_
+#endif  // TENSORFLOW_TSL_PROFILER_LIB_PROFILER_COLLECTION_H_

@@ -12,17 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/lib/profiler_collection.h"
+#include "tensorflow/tsl/profiler/lib/profiler_collection.h"
 
 #include <memory>
 #include <utility>
 #include <vector>
 
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/lib/profiler_interface.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/profiler/lib/profiler_interface.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 
 ProfilerCollection::ProfilerCollection(
@@ -55,4 +55,4 @@ Status ProfilerCollection::CollectData(tensorflow::profiler::XSpace* space) {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl
