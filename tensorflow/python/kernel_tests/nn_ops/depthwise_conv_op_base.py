@@ -517,6 +517,7 @@ class DepthwiseConv2DBase(test.TestCase):
       data_formats = ["NHWC", "NCHW"] if test.is_gpu_available() else ["NHWC"]
       for data_type in data_types:
         for data_format in data_formats:
+          tolerance = 2e-2 if data_type == dtypes.bfloat16 else None
           self._VerifyValues(
               input_size,
               filter_size,
@@ -525,7 +526,8 @@ class DepthwiseConv2DBase(test.TestCase):
               data_type,
               use_gpu=True,
               data_format=data_format,
-              dilations=dilations)
+              dilations=dilations,
+              tolerance=tolerance)
 
 
 # This is testing against hand calculated results.
