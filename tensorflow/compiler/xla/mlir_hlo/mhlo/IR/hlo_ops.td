@@ -390,6 +390,7 @@ def HLO_LogOp: HLO_UnaryElementwiseOp<"log",
     %0 = mhlo.log %arg0 : tensor<2xf32>
     ```
   }];
+  let hasFolder = 1;
 }
 def HLO_Log1pOp: HLO_UnaryElementwiseOp<"log_plus_one",
     [Pure, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
