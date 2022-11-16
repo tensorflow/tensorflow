@@ -2676,25 +2676,32 @@ def sparse_softmax(sp_input, name=None):
   Hence, the `SparseTensor` result has exactly the same non-zero indices and
   shape.
 
-  Example:
+  Example using a 3-D SparseTensor:
 
-  ```python
-  # First batch:
-  # [?   e.]
-  # [1.  ? ]
-  # Second batch:
-  # [e   ? ]
-  # [e   e ]
-  shape = [2, 2, 2]  # 3-D SparseTensor
-  values = np.asarray([[[0., np.e], [1., 0.]], [[np.e, 0.], [np.e, np.e]]])
-  indices = np.vstack(np.where(values)).astype(np.int64).T
-
-  result = tf.sparse.softmax(tf.sparse.SparseTensor(indices, values, shape))
-  # ...returning a 3-D SparseTensor, equivalent to:
-  # [?   1.]     [1    ?]
-  # [1.  ? ] and [.5  .5]
-  # where ? means implicitly zero.
-  ```
+    >>> st = tf.sparse.from_dense(
+    ...   [[[0., np.e],
+    ...     [1., 0.]],
+    ...
+    ...    [[np.e, 0.],
+    ...     [np.e, np.e]]])
+    >>> res = tf.sparse.softmax(st)
+    >>> res.indices
+    <tf.Tensor: shape=(5, 3), dtype=int64, numpy=
+    array([[0, 0, 1],
+           [0, 1, 0],
+           [1, 0, 0],
+           [1, 1, 0],
+           [1, 1, 1]])>
+    >>> res.values
+    <tf.Tensor: ... numpy=array([1. , 1. , 1. , 0.5, 0.5], dtype=float32)>
+    >>> res.dense_shape
+    <tf.Tensor: shape=(3,), dtype=int64, numpy=array([2, 2, 2])>
+    >>> tf.sparse.to_dense(res)
+    <tf.Tensor: shape=(2, 2, 2), dtype=float32, numpy=
+    array([[[0. , 1. ],
+            [1. , 0. ]],
+           [[1. , 0. ],
+            [0.5, 0.5]]], dtype=float32)>
 
   Args:
     sp_input: N-D `SparseTensor`, where `N >= 2`.

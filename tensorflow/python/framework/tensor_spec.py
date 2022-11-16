@@ -131,10 +131,10 @@ class DenseSpec(type_spec.TypeSpec):
 @type_spec.register("tf.TensorSpec")
 class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
                  trace_type.Serializable):
-  """Describes a tf.Tensor.
+  """Describes the type of a tf.Tensor.
 
-  Metadata for describing the `tf.Tensor` objects accepted or returned
-  by some TensorFlow APIs.
+  Contains metadata for describing the the nature of `tf.Tensor` objects
+  accepted or returned by some TensorFlow APIs.
   """
 
   __slots__ = []

@@ -438,14 +438,10 @@ Status Executable::ReturnResults(unsigned ordinal,
     auto results_memory_layout = GetResultsMemoryLayout(fn.runtime_signature);
     if (!results_memory_layout.ok()) return results_memory_layout.status();
 
-    Executable::Function function{std::move(fn.name),
-                                  (*engine)->exported(indexed.index()),
-                                  std::move(fn.signature),
-                                  std::move(fn.runtime_signature),
-                                  std::move(*args_memory_layout),
-                                  std::move(*results_memory_layout)};
-
-    functions.push_back(std::move(function));
+    functions.push_back(Executable::Function(
+        std::move(fn.name), (*engine)->exported(indexed.index()),
+        std::move(fn.signature), std::move(fn.runtime_signature),
+        std::move(*args_memory_layout), std::move(*results_memory_layout)));
   }
 
   return Executable(name, std::move(memory_mapper), std::move(*engine),

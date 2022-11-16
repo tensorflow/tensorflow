@@ -24,7 +24,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
     ] + if_not_android([
         ":profiler_session",
         "//tensorflow/core/profiler/convert:xplane_to_step_stats",
@@ -43,44 +43,20 @@ cc_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
+        "//tensorflow/tsl/profiler/lib:profiler_session",
     ] + if_not_android([
         ":profiler_interface",
         ":profiler_lock",
     ]) + if_static([
-        ":profiler_session_impl",
+        "//tensorflow/tsl/profiler/lib:profiler_session_impl",
     ]),
 )
 
-cc_library(
+alias(
     name = "profiler_session_impl",
-    srcs = [
-        "profiler_session.cc",
-        "profiler_session.h",
-    ],
-    copts = tf_profiler_copts(),
-    visibility = [
-        "//tensorflow/core/profiler:__pkg__",
-        "//tensorflow/python:__pkg__",
-    ],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
-        "@com_google_absl//absl/memory",
-    ] + if_not_android([
-        "//tensorflow/core:lib_internal",
-        ":profiler_interface",
-        ":profiler_factory",
-        ":profiler_collection",
-        ":profiler_lock",
-        "//tensorflow/core/profiler/convert:post_process_single_host_xplane",
-        "//tensorflow/core/profiler/utils:time_utils",
-    ]),
-    alwayslink = True,
+    actual = "//tensorflow/tsl/profiler/lib:profiler_session_impl",
 )
 
 cc_library(
@@ -88,7 +64,7 @@ cc_library(
     hdrs = ["profiler_factory.h"],
     deps = [
         ":profiler_interface",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tensorflow/tsl/profiler/lib:profiler_factory",
     ] + if_static([
         ":profiler_factory_impl",
@@ -108,9 +84,9 @@ cc_library(
         ":profiler_controller",
         ":profiler_interface",
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/tsl/profiler/lib:profiler_factory",
         "//tensorflow/tsl/profiler/lib:profiler_factory_impl",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
     ],
     alwayslink = True,
 )
@@ -131,17 +107,6 @@ cc_library(
 )
 
 cc_library(
-    name = "profiler_collection",
-    srcs = ["profiler_collection.cc"],
-    hdrs = ["profiler_collection.h"],
-    deps = [
-        ":profiler_interface",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-    ],
-)
-
-cc_library(
     name = "profiler_controller",
     hdrs = ["profiler_controller.h"],
     deps = [
@@ -154,9 +119,6 @@ cc_library(
 
 tf_cuda_library(
     name = "profiler_backends",
-    cuda_deps = [
-        "//tensorflow/core/profiler/backends/gpu:device_tracer",
-    ],
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/compiler/xla/backends/profiler:profiler_backends",
@@ -164,12 +126,6 @@ tf_cuda_library(
         "//tensorflow/core/profiler/backends/cpu:metadata_collector",
     ],
     alwayslink = True,
-)
-
-tf_profiler_pybind_cc_library_wrapper(
-    name = "traceme_for_pybind",
-    actual = ":traceme",
-    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
 )
 
 cc_library(
@@ -222,6 +178,7 @@ cc_library(
         ":traceme",
         ":traceme_encode",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/profiler/lib:connected_traceme",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],

@@ -508,9 +508,9 @@ value of each element in `x`. For example, if x is an input element and y is
 an output element, this operation computes \\(y = |x|\\).
   }];
 
-  let arguments = (ins TFL_TensorOf<[I16, F32, QI8, QI16]>:$x);
+  let arguments = (ins TFL_TensorOf<[I16, I32, F32, QI8, QI16]>:$x);
 
-  let results = (outs TFL_TensorOf<[I16, F32, QI8, QI16]>:$y);
+  let results = (outs TFL_TensorOf<[I16, I32, F32, QI8, QI16]>:$y);
 
   let hasFolder = 1;
 }
@@ -5021,11 +5021,11 @@ def TFL_SignOp: TFL_Op<"sign", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, F64]>:$x
+    TFL_TensorOf<[F32, F64, I32]>:$x
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, F64]>:$output
+    TFL_TensorOf<[F32, F64, I32]>:$output
   );
 }
 

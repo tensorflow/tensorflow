@@ -65,9 +65,7 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithProperDimensionsTiled) {
           .value();
 
   auto expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @copy
 ; CHECK: call void BARRIER()
-; CHECK: }
 )";
   CompileAndVerifyIr(std::move(hlo_module),
                      MakePlatformSpecificLlvm(expected_ir),
@@ -93,9 +91,7 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithSmallDimensionsNotTiled) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @copy
 ; CHECK-NOT: call void BARRIER()
-; CHECK: }
 )";
   CompileAndVerifyIr(std::move(hlo_module),
                      MakePlatformSpecificLlvm(expected_ir),

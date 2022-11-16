@@ -41,19 +41,19 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_domain_metadata.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
-#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_lexer.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -1210,7 +1210,12 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
 
   // Add shared attributes like metadata to the instruction, if they were seen.
   if (sharding) {
-    instruction->set_sharding(HloSharding::FromProto(sharding.value()).value());
+    // TODO(b/257495070): Eliminate tuple sharding normalization in HLO parser.
+    // Allow existing HLO text with invalid sharding on tuple shapes by
+    // normalizing tuple sharding.
+    HloSharding hlo_sharding = HloSharding::FromProto(sharding.value()).value();
+    hlo_sharding = hlo_sharding.NormalizeTupleSharding(instruction->shape());
+    instruction->set_sharding(hlo_sharding);
   }
   if (parameter_replication) {
     int leaf_count = ShapeUtil::GetLeafCount(instruction->shape());

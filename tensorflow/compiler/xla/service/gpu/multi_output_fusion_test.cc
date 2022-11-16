@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -38,12 +39,16 @@ class MultiOutputFusionTest : public HloTestBase {
   }
 
  public:
-  GpuMultiOutputFusion mof_{ShapeSizeBytesFunction()};
+  GpuMultiOutputFusion mof_{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+                            ShapeSizeBytesFunction()};
 
   void CheckGpuMultiOutputFusion(absl::string_view hlo,
                                  std::optional<absl::string_view> expected) {
     RunAndFilecheckHloRewrite(
-        hlo, GpuMultiOutputFusion{ShapeSizeBytesFunction()}, expected);
+        hlo,
+        GpuMultiOutputFusion{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+                             ShapeSizeBytesFunction()},
+        expected);
   }
 };
 
@@ -1304,6 +1309,172 @@ ENTRY main {
   ROOT root = f32[] add(param_0, constant)
 }
   )")
+                    .value();
+  EXPECT_FALSE(mof_.Run(module.get()).value());
+}
+
+TEST_F(MultiOutputFusionTest, CostBasedNoMerge) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+region_3.63 {
+  Arg_0.64 = f32[] parameter(0)
+  Arg_1.65 = f32[] parameter(1)
+  ROOT add.66 = f32[] add(Arg_0.64, Arg_1.65)
+}
+
+fused_computation.29 {
+  param_0.161 = f32[5,32,32,1]{3,2,1,0} parameter(0)
+  multiply.208 = f32[5,32,32,1]{3,2,1,0} multiply(param_0.161, param_0.161)
+  bitcast.67 = f32[5,32,32]{2,1,0} bitcast(multiply.208)
+  constant.265 = f32[] constant(0)
+  reduce-window.81 = f32[5,30,31]{2,1,0} reduce-window(bitcast.67, constant.265), window={size=1x3x2}, to_apply=region_3.63
+  constant.264 = f32[] constant(0.166666672)
+  broadcast.204 = f32[5,30,31]{2,1,0} broadcast(constant.264), dimensions={}
+  multiply.205 = f32[5,30,31]{2,1,0} multiply(reduce-window.81, broadcast.204)
+  constant.263 = f32[] constant(0)
+  reduce-window.80 = f32[5,30,31]{2,1,0} reduce-window(multiply.205, constant.263), window={size=1x2x3 pad=0_0x0_1x1_1}, to_apply=region_3.63
+  constant.262 = f32[] constant(0.0138888899)
+  broadcast.201 = f32[5,30,31]{2,1,0} broadcast(constant.262), dimensions={}
+  multiply.204 = f32[5,30,31]{2,1,0} multiply(reduce-window.80, broadcast.201)
+  constant.261 = f32[] constant(0)
+  reduce-window.78 = f32[5,30,31]{2,1,0} reduce-window(multiply.204, constant.261), window={size=1x1x2 pad=0_0x0_0x0_1}, to_apply=region_3.63
+  constant.113 = f32[] constant(0.5)
+  broadcast.137 = f32[5,30,31]{2,1,0} broadcast(constant.113), dimensions={}
+  multiply.125 = f32[5,30,31]{2,1,0} multiply(reduce-window.78, broadcast.137)
+  constant.114 = f32[] constant(0)
+  ROOT reduce-window.17 = f32[5,30,31]{2,1,0} reduce-window(multiply.125, constant.114), window={size=1x2x1 pad=0_0x0_1x0_0}, to_apply=region_3.63
+}
+
+fused_computation.15 {
+  constant.108 = f32[] constant(0.5)
+  broadcast.105 = f32[5,5,30,31]{3,2,1,0} broadcast(constant.108), dimensions={}
+  param_3.126 = f32[5,30,31]{2,1,0} parameter(3)
+  constant.295 = f32[] constant(0.25)
+  broadcast.234 = f32[5,30,31]{2,1,0} broadcast(constant.295), dimensions={}
+  multiply.242 = f32[5,30,31]{2,1,0} multiply(param_3.126, broadcast.234)
+  broadcast.233 = f32[5,5,30,31]{3,2,1,0} broadcast(multiply.242), dimensions={0,2,3}
+  param_2.154 = f32[5,30,31]{2,1,0} parameter(2)
+  multiply.241 = f32[5,30,31]{2,1,0} multiply(param_2.154, broadcast.234)
+  broadcast.232 = f32[5,5,30,31]{3,2,1,0} broadcast(multiply.241), dimensions={1,2,3}
+  multiply.240 = f32[5,5,30,31]{3,2,1,0} multiply(broadcast.233, broadcast.232)
+  param_1.188 = f32[5,5,30,31]{3,2,1,0} parameter(1)
+  constant.294 = f32[] constant(0.159154937)
+  broadcast.231 = f32[5,5,30,31]{3,2,1,0} broadcast(constant.294), dimensions={}
+  multiply.239 = f32[5,5,30,31]{3,2,1,0} multiply(param_1.188, broadcast.231)
+  param_0.164 = f32[5,5,30,31]{3,2,1,0} parameter(0)
+  add.19 = f32[5,5,30,31]{3,2,1,0} add(multiply.239, param_0.164)
+  constant.293 = f32[] constant(0)
+  reduce-window.90 = f32[5,5,30,31]{3,2,1,0} reduce-window(add.19, constant.293), window={size=1x1x1x2 pad=0_0x0_0x0_0x0_1}, to_apply=region_3.63
+  constant.292 = f32[] constant(0.5)
+  broadcast.230 = f32[5,5,30,31]{3,2,1,0} broadcast(constant.292), dimensions={}
+  multiply.238 = f32[5,5,30,31]{3,2,1,0} multiply(reduce-window.90, broadcast.230)
+  constant.291 = f32[] constant(0)
+  reduce-window.89 = f32[5,5,30,31]{3,2,1,0} reduce-window(multiply.238, constant.291), window={size=1x1x2x1 pad=0_0x0_0x0_1x0_0}, to_apply=region_3.63
+  constant.290 = f32[] constant(0.25)
+  broadcast.229 = f32[5,5,30,31]{3,2,1,0} broadcast(constant.290), dimensions={}
+  multiply.237 = f32[5,5,30,31]{3,2,1,0} multiply(reduce-window.89, broadcast.229)
+  multiply.236 = f32[5,5,30,31]{3,2,1,0} multiply(multiply.237, multiply.237)
+  subtract.10 = f32[5,5,30,31]{3,2,1,0} subtract(multiply.240, multiply.236)
+  constant.289 = f32[] constant(0)
+  broadcast.228 = f32[5,5,30,31]{3,2,1,0} broadcast(constant.289), dimensions={}
+  maximum.6 = f32[5,5,30,31]{3,2,1,0} maximum(subtract.10, broadcast.228)
+  sqrt.6 = f32[5,5,30,31]{3,2,1,0} sqrt(maximum.6)
+  constant.110 = f32[] constant(0)
+  broadcast.107 = f32[5,5,30,31]{3,2,1,0} broadcast(constant.110), dimensions={}
+  compare.4 = pred[5,5,30,31]{3,2,1,0} compare(sqrt.6, broadcast.107), direction=EQ
+  constant.243 = f32[] constant(0.159154937)
+  broadcast.193 = f32[5,5,30,31]{3,2,1,0} broadcast(constant.243), dimensions={}
+  multiply.194 = f32[5,5,30,31]{3,2,1,0} multiply(param_1.188, broadcast.193)
+  add.15 = f32[5,5,30,31]{3,2,1,0} add(multiply.194, param_0.164)
+  constant.242 = f32[] constant(0)
+  reduce-window.66 = f32[5,5,30,31]{3,2,1,0} reduce-window(add.15, constant.242), window={size=1x1x1x2 pad=0_0x0_0x0_0x0_1}, to_apply=region_3.63
+  constant.241 = f32[] constant(0.5)
+  broadcast.192 = f32[5,5,30,31]{3,2,1,0} broadcast(constant.241), dimensions={}
+  multiply.193 = f32[5,5,30,31]{3,2,1,0} multiply(reduce-window.66, broadcast.192)
+  constant.240 = f32[] constant(0)
+  reduce-window.65 = f32[5,5,30,31]{3,2,1,0} reduce-window(multiply.193, constant.240), window={size=1x1x2x1 pad=0_0x0_0x0_1x0_0}, to_apply=region_3.63
+  constant.239 = f32[] constant(0.25)
+  broadcast.191 = f32[5,5,30,31]{3,2,1,0} broadcast(constant.239), dimensions={}
+  multiply.192 = f32[5,5,30,31]{3,2,1,0} multiply(reduce-window.65, broadcast.191)
+  compare.3 = pred[5,5,30,31]{3,2,1,0} compare(multiply.192, broadcast.107), direction=EQ
+  and.1 = pred[5,5,30,31]{3,2,1,0} and(compare.4, compare.3)
+  constant.109 = f32[] constant(1.57079637)
+  broadcast.104 = f32[5,5,30,31]{3,2,1,0} broadcast(constant.109), dimensions={}
+  atan2.1 = f32[5,5,30,31]{3,2,1,0} atan2(sqrt.6, multiply.192)
+  select.4 = f32[5,5,30,31]{3,2,1,0} select(and.1, broadcast.104, atan2.1)
+  constant.107 = f32[] constant(0.159154937)
+  broadcast.106 = f32[5,5,30,31]{3,2,1,0} broadcast(constant.107), dimensions={}
+  multiply.100 = f32[5,5,30,31]{3,2,1,0} multiply(select.4, broadcast.106)
+  ROOT subtract.3 = f32[5,5,30,31]{3,2,1,0} subtract(broadcast.105, multiply.100)
+}
+
+fused_computation.4 {
+  param_0.172 = f32[5,30,31]{2,1,0} parameter(0)
+  constant.315 = f32[] constant(0.125)
+  broadcast.242 = f32[5,30,31]{2,1,0} broadcast(constant.315), dimensions={}
+  multiply.250 = f32[5,30,31]{2,1,0} multiply(param_0.172, broadcast.242)
+  constant.314 = f32[] constant(0)
+  reduce-window.100 = f32[5,30,31]{2,1,0} reduce-window(multiply.250, constant.314), window={size=1x3x3 pad=0_0x1_1x1_1}, to_apply=region_3.63
+  constant.79 = f32[] constant(0.055555556)
+  broadcast.85 = f32[5,30,31]{2,1,0} broadcast(constant.79), dimensions={}
+  multiply.80 = f32[5,30,31]{2,1,0} multiply(reduce-window.100, broadcast.85)
+  constant.81 = f32[] constant(0)
+  reduce-window.1 = f32[5,30,31]{2,1,0} reduce-window(multiply.80, constant.81), window={size=1x3x3 pad=0_0x1_1x1_1}, to_apply=region_3.63
+  constant.80 = f32[] constant(0.111111112)
+  broadcast.86 = f32[5,30,31]{2,1,0} broadcast(constant.80), dimensions={}
+  multiply.79 = f32[5,30,31]{2,1,0} multiply(reduce-window.1, broadcast.86)
+  bitcast.26 = f32[5,930]{1,0} bitcast(multiply.79)
+  ROOT reduce.8 = f32[5]{0} reduce(bitcast.26, constant.81), dimensions={1}, to_apply=region_3.63
+}
+
+ENTRY e {
+  Arg_0.1 = f32[5,32,32,1]{3,2,1,0} parameter(0)
+  p1 = f32[5,5,30,31]{3,2,1,0} parameter(1)
+  p2 = f32[5,5,30,31]{3,2,1,0} parameter(2)
+  p3 = f32[5,30,31]{2,1,0} parameter(3)
+  fusion.29 = f32[5,30,31]{2,1,0} fusion(Arg_0.1), kind=kLoop, calls=fused_computation.29
+  fusion.15 = f32[5,5,30,31]{3,2,1,0} fusion(p2, p1, p3, fusion.29), kind=kLoop, calls=fused_computation.15
+  ROOT fusion.4 = f32[5]{0} fusion(fusion.29), kind=kInput, calls=fused_computation.4
+})")
+                    .value();
+  EXPECT_FALSE(mof_.Run(module.get()).value());
+}
+
+TEST_F(MultiOutputFusionTest, SkipSoftmaxCustomCallComputation) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule softmax
+
+%max_computation (arg_0: f32[], arg_1: f32[]) -> f32[] {
+  %arg_0 = f32[] parameter(0)
+  %arg_1 = f32[] parameter(1)
+  ROOT %maximum.2 = f32[] maximum(f32[] %arg_0, f32[] %arg_1)
+}
+
+%add_computation (arg_0.1: f32[], arg_1.1: f32[]) -> f32[] {
+  %arg_0.1 = f32[] parameter(0)
+  %arg_1.1 = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %arg_0.1, f32[] %arg_1.1)
+}
+
+%softmax_computation (parameter_0: f32[10,2]) -> f32[10,2] {
+  %parameter_0 = f32[10,2]{1,0} parameter(0)
+  %constant = f32[] constant(-inf)
+  %reduce.1 = f32[10]{0} reduce(f32[10,2]{1,0} %parameter_0, f32[] %constant), dimensions={1}, to_apply=%max_computation
+  %broadcast.3 = f32[10,2]{1,0} broadcast(f32[10]{0} %reduce.1), dimensions={0}
+  %subtract.3 = f32[10,2]{1,0} subtract(f32[10,2]{1,0} %parameter_0, f32[10,2]{1,0} %broadcast.3)
+  %exponential.3 = f32[10,2]{1,0} exponential(f32[10,2]{1,0} %subtract.3)
+  %constant.1 = f32[] constant(0)
+  %second_reduce.1 = f32[10]{0} reduce(f32[10,2]{1,0} %exponential.3, f32[] %constant.1), dimensions={1}, to_apply=%add_computation
+  %broadcast.4 = f32[10,2]{1,0} broadcast(f32[10]{0} %second_reduce.1), dimensions={0}
+  ROOT %divide.2 = f32[10,2]{1,0} divide(f32[10,2]{1,0} %exponential.3, f32[10,2]{1,0} %broadcast.4)
+}
+
+ENTRY %main (param_0: f32[10,2]) -> f32[10,2] {
+  %param_0 = f32[10,2]{1,0} parameter(0)
+  ROOT %custom-call = f32[10,2]{1,0} custom-call(f32[10,2]{1,0} %param_0), custom_call_target="__softmax_fusion", called_computations={%softmax_computation}
+}
+)")
                     .value();
   EXPECT_FALSE(mof_.Run(module.get()).value());
 }

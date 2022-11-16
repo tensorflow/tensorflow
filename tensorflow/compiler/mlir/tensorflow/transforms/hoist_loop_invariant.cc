@@ -20,11 +20,11 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Transforms/LoopInvariantCodeMotionUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "mlir/Transforms/SideEffectUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
@@ -71,7 +71,7 @@ bool ResourceOpCanBeHoisted(
   auto read_var_op = llvm::dyn_cast<ReadVariableOp>(op);
   if (!read_var_op) return false;
   auto var_handle_op = llvm::dyn_cast_or_null<VarHandleOp>(
-      read_var_op.resource().getDefiningOp());
+      read_var_op.getResource().getDefiningOp());
   if (!var_handle_op) return false;
   return read_only_vars.contains(GetResourceHandle(var_handle_op));
 }

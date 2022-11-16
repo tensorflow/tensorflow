@@ -24,10 +24,10 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -523,6 +523,18 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
 
   if (!algorithm) algorithm = config.algorithm;
 
+  if ((output_layout.dtype == F16 || output_layout.dtype == BF16 ||
+       output_layout.dtype == F32 || output_layout.dtype == F64 ||
+       output_layout.dtype == C64 || output_layout.dtype == C128) &&
+      (lhs_layout.dtype != output_layout.dtype ||
+       rhs_layout.dtype != output_layout.dtype)) {
+    return InternalError(
+        "GEMM lhs type(%s) and rhs type(%s) must match output type(%s)",
+        primitive_util::LowercasePrimitiveTypeName(lhs_layout.dtype),
+        primitive_util::LowercasePrimitiveTypeName(rhs_layout.dtype),
+        primitive_util::LowercasePrimitiveTypeName(output_layout.dtype));
+  }
+
   switch (output_layout.dtype) {
     case S32:
       if (!algorithm) algorithm = se::blas::kDefaultGemmAlgo;
@@ -726,7 +738,7 @@ Status MatmulPlan::DoMatmul(se::Stream* stream, se::DeviceMemoryBase a_buffer,
                             se::DeviceMemoryBase bias_buffer,
                             const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
                             se::ScratchAllocator& scratch_allocator,
-                            se::blas::ProfileResult* profile_result) {
+                            se::blas::ProfileResult* profile_result) const {
   se::cuda::BlasLt* blas_lt = se::cuda::GetBlasLt(stream);
   TF_RET_CHECK(blas_lt != nullptr);
 
@@ -755,7 +767,7 @@ Status MatmulPlan::ExecuteOnStream(
     se::DeviceMemoryBase d_buffer, se::DeviceMemoryBase bias_buffer,
     const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
     se::ScratchAllocator& scratch_allocator,
-    se::blas::ProfileResult* profile_result) {
+    se::blas::ProfileResult* profile_result) const {
   if (must_swap_operands_) {
     std::swap(a_buffer, b_buffer);
   }

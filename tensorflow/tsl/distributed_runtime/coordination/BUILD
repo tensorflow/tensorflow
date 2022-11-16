@@ -195,6 +195,33 @@ cc_library(
     ],
 )
 
+tsl_cc_test(
+    name = "coordination_service_recoverable_job_test",
+    srcs = ["coordination_service_recoverable_job_test.cc"],
+    deps = [
+        ":coordination_client",
+        ":coordination_service",
+        ":coordination_service_agent",
+        ":coordination_service_impl",
+        "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
+        "//tensorflow/tsl/distributed_runtime/rpc/coordination:grpc_coordination_client",
+        "//tensorflow/tsl/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:env_impl",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/protobuf:coordination_config_proto_cc_impl",
+        "//tensorflow/tsl/protobuf:coordination_service_proto_cc_impl",
+        "//tensorflow/tsl/protobuf:distributed_runtime_payloads_proto_cc_impl",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
 filegroup(
     name = "pywrap_required_hdrs",
     srcs = [

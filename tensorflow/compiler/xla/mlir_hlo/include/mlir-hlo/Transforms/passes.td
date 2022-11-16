@@ -163,18 +163,10 @@ def GenericHostToLLVMPass : Pass<"generic-host-to-llvm", "ModuleOp"> {
   let options = [];
 }
 
-def InlineFusionPass : Pass<"inline-fusion", "mlir::func::FuncOp"> {
-  let summary = "Inline mhlo.fusion regions.";
-  let description = [{
-    Inlines all mhlo.fusion regions into the parent block.
-  }];
-  let constructor = "hlo::createInlineFusionPass()";
-}
-
 def UnbufferizePass : Pass<"unbufferize", "mlir::func::FuncOp"> {
   let summary = "Unbufferize partially bufferized functions.";
   let description = [{
-    Removes bufferization.to_tensor and memref.tensor_store ops that are the 
+    Removes bufferization.to_tensor and memref.tensor_store ops that are the
     result of XLA bufferizing during HLO to MHLO transformation.
   }];
   let constructor = "hlo::createUnbufferizePass()";

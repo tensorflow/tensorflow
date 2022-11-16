@@ -676,9 +676,9 @@ def tf_additional_all_protos():
 def tf_protos_all():
     return if_static(
         extra_deps = [
-            clean_dep("//tensorflow/core/protobuf:autotuning_proto_cc_impl"),
             clean_dep("//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl"),
             clean_dep("//tensorflow/core:protos_all_cc_impl"),
+            clean_dep("//tensorflow/tsl/protobuf:autotuning_proto_cc_impl"),
             clean_dep("//tensorflow/tsl/protobuf:protos_all_cc_impl"),
         ],
         otherwise = [clean_dep("//tensorflow/core:protos_all_cc")],
@@ -686,9 +686,9 @@ def tf_protos_all():
 
 def tf_protos_profiler_service():
     return [
-        clean_dep("//tensorflow/core/profiler:profiler_analysis_proto_cc_impl"),
-        clean_dep("//tensorflow/core/profiler:profiler_service_proto_cc_impl"),
-        clean_dep("//tensorflow/core/profiler:profiler_service_monitor_result_proto_cc_impl"),
+        clean_dep("//tensorflow/tsl/profiler/protobuf:profiler_analysis_proto_cc_impl"),
+        clean_dep("//tensorflow/tsl/profiler/protobuf:profiler_service_proto_cc_impl"),
+        clean_dep("//tensorflow/tsl/profiler/protobuf:profiler_service_monitor_result_proto_cc_impl"),
     ]
 
 def tf_protos_grappler_impl():
@@ -788,8 +788,12 @@ def tsl_cc_test(
             [],
             [
                 clean_dep("@com_google_protobuf//:protobuf"),
+                # TODO(ddunleavy) remove these and add proto deps to tests
+                # granularly
                 "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc_impl",
                 "//tensorflow/tsl/protobuf:histogram_proto_cc_impl",
+                "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc_impl",
+                "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc_impl",
             ],
         ),
         **kwargs

@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
-#include "tensorflow/lite/delegates/utils/experimental/sample_vendor_delegate/sample_vendor_delegate.h"
+#include "tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
 
@@ -39,7 +39,7 @@ TEST_F(TestDelegate, TestDataAddBin_SingleInputSingleOutput_FullyDelegated) {
   //
   TfLiteOpaqueDelegateUniquePtr my_opaque_delegate =
       TfLiteOpaqueDelegateFactory::Create(
-          std::make_unique<example::SampleVendorDelegate>());
+          std::make_unique<example::SampleStableDelegate>());
 
   //
   // Create the model and the interpreter
@@ -119,7 +119,7 @@ TEST(DelegateTest,
      TestDataAddBin_SingleInputSingleOutput_FullyDelegated_ResizeInputTensors) {
   TfLiteOpaqueDelegateUniquePtr my_opaque_delegate =
       TfLiteOpaqueDelegateFactory::Create(
-          std::make_unique<example::SampleVendorDelegate>());
+          std::make_unique<example::SampleStableDelegate>());
 
   TfLiteModel* model =
       TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
@@ -196,7 +196,7 @@ TEST(DelegateTest,
 TEST(DelegateTest, TestDataMultiAddBin_MultiInputMultiOutput_FullyDelegated) {
   TfLiteOpaqueDelegateUniquePtr my_opaque_delegate =
       TfLiteOpaqueDelegateFactory::Create(
-          std::make_unique<example::SampleVendorDelegate>());
+          std::make_unique<example::SampleStableDelegate>());
 
   TfLiteModel* model = TfLiteModelCreateFromFile(
       "third_party/tensorflow/lite/testdata/multi_add.bin");
@@ -319,7 +319,7 @@ TfLiteRegistrationExternal* GetDelegateKernelRegistrationImpl(
 using ::tflite::delegates::test_utils::TestFP16Delegation;
 
 TEST_F(TestFP16Delegation, MultipleDelegateKernels) {
-  auto my_simple_delegate = std::make_unique<example::SampleVendorDelegate>();
+  auto my_simple_delegate = std::make_unique<example::SampleStableDelegate>();
   TfLiteOpaqueDelegateStruct* opaque_delegate =
       TfLiteOpaqueDelegateFactory::CreateSimpleDelegate(
           std::move(my_simple_delegate));
@@ -338,7 +338,7 @@ TEST_F(TestFP16Delegation, MultipleDelegateKernels) {
 // A test facility used in the 'SetBufferHandle' unit test.  See the tests
 // comments for further context on the implementation of this class.
 class MySimpleOpaqueDelegateWithBufferHandleSupport
-    : public example::SampleVendorDelegate {
+    : public example::SampleStableDelegate {
  public:
   static constexpr int kDelegateOutputValue = 42;
   TfLiteStatus CopyFromBufferHandle(TfLiteOpaqueContext* context,
@@ -490,7 +490,7 @@ TEST(DelegateTest,
      TestDataConvHugeIm2ColBin_MultiInputSingleOutput_PartiallyDelegated) {
   TfLiteOpaqueDelegateUniquePtr my_opaque_delegate =
       TfLiteOpaqueDelegateFactory::Create(
-          std::make_unique<example::SampleVendorDelegate>());
+          std::make_unique<example::SampleStableDelegate>());
   TfLiteModel* model = TfLiteModelCreateFromFile(
       "third_party/tensorflow/lite/testdata/conv_huge_im2col.bin");
   ASSERT_NE(model, nullptr);

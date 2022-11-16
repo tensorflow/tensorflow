@@ -17,6 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_PATTERN_MATCHER_H_
 
 #include <functional>
+#include <ios>
+#include <optional>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -25,12 +28,12 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/utility/utility.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
@@ -772,7 +775,7 @@ class ShapePatternDimsImpl {
 // A ShapePattern implementation that matches only if the shape is scalar.
 class ShapePatternIsScalarImpl {
  public:
-  explicit constexpr ShapePatternIsScalarImpl() {}
+  explicit constexpr ShapePatternIsScalarImpl() = default;
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
     if (!ShapeUtil::IsScalar(*shape)) {
@@ -790,7 +793,7 @@ class ShapePatternIsScalarImpl {
 // A ShapePattern implementation that matches only if the shape is an array
 class ShapePatternIsArrayImpl {
  public:
-  explicit constexpr ShapePatternIsArrayImpl() {}
+  explicit constexpr ShapePatternIsArrayImpl() = default;
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
     if (!shape->IsArray()) {
@@ -808,7 +811,7 @@ class ShapePatternIsArrayImpl {
 // A ShapePattern implementation that matches only if the shape is an array
 class ShapePatternIsDenseArrayImpl {
  public:
-  explicit constexpr ShapePatternIsDenseArrayImpl() {}
+  explicit constexpr ShapePatternIsDenseArrayImpl() = default;
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
     if (!LayoutUtil::IsDenseArray(*shape)) {
@@ -826,7 +829,7 @@ class ShapePatternIsDenseArrayImpl {
 // A ShapePattern implementation that matches only if the shape is a tuple.
 class ShapePatternIsTupleImpl {
  public:
-  explicit constexpr ShapePatternIsTupleImpl() {}
+  explicit constexpr ShapePatternIsTupleImpl() = default;
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
     if (!shape->IsTuple()) {
@@ -845,7 +848,7 @@ class ShapePatternIsTupleImpl {
 // scalar.
 class ShapePatternEffectiveScalarImpl {
  public:
-  explicit constexpr ShapePatternEffectiveScalarImpl() {}
+  explicit constexpr ShapePatternEffectiveScalarImpl() = default;
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
     if (!ShapeUtil::IsEffectiveScalar(*shape)) {
@@ -2280,6 +2283,7 @@ XLA_UNOP_PATTERN(Real)
 XLA_UNOP_PATTERN(Recv)
 XLA_UNOP_PATTERN(RecvDone)
 XLA_UNOP_PATTERN(ReducePrecision)
+XLA_UNOP_PATTERN(ReduceScatter)
 XLA_UNOP_PATTERN(Reshape)
 XLA_UNOP_PATTERN(Reverse)
 XLA_UNOP_PATTERN(Rsqrt)

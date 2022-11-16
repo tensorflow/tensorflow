@@ -412,6 +412,7 @@ package_group(
         "//learning/pathways/...",
         "//smartass/brain/configure/...",
         "//tensorflow/...",
+        "//tensorflow/tsl/...",
         "//tensorflow_decision_forests/...",
         "//tensorflow_federated/...",
         "//third_party/cloud_tpu/convergence_tools/sdc_monitoring/...",

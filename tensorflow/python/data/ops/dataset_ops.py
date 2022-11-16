@@ -26,6 +26,7 @@ from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
+from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import structured_function
@@ -122,7 +123,7 @@ def _validate_and_encode(name):
   return name.encode("utf-8")
 
 
-def _get_type(value):
+def get_type(value):
   """Returns the type of `value` if it is a TypeSpec."""
 
   if isinstance(value, type_spec.TypeSpec):
@@ -2380,19 +2381,17 @@ name=None))
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    if num_parallel_calls is None or DEBUG_MODE:
-      if deterministic is not None and not DEBUG_MODE:
-        warnings.warn("The `deterministic` argument has no effect unless the "
-                      "`num_parallel_calls` argument is specified.")
-      return MapDataset(self, map_func, preserve_cardinality=True, name=name)
-    else:
-      return ParallelMapDataset(
-          self,
-          map_func,
-          num_parallel_calls,
-          deterministic,
-          preserve_cardinality=True,
-          name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops -> map_op ->
+    # dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import map_op
+    return map_op._map_v2(
+        self,
+        map_func,
+        num_parallel_calls=num_parallel_calls,
+        deterministic=deterministic,
+        name=name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def flat_map(self, map_func, name=None):
     """Maps `map_func` across this dataset and flattens the result.
@@ -2427,7 +2426,12 @@ name=None))
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    return FlatMapDataset(self, map_func, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops -> flat_map_op ->
+    # dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import flat_map_op
+    return flat_map_op._flat_map(self, map_func, name=name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def ignore_errors(self, log_warning=False, name=None):
     """Drops elements that cause errors.
@@ -2784,9 +2788,12 @@ name=None))
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    if shift is None:
-      shift = size
-    return WindowDataset(self, size, shift, stride, drop_remainder, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops -> window_op ->
+    # dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import window_op
+    return window_op._window(self, size, shift, stride, drop_remainder, name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def reduce(self, initial_state, reduce_func, name=None):
     """Reduces the input dataset to a single element.
@@ -3334,25 +3341,49 @@ name=None))
         name=name)
 
   @staticmethod
-  def random(seed=None, name=None):
+  def random(seed=None, rerandomize_each_iteration=None, name=None):
     """Creates a `Dataset` of pseudorandom values.
 
     The dataset generates a sequence of uniformly distributed integer values.
+
+    `rerandomize_each_iteration` controls whether the sequence of random number
+    generated should be re-randomized for each epoch. The default value is False
+    where the dataset generates the same sequence of random numbers for each
+    epoch.
 
     >>> ds1 = tf.data.Dataset.random(seed=4).take(10)
     >>> ds2 = tf.data.Dataset.random(seed=4).take(10)
     >>> print(list(ds1.as_numpy_iterator())==list(ds2.as_numpy_iterator()))
     True
 
+    >>> ds3 = tf.data.Dataset.random(seed=4).take(10)
+    >>> ds3_first_epoch = list(ds3.as_numpy_iterator())
+    >>> ds3_second_epoch = list(ds3.as_numpy_iterator())
+    >>> print(ds3_first_epoch == ds3_second_epoch)
+    True
+
+    >>> ds4 = tf.data.Dataset.random(
+    ...     seed=4, rerandomize_each_iteration=True).take(10)
+    >>> ds4_first_epoch = list(ds4.as_numpy_iterator())
+    >>> ds4_second_epoch = list(ds4.as_numpy_iterator())
+    >>> print(ds4_first_epoch == ds4_second_epoch)
+    False
+
     Args:
       seed: (Optional) If specified, the dataset produces a deterministic
         sequence of values.
+      rerandomize_each_iteration: (Optional) If set to False, the dataset
+      generates the same sequence of random numbers for each epoch. If set to
+      True, it generates a different deterministic sequence of random numbers
+      for each epoch. It is defaulted to True if left unspecified.
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
       Dataset: A `Dataset`.
     """
-    return RandomDataset(seed=seed, name=name)
+    return RandomDataset(seed=seed,
+                         rerandomize_each_iteration=rerandomize_each_iteration,
+                         name=name)
 
   def snapshot(self,
                path,
@@ -3532,8 +3563,12 @@ name=None))
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-
-    return _UniqueDataset(self, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops -> unique_op ->
+    # dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import unique_op
+    return unique_op._unique(self, name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def rejection_resample(self,
                          class_func,
@@ -3690,6 +3725,11 @@ name=None))
         - If `datasets` is empty, or
         - If `weights` is specified and does not match the length of `datasets`.
     """
+    # Loaded lazily due to a circular dependency (dataset_ops -> map_op ->
+    # dataset_ops).
+    # pylint: disable=g-import-not-at-top
+    from tensorflow.python.data.ops import map_op
+    # pylint: enable=g-import-not-at-top
 
     def _skip_datasets_with_zero_weight(datasets, weights):
       datasets_and_weights = [(dataset, weight)
@@ -3745,7 +3785,7 @@ name=None))
                 logits, 1, seed=seed),
             axis=[0, 1])
 
-      selector_input = MapDataset(
+      selector_input = map_op._MapDataset(  # pylint: disable=protected-access
           RandomDataset(seed).batch(2),
           select_dataset_constant_logits,
           use_inter_op_parallelism=False)
@@ -3765,7 +3805,7 @@ name=None))
             axis=[0, 1])
 
       logits_and_seeds = Dataset.zip((logits_ds, RandomDataset(seed).batch(2)))
-      selector_input = MapDataset(
+      selector_input = map_op._MapDataset(  # pylint: disable=protected-access
           logits_and_seeds,
           select_dataset_varying_logits,
           use_inter_op_parallelism=False)
@@ -4222,17 +4262,16 @@ class DatasetV1(DatasetV2):
           num_parallel_calls=None,
           deterministic=None,
           name=None):
-    if num_parallel_calls is None or DEBUG_MODE:
-      return DatasetV1Adapter(
-          MapDataset(self, map_func, preserve_cardinality=False))
-    else:
-      return DatasetV1Adapter(
-          ParallelMapDataset(
-              self,
-              map_func,
-              num_parallel_calls,
-              deterministic,
-              preserve_cardinality=False))
+    # Loaded lazily due to a circular dependency (dataset_ops -> map_op ->
+    # dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import map_op
+    return map_op._map_v1(
+        self,
+        map_func,
+        num_parallel_calls=num_parallel_calls,
+        deterministic=deterministic)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   @deprecation.deprecated(None, "Use `tf.data.Dataset.map()")
   def map_with_legacy_function(self,
@@ -4264,25 +4303,16 @@ class DatasetV1(DatasetV2):
     Returns:
       Dataset: A `Dataset`.
     """
-    if num_parallel_calls is None:
-      if deterministic is not None:
-        warnings.warn("The `deterministic` argument has no effect unless the "
-                      "`num_parallel_calls` argument is specified.")
-      return DatasetV1Adapter(
-          MapDataset(
-              self,
-              map_func,
-              preserve_cardinality=False,
-              use_legacy_function=True))
-    else:
-      return DatasetV1Adapter(
-          ParallelMapDataset(
-              self,
-              map_func,
-              num_parallel_calls,
-              deterministic,
-              preserve_cardinality=False,
-              use_legacy_function=True))
+    # Loaded lazily due to a circular dependency (dataset_ops -> map_op ->
+    # dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import map_op
+    return map_op._map_v1_with_legacy_function(
+        self,
+        map_func,
+        num_parallel_calls=num_parallel_calls,
+        deterministic=deterministic)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   @functools.wraps(DatasetV2.flat_map)
   def flat_map(self, map_func, name=None):
@@ -5123,7 +5153,7 @@ class RangeDataset(DatasetSource):
       self._stop = self._build_tensor(args[1], "stop")
       self._step = self._build_tensor(args[2], "step")
     else:
-      raise ValueError(f"Invalid `args`. The lenght of `args` should be "
+      raise ValueError(f"Invalid `args`. The length of `args` should be "
                        f"between 1 and 3 but was {len(args)}.")
     if "output_type" in kwargs:
       self._output_type = kwargs["output_type"]
@@ -5250,130 +5280,6 @@ class ShardDataset(UnaryUnchangedStructureDataset):
     super(ShardDataset, self).__init__(input_dataset, variant_tensor)
 
 
-class MapDataset(UnaryDataset):
-  """A `Dataset` that maps a function over elements in its input."""
-
-  def __init__(self,
-               input_dataset,
-               map_func,
-               use_inter_op_parallelism=True,
-               preserve_cardinality=False,
-               use_legacy_function=False,
-               name=None):
-    """See `Dataset.map()` for details."""
-    self._input_dataset = input_dataset
-    self._use_inter_op_parallelism = use_inter_op_parallelism
-    self._preserve_cardinality = preserve_cardinality
-    self._map_func = structured_function.StructuredFunctionWrapper(
-        map_func,
-        self._transformation_name(),
-        dataset=input_dataset,
-        use_legacy_function=use_legacy_function)
-    self._name = name
-    variant_tensor = gen_dataset_ops.map_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        self._map_func.function.captured_inputs,
-        f=self._map_func.function,
-        use_inter_op_parallelism=self._use_inter_op_parallelism,
-        preserve_cardinality=self._preserve_cardinality,
-        **self._common_args)
-    super(MapDataset, self).__init__(input_dataset, variant_tensor)
-
-  def _functions(self):
-    return [self._map_func]
-
-  @property
-  def element_spec(self):
-    return self._map_func.output_structure
-
-  def _transformation_name(self):
-    return "Dataset.map()"
-
-
-class ParallelMapDataset(UnaryDataset):
-  """A `Dataset` that maps a function over elements in its input in parallel."""
-
-  def __init__(self,
-               input_dataset,
-               map_func,
-               num_parallel_calls,
-               deterministic,
-               use_inter_op_parallelism=True,
-               preserve_cardinality=False,
-               use_legacy_function=False,
-               name=None):
-    """See `Dataset.map()` for details."""
-    self._input_dataset = input_dataset
-    self._use_inter_op_parallelism = use_inter_op_parallelism
-    self._map_func = structured_function.StructuredFunctionWrapper(
-        map_func,
-        self._transformation_name(),
-        dataset=input_dataset,
-        use_legacy_function=use_legacy_function)
-    if deterministic is None:
-      self._deterministic = "default"
-    elif deterministic:
-      self._deterministic = "true"
-    else:
-      self._deterministic = "false"
-    self._preserve_cardinality = preserve_cardinality
-    self._num_parallel_calls = ops.convert_to_tensor(
-        num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
-    self._name = name
-    variant_tensor = gen_dataset_ops.parallel_map_dataset_v2(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        self._map_func.function.captured_inputs,
-        f=self._map_func.function,
-        num_parallel_calls=self._num_parallel_calls,
-        deterministic=self._deterministic,
-        use_inter_op_parallelism=self._use_inter_op_parallelism,
-        preserve_cardinality=self._preserve_cardinality,
-        **self._common_args)
-    super(ParallelMapDataset, self).__init__(input_dataset, variant_tensor)
-
-  def _functions(self):
-    return [self._map_func]
-
-  @property
-  def element_spec(self):
-    return self._map_func.output_structure
-
-  def _transformation_name(self):
-    return "Dataset.map()"
-
-
-class FlatMapDataset(UnaryDataset):
-  """A `Dataset` that maps a function over its input and flattens the result."""
-
-  def __init__(self, input_dataset, map_func, name=None):
-    """See `Dataset.flat_map()` for details."""
-    self._input_dataset = input_dataset
-    self._map_func = structured_function.StructuredFunctionWrapper(
-        map_func, self._transformation_name(), dataset=input_dataset)
-    if not isinstance(self._map_func.output_structure, DatasetSpec):
-      raise TypeError(
-          "The `map_func` argument must return a `Dataset` object. Got "
-          f"{_get_type(self._map_func.output_structure)!r}.")
-    self._structure = self._map_func.output_structure._element_spec  # pylint: disable=protected-access
-    self._name = name
-    variant_tensor = gen_dataset_ops.flat_map_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        self._map_func.function.captured_inputs,
-        f=self._map_func.function,
-        **self._common_args)
-    super(FlatMapDataset, self).__init__(input_dataset, variant_tensor)
-
-  def _functions(self):
-    return [self._map_func]
-
-  @property
-  def element_spec(self):
-    return self._structure
-
-  def _transformation_name(self):
-    return "Dataset.flat_map()"
-
-
 class InterleaveDataset(UnaryDataset):
   """A `Dataset` that interleaves the result of transformed inputs."""
 
@@ -5391,7 +5297,7 @@ class InterleaveDataset(UnaryDataset):
     if not isinstance(self._map_func.output_structure, DatasetSpec):
       raise TypeError(
           "The `map_func` argument must return a `Dataset` object. Got "
-          f"{_get_type(self._map_func.output_structure)!r}.")
+          f"{get_type(self._map_func.output_structure)!r}.")
     self._structure = self._map_func.output_structure._element_spec  # pylint: disable=protected-access
     self._cycle_length = ops.convert_to_tensor(
         cycle_length, dtype=dtypes.int64, name="cycle_length")
@@ -5438,7 +5344,7 @@ class ParallelInterleaveDataset(UnaryDataset):
     if not isinstance(self._map_func.output_structure, DatasetSpec):
       raise TypeError(
           "The `map_func` argument must return a `Dataset` object. Got "
-          f"{_get_type(self._map_func.output_structure)!r}.")
+          f"{get_type(self._map_func.output_structure)!r}.")
     self._structure = self._map_func.output_structure._element_spec  # pylint: disable=protected-access
     self._cycle_length = ops.convert_to_tensor(
         cycle_length, dtype=dtypes.int64, name="cycle_length")
@@ -5509,49 +5415,6 @@ class PrefetchDataset(UnaryUnchangedStructureDataset):
           slack_period=slack_period,
           **self._common_args)
     super(PrefetchDataset, self).__init__(input_dataset, variant_tensor)
-
-
-class WindowDataset(UnaryDataset):
-  """A dataset that creates window datasets from the input elements."""
-
-  def __init__(self,
-               input_dataset,
-               size,
-               shift,
-               stride,
-               drop_remainder,
-               name=None):
-    """See `window()` for more details."""
-    self._input_dataset = input_dataset
-    self._size = ops.convert_to_tensor(size, dtype=dtypes.int64, name="size")
-    self._shift = ops.convert_to_tensor(shift, dtype=dtypes.int64, name="shift")
-    self._stride = ops.convert_to_tensor(
-        stride, dtype=dtypes.int64, name="stride")
-    self._drop_remainder = ops.convert_to_tensor(
-        drop_remainder, dtype=dtypes.bool, name="drop_remainder")
-    self._structure = nest.pack_sequence_as(
-        get_legacy_output_classes(input_dataset), [
-            DatasetSpec(  # pylint: disable=g-complex-comprehension
-                structure.convert_legacy_structure(
-                    output_type, output_shape, output_class))
-            for output_class, output_shape, output_type in zip(
-                nest.flatten(get_legacy_output_classes(input_dataset)),
-                nest.flatten(get_legacy_output_shapes(input_dataset)),
-                nest.flatten(get_legacy_output_types(input_dataset)))
-        ])
-    self._name = name
-    variant_tensor = gen_dataset_ops.window_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        size=self._size,
-        shift=self._shift,
-        stride=self._stride,
-        drop_remainder=self._drop_remainder,
-        **self._common_args)
-    super(WindowDataset, self).__init__(input_dataset, variant_tensor)
-
-  @property
-  def element_spec(self):
-    return self._structure
 
 
 class _OptionsDataset(UnaryUnchangedStructureDataset):
@@ -5743,12 +5606,37 @@ class _GroupByWindowDataset(UnaryDataset):
 class RandomDataset(DatasetSource):
   """A `Dataset` of pseudorandom values."""
 
-  def __init__(self, seed=None, name=None):
+  def __init__(self, seed=None, rerandomize_each_iteration=None, name=None):
     """A `Dataset` of pseudorandom values."""
     self._seed, self._seed2 = random_seed.get_seed(seed)
+    self._rerandomize = rerandomize_each_iteration
     self._name = name
-    variant_tensor = ged_ops.random_dataset(
-        seed=self._seed, seed2=self._seed2, **self._common_args)
+    if (tf2.enabled() and
+        (context.executing_eagerly() or ops.inside_function())):
+      if (rerandomize_each_iteration is not None or
+          tf_compat.forward_compatible(2022, 12, 17)):
+        variant_tensor = ged_ops.random_dataset_v2(
+            seed=self._seed,
+            seed2=self._seed2,
+            seed_generator=gen_dataset_ops.dummy_seed_generator(),
+            rerandomize_each_iteration=self._rerandomize,
+            **self._common_args)
+      else:
+        variant_tensor = ged_ops.random_dataset(
+            seed=self._seed,
+            seed2=self._seed2,
+            **self._common_args)
+    else:
+      if rerandomize_each_iteration is not None:
+        warnings.warn("The `rerandomize_each_iteration` argument is ignored "
+                      "because it is only available when running in TF2 eager "
+                      "mode or inside a `tf.function`. The mode is "
+                      f"{'TF2' if tf2.enabled() else 'TF1'} "
+                      f"{'eager' if context.executing_eagerly() else 'graph'}.")
+      variant_tensor = ged_ops.random_dataset(
+          seed=self._seed,
+          seed2=self._seed2,
+          **self._common_args)
     super(RandomDataset, self).__init__(variant_tensor)
 
   @property
@@ -6000,24 +5888,6 @@ class _TakeWhileDataset(UnaryUnchangedStructureDataset):
 
   def _transformation_name(self):
     return "Dataset.take_while()"
-
-
-class _UniqueDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` contains the unique elements from its input."""
-
-  def __init__(self, input_dataset, name=None):
-    """See `unique()` for details."""
-    self._input_dataset = input_dataset
-    for ty in nest.flatten(get_legacy_output_types(input_dataset)):
-      if ty not in (dtypes.int32, dtypes.int64, dtypes.string):
-        raise TypeError(
-            f"`unique()` does not support type {ty}, only `tf.int32`, "
-            f"`tf.int64`, and `tf.string` are supported.")
-    self._name = name
-    variant_tensor = ged_ops.unique_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        **self._common_args)
-    super(_UniqueDataset, self).__init__(input_dataset, variant_tensor)
 
 
 class _SnapshotDataset(UnaryUnchangedStructureDataset):

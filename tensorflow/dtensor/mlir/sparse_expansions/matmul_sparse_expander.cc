@@ -25,7 +25,7 @@ namespace dtensor {
 StatusOr<mlir::Operation*> MatMulSparseExpander::ExpandOp(mlir::Operation* op) {
   mlir::TF::MatMulOp mm = mlir::cast<mlir::TF::MatMulOp>(op);
   // If any of the transpose attributes are true, then return original op.
-  if (mm.transpose_a() || mm.transpose_b()) return op;
+  if (mm.getTransposeA() || mm.getTransposeB()) return op;
 
   // Expand to SparseTensorDenseMatMul Op only if the left operand
   // is a SparseTensor.

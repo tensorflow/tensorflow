@@ -1,17 +1,18 @@
 # Release 2.12.0
 
-*   `tf.keras`:
-
-    *   Added `jit_compile` as a settable property to `tf.keras.Model`.
-    *   Added `synchronized` optional parameter to `layers.BatchNormalization`.
-    *   Added deprecation warning to
-        `layers.experimental.SyncBatchNormalization` and suggested to use
-        `layers.BatchNormalization` with `synchronized=True` instead.
-
 # Breaking Changes
 
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+*   `tf.function`:
+
+    *   tf.function now uses the Python inspect library directly for parsing
+        the signature of the Python function it is decorated on.
+    *   This can break certain cases that were previously ignored where the
+        signature is malformed, e.g.
+            *   Using functools.wraps on a function with different signature
+            *   Using functools.partial with an invalid tf.function input
 
 # Known Caveats
 
@@ -28,21 +29,49 @@
 
 *   `tf.keras`:
 
+    *   Added utility `tf.keras.utils.FeatureSpace`, a one-stop shop for
+        structured data preprocessing and encoding.
     *   Added `tf.SparseTensor` input support to `tf.keras.layers.Embedding`
         layer. The layer now accepts a new boolean argument `sparse`. If
         `sparse` is set to True, the layer returns a SparseTensor instead of a
         dense Tensor. Defaults to False.
-
-*   `tf.keras`:
-
+    *   Added `jit_compile` as a settable property to `tf.keras.Model`.
+    *   Added `synchronized` optional parameter to `layers.BatchNormalization`.
+    *   Added deprecation warning to
+        `layers.experimental.SyncBatchNormalization` and suggested to use
+        `layers.BatchNormalization` with `synchronized=True` instead.
     *   Updated `tf.keras.layers.BatchNormalization` to support masking of the
-        inputs when computing the mean and variance.
+        inputs (`mask` argument) when computing the mean and variance.
+
+*   `tf.experimental.dtensor`:
+
+    *   Coordination service now works with `dtensor.initialize_accelerator_system`,
+        and enabled by default.
+
+*   `tf.data`:
+
+    *   Added support for alternative checkpointing protocol which makes it
+        possible to checkpoint the state of the input pipeline without having
+        to store the contents of internal buffers. The new functionality can
+        be enabled through the `experimental_symbolic_checkpointing` option of
+        `tf.data.Options()`.
+    *   Added a new `rerandomize_each_iteration` argument for the
+        `tf.data.Dataset.random()` operation, which controls whether the
+        sequence of generated random numbers should be re-randomized every epoch
+        (the default behavior) or not. If `seed` is set and
+        `rerandomize_each_iteration=True`, the `random()` operation will
+        produce a different (deterministic) sequence of numbers every epoch.
 
 # Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
+
+* `tf.random`
+  * Added non-experimental aliases for `tf.random.split` and
+    `tf.random.fold_in`, the experimental endpoints are still available
+    so no code changes are necessary.
 
 # Thanks to our Contributors
 
@@ -56,6 +85,8 @@ This release contains contributions from many people at Google, as well as:
 
 * `StatusOr::ConsumeValueOrDie` and `StatusOr::ValueOrDie`, both deprecated in
   TF 2.10 has been removed.
+* `Status::OK` static constructor has been removed. Use `OkStatus()` or
+  `Status()` (backward compatible) instead.
 
 
 ## Breaking Changes
@@ -165,7 +196,7 @@ This release contains contributions from many people at Google, as well as:
         file is a protobuf containing the "fingerprint" of the SavedModel. See
         the [RFC](https://github.com/tensorflow/community/pull/415) for more
         details regarding its design and properties.
-  
+
 *   `tf.data`:
     *   Graduated experimental APIs:
         * [`tf.data.Dataset.ragged_batch`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset/#ragged_batch), which batches elements of `tf.data.Dataset`s into `tf.RaggedTensor`s.

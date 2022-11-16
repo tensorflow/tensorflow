@@ -31,9 +31,7 @@ bool IsTensorArrayOp(mlir::Operation* op) {
 static bool FunctionContainsOnlyNoSideEffectOpOrTensorArrayOp(
     mlir::func::FuncOp func_op) {
   for (mlir::Operation& op : func_op.front()) {
-    if (!mlir::MemoryEffectOpInterface::hasNoEffect(&op) &&
-        !IsTensorArrayOp(&op))
-      return false;
+    if (!mlir::isMemoryEffectFree(&op) && !IsTensorArrayOp(&op)) return false;
   }
 
   return true;

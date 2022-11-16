@@ -115,7 +115,6 @@ tf_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":mlir_gpu_test_base",
-        "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
@@ -128,7 +127,6 @@ tf_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":mlir_gpu_test_base",
-        "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
@@ -582,6 +580,22 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "reduction_emitter_test",
+    srcs = ["reduction_emitter_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
     name = "gpu_ldg_test",
     srcs = ["gpu_ldg_test.cc"],
     tags = tf_cuda_tests_tags(),
@@ -642,6 +656,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service/gpu:fusion_merger",
+        "//tensorflow/compiler/xla/service/gpu:gpu_device_info_for_tests",
         "//tensorflow/compiler/xla/service/gpu:gpu_fusible",
         "//tensorflow/compiler/xla/service/gpu:instruction_fusion",
         "//tensorflow/compiler/xla/service/gpu:multi_output_fusion",

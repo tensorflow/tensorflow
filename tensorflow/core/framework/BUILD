@@ -576,7 +576,7 @@ cc_library(
     testonly = 1,
     srcs = ["fake_input.cc"],
     hdrs = ["fake_input.h"],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":attr_value_proto_cc",
         ":op_def_proto_cc",
@@ -617,31 +617,6 @@ cc_library(
         "//third_party/eigen3",
     ],
     alwayslink = 1,
-)
-
-cc_library(
-    name = "float8",
-    srcs = ["float8.cc"],
-    hdrs = ["float8.h"],
-    visibility = [
-        "//tensorflow/core:__subpackages__",
-        "//tensorflow/security/fuzzing:__subpackages__",
-    ],
-    deps = [
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
-tf_cc_test(
-    name = "float8_test",
-    srcs = ["float8_test.cc"],
-    deps = [
-        ":float8",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:test_benchmark",
-    ],
 )
 
 cc_library(
@@ -1814,6 +1789,17 @@ tf_proto_library(
     make_default_target_header_only = True,
     protodeps = [
         ":model_proto",
+    ],
+)
+
+tf_proto_library(
+    name = "optimized_function_graph_proto",
+    srcs = ["optimized_function_graph.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    protodeps = [
+        ":types_proto",
+        ":graph_proto",
     ],
 )
 

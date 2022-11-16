@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/core/bitmap.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -1492,7 +1493,7 @@ TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::PopulateParallel(
       [&](absl::Span<const int64_t> indexes, int thread_id) {
         return generator(indexes, thread_id);
       },
-      /*parallel=*/true);
+      /*parallel=*/data<NativeT>().size() > 32);
 }
 
 template <typename NativeT>

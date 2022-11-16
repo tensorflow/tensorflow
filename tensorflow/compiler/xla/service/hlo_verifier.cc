@@ -26,16 +26,16 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -2422,7 +2422,16 @@ Status CheckElementwiseInstruction(HloInstruction* instruction) {
 // not check result shape as that is checked in the ShapeVerifier.
 class InstructionVerifier : public DfsHloVisitorWithDefault {
  public:
-  explicit InstructionVerifier(const HloVerifierOpts& opts) : opts_(opts) {}
+  InstructionVerifier(const HloModule* module, const HloVerifierOpts& opts)
+      : opts_(opts) {
+    // TODO(b/258285553): Eliminate this check when all paths that enable SPMD
+    // partitioning also set the num_partitions correctly.
+    const int64_t num_partitions = module->config().num_partitions();
+    if (module->config().use_spmd_partitioning() &&
+        opts.verify_sharding_device_numbers && num_partitions > 1) {
+      num_devices_ = module->config().num_partitions();
+    }
+  }
 
   Status DefaultAction(HloInstruction*) override { return OkStatus(); }
 
@@ -2567,6 +2576,18 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         << previous->second->ToString()
         << " in computation: " << previous->second->parent()->name();
     instructions_by_name_[instruction->name()] = instruction;
+
+    if (instruction->has_sharding()) {
+      Status status =
+          instruction->sharding().Validate(instruction->shape(), num_devices_);
+      if (!status.ok()) {
+        return Status(status.code(),
+                      absl::StrCat("Invalid sharding for instruction: ",
+                                   instruction->ToString(), ": ",
+                                   status.error_message()));
+      }
+    }
+
     return OkStatus();
   }
 
@@ -2596,6 +2617,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
  private:
   absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name_;
   const HloVerifierOpts& opts_;
+  std::optional<int64_t> num_devices_;
 };
 
 }  // namespace
@@ -2622,7 +2644,7 @@ StatusOr<bool> HloVerifier::Run(
     std::unique_ptr<ShapeVerifier> shape_verifier =
         target_metadata_->GetVerifier();
     InstructionVerifier instruction_verifier(
-        target_metadata_->GetVerifierOpts());
+        module, target_metadata_->GetVerifierOpts());
     for (auto* computation : module->computations(execution_threads)) {
       TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
       TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));

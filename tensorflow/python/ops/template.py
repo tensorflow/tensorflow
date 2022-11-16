@@ -24,7 +24,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
-from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
@@ -224,8 +223,8 @@ def make_template_internal(name_,
   """
 
   if kwargs:
-    func_ = tf_decorator.make_decorator(func_,
-                                        functools.partial(func_, **kwargs))
+    func_ = functools.partial(func_, **kwargs)
+
   if context.executing_eagerly():
     if unique_name_ is not None:
       raise ValueError(

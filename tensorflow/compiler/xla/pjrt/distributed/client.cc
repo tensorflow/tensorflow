@@ -30,10 +30,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/util.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
-#include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/random.h"
 #include "tensorflow/tsl/protobuf/coordination_config.pb.h"
@@ -453,8 +453,8 @@ DistributedRuntimeCoordinationServiceClient::
         timeout_fn(status, /*coordinator_reported_failure=*/true);
       };
 
-  std::unique_ptr<tensorflow::CoordinationClient> leader_client;
-  leader_client.reset(tensorflow::NewGrpcCoordinationClient(channel));
+  std::unique_ptr<tsl::CoordinationClient> leader_client;
+  leader_client.reset(tsl::NewGrpcCoordinationClient(channel));
   coord_agent_ = tsl::CreateCoordinationServiceAgent();
   const Status status =
       coord_agent_->Initialize(options.env, "jax_worker", options.node_id,

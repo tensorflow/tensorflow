@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_DEVICE_MEM_ALLOCATOR_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_DEVICE_MEM_ALLOCATOR_H_
 
+#include <vector>
+
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/framework/device_id.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace stream_executor {
 
@@ -39,10 +42,13 @@ class DeviceMemAllocator : public tsl::SubAllocator {
         use_unified_memory_(use_unified_memory) {
     CHECK(stream_exec_ != nullptr);
   }
-  ~DeviceMemAllocator() override {}
+
+  ~DeviceMemAllocator() override = default;
 
   void* Alloc(size_t alignment, size_t num_bytes,
               size_t* bytes_received) override {
+    tsl::profiler::TraceMe traceme("DeviceMemAllocator::Alloc");
+
     void* ptr = nullptr;
     *bytes_received = num_bytes;
     if (num_bytes > 0) {
@@ -57,6 +63,8 @@ class DeviceMemAllocator : public tsl::SubAllocator {
   }
 
   void Free(void* ptr, size_t num_bytes) override {
+    tsl::profiler::TraceMe traceme("DeviceMemAllocator::Free");
+
     if (ptr != nullptr) {
       VisitFree(ptr, device_id_.value(), num_bytes);
       if (use_unified_memory_) {

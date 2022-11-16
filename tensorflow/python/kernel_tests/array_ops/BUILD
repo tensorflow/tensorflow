@@ -441,6 +441,7 @@ cuda_py_test(
 cuda_py_test(
     name = "pad_op_test",
     size = "small",
+    timeout = "moderate",
     srcs = ["pad_op_test.py"],
     tags = ["no_mac"],  # test is times out on mac b/186262388
     xla_tags = [

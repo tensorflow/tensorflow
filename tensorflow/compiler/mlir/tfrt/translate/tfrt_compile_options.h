@@ -123,7 +123,7 @@ struct TfrtCompileOptions {
 
   // If true, streams with inter data depenedencies will be preferred to be
   // merged for inline execution.
-  bool merge_inter_dependent_streams = false;
+  bool merge_inter_dependent_streams = true;
 
   // Whether to enable the DecomposeResourceOpsPass.
   bool decompose_resource_ops = true;

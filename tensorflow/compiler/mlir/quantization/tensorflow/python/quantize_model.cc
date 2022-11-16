@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/constants.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
@@ -64,8 +65,23 @@ namespace quantization {
 namespace internal {
 namespace {
 
-void AddExportPasses(mlir::PassManager &pm) {
+// Add passes for transforming the MLIR module op so that it can be exported
+// back to GraphDef. Roughly, this consists of:
+//   1) Inserting the @main function, which will become the main Graph.
+//   2) [Experimental] Unfreezing constants into variables.
+//   3) Converting TF dialect -> tf_executor dialect.
+//   4) Adding initializer function's ops into @main function for correct
+//      resource initialization when loading the exported model.
+//
+// Setting `freeze_all_variables` to `false` is an experimental feature that has
+// no stability guarantees.
+void AddExportPasses(const bool freeze_all_variables, mlir::PassManager &pm) {
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
+
+  if (!freeze_all_variables) {
+    pm.addPass(mlir::quant::CreateUnfreezeConstantsPass());
+  }
+
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(mlir::CreateBreakUpIslandsPass());
@@ -86,8 +102,17 @@ std::string GetInitNodeName(
   return "";
 }
 
+[[nodiscard]] ExportedModel CreateExportedModel(
+    GraphDef &&graph_def, const absl::string_view init_node_name) {
+  ExportedModel exported_model{};
+  *exported_model.mutable_graph_def() = graph_def;
+  exported_model.set_init_node_name(std::string(init_node_name));
+
+  return exported_model;
+}
+
 // Converts MLIR ModuleOp to ExportedModel. Returns InternalError status
-// when the GraphDef conversion fails.
+// when the conversion fails.
 absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
     const mlir::ModuleOp module_op) {
   const GraphExportConfig config{};
@@ -102,10 +127,39 @@ absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
                                status.error_message());
   }
 
-  auto graph_def = std::make_unique<GraphDef>();
-  graph->ToGraphDef(graph_def.get());
+  GraphDef graph_def{};
+  graph->ToGraphDef(&graph_def);
 
-  return ExportedModel{*graph_def, GetInitNodeName(control_ret_nodes)};
+  return CreateExportedModel(std::move(graph_def),
+                             GetInitNodeName(control_ret_nodes));
+}
+
+// Retrieve the MLIR dump directory. The directory is read from the environment
+// variable `TF_QUANT_MLIR_DUMP_PREFIX`. However, if a special value "sponge" is
+// set to `TF_QUANT_MLIR_DUMP_PREFIX`, it uses the directory set in
+// `TEST_UNDECLARED_OUTPUT_DIRS`. Returns `absl::FailedPreconditionError` if
+// either:
+//   1. `TF_QUANT_MLIR_DUMP_PREFIX` is not set (empty), or
+//   2. `TEST_UNDECLARED_OUTPUT_DIRS` is not set (empty) when
+//      `TF_QUANT_MLIR_DUMP_PREFIX = "sponge"`.
+[[nodiscard]] absl::StatusOr<std::string> GetMlirDumpDir() {
+  auto dump_dir = std::string(
+      absl::NullSafeStringView(std::getenv("TF_QUANT_MLIR_DUMP_PREFIX")));
+  if (dump_dir.empty()) {
+    return absl::FailedPreconditionError(
+        "Environment variable not set: TF_QUANT_MLIR_DUMP_PREFIX, "
+        "IR dump file for TF quantization is not created.");
+  }
+
+  if (absl::EqualsIgnoreCase(dump_dir, "sponge")) {
+    if (!tsl::io::GetTestUndeclaredOutputsDir(&dump_dir)) {
+      return absl::FailedPreconditionError(
+          "Environment variable TF_QUANT_MLIR_DUMP_PREFIX=sponge but "
+          "TEST_UNDECLARED_OUTPUT_DIRS not set.");
+    }
+  }
+
+  return dump_dir;
 }
 
 // Creates a new file to dump the intermediate MLIRs by prefixing the
@@ -114,22 +168,20 @@ absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
 // set or set to an empty string.
 [[nodiscard]] absl::StatusOr<std::unique_ptr<llvm::raw_fd_ostream>>
 CreateMlirDumpFile(const absl::string_view dump_file_name) {
-  const auto prefix =
-      absl::NullSafeStringView(std::getenv("TF_QUANT_MLIR_DUMP_PREFIX"));
-  if (prefix.empty()) {
-    return absl::FailedPreconditionError(
-        "Environment variable not set: TF_QUANT_MLIR_DUMP_PREFIX, "
-        "IR dump file for TF quantization is not created.");
+  const absl::StatusOr<std::string> dump_dir = GetMlirDumpDir();
+  if (!dump_dir.ok()) {
+    return dump_dir.status();
   }
 
   Env *env = Env::Default();
-  const Status status = env->RecursivelyCreateDir(std::string(prefix));
+  const Status status = env->RecursivelyCreateDir(*dump_dir);
   if (!status.ok()) {
     return ToAbslStatus(status);
   }
 
   std::error_code ec{};  // NOLINT: Required to create llvm::raw_fd_ostream
-  const std::string dump_file_path = tsl::io::JoinPath(prefix, dump_file_name);
+  const std::string dump_file_path =
+      tsl::io::JoinPath(*dump_dir, dump_file_name);
   auto dump_file = std::make_unique<llvm::raw_fd_ostream>(dump_file_path, ec);
   if (ec) {
     return absl::InternalError(absl::StrFormat(
@@ -244,7 +296,7 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
   }
 
   AddQuantizeQatPasses(pm, quantization_options);
-  AddExportPasses(pm);
+  AddExportPasses(quantization_options.freeze_all_variables().enabled(), pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {
@@ -312,7 +364,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   }
 
   AddQuantizePtqPreCalibrationPasses(pm, quantization_options);
-  AddExportPasses(pm);
+  AddExportPasses(quantization_options.freeze_all_variables().enabled(), pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {
@@ -374,7 +426,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   }
 
   AddQuantizePtqPostCalibrationPasses(pm, quantization_options);
-  AddExportPasses(pm);
+  AddExportPasses(quantization_options.freeze_all_variables().enabled(), pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {
@@ -443,7 +495,7 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
   }
 
   AddQuantizePtqDynamicRangePasses(pm, quantization_options);
-  AddExportPasses(pm);
+  AddExportPasses(quantization_options.freeze_all_variables().enabled(), pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {

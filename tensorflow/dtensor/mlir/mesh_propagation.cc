@@ -214,7 +214,7 @@ mlir::LogicalResult InferMeshFromInputs(
         // extracted from the DTensorLayout op to infer the mesh of the cluster.
         if (auto layout_op =
                 llvm::dyn_cast<mlir::TF::DTensorLayout>(operand->getOwner())) {
-          auto mesh = layout_op.layout().mesh();
+          auto mesh = layout_op.getLayout().mesh();
           extracted_config.emplace(mesh);
         } else {
           auto extract_result =
@@ -697,16 +697,16 @@ mlir::LogicalResult RewriteCopyToMeshGradOp(
   // changes the mesh.
   builder->setInsertionPoint(backward_op);
   StatusOr<Layout> layout =
-      Layout::FromString(backward_op.reference_layout().str());
+      Layout::FromString(backward_op.getReferenceLayout().str());
   if (!layout.ok()) {
     return backward_op.emitOpError("Failure passing layout: ")
-           << backward_op.reference_layout().str();
+           << backward_op.getReferenceLayout().str();
   }
   layout->set_mesh(mesh.value());
 
   auto op = builder->create<mlir::TF::CopyToMeshOp>(
       backward_op->getLoc(), backward_op->getResult(0).getType(),
-      backward_op.input(), layout->ToString());
+      backward_op.getInput(), layout->ToString());
 
   backward_op->replaceAllUsesWith(op);
   backward_op->erase();

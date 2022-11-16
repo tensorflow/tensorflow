@@ -17,7 +17,7 @@ limitations under the License.
 #define MLIR_HLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H
 
 #include "llvm/Support/raw_ostream.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mhlo/IR/hlo_ops.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Value.h"
 

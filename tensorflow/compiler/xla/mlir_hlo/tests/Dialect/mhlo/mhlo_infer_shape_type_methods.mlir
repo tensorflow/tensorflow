@@ -504,7 +504,7 @@ func.func @reduce_window(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>,
 func.func @tensor_bounds(%arg0: tensor<3x5xf32>, %arg1: tensor<i32>) -> tensor<*xindex> {
   %result = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<3x5xf32>, tensor<i32>) -> tensor<*xf32>
 
-  // CHECK: types0 = tensor<?x5xf32, #mhlo.type_extensions<bounds = [3, -1]>>
+  // CHECK: types0 = tensor<?x5xf32, #mhlo.type_extensions<bounds = [3, ?]>>
   %1 = "mhlo_test.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
   func.return %1 : tensor<*xindex>
 }
@@ -512,9 +512,9 @@ func.func @tensor_bounds(%arg0: tensor<3x5xf32>, %arg1: tensor<i32>) -> tensor<*
 // -----
 
 // CHECK-LABEL: @static_tensor_bounds
-func.func @static_tensor_bounds(%arg0: tensor<?x5xf32, #mhlo.type_extensions<bounds = [8, -1]>>) -> tensor<*xindex> {
+func.func @static_tensor_bounds(%arg0: tensor<?x5xf32, #mhlo.type_extensions<bounds = [8, ?]>>) -> tensor<*xindex> {
   %bounds = mhlo.constant dense<8> : tensor<i32>
-  %result = "mhlo.set_dimension_size"(%arg0, %bounds) {dimension = 0 : i64} : (tensor<?x5xf32, #mhlo.type_extensions<bounds = [8, -1]>>, tensor<i32>) -> tensor<*xf32>
+  %result = "mhlo.set_dimension_size"(%arg0, %bounds) {dimension = 0 : i64} : (tensor<?x5xf32, #mhlo.type_extensions<bounds = [8, ?]>>, tensor<i32>) -> tensor<*xf32>
 
   // CHECK: types0 = tensor<8x5xf32>
   %1 = "mhlo_test.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
@@ -524,8 +524,8 @@ func.func @static_tensor_bounds(%arg0: tensor<?x5xf32, #mhlo.type_extensions<bou
 // -----
 
 // CHECK-LABEL: @edit_tensor_bounds
-func.func @edit_tensor_bounds(%arg0: tensor<?x5xf32, #mhlo.type_extensions<bounds = [3, -1]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
-  %result = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x5xf32, #mhlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
+func.func @edit_tensor_bounds(%arg0: tensor<?x5xf32, #mhlo.type_extensions<bounds = [3, ?]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
+  %result = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x5xf32, #mhlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
 
   // CHECK: types0 = tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, 5]>>
   %1 = "mhlo_test.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
@@ -535,10 +535,10 @@ func.func @edit_tensor_bounds(%arg0: tensor<?x5xf32, #mhlo.type_extensions<bound
 // -----
 
 // CHECK-LABEL: @retain_tensor_bounds
-func.func @retain_tensor_bounds(%arg0: tensor<?x5xf32, #mhlo.type_extensions<bounds = [3, -1]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
-  %result = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<?x5xf32, #mhlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
+func.func @retain_tensor_bounds(%arg0: tensor<?x5xf32, #mhlo.type_extensions<bounds = [3, ?]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
+  %result = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<?x5xf32, #mhlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
 
-  // CHECK: types0 = tensor<?x5xf32, #mhlo.type_extensions<bounds = [3, -1]>>
+  // CHECK: types0 = tensor<?x5xf32, #mhlo.type_extensions<bounds = [3, ?]>>
   %1 = "mhlo_test.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
   func.return %1 : tensor<*xindex>
 }
@@ -546,10 +546,10 @@ func.func @retain_tensor_bounds(%arg0: tensor<?x5xf32, #mhlo.type_extensions<bou
 // -----
 
 // CHECK-LABEL: @unknown_bounds
-func.func @unknown_bounds(%arg0: tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, -1]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
-  %result = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
+func.func @unknown_bounds(%arg0: tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, ?]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
+  %result = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
 
-  // CHECK: types0 = tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, -1]>>
+  // CHECK: types0 = tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, ?]>>
   %1 = "mhlo_test.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
   func.return %1 : tensor<*xindex>
 }
@@ -572,21 +572,21 @@ func.func @unranked_input(%arg0: tensor<*xf32>, %arg1: tensor<i32>) -> tensor<*x
 // See PairwiseSameOperandAndResultType::inferDimWithBound()
 // CHECK-LABEL: @add_bounds
 func.func @add_bounds(
-  %arg0: tensor<3x3x3x?x?x?x?xf32, #mhlo.type_extensions<bounds = [-1, -1, -1, -1, -1, 3, 3]>>,
-  %arg1: tensor<3x?x?x?x?x?x?xf32, #mhlo.type_extensions<bounds = [-1, -1, 4, -1, 3, 3, 4]>>) -> tensor<*xindex> {
+  %arg0: tensor<3x3x3x?x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, ?, ?, ?, 3, 3]>>,
+  %arg1: tensor<3x?x?x?x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, 4, ?, 3, 3, 4]>>) -> tensor<*xindex> {
   %result1 = "mhlo.add"(%arg0, %arg1) : (
-    tensor<3x3x3x?x?x?x?xf32, #mhlo.type_extensions<bounds = [-1, -1, -1, -1, -1, 3, 3]>>,
-    tensor<3x?x?x?x?x?x?xf32, #mhlo.type_extensions<bounds = [-1, -1, 4, -1, 3, 3, 4]>>)
+    tensor<3x3x3x?x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, ?, ?, ?, 3, 3]>>,
+    tensor<3x?x?x?x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, 4, ?, 3, 3, 4]>>)
     -> tensor<?x?x?x?x?x?x?xf32>
   %result2 = "mhlo.add"(%arg1, %arg0) : (
-    tensor<3x?x?x?x?x?x?xf32, #mhlo.type_extensions<bounds = [-1, -1, 4, -1, 3, 3, 4]>>,
-    tensor<3x3x3x?x?x?x?xf32, #mhlo.type_extensions<bounds = [-1, -1, -1, -1, -1, 3, 3]>>)
+    tensor<3x?x?x?x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, 4, ?, 3, 3, 4]>>,
+    tensor<3x3x3x?x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, ?, ?, ?, 3, 3]>>)
     -> tensor<?x?x?x?x?x?x?xf32>
 
-  // CHECK: types0 = tensor<3x3x3x?x?x?x?xf32, #mhlo.type_extensions<bounds = [-1, -1, -1, -1, 3, 3, 3]>>
+  // CHECK: types0 = tensor<3x3x3x?x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, ?, ?, 3, 3, 3]>>
   %1 = "mhlo_test.get_return_types"(%result1) : (tensor<?x?x?x?x?x?x?xf32>) -> tensor<*xindex>
 
-  // CHECK: types0 = tensor<3x3x3x?x?x?x?xf32, #mhlo.type_extensions<bounds = [-1, -1, -1, -1, 3, 3, 3]>>
+  // CHECK: types0 = tensor<3x3x3x?x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, ?, ?, 3, 3, 3]>>
   %2 = "mhlo_test.get_return_types"(%result2) : (tensor<?x?x?x?x?x?x?xf32>) -> tensor<*xindex>
   func.return %1 : tensor<*xindex>
 }
@@ -596,11 +596,11 @@ func.func @add_bounds(
 // This test covers "Error out" case for type inference of binary op with bounds
 // See PairwiseSameOperandAndResultType::inferDimWithBound()
 func.func @add_bounds_mismatch(
-  %arg0: tensor<3xf32, #mhlo.type_extensions<bounds = [-1]>>,
+  %arg0: tensor<3xf32, #mhlo.type_extensions<bounds = [?]>>,
   %arg1: tensor<?xf32, #mhlo.type_extensions<bounds = [2]>>) -> tensor<*xindex> {
   // expected-error@+1 {{requires compatible types for all operands and results}}
   %result = "mhlo.add"(%arg0, %arg1) : (
-    tensor<3xf32, #mhlo.type_extensions<bounds = [-1]>>,
+    tensor<3xf32, #mhlo.type_extensions<bounds = [?]>>,
     tensor<?xf32, #mhlo.type_extensions<bounds = [2]>>) -> tensor<?xf32>
   %1 = "mhlo_test.get_return_types"(%result) : (tensor<?xf32>) -> tensor<*xindex>
   func.return %1 : tensor<*xindex>

@@ -27,11 +27,11 @@ func.func @sort(%input1: tensor<?x?x?xf32>, %input2: tensor<?x?x?xi32>,
 // CHECK-DAG:      %[[OUTPUT2:.*]] = memref.alloc
 // CHECK-DAG:      memref.copy %[[INIT2]], %[[OUTPUT2]]
 // CHECK:          thlo.sort
-// CHECK-SAME:         ins(%[[INPUT1]] : memref<?x?x?xf32>,
-// CHECK-SAME:             %[[INPUT2]] : memref<?x?x?xi32>)
-// CHECK-SAME:         outs(%[[OUTPUT1]] : memref<?x?x?xf32>,
-// CHECK-SAME:              %[[OUTPUT2]] : memref<?x?x?xi32>)
-// CHECK-SAME:         {dimension = 1 : i64, is_stable = true}
+// CHECK-NEXT:         ins(%[[INPUT1]] : memref<?x?x?xf32>,
+// CHECK-SAME:           %[[INPUT2]] : memref<?x?x?xi32>)
+// CHECK-NEXT:         outs(%[[OUTPUT1]] : memref<?x?x?xf32>,
+// CHECK-SAME:           %[[OUTPUT2]] : memref<?x?x?xi32>)
+// CHECK-NEXT:         {dimension = 1 : i64, is_stable = true}
 // CHECK-SAME:         (%[[FLOAT1:[A-Za-z_0-9]*]]: f32, %[[FLOAT2:.*]]: f32,
 // CHECK-SAME:          %[[INT1:[A-Za-z_0-9]*]]: i32, %[[INT2:.*]]: i32)
 // CHECK:                 %[[RESULT:.*]] = arith.cmpf ogt, %[[FLOAT1]], %[[FLOAT2]] : f32

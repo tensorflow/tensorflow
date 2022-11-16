@@ -4485,25 +4485,28 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
       return kTfLiteError;
     }
 
-    if (nnapi_->SL_ANeuralNetworksDiagnostic_registerCallbacks != nullptr) {
-      nnapi_->SL_ANeuralNetworksDiagnostic_registerCallbacks(
-          [](const void* nnapi,
-             const ANeuralNetworksDiagnosticCompilationInfo* info) {
-            return LogCompilationInfoOnce(static_cast<const NnApi*>(nnapi),
+    if (!delegate_options.disable_debugging_diagnostics_callbacks) {
+      if (nnapi_->SL_ANeuralNetworksDiagnostic_registerCallbacks != nullptr) {
+        nnapi_->SL_ANeuralNetworksDiagnostic_registerCallbacks(
+            [](const void* nnapi,
+               const ANeuralNetworksDiagnosticCompilationInfo* info) {
+              return LogCompilationInfoOnce(static_cast<const NnApi*>(nnapi),
+                                            info);
+            },
+            [](const void* nnapi,
+               const ANeuralNetworksDiagnosticExecutionInfo* info) {
+              return LogExecutionInfoOnce(static_cast<const NnApi*>(nnapi),
                                           info);
-          },
-          [](const void* nnapi,
-             const ANeuralNetworksDiagnosticExecutionInfo* info) {
-            return LogExecutionInfoOnce(static_cast<const NnApi*>(nnapi), info);
-          },
-          const_cast<NnApi*>(nnapi_));
-      TFLITE_LOG_PROD(TFLITE_LOG_INFO,
-                      "Registered diagnostics callbacks in NNAPI SL driver"
-                      "SL_ANeuralNetworksDiagnostic_registerCallbacks.");
-    } else {
-      TFLITE_LOG_PROD(TFLITE_LOG_WARNING,
-                      "NNAPI SL driver did not implement "
-                      "SL_ANeuralNetworksDiagnostic_registerCallbacks!");
+            },
+            const_cast<NnApi*>(nnapi_));
+        TFLITE_LOG_PROD(TFLITE_LOG_INFO,
+                        "Registered diagnostics callbacks in NNAPI SL driver"
+                        "SL_ANeuralNetworksDiagnostic_registerCallbacks.");
+      } else {
+        TFLITE_LOG_PROD(TFLITE_LOG_WARNING,
+                        "NNAPI SL driver did not implement "
+                        "SL_ANeuralNetworksDiagnostic_registerCallbacks!");
+      }
     }
   }
 
@@ -6412,6 +6415,8 @@ void StatefulNnApiDelegate::StatefulNnApiDelegateConstructorImpl(
   delegate_data_.vendor_plugin = options.vendor_plugin;
   delegate_data_.max_execution_cache_size = options.max_execution_cache_size;
   delegate_data_.tensor_max_size_hints = options.tensor_max_size_hints;
+  delegate_data_.disable_debugging_diagnostics_callbacks =
+      options.disable_debugging_diagnostics_callbacks;
 
   TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                        "Created TensorFlow Lite delegate for NNAPI.");
@@ -6484,6 +6489,8 @@ const StatefulNnApiDelegate::Options StatefulNnApiDelegate::GetOptions(
   options.vendor_plugin = delegate_data->vendor_plugin;
   options.max_execution_cache_size = delegate_data->max_execution_cache_size;
   options.tensor_max_size_hints = delegate_data->tensor_max_size_hints;
+  options.disable_debugging_diagnostics_callbacks =
+      delegate_data->disable_debugging_diagnostics_callbacks;
   return options;
 }
 

@@ -19,10 +19,10 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_replace.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -2537,6 +2537,48 @@ ENTRY entry (parameter.0: bf16[1,8,1,8,320], parameter.1: bf16[1,8,6,8,320]) -> 
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, InvalidShardingRank) {
+  const char* const hlo = R"(
+HloModule Module
+
+ENTRY main {
+  p = f32[4,2] parameter(0), sharding={devices=[1,2,2,1]0,1,2,3}
+  ROOT r = f32[4,2] copy(p)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("tile assignment dimensions (excluding subgroups) is "
+                        "different than the input rank."));
+}
+
+TEST_F(HloVerifierTest, InvalidShardingDevices) {
+  const char* const hlo = R"(
+HloModule Module
+
+ENTRY main {
+  p = f32[4,2] parameter(0), sharding={devices=[2,2]0,1,2,3}
+  ROOT r = f32[4,2] copy(p)
+}
+)";
+
+  HloModuleConfig config;
+  config.set_num_partitions(2);
+  config.set_use_spmd_partitioning(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo, config));
+  ASSERT_TRUE(module->config().use_spmd_partitioning());
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("device 2 > num_devices (2) in tile assignment"));
 }
 
 }  // namespace

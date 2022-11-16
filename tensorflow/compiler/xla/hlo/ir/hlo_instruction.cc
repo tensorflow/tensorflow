@@ -998,8 +998,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->unique_id_ = proto.id();
 
   if (proto.has_sharding()) {
-    TF_ASSIGN_OR_RETURN(const auto& sharding,
+    TF_ASSIGN_OR_RETURN(HloSharding sharding,
                         HloSharding::FromProto(proto.sharding()));
+    // To allow for existing Hlo protos to not fail verification, apply tuple
+    // sharding normalization.
+    sharding = sharding.NormalizeTupleSharding(instruction->shape());
     instruction->set_sharding(sharding);
   }
 
@@ -1554,6 +1557,17 @@ HloInstruction::CreateBitcastConvert(const Shape& shape,
   auto instruction =
       absl::WrapUnique(new HloInstruction(HloOpcode::kBitcastConvert, shape));
   instruction->AppendOperand(operand);
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateStochasticConvert(const Shape& shape,
+                                        HloInstruction* operand,
+                                        HloInstruction* random) {
+  auto instruction = absl::WrapUnique(
+      new HloInstruction(HloOpcode::kStochasticConvert, shape));
+  instruction->AppendOperand(operand);
+  instruction->AppendOperand(random);
   return instruction;
 }
 
@@ -2117,7 +2131,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
-    case HloOpcode::kStochasticConvert:
       CHECK_EQ(new_operands.size(), 2);
       clone = CreateBinary(shape, opcode_, new_operands[0], new_operands[1]);
       break;
@@ -2139,6 +2152,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kBitcastConvert:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateBitcastConvert(shape, new_operands[0]);
+      break;
+    case HloOpcode::kStochasticConvert:
+      CHECK_EQ(new_operands.size(), 2);
+      clone = CreateStochasticConvert(shape, new_operands[0], new_operands[1]);
       break;
     case HloOpcode::kDynamicUpdateSlice:
       clone = CreateDynamicUpdateSlice(shape, new_operands[0], new_operands[1],

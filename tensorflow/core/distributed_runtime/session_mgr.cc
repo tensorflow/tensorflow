@@ -83,7 +83,8 @@ void SetCoordinatedJobList(const ServerDef& server_def,
 SessionMgr::SessionMgr(
     WorkerEnv* worker_env, const std::string& default_worker_name,
     std::unique_ptr<WorkerCacheInterface> default_worker_cache,
-    WorkerCacheFactory worker_cache_factory)
+    WorkerCacheFactory worker_cache_factory,
+    tsl::CoordinationServiceRpcHandler* coordination_handler)
     : worker_env_(worker_env),
       default_worker_cache_(std::move(default_worker_cache)),
       legacy_session_(WorkerSession::CreateWithBorrowedDeviceMgr(
@@ -94,7 +95,8 @@ SessionMgr::SessionMgr(
           std::unique_ptr<GraphMgr>(
               new GraphMgr(worker_env, worker_env->device_mgr)),
           nullptr)),
-      worker_cache_factory_(std::move(worker_cache_factory)) {}
+      worker_cache_factory_(std::move(worker_cache_factory)),
+      coordination_handler_(coordination_handler) {}
 
 /* static */
 std::string SessionMgr::WorkerNameFromServerDef(const ServerDef& server_def) {
@@ -261,6 +263,9 @@ Status SessionMgr::CreateSession(
       coordination_service_ =
           tsl::CoordinationServiceInterface::EnableCoordinationService(
               worker_env_->env, coordination_config, std::move(client_cache));
+      if (coordination_handler_ != nullptr) {
+        coordination_handler_->SetServiceInstance(coordination_service_.get());
+      }
     }
 
     // Initialize coordination service agent.

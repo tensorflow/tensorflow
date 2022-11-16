@@ -157,6 +157,7 @@ cc_library(
         "//tensorflow/core/protobuf:worker_proto_cc",
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_rpc_handler",
         "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
     ],
 )

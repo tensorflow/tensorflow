@@ -21,15 +21,15 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "gml_st/IR/gml_st_ops.h"
+#include "gml_st/interfaces/bufferizable_op_interface_impl.h"
+#include "lhlo/IR/lhlo_ops.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/bufferizable_op_interface_impl.h"
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/bufferizable_op_interface_impl.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
+#include "mhlo/IR/hlo_ops.h"
+#include "mhlo/interfaces/bufferizable_op_interface_impl.h"
+#include "mhlo/transforms/rewriters.h"
+#include "mhlo/utils/type_conversion.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir-hlo/Transforms/rewriters.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -74,7 +74,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "stablehlo/dialect/ChloOps.h"
 #include "thlo/IR/thlo_ops.h"
-#include "thlo/transforms/bufferizable_op_interface_impl.h"
+#include "thlo/interfaces/bufferizable_op_interface_impl.h"
 
 namespace mlir {
 
@@ -250,7 +250,7 @@ struct OneShotBufferizePass
     opts.allowReturnAllocs = true;
     opts.bufferizeFunctionBoundaries = true;
     opts.functionBoundaryTypeConversion =
-        bufferization::BufferizationOptions::LayoutMapOption::IdentityLayoutMap;
+        bufferization::LayoutMapOption::IdentityLayoutMap;
     opts.createDeallocs = false;
     opts.bufferAlignment = 64;
 

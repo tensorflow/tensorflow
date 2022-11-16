@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
@@ -121,13 +121,15 @@ class GpuExecutable : public Executable {
       absl::string_view mlir_module,
       xla::EntryFunctionAttributes entry_func_attrs, DebugOptions debug_options,
       absl::string_view asm_text, absl::string_view binary,
-      GpuVersion gpu_version, stream_executor::StreamExecutor* executor);
+      std::vector<ConstantInfo> constants, GpuVersion gpu_version,
+      stream_executor::StreamExecutor* executor);
 
   // Constructor to use when loading a GpuExecutable from an object file (native
   // function compiled for XLA Runtime). Omits setting class members that aren't
   // used in XLA Runtime execution mode.
   GpuExecutable(std::shared_ptr<HloModule> hlo_module, std::string asm_text,
-                std::vector<uint8_t> binary, GpuVersion gpu_version,
+                std::vector<uint8_t> binary,
+                std::vector<ConstantInfo> constants, GpuVersion gpu_version,
                 xla::EntryFunctionAttributes entry_func_attrs,
                 absl::string_view module_name, Shape xla_output_shape,
                 std::vector<BufferAllocation> allocations,

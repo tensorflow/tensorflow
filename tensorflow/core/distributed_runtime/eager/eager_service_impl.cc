@@ -204,6 +204,31 @@ Status AddOpRetvalsToResponse(
   }
   return sg.as_summary_status();
 }
+
+Status ResetAgentAndConnectToCoordinationService(
+    tsl::CoordinationServiceAgent* coord_agent) {
+  // The error state should already be consumed when a new context is
+  // created. It should be fine to reset the agent.
+  if (coord_agent->IsError()) {
+    const Status s = coord_agent->Reset();
+    if (!s.ok()) {
+      LOG(ERROR) << "Coordination Service agent reset failed " << s;
+      return s;
+    }
+  }
+  // In the scenario of PS strategy, the setup is single client and the error
+  // cannot be propagated. As a result, Coordination Service agent can still
+  // have the status of being connected. We should not let it connect again.
+  if (!coord_agent->IsConnected()) {
+    const Status s = coord_agent->Connect();
+    if (!s.ok()) {
+      LOG(ERROR) << "Coordination Service agent connect failed " << s;
+      return s;
+    }
+  }
+  return OkStatus();
+}
+
 }  // namespace
 
 Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
@@ -322,24 +347,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     // TODO(b/254356090): See if enabling health check needs to be inside the
     // Coordination Service.
     if (config.experimental().coordination_config().enable_health_check()) {
-      // The error state should already be consumed when a new context is
-      // created. It should be fine to reset the agent.
-      if (coord_agent->IsError()) {
-        const Status s = coord_agent->Reset();
-        if (!s.ok()) {
-          LOG(ERROR) << "Coordination Service agent reset failed " << s;
-          return s;
-        }
-      }
-      // The Coordination Service agent could still be connected due to not
-      // propagating the error. We should not let it connect again.
-      if (!coord_agent->IsConnected()) {
-        const Status s = coord_agent->Connect();
-        if (!s.ok()) {
-          LOG(ERROR) << "Coordination Service agent connect failed " << s;
-          return s;
-        }
-      }
+      TF_RETURN_IF_ERROR(
+          ResetAgentAndConnectToCoordinationService(coord_agent));
     }
     auto preemption_notifier =
         tsl::PreemptionNotifier::CreatePreemptionNotifier("sigterm",
@@ -453,6 +462,17 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
     VLOG(1) << "EagerContext::UpdateRemoteWorker failed with " << s.ToString();
     return s;
   }
+
+#if !defined(IS_MOBILE_PLATFORM)
+  const auto& config = request->server_def().default_session_config();
+  const bool should_connect =
+      !config.experimental().coordination_config().service_type().empty() &&
+      config.experimental().coordination_config().enable_health_check();
+  if (should_connect) {
+    auto coord_agent = env_->session_mgr->GetCoordinationServiceAgent();
+    TF_RETURN_IF_ERROR(ResetAgentAndConnectToCoordinationService(coord_agent));
+  }
+#endif  // !IS_MOBILE_PLATFORM
 
   std::vector<DeviceAttributes> device_attributes;
   device_mgr->ListDeviceAttributes(&device_attributes);
@@ -580,7 +600,10 @@ Status EagerServiceImpl::ExecuteOp(CallOptions* call_opts,
   TF_RETURN_IF_ERROR(GetEagerOperationAndNumRetvals(
       operation, eager_context, eager_executor, &op, &num_retvals));
 
-  auto cm = std::make_shared<CancellationManager>();
+  // Shard the CancellationManager so that it won't become a bottleneck in
+  // rendezvous.
+  auto cm =
+      std::make_shared<CancellationManager>(env_->experimental_num_shards);
   if (call_opts) {
     op.SetCancellationManager(cm.get());
     call_opts->SetCancelCallback([cm] { cm->StartCancel(); });

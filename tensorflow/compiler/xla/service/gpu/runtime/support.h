@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -26,6 +27,13 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+struct DotDimensionNumbers {
+  llvm::ArrayRef<int64_t> lhs_batch;
+  llvm::ArrayRef<int64_t> lhs_contract;
+  llvm::ArrayRef<int64_t> rhs_batch;
+  llvm::ArrayRef<int64_t> rhs_contract;
+};
 
 // Disable all CustomCall checks in optimized build.
 inline constexpr runtime::CustomCall::RuntimeChecks checks =  // NOLINT
@@ -86,6 +94,21 @@ inline StatusOr<GemmConfig> GetGemmConfig(
 }
 
 }  // namespace gpu
+}  // namespace xla
+
+namespace xla {
+namespace runtime {
+
+// using llvm::ArrayRef;
+
+XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
+    xla::gpu::DotDimensionNumbers,
+    AggregateMember<llvm::ArrayRef<int64_t>>("lhs_batch"),
+    AggregateMember<llvm::ArrayRef<int64_t>>("lhs_contract"),
+    AggregateMember<llvm::ArrayRef<int64_t>>("rhs_batch"),
+    AggregateMember<llvm::ArrayRef<int64_t>>("rhs_contract"));
+
+}  // namespace runtime
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_SUPPORT_H_

@@ -55,6 +55,9 @@ cc_library(
     testonly = True,
     srcs = ["xla_compilation_cache_test_helper.cc"],
     hdrs = ["xla_compilation_cache_test_helper.h"],
+    visibility = [
+        "//tensorflow/compiler/jit:__pkg__",
+    ],
     deps = [
         "//tensorflow/compiler/jit:xla_activity_listener",
         "//tensorflow/compiler/jit:xla_compilation_cache_proto_cc",

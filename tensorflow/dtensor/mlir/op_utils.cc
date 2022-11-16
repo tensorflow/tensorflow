@@ -55,7 +55,7 @@ absl::optional<mlir::func::FuncOp> MaybeFindFunction(mlir::Operation* op) {
 }
 
 void RemoveDTensorLayoutOp(mlir::TF::DTensorLayout layout) {
-  layout.output().replaceAllUsesWith(layout.input());
+  layout.getOutput().replaceAllUsesWith(layout.getInput());
   layout.erase();
 }
 

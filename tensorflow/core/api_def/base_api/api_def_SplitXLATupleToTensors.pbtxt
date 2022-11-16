@@ -1,0 +1,33 @@
+# proto-file: tensorflow/core/api_def/base_api/api_def_SplitXLATupleToTensors.pbtxt
+# proto-message: SplitXLATupleToTensors reference proto
+
+op {
+  graph_op_name: "SplitXLATupleToTensors"
+  visibility: HIDDEN
+  in_arg {
+    name: "input"
+    description: "An xla tuple. For example (1, 0.1, 2, 0.2, 3, 0.3, 4, 0.4)"
+  }
+  out_arg {
+    name: "indices"
+    description: "A rank-1 tensor of odd elements of `input`. Such as [1, 2, 3, 4]"
+  }
+  out_arg {
+    name: "values"
+    description: "A rank-1 tensor of even elements of `input`. Such as [0.1, 0.2, 0.3, 0.4]."
+  }
+  attr {
+    name: "indices_type"
+    description: "{int32, int64} = DT_INT32"
+  }
+  attr {
+    name: "values_type"
+    description: "{half, bfloat16, float, int32, uint32, int64}"
+  }
+  attr {
+    name: "output_shape"
+    description: "Indices tensor shape. indices and value tensors must have same shape."  
+  }
+  summary: "An op that splits an xla tuple to a tensor of indices and a tensor of values."
+  description: "An op that splits an xla tuple to a tensor of indices and a tensor of values."
+}

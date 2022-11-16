@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/container/node_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/synchronization/mutex.h"
-#include "llvm/ADT/DenseMap.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
@@ -77,7 +77,7 @@ class ConvRunnerCache {
  private:
   mutable absl::Mutex mutex_;
 
-  llvm::SmallDenseMap<int64_t, std::pair<MaybeFusedConvRunner, GpuConvConfig>>
+  absl::node_hash_map<int64_t, std::pair<MaybeFusedConvRunner, GpuConvConfig>>
       runners_ ABSL_GUARDED_BY(mutex_);
 };
 

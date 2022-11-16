@@ -19,14 +19,15 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <utility>
 
+#include "gml_st/IR/gml_st_ops.h"
+#include "gml_st/interfaces/tiling_interface.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
@@ -65,17 +66,20 @@ void printDstStyleOp(
     function_ref<SmallVector<StringRef>(DstOpTy op, OpAsmPrinter &)>
         printAttrsFn = nullptr) {
   if (op.getNumDpsInputs() != 0) {
+    p.printNewline();
     p << " ins(";
     llvm::interleaveComma(
         op.getOperands().take_front(op.getNumDpsInputs()), p,
         [&](Value input) { p << input << " : " << input.getType(); });
     p << ")";
   }
+  p.printNewline();
   p << " outs(";
   llvm::interleaveComma(
       op.getOperands().take_back(op.getNumDpsInits()), p,
       [&](Value output) { p << output << " : " << output.getType(); });
   p << ")";
+  p.printNewline();
 
   // Print attributes with custom printing logic.
   SmallVector<StringRef> elidedAttrs;
@@ -147,10 +151,6 @@ ParseResult parseDenseI64ArrayAttr(OpAsmParser &parser,
 void printDenseI64ArrayAttr(OpAsmPrinter &p, StringRef attributeName,
                             ArrayRef<int64_t> attributeValue) {
   p << " " << attributeName << " = [" << attributeValue << "] ";
-}
-
-bool dimensionsMatch(int64_t d1, int64_t d2) {
-  return ShapedType::isDynamic(d1) || ShapedType::isDynamic(d2) || d1 == d2;
 }
 
 SmallVector<utils::IteratorType> getParallelIteratorTypes(int64_t dimCount) {
@@ -418,21 +418,6 @@ Value fuseConcatenateOpThroughPointRecursively(
         builder.create<scf::YieldOp>(loc, fused);
       });
   return ifOp.getResults().front();
-}
-
-Value fuseConcatenateOpThroughPoint(ConcatenateOp op, OpBuilder &builder,
-                                    Location loc, Value subset) {
-  auto resultTy = op.getType(0).cast<RankedTensorType>();
-  uint64_t concatDim = op.getDimension();
-
-  // Materialize initial offsets.
-  auto tileOp = subset.getDefiningOp<gml_st::TileOp>();
-  SmallVector<Value> initialOffsets =
-      getValueOrCreateConstantIndexOp(builder, loc, tileOp.getMixedOffsets());
-
-  ValueRange initialOperands = op.getInputs();
-  return fuseConcatenateOpThroughPointRecursively(
-      builder, loc, resultTy, concatDim, initialOffsets, initialOperands);
 }
 
 }  // namespace
@@ -900,6 +885,21 @@ FailureOr<Value> GatherOp::generateResultTileValue(
 // SortOp
 //===----------------------------------------------------------------------===//
 
+void SortOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+  ResultRange results = getResults();
+  for (int i = 0; i < results.size(); i++) {
+    setNameFn(results[i], "sorted" + std::to_string(i));
+  }
+}
+
+void SortOp::getAsmBlockArgumentNames(Region &region,
+                                      OpAsmSetValueNameFn setNameFn) {
+  for (int i = 0, e = region.getNumArguments(); i < e; i += 2) {
+    setNameFn(region.getArgument(i), "lhs" + std::to_string(i / 2));
+    setNameFn(region.getArgument(i + 1), "rhs" + std::to_string(i / 2));
+  }
+}
+
 ParseResult SortOp::parse(OpAsmParser &parser, OperationState &result) {
   if (parseDstStyleOp(parser, result)) return failure();
 
@@ -938,7 +938,7 @@ LogicalResult SortOp::verify() {
     return emitOpError() << "expected the number of inputs " << numInputs
                          << " to match the number of outputs " << numOutputs;
   }
-  if (comparatorArgs.size() != numInputs * 2) {
+  if (static_cast<int64_t>(comparatorArgs.size()) != numInputs * 2) {
     return emitOpError() << "expected the number of block arguments "
                          << comparatorArgs.size() << " to be twice the number "
                          << "of inputs (2*" << numInputs << ")";
@@ -995,9 +995,10 @@ LogicalResult SortOp::verify() {
 
   // Checks that the rank of the reference shape is larger than the absolute
   // value of the sorting dimension. This is enough to ensure that the dimension
-  // is valid, since all inputs are known to have the same shape.
-  int64_t referenceRank = referenceShape.size();
-  if (getDimension() >= referenceRank || getDimension() < 0) {
+  // is valid, since all inputs are known to have the same shape. `getDimension`
+  // returns an unsigned int, so no need to check for negative values.
+  size_t referenceRank = referenceShape.size();
+  if (getDimension() >= referenceRank) {
     return emitOpError() << "sorting dimension must be in range [0, "
                          << referenceRank << ") but got " << getDimension();
   }

@@ -18,7 +18,7 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_THLO_IR_THLO_OPS_H
 #define MLIR_HLO_DIALECT_THLO_IR_THLO_OPS_H
 
-#include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
+#include "gml_st/interfaces/tiling_interface.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"

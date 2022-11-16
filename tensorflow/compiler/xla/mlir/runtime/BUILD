@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package_group(
@@ -24,7 +25,7 @@ package(
     licenses = ["notice"],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "xla-runtime-opt",
     srcs = ["xla-runtime-opt.cc"],
     compatible_with = get_compatible_with_cloud(),

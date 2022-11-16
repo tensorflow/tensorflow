@@ -29,7 +29,13 @@ tf_proto_library(
     srcs = ["profiler_service_monitor_result.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = [
+        "//tensorflow/tsl/profiler/protobuf:profiler_service_monitor_result_proto",
+    ],
     visibility = ["//visibility:public"],
+    exports = [
+        "//tensorflow/tsl/profiler/protobuf:profiler_service_monitor_result_proto",
+    ],
 )
 
 tf_proto_library(
@@ -37,7 +43,9 @@ tf_proto_library(
     srcs = ["profiler_options.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = ["//tensorflow/tsl/profiler/protobuf:profiler_options_proto"],
     visibility = ["//visibility:public"],
+    exports = ["//tensorflow/tsl/profiler/protobuf:profiler_options_proto"],
 )
 
 # This is needed because of how tf_android_core_proto_sources parses proto paths.
@@ -49,28 +57,27 @@ exports_files(
 tf_proto_library(
     name = "profiler_service_proto",
     srcs = ["profiler_service.proto"],
-    has_services = 1,
     cc_api_version = 2,
-    create_grpc_library = True,
     make_default_target_header_only = True,
     protodeps = [
-        ":profiler_options_proto",
-        ":profiler_service_monitor_result_proto",
+        "//tensorflow/tsl/profiler/protobuf:profiler_service_proto",
     ],
     use_grpc_namespace = True,
     visibility = ["//visibility:public"],
+    exports = ["//tensorflow/tsl/profiler/protobuf:profiler_service_proto"],
 )
 
 tf_proto_library(
     name = "profiler_analysis_proto",
     srcs = ["profiler_analysis.proto"],
-    has_services = 1,
     cc_api_version = 2,
-    create_grpc_library = True,
     make_default_target_header_only = True,
-    protodeps = [":profiler_service_proto"],
+    protodeps = [
+        "//tensorflow/tsl/profiler/protobuf:profiler_analysis_proto",
+    ],
     use_grpc_namespace = True,
     visibility = ["//visibility:public"],
+    exports = ["//tensorflow/tsl/profiler/protobuf:profiler_analysis_proto"],
 )
 
 tf_proto_library(
@@ -82,8 +89,13 @@ tf_proto_library(
         "tfprof_output.proto",
     ],
     cc_api_version = 2,
-    protodeps = tf_additional_all_protos(),
+    protodeps = [
+        "//tensorflow/tsl/profiler/protobuf:profile_proto",
+    ] + tf_additional_all_protos(),
     visibility = [":friends"],
+    exports = [
+        "//tensorflow/tsl/profiler/protobuf:profile_proto",
+    ],
 )
 
 cc_library(

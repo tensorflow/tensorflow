@@ -707,6 +707,37 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertAllClose(new_outputs, got_outputs, atol=0.1048)
     self.assertAllClose(new_outputs, expected_outputs, atol=0.1023)
 
+  # Raises error because the constant unfreezing is not yet fully implemented.
+  @test_util.run_in_graph_and_eager_modes
+  def test_matmul_ptq_model_with_unfreeze_constants_raises_error(self):
+    model = self._create_matmul_model()
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    repr_ds = self._create_data_generator(
+        input_key='input_tensor', shape=(1, 1024), num_examples=2)
+
+    tags = [tag_constants.SERVING]
+    output_directory = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE),
+        freeze_all_variables=quant_opts_pb2.FreezeAllVariables(enabled=False),
+    )
+
+    # This should happen because the variable is not initialized after the
+    # pre-calibration step.
+    with self.assertRaisesRegex(
+        ValueError,
+        'Failed to run graph for post-training quantization calibration'):
+      quantize_model.quantize(
+          input_saved_model_path, ['serving_default'],
+          tags,
+          output_directory,
+          quantization_options,
+          representative_dataset=repr_ds)
+
   @parameterized.named_parameters(
       ('use_constant', False),
       ('use_variable', True),
@@ -1272,6 +1303,47 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # Quantization is not currently supported for gather.
     self.assertFalse(
         self._contains_quantized_function_call(output_meta_graphdef))
+
+  # Raises error because the constant unfreezing is not yet fully implemented.
+  @test_util.run_in_graph_and_eager_modes
+  def test_ptq_model_with_variable_tf1_saved_model_unfreeze_constants_raises_error(
+      self):
+    input_saved_model_path = self.create_tempdir('input').full_path
+    signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    tags = {tag_constants.SERVING}
+
+    input_placeholder = self._create_and_save_tf1_conv_model(
+        input_saved_model_path,
+        signature_key,
+        tags,
+        input_key='x',
+        output_key='output',
+        use_variable=True)
+
+    signature_keys = [signature_key]
+    output_directory = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE),
+        freeze_all_variables=quant_opts_pb2.FreezeAllVariables(enabled=False),
+    )
+
+    repr_ds = self._create_data_generator(
+        input_key='x', shape=input_placeholder.shape, num_examples=2)
+
+    # This should happen because the variable is not initialized after the
+    # pre-calibration step.
+    with self.assertRaisesRegex(
+        ValueError,
+        'Failed to run graph for post-training quantization calibration'):
+      quantize_model.quantize(
+          input_saved_model_path,
+          signature_keys,
+          tags,
+          output_directory,
+          quantization_options,
+          representative_dataset=repr_ds)
 
   @test_util.run_in_graph_and_eager_modes
   def test_ptq_model_with_tf1_saved_model(self):

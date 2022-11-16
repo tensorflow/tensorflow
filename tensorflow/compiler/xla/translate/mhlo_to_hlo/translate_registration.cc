@@ -18,7 +18,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/translate.h"
 
 namespace {
@@ -34,12 +34,6 @@ llvm::cl::opt<bool> emit_return_tuple(
     "emit-return-tuple",
     llvm::cl::desc("Emit HLO modules with entry computations returning tuple"),
     llvm::cl::init(false));
-
-// NOLINTNEXTLINE
-llvm::cl::opt<bool> legalize_node_names(
-    "legalize-node-names",
-    llvm::cl::desc("Legalize nodes names when translating MHLO->XLA HLO"),
-    llvm::cl::init(true));
 
 // NOLINTNEXTLINE
 llvm::cl::opt<bool> with_layouts(
@@ -73,9 +67,8 @@ static mlir::LogicalResult MlirHloToHloTranslate(mlir::ModuleOp module,
 static mlir::LogicalResult MlirHloToHloTextTranslate(
     mlir::ModuleOp module, llvm::raw_ostream& output) {
   return xla::MlirHloToHloTextTranslateFunction(
-      module, output, emit_return_tuple, emit_use_tuple_arg,
-      legalize_node_names, print_layouts, print_large_constants, via_builder,
-      with_layouts);
+      module, output, emit_return_tuple, emit_use_tuple_arg, print_layouts,
+      print_large_constants, via_builder, with_layouts);
 }
 
 static void RegisterInputDialects(mlir::DialectRegistry& registry) {

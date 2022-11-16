@@ -382,6 +382,7 @@ cc_library(
         ":chlo_ops",
         ":stablehlo_ops",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SparseTensorDialect",
     ],
 )
 

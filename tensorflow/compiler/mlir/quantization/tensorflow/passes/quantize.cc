@@ -299,7 +299,7 @@ struct QuantizeAvgPoolOpPattern
     auto avg_pool_op = q_op.getArg().getDefiningOp<TF::AvgPoolOp>();
     if (!avg_pool_op) return failure();
     auto dq_op = dyn_cast_or_null<quantfork::DequantizeCastOp>(
-        avg_pool_op.value().getDefiningOp());
+        avg_pool_op.getValue().getDefiningOp());
     if (!dq_op) return failure();
 
     // Check if the same-scale requirement is met.
@@ -323,20 +323,20 @@ struct QuantizeAvgPoolOpPattern
     auto fcast_op = rewriter.create<TF::CastOp>(
         dq_op->getLoc(), dq_arg_type.clone(rewriter.getF32Type()),
         scast_op.getResult());
-    dq_op.getResult().replaceUsesWithIf(fcast_op.y(), [&](OpOperand& operand) {
-      return operand.getOwner() == avg_pool_op;
-    });
+    dq_op.getResult().replaceUsesWithIf(
+        fcast_op.getY(),
+        [&](OpOperand& operand) { return operand.getOwner() == avg_pool_op; });
 
     // Cast back to the storage type after AvgPool op.
     rewriter.setInsertionPointAfter(avg_pool_op);
     auto const_val = CreateScalarConstValue(rewriter, q_op.getLoc(), 0.5f);
     auto add_val = rewriter.create<TF::AddV2Op>(
-        q_op.getLoc(), avg_pool_op.output(), const_val);
+        q_op.getLoc(), avg_pool_op.getOutput(), const_val);
     auto floor_val = rewriter.create<TF::FloorOp>(q_op.getLoc(), add_val);
     auto icast_op = rewriter.create<TF::CastOp>(
         q_op.getLoc(), q_result_type.clone(qtype.getStorageType()), floor_val);
     auto iscast_op = rewriter.create<quantfork::StorageCastOp>(
-        q_op.getLoc(), q_op.getType(), icast_op.y());
+        q_op.getLoc(), q_op.getType(), icast_op.getY());
     q_op.getResult().replaceAllUsesWith(iscast_op.getResult());
     return success();
   }

@@ -100,9 +100,9 @@ cc_library(
         ":compiler",
         ":custom_call_encoding",
         ":passes",
+        "//tensorflow/compiler/xla/mlir/backends/cpu/transforms:passes",
         "//tensorflow/compiler/xla/mlir/math/transforms:passes",
         "//tensorflow/compiler/xla/mlir/memref/transforms:passes",
-        "//tensorflow/compiler/xla/mlir/transforms/cpu:passes",
         "//tensorflow/compiler/xla/runtime:compiler",
         "@llvm-project//mlir:AMXToLLVMIRTranslation",
         "@llvm-project//mlir:AffineDialect",
@@ -163,6 +163,7 @@ cc_library(
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFToControlFlow",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,  # has pipeline registration
 )

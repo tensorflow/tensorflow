@@ -172,6 +172,7 @@ tf_proto_library(
         "//tensorflow/core/util:protos_all",
         "//tensorflow/core/util:test_log_proto",
         "//tensorflow/core/grappler/costs:op_performance_data",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto",
         "//tensorflow/tsl/protobuf:coordination_config_proto",
         "//tensorflow/tsl/protobuf:distributed_runtime_payloads_proto",
@@ -1261,7 +1262,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
-        "//tensorflow/tsl/platform/default/build_config:platformlib",
+        "//tensorflow/core/platform/default/build_config:platformlib",
     ] + if_static([":lib_internal_impl"]),
 )
 
@@ -1287,7 +1288,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
-        "//tensorflow/tsl/platform/default/build_config:platformlib",
+        "//tensorflow/core/platform/default/build_config:platformlib",
     ],
 )
 
@@ -1442,7 +1443,7 @@ cc_library(
         "//tensorflow/core/platform:tracing",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/core/platform:unbounded_work_queue",
-        "//tensorflow/tsl/platform/default/build_config:platformlib",
+        "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/util:env_var",
         "//tensorflow/core/util:reporter",  # TODO(gunan): REMOVE as soon as cc_shared_library is supported.
         "@snappy",
@@ -1455,16 +1456,19 @@ cc_library(
     }) +
     # The TF proto implementations that we will statically link here.
     [
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc_impl",
-        "//tensorflow/core/profiler:profiler_options_proto_cc_impl",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl",
         "//tensorflow/core/protobuf:autotuning_proto_cc_impl",
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl",
         "//tensorflow/core:protos_all_cc_impl",
+        "//tensorflow/tsl/protobuf:autotuning_proto_cc_impl",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc_impl",
         "//tensorflow/tsl/protobuf:protos_all_cc_impl",
         "//tensorflow/compiler/xla:xla_proto_cc_impl",
         "//tensorflow/compiler/xla:xla_data_proto_cc_impl",
         "//tensorflow/compiler/xla/service:hlo_proto_cc_impl",
+        "//tensorflow/compiler/xla/service/gpu:backend_configs_cc_impl",
     ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps(),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:
@@ -1614,7 +1618,7 @@ cc_header_only_library(
         ":lib",
         ":lib_internal",
         "//tensorflow/core/framework:bounds_check",
-        "//tensorflow/tsl/platform/default/build_config:platformlib",
+        "//tensorflow/core/platform/default/build_config:platformlib",
     ],
 )
 
@@ -1673,7 +1677,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform:fingerprint",
-        "//tensorflow/tsl/platform/default/build_config:platformlib",
+        "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/tsl/platform:stringpiece",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/core/profiler/lib:annotated_traceme",

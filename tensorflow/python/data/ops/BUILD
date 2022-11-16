@@ -24,6 +24,9 @@ py_library(
 py_library(
     name = "counter_op",
     srcs = ["counter_op.py"],
+    deps = [
+        "//third_party/py/numpy",
+    ],
 )
 
 py_library(
@@ -53,10 +56,12 @@ py_library(
         ":batch_op",
         ":counter_op",
         ":filter_op",
+        ":flat_map_op",
         ":from_tensor_slices_op",
         ":ignore_errors_op",
         ":iterator_ops",
         ":load_ops",
+        ":map_op",
         ":options",
         ":padded_batch_op",
         ":ragged_batch_op",
@@ -64,6 +69,8 @@ py_library(
         ":save_ops",
         ":sparse_batch_op",
         ":structured_function",
+        ":unique_op",
+        ":window_op",
         ":zip_op",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -100,6 +107,11 @@ py_library(
 py_library(
     name = "filter_op",
     srcs = ["filter_op.py"],
+)
+
+py_library(
+    name = "flat_map_op",
+    srcs = ["flat_map_op.py"],
 )
 
 py_library(
@@ -147,6 +159,11 @@ py_library(
 )
 
 py_library(
+    name = "map_op",
+    srcs = ["map_op.py"],
+)
+
+py_library(
     name = "ragged_batch_op",
     srcs = ["ragged_batch_op.py"],
     srcs_version = "PY3",
@@ -183,6 +200,16 @@ py_library(
         "//tensorflow/python/platform",
         "//tensorflow/python/util",
     ],
+)
+
+py_library(
+    name = "unique_op",
+    srcs = ["unique_op.py"],
+)
+
+py_library(
+    name = "window_op",
+    srcs = ["window_op.py"],
 )
 
 py_library(

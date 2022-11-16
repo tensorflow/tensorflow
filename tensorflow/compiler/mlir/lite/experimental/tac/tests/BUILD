@@ -14,6 +14,7 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
+        "//tensorflow/compiler/mlir/lite/experimental/common:outline_operations",
         "//tensorflow/compiler/mlir/lite/experimental/tac:tac-opt-all-backends",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",

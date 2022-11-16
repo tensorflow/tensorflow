@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
@@ -29,6 +29,11 @@ limitations under the License.
 // module's config.
 
 namespace xla {
+
+// Argument used when calling DumpHloModuleIfEnabled before optimizations are
+// performed on an HloModule.
+constexpr char kBeforeOptimizationsDumpName[] = "before_optimizations";
+constexpr char kAfterOptimizationsDumpName[] = "after_optimizations";
 
 class BufferAssignment;
 class HloSnapshot;

@@ -120,12 +120,14 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
   FallbackExecuteOpConversion(
       mlir::MLIRContext *context, CoreRTConverter *corert_converter,
       tfrt_compiler::FallbackConverter *fallback_converter,
+      const mlir::SymbolTable *symbol_table,
       const tfrt_compiler::CostAnalysis *cost_analysis,
       bool tpu_lower_to_fallback, bool target_tpurt)
       : mlir::ConversionPattern(mlir::Pattern::MatchAnyOpTypeTag(),
                                 kFallbackBenefit, context),
         corert_converter_(*corert_converter),
         fallback_converter_(*fallback_converter),
+        symbol_table_(*symbol_table),
         cost_analysis_(*cost_analysis),
         tpu_lower_to_fallback_(tpu_lower_to_fallback),
         target_tpurt_(target_tpurt) {}
@@ -151,8 +153,11 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
     // Convert the function (symbol) attributes to an array of string
     // attributes, which represents the function names.
     llvm::SmallVector<mlir::StringAttr, 4> func_attr_keys;
-    mlir::ArrayAttr op_func_attrs =
-        corert_converter_.CreateOpFuncAttrs(op->getAttrs(), &func_attr_keys);
+    mlir::ArrayAttr op_func_attrs = corert_converter_.CreateOpFuncAttrs(
+        symbol_table_, op->getAttrs(), &func_attr_keys);
+    if (!op_func_attrs) {
+      return op->emitWarning("failed to create func attributes.");
+    }
 
     // Remove the function attributes, which have already been processed.
     for (const auto &key : func_attr_keys) op->removeAttr(key);
@@ -235,6 +240,7 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
 
   CoreRTConverter &corert_converter_;
   tfrt_compiler::FallbackConverter &fallback_converter_;
+  const mlir::SymbolTable &symbol_table_;
   const tfrt_compiler::CostAnalysis &cost_analysis_;
   bool tpu_lower_to_fallback_;
   bool target_tpurt_;
@@ -271,7 +277,7 @@ mlir::LogicalResult FallbackExecuteOpConversion::ConvertToFallbackExecuteOp(
         cost_analysis_.GetCost(op, fallback_key.getInt()));
   }
 
-  if (mlir::MemoryEffectOpInterface::hasNoEffect(op)) {
+  if (mlir::isMemoryEffectFree(op)) {
     auto new_op = rewriter.create<tfrt::fallback_async::ExecuteOp>(
         op->getLoc(), result_types, new_operands, device, op_attrs,
         op_func_attrs, fallback_key, op_name, cost);
@@ -328,7 +334,7 @@ mlir::LogicalResult FallbackExecuteOpConversion::ConvertToCoreRTExecuteOp(
       corert_converter_.ConvertOpHandler(op, op_handler_name, &rewriter);
   if (!op_handler) return failure();
 
-  if (mlir::MemoryEffectOpInterface::hasNoEffect(op)) {
+  if (mlir::isMemoryEffectFree(op)) {
     auto new_op = rewriter.create<tfrt::corert::ExecuteOp>(
         op->getLoc(), result_types, op_handler, new_operands, op_attrs,
         op_func_attrs, op_name);
@@ -360,15 +366,15 @@ class FallbackConstOpConversion
       mlir::TF::ConstOp op, OpAdaptor adaptor,
       mlir::ConversionPatternRewriter &rewriter) const override {
     // Some data types are handled separately using a fast path.
-    if (IsSupportedTfrtNumericDType(op.dtype()) ||
-        op.dtype().isa<mlir::TF::StringType>())
+    if (IsSupportedTfrtNumericDType(op.getDtype()) ||
+        op.getDtype().isa<mlir::TF::StringType>())
       return failure();
 
     // For other data types that do not have a fast path (eg. quantized types),
     // we convert it to serialized tensor proto.
 
     tensorflow::TensorProto tensor_proto;
-    auto status = ConvertToTensorProto(op.value(), &tensor_proto);
+    auto status = ConvertToTensorProto(op.getValue(), &tensor_proto);
     if (!status.ok()) return op.emitError(status.error_message());
 
     rewriter.replaceOpWithNewOp<tfrt::fallback_async::ConstTensorProtoOp>(
@@ -411,7 +417,7 @@ class FallbackSetResourceOp
     auto new_op = rewriter.create<tfrt::fallback_async::SetResourceOp>(
         op.getLoc(), corert_converter_.chain_type(),
         corert_converter_.GetLocalSideEffectChain(op, &rewriter),
-        new_operands[0], device.getValue(), op.index());
+        new_operands[0], device.getValue(), op.getIndex());
 
     // Register the converted op so that it can be retrieved by successors.
     corert_converter_.RegisterLocalSideEffectChain(op, new_op.getOutCh());
@@ -448,7 +454,7 @@ class FallbackGetResourceOp
 
     auto new_op = rewriter.create<tfrt::fallback_async::GetResourceOp>(
         op.getLoc(), corert_converter_.chain_type(), result_types, ready_chain,
-        device.getValue(), op.indices());
+        device.getValue(), op.getIndices());
 
     rewriter.replaceOp(op, new_op.getResults());
 
@@ -602,7 +608,8 @@ class FallbackBatchFunctionOpConversion
         op->getNumResults(), rewriter.getType<tfrt::fallback::TFTensorType>());
 
     auto new_op = rewriter.create<tfrt::fallback_async::BatchFunctionOp>(
-        op.getLoc(), result_types, new_operands, device, op.fAttr(), op_attrs);
+        op.getLoc(), result_types, new_operands, device, op.getFAttr(),
+        op_attrs);
     rewriter.replaceOp(op, new_op.getResults());
     return success();
   }
@@ -624,7 +631,7 @@ class CoreRTConstDenseTensorOpConversion
   LogicalResult matchAndRewrite(
       mlir::TF::ConstOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    if (!IsSupportedTfrtNumericDType(op.dtype())) return failure();
+    if (!IsSupportedTfrtNumericDType(op.getDtype())) return failure();
 
     // Only CPU ops can be lowered using this conversion. If there is no device
     // assignment, this op is treated as a CPU op and can be lowered.
@@ -633,7 +640,7 @@ class CoreRTConstDenseTensorOpConversion
 
     auto new_op = rewriter.create<tfrt::corert::ConstDenseTensorOp>(
         op.getLoc(), corert_converter_.tensor_handle_type(),
-        op.value().cast<DenseElementsAttr>());
+        op.getValue().cast<DenseElementsAttr>());
     rewriter.replaceOp(op, new_op->getResult(0));
     return success();
   }
@@ -746,9 +753,10 @@ class CoreRTConstStringTensorOpConversion
   LogicalResult matchAndRewrite(
       mlir::TF::ConstOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {  // NOLINT
-    if (!op.dtype().isa<mlir::TF::StringType>()) return failure();
+    if (!op.getDtype().isa<mlir::TF::StringType>()) return failure();
 
-    DenseStringElementsAttr attr = op.value().cast<DenseStringElementsAttr>();
+    DenseStringElementsAttr attr =
+        op.getValue().cast<DenseStringElementsAttr>();
 
     llvm::SmallVector<Attribute, 4> values;
     values.reserve(attr.getNumElements());
@@ -757,7 +765,7 @@ class CoreRTConstStringTensorOpConversion
           llvm::StringRef(element.data(), element.size())));
 
     // Create the shape attribute from the tensor shape.
-    ArrayRef<int64_t> shape = op.value().getType().getShape();
+    ArrayRef<int64_t> shape = op.getValue().getType().getShape();
     llvm::SmallVector<mlir::Attribute, 4> dims;
     dims.reserve(shape.size());
     auto i64_type = rewriter.getIntegerType(64);
@@ -794,16 +802,20 @@ template <typename TF_Op>
 class CoreRTExecuteOpConversion : public mlir::OpConversionPattern<TF_Op> {
  public:
   CoreRTExecuteOpConversion(mlir::MLIRContext *context,
-                            CoreRTConverter *corert_converter)
-      : CoreRTExecuteOpConversion(context, corert_converter, "") {}
+                            CoreRTConverter *corert_converter,
+                            const mlir::SymbolTable *symbol_table)
+      : CoreRTExecuteOpConversion(context, corert_converter, symbol_table, "") {
+  }
 
   // If device_name is not empty, only ops that are using this device is lowered
   // using CoreRTExecuteOpConversion.
   CoreRTExecuteOpConversion(mlir::MLIRContext *context,
                             CoreRTConverter *corert_converter,
+                            const mlir::SymbolTable *symbol_table,
                             llvm::StringRef device_name)
       : mlir::OpConversionPattern<TF_Op>(context, kCoreRTBenefit),
         corert_converter_(*corert_converter),
+        symbol_table_(*symbol_table),
         device_name_(device_name) {}
 
   LogicalResult matchAndRewrite(
@@ -836,8 +848,11 @@ class CoreRTExecuteOpConversion : public mlir::OpConversionPattern<TF_Op> {
     // Convert the function (symbol) attributes to an array of string
     // attributes, which represents the function names.
     llvm::SmallVector<mlir::StringAttr, 4> func_attr_keys;
-    ArrayAttr op_func_attrs =
-        corert_converter_.CreateOpFuncAttrs(op->getAttrs(), &func_attr_keys);
+    ArrayAttr op_func_attrs = corert_converter_.CreateOpFuncAttrs(
+        symbol_table_, op->getAttrs(), &func_attr_keys);
+    if (!op_func_attrs) {
+      return op.emitWarning("failed to create func attributes.");
+    }
 
     // Remove the function attributes, which have already been processed.
     for (const auto &key : func_attr_keys) op->removeAttr(key);
@@ -868,6 +883,7 @@ class CoreRTExecuteOpConversion : public mlir::OpConversionPattern<TF_Op> {
 
  private:
   CoreRTConverter &corert_converter_;
+  const mlir::SymbolTable &symbol_table_;
   llvm::StringRef device_name_;
 };
 
@@ -932,7 +948,7 @@ class TFRTCallOpConversion : public mlir::OpConversionPattern<CallOp> {
         new_operands);
     rewriter.replaceOp(op, new_op.getResults().drop_front());
 
-    if (!mlir::MemoryEffectOpInterface::hasNoEffect(op)) {
+    if (!mlir::isMemoryEffectFree(op)) {
       // Register the converted op so that it can be retrieved by successors.
       // TODO(chky): Add OpTraits or OpInterface, rather than assume first
       // result is a chain.
@@ -1011,7 +1027,7 @@ class TFRTCaseOpConversion : public mlir::OpConversionPattern<TF::CaseOp> {
   LogicalResult matchAndRewrite(
       TF::CaseOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    mlir::ArrayAttr branches = op.branches();
+    mlir::ArrayAttr branches = op.getBranches();
 
     llvm::SmallVector<mlir::Type, 4> result_types;
     result_types.push_back(corert_converter_.chain_type());
@@ -1092,8 +1108,8 @@ class TFRTCondOpConversion : public mlir::OpConversionPattern<mlir::TF::IfOp> {
   mlir::LogicalResult matchAndRewrite(
       mlir::TF::IfOp op, OpAdaptor adaptor,
       mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::FlatSymbolRefAttr then_branch = op.then_branchAttr();
-    mlir::FlatSymbolRefAttr else_branch = op.else_branchAttr();
+    mlir::FlatSymbolRefAttr then_branch = op.getThenBranchAttr();
+    mlir::FlatSymbolRefAttr else_branch = op.getElseBranchAttr();
 
     llvm::SmallVector<Type, 4> result_types;
     result_types.push_back(rewriter.getType<tfrt::compiler::ChainType>());
@@ -1124,7 +1140,7 @@ class TFRTCondOpConversion : public mlir::OpConversionPattern<mlir::TF::IfOp> {
     // The first result is a !tfrt.chain.
     rewriter.replaceOp(op, new_op.getResults().drop_front(1));
 
-    if (!mlir::MemoryEffectOpInterface::hasNoEffect(op)) {
+    if (!mlir::isMemoryEffectFree(op)) {
       // Register the converted op so that it can be retrieved by successors.
       // TODO(chky): Add OpTraits or OpInterface, rather than assume first
       // result is a chain.
@@ -1195,8 +1211,8 @@ class TFRTWhileOpConversion
   mlir::LogicalResult matchAndRewrite(
       mlir::TF::WhileOp op, OpAdaptor adaptor,
       mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::FlatSymbolRefAttr cond_fn = op.condAttr();
-    mlir::FlatSymbolRefAttr body_fn = op.bodyAttr();
+    mlir::FlatSymbolRefAttr cond_fn = op.getCondAttr();
+    mlir::FlatSymbolRefAttr body_fn = op.getBodyAttr();
 
     llvm::SmallVector<Type, 4> while_arg_result_types;
     // Insert a chain for side effects as the first argument/result.
@@ -1249,7 +1265,7 @@ class TFRTWhileOpConversion
     while_args[0] = pred_chain;
 
     int64_t parallel_iterations =
-        enable_while_parallel_iterations_ ? op.parallel_iterations() : 1;
+        enable_while_parallel_iterations_ ? op.getParallelIterations() : 1;
 
     auto new_op = rewriter.create<tfrt::compiler::WhileOp>(
         op.getLoc(), while_arg_result_types, first_iteration_bool_cond,
@@ -1259,7 +1275,7 @@ class TFRTWhileOpConversion
 
     if (!has_at_most_tensor_array_effect) out_chain = new_op.getResult(0);
 
-    if (!mlir::MemoryEffectOpInterface::hasNoEffect(op)) {
+    if (!mlir::isMemoryEffectFree(op)) {
       // Register the converted op so that it can be retrieved by successors.
       // TODO(chky): Add OpTraits or OpInterface, rather than assume first
       // result is a chain.
@@ -1370,7 +1386,7 @@ mlir::func::FuncOp TFRTWhileOpConversion::GetWhileBodyFunction(
     mlir::func::FuncOp pred_fn, mlir::TypeRange arg_types,
     mlir::ConversionPatternRewriter &rewriter) const {
   int64_t parallel_iterations =
-      enable_while_parallel_iterations_ ? op.parallel_iterations() : 1;
+      enable_while_parallel_iterations_ ? op.getParallelIterations() : 1;
 
   std::string body_fn_name = original_body_fn.getValue().str() + "/tfrt_body_" +
                              absl::StrCat(parallel_iterations);
@@ -1534,8 +1550,8 @@ void PopulateTFToTFRTConversionPatterns(
     bool target_tpurt) {
   // By default, we lower all TF ops to fallback ops.
   patterns->add<FallbackExecuteOpConversion>(
-      context, corert_converter, fallback_converter, cost_analysis,
-      tpu_lower_to_fallback, target_tpurt);
+      context, corert_converter, fallback_converter, symbol_table,
+      cost_analysis, tpu_lower_to_fallback, target_tpurt);
   patterns->add<FallbackConstOpConversion, FallbackSetResourceOp,
                 FallbackGetResourceOp>(context, corert_converter);
 
@@ -1609,8 +1625,8 @@ void PopulateTFToTFRTConversionPatterns(
                   CoreRTExecuteOpConversion<TF::SubOp>,
                   CoreRTExecuteOpConversion<TF::TileOp>,
                   CoreRTExecuteOpConversion<TF::TanhOp>,
-                  CoreRTExecuteOpConversion<TF::ZerosLikeOp>>(context,
-                                                              corert_converter);
+                  CoreRTExecuteOpConversion<TF::ZerosLikeOp>>(
+        context, corert_converter, symbol_table);
   }
 }
 

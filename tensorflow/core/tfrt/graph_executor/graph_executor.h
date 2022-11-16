@@ -65,7 +65,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
     std::vector<tensorflow::Tensor>* outputs,
     tfrt::ResourceContext* resource_context, const Runtime& runtime,
     const FallbackState& fallback_state,
-    tfrt::RequestDeadlineTracker& req_deadline_tracker);
+    tfrt::RequestDeadlineTracker* req_deadline_tracker);
 
 // Creates a ResourceContext and populate it with per model resource from
 // Runtime. If `tpu_target` is set to kTpurt, also call a special

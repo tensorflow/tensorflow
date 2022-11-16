@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
 
 namespace xla {
 namespace gpu {
@@ -209,6 +210,11 @@ Status GpuRuntimeExecutable::Execute(
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.
       async_collectives.async_comm_stream() ? &async_collectives : nullptr);
+
+#if GOOGLE_CUDA
+  // Add auxiliary data that is available only if compiled with CUDA support.
+  user_data.insert(&cublas_lt_matmul_plans_);
+#endif  // GOOGLE_CUDA
 
   // Collect all emitted diagnostic messages.
   std::string diagnostic;

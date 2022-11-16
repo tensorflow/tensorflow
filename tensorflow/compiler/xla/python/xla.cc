@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
-#include "tensorflow/core/distributed_runtime/preemption/preemption_sync_manager.h"
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
@@ -78,6 +77,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/python/lib/core/bfloat16.h"
+#include "tensorflow/tsl/distributed_runtime/preemption/preemption_sync_manager.h"
 
 // TODO(phawkins): remove host_id properties after JAX is update to avoid them.
 
@@ -366,7 +366,7 @@ PYBIND11_MODULE(xla_extension, m) {
         []() -> StatusOr<std::shared_ptr<PyClient>> {
           py::gil_scoped_release gil_release;
           TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> c_api_client,
-                              GetCApiClient());
+                              GetCApiClient("TPU"));
           return std::make_shared<PyClient>(std::move(c_api_client));
         });
 #endif  // XLA_PYTHON_ENABLE_TPU
@@ -449,6 +449,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("get_parameter_shardings",
            &PyLoadedExecutable::GetParameterShardings)
       .def("keep_alive", &PyLoadedExecutable::KeepAlive)
+      .def("compile_options",
+           [](const PyLoadedExecutable& self) {
+             return self.pjrt_executable().GetCompileOptions();
+           })
       .def_property_readonly("traceback", &PyLoadedExecutable::traceback)
       .def_property_readonly("fingerprint",
                              [](PyLoadedExecutable* exec) -> py::object {
@@ -482,13 +486,13 @@ PYBIND11_MODULE(xla_extension, m) {
   BuildMlirSubmodule(m);
   BuildCustomCallShardingPybindAPI(m);
 
-  py::class_<tensorflow::PreemptionSyncManager,
-             std::unique_ptr<tensorflow::PreemptionSyncManager>>
+  py::class_<tsl::PreemptionSyncManager,
+             std::unique_ptr<tsl::PreemptionSyncManager>>
       preemption_sync_manager(m, "PreemptionSyncManager");
   preemption_sync_manager
       .def(
           "initialize",
-          [](tensorflow::PreemptionSyncManager& manager,
+          [](tsl::PreemptionSyncManager& manager,
              DistributedRuntimeClient* client) {
             TF_ASSIGN_OR_RETURN(tsl::CoordinationServiceAgent * agent,
                                 client->GetCoordinationServiceAgent());
@@ -496,11 +500,11 @@ PYBIND11_MODULE(xla_extension, m) {
           },
           py::arg("distributed_client"))
       .def("reached_sync_point",
-           [](tensorflow::PreemptionSyncManager& manager, int step_counter) {
+           [](tsl::PreemptionSyncManager& manager, int step_counter) {
              return manager.ReachedSyncPoint(step_counter);
            });
   m.def("create_preemption_sync_manager",
-        []() { return tensorflow::CreatePreemptionSyncManager(); });
+        []() { return tsl::CreatePreemptionSyncManager(); });
 
   py::class_<DistributedRuntimeService,
              std::unique_ptr<DistributedRuntimeService>>
@@ -648,7 +652,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("get_output_shardings", &PjRtExecutable::GetOutputShardings)
       .def("get_parameter_shardings", &PjRtExecutable::GetParameterShardings)
       .def("get_compiled_memory_stats", &PjRtExecutable::GetCompiledMemoryStats)
-      .def("serialize", &PjRtExecutable::SerializeExecutable);
+      .def("compile_options", &PjRtExecutable::GetCompileOptions)
+      .def("serialize", [](const PjRtExecutable& exec) -> py::bytes {
+        return ValueOrThrow(exec.SerializeExecutable());
+      });
 
   m.def(
       "compile",

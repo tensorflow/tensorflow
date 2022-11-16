@@ -318,13 +318,13 @@ REGISTER_OP("Sin").UNARY_COMPLEX();
 
 REGISTER_OP("Cos").UNARY_COMPLEX();
 
-REGISTER_OP("Tan").UNARY();
+REGISTER_OP("Tan").UNARY_COMPLEX();
 
-REGISTER_OP("Asin").UNARY();
+REGISTER_OP("Asin").UNARY_COMPLEX();
 
-REGISTER_OP("Acos").UNARY();
+REGISTER_OP("Acos").UNARY_COMPLEX();
 
-REGISTER_OP("Atan").UNARY();
+REGISTER_OP("Atan").UNARY_COMPLEX();
 
 REGISTER_OP("_UnaryOpsComposition")
     .Input("x: T")
@@ -1136,7 +1136,7 @@ REGISTER_OP("ArgMax")
     .Input("input: T")
     .Input("dimension: Tidx")
     .Output("output: output_type")
-    .Attr("T: {numbertype, bool}")
+    .Attr("T: {realnumbertype, quantizedtype, bool}")
     .Attr("Tidx: {int16, int32, int64} = DT_INT32")
     .Attr("output_type: {int16, uint16, int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape);
@@ -1145,7 +1145,7 @@ REGISTER_OP("ArgMin")
     .Input("input: T")
     .Input("dimension: Tidx")
     .Output("output: output_type")
-    .Attr("T: {numbertype, bool}")
+    .Attr("T: {realnumbertype, quantizedtype, bool}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("output_type: {int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape);

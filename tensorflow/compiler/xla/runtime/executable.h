@@ -293,6 +293,16 @@ class Executable {
   // debugging. Function ordinal is defined by its index in the `functions_`
   // vector.
   struct Function {
+    Function(std::string_view name, ExecutionEngine::ExportedFunctionPtr fptr,
+             FunctionType signature, FunctionType runtime_signature,
+             ArgumentsMemoryLayout arguments_memory_layout,
+             ResultsMemoryLayout results_memory_layout)
+        : name(name),
+          fptr(std::move(fptr)),
+          signature(std::move(signature)),
+          runtime_signature(std::move(runtime_signature)),
+          arguments_memory_layout(std::move(arguments_memory_layout)),
+          results_memory_layout(std::move(results_memory_layout)) {}
     Function(const Function&) = delete;
     Function(Function&&) = default;
 

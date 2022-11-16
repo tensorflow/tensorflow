@@ -28,14 +28,14 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
-#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
-#include "tensorflow/core/profiler/profiler_service.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
 #include "tensorflow/core/profiler/utils/file_system_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/tsl/profiler/protobuf/profiler_service.grpc.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/profiler_service.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {

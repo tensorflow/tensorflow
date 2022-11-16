@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef THLO_OPS
 #define THLO_OPS
 
-include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.td"
+include "gml_st/interfaces/tiling_interface.td"
 include "mlir/Dialect/Linalg/IR/LinalgInterfaces.td"
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/DestinationStyleOpInterface.td"
@@ -33,8 +34,6 @@ class TensorOrMemrefOf<list<Type> allowedTypes> :
 def THLO_Dialect : Dialect {
   let name = "thlo";
   let cppNamespace = "::mlir::thlo";
-
-  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 class THLO_Op<string mnemonic, list<Trait> traits> :
@@ -174,6 +173,8 @@ def THLO_ScatterOp : THLO_DstStyleOp<"scatter", [
 }
 
 def THLO_SortOp : THLO_DstStyleOp<"sort", [
+        DeclareOpInterfaceMethods<OpAsmOpInterface,
+          ["getAsmResultNames", "getAsmBlockArgumentNames"]>,
         DeclareOpInterfaceMethods<TilingInterface>, SameVariadicOperandSize,
         SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "Destination-style twin for the `mhlo.sort`";

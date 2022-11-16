@@ -513,6 +513,17 @@ class HloModule {
 
   absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
 
+  // Sets the **unoptimized** fingerprint for the module as calculated by
+  // xsymbol. This fingerprint is prior to any optimizations and is useful for
+  // matching this module to the optimized module(s).
+  void set_xsymbol_fingerprint(std::optional<std::string> fingerprint) {
+    xsymbol_fingerprint_ = fingerprint;
+  }
+
+  std::optional<std::string> xsymbol_fingerprint() const {
+    return xsymbol_fingerprint_;
+  }
+
   CompilationEnvironments& comp_envs() const { return *comp_envs_; }
 
  private:
@@ -587,8 +598,11 @@ class HloModule {
   // Relative speedup of best config compared to default config.
   double relative_speedup_;
 
-  // The unoptimized module fingerprint.
+  // The unoptimized module autofdo fingerprint.
   std::string autofdo_fingerprint_;
+
+  // The unoptimized module xsymbol fingerprint.
+  std::optional<std::string> xsymbol_fingerprint_ = std::nullopt;
 
   bool use_auto_spmd_partitioning_ = false;
 

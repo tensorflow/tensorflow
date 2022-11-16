@@ -16,19 +16,27 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_COMPILE_UTIL_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_COMPILE_UTIL_H_
 
-#include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/client/executable_build_options.h"
-#include "tensorflow/core/framework/op_kernel.h"
+#include <memory>
+
+#include "tensorflow/compiler/tf2xla/xla_argument.h"
+#include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {
+// The number of compiler threads to use for asynchronous device compilation.
+inline constexpr int64_t kNumAsyncDeviceCompilerThreads = 10;
 
-// Generates the ExecutableBuildOptions for compliation from HLO to executable.
-xla::ExecutableBuildOptions GetExecutableBuildOptions(
-    const XlaCompiler::Options& options,
-    const XlaCompiler::CompilationResult& result, int default_device_ordinal);
+enum class DeviceCompileMode {
+  kLazy,
+  kStrict,
+  kAsync,
+};
 
-XlaCompiler::SingleOpCompileArgument BuildSingleOpCompileArgument(
-    OpKernelContext* ctx);
+// Creates a single-node graph using the specified `node_def` as the only op
+// apart from the arg and retval nodes corresponding to `args` and
+// `result_types` respectively.
+StatusOr<std::unique_ptr<Graph>> CreateSingleOpGraph(
+    const NodeDef& node_def, absl::Span<const XlaArgument> args,
+    absl::Span<const DataType> result_types);
 
 }  // namespace tensorflow
 

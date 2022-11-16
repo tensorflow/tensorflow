@@ -4,7 +4,6 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/tsl:tsl.bzl",
@@ -541,7 +540,7 @@ filegroup(
         "threadpool.h",
         "threadpool_interface.h",
         "tracing.h",
-    ] + selects.with_or({
+    ] + select({
         "//tensorflow/tsl:fuchsia": tf_google_mobile_srcs_no_runtime(),
         "//conditions:default": [
             "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
@@ -650,7 +649,10 @@ exports_files(
         "tracing.h",
         "tracing.cc",
     ],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
 )
 
 filegroup(
@@ -968,6 +970,7 @@ cc_library(
     deps = [
         ":platform",
         ":bfloat16",
+        ":float8",
         ":tstring",
     ] + tf_platform_deps("types"),
 )
@@ -1001,6 +1004,27 @@ cc_library(
     deps = [
         ":byte_order",
         "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "float8",
+    srcs = ["float8.cc"],
+    hdrs = ["float8.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+tsl_cc_test(
+    name = "float8_test",
+    srcs = ["float8_test.cc"],
+    deps = [
+        ":float8",
+        ":test",
+        ":test_main",
     ],
 )
 
@@ -1637,6 +1661,7 @@ tsl_cc_test(
         ":test",
         ":test_main",
         ":types",
+        "@com_google_absl//absl/strings",
     ],
 )
 

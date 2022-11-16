@@ -386,6 +386,7 @@ class HloTestBase : public ManifestCheckingTest {
   static se::Platform* GetTestPlatform();
 
  private:
+  // Either an HloRunner or HloRunnerPjRt depending on if ShouldUsePjRt()
   std::unique_ptr<HloRunnerInterface> runner_;
   se::Platform* test_platform_;
 
@@ -412,6 +413,11 @@ class HloTestBase : public ManifestCheckingTest {
       std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
       const absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes);
+
+  // Returns either an HloRunner or HloRunnerPjRt implementation depending if
+  // there exists a registered PjRtClientFactory.
+  StatusOr<std::unique_ptr<HloRunnerInterface>> GetHloRunnerForTest(
+      se::Platform* test_platform);
 };
 
 }  // namespace xla

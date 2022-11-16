@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -110,9 +112,9 @@ ENTRY AddDotsFunc {
   ErrorSpec error_spec = [&] {
     DebugOptions debug_options = GetDebugOptionsForTest();
     if (debug_options.xla_gpu_enable_cublaslt()) {
-      return ErrorSpec{1e-3, 1e-5};
+      return ErrorSpec{1e-3, 1e-3};
     } else {
-      return ErrorSpec{1e-5, 1e-5};
+      return ErrorSpec{1e-3, 1e-3};
     }
   }();
 
@@ -380,7 +382,7 @@ ENTRY AddDotsFunc {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
   MatchOptimizedHlo(hlo_text,
                     R"(
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[5,3,2], y: f32[5,3,4]) -> f32[5,2,4] {
@@ -464,7 +466,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[3,2,5], y: f32[5,3,4]) -> f32[5,2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,2,5]{2,1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
-; CHECK-DAG:     [[FUSION:%[^ ]+]] = f32[5,2,3]{2,1,0} fusion([[P0]])
+; CHECK-DAG:     [[FUSION:%[^ ]+]] = f32[5,2,3]{2,1,0} transpose([[P0]])
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[5,2,4]{2,1,0} custom-call([[FUSION]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
 ; CHECK:           backend_config="{
@@ -499,7 +501,7 @@ ENTRY AddDotsFunc {
 
   // Batch sizes larger than 2^16-1 are not supported by cublasLt. Ensure that
   // the custom_call_target is __cublas$gemm.
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
   MatchOptimizedHlo(hlo_text,
                     R"(
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[20000,4,3,2], y: f32[20000,4,3,4]) -> f32[20000,4,2,4] {
@@ -990,6 +992,66 @@ ENTRY int8gemm {
   }
 }
 
+TEST_P(ParameterizedGemmRewriteTest, GemmTypeCombinationCheck) {
+  std::vector<std::tuple<absl::string_view, absl::string_view, bool>>
+      type_combinations = {
+          {"s8", "s32", true},    {"s8", "s8", true},   {"s32", "s32", true},
+          {"bf16", "bf16", true}, {"f16", "f16", true}, {"f32", "f32", true},
+          {"f64", "f64", true},   {"c64", "c64", true}, {"c128", "c128", true},
+      };
+
+  if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+    // For compute capabilities before volta, we always do upcasting, so it
+    // would be impossible for this test to fail. That is why we only add these
+    // cases when the compute capabilit is at least Volta.
+    std::vector<std::tuple<absl::string_view, absl::string_view, bool>>
+        more_type_combinations = {
+            {"s8", "bf16", false},  {"s8", "f16", false},
+            {"s8", "f32", false},   {"s8", "f64", false},
+            {"s8", "c64", false},   {"s8", "c128", false},
+
+            {"s32", "f32", false},  {"s32", "f64", false},
+            {"s32", "c64", false},  {"s32", "c128", false},
+
+            {"f16", "bf16", false}, {"f16", "f32", false},
+            {"f16", "f64", false},  {"f16", "c64", false},
+            {"f16", "c128", false},
+
+            {"bf16", "f16", false}, {"bf16", "f64", false},
+            {"bf16", "c64", false}, {"bf16", "c128", false},
+
+            {"f32", "f64", false},  {"f32", "c64", false},
+            {"f32", "c128", false},
+
+            {"f64", "c64", false},  {"f64", "c128", false},
+        };
+    type_combinations.insert(type_combinations.end(),
+                             more_type_combinations.begin(),
+                             more_type_combinations.end());
+  }
+
+  for (const auto& type_combination : type_combinations) {
+    absl::flat_hash_map<absl::string_view, absl::string_view> replacements;
+    replacements["<<ABType>>"] = std::get<0>(type_combination);
+    replacements["<<DType>>"] = std::get<1>(type_combination);
+    const char* hlo_template = R"(
+  HloModule type_combo
+
+  ENTRY type_combo {
+    %parameter.1 = <<ABType>>[4,4]{1,0} parameter(0)
+    %parameter.2 = <<ABType>>[4,4]{1,0} parameter(1)
+    ROOT %dot = <<DType>>[4,4] dot(%parameter.1, %parameter.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+    )";
+    const auto hlo_text = absl::StrReplaceAll(hlo_template, replacements);
+    if (std::get<2>(type_combination)) {
+      EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+    } else {
+      EXPECT_FALSE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+    }
+  }
+}
+
 TEST_P(ParameterizedGemmRewriteTest, UpcastingBf16ToF64) {
   const char* hlo_text = R"(
 HloModule test
@@ -1222,7 +1284,7 @@ ENTRY AddDotsFunc {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
   MatchOptimizedHlo(hlo_text,
                     R"(
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[1024,1024], y: f32[1024,1024], bias: f32[1024,1024]) -> f32[1024,1024] {
@@ -1578,7 +1640,7 @@ ENTRY AddDotsFunc {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
   MatchOptimizedHlo(hlo_text,
                     R"(
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[1024,1024], y: f32[1024,1024], bias: f32[1024,1024]) -> f32[1024,1024] {

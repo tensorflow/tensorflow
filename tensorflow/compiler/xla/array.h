@@ -40,29 +40,10 @@ namespace xla {
 
 namespace array_impl {
 
-// conjunction
-//
-// Performs a compile-time logical AND operation on the passed types (which
-// must have  `::value` members convertible to `bool`. Short-circuits if it
-// encounters any `false` members (and does not compare the `::value` members
-// of any remaining arguments).
-//
-// This metafunction is designed to be a drop-in replacement for the C++17
-// `std::conjunction` metafunction.
-template <typename... Ts>
-struct conjunction;
-
-template <typename T, typename... Ts>
-struct conjunction<T, Ts...>
-    : std::conditional<T::value, conjunction<Ts...>, T>::type {};
-
-template <>
-struct conjunction<> : std::true_type {};
-
 // A type trait that is valid when all elements in a parameter pack are of
 // integral type. Not using an alias template to work around MSVC 14.00 bug.
 template <typename... Ts>
-struct pack_is_integral : conjunction<std::is_integral<Ts>...> {};
+struct pack_is_integral : std::conjunction<std::is_integral<Ts>...> {};
 
 // Compares three same-sized vectors elementwise. For each item in `values`,
 // returns false if any of values[i] is outside the half-open range [starts[i],

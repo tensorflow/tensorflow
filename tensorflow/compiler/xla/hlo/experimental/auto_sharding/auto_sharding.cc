@@ -36,14 +36,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -933,10 +933,12 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
             ShardingStrategy({name, existing_sharding, 0, 0, memory_cost,
                               resharding_costs, input_shardings}));
       }
-    } else {
+    } else if (!strategies->following) {
       // If existing sharding is a partial sharding from previous iteration,
       // find the strategies that are 1D&&complete or align with user
       // sharding.
+      // It is IMPORTANT that we do this only for instructions that do no follow
+      // others, to keep the number of ILP variable small.
       std::vector<ShardingStrategy> new_vector;
       for (const auto& strategy : strategies->leaf_vector) {
         if (strategy.output_sharding.IsReplicated() ||
@@ -954,7 +956,8 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
       // If no sharding strategy left, just keep the original set, because we do
       // not have to strictly keep those shardings and the only purpose is to
       // reduce problem size for the last iteration.
-      if (!new_vector.empty()) {
+      if (!new_vector.empty() &&
+          new_vector.size() != strategies->leaf_vector.size()) {
         strategies->following = nullptr;
         strategies->leaf_vector = std::move(new_vector);
       }
@@ -1683,8 +1686,12 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
               /* have_memory_cost= */ true, leaf_strategies, cluster_env,
               trimmed_strategy_map);
         } else if (ins->has_sharding()) {
-          strategies = CreateLeafStrategyVector(instruction_id, ins,
-                                                strategy_map, leaf_strategies);
+          if (ins->shape().IsTuple()) {
+            strategies = CreateTupleStrategyVector(instruction_id);
+          } else {
+            strategies = CreateLeafStrategyVector(
+                instruction_id, ins, strategy_map, leaf_strategies);
+          }
         } else if (OutputInputSameShapes(ins)) {
           auto* partitioner =
               GetCustomCallPartitioner(ins->custom_call_target());
@@ -1700,10 +1707,25 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                 trimmed_strategy_map);
           }
         } else {
-          strategies = CreateLeafStrategyVector(instruction_id, ins,
-                                                strategy_map, leaf_strategies);
-          AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                                strategies, replicated_penalty);
+          // TODO (b/258723035) Handle CustomCall ops for GPUs in a better way.
+          if (ins->shape().IsTuple()) {
+            strategies = CreateTupleStrategyVector(instruction_id);
+            strategies->childs.reserve(ins->shape().tuple_shapes_size());
+            for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
+              std::unique_ptr<StrategyVector> child_strategies =
+                  CreateLeafStrategyVector(instruction_id, ins, strategy_map,
+                                           leaf_strategies);
+              AddReplicatedStrategy(ins, ins->shape().tuple_shapes(i),
+                                    cluster_env, strategy_map, child_strategies,
+                                    replicated_penalty);
+              strategies->childs.push_back(std::move(child_strategies));
+            }
+          } else {
+            strategies = CreateLeafStrategyVector(
+                instruction_id, ins, strategy_map, leaf_strategies);
+            AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
+                                  strategies, replicated_penalty);
+          }
         }
         break;
       }
@@ -1934,14 +1956,19 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
   std::unique_ptr<MPSolver> solver(std::make_unique<MPSolver>("", MPSolver::GLPK_MIXED_INTEGER_PROGRAMMING));
   CHECK(solver);
   solver->MutableObjective()->SetMinimization();
+  std::string solver_parameter_str;
+#if !defined(__APPLE__)
   if (solver->ProblemType() ==
       operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
-    // Set random_seed and interleave_search for determinism,
-    // num_workers for parallelism.
-    solver->SetSolverSpecificParametersAsString(absl::StrCat(
-        "random_seed:1,interleave_search:true,num_workers:", num_workers));
+    // Set random_seed, interleave_search and share_binary_clauses for
+    // determinism, and num_workers for parallelism.
+    solver_parameter_str = absl::StrCat(
+        "share_binary_clauses:false,random_seed:1,interleave_"
+        "search:true,num_workers:",
+        num_workers);
+    solver->SetSolverSpecificParametersAsString(solver_parameter_str);
   }
-
+#endif
   // Create variables
   std::vector<std::vector<MPVariable*>> s(N);
   std::vector<std::vector<MPVariable*>> e(num_edges);
@@ -2126,6 +2153,7 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
 
   solver->set_time_limit(3600 * 1000);  // in ms
   VLOG(0) << "Starting solver " << solver->ProblemType() << "\n"
+          << "Solver parameter string: " << solver_parameter_str << "\n"
           << "Number of workers: " << num_workers << "\n"
           << "Number of threads: " << solver->GetNumThreads() << "\n"
           << "Time limit: " << solver->time_limit() << "\n"
@@ -2817,22 +2845,22 @@ void CheckUserShardingPreservation(
       if (preserve_shardings.find(inst->name()) == preserve_shardings.end()) {
         continue;
       }
-        if (!inst->has_sharding()) {
-          LOG(FATAL) << "User sharding is not preserved! Instruction with name "
-                     << inst->name() << " should be: "
-                     << preserve_shardings.at(inst->name())[0].ToString()
-                     << "\nbut it's empty.";
-        } else if (!inst->sharding().IsTuple() &&
-                   preserve_shardings.at(inst->name())[0].ToString() !=
-                       inst->sharding().ToString()) {
-          LOG(FATAL) << "User sharding is not preserved! Instruction with name "
-                     << inst->name() << " should be: "
-                     << preserve_shardings.at(inst->name())[0].ToString()
-                     << "\nbut it's: " << inst->sharding().ToString();
-        } else if (inst->sharding().IsTuple()) {
-          const std::vector<HloSharding>* preserve_shardings_tuple =
-              &preserve_shardings.at(inst->name());
-          for (size_t i = 0; i < inst->shape().tuple_shapes_size(); i++) {
+      if (!inst->has_sharding()) {
+        LOG(FATAL) << "User sharding is not preserved! Instruction with name "
+                   << inst->name() << " should be: "
+                   << preserve_shardings.at(inst->name())[0].ToString()
+                   << "\nbut it's empty.";
+      } else if (!inst->sharding().IsTuple() &&
+                 preserve_shardings.at(inst->name())[0].ToString() !=
+                     inst->sharding().ToString()) {
+        LOG(FATAL) << "User sharding is not preserved! Instruction with name "
+                   << inst->name() << " should be: "
+                   << preserve_shardings.at(inst->name())[0].ToString()
+                   << "\nbut it's: " << inst->sharding().ToString();
+      } else if (inst->sharding().IsTuple()) {
+        const std::vector<HloSharding>* preserve_shardings_tuple =
+            &preserve_shardings.at(inst->name());
+        for (size_t i = 0; i < inst->shape().tuple_shapes_size(); i++) {
           if (preserve_shardings_tuple->at(i).ToString() !=
               inst->sharding().tuple_elements().at(i).ToString()) {
             LOG(FATAL) << "Tuple sharding is not preserved! Instruction "
@@ -2843,8 +2871,8 @@ void CheckUserShardingPreservation(
                        << "\nbut it's: "
                        << inst->sharding().tuple_elements().at(i).ToString();
           }
-          }
         }
+      }
     }
   }
 }
@@ -2858,19 +2886,19 @@ int64_t MemoryBudgetLowerBound(const HloModule& module,
     for (const HloValue* value : liveness_set[t]) {
       size_t tmp;
       if (value->instruction()->shape().IsTuple() && value->index().empty()) {
-          continue;
+        continue;
       }
       Shape shape =
           ShapeUtil::GetSubshape(value->instruction()->shape(), value->index());
       if (value->instruction()->has_sharding()) {
-          tmp = GetShardedInstructionSize(
-              shape, num_devices,
-              !value->index().empty()
-                  ? value->instruction()->sharding().GetSubSharding(
-                        value->instruction()->shape(), value->index())
-                  : value->instruction()->sharding());
+        tmp = GetShardedInstructionSize(
+            shape, num_devices,
+            !value->index().empty()
+                ? value->instruction()->sharding().GetSubSharding(
+                      value->instruction()->shape(), value->index())
+                : value->instruction()->sharding());
       } else {
-          tmp = GetShardedInstructionSize(shape, num_devices);
+        tmp = GetShardedInstructionSize(shape, num_devices);
       }
       memory_usage += tmp;
     }
@@ -3153,22 +3181,17 @@ StatusOr<bool> AutoSharding::Run(
               << " GB.";
     if (set_to_memory_lower_bound) {
       LOG(INFO)
-          << "--xla_tpu_auto_spmd_partitioning_memory_budget_gb is 0, setting "
-             "option.memory_budget_per_device to be the estimated memory "
-             "consumption lower bound of this module to maximize sharding. "
-             "Note "
-             "that the memory consumption estimation does not take into "
-             "account "
-             "alias pairs or while op inputs. So if the model "
-             "is very small such that the alias pairs and while op inputs "
-             "consist significant memory usage percentage, this lower bound "
-             "will "
-             "cause solver being unable to find feasible solutison. Please set "
-             "xla_tpu_auto_spmd_partitioning_memory_budget_gb to be greater "
-             "than "
-          << memory_lower_bound_gb << " if this behavior is undesired.";
-      option_.memory_budget_per_device =
-          memory_lower_bound_gb * (1024 * 1024 * 1024);
+          << "--xla_tpu_auto_spmd_partitioning_memory_budget_gb is 0, and "
+             "--xla_tpu_auto_spmd_partitioning_memory_budget_ratio is "
+          << option_.memory_budget_ratio
+          << ", so setting "
+             "option.memory_budget_per_device to "
+          << memory_lower_bound_gb << " x " << option_.memory_budget_ratio
+          << " = " << memory_lower_bound_gb * option_.memory_budget_ratio
+          << " GB";
+      option_.memory_budget_per_device = memory_lower_bound_gb *
+                                         (1024 * 1024 * 1024) *
+                                         option_.memory_budget_ratio;
     } else if (option_.memory_budget_per_device > 0) {
       option_.memory_budget_per_device = original_memory_budget *
                                          original_device_mesh.num_elements() /

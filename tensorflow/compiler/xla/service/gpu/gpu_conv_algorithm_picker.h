@@ -19,14 +19,14 @@ limitations under the License.
 #include <optional>
 
 #include "absl/time/time.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/core/protobuf/autotuning.pb.h"
+#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"

@@ -1587,7 +1587,7 @@ auto AggregateDecoder(Members... m) {
 
 }  // namespace internal
 
-// Declare/define an explicit specialialization for TypeID for types used
+// Declare/define an explicit specialization for TypeID for types used
 // by the custom calls. This forces the compiler to emit a strong definition for
 // a class and controls which translation unit and shared object will actually
 // have it.

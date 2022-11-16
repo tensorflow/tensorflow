@@ -16,32 +16,35 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_CUBLAS_LT_MATMUL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_CUBLAS_LT_MATMUL_H_
 
-#include <memory>
-#include <optional>
-#include <string_view>
-#include <tuple>
-
+#include "absl/container/node_hash_map.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
-#include "tensorflow/compiler/xla/runtime/logical_result.h"
 
 #if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #endif  // GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
 
-using llvm::ArrayRef;
+#if GOOGLE_CUDA
 
-struct DotDimensionNumbers {
-  llvm::ArrayRef<int64_t> lhs_batch;
-  llvm::ArrayRef<int64_t> lhs_contract;
-  llvm::ArrayRef<int64_t> rhs_batch;
-  llvm::ArrayRef<int64_t> rhs_contract;
+class MatmulPlanCache {
+ public:
+  const cublas_lt::MatmulPlan* Get(int64_t uid);
+  const cublas_lt::MatmulPlan* Set(int64_t uid, cublas_lt::MatmulPlan plan);
+
+ private:
+  mutable absl::Mutex mutex_;
+
+  absl::node_hash_map<int64_t, cublas_lt::MatmulPlan> plans_
+      ABSL_GUARDED_BY(mutex_);
 };
 
-// Registers XLA Gpu runtime kernel launch custom calls.
+#endif  // GOOGLE_CUDA
+
+// Registers XLA Gpu runtime cuBLASLt custom calls.
 void RegisterMatmulCustomCalls(runtime::DirectCustomCallRegistry& registry);
 
 }  // namespace gpu
@@ -49,15 +52,6 @@ void RegisterMatmulCustomCalls(runtime::DirectCustomCallRegistry& registry);
 
 namespace xla {
 namespace runtime {
-
-using llvm::ArrayRef;
-
-XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
-    xla::gpu::DotDimensionNumbers,
-    AggregateMember<ArrayRef<int64_t>>("lhs_batch"),
-    AggregateMember<ArrayRef<int64_t>>("lhs_contract"),
-    AggregateMember<ArrayRef<int64_t>>("rhs_batch"),
-    AggregateMember<ArrayRef<int64_t>>("rhs_contract"));
 
 #if GOOGLE_CUDA
 XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(

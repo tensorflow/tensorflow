@@ -966,6 +966,12 @@ def cast(x, dtype, name=None):
 
   Note casting nan and inf values to integral types has undefined behavior.
 
+  Note this operation can lead to a loss of precision when converting native
+  Python `float` and `complex` variables to `tf.float64` or `tf.complex128`
+  tensors, since the input is first converted to the `float32` data type and
+  then widened. It is recommended to use `tf.convert_to_tensor` instead of
+  `tf.cast` for any non-tensor inputs.
+
   Args:
     x: A `Tensor` or `SparseTensor` or `IndexedSlices` of numeric type. It could
       be `uint8`, `uint16`, `uint32`, `uint64`, `int8`, `int16`, `int32`,
@@ -981,6 +987,7 @@ def cast(x, dtype, name=None):
 
   Raises:
     TypeError: If `x` cannot be cast to the `dtype`.
+
   """
   base_type = dtypes.as_dtype(dtype).base_dtype
   if isinstance(x,
@@ -5559,8 +5566,7 @@ def acos(x, name=None):
 
   Args:
     x: A `Tensor`. Must be one of the following types: `bfloat16`, `half`,
-      `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`,
-      `complex64`, `complex128`.
+      `float32`, `float64`, `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:

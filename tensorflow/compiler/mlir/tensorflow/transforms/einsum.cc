@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
@@ -99,7 +100,8 @@ TF::TransposeOp createTransposeOp(Value value, Location loc,
 TF::ReshapeOp createReshapeOp(Value value, ArrayRef<int64_t> shape,
                               Type element_type, Location loc,
                               PatternRewriter* rewriter) {
-  auto shape_tensor = createI64ConstantOp(shape, loc, rewriter);
+  auto shape_tensor = createI64ConstantOp(
+      tensorflow::ConvertMlirShapeToTF(shape), loc, rewriter);
   Type resultType = RankedTensorType::get(shape, element_type);
   return rewriter->create<TF::ReshapeOp>(loc, resultType, /*tensor=*/value,
                                          /*shape=*/shape_tensor);
@@ -629,7 +631,7 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
                                    PatternRewriter& rewriter) {
   if (!dnums.lhs.empty() || !dnums.rhs.empty()) return failure();
 
-  auto inputs = op.inputs();
+  auto inputs = op.getInputs();
   if (inputs.size() != 2) return failure();
   Value lhs = inputs.front();
   Value rhs = inputs.back();
@@ -712,7 +714,8 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
   // dynamic dimension is always supported. If there are two or more dynamic
   // dimensions, it is supported if they only exist in a single component
   // among: L0,...,Ln R0,...,Rn or C0,...,Cn.
-  if (const auto dnums_or = GetEinsumDimensionNumbers(op.equation(), lhs, rhs))
+  if (const auto dnums_or =
+          GetEinsumDimensionNumbers(op.getEquation(), lhs, rhs))
     return rewriteToBatchMatmul(op, dnums_or.getValue(), rewriter);
   return rewriter.notifyMatchFailure(op, "unsupported einsum lowering");
 }

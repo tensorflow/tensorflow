@@ -47,12 +47,12 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/X86Vector/X86VectorToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/math/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/memref/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir/transforms/cpu/passes.h"
 
 namespace xla {
 namespace runtime {
@@ -78,6 +78,7 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
     mlir::OpPassManager& pm, const CpuPipelineOptions& opts) {
   // Convert entry function to the XLA entrypoint.
   pm.addPass(CreateExportRuntimeFunctionsPass());
+  pm.addPass(cpu::createConvertLmhloToCpuRuntimePass());
   pm.addPass(CreateConvertCustomCallsPass());
   pm.addPass(CreateConvertAssertsPass());
 
@@ -118,8 +119,6 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
   pm.addPass(mlir::createConvertSCFToCFPass());
 
   // Convert runtime operations and custom calls to LLVM dialect.
-  pm.addPass(cpu::createConvertLmhloToCpuRuntimePass());
-  pm.addPass(CreateConvertCustomCallsPass());
   const CompilationPipelineOptions& copts = opts.common_options;
   ConvertRuntimeToLLvmOpts rt_to_llvm_opts = {
       copts.populate_type_id_names, copts.populate_type_conversions,

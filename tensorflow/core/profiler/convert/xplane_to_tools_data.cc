@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/hlo_to_tools_data.h"
+#include "tensorflow/core/profiler/convert/multi_xplanes_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_op_profile.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"

@@ -362,11 +362,11 @@ tensorflow::grappler::GetNumAvailableLogicalCPUCores
 [//tensorflow/core/profiler/internal:traceme_recorder_impl] # profiler
 tensorflow::profiler::TraceMeRecorder::Record
 
-[//tensorflow/core/profiler/lib:profiler_session_impl] # profiler
-tensorflow::ProfilerSession::Create
-tensorflow::ProfilerSession::CollectData
-tensorflow::ProfilerSession::Status
-tensorflow::ProfilerSession::~ProfilerSession
+[//tensorflow/tsl/profiler/lib:profiler_session_impl] # profiler
+tsl::ProfilerSession::Create
+tsl::ProfilerSession::CollectData
+tsl::ProfilerSession::Status
+tsl::ProfilerSession::~ProfilerSession
 
 [//tensorflow/core/profiler/rpc:profiler_server_impl] # profiler
 tensorflow::profiler::ProfilerServer::StartProfilerServer
@@ -421,6 +421,8 @@ tensorflow::metrics::SavedModelWrite
 tensorflow::metrics::SavedModelRead
 tensorflow::metrics::SavedModelWriteApi
 tensorflow::metrics::SavedModelReadApi
+tensorflow::metrics::SavedModelWriteFingerprint
+tensorflow::metrics::SavedModelReadFingerprint
 tensorflow::metrics::CheckpointReadDuration
 tensorflow::metrics::CheckpointWriteDuration
 tensorflow::metrics::AsyncCheckpointWriteDuration
@@ -429,6 +431,7 @@ tensorflow::metrics::CheckpointSize
 
 [//tensorflow/cc/saved_model:fingerprinting_impl] # SavedModel Fingerprinting
 tensorflow::saved_model::fingerprinting::CreateFingerprintDef
+tensorflow::saved_model::fingerprinting::ReadSavedModelFingerprint
 
 
 [//tensorflow/compiler/jit:flags] # tfe

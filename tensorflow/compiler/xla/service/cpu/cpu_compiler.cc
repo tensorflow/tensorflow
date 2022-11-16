@@ -75,19 +75,26 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/LLVMTranslationInterface.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/ir/xla_framework.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/mlir/framework/ir/xla_framework.h"
+#include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/calling_convention.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_cpu.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
@@ -122,10 +129,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime/collectives.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/custom_call.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime/xfeed.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/cpu/xla_framework.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_dimension_simplifier.h"
@@ -135,16 +143,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
@@ -174,6 +176,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/spmd/stateful_rng_spmd_partitioner.h"
+#include "tensorflow/compiler/xla/service/stochastic_convert_decomposer.h"
 #include "tensorflow/compiler/xla/service/topk_rewriter.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tree_reduction_rewriter.h"
@@ -331,10 +334,14 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions() {
       [](xla::runtime::DialectRegistry& dialects) {
         dialects->insert<mlir::mhlo::MhloDialect, mlir::lmhlo::LmhloDialect>();
         runtime::RegisterDefaultXlaCpuRuntimeDialects(dialects);
-        RegisterHloXlaRuntimePipelineDialects(dialects);
+        RegisterHloXlaRuntimePipelineDialects(*dialects);
       };
-  opts.compiler.symbols_binding =
-      runtime::ToSymbolsBinding(PopulateXlaCpuCustomCall);
+  opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
+      [](runtime::DirectCustomCallRegistry& registry) {
+        PopulateXlaCpuCollectivesCall(registry);
+        PopulateXlaCpuCustomCall(registry);
+        PopulateXlaXfeedCall(registry);
+      });
   opts.compiler.create_compilation_pipeline =
       [copts](xla::runtime::PassManager& passes) {
         Status status = CreateDefaultHloXlaRuntimePipeline(passes);
@@ -586,6 +593,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<AllGatherDecomposer>();
   pipeline.AddPass<AllToAllDecomposer>();
   pipeline.AddPass<ReduceScatterDecomposer>();
+  pipeline.AddPass<StochasticConvertDecomposer>();
 
   // Inline computations with a single call site.
   pipeline.AddPass<CallInliner>(/*single_call_site=*/true);
@@ -1229,7 +1237,8 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
                           std::make_unique<SequentialHloOrdering>(schedule),
                           BufferSizeBytesFunction(), memory_alignment,
                           /*allocate_buffers_for_constants=*/true));
-  DumpHloModuleIfEnabled(*module, *assignment, "cpu_after_optimizations");
+  DumpHloModuleIfEnabled(*module, *assignment,
+                         absl::StrCat("cpu_", kAfterOptimizationsDumpName));
 
   // Each computation is a single function.  Emit all embedded computations
   // before the entry computation. The order of computations returned from
@@ -1564,7 +1573,8 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       DumpToFileInDirOrStdout(*module, "", "buffer_assignment",
                               assignment->ToString());
     }
-    DumpHloModuleIfEnabled(*module, *assignment, "cpu_after_optimizations");
+    DumpHloModuleIfEnabled(*module, *assignment,
+                           absl::StrCat("cpu_", kAfterOptimizationsDumpName));
 
     absl::flat_hash_map<const HloInstruction*, int64_t>
         instruction_to_profile_idx;

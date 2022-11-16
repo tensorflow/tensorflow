@@ -23,6 +23,7 @@ glob_lit_tests(
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
     size_override = {
+        "insert_quantized_functions.mlir": "medium",
         "replace_cast_hacks_with_tf_xla_ops_large_constants.mlir": "medium",
     },
     tags_override = {

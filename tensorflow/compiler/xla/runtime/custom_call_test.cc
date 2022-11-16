@@ -1032,7 +1032,8 @@ static void BenchmarkCustomCall(
     State& state, std::string_view module, ArgumentsRef args,
     std::string_view name, DirectCustomCall custom_call,
     std::function<void(TypeIDNameRegistry&)> types = {},
-    std::function<void(CustomCallAttrEncodingSet&)> attrs = {}) {
+    std::function<void(CustomCallAttrEncodingSet&)> attrs = {},
+    const CustomCall::UserData& user_data = {}) {
   TestOpts opts;
   opts.types = std::move(types);
   opts.populate_attr_encodings = std::move(attrs);
@@ -1053,6 +1054,7 @@ static void BenchmarkCustomCall(
   CHECK(executable->InitializeCallFrame(args, &call_frame).ok());
 
   Executable::ExecuteOpts execute_opts;
+  execute_opts.custom_call_data = &user_data;
   execute_opts.async_task_runner =
       reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
 
@@ -1375,10 +1377,10 @@ static void MemrefX12(State& state) {
 
     func.func @test() {
       %0 = memref.alloca() : memref<4x4xf32>
-      call @custom_call(%0, %0, %0, %0, %0, %0, %0, %0, %0, %0, %0, %0)
-        : (memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>,
-           memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>,
-           memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>
+      call @custom_call(%0, %1, %2, %0, %1, %2, %0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>, memref<4x4xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>, memref<4x4xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>, memref<4x4xf32>
           ) -> ()
       return
     }
@@ -1563,5 +1565,208 @@ BENCHMARK(BM_AggregateAttrX1All);
 BENCHMARK(BM_AggregateAttrX1Less);
 BENCHMARK(BM_AggregateAttrX1None);
 
+//===----------------------------------------------------------------------===//
+// Custom call with UserData arguments.
+//===----------------------------------------------------------------------===//
+
+// Use std::integral_constant to fake multiple unique UserData types.
+template <int value>
+using Data = std::integral_constant<int, value>;
+
+// Benchmark how long it takes to prepare UserData.
+static void BM_PrepareUserData(benchmark::State& state) {
+  Data<0> data0;
+  Data<1> data1;
+  Data<2> data2;
+  Data<3> data3;
+  Data<4> data4;
+  Data<5> data5;
+  Data<6> data6;
+  Data<7> data7;
+  Data<8> data8;
+  Data<9> data9;
+
+  for (auto _ : state) {
+    CustomCall::UserData user_data(&data0, &data1, &data2, &data3, &data4,
+                                   &data5, &data6, &data7, &data8, &data9);
+    benchmark::DoNotOptimize(user_data);
+  }
+}
+
+BENCHMARK(BM_PrepareUserData);
+
+template <CustomCall::RuntimeChecks checks>
+static bool UserDataX12(ExecutionContext* ctx, void** args, void** attrs,
+                        void** rets) {
+  static auto* handler =
+      CustomCall::Bind("test.custom_call")
+          .UserData<Data<0>*>()
+          .UserData<Data<1>*>()
+          .UserData<Data<2>*>()
+          .UserData<Data<3>*>()
+          .UserData<Data<4>*>()
+          .UserData<Data<5>*>()
+          .UserData<Data<6>*>()
+          .UserData<Data<7>*>()
+          .UserData<Data<8>*>()
+          .UserData<Data<9>*>()
+          .UserData<Data<10>*>()
+          .UserData<Data<11>*>()
+          .To<checks>([](Data<0>* data0, Data<1>* data1, Data<2>* data2,
+                         Data<3>* data3, Data<4>* data4, Data<5>* data5,
+                         Data<6>* data6, Data<7>* data7, Data<8>* data8,
+                         Data<9>* data9, Data<10>* data10, Data<11>* data11) {
+            benchmark::DoNotOptimize(data0);
+            benchmark::DoNotOptimize(data1);
+            benchmark::DoNotOptimize(data2);
+            benchmark::DoNotOptimize(data3);
+            benchmark::DoNotOptimize(data4);
+            benchmark::DoNotOptimize(data5);
+            benchmark::DoNotOptimize(data6);
+            benchmark::DoNotOptimize(data7);
+            benchmark::DoNotOptimize(data8);
+            benchmark::DoNotOptimize(data9);
+            benchmark::DoNotOptimize(data10);
+            benchmark::DoNotOptimize(data11);
+            return success();
+          })
+          .release();
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+template <CustomCall::RuntimeChecks checks>
+static void UserDataX12(State& state) {
+  absl::string_view module = R"(
+    func.func private @custom_call()
+      attributes { rt.custom_call = "test.custom_call" }
+
+    func.func @test() {
+      call @custom_call() : () -> ()
+      return
+    }
+  )";
+
+  Data<0> data0;
+  Data<1> data1;
+  Data<2> data2;
+  Data<3> data3;
+  Data<4> data4;
+  Data<5> data5;
+  Data<6> data6;
+  Data<7> data7;
+  Data<8> data8;
+  Data<9> data9;
+  Data<10> data10;
+  Data<11> data11;
+
+  CustomCall::UserData user_data;
+  user_data.insert_all(&data0, &data1, &data2, &data3, &data4, &data5, &data6,
+                       &data7, &data8, &data9, &data10, &data11);
+
+  BenchmarkCustomCall(state, module, {}, "test.custom_call",
+                      &UserDataX12<checks>, {}, {}, user_data);
+}
+
+static void BM_UserDataX12All(State& s) { UserDataX12<all>(s); }
+static void BM_UserDataX12None(State& s) { UserDataX12<none>(s); }
+static void BM_UserDataX12Less(State& s) { UserDataX12<less>(s); }
+
+BENCHMARK(BM_UserDataX12All);
+BENCHMARK(BM_UserDataX12Less);
+BENCHMARK(BM_UserDataX12None);
+
+//===----------------------------------------------------------------------===//
+// Benchmark memref encoding for a sequence of custom calls.
+//===----------------------------------------------------------------------===//
+
+template <CustomCall::RuntimeChecks checks>
+static bool RemainingArgsSink(ExecutionContext* ctx, void** args, void** attrs,
+                              void** rets) {
+  static auto* handler =
+      CustomCall::Bind("test.custom_call")
+          .RemainingArgs()
+          .To<checks>([](CustomCall::RemainingArgs) { return success(); })
+          .release();
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+template <CustomCall::RuntimeChecks checks>
+static void MemrefEncoding(State& state) {
+  absl::string_view module = R"(
+    func.func private @custom_call(
+      %arg0: memref<4x4xf32>, %arg1: memref<5x5xf32>, %arg2: memref<6x6xf32>,
+      %arg3: memref<4x4xf32>, %arg4: memref<5x5xf32>, %arg5: memref<6x6xf32>
+    ) attributes { rt.custom_call = "test.custom_call" }
+
+    func.func @test() {
+      %0 = memref.alloca() : memref<4x4xf32>
+      %1 = memref.alloca() : memref<5x5xf32>
+      %2 = memref.alloca() : memref<6x6xf32>
+
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      return
+    }
+  )";
+
+  BenchmarkCustomCall(state, module, {}, "test.custom_call",
+                      &RemainingArgsSink<checks>);
+}
+
+static void BM_MemrefEncoding(State& s) { MemrefEncoding<none>(s); }
+
+BENCHMARK(BM_MemrefEncoding);
+
 }  // namespace runtime
 }  // namespace xla
+
+// Add explicit dense type ids for all data types passed as UserData to measure
+// the effects of explicit type id declaration/definition.
+#define DEFINE_DENSE_TYPE_ID(n)                                        \
+  XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall, \
+                                             xla::runtime::Data<n>);   \
+  XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,  \
+                                            xla::runtime::Data<n>)
+
+DEFINE_DENSE_TYPE_ID(0);
+DEFINE_DENSE_TYPE_ID(1);
+DEFINE_DENSE_TYPE_ID(2);
+DEFINE_DENSE_TYPE_ID(3);
+DEFINE_DENSE_TYPE_ID(4);
+DEFINE_DENSE_TYPE_ID(5);
+DEFINE_DENSE_TYPE_ID(6);
+DEFINE_DENSE_TYPE_ID(7);
+DEFINE_DENSE_TYPE_ID(8);
+DEFINE_DENSE_TYPE_ID(9);
+DEFINE_DENSE_TYPE_ID(10);
+DEFINE_DENSE_TYPE_ID(11);
+
+#undef DEFINE_DENSE_TYPE_ID

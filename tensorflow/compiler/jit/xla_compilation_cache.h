@@ -17,15 +17,19 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_XLA_COMPILATION_CACHE_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
+#include "tensorflow/compiler/jit/device_compilation_profiler.h"
 #include "tensorflow/compiler/jit/xla_compilation_cache.pb.h"
+#include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -33,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -53,7 +58,7 @@ namespace tensorflow {
 class XlaCompilationCache : public ResourceBase {
  public:
   struct Config {
-    Config() {}
+    Config() = default;
     explicit Config(absl::string_view persistent_cache_directory,
                     bool disable_strict_signature_checks,
                     absl::string_view persistance_prefix)
@@ -75,12 +80,6 @@ class XlaCompilationCache : public ResourceBase {
   XlaCompilationCache(Config config, xla::LocalClient* client,
                       DeviceType device_type);
   ~XlaCompilationCache() override;
-
-  enum class CompileMode {
-    kLazy,
-    kStrict,
-    kAsync,
-  };
 
   enum class CompileState { kUncompiled, kCompiling, kCompiled };
 
@@ -112,18 +111,17 @@ class XlaCompilationCache : public ResourceBase {
                  const NameAttrList& function,
                  const std::vector<XlaCompiler::Argument>& args,
                  const XlaCompiler::CompileOptions& compile_options,
-                 CompileMode compile_mode,
+                 DeviceCompileMode compile_mode,
+                 DeviceCompilationProfiler* profiler,
                  const XlaCompiler::CompilationResult** out_compilation_result,
                  xla::LocalExecutable** out_executable);
 
-  // As above, but calls XlaCompiler::CompileSingleOp instead of
-  // XlaCompiler::CompileFunction. If MLIR bridge is enabled through ConfigProto
-  // in OpKernelContext, then uses MLIR bridge for compilation instead of
-  // XlaCompiler, if possible.
+  // As above, but for a single op.
   Status CompileSingleOp(
       const XlaCompiler::Options& options,
-      const std::vector<XlaCompiler::Argument>& args, OpKernelContext* ctx,
-      const XlaCompiler::CompileOptions& compile_options,
+      const std::vector<XlaCompiler::Argument>& args,
+      const XlaCompiler::CompileOptions& compile_options, OpKernelContext* ctx,
+      DeviceCompilationProfiler* profiler,
       const XlaCompiler::CompilationResult** out_compilation_result,
       xla::LocalExecutable** out_executable);
 
@@ -181,8 +179,9 @@ class XlaCompilationCache : public ResourceBase {
   Status CompileImpl(
       const XlaCompiler::CompileOptions& compile_options,
       const XlaCompiler::Options& options, const NameAttrList& function,
-      const std::vector<XlaCompiler::Argument>& args, OpKernelContext* ctx,
-      CompileScope scope, CompileMode compile_mode,
+      const std::vector<XlaCompiler::Argument>& args, CompileScope scope,
+      DeviceCompileMode compile_mode, OpKernelContext* ctx,
+      DeviceCompilationProfiler* profiler,
       const XlaCompiler::CompilationResult** out_compilation_result,
       xla::LocalExecutable** out_executable);
 
@@ -205,12 +204,6 @@ class XlaCompilationCache : public ResourceBase {
       const XlaCompiler::Options& options,
       const XlaCompiler::CompilationResult& result,
       const std::string& serialized_aot_result);
-
-  // Determines whether the cluster should be compiled.
-  bool ShouldCompileCluster(CompileMode compile_mode, bool is_megamorphic,
-                            bool is_first_execution,
-                            int64_t current_request_count,
-                            const NameAttrList& function);
 
   xla::LocalClient* const client_;
   const DeviceType device_type_;
@@ -253,19 +246,21 @@ class XlaCompilationCache : public ResourceBase {
                                 const xla::HloModuleProto& hlo_module,
                                 const XlaSerializedCacheEntry& entry);
 
-  Status CompileStrict(const Signature& sig, Entry* entry,
+  Status CompileStrict(const Signature& sig,
                        const XlaCompiler::CompileOptions& compile_options,
                        const XlaCompiler::Options& options,
                        const std::vector<XlaCompiler::Argument>& args,
-                       const NameAttrList& function, OpKernelContext* ctx,
-                       CompileScope scope)
+                       const NameAttrList& function, CompileScope scope,
+                       OpKernelContext* ctx,
+                       DeviceCompilationProfiler* profiler, Entry* entry)
       TF_EXCLUSIVE_LOCKS_REQUIRED(entry->mu);
-  Status CompileAsynchronous(const Signature& sig, Entry* entry,
+  Status CompileAsynchronous(const Signature& sig,
                              const XlaCompiler::CompileOptions& compile_options,
                              const XlaCompiler::Options& options,
                              const std::vector<XlaCompiler::Argument>& args,
-                             const NameAttrList& function, OpKernelContext* ctx,
-                             CompileScope scope);
+                             const NameAttrList& function, CompileScope scope,
+                             OpKernelContext* ctx,
+                             DeviceCompilationProfiler* profiler, Entry* entry);
 
   // Saves the cache entry in the file directory supplied during the
   // construction of this class. Overwrites existing entries.
@@ -281,76 +276,20 @@ class XlaCompilationCache : public ResourceBase {
   absl::flat_hash_map<Signature, std::unique_ptr<Entry>, Signature::Hash> cache_
       TF_GUARDED_BY(compile_cache_mu_);
 
-  struct ClusterCompileStats {
-    // Number of times the cluster has been (re-)compiled.
-    int64_t compile_count = 0;
-
-    // The number of times this cluster has been executed.
-    int64_t execution_count = 0;
-
-    // Cumulative time spent compiling the cluster.
-    int64_t cumulative_compile_time_us = 0;
-
-    // True if we have decided that this cluster is too dynamic (i.e. its shapes
-    // change too frequently) to profitably JIT compile.  Once a cluster is
-    // tagged megamorphic, it stays megamorphic forever.
-    bool is_megamorphic = false;
-  };
-
-  mutex cluster_compile_stats_mu_;
-
-  // Maps cluster names to compilation statistics for said cluster.
-  absl::flat_hash_map<string, ClusterCompileStats> cluster_compile_stats_
-      TF_GUARDED_BY(cluster_compile_stats_mu_);
-
-  struct AsyncCompilationState {
-    mutex async_compilation_state_mu;
-
-    // Number of threads for asynchronous compilations.
-    static constexpr int64_t kNumCompilerThreads = 10;
-
-    // Maximum number of ongoing compilations.
-    static constexpr int64_t kMaxNumOngoingCompilations = kNumCompilerThreads;
-
-    // Number of ongoing compilations.
-    int64_t num_ongoing_compilations TF_GUARDED_BY(async_compilation_state_mu) =
-        0;
-
-    // Pool of threads for asynchronous compilations.
-    std::unique_ptr<thread::ThreadPool> compiler_threads;
-
-    AsyncCompilationState() {
-      compiler_threads = std::make_unique<tensorflow::thread::ThreadPool>(
-          tensorflow::Env::Default(), "async_compiler_threads",
-          kNumCompilerThreads);
-    }
-
-  } async_compilation_state_;
-
-  // The number of times a lazy compilation must be requested for a specific
-  // signature before  we attempt to compile it.
-  static constexpr int64_t kDefaultCompilationThreshold = 2;
-
   // If non-empty, JIT-compiled executables are saved to and loaded from the
   // specified file system directory path.
   std::string persistent_cache_directory_;
 
+  // Pool of threads for asynchronous compilations.
+  std::unique_ptr<thread::ThreadPool> async_compiler_threads_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompilationCache);
 };
 
-// Creates a single-node graph using the specified node_def as the only op apart
-// from the arg and retval nodes.
-StatusOr<std::unique_ptr<Graph>> CreateGraph(
-    const NodeDef& node_def, absl::Span<const XlaCompiler::Argument> args,
-    absl::Span<const DataType> result_types);
-
-// Use XlaCompiler to compile a single op into HLO.
-Status XlaSingleOpToHlo(
-    XlaCompiler* compiler, const XlaCompiler::Options& options,
-    const std::vector<XlaCompiler::Argument>& args,
-    const XlaCompiler::SingleOpCompileArgument& single_op_compile_argument,
-    const XlaCompiler::CompileOptions& compile_options,
-    XlaCompiler::CompilationResult* compilation_result);
+// Generates the ExecutableBuildOptions for compliation from HLO to executable.
+xla::ExecutableBuildOptions GetExecutableBuildOptions(
+    const XlaCompiler::Options& options,
+    const XlaCompiler::CompilationResult& result, int default_device_ordinal);
 
 }  // namespace tensorflow
 

@@ -144,7 +144,7 @@ tf_py_test(
 
 tf_py_test(
     name = "datasets_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "datasets_test.py",
     ],

@@ -31,14 +31,6 @@ from tensorflow.compiler.xla.python import xla_client
 
 # pylint: disable=g-import-not-at-top
 try:
-  # This import is only used for GPU; the dependency is incompatible with TPU
-  # so it results in an import error.
-  from tensorflow.python.framework import test_util
-except ImportError:
-  test_util = None
-
-# pylint: disable=g-import-not-at-top
-try:
   from tensorflow.compiler.xla.python import custom_call_for_test
 except ImportError:
   custom_call_for_test = None
@@ -2493,12 +2485,10 @@ def TestFactory(xla_backend,
         self.assertEqual(version, "<unknown>")
       elif self.backend.platform == "gpu":
         # Following is false if not built with --config=cuda
-        if test_util.is_gpu_available(cuda_only=True):
+        if version != "<unknown>":
           self.assertTrue(
               re.match(r"^cuda \d{4,}$", version),
               msg=f"Expected CUDA version string; got {repr(version)}")
-        else:
-          self.assertEqual(version, "<unknown>")
       elif self.backend.platform == "tpu" and not cloud_tpu:
         self.assertIn("tpu", version.lower())
         self.assertIn("cl/", version)

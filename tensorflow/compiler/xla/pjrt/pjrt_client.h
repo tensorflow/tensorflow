@@ -549,9 +549,9 @@ class PjRtClient {
     // transfer is complete but before the buffers are made available to
     // their consumers. 'literal' must remain in scope until on_done is
     // called.
-    virtual Status TransferLiteralToBuffer(int buffer_index,
-                                           const LiteralSlice& literal,
-                                           std::function<void()> on_done) = 0;
+    virtual Status TransferLiteralToBuffer(
+        int buffer_index, const LiteralSlice& literal,
+        absl::AnyInvocable<void() &&> on_done) = 0;
 
     // Returns the on-device size in bytes of buffer buffer_index.
     virtual size_t buffer_size(int buffer_index) const = 0;
@@ -562,9 +562,9 @@ class PjRtClient {
     // after this call. on_done is called when the transfer is complete but
     // before the buffers are made available to their consumers. 'data' must
     // remain in scope until on_done is called.
-    virtual Status TransferRawDataToBuffer(int buffer_index,
-                                           absl::string_view data,
-                                           std::function<void()> on_done) = 0;
+    virtual Status TransferRawDataToBuffer(
+        int buffer_index, absl::string_view data,
+        absl::AnyInvocable<void() &&> on_done) = 0;
 
     // Transfers 'data' into a sub-buffer of buffer_index starting at offset, of
     // length transfer_size. 'data' must be already laid out in the correct
@@ -579,7 +579,7 @@ class PjRtClient {
     virtual Status TransferRawDataToSubBuffer(
         int buffer_index, const void* data, int64_t offset,
         int64_t transfer_size, bool is_last_transfer,
-        std::function<void()> on_done) = 0;
+        absl::AnyInvocable<void() &&> on_done) = 0;
 
     // Indicates that a client error occurred and the transfers will never
     // complete. Puts all buffers in an error state. For the stream executor

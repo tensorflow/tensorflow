@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_grpc_cc_dependencies")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -74,29 +74,6 @@ tf_cc_test(
         "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/time",
     ],
-)
-
-tf_cc_test(
-    name = "coordination_service_recoverable_job_test",
-    srcs = ["coordination_service_recoverable_job_test.cc"],
-    deps = [
-        ":coordination_client",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/distributed_runtime/rpc/coordination:grpc_coordination_client",
-        "//tensorflow/core/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
-        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
-        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_impl",
-        "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
-        "//tensorflow/tsl/platform:mutex",
-        "//tensorflow/tsl/protobuf:coordination_config_proto_cc",
-    ] + tf_grpc_cc_dependencies(),
 )
 
 filegroup(

@@ -148,9 +148,6 @@ cc_library(
     hdrs = ["pjrt_client_registry.h"],
     deps = [
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/compiler/xla/service:hlo_runner",
-        "//tensorflow/compiler/xla/service:hlo_runner_interface",
-        "//tensorflow/compiler/xla/service:hlo_runner_pjrt",
     ],
 )
 
@@ -1081,6 +1078,7 @@ xla_test(
 xla_test(
     name = "gather_operation_test",
     srcs = ["gather_operation_test.cc"],
+    tags = ["test_hlo_pjrt_runner"],
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",

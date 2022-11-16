@@ -80,10 +80,10 @@ TFRTSavedModelTest::TFRTSavedModelTest(
   CHECK(runtime_);
   auto options = DefaultSavedModelOptions(runtime_.get());
 
-  tensorflow::Status status;
-  saved_model_ = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
-                                                /*tags=*/{"serve"}, &status);
-  TF_DCHECK_OK(status);
+  auto saved_model = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
+                                                    /*tags=*/{"serve"});
+  TF_DCHECK_OK(saved_model.status());
+  saved_model_ = *std::move(saved_model);
 }
 
 // Compute the results using TF1 session loaded from the saved model. In

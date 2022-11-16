@@ -15,11 +15,11 @@ cc_library(
     copts = tf_profiler_copts() + ["-fexceptions"],
     features = ["-use_header_modules"],  # Incompatible with -fexceptions.
     visibility = [
+        "//tensorflow/compiler/xla/backends/profiler:__subpackages__",
         "//tensorflow/core/profiler:__subpackages__",
         "//tensorflow/python/profiler/internal:__subpackages__",
     ],
     deps = [
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:path",
@@ -35,4 +35,21 @@ cc_library(
         "@pybind11",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "traceme_wrapper",
+    hdrs = ["traceme_wrapper.h"],
+    copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/compiler/xla/python:__pkg__",
+        "//tensorflow/python/profiler/internal:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/lib:traceme_for_pybind",
+        "@com_google_absl//absl/strings",
+        "@pybind11",
+    ],
 )

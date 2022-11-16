@@ -22,10 +22,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/cpu/executable.pb.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
@@ -199,6 +199,9 @@ class CpuCompiler : public LLVMCompiler {
     return CpuXlaRuntimeAotCompilationResult::FromString(serialized_aot_result);
   }
 
+  StatusOr<std::unique_ptr<CpuExecutable>> CompileXlaRuntimeCpuExecutable(
+      std::unique_ptr<HloModule> module);
+
  private:
   // Initialize the LLVM target.
   static void InitializeLLVMTarget();
@@ -221,8 +224,6 @@ class CpuCompiler : public LLVMCompiler {
       LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile);
 
   StatusOr<std::unique_ptr<CpuExecutable>> CompileLegacyCpuExecutable(
-      std::unique_ptr<HloModule> module);
-  StatusOr<std::unique_ptr<CpuExecutable>> CompileXlaRuntimeCpuExecutable(
       std::unique_ptr<HloModule> module);
 
   CpuCompiler(const CpuCompiler&) = delete;

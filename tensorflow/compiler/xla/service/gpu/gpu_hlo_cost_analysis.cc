@@ -19,10 +19,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 
 namespace xla {
 namespace gpu {
@@ -44,8 +44,11 @@ int64_t GpuHloCostAnalysis::FusionParameterReadBytes(
     const HloInstruction* hlo) const {
   CHECK(hlo->IsFused() && (hlo->opcode() == HloOpcode::kParameter ||
                            hlo->opcode() == HloOpcode::kGetTupleElement));
-  return GetShapeSize(hlo->shape()) *
-         hlo_properties_.at(hlo).at(kUtilizationKey);
+  float utilization = hlo_properties_.at(hlo).at(kUtilizationKey);
+  if (!options_.count_multiple_input_accesses) {
+    utilization = fmin(utilization, 1.0);
+  }
+  return GetShapeSize(hlo->shape()) * utilization;
 }
 
 Status GpuHloCostAnalysis::FusionCalculateUtilizations(
@@ -69,6 +72,9 @@ Status GpuHloCostAnalysis::FusionCalculateUtilizations(
   absl::flat_hash_map<const HloInstruction*, ConstHloInstructionSet>
       elementwise_use_roots;
 
+  absl::flat_hash_map<const HloInstruction*, float> root_utilizations;
+  absl::flat_hash_map<const HloInstruction*, int64_t> root_ir_sizes;
+
   for (const HloInstruction* instr : instructions) {
     hlo_properties_[instr][kUtilizationKey] = 0;
     hlo_properties_[instr][kIRSizeKey] = 0;
@@ -77,8 +83,8 @@ Status GpuHloCostAnalysis::FusionCalculateUtilizations(
   // For the purpose of operand utilization analysis, no matter how the fusion
   // outputs are used, we assume that fusion is always executed completely
   // producing 100% of its outputs.
-  hlo_properties_[root][kUtilizationKey] = 1.0;
-  hlo_properties_[root][kIRSizeKey] = 1;
+  root_utilizations[root] = 1.0;
+  root_ir_sizes[root] = 1;
   elementwise_use_roots[root].insert(root);
 
   current_properties_[kFlopsKey] = 0;
@@ -86,15 +92,12 @@ Status GpuHloCostAnalysis::FusionCalculateUtilizations(
   current_properties_[kIRSizeKey] = 0;
 
   for (const HloInstruction* instr : instructions) {
-    VLOG(8) << instr->ToString() << ":";
+    VLOG(8) << instr->name() << ":";
     VLOG(9) << "Elementwise use roots:";
     for (const HloInstruction* r : elementwise_use_roots[instr]) {
-      VLOG(9) << "\t" << r->ToString();
-      if (instr != r) {
-        hlo_properties_[instr][kUtilizationKey] +=
-            hlo_properties_[r][kUtilizationKey];
-        hlo_properties_[instr][kIRSizeKey] += hlo_properties_[r][kIRSizeKey];
-      }
+      VLOG(9) << "\t" << r->name() << ": " << root_utilizations[r];
+      hlo_properties_[instr][kUtilizationKey] += root_utilizations[r];
+      hlo_properties_[instr][kIRSizeKey] += root_ir_sizes[r];
     }
 
     float cur_instr_utilization = hlo_properties_[instr][kUtilizationKey];
@@ -131,8 +134,8 @@ Status GpuHloCostAnalysis::FusionCalculateUtilizations(
             ShapeUtil::ElementsInRecursive(operand->shape());
         cur_operand_utilization =
             ceil(cur_operand_utilization * operand_elements) / operand_elements;
-        hlo_properties_[operand][kUtilizationKey] += cur_operand_utilization;
-        hlo_properties_[operand][kIRSizeKey] += cur_instr_times_emitted;
+        root_utilizations[operand] += cur_operand_utilization;
+        root_ir_sizes[operand] += cur_instr_times_emitted;
       }
     }
   }
@@ -218,8 +221,15 @@ Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
     // possible", and if we were to include temp memory in here, we'd
     // essentially be *rewarding* convs that use additional temp memory!
     if (custom_call->shape().IsTuple()) {
-      SetOutputBytesAccessed(
-          options_.shape_size(custom_call->shape().tuple_shapes(0)));
+      float output_size =
+          options_.shape_size(custom_call->shape().tuple_shapes(0));
+      // 'Bytes accessed' are estimated in HloCostAnalysis::Preprocess() as
+      // input + output. As the output size is being adjusted here it has
+      // to propagate to the total bytes accessed.
+      current_properties_[kBytesAccessedKey] -=
+          current_properties_[GetOutputBytesAccessedKey()];
+      SetOutputBytesAccessed(output_size);
+      current_properties_[kBytesAccessedKey] += output_size;
     }
     return OkStatus();
   }

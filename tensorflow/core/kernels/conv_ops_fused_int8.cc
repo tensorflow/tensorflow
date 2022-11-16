@@ -547,8 +547,8 @@ void operator()(
   const float side_input_scale = side_input_scale_param.scalar<float>()();
 
   constexpr double leakyrelu_alpha = 0;  // This op doesn't support leaky relu
-  int device_id = stream->parent()->device_ordinal();
   ConvParameters fused_conv_parameters = {
+      stream->parent(),
       batch_size,
       conv_input_depth,
       {{conv_input_rows, conv_input_cols}},
@@ -560,7 +560,6 @@ void operator()(
       {{row_stride, col_stride}},
       {{padding_rows, padding_cols}},
       conv_input->dtype(),
-      device_id,
       /*group_count=*/1,  // This op doesn't support grouped convolutions.
       ConvParameters::FusionInfo{conv_scale, side_input_scale, leakyrelu_alpha,
                                  dnn_activation_mode,

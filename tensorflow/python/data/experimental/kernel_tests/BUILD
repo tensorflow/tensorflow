@@ -12,6 +12,7 @@ tf_py_test(
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:options",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -162,9 +163,11 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:random_seed",
+        "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:options",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -189,6 +192,7 @@ tf_py_test(
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:options",
         "//tensorflow/python/ops/ragged",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
@@ -338,6 +342,7 @@ tf_py_test(
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:options",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -394,6 +399,7 @@ tf_py_test(
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:map_op",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -570,7 +576,7 @@ tf_py_test(
 
 tf_py_test(
     name = "tf_record_writer_test",
-    size = "small",
+    size = "medium",
     srcs = ["tf_record_writer_test.py"],
     deps = [
         "//tensorflow/python:array_ops",

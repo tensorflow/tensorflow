@@ -14,7 +14,7 @@
 # ==============================================================================
 """Test configs for expm1."""
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -36,7 +36,7 @@ def make_expm1_tests(options):
 
     input_tensor = tf.compat.v1.placeholder(
         dtype=tf.float32, name="input", shape=parameters["input_shape"])
-    out = tf.expm1(input_tensor)
+    out = tf.math.expm1(input_tensor)
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
