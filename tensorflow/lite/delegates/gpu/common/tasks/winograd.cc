@@ -67,7 +67,7 @@ std::string GetKernelWinograd4x4To36(const GpuInfo& gpu_info,
   int Y = GLOBAL_ID_1 * 4;
   int S = GLOBAL_ID_2;
 
-  if (GLOBAL_ID_0 >= args.tiles_x || GLOBAL_ID_1 >= args.tiles_y) return;
+  if (X / 4 >= args.tiles_x || Y / 4 >= args.tiles_y) return;
 
   FLT4 I[6][6];
   for (int y = 0; y < 6; ++y) {
@@ -123,7 +123,7 @@ std::string GetKernelWinograd4x4To36(const GpuInfo& gpu_info,
   }
 
   c += R"(
-  int dst_x = GLOBAL_ID_1 * args.tiles_x + GLOBAL_ID_0;
+  int dst_x = Y / 4 * args.tiles_x + X / 4;
   for (int y = 0; y < 6; ++y) {
     FLT4 value = I[y][0] + args.Bt.Read(2) * I[y][2] + args.Bt.Read(4) * I[y][4];
     args.dst_tensor.Write(value, dst_x, y * 6 + 0, S);
