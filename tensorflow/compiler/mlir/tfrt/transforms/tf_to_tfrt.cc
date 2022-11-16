@@ -271,7 +271,7 @@ mlir::LogicalResult FallbackExecuteOpConversion::ConvertToFallbackExecuteOp(
         cost_analysis_.GetCost(op, fallback_key.getInt()));
   }
 
-  if (mlir::MemoryEffectOpInterface::hasNoEffect(op)) {
+  if (mlir::isMemoryEffectFree(op)) {
     auto new_op = rewriter.create<tfrt::fallback_async::ExecuteOp>(
         op->getLoc(), result_types, new_operands, device, op_attrs,
         op_func_attrs, fallback_key, op_name, cost);
@@ -328,7 +328,7 @@ mlir::LogicalResult FallbackExecuteOpConversion::ConvertToCoreRTExecuteOp(
       corert_converter_.ConvertOpHandler(op, op_handler_name, &rewriter);
   if (!op_handler) return failure();
 
-  if (mlir::MemoryEffectOpInterface::hasNoEffect(op)) {
+  if (mlir::isMemoryEffectFree(op)) {
     auto new_op = rewriter.create<tfrt::corert::ExecuteOp>(
         op->getLoc(), result_types, op_handler, new_operands, op_attrs,
         op_func_attrs, op_name);
@@ -934,7 +934,7 @@ class TFRTCallOpConversion : public mlir::OpConversionPattern<CallOp> {
         new_operands);
     rewriter.replaceOp(op, new_op.getResults().drop_front());
 
-    if (!mlir::MemoryEffectOpInterface::hasNoEffect(op)) {
+    if (!mlir::isMemoryEffectFree(op)) {
       // Register the converted op so that it can be retrieved by successors.
       // TODO(chky): Add OpTraits or OpInterface, rather than assume first
       // result is a chain.
@@ -1126,7 +1126,7 @@ class TFRTCondOpConversion : public mlir::OpConversionPattern<mlir::TF::IfOp> {
     // The first result is a !tfrt.chain.
     rewriter.replaceOp(op, new_op.getResults().drop_front(1));
 
-    if (!mlir::MemoryEffectOpInterface::hasNoEffect(op)) {
+    if (!mlir::isMemoryEffectFree(op)) {
       // Register the converted op so that it can be retrieved by successors.
       // TODO(chky): Add OpTraits or OpInterface, rather than assume first
       // result is a chain.
@@ -1261,7 +1261,7 @@ class TFRTWhileOpConversion
 
     if (!has_at_most_tensor_array_effect) out_chain = new_op.getResult(0);
 
-    if (!mlir::MemoryEffectOpInterface::hasNoEffect(op)) {
+    if (!mlir::isMemoryEffectFree(op)) {
       // Register the converted op so that it can be retrieved by successors.
       // TODO(chky): Add OpTraits or OpInterface, rather than assume first
       // result is a chain.

@@ -175,7 +175,7 @@ template <typename ConcreteType>
 class CannotDuplicate : public TraitBase<ConcreteType, CannotDuplicate> {
  public:
   static LogicalResult verifyTrait(Operation* op) {
-    if (MemoryEffectOpInterface::hasNoEffect(op))
+    if (isMemoryEffectFree(op))
       return op->emitError(
           "operations with no side effects cannot have CannotDuplicate trait");
     return success();

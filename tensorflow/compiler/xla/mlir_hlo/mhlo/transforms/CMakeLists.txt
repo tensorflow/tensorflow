@@ -85,6 +85,7 @@ add_mlir_library(MhloPasses
   MLIRIR
   MLIRMhloUtils
   MLIRPass
+  MLIRSideEffectInterfaces
   MLIRTransformUtils
   StablehloBroadcastUtils
 )
