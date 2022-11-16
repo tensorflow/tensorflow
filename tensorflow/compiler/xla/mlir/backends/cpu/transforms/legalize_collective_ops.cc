@@ -20,6 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -107,13 +109,35 @@ class AllReduceLowering : public OpRewritePattern<mhlo::AllReduceOp> {
   };
 };
 
+template <typename IdOp, typename XlaIdOp>
+class IdLowering : public OpRewritePattern<IdOp> {
+  using OpRewritePattern<IdOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(IdOp op,
+                                PatternRewriter& rewriter) const override {
+    Value id = rewriter.create<XlaIdOp>(op.getLoc());
+    // Wrap the scalar in a tensor.
+    Value id_tensor = rewriter.create<tensor::FromElementsOp>(
+        op.getLoc(), RankedTensorType::get({}, rewriter.getI32Type()), id);
+    // And convert it to unsigned. This becomes a noop later.
+    rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(
+        op,
+        RankedTensorType::get({}, IntegerType::get(rewriter.getContext(), 32,
+                                                   IntegerType::Unsigned)),
+        id_tensor);
+    return success();
+  };
+};
+
 void LegalizeCollectiveOpsPass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
 
   // Convert mhlo collective operations to XLA cpu ops.
   RewritePatternSet patterns(ctx);
-  patterns.insert<AllReduceLowering>(ctx);
+  patterns.insert<AllReduceLowering,
+                  IdLowering<mhlo::PartitionIdOp, xla_cpu::PartitionIdOp>,
+                  IdLowering<mhlo::ReplicaIdOp, xla_cpu::ReplicaIdOp>>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     return signalPassFailure();

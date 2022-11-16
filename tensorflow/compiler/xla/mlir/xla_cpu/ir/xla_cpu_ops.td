@@ -58,4 +58,20 @@ def AllReduceOp : XlaCpu_Op<"all_reduce",
   );
 }
 
+def ReplicaIdOp : XlaCpu_Op<"replica_id"> {
+  let summary = "CPU-specific version of ReplicaId";
+  let description = [{
+    ReplicaId, but returns a i32 instead of tensor<ui32>.
+  }];
+  let results = (outs I32);
+}
+
+def PartitionIdOp : XlaCpu_Op<"partition_id"> {
+  let summary = "CPU-specific version of PartitionId";
+  let description = [{
+    PartitionId, but returns a i32 instead of tensor<ui32>.
+  }];
+  let results = (outs I32);
+}
+
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_XLA_CPU_OPS_TD_

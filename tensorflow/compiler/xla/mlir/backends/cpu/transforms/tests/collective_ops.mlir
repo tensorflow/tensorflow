@@ -25,3 +25,25 @@ func.func @max_reduce(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 //  CHECK-SAME:   replica_groups = dense<{{\[}}[0, 2, 4, 6], [1, 3, 5, 7]]>
 //  CHECK-SAME:   use_global_device_ids
 //       CHECK: return %[[RET]]
+
+func.func @partition_id() -> tensor<ui32> {
+  %0 = "mhlo.partition_id"() : () -> tensor<ui32>
+  func.return %0 : tensor<ui32>
+}
+
+// CHECK-LABEL: @partition_id
+// CHECK: %[[ID:.*]] = "xla_cpu.partition_id"() : () -> i32
+// CHECK: %[[TENSOR:.*]] = tensor.from_elements %[[ID]] : tensor<i32>
+// CHECK: %[[CAST:.*]] = mhlo.convert %[[TENSOR]] : (tensor<i32>) -> tensor<ui32>
+// CHECK: return %[[CAST]]
+
+func.func @replica_id() -> tensor<ui32> {
+  %0 = "mhlo.replica_id"() : () -> tensor<ui32>
+  func.return %0 : tensor<ui32>
+}
+
+// CHECK-LABEL: @replica_id
+// CHECK: %[[ID:.*]] = "xla_cpu.replica_id"() : () -> i32
+// CHECK: %[[TENSOR:.*]] = tensor.from_elements %[[ID]] : tensor<i32>
+// CHECK: %[[CAST:.*]] = mhlo.convert %[[TENSOR]] : (tensor<i32>) -> tensor<ui32>
+// CHECK: return %[[CAST]]

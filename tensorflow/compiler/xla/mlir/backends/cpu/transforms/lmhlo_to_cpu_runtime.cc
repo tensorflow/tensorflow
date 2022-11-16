@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
+#include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 
 namespace xla {
@@ -46,6 +47,9 @@ using namespace mlir;  // NOLINT
 using mlir::lmhlo::CustomCallOp;
 using mlir::lmhlo::InfeedOp;
 using mlir::lmhlo::OutfeedOp;
+
+using xla_cpu::PartitionIdOp;
+using xla_cpu::ReplicaIdOp;
 
 using xla::runtime::AppendCustomCallAttrs;
 using xla::runtime::CustomCallDeclarations;
@@ -192,6 +196,35 @@ class OutfeedOpLowering : public OpRewritePattern<OutfeedOp> {
 
 //===----------------------------------------------------------------------===//
 
+template <typename IdOp>
+class IdOpLowering : public OpRewritePattern<IdOp> {
+ public:
+  IdOpLowering(MLIRContext* ctx, llvm::StringRef call_target,
+               CustomCallDeclarations& custom_calls)
+      : OpRewritePattern<IdOp>(ctx),
+        call_target_(call_target),
+        custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(IdOp op,
+                                PatternRewriter& rewriter) const override {
+    ImplicitLocOpBuilder b(op->getLoc(), rewriter);
+
+    // Create a custom call function declaration.
+    func::FuncOp callee = custom_calls_.GetOrCreate(
+        b, call_target_, TypeRange(), TypeRange(rewriter.getI32Type()));
+
+    rewriter.replaceOpWithNewOp<func::CallOp>(op, callee.getName(),
+                                              TypeRange(rewriter.getI32Type()));
+    return success();
+  }
+
+ private:
+  llvm::StringRef call_target_;
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
 void ConvertLmhloToCpuRuntimePass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext* ctx = module.getContext();
@@ -204,6 +237,10 @@ void ConvertLmhloToCpuRuntimePass::runOnOperation() {
   RewritePatternSet patterns(ctx);
   patterns.insert<InfeedOpLowering, OutfeedOpLowering, CustomCallOpLowering>(
       ctx, custom_calls);
+  patterns.insert<IdOpLowering<PartitionIdOp>>(ctx, "xla.cpu.partition_id",
+                                               custom_calls);
+  patterns.insert<IdOpLowering<ReplicaIdOp>>(ctx, "xla.cpu.replica_id",
+                                             custom_calls);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();

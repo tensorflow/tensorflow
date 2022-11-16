@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu.h.inc"

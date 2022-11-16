@@ -96,9 +96,7 @@ cc_library(
         ":xla_cpu_enums_inc_gen",
         ":xla_cpu_inc_gen",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:InferTypeOpInterface",
     ],
 )
