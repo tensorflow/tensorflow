@@ -1,0 +1,8 @@
+# general packagaes
+epel-release
+https://repo.ius.io/7/x86_64/packages/i/ius-release-2-1.el7.ius.noarch.rpm
+openssl-devel 
+libffi-devel 
+centos-release-scl 
+hdf5-devel
+wget

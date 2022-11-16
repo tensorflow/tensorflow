@@ -1,0 +1,14 @@
+six
+scipy
+argparse
+keras_applications
+keras_preprocessing
+tqdm
+Pillow
+portpicker
+h5py==2.10.0
+scikit-learn
+packaging
+requests
+wheel
+auditwheel
