@@ -52,17 +52,17 @@ auto* saved_model_read_api = monitoring::Counter<1>::New(
     "/tensorflow/core/saved_model/read/api",
     "The API used to load the SavedModel.", "api_label");
 
-// Gauge that contains the fingerprint (graph_def_checksum) of the newly written
-// SavedModel.
+// Gauge that contains the fingerprint (saved_model_checksum) of the newly
+// written SavedModel.
 auto* saved_model_write_fingerprint = monitoring::Gauge<string, 0>::New(
     "/tensorflow/core/saved_model/write/fingerprint",
-    "The fingerprint (graph_def_checksum) of the exported SavedModel.");
+    "The fingerprint (saved_model_checksum) of the exported SavedModel.");
 
-// Gauge that contains the fingerprint (graph_def_checksum) of the loaded
+// Gauge that contains the fingerprint (saved_model_checksum) of the loaded
 // SavedModel.
 auto* saved_model_read_fingerprint = monitoring::Gauge<string, 0>::New(
     "/tensorflow/core/saved_model/read/fingerprint",
-    "The fingerprint (graph_def_checksum) of the loaded SavedModel.");
+    "The fingerprint (saved_model_checksum) of the loaded SavedModel.");
 
 // Distribution of checkpoint write durations.
 auto* checkpoint_write_durations = monitoring::Sampler<1>::New(
