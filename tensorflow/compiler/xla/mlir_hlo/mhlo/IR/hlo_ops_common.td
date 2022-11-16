@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_COMMON
 #define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_COMMON
 
-def HLO_Dialect : Dialect {
+def MHLO_Dialect : Dialect {
   let name = "mhlo";
   let cppNamespace = "::mlir::mhlo";
 
