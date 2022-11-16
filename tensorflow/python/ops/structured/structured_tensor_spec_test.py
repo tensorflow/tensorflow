@@ -64,7 +64,7 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
     if not (isinstance(a, structured_tensor.StructuredTensor) and
             isinstance(b, structured_tensor.StructuredTensor)):
       # TODO(edloper) Add support for this once structured_factory_ops is added.
-      raise TypeError('Not supported yet')
+      raise ValueError('Not supported yet')
 
     self.assertEqual(repr(a.shape), repr(b.shape))
     self.assertEqual(set(a.field_names()), set(b.field_names()))

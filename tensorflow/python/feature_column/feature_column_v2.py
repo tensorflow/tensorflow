@@ -2507,10 +2507,10 @@ class FeatureTransformationCache(object):
       return feature_tensor
 
     if isinstance(key, six.string_types):
-      raise TypeError('Feature {} is not in features dictionary.'.format(key))
+      raise ValueError('Feature {} is not in features dictionary.'.format(key))
 
     if not isinstance(key, FeatureColumn):
-      raise TypeError('"key" must be either a "str" or "FeatureColumn". '
+      raise ValueError('"key" must be either a "str" or "FeatureColumn". '
                       'Provided: {}'.format(key))
 
     column = key

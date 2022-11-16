@@ -300,11 +300,11 @@ class ParseRangesTest(test_util.TensorFlowTestCase):
                                 "Incorrect number of elements in range"):
       command_parser.parse_ranges("[inf]")
 
-    with self.assertRaisesRegex(TypeError,
+    with self.assertRaisesRegex(ValueError,
                                 "Incorrect type in the 1st element of range"):
       command_parser.parse_ranges("[1j, 1]")
 
-    with self.assertRaisesRegex(TypeError,
+    with self.assertRaisesRegex(ValueError,
                                 "Incorrect type in the 2nd element of range"):
       command_parser.parse_ranges("[1, 1j]")
 

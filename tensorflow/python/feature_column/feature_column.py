@@ -1576,7 +1576,7 @@ def _weighted_categorical_column(categorical_column,
     ValueError: if `dtype` is not convertible to float.
   """
   if (dtype is None) or not (dtype.is_integer or dtype.is_floating):
-    raise TypeError('dtype {} is not convertible to float.'.format(dtype))
+    raise ValueError('dtype {} is not convertible to float.'.format(dtype))
   return _WeightedCategoricalColumn(
       categorical_column=categorical_column,
       weight_feature_key=weight_feature_key,
@@ -2389,7 +2389,7 @@ class _NumericColumn(
   def _transform_feature(self, inputs):
     input_tensor = inputs.get(self.key)
     if isinstance(input_tensor, sparse_tensor_lib.SparseTensor):
-      raise TypeError(
+      raise ValueError(
           'The corresponding Tensor of numerical column must be a Tensor. '
           'SparseTensor is not supported. key: {}'.format(self.key))
     if self.normalizer_fn is not None:

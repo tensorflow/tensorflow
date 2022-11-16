@@ -753,11 +753,11 @@ class WrapScreenOutputTest(test_util.TensorFlowTestCase):
     self.assertEqual(new_line_indices, [0, 2, 5])
 
   def testWrappingInvalidArguments(self):
-    with self.assertRaisesRegex(TypeError,
+    with self.assertRaisesRegex(ValueError,
                                 "Invalid type of input screen_output"):
       debugger_cli_common.wrap_rich_text_lines("foo", 12)
 
-    with self.assertRaisesRegex(TypeError, "Invalid type of input cols"):
+    with self.assertRaisesRegex(ValueError, "Invalid type of input cols"):
       debugger_cli_common.wrap_rich_text_lines(
           debugger_cli_common.RichTextLines(["foo", "bar"]), "12")
 
