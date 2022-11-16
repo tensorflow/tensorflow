@@ -243,7 +243,7 @@ def extract_sub_graph(graph_def, dest_nodes):
                     f"type {type(graph_def)}.")
 
   if isinstance(dest_nodes, str):
-    raise TypeError("dest_nodes must be an iterable of strings, but got "
+    raise ValueError("dest_nodes must be an iterable of strings, but got "
                     f"type {type(dest_nodes)}.")
 
   name_to_input_name, name_to_node, name_to_seq_num = _extract_graph_summary(
