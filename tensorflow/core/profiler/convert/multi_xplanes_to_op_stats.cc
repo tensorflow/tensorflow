@@ -32,15 +32,6 @@ namespace profiler {
 Status ConvertMultiXSpacesToCombinedOpStats(
     const SessionSnapshot& session_snapshot, const OpStatsOptions& options,
     OpStats* combined_op_stats) {
-  // A shortcut code path for a single XSpace. There is no need to merge OpStats
-  // if there is only a single XSpace.
-  if (session_snapshot.XSpaceSize() == 1) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
-                        session_snapshot.GetXSpace(0));
-    *combined_op_stats = ConvertXSpaceToOpStats(*xspace, options);
-    return OkStatus();
-  }
-
   // Read multiple XSpaces and convert to multiple OpStats.
   // TODO(profiler): Change the combiner to convert and combine one OpStats at a
   // time, to reduce peak memory usage.

@@ -211,6 +211,12 @@ StepIntersection ComputeStepIntersectionToMergeOpStats(
 void CombineAllOpStats(const std::vector<OpStatsInfo>& all_op_stats_info,
                        const StepIntersection& step_intersection,
                        OpStats* combined_op_stats) {
+  // A shortcut code path for a single OpStats. There is no need to merge.
+  if (all_op_stats_info.size() == 1) {
+    *combined_op_stats = *all_op_stats_info[0].op_stats;
+    return;
+  }
+
   StepDatabaseResult* combined_step_db = combined_op_stats->mutable_step_db();
   // Initialize the StepDatabaseResult field that depends on the number of
   // steps.

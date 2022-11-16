@@ -412,6 +412,7 @@ tf_cc_test(
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_test_utils",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
