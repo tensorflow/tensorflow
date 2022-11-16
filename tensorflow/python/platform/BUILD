@@ -117,6 +117,7 @@ tf_py_test(
     tags = [
         "no_pip",
         "no_windows",
+	"no_oss",  # TODO(b/259319686) : Disable the tes
     ],
     deps = [
         ":platform",
