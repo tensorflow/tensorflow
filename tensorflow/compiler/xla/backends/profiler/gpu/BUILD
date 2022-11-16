@@ -206,7 +206,6 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla/stream_executor/rocm:roctracer_wrapper",
-        "//tensorflow/core/lib/gtl:cleanup",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
