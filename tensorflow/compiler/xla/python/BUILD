@@ -110,7 +110,6 @@ py_test(
         "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python:framework_test_lib",
     ] + xla_py_test_deps(),
 )
 
