@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 """Configuration file for an XLA plugin.
 
@@ -39,5 +39,14 @@ cc_library(
     name = "plugin",
     deps = [
         #"//tensorflow/compiler/plugin/example:example_lib",
+    ],
+)
+
+# This target is added purely for the purpose of ensuring that `:xla_device` is
+# always publicly visible to external XLA backend/plugin developers.
+cc_library(
+    name = "plugin_device",
+    deps = [
+        "//tensorflow/compiler/jit:xla_device",
     ],
 )
