@@ -13,7 +13,7 @@ exports_files([
 ])
 
 # Python extension sources.
-exports_files(["python/MlirHloModule.cc"])
+exports_files(["bindings/python/MlirHloModule.cc"])
 
 filegroup(
     name = "hlo_ops_td_filegroup",
@@ -1495,18 +1495,18 @@ gentbl_filegroup(
                 "-gen-python-op-bindings",
                 "-bind-dialect=mhlo",
             ],
-            "python/mlir/dialects/_mhlo_ops_gen.py",
+            "bindings/python/mlir/dialects/_mhlo_ops_gen.py",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "python/mlir/dialects/MhloOps.td",
+    td_file = "bindings/python/mlir/dialects/MhloOps.td",
     deps = [":MhloOpsPyTdFiles"],
 )
 
 filegroup(
     name = "MhloOpsPyFiles",
     srcs = [
-        "python/mlir/dialects/mhlo.py",
+        "bindings/python/mlir/dialects/mhlo.py",
         ":MhloOpsPyGen",
     ],
 )
