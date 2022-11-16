@@ -305,8 +305,7 @@ void ConvGeneric::GenerateCode(const GpuInfo& gpu_info) {
     compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
   }
   if (conv_params_.IsPrivateMemBroadcast() &&
-      (gpu_info.IsCL20OrHigher() ||
-       gpu_info.opencl_info.platform_version.find("clvk"))) {
+      (gpu_info.IsCL20OrHigher() || gpu_info.opencl_info.IsCLVK())) {
     compiler_options_.push_back(CompilerOptions::kCl20);
   }
   bool kernel_is_trivial =
@@ -1749,7 +1748,8 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
     conv_params.fixed_work_group_size = false;
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::TEXTURES_MEM_X4;
-  } else if (gpu_info.IsIntel()) {
+  } else if (gpu_info.IsIntel() ||
+             (gpu_info.IsApiOpenCl() && gpu_info.opencl_info.IsCLVK())) {
     if (different_weights_for_height) {
       work_group_size_ = int3(16, 1, 1);
       work_group_launch_order_ = int3(0, 1, 2);
@@ -1774,7 +1774,8 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
         definition.precision != CalculationsPrecision::F32_F16) {
       const bool supports_subgroups =
           gpu_info.SupportsExtension("cl_khr_subgroups") ||
-          gpu_info.SupportsExtension("cl_intel_subgroups");
+          gpu_info.SupportsExtension("cl_intel_subgroups") ||
+          gpu_info.opencl_info.IsCLVK();
       if (supports_subgroups) {
         const int kSubGroupSize = 16;
         const bool supports_subgroup_size_control =
@@ -1784,7 +1785,7 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
           conv_params.weights_upload_type =
               WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
           conv_params.simd_size = kSubGroupSize;
-        } else if (gpu_info.opencl_info.platform_version.find("clvk")) {
+        } else if (gpu_info.opencl_info.IsCLVK()) {
           // It will work because of specific driver using subgroup size 16
           conv_params.weights_upload_type =
               WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
