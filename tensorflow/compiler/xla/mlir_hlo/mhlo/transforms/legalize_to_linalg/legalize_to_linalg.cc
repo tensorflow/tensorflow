@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -3996,6 +3997,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
   patterns->add<
       ConvolutionOpGeneralConversion,
       DotGeneralOpConversion>(typeConverter, context, PatternBenefit(1));
+  linalg::populateEraseUnusedOperandsAndResultsPatterns(*patterns);
   // clang-format on
 }
 
