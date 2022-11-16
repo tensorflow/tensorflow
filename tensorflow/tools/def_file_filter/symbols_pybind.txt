@@ -421,6 +421,8 @@ tensorflow::metrics::SavedModelWrite
 tensorflow::metrics::SavedModelRead
 tensorflow::metrics::SavedModelWriteApi
 tensorflow::metrics::SavedModelReadApi
+tensorflow::metrics::SavedModelWriteFingerprint
+tensorflow::metrics::SavedModelReadFingerprint
 tensorflow::metrics::CheckpointReadDuration
 tensorflow::metrics::CheckpointWriteDuration
 tensorflow::metrics::AsyncCheckpointWriteDuration
@@ -429,6 +431,7 @@ tensorflow::metrics::CheckpointSize
 
 [//tensorflow/cc/saved_model:fingerprinting_impl] # SavedModel Fingerprinting
 tensorflow::saved_model::fingerprinting::CreateFingerprintDef
+tensorflow::saved_model::fingerprinting::ReadSavedModelFingerprint
 
 
 [//tensorflow/compiler/jit:flags] # tfe
