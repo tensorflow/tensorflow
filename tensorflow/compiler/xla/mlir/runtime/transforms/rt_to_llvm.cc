@@ -215,7 +215,7 @@ class IsOkOpLowering : public OpConversionPattern<IsOkOp> {
 // Convert rt.custom_call to the corresponding runtime API call.
 //===----------------------------------------------------------------------===//
 
-static FailureOr<Value> EncodeArguments(
+static FailureOr<LLVM::AllocaOp> EncodeArguments(
     CallOp op, CustomCallArgEncodingSet &encodings, Globals &g,
     DenseMap<Value, CustomCallArgEncoding::Encoded> &encoded_args,
     ImplicitLocOpBuilder &b, ValueRange operands, ValueRange converted) {
@@ -270,7 +270,7 @@ static FailureOr<Value> EncodeArguments(
 
   // Always create an `alloca` in the parent function entry block.
   // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
-  Value mem = [&]() -> Value {
+  LLVM::AllocaOp alloca = [&] {
     Block &block = op->getParentOfType<func::FuncOp>().getBody().front();
     OpBuilder::InsertionGuard guard(b);
     b.setInsertionPointToStart(&block);
@@ -278,11 +278,14 @@ static FailureOr<Value> EncodeArguments(
     return b.create<LLVM::AllocaOp>(ptr, type, c1, 0);
   }();
 
-  // Store constructed arguments array on the stack and return a pointer to it.
-  b.create<LLVM::StoreOp>(arr, mem);
+  // Start the lifetime of the encoded arguments allocation.
+  b.create<LLVM::LifetimeStartOp>(b.getI64IntegerAttr(-1), alloca);
 
-  // Return a pointer to the encoded arguments.
-  return mem;
+  // Store constructed arguments array on the stack.
+  b.create<LLVM::StoreOp>(arr, alloca.getRes());
+
+  // Return an alloca that encodes the custom call arguments.
+  return alloca;
 }
 
 // Encodes attributes into the global constant (array of pointers to the
@@ -310,7 +313,7 @@ static FailureOr<Value> EncodeAttributes(CustomCallAttrEncodingSet &encodings,
 }
 
 struct EncodedResults {
-  Value result_array_ptr;  // passed as 'rets' argument to custom call
+  LLVM::AllocaOp encoded;  // passed as 'rets' argument to custom call
   SmallVector<LLVM::AllocaOp> allocas;  // storage for values of results
 };
 
@@ -358,7 +361,7 @@ static FailureOr<EncodedResults> EncodeResults(
 
   // Always create an `alloca` in the parent function entry block.
   // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
-  Value mem = [&]() -> Value {
+  LLVM::AllocaOp alloca = [&] {
     Block &block = op->getParentOfType<func::FuncOp>().getBody().front();
     OpBuilder::InsertionGuard guard(b);
     b.setInsertionPointToStart(&block);
@@ -366,11 +369,15 @@ static FailureOr<EncodedResults> EncodeResults(
     return b.create<LLVM::AllocaOp>(ptr, type, c1, 0);
   }();
 
-  // Store constructed results array on the stack
-  b.create<LLVM::StoreOp>(arr, mem);
+  // Start the lifetime of the encoded returns allocation.
+  b.create<LLVM::LifetimeStartOp>(b.getI64IntegerAttr(-1), alloca);
 
-  // Return a pointer to the encoded results.
-  results.result_array_ptr = mem;
+  // Store constructed results array on the stack
+  b.create<LLVM::StoreOp>(arr, alloca);
+
+  // Alloca that encodes the custom call returns.
+  results.encoded = alloca;
+
   return results;
 }
 
@@ -442,8 +449,7 @@ class CallOpLowering : public OpConversionPattern<CallOp> {
 
       return b.create<func::CallOp>(
           kCustomCall, TypeRange(rewriter.getI1Type()),
-          ValueRange({adaptor.getCtx(), callee, *args, *attrs,
-                      rets->result_array_ptr}));
+          ValueRange({adaptor.getCtx(), callee, *args, *attrs, rets->encoded}));
     };
 
     // Creates a direct custom call resolved at link time.
@@ -451,10 +457,9 @@ class CallOpLowering : public OpConversionPattern<CallOp> {
       auto type = RuntimeAPI::DirectCustomCallFunctionType(op.getContext());
       AddDeclaration(op->getParentOfType<ModuleOp>(), op.getCallee(), type);
 
-      return b.create<func::CallOp>(op.getCallee(),
-                                    TypeRange(rewriter.getI1Type()),
-                                    ValueRange({adaptor.getCtx(), *args, *attrs,
-                                                rets->result_array_ptr}));
+      return b.create<func::CallOp>(
+          op.getCallee(), TypeRange(rewriter.getI1Type()),
+          ValueRange({adaptor.getCtx(), *args, *attrs, rets->encoded}));
     };
 
     // Build a call operation and result decoding right after the original op.
@@ -469,6 +474,13 @@ class CallOpLowering : public OpConversionPattern<CallOp> {
         call, b, ret_encoding_, ret_types, converted_ret_types, rets->allocas);
     if (failed(decoded_results))
       return op.emitOpError() << "failed to decode results";
+
+    // End the lifetime of encoded arguments and results.
+    auto size = b.getI64IntegerAttr(-1);
+    b.create<LLVM::LifetimeEndOp>(size, *args);
+    b.create<LLVM::LifetimeEndOp>(size, rets->encoded);
+    for (LLVM::AllocaOp ret : rets->allocas)
+      b.create<LLVM::LifetimeEndOp>(size, ret);
 
     rewriter.replaceOp(op, ValueRange(*decoded_results));
     return success();
