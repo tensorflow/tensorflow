@@ -637,6 +637,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
+        "//tensorflow/core/profiler/protobuf:topology_proto_cc",
         "//tensorflow/core/profiler/utils:hardware_type_utils",
         "//tensorflow/core/profiler/utils:kernel_stats_utils",
         "//tensorflow/core/profiler/utils:step_intersection",
