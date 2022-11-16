@@ -115,11 +115,10 @@ class SavedModel {
   struct Options {
     explicit Options(const Runtime* rt) : graph_execution_options(rt) {}
 
-    // If the number of signagures is greater than the threshold, the loading of
-    // any signature (or signature combination) will be deferred until the first
-    // corresponding invocationof running. Otherwise, the individual signatures
-    // will be loaded along with the saved model.
-    int32_t lazy_loading_threshold = std::numeric_limits<int32_t>::max();
+    // If true, the loading of any signature (or signature combination) will be
+    // deferred until the first corresponding invocationof running. Otherwise,
+    // the individual signatures will be loaded along with the saved model.
+    bool enable_lazy_loading = false;
 
     // If true, we'll attempt to find MLArchive within the given loading path.
     // If not found, will use the path as a normal SavedModel directory.
@@ -206,6 +205,13 @@ class SavedModelImpl final : public SavedModel {
   static tensorflow::StatusOr<std::unique_ptr<SavedModel>> LoadSavedModel(
       Options options, absl::string_view saved_model_dir,
       const std::unordered_set<std::string>& tags);
+
+  // Loads all SignatureDefs in `meta_graph_def`. Refer to
+  // http://g3doc/learning/serving/g3doc/saved_model/overview.md
+  // for explanations on SavedModel.
+  static tensorflow::StatusOr<std::unique_ptr<SavedModel>> LoadSavedModel(
+      Options options, tensorflow::MetaGraphDef meta_graph_def,
+      absl::string_view saved_model_dir);
 
   SavedModelImpl(
       Options options, tensorflow::MetaGraphDef meta_graph_def,
@@ -307,7 +313,6 @@ class SavedModelImpl final : public SavedModel {
                       std::unique_ptr<LoadingResult>>
       loading_result_cache_ TF_GUARDED_BY(loading_result_cache_mu_);
   std::unique_ptr<GraphExecutor> graph_executor_;
-  bool lazy_loading_enabled_ = false;
 };
 
 class SavedModelMiraImpl;

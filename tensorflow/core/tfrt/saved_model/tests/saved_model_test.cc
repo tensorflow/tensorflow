@@ -53,8 +53,7 @@ TEST_P(SavedModelTest, BasicV1) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.lazy_loading_threshold =
-      GetParam().enable_lazy_loading ? 0 : INT32_MAX;
+  options.enable_lazy_loading = GetParam().enable_lazy_loading;
   options.graph_execution_options.compile_options.enable_native_ops =
       GetParam().enable_native_ops;
   options.graph_execution_options.compile_options.enable_grappler =
@@ -1062,7 +1061,7 @@ TEST(SavedModelTest, DisableCompilation) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.lazy_loading_threshold = 0;
+  options.enable_lazy_loading = true;
 
   auto saved_model = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
                                                     /*tags=*/{"serve"});

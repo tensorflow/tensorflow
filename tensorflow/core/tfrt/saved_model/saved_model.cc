@@ -461,7 +461,14 @@ SavedModelImpl::LoadSavedModel(Options options,
 
   TF_ASSIGN_OR_RETURN(auto meta_graph_def,
                       ReadSavedModel(saved_model_dir, tags));
+  return LoadSavedModel(std::move(options), std::move(meta_graph_def),
+                        saved_model_dir);
+}
 
+tensorflow::StatusOr<std::unique_ptr<SavedModel>>
+SavedModelImpl::LoadSavedModel(Options options,
+                               tensorflow::MetaGraphDef meta_graph_def,
+                               absl::string_view saved_model_dir) {
   LOG(INFO) << "TFRT loading v1 savedmodel: " << saved_model_dir;
   tfrt::metrics::AddTFRTVersionMetric();
 
@@ -470,9 +477,6 @@ SavedModelImpl::LoadSavedModel(Options options,
   UpdateCompileOptions(options);
 
   mlir::MLIRContext context;
-
-  const bool lazy_loading_enabled =
-      meta_graph_def.signature_def_size() > options.lazy_loading_threshold;
 
   // Step 1: Import saved model from a proto to an MLIR module.
   const auto import_start_time = absl::Now();
@@ -500,7 +504,7 @@ SavedModelImpl::LoadSavedModel(Options options,
       ImportSavedModel(
           &context, meta_graph_def, *fallback_state,
           std::string(saved_model_dir),
-          /*import_user_signatures=*/!lazy_loading_enabled,
+          /*import_user_signatures=*/!options.enable_lazy_loading,
           options.graph_execution_options.run_placer_grappler_on_functions,
           options.graph_execution_options.enable_tfrt_gpu));
 
@@ -518,7 +522,7 @@ SavedModelImpl::LoadSavedModel(Options options,
   // If lazy loading is enabled, the user signatures are not exported via MLIR
   // module, so we need to get them from the proto.
   // TODO(b/187228559): Unify the code paths for populating the signature map.
-  if (lazy_loading_enabled) {
+  if (options.enable_lazy_loading) {
     GetSignaturesFromSignatureDef(initializers_and_signatures.signature_map,
                                   meta_graph_def.signature_def(), options);
   }
@@ -586,9 +590,7 @@ SavedModelImpl::SavedModelImpl(
       fallback_state_(std::move(fallback_state)),
       tpu_model_resource_(std::move(tpu_model_resource)),
       resource_context_(std::move(resource_context)),
-      graph_executor_(std::move(graph_executor)),
-      lazy_loading_enabled_(meta_graph_def_.signature_def_size() >
-                            options.lazy_loading_threshold) {}
+      graph_executor_(std::move(graph_executor)) {}
 
 std::vector<std::string> SavedModelImpl::GetFunctionNames() const {
   std::vector<std::string> result;
@@ -659,7 +661,7 @@ tensorflow::Status SavedModelImpl::Run(
 
   const tfrt::Function* func;
   tfrt::ResourceContext* resource_context;
-  if (lazy_loading_enabled_) {
+  if (options_.enable_lazy_loading) {
     // If lazy loading is enabled, no signature is loaded into `bef_file_`, so
     // we need to find the BEF from the cache or create one.
     TF_ASSIGN_OR_RETURN(
