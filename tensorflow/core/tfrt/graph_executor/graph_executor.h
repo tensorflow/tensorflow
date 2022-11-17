@@ -43,14 +43,21 @@ namespace tfrt_stub {
 // Contains request related info.
 struct RequestInfo {
   tfrt::RCReference<tfrt::RequestContext> tfrt_request_context;
-  std::unique_ptr<WorkQueueInterface> request_queue;
+  // If this request needs to create a new queue, it is stored here. Otherwise,
+  // it can be nullptr.
+  std::unique_ptr<WorkQueueInterface> request_queue_owner;
+  // The inter-op thread pool to be used for this request, and it must not be
+  // nullptr. If `request_queue_owner` is not nullptr, then `request_queue` is
+  // the raw pointer inside `request_queue_owner`.
+  WorkQueueInterface* request_queue = nullptr;
+  // The task runner used by tensorflow::OpKernel.
   std::function<void(std::function<void()>)> runner;
 };
 
 // Creates a `RequestInfo` given relative data.
 StatusOr<std::unique_ptr<RequestInfo>> SetUpRequestContext(
     const GraphExecutionRunOptions& run_options,
-    const SessionMetadata& model_metadata, tfrt::HostContext* host,
+    const SessionMetadata& model_metadata, const Runtime& runtime,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
     tfrt::ResourceContext* resource_context,
     const FallbackState& fallback_state);

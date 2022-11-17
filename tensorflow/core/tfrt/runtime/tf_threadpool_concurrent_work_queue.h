@@ -43,14 +43,12 @@ class TfThreadPoolWorkQueue : public WorkQueueInterface {
   TfThreadPoolWorkQueue(
       int64_t id, tensorflow::thread::ThreadPoolInterface* intra_op_threadpool,
       tensorflow::thread::ThreadPoolInterface* inter_op_threadpool)
-      : WorkQueueInterface(id),
+      : WorkQueueInterface(id, intra_op_threadpool),
         intra_op_threadpool_(intra_op_threadpool),
         inter_op_threadpool_(inter_op_threadpool) {}
 
   StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
-      ::tfrt::RequestContextBuilder* request_context_builder,
-      tensorflow::thread::ThreadPoolInterface** intra_op_threadpool)
-      const override;
+      int64_t request_id) const override;
 
   int GetParallelismLevel() const override {
     return tensorflow::port::MaxParallelism();

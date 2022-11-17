@@ -202,10 +202,9 @@ tensorflow::Status RunInitializers(
     const SessionMetadata& model_metadata, tfrt::BEFFile* bef_file,
     const Runtime& runtime, tfrt::ResourceContext* resource_context,
     const FallbackState& fallback_state) {
-  auto* host = runtime.core_runtime()->GetHostContext();
   TF_ASSIGN_OR_RETURN(auto request_info,
                       SetUpRequestContext(/*run_options=*/{}, model_metadata,
-                                          host, runtime.work_queue(),
+                                          runtime, runtime.work_queue(),
                                           resource_context, fallback_state));
 
   tfrt::ExecutionContext exec_ctx(request_info->tfrt_request_context);
