@@ -276,7 +276,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     saved_model_save.save(model, input_saved_model_path)
 
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-    tags = [tag_constants.SERVING]
+    tags = {tag_constants.SERVING}
 
     # Check the converted model with TF opset as the baseline.
     output_directory = self.create_tempdir().full_path
@@ -492,7 +492,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
                                       size=(1, 3, 4, 3)).astype('f4')),
         }
 
-    tags = [tag_constants.SERVING]
+    tags = {tag_constants.SERVING}
     output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -600,7 +600,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
                                       size=(1, 3, 4, 3)).astype('f4')),
         }
 
-    tags = [tag_constants.SERVING]
+    tags = {tag_constants.SERVING}
     output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -653,7 +653,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
                                       size=(1, 1024)).astype('f4')),
         }
 
-    tags = [tag_constants.SERVING]
+    tags = {tag_constants.SERVING}
     output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -717,7 +717,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     repr_ds = self._create_data_generator(
         input_key='input_tensor', shape=(1, 1024), num_examples=2)
 
-    tags = [tag_constants.SERVING]
+    tags = {tag_constants.SERVING}
     output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -750,7 +750,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
-    tags = [tag_constants.SERVING]
+    tags = {tag_constants.SERVING}
     output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -972,7 +972,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_savedmodel_dir = self.create_tempdir().full_path
     saved_model_save.save(model, input_savedmodel_dir)
 
-    tags = [tag_constants.SERVING]
+    tags = {tag_constants.SERVING}
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
@@ -1063,7 +1063,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
                                       size=(1, 4)).astype('f4')),
         }
 
-    tags = [tag_constants.SERVING]
+    tags = {tag_constants.SERVING}
     output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -1724,7 +1724,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       })
 
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-    tags = [tag_constants.SERVING]
+    tags = {tag_constants.SERVING}
 
     # Check the converted model with TF opset as the baseline.
     output_directory = self.create_tempdir().full_path
@@ -1798,7 +1798,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
-    tags = [tag_constants.SERVING]
+    tags = {tag_constants.SERVING}
     output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -1828,7 +1828,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
-    tags = [tag_constants.SERVING]
+    tags = {tag_constants.SERVING}
     output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -1861,7 +1861,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
-    tags = [tag_constants.SERVING]
+    tags = {tag_constants.SERVING}
     output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -1929,7 +1929,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
-    tags = [tag_constants.SERVING]
+    tags = {tag_constants.SERVING}
     output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -2004,7 +2004,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
-    tags = [tag_constants.SERVING]
+    tags = {tag_constants.SERVING}
 
     # Create a file inside the output directory.
     output_directory = self.create_tempdir().full_path
@@ -2028,7 +2028,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
-    tags = [tag_constants.SERVING]
+    tags = {tag_constants.SERVING}
 
     # Create a file inside the output directory.
     output_directory = self.create_tempdir().full_path
