@@ -3717,13 +3717,16 @@ def gelu(features, approximate=False, name=None):
       dtype=float32)
 
   Args:
-    features: A `Tensor` representing preactivation values.
+    features: A `float Tensor` representing preactivation values.
     approximate: An optional `bool`. Defaults to `False`. Whether to enable
       approximation.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` with the same type as `features`.
+
+  Raises:
+    ValueError: if `features` is not a floating point `Tensor`.
 
   References:
     [Gaussian Error Linear Units (GELUs)](https://arxiv.org/abs/1606.08415).
