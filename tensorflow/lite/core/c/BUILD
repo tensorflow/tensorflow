@@ -14,7 +14,9 @@ package(
 exports_files(
     srcs = [
         "c_api.h",
+        "c_api_experimental.h",
         "c_api_types.h",
+        "common.h",
     ],
     visibility = [
         "//tensorflow/lite:__subpackages__",
