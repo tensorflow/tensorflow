@@ -697,6 +697,22 @@ struct DecodingOffsets {
   int64_t values = 0;
 };
 
+struct DecodingContext {
+  internal::DecodedArgs args;
+  internal::DecodedRets rets;
+  internal::DecodedAttrs attrs;
+
+  // Attributes' names and mapping from attrs' offsets to indices in `attrs`.
+  llvm::ArrayRef<std::string> attrs_names;
+  llvm::ArrayRef<size_t> attrs_idx;
+
+  // Values bound to arguments at handler construction time.
+  llvm::ArrayRef<std::any> values;
+
+  // User-provided auxiliary data.
+  const CustomCall::UserData* user_data;
+};
+
 template <typename T, CustomCall::RuntimeChecks checks>
 LLVM_ATTRIBUTE_ALWAYS_INLINE FailureOr<T*> DecodeUserData(
     const CustomCall::UserData* user_data) {
@@ -745,11 +761,8 @@ LLVM_ATTRIBUTE_ALWAYS_INLINE FailureOr<T> DecodeAttr(
 template <typename T, CustomCall::RuntimeChecks checks>
 struct Decode {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> call(
-      DecodingOffsets& offsets, internal::DecodedArgs args,
-      internal::DecodedRets rets, llvm::ArrayRef<std::string> attrs_names,
-      llvm::ArrayRef<size_t> attrs_idx, internal::DecodedAttrs attrs,
-      llvm::ArrayRef<std::any> values, const CustomCall::UserData* user_data) {
-    internal::DecodedArg arg = args[offsets.args++];
+      DecodingOffsets& offsets, DecodingContext& ctx) {
+    internal::DecodedArg arg = ctx.args[offsets.args++];
     return CustomCallArgDecoding<T, checks>::Decode(arg.type_id, arg.value);
   }
 };
@@ -757,11 +770,8 @@ struct Decode {
 template <typename T, CustomCall::RuntimeChecks checks>
 struct Decode<internal::Ret<T>, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<Result<T>> call(
-      DecodingOffsets& offsets, internal::DecodedArgs args,
-      internal::DecodedRets rets, llvm::ArrayRef<std::string> attrs_names,
-      llvm::ArrayRef<size_t> attrs_idx, internal::DecodedAttrs attrs,
-      llvm::ArrayRef<std::any> values, const CustomCall::UserData* user_data) {
-    internal::DecodedRet ret = rets[offsets.rets++];
+      DecodingOffsets& offsets, DecodingContext& ctx) {
+    internal::DecodedRet ret = ctx.rets[offsets.rets++];
     return CustomCallRetDecoding<T, checks>::Decode(ret.type_id, ret.value);
   }
 };
@@ -769,23 +779,18 @@ struct Decode<internal::Ret<T>, checks> {
 template <typename T, CustomCall::RuntimeChecks checks>
 struct Decode<internal::Attr<T>, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> call(
-      DecodingOffsets& offsets, internal::DecodedArgs args,
-      internal::DecodedRets rets, llvm::ArrayRef<std::string> attrs_names,
-      llvm::ArrayRef<size_t> attrs_idx, internal::DecodedAttrs attrs,
-      llvm::ArrayRef<std::any> values, const CustomCall::UserData* user_data) {
-    return DecodeAttr<T, checks>(offsets, attrs_names, attrs_idx, attrs);
+      DecodingOffsets& offsets, DecodingContext& ctx) {
+    return DecodeAttr<T, checks>(offsets, ctx.attrs_names, ctx.attrs_idx,
+                                 ctx.attrs);
   }
 };
 
 template <typename T, CustomCall::RuntimeChecks checks>
 struct Decode<internal::UserData<T>, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> call(
-      DecodingOffsets& offsets, internal::DecodedArgs args,
-      internal::DecodedRets rets, llvm::ArrayRef<std::string> attrs_names,
-      llvm::ArrayRef<size_t> attrs_idx, internal::DecodedAttrs attrs,
-      llvm::ArrayRef<std::any> values, const CustomCall::UserData* user_data) {
+      DecodingOffsets& offsets, DecodingContext& ctx) {
     using UserDataT = std::remove_pointer_t<T>;
-    return DecodeUserData<UserDataT, checks>(user_data);
+    return DecodeUserData<UserDataT, checks>(ctx.user_data);
   }
 };
 
@@ -794,14 +799,12 @@ struct Decode<internal::StateTag<T>, checks> {
   using Snapshot = typename StateVector<T>::Snapshot;
 
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<runtime::State<T>> call(
-      DecodingOffsets& offsets, internal::DecodedArgs args,
-      internal::DecodedRets rets, llvm::ArrayRef<std::string> attrs_names,
-      llvm::ArrayRef<size_t> attrs_idx, internal::DecodedAttrs attrs,
-      llvm::ArrayRef<std::any> values, const CustomCall::UserData* user_data) {
+      DecodingOffsets& offsets, DecodingContext& ctx) {
     // Get the state snapshot and state id from user data and attributes.
-    FailureOr<Snapshot*> snapshot = DecodeUserData<Snapshot, checks>(user_data);
-    FailureOr<int64_t> id =
-        DecodeAttr<int64_t, checks>(offsets, attrs_names, attrs_idx, attrs);
+    FailureOr<Snapshot*> snapshot =
+        DecodeUserData<Snapshot, checks>(ctx.user_data);
+    FailureOr<int64_t> id = DecodeAttr<int64_t, checks>(
+        offsets, ctx.attrs_names, ctx.attrs_idx, ctx.attrs);
     if (LLVM_UNLIKELY(failed(snapshot) || failed(id))) return failure();
 
     return (*snapshot)->state(*id);
@@ -811,33 +814,24 @@ struct Decode<internal::StateTag<T>, checks> {
 template <typename T, CustomCall::RuntimeChecks checks>
 struct Decode<internal::Value<T>, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> call(
-      DecodingOffsets& offsets, internal::DecodedArgs args,
-      internal::DecodedRets rets, llvm::ArrayRef<std::string> attrs_names,
-      llvm::ArrayRef<size_t> attrs_idx, internal::DecodedAttrs attrs,
-      llvm::ArrayRef<std::any> values, const CustomCall::UserData* user_data) {
-    return std::any_cast<T>(values[offsets.values++]);
+      DecodingOffsets& offsets, DecodingContext& ctx) {
+    return std::any_cast<T>(ctx.values[offsets.values++]);
   }
 };
 
 template <CustomCall::RuntimeChecks checks>
 struct Decode<CustomCall::RemainingArgs, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<CustomCall::RemainingArgs> call(
-      DecodingOffsets& offsets, internal::DecodedArgs args,
-      internal::DecodedRets rets, llvm::ArrayRef<std::string> attr_names,
-      llvm::ArrayRef<size_t> attrs_idx, internal::DecodedAttrs attrs,
-      llvm::ArrayRef<std::any> values, const CustomCall::UserData* user_data) {
-    return CustomCall::RemainingArgs(args, offsets.args);
+      DecodingOffsets& offsets, DecodingContext& ctx) {
+    return CustomCall::RemainingArgs(ctx.args, offsets.args);
   }
 };
 
 template <CustomCall::RuntimeChecks checks>
 struct Decode<CustomCall::VariantArg, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<CustomCall::VariantArg> call(
-      DecodingOffsets& offsets, internal::DecodedArgs args,
-      internal::DecodedRets rets, llvm::ArrayRef<std::string> attr_names,
-      llvm::ArrayRef<size_t> attrs_idx, internal::DecodedAttrs attrs,
-      llvm::ArrayRef<std::any> values, const CustomCall::UserData* user_data) {
-    return CustomCall::VariantArg(args, offsets.args++);
+      DecodingOffsets& offsets, DecodingContext& ctx) {
+    return CustomCall::VariantArg(ctx.args, offsets.args++);
   }
 };
 
@@ -993,13 +987,15 @@ class CustomCallHandler : public CustomCall {
     // arguments, attributes or results.
     internal::DecodingOffsets offsets;
 
+    // Package all the data required for decoding custom call operands.
+    internal::DecodingContext ctx{args,       rets,    attrs,    attrs_,
+                                  attrs_idx_, values_, user_data};
+
     // Decode all operands into FailureOr containers. It is guaranteed
     // that initializer list will be evaluated left-to-right, and we can rely
     // on correct offsets computation.
     std::tuple<FailureOr<FnArgType<Ts>>...> fn_args = {
-        internal::Decode<Ts, checks>::call(offsets, args, rets, attrs_,
-                                           attrs_idx_, attrs, values_,
-                                           user_data)...};
+        internal::Decode<Ts, checks>::call(offsets, ctx)...};
 
     // Check if all operands and results were decoded.
     bool all_decoded = (succeeded(std::get<Is>(fn_args)) && ...);
