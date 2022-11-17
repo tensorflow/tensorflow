@@ -28,7 +28,12 @@ defvar MHLO_SInt = HLO_SInt;
 defvar MHLO_UInt = HLO_UInt;
 defvar MHLO_Int = HLO_Int;
 
-defvar MHLO_Float = HLO_Float;
+def MHLO_F8E4M3FN : Type<CPred<"$_self.isFloat8E4M3FN()">, "f8E4M3FN type">,
+                    BuildableType<"$_builder.getFloat8E4M3FNType()">;
+def MHLO_F8E5M2 : Type<CPred<"$_self.isFloat8E5M2()">, "f8E5M2 type">,
+                  BuildableType<"$_builder.getFloat8E5M2Type()">;
+
+def MHLO_Float : AnyTypeOf<[MHLO_F8E4M3FN, MHLO_F8E5M2, F16, F32, F64, BF16]>;
 defvar MHLO_Float32Or64 = HLO_Float32Or64;
 
 defvar MHLO_Complex = HLO_Complex;
@@ -59,7 +64,7 @@ defvar MHLO_IntTensor = HLO_IntTensor;
 defvar MHLO_ScalarIntTensor = HLO_ScalarIntTensor;
 
 // Any floating-point tensor types
-defvar MHLO_FpTensor = HLO_FpTensor;
+def MHLO_FpTensor : TensorOf<[MHLO_Float]>;
 
 // 32 or 64 bits floating-point tensor types
 defvar MHLO_Fp32Or64Tensor = HLO_Fp32Or64Tensor;
@@ -69,7 +74,7 @@ defvar MHLO_QuantizedIntTensor = HLO_QuantizedIntTensor;
 
 defvar MHLO_PredTensor = HLO_PredTensor;
 
-defvar MHLO_Tensor = HLO_Tensor;
+def MHLO_Tensor : TensorOf<[MHLO_Float, MHLO_Pred, MHLO_Int, MHLO_Complex, MHLO_QuantizedInt]>;
 
 defvar MHLO_ComplexTensor = HLO_ComplexTensor;
 
@@ -86,25 +91,28 @@ defvar MHLO_DimensionTensor = HLO_DimensionTensor;
 
 // In general, static shaped tensor constraints should be avoided unless
 // it is for a legacy op which is only correct with static shapes.
-defvar MHLO_StaticShapeTensor = HLO_StaticShapeTensor;
+def MHLO_StaticShapeTensor : StaticShapeTensorOf<[
+      MHLO_Float, MHLO_Pred, MHLO_Int, MHLO_Complex, MHLO_QuantizedInt]>;
 
 //===----------------------------------------------------------------------===//
 // MHLO combined type definitions.
 //===----------------------------------------------------------------------===//
 
 // Any integer or floating-point tensor types
-defvar MHLO_IntOrFpTensor = HLO_IntOrFpTensor;
+
+// Any integer or floating-point tensor types
+def MHLO_IntOrFpTensor : TensorOf<[MHLO_Int, MHLO_Float]>;
 
 // Any integer or predicate tensor types
 defvar MHLO_PredOrIntTensor = HLO_PredOrIntTensor;
 
 // Any floating-point or complex tensor types
-defvar MHLO_FpOrComplexTensor = HLO_FpOrComplexTensor;
+def MHLO_FpOrComplexTensor : TensorOf<[MHLO_Float, MHLO_Complex]>;
 
 // Any int, floating-point or complex tensor types
-defvar MHLO_IntFpOrComplexTensor = HLO_IntFpOrComplexTensor;
+def MHLO_IntFpOrComplexTensor : TensorOf<[MHLO_Int, MHLO_Float, MHLO_Complex]>;
 
 // Any pred, int or floating-point tensor types
-defvar MHLO_PredIntOrFpTensor = HLO_PredIntOrFpTensor;
+def MHLO_PredIntOrFpTensor : TensorOf<[MHLO_Pred, MHLO_Int, MHLO_Float]>;
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_BASE

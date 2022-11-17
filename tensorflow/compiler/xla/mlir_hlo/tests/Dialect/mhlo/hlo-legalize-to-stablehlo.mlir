@@ -1958,3 +1958,19 @@ func.func @op_xla_rng_get_and_update_state() -> tensor<2xui64> {
   } : () -> tensor<2xui64>
   func.return %0 : tensor<2xui64>
 }
+
+// -----
+
+func.func @type_f8e4m3fn(%arg0: tensor<f16>) -> tensor<f8E4M3FN> {
+  // expected-error@+1 {{'stablehlo.convert' op result #0 must be tensor of 16-bit float or 32-bit float or 64-bit float or bfloat16 type or pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or complex type with 32-bit float or 64-bit float elements or 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer values, but got 'tensor<f8E4M3FN>'}}
+  %0 = "mhlo.convert"(%arg0) : (tensor<f16>) -> tensor<f8E4M3FN>
+  func.return %0 : tensor<f8E4M3FN>
+}
+
+// -----
+
+func.func @type_f8e5m2(%arg0: tensor<f16>) -> tensor<f8E5M2> {
+  // expected-error@+1 {{'stablehlo.convert' op result #0 must be tensor of 16-bit float or 32-bit float or 64-bit float or bfloat16 type or pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or complex type with 32-bit float or 64-bit float elements or 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer values, but got 'tensor<f8E5M2>'}}
+  %0 = "mhlo.convert"(%arg0) : (tensor<f16>) -> tensor<f8E5M2>
+  func.return %0 : tensor<f8E5M2>
+}
