@@ -40,6 +40,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir/xla_cpu/ir:xla_cpu",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

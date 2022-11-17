@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 
 namespace xla {
 namespace cpu {
@@ -119,9 +120,17 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
     func::FuncOp callee = custom_calls_.GetOrCreate(
         b, kCustomCallTarget, TypeRange(ValueRange(operands)), TypeRange());
 
+    // The ABI is different depending on whether the original op was outputting
+    // a tuple or not. For multiple outputs this is trivial but for a single
+    // output we rely on the xla_shape attribute to distinguish the ABIs.
+    bool output_tuple = num_results > 1;
+    if (auto xla_shape = op->getAttrOfType<StringAttr>("xla_shape"))
+      output_tuple = ParseShape(xla_shape.strref())->IsTuple();
+
     llvm::SmallVector<NamedAttribute> custom_call_attrs = {
         {b.getStringAttr("num_results"),
          b.getI32IntegerAttr(static_cast<int32_t>(num_results))},
+        {b.getStringAttr("output_tuple"), b.getBoolAttr(output_tuple)},
         {b.getStringAttr("api_version"), op.getApiVersionAttr()},
         {b.getStringAttr("call_target_name"), op.getCallTargetNameAttr()}};
 
