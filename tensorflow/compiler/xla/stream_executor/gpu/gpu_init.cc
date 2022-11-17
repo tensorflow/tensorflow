@@ -13,27 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 
 #include <string>
 
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/stream_executor_util.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/tsl/platform/logging.h"
 
-namespace tensorflow {
+namespace stream_executor {
 
-Status ValidateGPUMachineManager() {
-  return se::MultiPlatformManager::PlatformWithName(GpuPlatformName()).status();
+port::Status ValidateGPUMachineManager() {
+  return MultiPlatformManager::PlatformWithName(GpuPlatformName()).status();
 }
 
-se::Platform* GPUMachineManager() {
-  auto result = se::MultiPlatformManager::PlatformWithName(GpuPlatformName());
+Platform* GPUMachineManager() {
+  auto result = MultiPlatformManager::PlatformWithName(GpuPlatformName());
   if (!result.ok()) {
     LOG(FATAL) << "Could not find Platform with name " << GpuPlatformName();
     return nullptr;
@@ -42,7 +39,7 @@ se::Platform* GPUMachineManager() {
   return result.value();
 }
 
-string GpuPlatformName() {
+std::string GpuPlatformName() {
 #if TENSORFLOW_USE_ROCM
   return "ROCM";
 #else
@@ -52,4 +49,4 @@ string GpuPlatformName() {
 #endif
 }
 
-}  // namespace tensorflow
+}  // namespace stream_executor

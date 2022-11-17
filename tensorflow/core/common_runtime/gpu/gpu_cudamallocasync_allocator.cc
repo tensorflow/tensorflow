@@ -28,9 +28,9 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_id_utils.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/framework/device_id.h"
 #include "tensorflow/tsl/platform/logging.h"
@@ -118,8 +118,8 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   (void)reserve_memory_;
 
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
-  stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
-                                                           platform_device_id)
+  stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(
+                     se::GPUMachineManager(), platform_device_id)
                      .value();
   // Initialized here as it only exist if compiled with a recent
   // enough CUDA.

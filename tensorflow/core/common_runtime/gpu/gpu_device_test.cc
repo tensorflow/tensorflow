@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamallocasync_allocator.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -37,7 +37,7 @@ const char* kDeviceNamePrefix = "/job:localhost/replica:0/task:0";
 
 int64_t GetTotalGPUMemory(PlatformDeviceId gpu_id) {
   se::StreamExecutor* se =
-      DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
+      DeviceIdUtil::ExecutorForPlatformDeviceId(se::GPUMachineManager(), gpu_id)
           .value();
 
   int64_t total_memory, available_memory;
@@ -46,7 +46,7 @@ int64_t GetTotalGPUMemory(PlatformDeviceId gpu_id) {
 }
 
 se::CudaComputeCapability GetComputeCapability() {
-  return DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
+  return DeviceIdUtil::ExecutorForPlatformDeviceId(se::GPUMachineManager(),
                                                    PlatformDeviceId(0))
       .value()
       ->GetDeviceDescription()
@@ -267,7 +267,7 @@ TEST_F(GPUDeviceTest, NotEnoughGpuInVisibleDeviceList) {
 
 TEST_F(GPUDeviceTest, VirtualDeviceConfigConflictsWithVisibleDeviceList) {
   // This test requires at least two visible GPU hardware.
-  if (GPUMachineManager()->VisibleDeviceCount() < 2) return;
+  if (se::GPUMachineManager()->VisibleDeviceCount() < 2) return;
   // Three entries in visible_device_list with two (empty) VirtualDevices
   // messages.
   SessionOptions opts = MakeSessionOptions("0,1", 0, 8, {{}});
@@ -448,7 +448,7 @@ TEST_F(GPUDeviceTest, MultipleVirtualDevicesWithDeviceOrdinal) {
 TEST_F(GPUDeviceTest,
        MultipleVirtualDevicesWithDeviceOrdinalOnMultipleDevices) {
   // This test requires at least two visible GPU hardware.
-  if (GPUMachineManager()->VisibleDeviceCount() < 2) return;
+  if (se::GPUMachineManager()->VisibleDeviceCount() < 2) return;
 
   SessionOptions opts =
       MakeSessionOptions("0,1", 0, 2, {{1, 2}, {3, 4}}, {}, {{1, 2}, {1, 2}});

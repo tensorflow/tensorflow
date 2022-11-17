@@ -6,14 +6,26 @@ load(
     "if_gpu_is_configured",
 )
 load(
-    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
 )
-load("//tensorflow/tsl:tsl.bzl", "if_libtpu", "tsl_copts")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+load(
+    "//tensorflow/tsl:tsl.bzl",
+    "if_libtpu",
+    "tsl_copts",
+    "tsl_gpu_library",
+)
+load(
+    "//tensorflow/tsl/platform:build_config_root.bzl",
+    "if_static",
+)
 load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
+)
+load(
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
 )
 
 package(
@@ -126,6 +138,40 @@ cc_library(
         ":gpu_types_header",
         "//tensorflow/tsl/platform:logging",
     ],
+)
+
+tsl_gpu_library(
+    name = "gpu_init",
+    hdrs = [
+        "gpu_init.h",
+    ],
+    visibility = [
+        "//tensorflow/tsl:internal",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla/stream_executor/lib",
+    ] + if_static(
+        [":gpu_init_impl"],
+    ),
+)
+
+tsl_gpu_library(
+    name = "gpu_init_impl",
+    srcs = [
+        "gpu_init.cc",
+    ],
+    hdrs = [
+        "gpu_init.h",
+    ],
+    copts = tsl_copts(),
+    linkstatic = True,
+    deps = [
+        "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
+        "//tensorflow/compiler/xla/stream_executor:platform",
+        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/tsl/platform:logging",
+    ],
+    alwayslink = True,
 )
 
 cc_library(

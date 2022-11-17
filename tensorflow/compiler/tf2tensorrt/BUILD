@@ -99,7 +99,7 @@ tf_cuda_cc_test(
     deps = [
         ":trt_logging",
         ":utils",
-        "//tensorflow/core/common_runtime/gpu:gpu_init",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core:test",

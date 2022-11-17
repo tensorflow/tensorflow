@@ -154,9 +154,9 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core/common_runtime/gpu:gpu_init",
     ] + if_libtpu(
         if_false = [
             "//tensorflow/compiler/xla/service:gpu_plugin",  # buildcleaner: keep
