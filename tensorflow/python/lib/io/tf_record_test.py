@@ -253,7 +253,6 @@ class TFRecordWriterTest(TFCompressionTestCase):
 
   def testCompressionOptions(self):
     """Create record with mix of random and repeated data to test compression on."""
-    self.skipTest("b/252848846 fix so this works with zlib randomization")
     rnd = random.Random(123)
     random_record = compat.as_bytes(
         "".join(rnd.choice(string.digits) for _ in range(10000)))
