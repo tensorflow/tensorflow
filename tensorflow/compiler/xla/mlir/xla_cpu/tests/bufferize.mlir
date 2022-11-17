@@ -6,7 +6,8 @@ func.func @max_reduce(%arg0: tensor<10xf32>) -> tensor<10xf32> {
   %1 = "xla_cpu.all_reduce"(%arg0, %0) {
     channel_handle = 5 : i64,
     reduction_kind = 3 : i32,
-    replica_groups = dense<[]> : tensor<0xi64>
+    replica_groups = dense<[]> : tensor<0xi64>,
+    use_global_device_ids = 0 : i32
   } : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
   return %1 : tensor<10xf32>
 }

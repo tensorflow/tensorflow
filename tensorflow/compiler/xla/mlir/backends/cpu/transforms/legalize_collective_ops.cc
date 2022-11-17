@@ -112,7 +112,7 @@ class AllReduceLowering : public OpRewritePattern<mhlo::AllReduceOp> {
         rewriter.getI64IntegerAttr(op.getChannelHandle()
                                        ? op.getChannelHandle()->getHandle()
                                        : int64_t{0}),
-        op.getUseGlobalDeviceIdsAttr(),
+        rewriter.getI32IntegerAttr(op.getUseGlobalDeviceIdsAttr() ? 1 : 0),
         rewriter.getI32IntegerAttr(static_cast<int32_t>(*reduction_kind)));
 
     return success();

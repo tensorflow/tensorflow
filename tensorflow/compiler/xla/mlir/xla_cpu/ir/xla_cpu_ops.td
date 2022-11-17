@@ -58,7 +58,7 @@ def AllReduceOp : XlaCpu_Op<"all_reduce",
         >>:$dsts,
       I64ElementsAttr:$replica_groups,
       I64Attr:$channel_handle,
-      UnitAttr:$use_global_device_ids,
+      I32Attr:$use_global_device_ids,
       XlaCpuReductionKind:$reduction_kind
   );
   let results = (outs

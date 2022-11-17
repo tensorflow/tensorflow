@@ -29,7 +29,8 @@ func.func @all_reduce(%arg0: memref<32xf32, #map>, %arg1: memref<32xf32>) {
   "xla_cpu.all_reduce"(%arg0, %arg1) {
     replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
     channel_handle = 42 : i64,
-    reduction_kind = 3 : i32
+    reduction_kind = 3 : i32,
+    use_global_device_ids = 0 : i32
   } : (memref<32xf32, #map>, memref<32xf32>) -> ()
   func.return
 }

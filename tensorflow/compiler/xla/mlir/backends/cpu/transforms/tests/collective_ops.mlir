@@ -24,8 +24,29 @@ func.func @max_reduce(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 //  CHECK-SAME:   channel_handle = 5 : i64,
 //  CHECK-SAME:   reduction_kind = 3 : i32,
 //  CHECK-SAME:   replica_groups = dense<{{\[}}[0, 2, 4, 6], [1, 3, 5, 7]]>
-//  CHECK-SAME:   use_global_device_ids
+//  CHECK-SAME:   use_global_device_ids = 1
 //       CHECK: return %[[RET]]
+
+func.func @min_reduce(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  %0 = "mhlo.all_reduce"(%arg0) ({
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %max = mhlo.minimum %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%max) : (tensor<f32>) -> ()
+  })
+  {
+    replica_groups = dense<> : tensor<0x0xi64>,
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 2
+    >
+  } : (tensor<10xf32>) -> tensor<10xf32>
+   func.return %0 : tensor<10xf32>
+}
+
+// CHECK-LABEL: @min_reduce
+//       CHECK: "xla_cpu.all_reduce"(
+//  CHECK-SAME:   reduction_kind = 2
+//  CHECK-SAME:   use_global_device_ids = 0
 
 func.func @partition_id() -> tensor<ui32> {
   %0 = "mhlo.partition_id"() : () -> tensor<ui32>
