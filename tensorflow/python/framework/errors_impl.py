@@ -211,27 +211,32 @@ DATA_LOSS = error_codes_pb2.DATA_LOSS
 tf_export("errors.DATA_LOSS").export_constant(__name__, "DATA_LOSS")
 
 
-# pylint: disable=line-too-long
 @tf_export("errors.CancelledError")
 class CancelledError(OpError):
-  """Raised when an operation or step is cancelled.
+  """Raised when an operation is cancelled.
 
-  For example, a long-running operation (e.g.
-  `tf.queue.QueueBase.enqueue` may be
-  cancelled by running another operation (e.g.
-  `tf.queue.QueueBase.close`,
-  or by `tf.Session.close`.
-  A step that is running such a long-running operation will fail by raising
-  `CancelledError`.
+  For example, a long-running operation e.g.`tf.queue.QueueBase.enqueue`, or a
+  `tf.function` call may be cancelled by either running another operation e.g.
+  `tf.queue.QueueBase.close` or a remote worker failure.
+
+  This long-running operation will fail by raising `CancelledError`.
+
+  Example:
+  >>> q = tf.queue.FIFOQueue(10, tf.float32, ((),))
+  >>> q.enqueue((10.0,))
+  >>> q.close()
+  >>> q.enqueue((10.0,))
+  Traceback (most recent call last):
+    ...
+  CancelledError: ...
+
+  @@__init__
   """
 
   def __init__(self, node_def, op, message, *args):
     """Creates a `CancelledError`."""
     super(CancelledError, self).__init__(node_def, op, message, CANCELLED,
                                          *args)
-
-
-# pylint: enable=line-too-long
 
 
 @tf_export("errors.UnknownError")
