@@ -19,7 +19,6 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_dialect.cc.inc"
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_enums.cc.inc"
@@ -49,6 +48,9 @@ bool AllReduceOp::bufferizesToMemoryWrite(
 
 SmallVector<OpResult> AllReduceOp::getAliasingOpResult(
     OpOperand &opOperand, const bufferization::AnalysisState &) {
+  if (opOperand.getOperandNumber() < getNumOperands() / 2) {
+    return {};
+  }
   return {getOperation()->getOpResult(opOperand.getOperandNumber() -
                                       getNumOperands() / 2)};
 }

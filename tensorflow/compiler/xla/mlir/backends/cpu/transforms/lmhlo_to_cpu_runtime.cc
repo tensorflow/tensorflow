@@ -225,6 +225,62 @@ class IdOpLowering : public OpRewritePattern<IdOp> {
 
 //===----------------------------------------------------------------------===//
 
+class AllReduceLowering : public OpRewritePattern<xla_cpu::AllReduceOp> {
+ public:
+  AllReduceLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(xla_cpu::AllReduceOp op,
+                                PatternRewriter& rewriter) const override {
+    if (!op.getOperandTypes().front().isa<MemRefType>()) {
+      return failure();
+    }
+
+    ImplicitLocOpBuilder b(op->getLoc(), rewriter);
+    b.setInsertionPoint(op);
+
+    // Subview ops result in strided Memrefs. The runtime can't deal with them,
+    // so we copy everything that doesn't have the default layout.
+    SmallVector<Value> new_operands;
+    SmallVector<Type> new_operand_types;
+    for (Value operand : op.getOperands()) {
+      auto ty = operand.getType().cast<MemRefType>();
+      if (ty.getLayout().isIdentity()) {
+        new_operand_types.push_back(ty);
+        new_operands.push_back(operand);
+      } else {
+        auto default_layout_ty =
+            MemRefType::get(ty.getShape(), ty.getElementType());
+        new_operand_types.push_back(default_layout_ty);
+        auto new_operand = new_operands.emplace_back(
+            b.create<memref::AllocOp>(default_layout_ty));
+        b.create<memref::CopyOp>(operand, new_operand);
+      }
+    }
+
+    func::FuncOp callee = custom_calls_.GetOrCreate(
+        b, kCallTarget, new_operand_types, TypeRange());
+    auto call =
+        b.create<func::CallOp>(callee.getName(), TypeRange(), new_operands);
+
+    // Set default attributes and copy attributes from original op.
+    call->setAttr("use_global_device_ids", b.getI32IntegerAttr(0));
+    call->setAttr("op_id", b.getI64IntegerAttr(0));
+    for (auto& attr : op->getAttrs()) {
+      call->setAttr(attr.getName(), attr.getValue());
+    }
+    rewriter.eraseOp(op);
+    return success();
+  }
+
+ private:
+  static constexpr const char kCallTarget[] = "xla.cpu.all_reduce";
+
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
 void ConvertLmhloToCpuRuntimePass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext* ctx = module.getContext();
@@ -235,8 +291,8 @@ void ConvertLmhloToCpuRuntimePass::runOnOperation() {
 
   // Convert lmhlo operations to XLA cpu runtime custom calls.
   RewritePatternSet patterns(ctx);
-  patterns.insert<InfeedOpLowering, OutfeedOpLowering, CustomCallOpLowering>(
-      ctx, custom_calls);
+  patterns.insert<InfeedOpLowering, OutfeedOpLowering, CustomCallOpLowering,
+                  AllReduceLowering>(ctx, custom_calls);
   patterns.insert<IdOpLowering<PartitionIdOp>>(ctx, "xla.cpu.partition_id",
                                                custom_calls);
   patterns.insert<IdOpLowering<ReplicaIdOp>>(ctx, "xla.cpu.replica_id",
