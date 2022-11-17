@@ -59,6 +59,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":allocator_stats",
+        ":device_description_proto_cc",
         ":dnn_proto_cc",
         ":host_or_device_scalar",
         "//tensorflow/compiler/xla/stream_executor/lib",
@@ -102,11 +103,19 @@ cc_library(
     ],
 )
 
+tf_proto_library(
+    name = "device_description_proto",
+    srcs = ["device_description.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+)
+
 cc_library(
     name = "device_description",
     srcs = ["device_description.cc"],
     hdrs = ["device_description.h"],
     deps = [
+        ":device_description_proto_cc",
         ":launch_dim",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
@@ -275,6 +284,7 @@ cc_library(
         ":allocator_stats",
         ":data_type",
         ":device_description",
+        ":device_description_proto_cc",
         ":device_memory",
         ":device_options",
         ":dnn_proto_cc",
@@ -353,6 +363,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":device_description",
+        ":device_description_proto_cc",
         ":kernel_cache_config",
         ":platform",
         ":stream_executor_headers",
@@ -441,6 +452,7 @@ cc_library(
         ":allocator_stats",
         ":data_type",
         ":device_description",
+        ":device_description_proto_cc",
         ":device_memory",
         ":device_options",
         ":dnn_proto_cc",
@@ -481,6 +493,7 @@ cc_library(
     deps = [
         ":data_type",
         ":device_description",
+        ":device_description_proto_cc",
         ":dnn_proto_cc",
         ":kernel_cache_config",
         ":platform",
@@ -552,6 +565,7 @@ cc_library(
         ":blas",
         ":data_type",
         ":device_description",
+        ":device_description_proto_cc",
         ":device_memory",
         ":device_options",
         ":dnn_proto_cc",
