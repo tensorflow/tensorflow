@@ -2860,12 +2860,17 @@ LogicalResult verifyBatchNorm(Location loc, Value operand,
       scale.getType().cast<RankedTensorType>().getDimSize(0);
   // As ODS enforces `scale`, `mean`, `variance`, `offset` are AllShapesMatch,
   // this also infers that featureCount is aligned with them.
-  if (scaleShape != featureCount)
+  if (scaleShape != featureCount) {
+    auto dimToStr = [](int64_t dim) {
+      return ShapedType::isDynamic(dim) ? "?" : std::to_string(dim);
+    };
     return emitError(loc) << "expects the size of scale factor to be "
                              "same as the feature count,"
                              " but the size of scale factor is "
-                          << scaleShape << " and the feature count is "
-                          << featureCount << ".";
+                          << dimToStr(scaleShape)
+                          << " and the feature count is "
+                          << dimToStr(featureCount) << ".";
+  }
 
   return success();
 }
