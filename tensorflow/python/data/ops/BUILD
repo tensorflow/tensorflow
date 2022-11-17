@@ -56,6 +56,7 @@ py_library(
     deps = [
         ":batch_op",
         ":cache_op",
+        ":concatenate_op",
         ":counter_op",
         ":filter_op",
         ":from_generator_op",
@@ -112,6 +113,11 @@ py_library(
 py_library(
     name = "cache_op",
     srcs = ["cache_op.py"],
+)
+
+py_library(
+    name = "concatenate_op",
+    srcs = ["concatenate_op.py"],
 )
 
 py_library(
