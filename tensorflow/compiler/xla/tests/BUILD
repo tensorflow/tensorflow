@@ -937,6 +937,18 @@ xla_test(
     ],
 )
 
+# A separate test suite for the resource intensive exhaustive tests
+test_suite(
+    name = "exhaustive_gpu_tests",
+    tests = [
+        "//tensorflow/compiler/xla/tests:exhaustive_binary_16_bit_test_gpu",
+        "//tensorflow/compiler/xla/tests:exhaustive_binary_test_f32_f64_gpu",
+        "//tensorflow/compiler/xla/tests:exhaustive_unary_test_complex_gpu",
+        "//tensorflow/compiler/xla/tests:exhaustive_unary_test_f32_or_smaller_gpu",
+        "//tensorflow/compiler/xla/tests:exhaustive_unary_test_f64_gpu",
+    ],
+)
+
 xla_test(
     name = "reduce_precision_test",
     srcs = ["reduce_precision_test.cc"],
