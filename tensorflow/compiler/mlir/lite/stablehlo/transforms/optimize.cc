@@ -162,6 +162,118 @@ LogicalResult RemoveReshapeAroundDotGeneral(mhlo::ReshapeOp reshape_after,
   return success();
 }
 
+// Convert:
+//   %y0 = dot_general(%x0, %w)
+//   %y1 = dot_general(%x1, %w)
+//   ...
+//   concatenate(%y0, %y1, ...)
+// To:
+//   %x = concatenate(%x0, %x1, ...)
+//   dot_general(%x, %w)
+LogicalResult LiftDotConcat(mhlo::ConcatenateOp concat,
+                            PatternRewriter &rewriter) {
+  if (concat.getVal().size() < 2)
+    return rewriter.notifyMatchFailure(
+        concat, "Concatenate op should have at least two operands");
+
+  auto first_dot = concat.getVal()[0].getDefiningOp<mhlo::DotGeneralOp>();
+  if (!first_dot)
+    return rewriter.notifyMatchFailure(concat, "Operand is not dot_general");
+  if (!first_dot.getLhs().getType().hasStaticShape())
+    return rewriter.notifyMatchFailure(
+        first_dot, "All dot_general LHS must be statically shaped");
+  if (!first_dot->hasOneUse())
+    return rewriter.notifyMatchFailure(first_dot, "Op has multiple uses");
+
+  SmallVector<Value> all_dot_lhs;
+  all_dot_lhs.reserve(concat.getVal().size());
+  all_dot_lhs.push_back(first_dot.getLhs());
+
+  const uint64_t batch_dims_count =
+      first_dot.getDotDimensionNumbers().getLhsBatchingDimensions().size();
+  const uint64_t contracting_dims_count =
+      first_dot.getDotDimensionNumbers().getLhsContractingDimensions().size();
+  const uint64_t lhs_other_dims_count = first_dot.getLhs().getType().getRank() -
+                                        batch_dims_count -
+                                        contracting_dims_count;
+
+  // This pattern only supports concating on LHS other dims (neither batch nor
+  // contracting).
+  if (concat.getDimension() < batch_dims_count ||
+      concat.getDimension() >= batch_dims_count + lhs_other_dims_count) {
+    return rewriter.notifyMatchFailure(concat,
+                                       "Not concating on LHS other dims");
+  }
+
+  for (auto value : concat.getVal().drop_front()) {
+    auto dot = value.getDefiningOp<mhlo::DotGeneralOp>();
+    if (!dot)
+      return rewriter.notifyMatchFailure(concat, "Operand is not dot_general");
+
+    if (dot.getRhs() != first_dot.getRhs())
+      return rewriter.notifyMatchFailure(
+          dot, "dot_general ops have different rhs parameters");
+    if (dot.getDotDimensionNumbers() != first_dot.getDotDimensionNumbers())
+      return rewriter.notifyMatchFailure(
+          dot, "dot_general ops have different dimension numbers");
+    if (dot.getPrecisionConfig() != first_dot.getPrecisionConfig())
+      return rewriter.notifyMatchFailure(
+          dot, "dot_general ops have different precision configs");
+    if (!dot.getLhs().getType().hasStaticShape())
+      return rewriter.notifyMatchFailure(
+          dot, "all dot_general LHS must be statically shaped");
+    if (dot.getLhs().getType().getElementType() !=
+            first_dot.getLhs().getType().getElementType() ||
+        dot.getType().getElementType() != first_dot.getType().getElementType())
+      return rewriter.notifyMatchFailure(
+          dot, "all dot_general ops must have the same element type");
+    if (!dot->hasOneUse())
+      return rewriter.notifyMatchFailure(dot, "Op has multiple uses");
+
+    all_dot_lhs.push_back(dot.getLhs());
+  }
+
+  const auto is_lhs_batch_or_contracting_dim = [&](uint64_t dim) {
+    auto dim_nums = first_dot.getDotDimensionNumbers();
+    return llvm::is_contained(dim_nums.getLhsBatchingDimensions(), dim) ||
+           llvm::is_contained(dim_nums.getLhsContractingDimensions(), dim);
+  };
+
+  // dot_general outputs are always in the
+  //   [batch dims, LHS other dims, RHS other dims]
+  // layout, so the new concat dim is where the n-th (base-0 counting) LHS other
+  // dim appears in the original LHS layout, where:
+  //   n = old_concat_dim - batch_dims_count
+  uint64_t n = concat.getDimension() - batch_dims_count;
+
+  // Now try to answer where the n-th LHS other dim was originally placed.
+  // This is the dimension we should now concat on.
+  int new_concat_dim = -1;
+  for (int i = 0; i < first_dot.getLhs().getType().getRank(); ++i) {
+    if (!is_lhs_batch_or_contracting_dim(i) && n-- == 0) {
+      new_concat_dim = i;
+      break;
+    }
+  }
+
+  // Now get the output shape of the lifted concat op.
+  SmallVector<int64_t> new_concat_shape(
+      first_dot.getLhs().getType().getShape());
+  new_concat_shape[new_concat_dim] = 0;
+  for (auto v : all_dot_lhs) {
+    new_concat_shape[new_concat_dim] +=
+        v.getType().dyn_cast<ShapedType>().getShape()[new_concat_dim];
+  }
+
+  auto new_concat = rewriter.create<mhlo::ConcatenateOp>(
+      concat->getLoc(), concat.getType().clone(new_concat_shape), all_dot_lhs,
+      rewriter.getI64IntegerAttr(new_concat_dim));
+  rewriter.replaceOpWithNewOp<mhlo::DotGeneralOp>(
+      concat, concat.getType(), new_concat, first_dot.getRhs(),
+      first_dot.getDotDimensionNumbers(), first_dot.getPrecisionConfigAttr());
+  return success();
+}
+
 class OptimizePass
     : public PassWrapper<OptimizePass, OperationPass<func::FuncOp>> {
  public:
@@ -174,6 +286,7 @@ class OptimizePass
     RewritePatternSet patterns(&getContext());
     patterns.add(ConvertDotToDotGeneral);
     patterns.add(RemoveReshapeAroundDotGeneral);
+    patterns.add(LiftDotConcat);
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       return signalPassFailure();
