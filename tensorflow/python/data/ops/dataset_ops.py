@@ -3931,7 +3931,13 @@ class DatasetV1(DatasetV2):
     Returns:
       Dataset: A `Dataset` of rank-(N-1) sparse tensors.
     """
-    return DatasetV1Adapter(SparseTensorSliceDataset(sparse_tensor))
+    # Loaded lazily due to a circular dependency (dataset_ops ->
+    # from_sparse_tensor_slices_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import from_sparse_tensor_slices_op
+    return from_sparse_tensor_slices_op._from_sparse_tensor_slices(
+        sparse_tensor)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   @staticmethod
   @functools.wraps(DatasetV2.from_generator)
@@ -4741,34 +4747,6 @@ batch_op = lazy_loader.LazyLoader(
     "batch_op", globals(),
     "tensorflow.python.data.ops.batch_op")
 BatchDataset = batch_op.BatchDataset
-
-
-class SparseTensorSliceDataset(DatasetSource):
-  """A `Dataset` that splits a rank-N `tf.sparse.SparseTensor` into its rows."""
-
-  def __init__(self, sparse_tensor):
-    """See `Dataset.from_sparse_tensor_slices()` for details."""
-    if not isinstance(sparse_tensor, sparse_tensor_lib.SparseTensor):
-      raise TypeError(f"Invalid `sparse_tensor`. `sparse_tensor` must be a "
-                      f"`tf.sparse.SparseTensor`. Got {type(sparse_tensor)}.")
-    self._sparse_tensor = sparse_tensor
-
-    indices_shape = self._sparse_tensor.indices.get_shape()
-    shape_shape = self._sparse_tensor.dense_shape.get_shape()
-    rank = (indices_shape.dims[1] - 1).merge_with(shape_shape.dims[0] - 1)
-    self._structure = (tensor_spec.TensorSpec([None, rank], dtypes.int64),
-                       tensor_spec.TensorSpec([None],
-                                              self._sparse_tensor.dtype),
-                       tensor_spec.TensorSpec([rank], dtypes.int64))
-
-    variant_tensor = gen_dataset_ops.sparse_tensor_slice_dataset(
-        self._sparse_tensor.indices, self._sparse_tensor.values,
-        self._sparse_tensor.dense_shape)
-    super(SparseTensorSliceDataset, self).__init__(variant_tensor)
-
-  @property
-  def element_spec(self):
-    return self._structure
 
 
 class ConcatenateDataset(DatasetV2):
