@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_CUSTOM_CALL_H_
 #define TENSORFLOW_COMPILER_XLA_RUNTIME_CUSTOM_CALL_H_
 
+#include <algorithm>
 #include <any>
 #include <cstddef>
 #include <cstdint>
@@ -35,14 +36,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Compiler.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/compiler/xla/runtime/map_by_type.h"
+#include "tensorflow/compiler/xla/runtime/state.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
 
 namespace xla {
@@ -184,12 +184,18 @@ struct Ret {};
 template <typename T>
 struct UserData {};
 
+// A type tag to distinguish arguments tied to the state in the
+// `CustomCallBinding` variadic template argument.
+template <typename T>
+struct StateTag {};
+
 // A type tag to distinguish arguments tied to the constant values in the
 // `CustomCallBinding` variadic template argument.
 template <typename T>
 struct Value {};
 
-// A template for checking if type is a wrapped attribute or user data.
+// A template for checking if type is a regular argument or one of the special
+// arguments wrapped in a type tag (e.g. attr, user data, etc...).
 template <typename>
 struct IsWrapped : std::false_type {};
 
@@ -201,6 +207,9 @@ struct IsWrapped<internal::Ret<T>> : std::true_type {};
 
 template <typename T>
 struct IsWrapped<internal::UserData<T>> : std::true_type {};
+
+template <typename T>
+struct IsWrapped<internal::StateTag<T>> : std::true_type {};
 
 template <typename T>
 struct IsWrapped<internal::Value<T>> : std::true_type {};
@@ -258,6 +267,12 @@ class CustomCallBinding {
   template <typename T>
   CustomCallBinding<Ts..., internal::UserData<T>> UserData() && {
     static_assert(std::is_pointer<T>::value, "user data must be a pointer");
+    return {std::move(*this)};
+  }
+
+  template <typename T>
+  CustomCallBinding<Ts..., internal::StateTag<T>> State(std::string id) && {
+    attrs_.push_back(std::move(id));
     return {std::move(*this)};
   }
 
@@ -566,6 +581,12 @@ struct FnArgType<internal::UserData<T>> {
   using Type = T;
 };
 
+// Extracts the underlying type from the state type tag.
+template <typename T>
+struct FnArgType<internal::StateTag<T>> {
+  using Type = State<T>;
+};
+
 // Extracts the underlying type from the value type tag.
 template <typename T>
 struct FnArgType<internal::Value<T>> {
@@ -677,6 +698,51 @@ struct DecodingOffsets {
 };
 
 template <typename T, CustomCall::RuntimeChecks checks>
+LLVM_ATTRIBUTE_ALWAYS_INLINE FailureOr<T*> DecodeUserData(
+    const CustomCall::UserData* user_data) {
+  if (!CustomCall::CheckUserData(checks)) return user_data->get<T>();
+
+  // TODO(ezhulenev): Add an option to request nullable user data, because
+  // right now we do not distinguish between a user data pointer that doesn't
+  // exist, and a null pointer passed by the user.
+
+  // Get the requested value if user data was passed to the custom call.
+  auto* ptr = user_data ? user_data->getIfExists<T>() : nullptr;
+  if (LLVM_UNLIKELY(!ptr)) return failure();
+  return ptr;
+}
+
+template <typename T, CustomCall::RuntimeChecks checks>
+LLVM_ATTRIBUTE_ALWAYS_INLINE FailureOr<T> DecodeAttr(
+    DecodingOffsets& offsets, llvm::ArrayRef<std::string> attrs_names,
+    llvm::ArrayRef<size_t> attrs_idx, internal::DecodedAttrs attrs) {
+  // Find decoded attribute corresponding for the given attribute index.
+  int64_t idx = offsets.attrs++;
+
+  // Do not check the attribute name, and decode attribute at the given index.
+  if (!CustomCall::CheckNames(checks)) {
+    size_t i = attrs_idx[idx];
+    return CustomCallAttrDecoding<T, checks>::Decode(
+        attrs[i].name, attrs[i].type_id, attrs[i].value);
+  }
+
+  std::string_view attr_name = attrs_names[idx];
+
+  // Given that attributes are passed to the custom call handler
+  // lexicographically sorted by name, we can find the attribute we are
+  // looking for only between the `attrs_idx` offset and the end of the
+  // attributes array.
+  for (size_t i = attrs_idx[idx]; i < attrs.size(); ++i) {
+    if (LLVM_LIKELY(attrs[i].name == attr_name))
+      return CustomCallAttrDecoding<T, checks>::Decode(
+          attrs[i].name, attrs[i].type_id, attrs[i].value);
+  }
+
+  // Attribute we were looking for was not passed as an argument.
+  return failure();
+}
+
+template <typename T, CustomCall::RuntimeChecks checks>
 struct Decode {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> call(
       DecodingOffsets& offsets, internal::DecodedArgs args,
@@ -707,30 +773,7 @@ struct Decode<internal::Attr<T>, checks> {
       internal::DecodedRets rets, llvm::ArrayRef<std::string> attrs_names,
       llvm::ArrayRef<size_t> attrs_idx, internal::DecodedAttrs attrs,
       llvm::ArrayRef<std::any> values, const CustomCall::UserData* user_data) {
-    // Find decoded attribute corresponding for the given attribute index.
-    int64_t idx = offsets.attrs++;
-
-    // Do not check the attribute name, and decode attribute at the given index.
-    if (!CustomCall::CheckNames(checks)) {
-      size_t i = attrs_idx[idx];
-      return CustomCallAttrDecoding<T, checks>::Decode(
-          attrs[i].name, attrs[i].type_id, attrs[i].value);
-    }
-
-    std::string_view attr = attrs_names[idx];
-
-    // Given that attributes are passed to the custom call handler
-    // lexicographically sorted by name, we can find the attribute we are
-    // looking for only between the `attrs_idx` offset and the end of the
-    // attributes array.
-    for (size_t i = attrs_idx[idx]; i < attrs.size(); ++i) {
-      if (LLVM_LIKELY(attrs[i].name == attr))
-        return CustomCallAttrDecoding<T, checks>::Decode(
-            attrs[i].name, attrs[i].type_id, attrs[i].value);
-    }
-
-    // Attribute we were looking for was not passed as an argument.
-    return failure();
+    return DecodeAttr<T, checks>(offsets, attrs_names, attrs_idx, attrs);
   }
 };
 
@@ -742,17 +785,26 @@ struct Decode<internal::UserData<T>, checks> {
       llvm::ArrayRef<size_t> attrs_idx, internal::DecodedAttrs attrs,
       llvm::ArrayRef<std::any> values, const CustomCall::UserData* user_data) {
     using UserDataT = std::remove_pointer_t<T>;
+    return DecodeUserData<UserDataT, checks>(user_data);
+  }
+};
 
-    if (!CustomCall::CheckUserData(checks)) return user_data->get<UserDataT>();
+template <typename T, CustomCall::RuntimeChecks checks>
+struct Decode<internal::StateTag<T>, checks> {
+  using Snapshot = typename StateVector<T>::Snapshot;
 
-    // TODO(ezhulenev): Add an option to request nullable user data, because
-    // right now we do not distinguish between a user data pointer that doesn't
-    // exist, and a null pointer passed by the user.
+  LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<runtime::State<T>> call(
+      DecodingOffsets& offsets, internal::DecodedArgs args,
+      internal::DecodedRets rets, llvm::ArrayRef<std::string> attrs_names,
+      llvm::ArrayRef<size_t> attrs_idx, internal::DecodedAttrs attrs,
+      llvm::ArrayRef<std::any> values, const CustomCall::UserData* user_data) {
+    // Get the state snapshot and state id from user data and attributes.
+    FailureOr<Snapshot*> snapshot = DecodeUserData<Snapshot, checks>(user_data);
+    FailureOr<int64_t> id =
+        DecodeAttr<int64_t, checks>(offsets, attrs_names, attrs_idx, attrs);
+    if (LLVM_UNLIKELY(failed(snapshot) || failed(id))) return failure();
 
-    // Get the requested value if user data was passed to the custom call.
-    auto* ptr = user_data ? user_data->getIfExists<UserDataT>() : nullptr;
-    if (LLVM_UNLIKELY(!ptr)) return failure();
-    return ptr;
+    return (*snapshot)->state(*id);
   }
 };
 
@@ -916,11 +968,11 @@ class CustomCallHandler : public CustomCall {
     // Check that we have a correct number of attributes passed to the custom
     // call. Each individual attribute decoding will check the name and the
     // type of the attribute.
-    if (LLVM_UNLIKELY(eval(opts_.exact_attrs ? num_attrs != attrs_.size()
-                                             : num_attrs < attrs_.size())))
+    if (LLVM_UNLIKELY(eval(opts_.exact_attrs ? num_attrs != num_encoded_attrs_
+                                             : num_attrs < num_encoded_attrs_)))
       return diagnostic->EmitError(InvalidArgument(
           "Wrong number of attributes: expected %s%d got %d",
-          opts_.exact_attrs ? "" : "at least ", attrs_.size(), num_attrs));
+          opts_.exact_attrs ? "" : "at least ", num_encoded_attrs_, num_attrs));
 
     // Define index sequences to access custom call operands.
     using Is = std::make_index_sequence<kSize>;
@@ -1006,13 +1058,18 @@ class CustomCallHandler : public CustomCall {
         values_(std::move(values)),
         opts_(opts),
         attrs_idx_(attrs_.size()) {
-    // Sort attributes names.
+    // Sort attributes names and remove duplicates. These unique attributes are
+    // what we'll be looking for in the encoded custom call attributes.
     std::vector<std::string> sorted = attrs_;
-    llvm::sort(sorted);
+    std::sort(sorted.begin(), sorted.end());
+    sorted.erase(
+        std::unique(sorted.begin(), sorted.end(), std::equal_to<std::string>()),
+        sorted.end());
+    num_encoded_attrs_ = sorted.size();
 
     // Find index or every attribute in the sorted attributes vector.
     for (size_t i = 0; i < attrs_.size(); ++i) {
-      const std::string& attr = attrs_[i];
+      std::string_view attr = attrs_[i];
       attrs_idx_[i] = std::distance(sorted.begin(), llvm::find(sorted, attr));
     }
   }
@@ -1028,6 +1085,11 @@ class CustomCallHandler : public CustomCall {
   // handler sorted by the name, we use this index to efficiently find the
   // decoded attribute entry.
   std::vector<size_t> attrs_idx_;
+
+  // The number of attributes we expect in the encoded custom call arguments.
+  // This is not the same as `attrs_.size()` because of potential duplicates,
+  // e.g. attribute corresponding to state id might be used multiple times.
+  size_t num_encoded_attrs_;
 };
 
 template <CustomCall::RuntimeChecks checks, typename Fn, typename... Ts>
