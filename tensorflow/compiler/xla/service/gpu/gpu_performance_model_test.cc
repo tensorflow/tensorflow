@@ -100,15 +100,15 @@ TEST_F(GpuPerformanceModelTest, LargeReadWrite) {
 HloModule m
 
 f {
- p0 = f32[1000000] parameter(0)
- p1 = f32[1000000] parameter(1)
- ROOT a0 = f32[1000000] add(p0, p1)
+ p0 = f32[10000000] parameter(0)
+ p1 = f32[10000000] parameter(1)
+ ROOT a0 = f32[10000000] add(p0, p1)
 }
 
 ENTRY e {
- p0 = f32[1000000] parameter(0)
- p1 = f32[1000000] parameter(1)
- ROOT r.1 = f32[1000000] fusion(p0, p1), kind=kLoop, calls=f
+ p0 = f32[10000000] parameter(0)
+ p1 = f32[10000000] parameter(1)
+ ROOT r.1 = f32[10000000] fusion(p0, p1), kind=kLoop, calls=f
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -119,7 +119,7 @@ ENTRY e {
   GpuPerformanceModel::RunTimes t =
       GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   // Dominated by the DRAM bandwidth.
-  EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 18, 3);
+  EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 175, 30);
 }
 
 TEST_F(GpuPerformanceModelTest, L1CacheEffect) {
@@ -127,17 +127,17 @@ TEST_F(GpuPerformanceModelTest, L1CacheEffect) {
 HloModule m
 
 f {
-  p0 = f32[1000] parameter(0)
-  bc0 = f32[1000,1000] broadcast(p0), dimensions={0}
-  b0 = f32[1000000] bitcast(bc0)
-  p1 = f32[1000000] parameter(1)
-  ROOT a0 = f32[1000000] add(b0, p1)
+  p0 = f32[10000] parameter(0)
+  bc0 = f32[10000,1000] broadcast(p0), dimensions={0}
+  b0 = f32[10000000] bitcast(bc0)
+  p1 = f32[10000000] parameter(1)
+  ROOT a0 = f32[10000000] add(b0, p1)
 }
 
 ENTRY e {
-  p0 = f32[1000] parameter(0)
-  p1 = f32[1000000] parameter(1)
-  ROOT r.1 = f32[1000000] fusion(p0, p1), kind=kLoop, calls=f
+  p0 = f32[10000] parameter(0)
+  p1 = f32[10000000] parameter(1)
+  ROOT r.1 = f32[10000000] fusion(p0, p1), kind=kLoop, calls=f
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -149,7 +149,7 @@ ENTRY e {
       GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   // Parameter 0 read is accelerated by L1 cache even though the total data
   // volume is the same as in the test LargeReadWrite above.
-  EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 11, 1);
+  EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 118, 12);
 }
 
 TEST_F(GpuPerformanceModelTest, L2CacheEffect) {

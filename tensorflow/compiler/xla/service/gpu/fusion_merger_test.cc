@@ -465,6 +465,29 @@ ENTRY e {
   EXPECT_FALSE(fusion_merger_.Run(module.get()).value());
 }
 
+TEST_F(FusionMergerTest, WillMergeSliceIntoReusingConsumer) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+f1 {
+  p01 = s8[1000000] parameter(0)
+  ROOT s0 = s8[10] slice(p01), slice={[0:10]}
+}
+
+f2 {
+  p02 = s8[10] parameter(0)
+  ROOT b0 = s8[10,1000000] broadcast(p02), dimensions={0}
+}
+
+ENTRY e {
+  p0 = s8[1000000] parameter(0)
+  f1 = s8[10] fusion(p0), kind=kLoop, calls=f1
+  ROOT r = s8[10,1000000] fusion(f1), kind=kLoop, calls=f2
+})")
+                    .value();
+  EXPECT_TRUE(fusion_merger_.Run(module.get()).value());
+}
+
 TEST_F(FusionMergerTest, WillMergeExpensiveFusionsIfSavesMemory) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
