@@ -1416,10 +1416,10 @@ static void MemrefX12(bm::State& state) {
 
     func.func @test() {
       %0 = memref.alloca() : memref<4x4xf32>
-      call @custom_call(%0, %1, %2, %0, %1, %2, %0, %1, %2, %0, %1, %2)
-        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>, memref<4x4xf32>,
-           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>, memref<4x4xf32>,
-           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>, memref<4x4xf32>
+      call @custom_call(%0, %0, %0, %0, %0, %0, %0, %0, %0, %0, %0, %0)
+        : (memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>,
+           memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>,
+           memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>
           ) -> ()
       return
     }

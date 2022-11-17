@@ -256,15 +256,16 @@ static FailureOr<LLVM::AllocaOp> EncodeArguments(
   };
 
   // Insert the number of encoded arguments.
-  Attribute num_args = b.getI64IntegerAttr(encoded.size());
-  insert_value(PackScalarAttribute(g, b, num_args, "__rt_num_args"), 0);
+  LLVM::GlobalOp num_args =
+      EncodeScalar(g, b, b.getI64IntegerAttr(encoded.size()), "__rt_num_args");
+  insert_value(Globals::AddrOf(b, num_args), 0);
 
   // Store encoded arguments into the allocated storage.
   for (auto &pair : llvm::enumerate(encoded)) {
     CustomCallArgEncoding::Encoded encoded = pair.value();
     int64_t offset = 1 + pair.index() * 2;
 
-    insert_value(encoded.type_id, offset + 0);
+    insert_value(Globals::AddrOf(b, encoded.type_id), offset + 0);
     insert_value(encoded.value, offset + 1);
   }
 
@@ -290,10 +291,9 @@ static FailureOr<LLVM::AllocaOp> EncodeArguments(
 
 // Encodes attributes into the global constant (array of pointers to the
 // attributes data, which are also stored as global constants).
-static FailureOr<Value> EncodeAttributes(CustomCallAttrEncodingSet &encodings,
-                                         SymbolTable &sym_table, Globals &g,
-                                         ImplicitLocOpBuilder &b,
-                                         ArrayRef<NamedAttribute> attrs) {
+static FailureOr<LLVM::GlobalOp> EncodeAttributes(
+    CustomCallAttrEncodingSet &encodings, SymbolTable &sym_table, Globals &g,
+    ImplicitLocOpBuilder &b, ArrayRef<NamedAttribute> attrs) {
   // Forward attributes that are not part of the custom call operation itself.
   auto forward_attr = [](NamedAttribute attr) -> bool {
     return attr.getName() != "callee" && attr.getName() != "dynamic";
@@ -345,15 +345,16 @@ static FailureOr<EncodedResults> EncodeResults(
   };
 
   // Insert the number of encoded results.
-  Attribute num_rets = b.getI64IntegerAttr(encoded.size());
-  insert_value(PackScalarAttribute(g, b, num_rets, "__rt_num_rets"), 0);
+  LLVM::GlobalOp num_rets =
+      EncodeScalar(g, b, b.getI64IntegerAttr(encoded.size()), "__rt_num_rets");
+  insert_value(Globals::AddrOf(b, num_rets), 0);
 
   // Store encoded results into the allocated storage.
   for (auto &pair : llvm::enumerate(encoded)) {
     CustomCallRetEncoding::Encoded encoded_pair = pair.value();
     int64_t offset = 1 + pair.index() * 2;
 
-    insert_value(encoded_pair.type_id, offset + 0);
+    insert_value(Globals::AddrOf(b, encoded_pair.type_id), offset + 0);
     insert_value(encoded_pair.value, offset + 1);
 
     results.allocas.push_back(encoded_pair.value);
@@ -449,7 +450,8 @@ class CallOpLowering : public OpConversionPattern<CallOp> {
 
       return b.create<func::CallOp>(
           kCustomCall, TypeRange(rewriter.getI1Type()),
-          ValueRange({adaptor.getCtx(), callee, *args, *attrs, rets->encoded}));
+          ValueRange({adaptor.getCtx(), callee, *args,
+                      Globals::AddrOf(b, *attrs), rets->encoded}));
     };
 
     // Creates a direct custom call resolved at link time.
@@ -459,7 +461,8 @@ class CallOpLowering : public OpConversionPattern<CallOp> {
 
       return b.create<func::CallOp>(
           op.getCallee(), TypeRange(rewriter.getI1Type()),
-          ValueRange({adaptor.getCtx(), *args, *attrs, rets->encoded}));
+          ValueRange({adaptor.getCtx(), *args, Globals::AddrOf(b, *attrs),
+                      rets->encoded}));
     };
 
     // Build a call operation and result decoding right after the original op.
