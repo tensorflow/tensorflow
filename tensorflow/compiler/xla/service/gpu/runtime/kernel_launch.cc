@@ -35,7 +35,6 @@ namespace gpu {
 
 using xla::runtime::CustomCall;
 using xla::runtime::Executable;
-using xla::runtime::FlatMemrefView;
 using xla::runtime::State;
 using xla::runtime::StridedMemrefView;
 
@@ -95,16 +94,11 @@ absl::Status KernelLaunch::operator()(
 
   // Add MemRef arguments as buffer arguments.
   for (unsigned i = 0; i < args.size(); ++i) {
-    // Simple row major memref passed as shapeless buffer.
-    if (auto memref = args.get<FlatMemrefView>(i); succeeded(memref)) {
-      buffer_args[i] = GetDeviceAddress(*memref);
-      continue;
-    }
-
-    // Memref layout must be encoded in the compiled device kernel, so we don't
-    // have to pass strides or minor to major dimensions order to the kernel.
+    // We get arguments corresponding to XLA allocations required by the
+    // compiled device kernel, and not the actual memrefs that device kernel
+    // writes/reads, so we don't have to pass the size along with the pointer.
     if (auto strided = args.get<StridedMemrefView>(i); succeeded(strided)) {
-      buffer_args[i] = GetDeviceAddress(*strided);
+      buffer_args[i] = se::DeviceMemoryBase(strided->data);
       continue;
     }
 
