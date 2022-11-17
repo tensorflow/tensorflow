@@ -68,6 +68,7 @@ py_library(
         ":options",
         ":padded_batch_op",
         ":ragged_batch_op",
+        ":range_op",
         ":rebatch_op",
         ":save_ops",
         ":shard_op",
@@ -136,6 +137,11 @@ py_library(
 py_library(
     name = "from_tensors_op",
     srcs = ["from_tensors_op.py"],
+)
+
+py_library(
+    name = "range_op",
+    srcs = ["range_op.py"],
 )
 
 py_library(
