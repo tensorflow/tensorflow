@@ -214,9 +214,6 @@ absl::Status Embedder::CreateModelWithEmbeddedValidation(
   if (!intermediate_model) {
     return absl::InternalError("Failed to load intermediate model");
   }
-  if (!FLATBUFFERS_LITTLEENDIAN)
-    intermediate_model = tflite::FlatBufferModel::ByteConvertModel(
-      std::move(intermediate_model));
   std::unique_ptr<Interpreter> interpreter;
   InterpreterBuilder(*intermediate_model, *resolver)(&interpreter);
   if (!interpreter) {

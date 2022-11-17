@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/big_little_affinity.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
-#include "tensorflow/lite/core/model_builder.h"
 #ifdef ENABLE_NNAPI_SL_TEST
 #include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
 #endif /* ENABLE_NNAPI_SL_TEST */
@@ -81,8 +80,6 @@ class LocalizerValidationRegressionTest : public ::testing::Test {
     std::string contents(reinterpret_cast<const char*>(
                              TENSORFLOW_ACCELERATION_MODEL_DATA_VARIABLE),
                          TENSORFLOW_ACCELERATION_MODEL_LENGTH_VARIABLE);
-    if (!FLATBUFFERS_LITTLEENDIAN)
-      tflite::FlatBufferModel::ByteSwapSerializedModel(&contents);
     std::ofstream f(path, std::ios::binary);
     ASSERT_TRUE(f.is_open());
     f << contents;

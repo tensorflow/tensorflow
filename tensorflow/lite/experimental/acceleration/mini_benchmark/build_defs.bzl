@@ -146,7 +146,6 @@ def validation_test(name, validation_model, tags = [], copts = [], deps = []):
             embed_name,
             "@com_google_googletest//:gtest_main",
             "@flatbuffers",
-            "//tensorflow/lite/core:model_builder",
             "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
             "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
             "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",

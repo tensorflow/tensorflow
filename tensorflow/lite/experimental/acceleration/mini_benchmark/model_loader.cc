@@ -69,6 +69,8 @@ MinibenchmarkStatus MmapModelLoader::InitInternal() {
     return kMinibenchmarkModelReadFailed;
   }
   model_ = FlatBufferModel::VerifyAndBuildFromAllocation(std::move(allocation));
+  if (!FLATBUFFERS_LITTLEENDIAN)
+    model_ = FlatBufferModel::ByteConvertModel(std::move(model_));
   return kMinibenchmarkSuccess;
 }
 
