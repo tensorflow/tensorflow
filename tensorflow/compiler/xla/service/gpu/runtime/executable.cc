@@ -182,7 +182,8 @@ Status GpuRuntimeExecutable::Execute(
   runtime::NoResultConverter converter;
 
   // Get the async communications stream for async collectives.
-  int device_ordinal = run_options->stream()->parent()->device_ordinal();
+  se::StreamExecutor* executor = run_options->stream()->parent();
+  int device_ordinal = executor->device_ordinal();
   StatusOr<StreamPool::Ptr> async_comms_stream =
       run_options->BorrowStream(device_ordinal);
 
@@ -202,15 +203,15 @@ Status GpuRuntimeExecutable::Execute(
   // get access to other exported functions from custom call handlers.
   runtime::Executable& executable = this->executable();
 
-  // Take snapshots of every state vector required by custom calls.
+  // Take snapshots of every state required by custom calls.
+  StreamExecutorKernels::Snapshot kernels = gpu_kernels_(executor)->snapshot();
   GemmConfigs::Snapshot gemm_configs = gemm_configs_.snapshot();
 
   // Pass auxiliary data to the custom call handlers.
   runtime::CustomCall::UserData user_data;
   user_data.insert_all(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
-      &binary, &kernels_cache_, &gemm_configs, &conv_runners_cache_,
-      &collectives_,
+      &binary, &kernels, &gemm_configs, &conv_runners_cache_, &collectives_,
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.
       async_collectives.async_comm_stream() ? &async_collectives : nullptr);
