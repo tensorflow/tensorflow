@@ -1,5 +1,5 @@
-// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s
-// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text --via-builder=true %s | FileCheck %s
+// RUN: xla-translate --print-sugar=false -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s
+// RUN: xla-translate --print-sugar=false -split-input-file -mlir-hlo-to-hlo-text --via-builder=true %s | FileCheck %s
 
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<2xi1>) -> tensor<2xi1> {
@@ -118,12 +118,12 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
 
 // CHECK: ENTRY
 // CHECK: %[[INPUT:.*]] = f32[128,32] parameter(0)
-// CHECK: %[[OUTPUT:.*]] = (f32[128,32], f32[128,128]) all-gather-start(f32[128,32] %[[INPUT]])
+// CHECK: %[[OUTPUT:.*]] = f32[128,128] all-gather-start(f32[128,32] %[[INPUT]])
 // CHECK-SAME: channel_id=1
 // CHECK-SAME{LITERAL}: replica_groups={{0,2,4,6},{1,3,5,7}}
 // CHECK-SAME: dimensions={1}
 // CHECK-SAME: use_global_device_ids=true
-// CHECK: ROOT {{.*}} (f32[128,128]) all-gather-done((f32[128,32], f32[128,128]) %[[OUTPUT]]
+// CHECK: ROOT {{.*}} f32[128,128] all-gather-done(f32[128,128] %[[OUTPUT]]
 
 // -----
 
@@ -153,11 +153,11 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 
 // CHECK: ENTRY
 // CHECK: %[[INPUT:.*]] = f32[10] parameter(0)
-// CHECK: %[[OUTPUT:.*]] = (f32[10], f32[10]) all-reduce-start(f32[10] %[[INPUT]])
+// CHECK: %[[OUTPUT:.*]] = f32[10] all-reduce-start(f32[10] %[[INPUT]])
 // CHECK-SAME:  channel_id=5
 // CHECK-SAME{LITERAL}:  replica_groups={{0,2,4,6},{1,3,5,7}}
 // CHECK-SAME: use_global_device_ids=true
-// CHECK: ROOT {{.*}} (f32[10]) all-reduce-done((f32[10], f32[10]) %[[OUTPUT]]
+// CHECK: ROOT {{.*}} f32[10] all-reduce-done(f32[10] %[[OUTPUT]]
 
 // -----
 
@@ -1842,41 +1842,48 @@ func.func @main(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>, %init0: tensor<f
 }
 // -----
 
+// CHECK: HloModule
+// CHECK: [[CALLED_COMPUTATION:%AsyncOp.*]] ([[ARG:.*]]: f32[10]) -> f32[20] {
 func.func @AsyncOp(%arg0: tensor<10xf32>) -> tensor<20xf32>
   attributes {execution_thread = "thread"} {
   %0 = "mhlo.custom_call"(%arg0) {call_target_name = "foo"} : (tensor<10xf32>) -> tensor<20xf32>
   return %0 : tensor<20xf32>
 }
 
-// CHECK: HloModule
 // CHECK: ENTRY
 func.func @main(%arg0: tensor<10xf32>) -> tensor<20xf32> {
   // CHECK: %[[ARG0:.*]] = f32[10] parameter(0)
-  // CHECK: %[[START:.*]] = (f32[10], f32[20], s32[]) custom-call-start(f32[10] %[[ARG0]])
+  // CHECK: %[[START:.*]] = (f32[10], f32[20], s32[]) async-start(f32[10] %[[ARG0]])
+  // CHECK-SAME: calls=[[CALLED_COMPUTATION]]
   %0 = "mhlo.async_start"(%arg0) {called_computation = @AsyncOp, execution_thread = "thread"} : (tensor<10xf32>) -> !mhlo.async_bundle<tensor<10xf32>, tensor<20xf32>, tensor<i32>>
-  // CHECK: %[[UPDATE:.*]] = (f32[10], f32[20], s32[]) custom-call-update((f32[10], f32[20], s32[]) %[[START]])
+  // CHECK: %[[UPDATE:.*]] = (f32[10], f32[20], s32[]) async-update((f32[10], f32[20], s32[]) %[[START]])
+  // CHECK-SAME: calls=[[CALLED_COMPUTATION]]
   %1 = "mhlo.async_update"(%0) {called_computation = @AsyncOp, execution_thread = "thread"} : (!mhlo.async_bundle<tensor<10xf32>, tensor<20xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<10xf32>, tensor<20xf32>, tensor<i32>>
-  // CHECK: ROOT %{{.*}} = (f32[20]) custom-call-done((f32[10], f32[20], s32[]) %[[UPDATE]])
+  // CHECK: ROOT %{{.*}} = (f32[20]) async-done((f32[10], f32[20], s32[]) %[[UPDATE]])
+  // CHECK-SAME: calls=[[CALLED_COMPUTATION]]
   %2 = "mhlo.async_done"(%1) {called_computation = @AsyncOp, execution_thread = "thread"} : (!mhlo.async_bundle<tensor<10xf32>, tensor<20xf32>, tensor<i32>>) -> tensor<20xf32>
   return %2 : tensor<20xf32>
 }
 
 // -----
 
+// CHECK: HloModule
+// CHECK: [[CALLED_COMPUTATION:%AsyncOp.*]] ([[ARG:.*]]: f32[10]) -> f32[20] {
 func.func @AsyncOp(%arg0: tensor<10xf32>) -> tensor<20xf32>
   attributes {execution_thread = "thread"} {
   %1 = "mhlo.custom_call"(%arg0) {call_target_name = "bar"} : (tensor<10xf32>) -> tensor<20xf32>
+  // CHECK: custom-call
+  // CHECK-SAME: custom_call_target="bar"
   return %1 : tensor<20xf32>
 }
 
-// CHECK: HloModule
 // CHECK: ENTRY
 func.func @main(%arg0: tensor<10xf32>) -> tensor<20xf32> {
   // CHECK: %[[ARG0:.*]] = f32[10] parameter(0)
-  // CHECK: %[[START:.*]] = (f32[10], f32[20], s32[]) custom-call-start(f32[10] %[[ARG0]]), async_group_id=1, async_execution_thread="thread", custom_call_target="bar"
-  // CHECK: %[[UPDATE:.*]] = (f32[10], f32[20], s32[]) custom-call-update((f32[10], f32[20], s32[]) %[[START]]), async_group_id=1, async_execution_thread="thread", custom_call_target="bar"
+  // CHECK: %[[START:.*]] = (f32[10], f32[20], s32[]) async-start(f32[10] %[[ARG0]]), async_group_id=1, async_execution_thread="thread", calls=[[CALLED_COMPUTATION]],
+  // CHECK: %[[UPDATE:.*]] = (f32[10], f32[20], s32[]) async-update((f32[10], f32[20], s32[]) %[[START]]), async_group_id=1, async_execution_thread="thread", calls=[[CALLED_COMPUTATION]]
   // CHECK: ROOT
-  // CHECK-SAME: (f32[20]) custom-call-done((f32[10], f32[20], s32[]) %[[UPDATE]]), async_group_id=1, async_execution_thread="thread",  custom_call_target="bar"
+  // CHECK-SAME: (f32[20]) async-done((f32[10], f32[20], s32[]) %[[UPDATE]]), async_group_id=1, async_execution_thread="thread", calls=[[CALLED_COMPUTATION]]
 
   %0 = "mhlo.async_start"(%arg0) {called_computation = @AsyncOp, execution_thread="thread", group_id = 1} : (tensor<10xf32>) -> !mhlo.async_bundle<tensor<10xf32>, tensor<20xf32>, tensor<i32>>
   %1 = "mhlo.async_update"(%0) {called_computation = @AsyncOp, execution_thread="thread", group_id=1} : (!mhlo.async_bundle<tensor<10xf32>, tensor<20xf32>, tensor<i32>>) -> !mhlo.async_bundle<tensor<10xf32>, tensor<20xf32>, tensor<i32>>

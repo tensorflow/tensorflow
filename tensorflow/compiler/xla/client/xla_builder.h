@@ -59,32 +59,26 @@ struct XlaBuilderFriend {
   static XlaOp BuildAddDependency(XlaBuilder* builder, XlaOp operand,
                                   XlaOp token, const Shape& shape);
 
-  static XlaOp BuildAsyncStart(XlaBuilder* builder,
-                               absl::Span<const XlaOp> operands,
-                               std::string execution_thread, int64_t group_id,
-                               const XlaComputation& called_computation,
-                               const Shape& shape);
-  static XlaOp BuildAsyncStart(XlaBuilder* builder,
-                               absl::Span<const XlaOp> operands,
-                               std::string execution_thread,
-                               const XlaComputation& called_computation,
-                               const Shape& shape);
+  static std::pair<XlaOp, int64_t> BuildAsyncStart(
+      XlaBuilder* builder, absl::Span<const XlaOp> operands,
+      std::string execution_thread, int64_t group_id,
+      const XlaComputation& called_computation, const Shape& shape);
+  static std::pair<XlaOp, int64_t> BuildAsyncStart(
+      XlaBuilder* builder, absl::Span<const XlaOp> operands,
+      std::string execution_thread, const XlaComputation& called_computation,
+      const Shape& shape);
   static XlaOp BuildAsyncUpdate(XlaBuilder* builder, const XlaOp operands,
                                 std::string execution_thread, int64_t group_id,
-                                const XlaComputation& called_computation,
-                                const Shape& shape);
+                                int64_t called_computation, const Shape& shape);
   static XlaOp BuildAsyncUpdate(XlaBuilder* builder, const XlaOp operands,
                                 std::string execution_thread,
-                                const XlaComputation& called_computation,
-                                const Shape& shape);
+                                int64_t called_computation, const Shape& shape);
   static XlaOp BuildAsyncDone(XlaBuilder* builder, const XlaOp operands,
                               std::string execution_thread, int64_t group_id,
-                              const XlaComputation& called_computation,
-                              const Shape& shape);
+                              int64_t called_computation, const Shape& shape);
   static XlaOp BuildAsyncDone(XlaBuilder* builder, const XlaOp operands,
                               std::string execution_thread,
-                              const XlaComputation& called_computation,
-                              const Shape& shape);
+                              int64_t called_computation, const Shape& shape);
 
   static XlaOp BuildAllGatherStart(
       XlaBuilder* builder, XlaOp operand, int64_t all_gather_dimension,

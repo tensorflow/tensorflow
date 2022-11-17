@@ -97,7 +97,7 @@ Status ConvertMlirHloToHloViaBuilder(mlir::ModuleOp module,
 mlir::LogicalResult MlirHloToHloTextTranslateFunction(
     mlir::ModuleOp module, llvm::raw_ostream& output, bool emit_return_tuple,
     bool emit_use_tuple_arg, bool print_layouts, bool print_large_constants,
-    bool via_builder, bool with_layouts) {
+    bool print_sugar, bool via_builder, bool with_layouts) {
   if (!module) return mlir::failure();
 
   HloProto hloProto;
@@ -126,6 +126,7 @@ mlir::LogicalResult MlirHloToHloTextTranslateFunction(
   output << hlo_module->ToString(
       HloPrintOptions()
           .set_include_layout_in_shapes(print_layouts)
+          .set_syntax_sugar_async_ops(print_sugar)
           .set_print_large_constants(print_large_constants));
 
   // Output alias information as comments in the HLO text.
