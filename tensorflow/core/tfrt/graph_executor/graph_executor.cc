@@ -279,14 +279,14 @@ tensorflow::Status GraphExecutionRunOnFunction(
 std::unique_ptr<tfrt::ResourceContext> CreateResourceContext(
     const tensorflow::tfrt_stub::Runtime& runtime,
     tfrt::tpu::TpuModelResource* tpu_model_resource,
-    tensorflow::TfrtTpuInfraTarget tpu_target) {
+    tensorflow::TfrtDeviceInfraTarget device_target) {
   auto resource_context = std::make_unique<tfrt::ResourceContext>();
   runtime.CreateRuntimeResources(resource_context.get());
 
   // TODO(b/178227859): We should make TPU resource init code pluggable, as
   // opposed to linking it in. We can do this by adding a callback with
   // `Runtime::AddCreateRuntimeResourceFn`.
-  if (tpu_target == tensorflow::TfrtTpuInfraTarget::kTpurt) {
+  if (device_target == tensorflow::TfrtDeviceInfraTarget::kTpurt) {
     AddTpuResources(resource_context.get(), tpu_model_resource);
   }
   return resource_context;
@@ -428,7 +428,7 @@ GraphExecutor::ImportAndCompileClientGraph(
   auto loaded_client_graph = std::make_unique<LoadedClientGraph>();
   loaded_client_graph->name = client_graph.name;
   loaded_client_graph->resource_context = CreateResourceContext(
-      runtime(), tpu_model_resource_, options_.compile_options.tpu_target);
+      runtime(), tpu_model_resource_, options_.compile_options.device_target);
 
   // Step 1 of loading: Import the client graph from proto to an MLIR module.
   auto import_start_time = absl::Now();

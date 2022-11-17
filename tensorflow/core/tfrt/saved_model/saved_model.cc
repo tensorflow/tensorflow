@@ -546,7 +546,7 @@ SavedModelImpl::LoadSavedModel(Options options,
   auto tpu_model_resource = std::make_unique<tfrt::tpu::TpuModelResource>();
   auto resource_context = CreateResourceContext(
       *options.graph_execution_options.runtime, tpu_model_resource.get(),
-      options.graph_execution_options.compile_options.tpu_target);
+      options.graph_execution_options.compile_options.device_target);
   RETURN_IF_ERROR_IN_INIT(
       InitSavedModel(initializers_and_signatures, bef_file.get(), options,
                      resource_context.get(), *fallback_state));
@@ -951,7 +951,7 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   loading_result->name = joined_signature.name;
   loading_result->resource_context = CreateResourceContext(
       runtime(), tpu_model_resource_.get(),
-      options_.graph_execution_options.compile_options.tpu_target);
+      options_.graph_execution_options.compile_options.device_target);
 
   RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
       options_.graph_execution_options.compile_options, module.get(),

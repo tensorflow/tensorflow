@@ -74,7 +74,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
 // TODO(b/178227859): Remove the need for the special handling for TPU here.
 std::unique_ptr<tfrt::ResourceContext> CreateResourceContext(
     const Runtime& runtime, tfrt::tpu::TpuModelResource* tpu_model_resource,
-    tensorflow::TfrtTpuInfraTarget tpu_target);
+    tensorflow::TfrtDeviceInfraTarget tpu_target);
 
 // Loads (if not yet) and runs a subgraph in a graph as per each request.
 class GraphExecutor {
