@@ -2810,32 +2810,78 @@ def sparse_minimum(sp_a, sp_b, name=None):
 @tf_export("sparse.transpose", v1=["sparse.transpose", "sparse_transpose"])
 @deprecation.deprecated_endpoints("sparse_transpose")
 def sparse_transpose(sp_input, perm=None, name=None):
-  """Transposes a `SparseTensor`
+  """Transposes a `SparseTensor`.
 
-  The returned tensor's dimension i will correspond to the input dimension
-  `perm[i]`. If `perm` is not given, it is set to (n-1...0), where n is
-  the rank of the input tensor. Hence by default, this operation performs a
-  regular matrix transpose on 2-D input Tensors.
+  Permutes the dimensions according to the value of `perm`.  This is the sparse
+  version of `tf.transpose`.
 
-  For example, if `sp_input` has shape `[4, 5]` and `indices` / `values`:
+  The returned tensor's dimension `i` will correspond to the input dimension
+  `perm[i]`. If `perm` is not given, it is set to (n-1...0), where n is the rank
+  of the input tensor. Hence, by default, this operation performs a regular
+  matrix transpose on 2-D input Tensors.
 
-      [0, 3]: b
-      [0, 1]: a
-      [3, 1]: d
-      [2, 0]: c
+  For example:
 
-  then the output will be a `SparseTensor` of shape `[5, 4]` and
-  `indices` / `values`:
+  >>> x = tf.SparseTensor(indices=[[0, 1], [0, 3], [2, 3], [3, 1]],
+  ...                     values=[1.1, 2.2, 3.3, 4.4],
+  ...                     dense_shape=[4, 5])
+  >>> print('x =', tf.sparse.to_dense(x))
+  x = tf.Tensor(
+  [[0.  1.1 0.  2.2 0. ]
+  [0.  0.  0.  0.  0. ]
+  [0.  0.  0.  3.3 0. ]
+  [0.  4.4 0.  0.  0. ]], shape=(4, 5), dtype=float32)
 
-      [0, 2]: c
-      [1, 0]: a
-      [1, 3]: d
-      [3, 0]: b
+  >>> x_transpose = tf.sparse.transpose(x)
+  >>> print('x_transpose =', tf.sparse.to_dense(x_transpose))
+  x_transpose = tf.Tensor(
+  [[0.  0.  0.  0. ]
+  [1.1 0.  0.  4.4]
+  [0.  0.  0.  0. ]
+  [2.2 0.  3.3 0. ]
+  [0.  0.  0.  0. ]], shape=(5, 4), dtype=float32)
+
+  Equivalently, you could call `tf.sparse.transpose(x, perm=[1, 0])`.  The
+  `perm` argument is more useful for n-dimensional tensors where n > 2.
+
+  >>> x = tf.SparseTensor(indices=[[0, 0, 1], [0, 0, 3], [1, 2, 3], [1, 3, 1]],
+  ...                     values=[1.1, 2.2, 3.3, 4.4],
+  ...                     dense_shape=[2, 4, 5])
+  >>> print('x =', tf.sparse.to_dense(x))
+  x = tf.Tensor(
+  [[[0.  1.1 0.  2.2 0. ]
+    [0.  0.  0.  0.  0. ]
+    [0.  0.  0.  0.  0. ]
+    [0.  0.  0.  0.  0. ]]
+  [[0.  0.  0.  0.  0. ]
+    [0.  0.  0.  0.  0. ]
+    [0.  0.  0.  3.3 0. ]
+    [0.  4.4 0.  0.  0. ]]], shape=(2, 4, 5), dtype=float32)
+
+  As above, simply calling `tf.sparse.transpose` will default to `perm=[2,1,0]`.
+
+  To take the transpose of a batch of sparse matrices, where 0 is the batch
+  dimension, you would set `perm=[0,2,1]`.
+
+  >>> x_transpose = tf.sparse.transpose(x, perm=[0, 2, 1])
+  >>> print('x_transpose =', tf.sparse.to_dense(x_transpose))
+  x_transpose = tf.Tensor(
+  [[[0.  0.  0.  0. ]
+    [1.1 0.  0.  0. ]
+    [0.  0.  0.  0. ]
+    [2.2 0.  0.  0. ]
+    [0.  0.  0.  0. ]]
+  [[0.  0.  0.  0. ]
+    [0.  0.  0.  4.4]
+    [0.  0.  0.  0. ]
+    [0.  0.  3.3 0. ]
+    [0.  0.  0.  0. ]]], shape=(2, 5, 4), dtype=float32)
 
   Args:
     sp_input: The input `SparseTensor`.
-    perm: A permutation of the dimensions of `sp_input`.
-    name: A name prefix for the returned tensors (optional)
+    perm: A permutation vector of the dimensions of `sp_input`.
+    name: A name prefix for the returned tensors (optional).
+
   Returns:
     A transposed `SparseTensor`.
 
