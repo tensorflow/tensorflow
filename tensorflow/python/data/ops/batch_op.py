@@ -24,7 +24,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_dataset_ops
 
 
-def batch(self,
+def batch(input_dataset,
           batch_size,
           drop_remainder=False,
           num_parallel_calls=None,
@@ -35,10 +35,10 @@ def batch(self,
     if deterministic is not None and not dataset_ops.DEBUG_MODE:
       warnings.warn("The `deterministic` argument has no effect unless the "
                     "`num_parallel_calls` argument is specified.")
-    return BatchDataset(self, batch_size, drop_remainder, name=name)
+    return BatchDataset(input_dataset, batch_size, drop_remainder, name=name)
   else:
     return ParallelBatchDataset(
-        self,
+        input_dataset,
         batch_size,
         drop_remainder,
         num_parallel_calls,

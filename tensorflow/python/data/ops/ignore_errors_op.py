@@ -18,8 +18,8 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
 
 
-def ignore_errors(self, log_warning=False, name=None):
-  return IgnoreErrorsDataset(self, log_warning, name)
+def ignore_errors(input_dataset, log_warning=False, name=None):
+  return IgnoreErrorsDataset(input_dataset, log_warning, name)
 
 
 class IgnoreErrorsDataset(dataset_ops.UnaryUnchangedStructureDataset):

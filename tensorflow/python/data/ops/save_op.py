@@ -33,14 +33,14 @@ nested_structure_coder = lazy_loader.LazyLoader(
     "tensorflow.python.saved_model.nested_structure_coder")
 
 
-def save(self,
+def save(input_dataset,
          path,
          compression=None,
          shard_func=None,
          checkpoint_args=None):
   """Implements the save function and checkpoint functionality."""
   if context.executing_eagerly() and checkpoint_args:
-    save_dataset = _SaveDataset(self, path, shard_func, compression)
+    save_dataset = _SaveDataset(input_dataset, path, shard_func, compression)
     save_iterator = iter(save_dataset)
 
     if "checkpoint" in checkpoint_args:
@@ -59,7 +59,7 @@ def save(self,
       manager.save(check_interval=True)
   else:
     dataset, shard_func, use_shard_func, path = set_save_dataset_attributes(
-        self, shard_func, path)
+        input_dataset, shard_func, path)
     ged_ops.save_dataset(
         dataset._variant_tensor,   # pylint: disable=protected-access
         path=path,

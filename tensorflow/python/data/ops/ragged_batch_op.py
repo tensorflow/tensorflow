@@ -23,12 +23,12 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops.ragged import ragged_tensor
 
 
-def ragged_batch(self,
+def ragged_batch(input_dataset,
                  batch_size,
                  drop_remainder=False,
                  row_splits_dtype=dtypes.int64,
                  name=None):
-  ragged_dataset = _DenseToRaggedDataset(self, row_splits_dtype, name)
+  ragged_dataset = _DenseToRaggedDataset(input_dataset, row_splits_dtype, name)
   return batch_op.BatchDataset(
       ragged_dataset, batch_size=batch_size, drop_remainder=drop_remainder)
 

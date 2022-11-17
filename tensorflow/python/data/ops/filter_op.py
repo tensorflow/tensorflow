@@ -21,8 +21,8 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_dataset_ops
 
 
-def filter(self, predicate, name=None):  # pylint: disable=redefined-builtin
-  return FilterDataset(self, predicate, name=name)
+def filter(input_dataset, predicate, name=None):  # pylint: disable=redefined-builtin
+  return FilterDataset(input_dataset, predicate, name=name)
 
 
 class FilterDataset(dataset_ops.UnaryUnchangedStructureDataset):
