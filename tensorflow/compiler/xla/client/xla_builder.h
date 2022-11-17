@@ -98,6 +98,14 @@ struct XlaBuilderFriend {
   static XlaOp BuildAllReduceDone(XlaBuilder* builder, const XlaOp operands,
                                   const Shape& shape);
 
+  static XlaOp BuildCollectivePermuteStart(
+      XlaBuilder* builder, XlaOp operand,
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
+  static XlaOp BuildCollectivePermuteDone(XlaBuilder* builder,
+                                          const XlaOp operands,
+                                          const Shape& shape);
+
   static XlaOp BuildFusion(XlaBuilder* builder,
                            absl::Span<const XlaOp> operands,
                            absl::string_view fusion_kind,
@@ -1577,6 +1585,11 @@ class XlaBuilder {
                       const std::optional<Shape>& layout,
                       const std::optional<bool> use_global_device_ids,
                       bool async);
+
+  XlaOp CollectivePermuteImpl(
+      XlaOp operand,
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id, bool async);
 
   XlaOp ConditionalImpl(
       XlaOp branch_index,

@@ -244,6 +244,25 @@ XlaOp XlaBuilderFriend::BuildAllReduceDone(XlaBuilder* builder,
   });
 }
 
+XlaOp XlaBuilderFriend::BuildCollectivePermuteStart(
+    XlaBuilder* builder, XlaOp operand,
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const std::optional<ChannelHandle>& channel_id) {
+  return builder->CollectivePermuteImpl(operand, source_target_pairs,
+                                        channel_id, /*async=*/true);
+}
+
+XlaOp XlaBuilderFriend::BuildCollectivePermuteDone(XlaBuilder* builder,
+                                                   const XlaOp operand,
+                                                   const Shape& shape) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    return builder->AddInstruction(
+        std::move(instr), HloOpcode::kCollectivePermuteDone, {operand});
+  });
+}
+
 XlaOp XlaBuilderFriend::BuildBitcast(XlaBuilder* builder, XlaOp operand,
                                      const Shape& shape) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -3387,6 +3406,14 @@ XlaOp XlaBuilder::CollectivePermute(
     XlaOp operand,
     const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
     const std::optional<ChannelHandle>& channel_id) {
+  return CollectivePermuteImpl(operand, source_target_pairs, channel_id,
+                               /*async=*/false);
+}
+
+XlaOp XlaBuilder::CollectivePermuteImpl(
+    XlaOp operand,
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const std::optional<ChannelHandle>& channel_id, bool async) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     HloInstructionProto instr;
@@ -3404,7 +3431,9 @@ XlaOp XlaBuilder::CollectivePermute(
       instr.set_channel_id(channel_id->handle());
     }
 
-    return AddInstruction(std::move(instr), HloOpcode::kCollectivePermute,
+    return AddInstruction(std::move(instr),
+                          async ? HloOpcode::kCollectivePermuteStart
+                                : HloOpcode::kCollectivePermute,
                           {operand});
   });
 }

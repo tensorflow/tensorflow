@@ -887,6 +887,17 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
         Convert_use_global_device_ids(all_reduce_op.getUseGlobalDeviceIds()));
     return success();
   }
+  auto collective_permute_op =
+      dyn_cast_or_null<CollectivePermuteOp>(callee.getBody().front().front());
+  if (collective_permute_op && SimplyReturnedOp(collective_permute_op)) {
+    value_map[result] =
+        xla::internal::XlaBuilderFriend::BuildCollectivePermuteStart(
+            ctx.builder, operands[0],
+            Convert_source_target_pairs(
+                collective_permute_op.getSourceTargetPairs()),
+            Convert_channel_handle(collective_permute_op.getChannelHandle()));
+    return mlir::success();
+  }
 
   if (failed(ctx.converter->RunOnFunction(callee))) return failure();
   xla::XlaComputation& computation =
@@ -1005,6 +1016,15 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
     value_map[op.getResult(0)] =
         xla::internal::XlaBuilderFriend::BuildAllReduceDone(
             ctx.builder, operand, xla::TypeToShape(all_reduce_op.getType()));
+    return success();
+  }
+  auto collective_permute_op =
+      dyn_cast_or_null<CollectivePermuteOp>(callee.getBody().front().front());
+  if (collective_permute_op && SimplyReturnedOp(collective_permute_op)) {
+    value_map[op.getResult(0)] =
+        xla::internal::XlaBuilderFriend::BuildCollectivePermuteDone(
+            ctx.builder, operand,
+            xla::TypeToShape(collective_permute_op.getType()));
     return success();
   }
 
