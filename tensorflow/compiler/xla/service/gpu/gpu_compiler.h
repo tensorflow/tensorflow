@@ -102,7 +102,6 @@ struct GpuTargetConfig {
   // ROCm gfx arch,  "gfx000" if not available.
   stream_executor::RocmComputeCapability rocm_compute_capability{"gfx000"};
   std::string platform_name;
-  int device_ordinal;
 };
 
 // The GPU compiler generates efficient GPU executables.
@@ -134,8 +133,8 @@ class GpuCompiler : public LLVMCompiler {
   StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileToTargetBinary(
       const HloModuleConfig& module_config,
       std::unique_ptr<llvm::Module> llvm_module, GpuVersion gpu_version,
-      int device_ordinal, se::StreamExecutor* stream_exec,
-      const CompileOptions& options, const HloModule* debug_module);
+      se::StreamExecutor* stream_exec, const CompileOptions& options,
+      const HloModule* debug_module);
 
   se::Platform::Id PlatformId() const override { return platform_id_; }
 
@@ -176,8 +175,7 @@ class GpuCompiler : public LLVMCompiler {
   virtual StatusOr<std::pair<std::string, std::vector<uint8_t>>>
   CompileTargetBinary(const HloModuleConfig& module_config,
                       llvm::Module* llvm_module, GpuVersion gpu_version,
-                      int device_ordinal, bool relocatable,
-                      const HloModule* debug_module) = 0;
+                      bool relocatable, const HloModule* debug_module) = 0;
 
   Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
 

@@ -51,7 +51,7 @@ class NVPTXCompiler : public GpuCompiler {
 
   StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
-      GpuVersion gpu_version, int device_ordinal, bool relocatable,
+      GpuVersion gpu_version, bool relocatable,
       const HloModule* debug_module) override;
 
  private:
@@ -77,7 +77,7 @@ class NVPTXCompiler : public GpuCompiler {
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
   // compiled cubin.  If compilation was unsuccessful, returns an empty vector.
   std::vector<uint8_t> CompileGpuAsmOrGetCachedResult(
-      int device_ordinal, const std::string& ptx, se::CudaComputeCapability cc,
+      const std::string& ptx, se::CudaComputeCapability cc,
       const HloModuleConfig& hlo_module_config, absl::string_view module_name,
       bool relocatable);
 
