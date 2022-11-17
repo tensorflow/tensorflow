@@ -720,7 +720,7 @@ def safe_embedding_lookup_sparse_v2(embedding_weights,
       ids. `d_0` is typically batch size.
     sparse_weights: `SparseTensor` of same shape as `sparse_ids`, containing
       float weights corresponding to `sparse_ids`, or `None` if all weights are to
-      be assumed as 1.0.
+      be assumed 1.0.
     combiner: A string specifying how to combine embedding results for each
       entry. Currently "mean", "sqrtn" and "sum" are supported, with "mean" the
       default.
@@ -817,7 +817,7 @@ def safe_embedding_lookup_sparse(embedding_weights,
       ids. `d_0` is typically batch size.
     sparse_weights: `SparseTensor` of same shape as `sparse_ids`, containing
       float weights corresponding to `sparse_ids`, or `None` if all weights are to
-      be assumed as 1.0.
+      be assumed 1.0.
     combiner: A string specifying how to combine embedding results for each
       entry. Currently "mean", "sqrtn" and "sum" are supported, with "mean" the
       default.
