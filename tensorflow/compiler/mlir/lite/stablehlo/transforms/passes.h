@@ -28,6 +28,9 @@ namespace odml {
 // ops.
 std::unique_ptr<Pass> createUnfuseBatchNormPass();
 
+// Creates a pass which applies various optimizations on MHLO IR.
+std::unique_ptr<Pass> createOptimizePass();
+
 }  // namespace odml
 }  // namespace mlir
 
