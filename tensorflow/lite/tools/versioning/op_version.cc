@@ -116,6 +116,15 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
           op_sig.outputs.at(0).type == kTfLiteInt8) {
         return 3;
       }
+
+      // If the op has signed int8 and int4 op_sig.inputs and op_sig.outputs,
+      // its version 7.
+      if (op_sig.inputs.at(0).type == kTfLiteInt8 &&
+          op_sig.inputs.at(1).type == kTfLiteInt4 &&
+          op_sig.outputs.at(0).type == kTfLiteInt8) {
+        return 7;
+      }
+
       auto depthwise_conv_params =
           reinterpret_cast<TfLiteDepthwiseConvParams*>(op_sig.builtin_data);
       TFLITE_DCHECK(depthwise_conv_params != nullptr);
@@ -176,6 +185,15 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
           op_sig.outputs.at(0).type == kTfLiteInt8) {
         return 4;
       }
+
+      // If the op has signed int8 and int4 op_sig.inputs and op_sig.outputs,
+      // its version 7.
+      if (op_sig.inputs.at(0).type == kTfLiteInt8 &&
+          op_sig.inputs.at(1).type == kTfLiteInt4 &&
+          op_sig.outputs.at(0).type == kTfLiteInt8) {
+        return 10;
+      }
+
       // If the op is a signed int8 hybrid operation, we need to return
       // version 3.
       if (op_sig.inputs.at(0).type == kTfLiteFloat32 &&
