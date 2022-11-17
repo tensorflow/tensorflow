@@ -320,6 +320,7 @@ cc_library(
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "//tensorflow/compiler/xla/pjrt:host_callback",
+        "//tensorflow/compiler/xla/pjrt:pjrt_future",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -682,6 +683,7 @@ cc_library(
 
 cc_library(
     name = "util",
+    srcs = ["util.cc"],
     hdrs = ["util.h"],
     compatible_with = [],
     copts = [
@@ -690,6 +692,10 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_future",
         "@com_google_absl//absl/strings:str_format",
         "@pybind11",
     ],
