@@ -19,7 +19,6 @@ import time
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python import pywrap_sanitizers
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.experimental.ops import random_access
@@ -277,8 +276,6 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCheckpointLargeBatches(self):
-    if pywrap_sanitizers.is_tsan_enabled():
-      self.skipTest('Creating a large buffer causes OOM when using tsan.')
     # Batches of size 512M
     dataset = dataset_ops.Dataset.from_tensors(
         array_ops.ones((64, 1024, 1024), dtype=dtypes.float32)).repeat()
