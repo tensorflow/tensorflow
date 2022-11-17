@@ -5,6 +5,7 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 default_visibility = [
     "//tensorflow/dtensor:dtensor-internal",
+    "//third_party/py/jax_tpu_embedding:__subpackages__",
 ]
 
 package(

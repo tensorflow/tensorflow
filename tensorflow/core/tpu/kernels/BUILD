@@ -20,6 +20,7 @@ package(
         "//tensorflow/compiler/xrt/kernels:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/dtensor:__subpackages__",
+        "//third_party/py/jax_tpu_embedding:__subpackages__",
     ],
     licenses = ["notice"],
 )
