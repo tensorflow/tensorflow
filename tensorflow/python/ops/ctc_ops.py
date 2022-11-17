@@ -889,19 +889,42 @@ def ctc_loss_v3(labels,
                 name=None):
   """Computes CTC (Connectionist Temporal Classification) loss.
 
-  This op implements the CTC loss as presented in (Graves et al., 2006).
+  This op implements the CTC loss as presented in
+  [Graves et al., 2006](https://www.cs.toronto.edu/~graves/icml_2006.pdf)
 
   Notes:
 
-  - Same as the "Classic CTC" in TensorFlow 1.x's tf.compat.v1.nn.ctc_loss
-    setting of preprocess_collapse_repeated=False, ctc_merge_repeated=True
   - Labels may be supplied as either a dense, zero-padded tensor with a
     vector of label sequence lengths OR as a SparseTensor.
   - On TPU: Only dense padded labels are supported.
-  - On CPU and GPU: Caller may use SparseTensor or dense padded labels 
+  - On CPU and GPU: Caller may use SparseTensor or dense padded labels
     but calling with a SparseTensor will be significantly faster.
   - Default blank label is 0 rather num_classes - 1, unless overridden by
     blank_index.
+
+  >>> tf.random.set_seed(50)
+  >>> batch_size = 8
+  >>> num_labels = 6
+  >>> max_label_length = 5
+  >>> num_frames = 12
+  >>> labels = tf.random.uniform([batch_size, max_label_length],
+  ...                            minval=1, maxval=num_labels, dtype=tf.int64)
+  >>> logits = tf.random.uniform([num_frames, batch_size, num_labels])
+  >>> label_length = tf.random.uniform([batch_size], minval=2,
+  ...                                  maxval=max_label_length, dtype=tf.int64)
+  >>> label_mask = tf.sequence_mask(label_length, maxlen=max_label_length,
+  ...                               dtype=label_length.dtype)
+  >>> labels *= label_mask
+  >>> logit_length = [num_frames] * batch_size
+  >>> with tf.GradientTape() as t:
+  ...   t.watch(logits)
+  ...   ref_loss = tf.nn.ctc_loss(
+  ...       labels=labels,
+  ...       logits=logits,
+  ...       label_length=label_length,
+  ...       logit_length=logit_length,
+  ...       blank_index=0)
+  >>> ref_grad = t.gradient(ref_loss, logits)
 
   Args:
     labels: tensor of shape [batch_size, max_label_seq_length] or SparseTensor
