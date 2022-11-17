@@ -71,6 +71,7 @@ py_library(
         ":ragged_batch_op",
         ":range_op",
         ":rebatch_op",
+        ":repeat_op",
         ":save_ops",
         ":shard_op",
         ":sparse_batch_op",
@@ -148,6 +149,11 @@ py_library(
 py_library(
     name = "range_op",
     srcs = ["range_op.py"],
+)
+
+py_library(
+    name = "repeat_op",
+    srcs = ["repeat_op.py"],
 )
 
 py_library(

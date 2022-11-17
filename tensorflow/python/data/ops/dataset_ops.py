@@ -1314,7 +1314,12 @@ class DatasetV2(
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    return RepeatDataset(self, count, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops -> repeat_op ->
+    # dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access,redefined-outer-name
+    from tensorflow.python.data.ops import repeat_op
+    return repeat_op._repeat(self, count, name)
+    # pylint: enable=g-import-not-at-top,protected-access,redefined-outer-name
 
   def enumerate(self, start=0, name=None):
     """Enumerates the elements of this dataset.
@@ -4764,23 +4769,13 @@ batch_op = lazy_loader.LazyLoader(
 BatchDataset = batch_op.BatchDataset
 
 
-class RepeatDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` that repeats its input several times."""
-
-  def __init__(self, input_dataset, count, name=None):
-    """See `Dataset.repeat()` for details."""
-    self._input_dataset = input_dataset
-    if count is None:
-      self._count = constant_op.constant(-1, dtype=dtypes.int64, name="count")
-    else:
-      self._count = ops.convert_to_tensor(
-          count, dtype=dtypes.int64, name="count")
-    self._name = name
-    variant_tensor = gen_dataset_ops.repeat_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        count=self._count,
-        **self._common_args)
-    super(RepeatDataset, self).__init__(input_dataset, variant_tensor)
+# TODO(b/254291122): Remove.
+# Loaded lazily due to a circular dependency (dataset_ops ->
+# repeat_op -> dataset_ops).
+repeat_op = lazy_loader.LazyLoader(
+    "repeat_op", globals(),
+    "tensorflow.python.data.ops.repeat_op")
+RepeatDataset = repeat_op._RepeatDataset  # pylint: disable=protected-access
 
 
 class ShuffleDataset(UnaryUnchangedStructureDataset):
