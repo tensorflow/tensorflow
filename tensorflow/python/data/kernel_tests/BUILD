@@ -326,6 +326,7 @@ tf_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:from_generator_op",
         "//third_party/py/numpy",
     ],
 )
@@ -546,6 +547,7 @@ cuda_py_test(
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/compat",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:from_generator_op",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:structure",
@@ -662,6 +664,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:from_generator_op",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/eager:cancellation",

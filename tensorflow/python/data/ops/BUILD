@@ -57,6 +57,7 @@ py_library(
         ":batch_op",
         ":counter_op",
         ":filter_op",
+        ":from_generator_op",
         ":from_tensor_slices_op",
         ":from_tensors_op",
         ":ignore_errors_op",
@@ -108,6 +109,11 @@ py_library(
 py_library(
     name = "filter_op",
     srcs = ["filter_op.py"],
+)
+
+py_library(
+    name = "from_generator_op",
+    srcs = ["from_generator_op.py"],
 )
 
 py_library(
