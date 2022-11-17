@@ -481,6 +481,11 @@ class UnavailableError(OpError):
 class DataLossError(OpError):
   """Raised when unrecoverable data loss or corruption is encountered.
 
+  This could be due to:
+  * A truncated file.
+  * A corrupted file.
+  * Specifying the wrong data format.
+
   For example, this may be raised by running a
   `tf.WholeFileReader.read`
   operation, if the file is truncated while it is being read.
