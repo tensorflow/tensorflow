@@ -27,6 +27,9 @@ include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_enums.td"
 class XlaCpu_Op<string mnemonic, list<Trait> traits = []> :
     Op<XlaCpuDialect, mnemonic, traits>;
 
+def TensorOrMemref :
+  AnyTypeOf<[AnyMemRef, AnyRankedTensor], "", "::mlir::ShapedType">;
+
 class TensorOrMemrefOf<list<Type> allowedTypes> :
   AnyTypeOf<[MemRefOf<allowedTypes>, RankedTensorOf<allowedTypes>],
   "", "::mlir::ShapedType">;
@@ -92,6 +95,86 @@ def PartitionIdOp : XlaCpu_Op<"partition_id"> {
     PartitionId, but returns a i32 instead of tensor<ui32>.
   }];
   let results = (outs I32);
+}
+
+def CollectivePermuteOp : XlaCpu_Op<"collective_permute", [BufferizableOpInterface]> {
+  let summary = "CPU-specific version of CollectivePermute";
+  let description = [{
+    The major differences between this and HLO's collective_permute are:
+    - It bufferizes to itself.
+    - It uses destination passing style.
+  }];
+
+  let arguments = (ins
+      TensorOrMemref:$operand,
+      TensorOrMemref:$dst,
+      I64ElementsAttr:$source_target_pairs,
+      I64Attr:$channel_handle
+  );
+  let results = (outs Variadic<TensorOrMemref>);
+  let extraClassDeclaration = [{
+    // Declarations for BufferizableOpInterface:
+    bool bufferizesToMemoryRead(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return opOperand.getOperandNumber() == 0;
+    }
+    bool bufferizesToMemoryWrite(OpOperand   &opOperand,
+        const bufferization::AnalysisState &state) {
+      return opOperand.getOperandNumber() == 1;
+    }
+    SmallVector<OpResult> getAliasingOpResult(
+        OpOperand &opOperand, const bufferization::AnalysisState &state) {
+      if (opOperand.getOperandNumber() == 0) return {};
+      return {getOperation()->getOpResult(0)};
+    }
+    LogicalResult bufferize(RewriterBase &rewriter,
+        const bufferization::BufferizationOptions &options);
+    bufferization::BufferRelation bufferRelation(OpResult opResult,
+        const bufferization::AnalysisState &state) {
+      return bufferization::BufferRelation::Equivalent;
+    }
+  }];
+}
+
+def AllToAllOp : XlaCpu_Op<"all_to_all", [BufferizableOpInterface]> {
+  let summary = "CPU-specific version of AllToAll";
+  let description = [{
+    The major differences between this and HLO's all_to_all are:
+    - It bufferizes to itself.
+    - It uses destination passing style.
+  }];
+
+  let arguments = (ins
+      TensorOrMemref:$operand,
+      TensorOrMemref:$dst,
+      I64ElementsAttr:$replica_groups,
+      I64Attr:$split_dimension,
+      I64Attr:$concat_dimension,
+      I64Attr:$split_count
+  );
+  let results = (outs Variadic<TensorOrMemref>);
+  let extraClassDeclaration = [{
+    // Declarations for BufferizableOpInterface:
+    bool bufferizesToMemoryRead(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return opOperand.getOperandNumber() == 0;
+    }
+    bool bufferizesToMemoryWrite(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return opOperand.getOperandNumber() == 1;
+    }
+    SmallVector<OpResult> getAliasingOpResult(
+        OpOperand &opOperand, const bufferization::AnalysisState &state) {
+      if (opOperand.getOperandNumber() == 0) return {};
+      return {getOperation()->getOpResult(0)};
+    }
+    LogicalResult bufferize(RewriterBase &rewriter,
+        const bufferization::BufferizationOptions &options);
+    bufferization::BufferRelation bufferRelation(OpResult opResult,
+        const bufferization::AnalysisState &state) {
+      return bufferization::BufferRelation::Equivalent;
+    }
+  }];
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_XLA_CPU_OPS_TD_

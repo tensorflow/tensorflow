@@ -99,6 +99,7 @@ class AllReduceLowering : public OpRewritePattern<mhlo::AllReduceOp> {
     }
 
     SmallVector<Value> dsts;
+    // TODO(jreiffers): Support dynamic dims.
     for (auto ty : op->getResultTypes()) {
       auto shaped_ty = ty.cast<ShapedType>();
       dsts.push_back(rewriter.create<tensor::EmptyOp>(
@@ -138,15 +139,51 @@ class IdLowering : public OpRewritePattern<IdOp> {
   };
 };
 
+class CollectivePermuteLowering
+    : public OpRewritePattern<mhlo::CollectivePermuteOp> {
+  using OpRewritePattern<mhlo::CollectivePermuteOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::CollectivePermuteOp op,
+                                PatternRewriter& rewriter) const override {
+    // TODO(jreiffers): Support dynamic dims.
+    Value dst = rewriter.create<tensor::EmptyOp>(
+        op.getLoc(), op.getType().getShape(), op.getType().getElementType());
+    rewriter.replaceOpWithNewOp<xla_cpu::CollectivePermuteOp>(
+        op, op->getResultTypes(), op->getOperand(0), dst,
+        op.getSourceTargetPairsAttr(),
+        rewriter.getI64IntegerAttr(op.getChannelHandle()
+                                       ? op.getChannelHandle()->getHandle()
+                                       : int64_t{0}));
+    return success();
+  };
+};
+
+class AllToAllLowering : public OpRewritePattern<mhlo::AllToAllOp> {
+  using OpRewritePattern<mhlo::AllToAllOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::AllToAllOp op,
+                                PatternRewriter& rewriter) const override {
+    // TODO(jreiffers): Support dynamic dims.
+    Value dst = rewriter.create<tensor::EmptyOp>(
+        op.getLoc(), op.getType().getShape(), op.getType().getElementType());
+    rewriter.replaceOpWithNewOp<xla_cpu::AllToAllOp>(
+        op, op->getResultTypes(), op->getOperand(0), dst,
+        op.getReplicaGroupsAttr(), op.getSplitDimensionAttr(),
+        op.getConcatDimensionAttr(), op.getSplitCountAttr());
+    return success();
+  };
+};
+
 void LegalizeCollectiveOpsPass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
 
   // Convert mhlo collective operations to XLA cpu ops.
   RewritePatternSet patterns(ctx);
-  patterns.insert<AllReduceLowering,
-                  IdLowering<mhlo::PartitionIdOp, xla_cpu::PartitionIdOp>,
-                  IdLowering<mhlo::ReplicaIdOp, xla_cpu::ReplicaIdOp>>(ctx);
+  patterns
+      .insert<AllReduceLowering, CollectivePermuteLowering, AllToAllLowering,
+              IdLowering<mhlo::PartitionIdOp, xla_cpu::PartitionIdOp>,
+              IdLowering<mhlo::ReplicaIdOp, xla_cpu::ReplicaIdOp>>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     return signalPassFailure();

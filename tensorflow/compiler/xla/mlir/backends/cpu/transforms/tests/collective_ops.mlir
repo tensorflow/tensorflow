@@ -48,3 +48,39 @@ func.func @replica_id() -> tensor<ui32> {
 // CHECK: %[[TENSOR:.*]] = tensor.from_elements %[[ID]] : tensor<i32>
 // CHECK: %[[CAST:.*]] = mhlo.convert %[[TENSOR]] : (tensor<i32>) -> tensor<ui32>
 // CHECK: return %[[CAST]]
+
+func.func @collective_permute(%arg0: tensor<16x8xf32>) -> tensor<16x8xf32> {
+  %0 = "mhlo.collective_permute"(%arg0) {
+    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+  } : (tensor<16x8xf32>) -> tensor<16x8xf32>
+  func.return %0 : tensor<16x8xf32>
+}
+
+// CHECK-LABEL: @collective_permute
+//  CHECK-SAME: %[[ARG0:.*]]: tensor<16x8xf32>
+//       CHECK: %[[DST:.*]] = tensor.empty() : tensor<16x8xf32>
+//       CHECK: %[[RET:.*]] = "xla_cpu.collective_permute"(%[[ARG0]], %[[DST]]) {
+//  CHECK-SAME:    channel_handle = 1
+//  CHECK-SAME:    source_target_pairs = dense<
+//       CHECK: return %[[RET]]
+
+func.func @all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
+  %0 = "mhlo.all_to_all"(%arg0) {
+    split_dimension = 1 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 4 : i64,
+    replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
+  } : (tensor<4x16xf32>) -> tensor<16x4xf32>
+  func.return %0 : tensor<16x4xf32>
+}
+
+// CHECK-LABEL: @all_to_all
+//  CHECK-SAME: %[[ARG0:.*]]: tensor<4x16xf32>
+//       CHECK: %[[DST:.*]] = tensor.empty() : tensor<16x4xf32>
+//       CHECK: %[[RET:.*]] = "xla_cpu.all_to_all"(%[[ARG0]], %[[DST]]) {
+//  CHECK-SAME:    concat_dimension = 0
+//  CHECK-SAME:    replica_groups = dense<
+//  CHECK-SAME:    split_count = 4
+//  CHECK-SAME:    split_dimension = 1
+//       CHECK: return %[[RET]]
