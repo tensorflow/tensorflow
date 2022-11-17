@@ -732,7 +732,12 @@ class DatasetV2(
     Returns:
       Dataset: A `Dataset`.
     """
-    return TensorDataset(tensors, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops ->
+    # from_tensors_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import from_tensors_op
+    return from_tensors_op._from_tensors(tensors, name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   @staticmethod
   def from_tensor_slices(tensors, name=None):
@@ -4950,26 +4955,6 @@ batch_op = lazy_loader.LazyLoader(
     "batch_op", globals(),
     "tensorflow.python.data.ops.batch_op")
 BatchDataset = batch_op.BatchDataset
-
-
-class TensorDataset(DatasetSource):
-  """A `Dataset` with a single element."""
-
-  def __init__(self, element, name=None):
-    """See `Dataset.from_tensors()` for details."""
-    element = structure.normalize_element(element)
-    self._structure = structure.type_spec_from_value(element)
-    self._tensors = structure.to_tensor_list(self._structure, element)
-    self._name = name
-    variant_tensor = gen_dataset_ops.tensor_dataset(
-        self._tensors,
-        output_shapes=structure.get_flat_tensor_shapes(self._structure),
-        metadata=self._metadata.SerializeToString())
-    super(TensorDataset, self).__init__(variant_tensor)
-
-  @property
-  def element_spec(self):
-    return self._structure
 
 
 class SparseTensorSliceDataset(DatasetSource):

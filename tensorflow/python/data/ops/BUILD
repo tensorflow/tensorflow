@@ -57,6 +57,7 @@ py_library(
         ":counter_op",
         ":filter_op",
         ":from_tensor_slices_op",
+        ":from_tensors_op",
         ":ignore_errors_op",
         ":iterator_ops",
         ":load_ops",
@@ -111,6 +112,11 @@ py_library(
 py_library(
     name = "from_tensor_slices_op",
     srcs = ["from_tensor_slices_op.py"],
+)
+
+py_library(
+    name = "from_tensors_op",
+    srcs = ["from_tensors_op.py"],
 )
 
 py_library(
