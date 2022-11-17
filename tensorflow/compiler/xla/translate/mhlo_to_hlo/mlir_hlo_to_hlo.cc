@@ -701,6 +701,9 @@ mlir::LogicalResult GetXlaOps(mlir::Operation* op,
 // versions of old-style async ops can be exported by downgrading to old-style
 // async ops.
 bool SimplyReturnedOp(mlir::Operation* op) {
+  for (auto operand : op->getOperands()) {
+    if (!llvm::isa<mlir::BlockArgument>(operand)) return false;
+  }
   auto users = op->getResults().getUsers();
   if (std::distance(users.begin(), users.end()) != 1) return false;
   if (llvm::isa<mlir::func::ReturnOp>((*users.begin()))) return true;
@@ -726,7 +729,9 @@ LogicalResult ExportXlaOp(CstrReshapableOp, OpLoweringContext) {
 }
 
 mlir::LogicalResult ExportXlaOp(mlir::mhlo::CopyOp op, OpLoweringContext ctx) {
-  if (op.getIsCrossProgramPrefetch())
+  // If it's the only thing in a function we assume it's part of an async copy
+  // op
+  if (op.getIsCrossProgramPrefetch() && !SimplyReturnedOp(op))
     return op->emitOpError() << "synchronous CopyOp should not include "
                                 "is_cross_program_prefetch attribute.";
   auto& value_map = *ctx.values;
@@ -898,6 +903,12 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
             Convert_channel_handle(collective_permute_op.getChannelHandle()));
     return mlir::success();
   }
+  auto copy_op = dyn_cast_or_null<CopyOp>(callee.getBody().front().front());
+  if (copy_op && SimplyReturnedOp(copy_op)) {
+    value_map[result] = xla::internal::XlaBuilderFriend::BuildCopyStart(
+        ctx.builder, operands[0], copy_op.getIsCrossProgramPrefetch());
+    return mlir::success();
+  }
 
   if (failed(ctx.converter->RunOnFunction(callee))) return failure();
   xla::XlaComputation& computation =
@@ -1025,6 +1036,12 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
         xla::internal::XlaBuilderFriend::BuildCollectivePermuteDone(
             ctx.builder, operand,
             xla::TypeToShape(collective_permute_op.getType()));
+    return success();
+  }
+  auto copy_op = dyn_cast_or_null<CopyOp>(callee.getBody().front().front());
+  if (copy_op && SimplyReturnedOp(copy_op)) {
+    value_map[op.getResult(0)] = xla::internal::XlaBuilderFriend::BuildCopyDone(
+        ctx.builder, operand, xla::TypeToShape(copy_op.getType()));
     return success();
   }
 

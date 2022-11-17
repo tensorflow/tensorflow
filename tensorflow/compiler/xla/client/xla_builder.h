@@ -106,6 +106,11 @@ struct XlaBuilderFriend {
                                           const XlaOp operands,
                                           const Shape& shape);
 
+  static XlaOp BuildCopyStart(XlaBuilder* builder, const XlaOp operand,
+                              bool is_cross_program_prefetch);
+  static XlaOp BuildCopyDone(XlaBuilder* builder, const XlaOp operand,
+                             const Shape& shape);
+
   static XlaOp BuildFusion(XlaBuilder* builder,
                            absl::Span<const XlaOp> operands,
                            absl::string_view fusion_kind,

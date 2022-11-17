@@ -743,6 +743,27 @@ func.func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 // -----
 
 // CHECK:  HloModule
+func.func @copy_0(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> attributes {execution_thread = "main"} {
+  %0 = "mhlo.copy"(%arg0) { is_cross_program_prefetch } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  func.return %0 : tensor<128x32xf32>
+}
+
+func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  %0 = "mhlo.async_start"(%arg0) {called_computation = @copy_0, execution_thread = "main"} : (tensor<128x32xf32>) -> !mhlo.async_bundle<tensor<128x32xf32>, tensor<128x32xf32>>
+  %1 = "mhlo.async_done"(%0) {called_computation = @copy_0, execution_thread = "main"} : (!mhlo.async_bundle<tensor<128x32xf32>, tensor<128x32xf32>>) -> tensor<128x32xf32>
+  return %1 : tensor<128x32xf32>
+}
+
+// CHECK: ENTRY
+// CHECK: %[[INPUT:.*]] = f32[128,32] parameter(0)
+// CHECK: %[[OUTPUT:.*]] = (f32[128,32], f32[128,32], u32[]) copy-start(f32[128,32] %[[INPUT]])
+// CHECK-SAME:  is_cross_program_prefetch
+// CHECK: ROOT {{.*}} f32[128,32] copy-done((f32[128,32], f32[128,32], u32[]) %[[OUTPUT]]
+
+
+// -----
+
+// CHECK:  HloModule
 func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
   %0 = mhlo.constant dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi32>
   %1 = "mhlo.cross-replica-sum"(%arg0) {replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>} : (tensor<10xf32>) -> tensor<10xf32>

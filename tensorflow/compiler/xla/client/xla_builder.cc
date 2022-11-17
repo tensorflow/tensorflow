@@ -244,6 +244,34 @@ XlaOp XlaBuilderFriend::BuildAllReduceDone(XlaBuilder* builder,
   });
 }
 
+XlaOp XlaBuilderFriend::BuildCopyStart(XlaBuilder* builder, const XlaOp operand,
+                                       bool is_cross_program_prefetch) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    instr.set_is_cross_program_prefetch(is_cross_program_prefetch);
+
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape,
+                        builder->GetShapePtr(operand));
+    Shape u32 = ShapeUtil::MakeScalarShape(PrimitiveType::U32);
+    Shape shape =
+        ShapeUtil::MakeTupleShapeWithPtrs({operand_shape, operand_shape, &u32});
+    *instr.mutable_shape() = shape.ToProto();
+
+    return builder->AddInstruction(std::move(instr), HloOpcode::kCopyStart,
+                                   {operand});
+  });
+}
+
+XlaOp XlaBuilderFriend::BuildCopyDone(XlaBuilder* builder, const XlaOp operand,
+                                      const Shape& shape) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    return builder->AddInstruction(std::move(instr), HloOpcode::kCopyDone,
+                                   {operand});
+  });
+}
+
 XlaOp XlaBuilderFriend::BuildCollectivePermuteStart(
     XlaBuilder* builder, XlaOp operand,
     const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
