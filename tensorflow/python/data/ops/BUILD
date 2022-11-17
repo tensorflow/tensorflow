@@ -36,6 +36,11 @@ py_library(
 )
 
 py_library(
+    name = "take_op",
+    srcs = ["take_op.py"],
+)
+
+py_library(
     name = "rebatch_op",
     srcs = ["rebatch_op.py"],
     deps = [
@@ -76,6 +81,7 @@ py_library(
         ":shard_op",
         ":sparse_batch_op",
         ":structured_function",
+        ":take_op",
         ":unique_op",
         ":window_op",
         ":zip_op",

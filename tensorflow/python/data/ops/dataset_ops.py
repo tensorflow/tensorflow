@@ -1508,7 +1508,12 @@ class DatasetV2(
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    return TakeDataset(self, count, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops ->
+    # take_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import take_op
+    return take_op._take(self, count, name=name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def skip(self, count, name=None):
     """Creates a `Dataset` that skips `count` elements from this dataset.
@@ -4816,21 +4821,6 @@ class ShuffleDataset(UnaryUnchangedStructureDataset):
           reshuffle_each_iteration=self._reshuffle_each_iteration,
           **self._common_args)
     super(ShuffleDataset, self).__init__(input_dataset, variant_tensor)
-
-
-class TakeDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` containing the first `count` elements from its input."""
-
-  def __init__(self, input_dataset, count, name=None):
-    """See `Dataset.take()` for details."""
-    self._input_dataset = input_dataset
-    self._count = ops.convert_to_tensor(count, dtype=dtypes.int64, name="count")
-    self._name = name
-    variant_tensor = gen_dataset_ops.take_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        count=self._count,
-        **self._common_args)
-    super(TakeDataset, self).__init__(input_dataset, variant_tensor)
 
 
 class SkipDataset(UnaryUnchangedStructureDataset):
