@@ -244,6 +244,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
         "@com_google_absl//absl/types:span",
         "@tf_runtime//backends/cpu:tf_ops_alwayslink",
     ],

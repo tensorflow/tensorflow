@@ -118,7 +118,6 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
   // ops.
   pass_options.decompose_resource_ops = options.decompose_resource_ops;
   pass_options.enable_optimizer = options.enable_optimizer;
-  pass_options.enable_native_ops = options.enable_native_ops;
   pass_options.target_tpurt =
       (options.device_target == TfrtDeviceInfraTarget::kTpurt);
   pass_options.tpu_fuse_ops = options.tpu_fuse_ops;

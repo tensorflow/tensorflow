@@ -42,11 +42,7 @@ struct TfrtCompileOptions {
   // Enable compiler optimization in TFRT dialect.
   bool enable_optimizer = true;
 
-  // If true, native ops will be used if they are implemented in TFRT. If
-  // false, all ops are using fallback.
-  //
-  // This option is experimental. Native ops are still under development and
-  // likely to cause performance issue when enabled.
+  // This is deprecated and has no effect.
   bool enable_native_ops = false;
 
   // If true, run grappler passes before compiling.

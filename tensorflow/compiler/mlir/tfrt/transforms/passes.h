@@ -161,12 +161,6 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, fallback executeops that produce inputs to tpu "
                      "program will use tpu host allocator."),
       llvm::cl::init(false)};
-  Option<bool> enable_native_ops{
-      *this, "enable-native-ops",
-      llvm::cl::desc(
-          "If true, native ops will be used on an opt-in basis instead of "
-          "fallback ops. If false, no native ops are used."),
-      llvm::cl::init(true)};
   Option<bool> func_use_fallback_tensor{
       *this, "func-use-fallback-tensor",
       llvm::cl::desc(

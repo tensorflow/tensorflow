@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -tf-executor-to-tfrt-pipeline="enable-native-ops=false enable-optimizer=true tfrt-cost-threshold=1024" %s | FileCheck %s --dump-input=fail
+// RUN: tf-tfrt-opt -tf-executor-to-tfrt-pipeline="enable-optimizer=true tfrt-cost-threshold=1024" %s | FileCheck %s --dump-input=fail
 
 // CHECK: tfrt.cost_threshold = 1024 : i64
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 462 : i32}} {
