@@ -64,6 +64,7 @@ py_library(
         ":concatenate_op",
         ":counter_op",
         ":filter_op",
+        ":flat_map_op",
         ":from_generator_op",
         ":from_sparse_tensor_slices_op",
         ":from_tensor_slices_op",
@@ -71,6 +72,7 @@ py_library(
         ":ignore_errors_op",
         ":iterator_ops",
         ":load_ops",
+        ":map_op",
         ":options",
         ":padded_batch_op",
         ":ragged_batch_op",
@@ -130,6 +132,11 @@ py_library(
 py_library(
     name = "filter_op",
     srcs = ["filter_op.py"],
+)
+
+py_library(
+    name = "flat_map_op",
+    srcs = ["flat_map_op.py"],
 )
 
 py_library(
@@ -199,6 +206,11 @@ py_library(
         "//tensorflow/python/platform",
         "//tensorflow/python/util",
     ],
+)
+
+py_library(
+    name = "map_op",
+    srcs = ["map_op.py"],
 )
 
 py_library(
