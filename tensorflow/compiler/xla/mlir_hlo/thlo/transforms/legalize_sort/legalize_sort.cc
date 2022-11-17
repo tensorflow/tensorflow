@@ -71,44 +71,42 @@ Value emitBinarySearch(ImplicitLocOpBuilder& b, Value leftInit, Value rightInit,
   ArithBuilder arith(b, b.getLoc());
 
   // while (
-  auto whileOp =
-      b.create<scf::WhileOp>(types, SmallVector<Value, 2>{leftInit, rightInit});
-  OpBuilder::InsertionGuard guard(b);
+  auto whileOp = b.create<scf::WhileOp>(
+      types, SmallVector<Value, 2>{leftInit, rightInit},
+      [&](OpBuilder& beforeBuilder, Location beforeLoc, ValueRange args) {
+        //  left < right) {
+        Value left = args[0], right = args[1];
+        beforeBuilder.create<scf::ConditionOp>(beforeLoc,
+                                               arith.slt(left, right), args);
+      },
+      [&](OpBuilder& afterBuilder, Location afterLoc, ValueRange args) {
+        ImplicitLocOpBuilder impLocAfterBuilder =
+            ImplicitLocOpBuilder(afterLoc, afterBuilder);
+        Value left = args[0], right = args[1];
+        //   int mid = (left + right) >> 1;
+        Value one = impLocAfterBuilder.create<arith::ConstantIndexOp>(1);
+        Value mid = impLocAfterBuilder.create<arith::ShRUIOp>(
+            arith.add(left, right), one);
+        Value midPlusOne = impLocAfterBuilder.create<AddIOp>(mid, one);
 
-  //        left < right) {
-  Block* before = b.createBlock(&whileOp.getBefore(), {}, types,
-                                {whileOp.getLoc(), whileOp.getLoc()});
-  {
-    Value left = before->getArgument(0), right = before->getArgument(1);
-    b.setInsertionPointToEnd(before);
-    b.create<scf::ConditionOp>(arith.slt(left, right), before->getArguments());
-  }
+        auto arraysAtMid = llvm::to_vector(
+            llvm::map_range(arrayMemrefs, [&](Value arrayMemref) -> Value {
+              return impLocAfterBuilder.create<memref::LoadOp>(arrayMemref,
+                                                               mid);
+            }));
 
-  Block* after = b.createBlock(&whileOp.getAfter(), {}, types,
-                               {whileOp.getLoc(), whileOp.getLoc()});
-  {
-    Value left = after->getArgument(0), right = after->getArgument(1);
-    b.setInsertionPointToEnd(after);
-    //   int mid = (left + right) >> 1;
-    Value one = b.create<arith::ConstantIndexOp>(1);
-    Value mid = b.create<arith::ShRUIOp>(arith.add(left, right), one);
-    Value midPlusOne = b.create<AddIOp>(mid, one);
+        Value cond =
+            emitComparison(impLocAfterBuilder, pivots, arraysAtMid, comparator);
+        //   if (comparator(pivot, array[mid]))
+        //     right = mid;
+        //   else
+        //     left = mid + 1;
+        Value newLeft = arith.select(cond, left, midPlusOne);
+        Value newRight = arith.select(cond, mid, right);
 
-    auto arraysAtMid = llvm::to_vector(
-        llvm::map_range(arrayMemrefs, [&](Value arrayMemref) -> Value {
-          return b.create<memref::LoadOp>(arrayMemref, mid);
-        }));
-    Value cond = emitComparison(b, pivots, arraysAtMid, comparator);
-    //   if (comparator(pivot, array[mid]))
-    //     right = mid;
-    //   else
-    //     left = mid + 1;
-    Value newLeft = arith.select(cond, left, midPlusOne);
-    Value newRight = arith.select(cond, mid, right);
-
-    // }
-    b.create<scf::YieldOp>(ValueRange{newLeft, newRight});
-  }
+        // }
+        impLocAfterBuilder.create<scf::YieldOp>(ValueRange{newLeft, newRight});
+      });
 
   return whileOp.getResult(0);
 }
@@ -195,51 +193,48 @@ void emitMerge(ImplicitLocOpBuilder& b, Value lo, Value mid, Value hi,
   SmallVector<Location> whileArgLocs(whileArgTypes.size(), b.getLoc());
 
   // while(
-  auto whileOp = b.create<scf::WhileOp>(whileArgTypes, whileInitArgs);
-  {
-    OpBuilder::InsertionGuard guard(b);
-    {
-      Block* before =
-          b.createBlock(&whileOp.getBefore(), {}, whileArgTypes, whileArgLocs);
-      Value i0 = before->getArgument(1), i1 = before->getArgument(2);
-      b.setInsertionPointToEnd(before);
+  auto whileOp = b.create<scf::WhileOp>(
+      whileArgTypes, whileInitArgs,
+      [&](OpBuilder& beforeBuilder, Location beforeLoc, ValueRange args) {
+        Value i0 = args[1], i1 = args[2];
 
-      //     i0 < mid && i1 < hi) {
-      Value inbounds0 = arith.slt(i0, mid);
-      Value inbounds1 = arith.slt(i1, hi);
+        //     i0 < mid && i1 < hi) {
+        Value inbounds0 = arith.slt(i0, mid);
+        Value inbounds1 = arith.slt(i1, hi);
+        beforeBuilder.create<scf::ConditionOp>(
+            beforeLoc, arith._and(inbounds0, inbounds1), args);
+      },
+      [&](OpBuilder& afterBuilder, Location afterLoc, ValueRange args) {
+        ImplicitLocOpBuilder impLocAfterBuilder(afterLoc, afterBuilder);
+        Value iOut = args[0], i0 = args[1], i1 = args[2];
 
-      b.create<scf::ConditionOp>(arith._and(inbounds0, inbounds1),
-                                 before->getArguments());
-    }
+        //   auto vals0 = readBufs[i0], vals1 = readBufs[i1];
+        SmallVector<Value> vals0 =
+            loadMemrefElements(impLocAfterBuilder, readBufs, i0);
+        SmallVector<Value> vals1 =
+            loadMemrefElements(impLocAfterBuilder, readBufs, i1);
 
-    {
-      Block* after =
-          b.createBlock(&whileOp.getAfter(), {}, whileArgTypes, whileArgLocs);
-      Value iOut = after->getArgument(0), i0 = after->getArgument(1),
-            i1 = after->getArgument(2);
-      b.setInsertionPointToEnd(after);
+        //   writeBufs[iOut] = comparator(vals1, vals0)
+        //                       ? readBufs[i1++] : readBufs[i0++];
+        Value cmp =
+            emitComparison(impLocAfterBuilder, vals1, vals0, comparator);
+        SmallVector<Value> pickedVals;
+        for (auto [val0, val1] : llvm::zip(vals0, vals1)) {
+          pickedVals.push_back(
+              impLocAfterBuilder.create<SelectOp>(cmp, val1, val0));
+        }
+        storeMemrefElements(impLocAfterBuilder, writeBufs, iOut, pickedVals);
+        Value one = impLocAfterBuilder.create<arith::ConstantIndexOp>(1);
+        Value nexti0 =
+            impLocAfterBuilder.create<SelectOp>(cmp, i0, arith.add(i0, one));
+        Value nexti1 =
+            impLocAfterBuilder.create<SelectOp>(cmp, arith.add(i1, one), i1);
 
-      //   auto vals0 = readBufs[i0], vals1 = readBufs[i1];
-      SmallVector<Value> vals0 = loadMemrefElements(b, readBufs, i0);
-      SmallVector<Value> vals1 = loadMemrefElements(b, readBufs, i1);
-
-      //   writeBufs[iOut] = comparator(vals1, vals0)
-      //                       ? readBufs[i1++] : readBufs[i0++];
-      Value cmp = emitComparison(b, vals1, vals0, comparator);
-      SmallVector<Value> pickedVals;
-      for (auto [val0, val1] : llvm::zip(vals0, vals1)) {
-        pickedVals.push_back(b.create<SelectOp>(cmp, val1, val0));
-      }
-      storeMemrefElements(b, writeBufs, iOut, pickedVals);
-
-      Value one = b.create<arith::ConstantIndexOp>(1);
-      Value nexti0 = b.create<SelectOp>(cmp, i0, arith.add(i0, one));
-      Value nexti1 = b.create<SelectOp>(cmp, arith.add(i1, one), i1);
-      //   ++iOut;
-      Value nextIOut = b.create<AddIOp>(iOut, one);
-      b.create<scf::YieldOp>(ValueRange{nextIOut, nexti0, nexti1});
-    }
-  }
+        //   ++iOut;
+        Value nextIOut = impLocAfterBuilder.create<AddIOp>(iOut, one);
+        impLocAfterBuilder.create<scf::YieldOp>(
+            ValueRange{nextIOut, nexti0, nexti1});
+      });
 
   // At this point, exactly one of the input ranges will have leftover elements.
   Value iOut = whileOp->getResult(0);
@@ -315,54 +310,53 @@ Value emitBottomUpMergeSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
   SmallVector<Location> whileArgLocs(whileArgTypes.size(), b.getLoc());
 
   // while (
-  auto whileOp = b.create<scf::WhileOp>(whileArgTypes, whileInitArgs);
-  OpBuilder::InsertionGuard guard(b);
+  auto whileOp = b.create<scf::WhileOp>(
+      whileArgTypes, whileInitArgs,
+      [&](OpBuilder& beforeBuilder, Location beforeLoc, ValueRange args) {
+        //        currentSize < totalSize)
+        Value currentSize = args[0];
+        beforeBuilder.create<scf::ConditionOp>(
+            beforeLoc, arith.slt(currentSize, size), args);
+      },
+      [&](OpBuilder& afterBuilder, Location afterLoc, ValueRange args) {
+        ImplicitLocOpBuilder impLocAfterBuilder =
+            ImplicitLocOpBuilder(afterLoc, afterBuilder);
+        ArithBuilder localArithBuilder(impLocAfterBuilder, afterLoc);
+        size_t numArgs = inputMemrefs.size();
 
-  //        currentSize < totalSize)
-  {
-    Block* before =
-        b.createBlock(&whileOp.getBefore(), {}, whileArgTypes, whileArgLocs);
-    Value currentSize = before->getArgument(0);
-    b.setInsertionPointToEnd(before);
-    b.create<scf::ConditionOp>(arith.slt(currentSize, size),
-                               before->getArguments());
-  }
+        //                                 {
+        Value currentSize = args[0], parity = args[1];
+        auto readBufs = args.drop_front(2).take_front(numArgs);
+        auto writeBufs = args.take_back(numArgs);
 
-  size_t numArgs = inputMemrefs.size();
-  //                                 {
-  {
-    Block* after =
-        b.createBlock(&whileOp.getAfter(), {}, whileArgTypes, whileArgLocs);
+        Value twoCurrentSize = arith.add(currentSize, currentSize);
 
-    Value currentSize = after->getArgument(0);
-    Value parity = after->getArgument(1);
-    auto readBufs = after->getArguments().drop_front(2).take_front(numArgs);
-    auto writeBufs = after->getArguments().take_back(numArgs);
+        // for (int start = 0; start < size; start += 2*currentSize) {
+        {
+          auto forOp =
+              impLocAfterBuilder.create<scf::ForOp>(zero, size, twoCurrentSize);
+          OpBuilder::InsertionGuard guard(impLocAfterBuilder);
+          impLocAfterBuilder.setInsertionPointToStart(forOp.getBody());
+          Value start = forOp.getInductionVar();
 
-    Value twoCurrentSize = arith.add(currentSize, currentSize);
+          Value mid = impLocAfterBuilder.create<MinSIOp>(
+              size, localArithBuilder.add(start, currentSize));
+          Value end = impLocAfterBuilder.create<MinSIOp>(
+              size, localArithBuilder.add(start, twoCurrentSize));
+          emitMerge(impLocAfterBuilder, start, mid, end, readBufs, writeBufs,
+                    comparator);
+        }
+        // }
 
-    // for (int start = 0; start < size; start += 2*currentSize) {
-    {
-      auto forOp = b.create<scf::ForOp>(zero, size, twoCurrentSize);
-      OpBuilder::InsertionGuard guard(b);
-      b.setInsertionPointToStart(forOp.getBody());
-      Value start = forOp.getInductionVar();
-
-      Value mid = b.create<MinSIOp>(size, arith.add(start, currentSize));
-      Value end = b.create<MinSIOp>(size, arith.add(start, twoCurrentSize));
-      emitMerge(b, start, mid, end, readBufs, writeBufs, comparator);
-    }
-    // }
-
-    // parity = !parity;
-    Value one = b.create<arith::ConstantIntOp>(1, 1);
-    Value notParity = arith.sub(one, parity);
-    // currentSize *= 2;
-    SmallVector<Value> nextWhileArgs{twoCurrentSize, notParity};
-    llvm::copy(writeBufs, std::back_inserter(nextWhileArgs));
-    llvm::copy(readBufs, std::back_inserter(nextWhileArgs));
-    b.create<scf::YieldOp>(nextWhileArgs);
-  }
+        // parity = !parity;
+        Value one = impLocAfterBuilder.create<arith::ConstantIntOp>(1, 1);
+        Value notParity = arith.sub(one, parity);
+        // currentSize *= 2;
+        SmallVector<Value> nextWhileArgs{twoCurrentSize, notParity};
+        llvm::copy(writeBufs, std::back_inserter(nextWhileArgs));
+        llvm::copy(readBufs, std::back_inserter(nextWhileArgs));
+        impLocAfterBuilder.create<scf::YieldOp>(nextWhileArgs);
+      });
   // }
 
   // The result is the parity bit.
