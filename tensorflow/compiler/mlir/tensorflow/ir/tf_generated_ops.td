@@ -15084,6 +15084,46 @@ has size `k`, the number of segments.}]>:$output
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_SegmentSumV2Op : TF_Op<"SegmentSumV2", [Pure]> {
+  let summary = "Computes the sum along segments of a tensor.";
+
+  let description = [{
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+Computes a tensor such that
+\\(output_i = \sum_j data_j\\) where sum is over `j` such
+that `segment_ids[j] == i`.
+
+If the sum is empty for a given segment ID `i`, `output[i] = 0`.
+
+Note that this op is currently only supported with jit_compile=True.
+</div>
+  }];
+
+  let arguments = (ins
+    TF_NumberTensor:$data,
+    Arg<TF_I32OrI64Tensor, [{A 1-D tensor whose size is equal to the size of `data`'s
+first dimension.  Values should be sorted and can be repeated.
+The values must be less than `num_segments`.
+
+Caution: The values are always validated to be sorted on CPU, never validated
+on GPU.}]>:$segment_ids,
+    TF_I32OrI64Tensor:$num_segments
+  );
+
+  let results = (outs
+    Res<TF_NumberTensor, [{Has same shape as data, except for the first `segment_ids.rank`
+dimensions, which are replaced with a single dimension which has size
+`num_segments`.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tnumsegments = TF_DerivedOperandTypeAttr<2>;
+}
+
 def TF_SelfAdjointEigV2Op : TF_Op<"SelfAdjointEigV2", [Pure]> {
   let summary = [{
 Computes the eigen decomposition of one or more square self-adjoint matrices.

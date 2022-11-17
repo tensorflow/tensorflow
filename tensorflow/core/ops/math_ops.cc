@@ -1278,6 +1278,17 @@ REGISTER_OP("SegmentSum")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(SegmentReductionShapeFn);
 
+// TODO(hinsu): Introduce Segment{Prod,Min,Max}V2 ops, similarly.
+REGISTER_OP("SegmentSumV2")
+    .Input("data: T")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Output("output: T")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
+
 REGISTER_OP("SegmentMean")
     .Input("data: T")
     .Input("segment_ids: Tindices")
@@ -1318,7 +1329,7 @@ REGISTER_OP("UnsortedSegmentSum")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
-    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("UnsortedSegmentMax")
     .Input("data: T")
@@ -1328,7 +1339,7 @@ REGISTER_OP("UnsortedSegmentMax")
     .Attr("T: realnumbertype")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
-    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("UnsortedSegmentMin")
     .Input("data: T")
@@ -1338,7 +1349,7 @@ REGISTER_OP("UnsortedSegmentMin")
     .Attr("T: realnumbertype")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
-    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("UnsortedSegmentProd")
     .Input("data: T")
@@ -1348,7 +1359,7 @@ REGISTER_OP("UnsortedSegmentProd")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
-    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("SparseSegmentSum")
     .Input("data: T")
