@@ -65,6 +65,7 @@ py_library(
         ":ragged_batch_op",
         ":rebatch_op",
         ":save_ops",
+        ":shard_op",
         ":sparse_batch_op",
         ":structured_function",
         ":unique_op",
@@ -272,4 +273,9 @@ py_library(
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/util:tf_export",
     ],
+)
+
+py_library(
+    name = "shard_op",
+    srcs = ["shard_op.py"],
 )

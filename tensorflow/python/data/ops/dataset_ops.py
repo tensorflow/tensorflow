@@ -1786,7 +1786,10 @@ class DatasetV2(
         placeholder tensor bypasses the early checking, and will instead result
         in an error during a session.run call.)
     """
-    return ShardDataset(self, num_shards, index, name=name)
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import shard_op
+    return shard_op._shard(self, num_shards, index, name=name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def save(self,
            path,
@@ -5262,24 +5265,6 @@ class SkipDataset(UnaryUnchangedStructureDataset):
         count=self._count,
         **self._common_args)
     super(SkipDataset, self).__init__(input_dataset, variant_tensor)
-
-
-class ShardDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` for sharding its input."""
-
-  def __init__(self, input_dataset, num_shards, index, name=None):
-    """See `Dataset.shard()` for details."""
-    self._input_dataset = input_dataset
-    self._num_shards = ops.convert_to_tensor(
-        num_shards, dtype=dtypes.int64, name="num_shards")
-    self._index = ops.convert_to_tensor(index, dtype=dtypes.int64, name="index")
-    self._name = name
-    variant_tensor = gen_dataset_ops.shard_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        num_shards=self._num_shards,
-        index=self._index,
-        **self._common_args)
-    super(ShardDataset, self).__init__(input_dataset, variant_tensor)
 
 
 class MapDataset(UnaryDataset):
