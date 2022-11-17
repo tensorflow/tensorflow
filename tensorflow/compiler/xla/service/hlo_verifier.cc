@@ -2486,6 +2486,14 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     // Allow kWhile to contain computations on separate thread.
     TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(
         xla_while, /*skip_nested_async_op_check=*/true));
+
+    // Verify consistency of sharding of while instructions and related
+    // instructions (parameters, root) in its called computations.
+    TF_RETURN_IF_ERROR(VerifyConsistentSharding(
+        xla_while, {xla_while, xla_while->while_body()->root_instruction(),
+                    xla_while->while_body()->parameter_instruction(0),
+                    xla_while->while_condition()->parameter_instruction(0)}));
+
     return OkStatus();
   }
 
@@ -2496,17 +2504,31 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   Status HandleConditional(HloInstruction* conditional) override {
-    for (int b = 0; b < conditional->branch_count(); ++b) {
-      if (conditional->branch_computation(b)->num_parameters() != 1) {
+    const std::vector<HloComputation*> branch_computations =
+        conditional->branch_computations();
+    std::vector<const HloInstruction*> sharding_check_instructions;
+    sharding_check_instructions.reserve(branch_computations.size() + 1);
+    sharding_check_instructions.push_back(conditional);
+
+    for (const HloComputation* branch_computation : branch_computations) {
+      if (branch_computation->num_parameters() != 1) {
         return FailedPrecondition(
             "Branch computation %s of %s must have 1 parameter instead of %d",
-            conditional->branch_computation(b)->name(), conditional->ToString(),
-            conditional->branch_computation(b)->num_parameters());
+            branch_computation->name(), conditional->ToString(),
+            branch_computation->num_parameters());
       }
+      sharding_check_instructions.push_back(
+          branch_computation->root_instruction());
     }
     // Allow kConditional to contain computations on separate thread.
     TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(
         conditional, /*skip_nested_async_op_check=*/true));
+
+    // Verify consistency of sharding of conditional instructions and roots of
+    // its branches.
+    TF_RETURN_IF_ERROR(
+        VerifyConsistentSharding(conditional, sharding_check_instructions));
+
     return OkStatus();
   }
 
@@ -2615,6 +2637,26 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
  private:
+  static Status VerifyConsistentSharding(
+      const HloInstruction* parent,
+      absl::Span<const HloInstruction* const> instructions) {
+    const HloInstruction* common_sharding_inst = nullptr;
+    for (const HloInstruction* check_inst : instructions) {
+      if (!check_inst->has_sharding()) {
+        continue;
+      }
+      if (!common_sharding_inst) {
+        common_sharding_inst = check_inst;
+        continue;
+      }
+      TF_RET_CHECK(check_inst->sharding() == common_sharding_inst->sharding())
+          << "Inconsistent " << HloOpcodeString(parent->opcode())
+          << " sharding among instructions: \n"
+          << common_sharding_inst->ToString() << "\n"
+          << check_inst->ToString();
+    }
+    return OkStatus();
+  }
   absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name_;
   const HloVerifierOpts& opts_;
   std::optional<int64_t> num_devices_;

@@ -2581,5 +2581,64 @@ ENTRY main {
               HasSubstr("device 2 > num_devices (2) in tile assignment"));
 }
 
+TEST_F(HloVerifierTest, InconsistentWhileSharding) {
+  const char* const hlo = R"(
+    HloModule While
+
+    %body.v3 (prev.1: s32[]) -> s32[] {
+       %prev.1 = s32[] parameter(0), sharding={replicated}
+      %constant = s32[] constant(1)
+      ROOT %add = s32[] add(s32[] %constant, s32[] %prev.1)
+    }
+
+    %condition.v3 (prev.2: s32[]) -> pred[] {
+      %prev.2 = s32[] parameter(0), sharding={maximal device=0}
+      %constant.1 = s32[] constant(5)
+      ROOT %greater-than = pred[] compare(s32[] %constant.1, s32[] %prev.2), direction=GT
+    }
+
+    ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {
+      %constant.2 = s32[] constant(0)
+      ROOT %while = s32[] while(s32[] %constant.2), condition=%condition.v3, body=%body.v3
+    }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Inconsistent while sharding among instructions"));
+}
+
+TEST_F(HloVerifierTest, InconsistentConditionSharding) {
+  const char* const hlo = R"(
+  HloModule Module
+
+  true_branch {
+    tparam = (s32[], f32[4]) parameter(0)
+    ROOT tgte1 = f32[4] get-tuple-element(tparam), index=1
+  }
+
+  false_branch {
+    fparam = (s32[], f32[4]) parameter(0)
+    ROOT fgte1 = f32[4] get-tuple-element(fparam), index=1, sharding={replicated}
+  }
+
+  ENTRY entry {
+    p0 = (s32[], f32[4]) parameter(0)
+    constant = pred[] constant(true)
+    ROOT conditional = f32[4] conditional(constant, p0, p0),
+      true_computation=true_branch, false_computation=false_branch,
+      sharding={maximal device=0}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr("Inconsistent conditional sharding among instructions"));
+}
+
 }  // namespace
 }  // namespace xla
