@@ -9,6 +9,12 @@ package(
 glob_lit_tests(
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
+    size_override = {
+        "legalize-tf-binary-elementwise.mlir": "medium",
+        "legalize-tf-include-tf2xla-fallback.mlir": "medium",
+        "legalize-tf-prefer-tf2xla.mlir": "medium",
+        "legalize-tf.mlir": "medium",
+    },
     test_file_exts = [
         "mlir",
         "hlotxt",
