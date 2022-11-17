@@ -40,6 +40,12 @@ namespace mlir {
 namespace TFL {
 namespace common {
 
+bool IsConstantOrNone(Operation* op) {
+  return (op->getNumResults() == 1 &&
+          op->getResult(0).getType().isa<NoneType>()) ||
+         matchPattern(op, m_Constant());
+}
+
 // Pre-order traverse, adding results and BlockArgs to `been_defined` and
 // collecting operands not contained within `been_defined`. If we encounter an
 // operand that references a Value that has been defined (and added to
@@ -77,6 +83,9 @@ llvm::SmallVector<Value> AccumulateResultsDefinedWithin(
     const llvm::SetVector<Operation*>& partition_ops) {
   llvm::SmallVector<Value> values_for_results;
   for (Operation* op : partition_ops) {
+    if (IsConstantOrNone(op)) {
+      continue;
+    }
     for (Value output : op->getResults()) {
       bool output_consumed_outside_subgraph = false;
       for (Operation* consumer : output.getUsers()) {
@@ -187,6 +196,9 @@ void ExtractSubgraphToFunc(const Subgraph& subgraph, OpBuilder& builder,
   // Clear the subgraph.
   // Those ops should be removed.
   for (auto* op : subgraph.partition_ops_) {
+    if (IsConstantOrNone(op)) {
+      continue;
+    }
     op->dropAllDefinedValueUses();
     op->dropAllReferences();
     op->erase();
