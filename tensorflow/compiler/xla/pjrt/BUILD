@@ -115,23 +115,6 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "cpu_device_test",
-    srcs = ["cpu_device_test.cc"],
-    deps = [
-        ":cpu_device",
-        ":pjrt_client",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/client:executable_build_options",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/tsl/platform:random",
-        "//tensorflow/tsl/platform:test_main",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
 cc_library(
     name = "local_device_state",
     srcs = ["local_device_state.cc"],
@@ -420,22 +403,6 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
-        "//tensorflow/compiler/xla/service:platform_util",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "cpu_device",
-    srcs = ["cpu_device.cc"],
-    hdrs = ["cpu_device.h"],
-    compatible_with = [],
-    visibility = [":friends"],
-    deps = [
-        ":pjrt_stream_executor_client",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:platform_util",
         "@com_google_absl//absl/strings",
     ],

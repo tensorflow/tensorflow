@@ -59,10 +59,8 @@ def make_interpreter_client():
 
 
 def make_cpu_client(*, use_tfrt: bool = True) -> ...:
-  if use_tfrt:
-    return _xla.get_tfrt_cpu_client(asynchronous=True)
-  else:
-    return _xla.get_cpu_client(asynchronous=True)
+  assert use_tfrt
+  return _xla.get_tfrt_cpu_client(asynchronous=True)
 
 
 def make_gpu_client(distributed_client=None, node_id=0, platform_name=None,

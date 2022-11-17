@@ -30,7 +30,6 @@ limitations under the License.
 #include "pybind11/pytypes.h"
 #include "pybind11/stl_bind.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/pjrt/cpu_device.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/distributed.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
@@ -282,15 +281,6 @@ PYBIND11_MODULE(xla_extension, m) {
            py::arg("result_shapes"), py::arg("operand_layouts") = std::nullopt,
            py::arg("has_side_effects") = false);
 
-  m.def(
-      "get_cpu_client",
-      [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
-        py::gil_scoped_release gil_release;
-        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
-                            GetCpuClient(asynchronous));
-        return std::make_shared<PyClient>(std::move(client));
-      },
-      py::arg("asynchronous") = true);
   m.def(
       "get_tfrt_cpu_client",
       [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
