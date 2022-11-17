@@ -355,6 +355,41 @@ XlaOp XlaBuilderFriend::BuildSendDone(XlaBuilder* builder, XlaOp operand,
   });
 }
 
+XlaOp XlaBuilderFriend::BuildRecv(XlaBuilder* builder, XlaOp token,
+                                  const Shape& shape,
+                                  const ChannelHandle& handle,
+                                  bool is_host_transfer) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    // Recv instruction produces a tuple of {receive buffer, U32 context,
+    // token}.
+    HloInstructionProto recv_instr;
+    *recv_instr.mutable_shape() =
+        ShapeUtil::MakeTupleShape(
+            {shape, ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeTokenShape()})
+            .ToProto();
+    recv_instr.set_channel_id(handle.handle());
+    recv_instr.set_is_host_transfer(is_host_transfer);
+    return builder->AddInstruction(std::move(recv_instr), HloOpcode::kRecv,
+                                   {token});
+  });
+}
+
+XlaOp XlaBuilderFriend::BuildRecvDone(XlaBuilder* builder, XlaOp token,
+                                      const Shape& shape,
+                                      const ChannelHandle& handle,
+                                      bool is_host_transfer) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto recv_done_instr;
+    *recv_done_instr.mutable_shape() =
+        ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeTokenShape()})
+            .ToProto();
+    recv_done_instr.set_channel_id(handle.handle());
+    recv_done_instr.set_is_host_transfer(is_host_transfer);
+    return builder->AddInstruction(std::move(recv_done_instr),
+                                   HloOpcode::kRecvDone, {token});
+  });
+}
+
 XlaOp XlaBuilderFriend::BuildRngGetAndUpdateState(XlaBuilder* builder,
 
                                                   int64_t delta,
@@ -3683,24 +3718,10 @@ XlaOp XlaBuilder::RecvWithToken(XlaOp token, const Shape& shape,
       return InvalidArgument("Recv must use a device-to-device channel");
     }
 
-    // Recv instruction produces a tuple of {receive buffer, U32 context,
-    // token}.
-    HloInstructionProto recv_instr;
-    *recv_instr.mutable_shape() =
-        ShapeUtil::MakeTupleShape(
-            {shape, ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeTokenShape()})
-            .ToProto();
-    recv_instr.set_channel_id(handle.handle());
-    TF_ASSIGN_OR_RETURN(XlaOp recv, AddInstruction(std::move(recv_instr),
-                                                   HloOpcode::kRecv, {token}));
-
-    HloInstructionProto recv_done_instr;
-    *recv_done_instr.mutable_shape() =
-        ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeTokenShape()})
-            .ToProto();
-    recv_done_instr.set_channel_id(handle.handle());
-    return AddInstruction(std::move(recv_done_instr), HloOpcode::kRecvDone,
-                          {recv});
+    XlaOp recv_op = internal::XlaBuilderFriend::BuildRecv(this, token, shape,
+                                                          handle, false);
+    return internal::XlaBuilderFriend::BuildRecvDone(this, recv_op, shape,
+                                                     handle, false);
   });
 }
 

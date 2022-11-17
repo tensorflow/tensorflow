@@ -1193,8 +1193,59 @@ func.func @main(%token: !mhlo.token) -> !mhlo.token {
 // CHECK-NEXT:  [[DATA:%.*]] =   () get-tuple-element(((), token[]) [[RECV_DONE]]), index=0
 // CHECK-NEXT:  ROOT [[TOKEN:%.*]] =   token[] get-tuple-element(((), token[]) [[RECV_DONE]]), index=1
 
+// -----
+
+// CHECK:  HloModule
+
+func.func @recv_0(%token: !mhlo.token) -> (!mhlo.token) attributes {execution_thread = "main"} {
+  %0 = "mhlo.recv"(%token) {
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 1  // Device to device channel
+    >,
+    is_host_transfer = false
+  } : (!mhlo.token) -> (!mhlo.token)
+  func.return %0 : !mhlo.token
+}
+
+func.func @main(%token: !mhlo.token) -> (!mhlo.token) {
+  %0 = "mhlo.async_start"(%token) {called_computation = @recv_0, execution_thread = "main"} : (!mhlo.token) -> !mhlo.async_bundle<!mhlo.token, !mhlo.token, tensor<i32>>
+  %2 = "mhlo.async_done"(%0) {called_computation = @recv_0, execution_thread = "main"} : (!mhlo.async_bundle<!mhlo.token, !mhlo.token, tensor<i32>>) -> (!mhlo.token)
+  return %2 : !mhlo.token
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[TOKEN:%.*]] = token[] parameter(0)
+// CHECK:  [[RECV:%.*]] = ((), u32[], token[]) recv(token[] [[TOKEN]]), channel_id=5
+// CHECK:  ((), token[]) recv-done(((), u32[], token[]) [[RECV]]), channel_id=5
 
 // -----
+
+// CHECK:  HloModule
+func.func @recv_0(%token: !mhlo.token) -> (tensor<3x4xi32>, !mhlo.token) attributes {execution_thread = "main"} {
+  %0:2 = "mhlo.recv"(%token) {
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 3  // Host to device channel
+    >,
+    is_host_transfer = true
+  } : (!mhlo.token) -> (tensor<3x4xi32>, !mhlo.token)
+  func.return %0#0, %0#1 : tensor<3x4xi32>, !mhlo.token
+}
+
+func.func @main(%token: !mhlo.token) -> (tensor<3x4xi32>, !mhlo.token) {
+  %0 = "mhlo.async_start"(%token) {called_computation = @recv_0, execution_thread = "main"} : (!mhlo.token) -> !mhlo.async_bundle<!mhlo.token, tuple<tensor<3x4xi32>, !mhlo.token>, tensor<i32>>
+  %1, %2 = "mhlo.async_done"(%0) {called_computation = @recv_0, execution_thread = "main"} : (!mhlo.async_bundle<!mhlo.token, tuple<tensor<3x4xi32>, !mhlo.token>, tensor<i32>>) -> (tensor<3x4xi32>, !mhlo.token)
+  return %1, %2 : tensor<3x4xi32>, !mhlo.token
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[TOKEN:%.*]] = token[] parameter(0)
+// CHECK:  [[RECV:%.*]] = (s32[3,4], u32[], token[]) recv(token[] [[TOKEN]]), channel_id=5, is_host_transfer
+// CHECK:  (s32[3,4], token[]) recv-done((s32[3,4], u32[], token[]) [[RECV]]), channel_id=5, is_host_transfer
+
+// -----
+
 
 // CHECK:  HloModule
 func.func @main(%arg0 : tensor<1x10xf32>, %arg1 : tensor<1x10xi32>, %arg2 : tensor<f32>, %arg3 : tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>) {

@@ -704,9 +704,16 @@ bool SimplyReturnedOp(mlir::Operation* op) {
   for (auto operand : op->getOperands()) {
     if (!llvm::isa<mlir::BlockArgument>(operand)) return false;
   }
-  auto users = op->getResults().getUsers();
-  if (std::distance(users.begin(), users.end()) != 1) return false;
-  if (llvm::isa<mlir::func::ReturnOp>((*users.begin()))) return true;
+
+  auto users = op->getUsers();
+  if (users.empty()) return false;
+
+  auto first_user = *users.begin();
+  for (auto user : users) {
+    if (first_user != user) return false;
+  }
+
+  if (llvm::isa<mlir::func::ReturnOp>(first_user)) return true;
   return false;
 }
 
@@ -926,6 +933,21 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
         send_op.getIsHostTransfer());
     return mlir::success();
   }
+  auto recv_op = dyn_cast_or_null<RecvOp>(callee.getBody().front().front());
+  if (recv_op && SimplyReturnedOp(recv_op)) {
+    auto result_types = result.getType().cast<AsyncBundleType>().getTypes()[1];
+
+    mlir::Type received_type = mlir::TupleType::get(op->getContext(), {});
+    if (isa<TupleType>(result_types)) {
+      received_type = result_types.cast<TupleType>().getType(0);
+    }
+
+    value_map[result] = xla::internal::XlaBuilderFriend::BuildRecv(
+        ctx.builder, operands[0], xla::TypeToShape(received_type),
+        Convert_channel_handle(recv_op.getChannelHandle()),
+        recv_op.getIsHostTransfer());
+    return mlir::success();
+  }
 
   if (failed(ctx.converter->RunOnFunction(callee))) return failure();
   xla::XlaComputation& computation =
@@ -1067,6 +1089,23 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
         ctx.builder, operand,
         Convert_channel_handle(send_op.getChannelHandle()),
         send_op.getIsHostTransfer());
+    return success();
+  }
+  auto recv_op = dyn_cast_or_null<RecvOp>(callee.getBody().front().front());
+  if (recv_op && SimplyReturnedOp(recv_op)) {
+    auto result_type =
+        op.getBundle().getType().cast<AsyncBundleType>().getTypes()[1];
+    xla::XlaOp xla_recv = xla::internal::XlaBuilderFriend::BuildRecvDone(
+        ctx.builder, operand, xla::TypeToShape(result_type),
+        Convert_channel_handle(recv_op.getChannelHandle()),
+        recv_op.getIsHostTransfer());
+    if (op.getNumResults() == 1) {
+      value_map[op.getResult(0)] = xla_recv;
+    } else {
+      for (const auto& item : llvm::enumerate(op.getResults())) {
+        value_map[item.value()] = xla::GetTupleElement(xla_recv, item.index());
+      }
+    }
     return success();
   }
 

@@ -127,6 +127,12 @@ struct XlaBuilderFriend {
                              const ChannelHandle& handle,
                              bool is_host_transfer);
 
+  static XlaOp BuildRecv(XlaBuilder* builder, XlaOp token, const Shape& shape,
+                         const ChannelHandle& handle, bool is_host_transfer);
+  static XlaOp BuildRecvDone(XlaBuilder* builder, XlaOp token,
+                             const Shape& shape, const ChannelHandle& handle,
+                             bool is_host_transfer);
+
   static XlaOp BuildDomain(XlaBuilder* builder, XlaOp operand,
                            const OpSharding entry, const OpSharding exit,
                            const Shape& shape);
