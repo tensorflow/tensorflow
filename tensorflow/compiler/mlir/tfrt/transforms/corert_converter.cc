@@ -41,7 +41,6 @@ CoreRTConverter::CoreRTConverter(
     : builder_(context), side_effect_analysis_(*side_effect_analysis) {
   addConversion([](tfrt::compiler::ChainType type) { return type; });
   addConversion([](tfrt::corert::OpHandlerType type) { return type; });
-  addConversion([](tfrt::dist::DistributedContextType type) { return type; });
   addConversion([](tfrt::corert::TensorHandleType type) { return type; });
   addConversion([=](mlir::TensorType type) -> llvm::Optional<mlir::Type> {
     // Ref types are not supported in both compiler and runtime.
@@ -153,14 +152,7 @@ mlir::Value CoreRTConverter::GetDistributedContext(
   if (iter != distributed_context_by_func_.end()) {
     return iter->second;
   }
-  ConversionPatternRewriter::InsertionGuard insertion_guard(*rewriter);
-  rewriter->setInsertionPoint(op);
-  auto get_dist_ctx_op = rewriter->create<tfrt::dist::GetDistributedContextOp>(
-      op->getLoc(), distributed_context_type());
-
-  mlir::Value result = get_dist_ctx_op.getResult();
-  distributed_context_by_func_[func_op.getOperation()] = result;
-  return result;
+  return mlir::Value();
 }
 
 mlir::Value CoreRTConverter::GetRemoteChainManager(
@@ -170,18 +162,7 @@ mlir::Value CoreRTConverter::GetRemoteChainManager(
   if (iter != remote_chain_mgr_by_func_.end()) {
     return iter->second;
   }
-  ConversionPatternRewriter::InsertionGuard insertion_guard(*rewriter);
-  rewriter->setInsertionPoint(op);
-
-  mlir::Type remote_chain_mgr_type =
-      builder_.getType<::tfrt::dist::RemoteChainManagerType>();
-  mlir::Value dist_ctx = GetDistributedContext(op, rewriter);
-  auto create_mgr_op = rewriter->create<tfrt::dist::CreateRemoteChainManager>(
-      op->getLoc(), remote_chain_mgr_type, dist_ctx);
-
-  mlir::Value result = create_mgr_op.getResult();
-  remote_chain_mgr_by_func_[func_op.getOperation()] = result;
-  return result;
+  return mlir::Value();
 }
 
 mlir::Value CoreRTConverter::GetLocalSideEffectChain(
@@ -231,29 +212,7 @@ mlir::Value CoreRTConverter::GetTaskHandle(
     return iter->second;
   }
 
-  mlir::Value distributed_context = GetDistributedContext(op, rewriter);
-  auto task_handle_op = rewriter->create<tfrt::dist::GetTaskHandleOp>(
-      op->getLoc(), rewriter->getType<tfrt::dist::TaskHandleType>(),
-      distributed_context, task_name);
-
-  task_handle_by_name[task_name] = task_handle_op.getResult();
-  return task_handle_op.getResult();
-}
-
-mlir::Value CoreRTConverter::GetRemoteSideEffectChain(
-    mlir::Operation *op, StringRef remote_host,
-    mlir::ConversionPatternRewriter *rewriter) {
-  mlir::Value remote_chain_mgr = GetRemoteChainManager(op, rewriter);
-  mlir::Value local_chain = GetLocalSideEffectChain(op, rewriter);
-  mlir::Value task_handle = GetTaskHandle(op, remote_host, rewriter);
-  mlir::Type remote_obj_id_ty =
-      rewriter->getType<tfrt::dist::RemoteObjectIdType>();
-
-  // Get the remote chain using the tfrt_dist.get_chain_for_task_handle op.
-  auto get_chain_op = rewriter->create<tfrt::dist::GetChainForTaskHandleOp>(
-      op->getLoc(), remote_obj_id_ty, local_chain, remote_chain_mgr,
-      task_handle);
-  return get_chain_op.getResult();
+  return mlir::Value();
 }
 
 mlir::StringAttr CoreRTConverter::ConvertSymbolAttrToStringAttr(

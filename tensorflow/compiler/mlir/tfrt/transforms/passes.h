@@ -92,12 +92,6 @@ mlir::LogicalResult TFSavedModelToCoreRTConversionPassRun(
     mlir::ConversionTarget* target, mlir::RewritePatternSet* patterns,
     CoreRTConverter* corert_converter);
 
-// Create an operation pass that converts each tfrt_dist.remote_execute_func op
-// into a combination of tfrt_dist.register_tfrt_function op and
-// tfrt_dist.remote_execute op.
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateDistRemoteRunEncapsulatePass();
-
 // Create an operation pass that removes the device attribute from every
 // corert.executeop.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>

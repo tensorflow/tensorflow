@@ -371,7 +371,6 @@ cc_library(
         "transforms/merge_tf_if_ops.cc",
         "transforms/optimize.cc",
         "transforms/optimize_tf_control_flow_side_effect.cc",
-        "transforms/remote_run_encapsulate.cc",
         "transforms/remove_device_attribute.cc",
         "transforms/remove_tf_if_const_args.cc",
         "transforms/reorder_assert.cc",

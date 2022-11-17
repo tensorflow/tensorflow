@@ -72,8 +72,6 @@ limitations under the License.
 #include "tfrt/core_runtime/opdefs/attributes.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/core_runtime.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/types.h"  // from @tf_runtime
-#include "tfrt/distributed_runtime/opdefs/kernels.h"  // from @tf_runtime
-#include "tfrt/distributed_runtime/opdefs/types.h"  // from @tf_runtime
 #include "tfrt/test_kernels/opdefs/test_kernels.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -93,8 +91,7 @@ constexpr int64_t kDefaultCheapCost = 1;
 void getDependentConversionDialects(mlir::DialectRegistry &registry) {
   registry.insert<tfrt::corert::CoreRTDialect, mlir::func::FuncDialect,
                   tfrt::fallback_async::FallbackAsyncDialect,
-                  tfrt::compiler::TFRTDialect, tfrt::dist::DistributedDialect,
-                  tf_jitrt::JitRuntimeDialect>();
+                  tfrt::compiler::TFRTDialect, tf_jitrt::JitRuntimeDialect>();
 }
 
 mlir::Value GetFunctionInputChain(mlir::Operation *op) {
@@ -498,16 +495,6 @@ class TFDeviceRemoteRunOpConversion
   LogicalResult matchAndRewrite(
       tf_device::RemoteRunOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    mlir::Value distributed_context =
-        corert_converter_.GetDistributedContext(op.getOperation(), &rewriter);
-    mlir::Value in_op_chain =
-        corert_converter_.GetLocalSideEffectChain(op, &rewriter);
-    mlir::Value task_handle = corert_converter_.GetTaskHandle(
-        op.getOperation(), op.getHost(), &rewriter);
-    mlir::Value remote_chain_mgr =
-        corert_converter_.GetRemoteChainManager(op, &rewriter);
-    mlir::Type remote_obj_id_ty =
-        rewriter.getType<tfrt::dist::RemoteObjectIdType>();
     ModuleOp module = op->getParentOfType<ModuleOp>();
     SymbolTable symtab(module);
     func::FuncOp callee = symtab.lookup<func::FuncOp>(op.getCallee());
@@ -523,11 +510,7 @@ class TFDeviceRemoteRunOpConversion
     }
 
     llvm::SmallVector<mlir::Value, 4> arguments;
-    // The first argument of the remote function should be a remote chain which
-    // is added to the function signature when it is lowered from TF dialect to
-    // TFRT dialect.
-    arguments.push_back(corert_converter_.GetRemoteSideEffectChain(
-        op, host.getValue(), &rewriter));
+
     for (mlir::Value argument : op.getCalleeArgs()) {
       arguments.push_back(argument);
     }
@@ -536,23 +519,9 @@ class TFDeviceRemoteRunOpConversion
     // The first result of the remote function should be a remote chain which
     // is added to the function signature when it is lowered from TF dialect to
     // TFRT dialect.
-    result_types.push_back(remote_obj_id_ty);
     for (mlir::Type type : op.getResultTypes()) {
       (void)type_converter_.convertType(type, result_types);
     }
-    auto remote_execute_func_op =
-        rewriter.create<tfrt::dist::RemoteExecuteFuncOp>(
-            op.getLoc(), corert_converter_.chain_type(), result_types,
-            in_op_chain, distributed_context, task_handle, op.getCallee(),
-            arguments);
-    rewriter.replaceOp(op, remote_execute_func_op.getResults().drop_front(1));
-
-    auto set_chain_op = rewriter.create<tfrt::dist::SetChainForTaskHandleOp>(
-        op.getLoc(), corert_converter_.chain_type(),
-        remote_execute_func_op.getOutOpChain(), remote_chain_mgr, task_handle,
-        remote_execute_func_op.getResults().front());
-    corert_converter_.RegisterLocalSideEffectChain(
-        op, set_chain_op.getOutOpChain());
 
     return success();
   }
@@ -1507,7 +1476,6 @@ void SetUpTFToTFRTConversionLegality(mlir::ConversionTarget *target,
   target->addLegalDialect<tfrt::corert::CoreRTDialect>();
   target->addLegalDialect<tfrt::fallback_async::FallbackAsyncDialect>();
   target->addLegalDialect<tfrt::compiler::TFRTDialect>();
-  target->addLegalDialect<tfrt::dist::DistributedDialect>();
   target->addLegalDialect<tfrt::test::TestDialect>();
   target->addLegalDialect<tf_jitrt::JitRuntimeDialect>();
   target->addIllegalDialect<TF::TensorFlowDialect>();
