@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import tf2
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.experimental.ops import random_access
@@ -415,8 +416,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  # TODO(b/123904513)
-  @combinations.generate(_test_combinations_with_mode_v1("graph"))
+  @combinations.generate(_test_combinations_with_mode("graph"))
   def testCaptureQueue(self, apply_map):
     elements = np.random.randint(100, size=[200])
     queue = data_flow_ops.FIFOQueue(200, dtypes.int64, shapes=[])
@@ -431,8 +431,18 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     for element in elements:
       self.assertEqual(element, self.evaluate(get_next()))
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(get_next())
+    # When the map function in `MapDataset` raises an OutOfRange error, TF1 and
+    # TF2 behave differently. TF1 raises an OutOfRangeError to signal the end of
+    # sequence while TF2 raises an InvalidArgumentError. This behavior is
+    # controlled by the `preserve_cardinality` argument of `map` transformation
+    # which is set to `True` for TF2 and `False` for TF1, which is for backward
+    # compatibility.
+    if tf2.enabled():
+      with self.assertRaises(errors.InvalidArgumentError):
+        self.evaluate(get_next())
+    else:
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(get_next())
 
   # TODO(b/117581999): Possible deadlock in eager mode, debug.
   @combinations.generate(_test_combinations_with_mode_v1("graph"))
@@ -915,8 +925,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
             for i in range(10)
         ])
 
-  # TODO(b/123904513)
-  @combinations.generate(_test_combinations_with_mode_v1("graph"))
+  @combinations.generate(_test_combinations_with_mode("graph"))
   def testParallelMapOutOfRangeError(self, apply_map):
 
     def raising_py_func(i):
@@ -933,8 +942,18 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = self.getNext(dataset)
     for i in range(100):
       self.assertEqual(i, self.evaluate(get_next()))
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(get_next())
+    # When the map function in `MapDataset` raises an OutOfRange error, TF1 and
+    # TF2 behave differently. TF1 raises an OutOfRangeError to signal the end of
+    # sequence while TF2 raises an InvalidArgumentError. This behavior is
+    # controlled by the `preserve_cardinality` argument of `map` transformation
+    # which is set to `True` for TF2 and `False` for TF1, which is for backward
+    # compatibility.
+    if tf2.enabled():
+      with self.assertRaises(errors.InvalidArgumentError):
+        self.evaluate(get_next())
+    else:
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(get_next())
 
   @combinations.generate(_test_combinations())
   def testConstantOutput(self, apply_map):
