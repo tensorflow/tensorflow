@@ -224,8 +224,8 @@ static FailureOr<LLVM::AllocaOp> EncodeArguments(
   // Encode all arguments as a set of pointers (skip the execution context).
   for (auto tuple : llvm::drop_begin(llvm::zip(operands, converted))) {
     // Check if the value was already encoded.
-    auto it = encoded_args.find(std::get<0>(tuple));
-    if (it != encoded_args.end()) {
+    if (auto it = encoded_args.find(std::get<0>(tuple));
+        it != encoded_args.end()) {
       encoded.push_back(it->second);
       continue;
     }
@@ -249,7 +249,7 @@ static FailureOr<LLVM::AllocaOp> EncodeArguments(
   Type ptr = LLVM::LLVMPointerType::get(b.getContext());
   Type type = LLVM::LLVMArrayType::get(ptr, 1 + encoded.size() * 2);
 
-  // Prepare an array for encoding arguments.
+  // Prepare an array for encoded arguments.
   Value arr = b.create<LLVM::UndefOp>(type);
   auto insert_value = [&](Value value, int64_t offset) {
     arr = b.create<LLVM::InsertValueOp>(arr, value, offset);

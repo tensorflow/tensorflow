@@ -70,13 +70,12 @@ class Globals;
 // Custom call arguments encoding.
 //===----------------------------------------------------------------------===//
 
-// Encodes argument into stack allocated storage according to the ABI. If
-// argument is a constant, then it can be packed as a global constant.
+// Encodes argument into stack allocated storage according to the ABI.
 class CustomCallArgEncoding {
  public:
   struct Encoded {
-    mlir::Value type_id;  // !llvm.ptr<i64>
-    mlir::Value value;    // !llvm.ptr<ArgType>
+    mlir::Value type_id;         // !llvm.ptr<i64>
+    mlir::LLVM::AllocaOp value;  // !llvm.alloca 1 x ArgType
   };
 
   virtual ~CustomCallArgEncoding() = default;
