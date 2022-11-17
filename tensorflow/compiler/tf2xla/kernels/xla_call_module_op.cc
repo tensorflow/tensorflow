@@ -284,7 +284,7 @@ Status LoadAndPreprocessModule(int version,
   if (!*module) {
     return errors::InvalidArgument("Cannot deserialize computation");
   }
-  VLOG(3) << "Parsed serialized module (version" << version << ")\n"
+  VLOG(3) << "Parsed serialized module (version " << version << ")\n"
           << debugString(**module);
 
   if (failed((*module)->verifyInvariants())) {
