@@ -55,6 +55,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":batch_op",
+        ":cache_op",
         ":counter_op",
         ":filter_op",
         ":from_generator_op",
@@ -105,6 +106,11 @@ py_library(
         "//tensorflow/python/trackable:resource",
         "//third_party/py/numpy",
     ],
+)
+
+py_library(
+    name = "cache_op",
+    srcs = ["cache_op.py"],
 )
 
 py_library(

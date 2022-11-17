@@ -1468,7 +1468,12 @@ class DatasetV2(
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    return CacheDataset(self, filename, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops -> cache_op ->
+    # -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import cache_op
+    return cache_op._cache(self, filename, name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def take(self, count, name=None):
     """Creates a `Dataset` with at most `count` elements from this dataset.
@@ -4852,29 +4857,6 @@ class RangeDataset(DatasetSource):
   @property
   def element_spec(self):
     return self._structure
-
-
-class CacheDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` that caches elements of its input."""
-
-  def __init__(self, input_dataset, filename, name=None):
-    """See `Dataset.cache()` for details."""
-    self._input_dataset = input_dataset
-    self._filename = ops.convert_to_tensor(
-        filename, dtype=dtypes.string, name="filename")
-    self._name = name
-    if tf2.enabled() and (context.executing_eagerly() or ops.inside_function()):
-      variant_tensor = gen_dataset_ops.cache_dataset_v2(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          filename=self._filename,
-          cache=gen_dataset_ops.dummy_memory_cache(),
-          **self._common_args)
-    else:
-      variant_tensor = gen_dataset_ops.cache_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          filename=self._filename,
-          **self._common_args)
-    super(CacheDataset, self).__init__(input_dataset, variant_tensor)
 
 
 class ShuffleDataset(UnaryUnchangedStructureDataset):
