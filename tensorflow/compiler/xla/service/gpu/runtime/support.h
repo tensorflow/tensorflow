@@ -43,6 +43,12 @@ inline constexpr runtime::CustomCall::RuntimeChecks checks =  // NOLINT
     runtime::CustomCall::RuntimeChecks::kDefault;
 #endif
 
+template <typename T>
+absl::StatusOr<T> ToAbsl(StatusOr<T> status_or) {
+  if (!status_or.ok()) return ToAbslStatus(status_or.status());
+  return std::move(status_or).value();
+}
+
 inline se::DeviceMemoryBase GetDeviceAddress(
     const runtime::FlatMemrefView& memref) {
   return se::DeviceMemoryBase(memref.data, memref.size_in_bytes);

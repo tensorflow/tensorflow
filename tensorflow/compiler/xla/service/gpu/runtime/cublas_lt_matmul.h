@@ -30,17 +30,8 @@ namespace gpu {
 
 #if GOOGLE_CUDA
 
-class MatmulPlanCache {
- public:
-  const cublas_lt::MatmulPlan* Get(int64_t uid);
-  const cublas_lt::MatmulPlan* Set(int64_t uid, cublas_lt::MatmulPlan plan);
-
- private:
-  mutable absl::Mutex mutex_;
-
-  absl::node_hash_map<int64_t, cublas_lt::MatmulPlan> plans_
-      ABSL_GUARDED_BY(mutex_);
-};
+// Keep cublas_lt::MatmulPlan's for all matmul instances in the executable.
+class MatmulPlans : public runtime::StateVector<cublas_lt::MatmulPlan> {};
 
 #endif  // GOOGLE_CUDA
 

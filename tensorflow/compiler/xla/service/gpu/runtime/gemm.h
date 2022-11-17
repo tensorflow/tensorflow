@@ -18,21 +18,14 @@ limitations under the License.
 
 #include "absl/container/node_hash_map.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
+#include "tensorflow/compiler/xla/runtime/state.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 
 namespace xla {
 namespace gpu {
 
-class GemmConfigCache {
- public:
-  const GemmConfig* Get(int64_t uid);
-  const GemmConfig* Set(int64_t uid, GemmConfig config);
-
- private:
-  mutable absl::Mutex mutex_;
-
-  absl::node_hash_map<int64_t, GemmConfig> configs_ ABSL_GUARDED_BY(mutex_);
-};
+// Keep GemmConfigs for all gemm/matmul instances in the executable.
+class GemmConfigs : public runtime::StateVector<GemmConfig> {};
 
 // Registers XLA Gpu runtime Gemm# custom calls.
 void RegisterGemmCustomCalls(runtime::DirectCustomCallRegistry& registry);
