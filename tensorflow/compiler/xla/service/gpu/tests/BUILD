@@ -853,20 +853,3 @@ tf_cc_test(
         "//tensorflow/tsl/platform:test_main",
     ],
 )
-
-py_test(
-    name = "mnist",
-    srcs = ["mnist.py"],
-    python_version = "PY3",
-    tags = [
-        "manual",
-        "no_oss",
-        "notap",
-        "requires-gpu-nvidia",
-        "requires-net:external",
-    ],
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "@absl_py//absl:app",
-    ],
-)
