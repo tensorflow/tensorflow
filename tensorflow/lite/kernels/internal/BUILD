@@ -5,6 +5,7 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_extra_arm_config_settings", 
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],

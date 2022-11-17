@@ -3,6 +3,8 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 # Config setting to use in select()s to distinguish open source build from
 # google internal build on configurable attributes.
 #

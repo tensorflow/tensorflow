@@ -15,6 +15,7 @@ load(
 package_group(name = "data_transfer_visibility")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],

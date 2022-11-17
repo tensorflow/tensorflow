@@ -1,6 +1,8 @@
 # copybara:uncomment(oss-unused) load("//net/grpc/go/build_defs:go_grpc_library.bzl", "go_grpc_library")
 load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 package_group(
     name = "friends",
     includes = [

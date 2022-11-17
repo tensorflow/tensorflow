@@ -3,6 +3,7 @@
 load("//tensorflow:tensorflow.bzl", "if_mobile", "if_not_mobile", "tf_cc_test", "tf_copts")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # The public targets are marked public individually
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],

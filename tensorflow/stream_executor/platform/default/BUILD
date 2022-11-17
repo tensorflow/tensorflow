@@ -3,7 +3,10 @@ load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 licenses(["notice"])
 
-package(default_visibility = ["//tensorflow/stream_executor:__subpackages__"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//tensorflow/stream_executor:__subpackages__"],
+)
 
 cc_library(
     name = "platform",

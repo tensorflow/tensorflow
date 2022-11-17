@@ -1,5 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cuda_library")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 package_group(
     name = "friends",
     packages = [

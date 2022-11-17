@@ -25,6 +25,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//tensorflow/compiler/xla/service:xla_compile.bzl", "xla_aot_compile")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )

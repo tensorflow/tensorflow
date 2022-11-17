@@ -21,6 +21,7 @@ load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
 load("//tensorflow/lite/core/c:special_rules.bzl", "vendor_delegate_allowlist")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/lite:__subpackages__"],
     licenses = ["notice"],
 )

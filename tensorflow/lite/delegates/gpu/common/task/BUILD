@@ -1,6 +1,7 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )

@@ -12,6 +12,7 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud", "get_co
 
 # TF to TFRT kernels conversion.
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )

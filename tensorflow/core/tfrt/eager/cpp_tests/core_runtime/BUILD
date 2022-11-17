@@ -3,6 +3,8 @@ load(
     "tf_cc_test",
 )
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 licenses(["notice"])
 
 tf_cc_test(

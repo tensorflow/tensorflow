@@ -3,6 +3,7 @@ load("//tensorflow/lite:special_rules.bzl", "op_resolver_internal_visibility_all
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],
 )

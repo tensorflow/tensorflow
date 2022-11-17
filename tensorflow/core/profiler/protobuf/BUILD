@@ -1,6 +1,7 @@
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/core/profiler:internal"],
     licenses = ["notice"],
 )

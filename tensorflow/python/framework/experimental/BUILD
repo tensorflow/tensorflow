@@ -3,6 +3,7 @@
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_python_pybind_extension")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )

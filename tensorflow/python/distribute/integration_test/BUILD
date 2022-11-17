@@ -2,7 +2,10 @@ load("//tensorflow/core/platform:distribute.bzl", "distribute_py_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
 
 distribute_py_test(
     name = "saved_model_test",

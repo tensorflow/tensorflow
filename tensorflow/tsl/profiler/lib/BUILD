@@ -9,6 +9,8 @@ load(
     "tf_profiler_pybind_cc_library_wrapper",
 )
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 cc_library(
     name = "context_types_hdrs",
     hdrs = ["context_types.h"],

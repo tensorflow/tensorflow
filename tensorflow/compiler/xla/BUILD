@@ -9,6 +9,7 @@ load(
 load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )

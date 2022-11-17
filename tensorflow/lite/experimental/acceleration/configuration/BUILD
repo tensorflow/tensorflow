@@ -24,6 +24,7 @@ load("//tensorflow/tsl/platform/default:build_config.bzl", "tf_proto_library_py"
 # copybara:comment_end
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],

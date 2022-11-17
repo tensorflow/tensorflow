@@ -29,6 +29,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/tf2xla:__subpackages__",
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",

@@ -9,6 +9,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/jit:__subpackages__",
         "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
