@@ -33,10 +33,23 @@ class InaccessibleTensorError(ValueError):
 
 @tf_export("errors.OperatorNotAllowedInGraphError", v1=[])
 class OperatorNotAllowedInGraphError(TypeError):
-  """An error is raised for unsupported operator in Graph execution.
+  """Raised when an unsupported operator is present in Graph execution.
 
-  For example, using a `tf.Tensor` as a Python `bool` in Graph execution
-  is not allowed.
+  For example, using a `tf.Tensor` as a Python `bool` inside a Graph will
+  raise `OperatorNotAllowedInGraphError`. Iterating over values inside a
+  `tf.Tensor` is also not supported in Graph execution.
+
+  Example:
+  >>> @tf.function
+  ... def iterate_over(t):
+  ...   a,b,c = t
+  ...   return a
+  >>>
+  >>> iterate_over(tf.constant([1, 2, 3]))
+  Traceback (most recent call last):
+  ...
+  OperatorNotAllowedInGraphError: ...
+
   """
   pass
 
@@ -230,7 +243,6 @@ class CancelledError(OpError):
     ...
   CancelledError: ...
 
-  @@__init__
   """
 
   def __init__(self, node_def, op, message, *args):
