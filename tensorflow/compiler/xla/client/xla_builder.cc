@@ -323,6 +323,38 @@ XlaOp XlaBuilderFriend::BuildPartitionId(XlaBuilder* builder,
   });
 }
 
+XlaOp XlaBuilderFriend::BuildSend(XlaBuilder* builder, XlaOp operand,
+                                  XlaOp token, const ChannelHandle& handle,
+                                  bool is_host_transfer) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto send_instr;
+    TF_ASSIGN_OR_RETURN(const Shape* shape, builder->GetShapePtr(operand));
+    // Send instruction produces a tuple of {aliased operand, U32 context,
+    // token}.
+    *send_instr.mutable_shape() =
+        ShapeUtil::MakeTupleShape({*shape, ShapeUtil::MakeShape(U32, {}),
+                                   ShapeUtil::MakeTokenShape()})
+            .ToProto();
+    send_instr.set_channel_id(handle.handle());
+    send_instr.set_is_host_transfer(is_host_transfer);
+    return builder->AddInstruction(std::move(send_instr), HloOpcode::kSend,
+                                   {operand, token});
+  });
+}
+
+XlaOp XlaBuilderFriend::BuildSendDone(XlaBuilder* builder, XlaOp operand,
+                                      const ChannelHandle& handle,
+                                      bool is_host_transfer) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto send_done_instr;
+    *send_done_instr.mutable_shape() = ShapeUtil::MakeTokenShape().ToProto();
+    send_done_instr.set_channel_id(handle.handle());
+    send_done_instr.set_is_host_transfer(is_host_transfer);
+    return builder->AddInstruction(std::move(send_done_instr),
+                                   HloOpcode::kSendDone, {operand});
+  });
+}
+
 XlaOp XlaBuilderFriend::BuildRngGetAndUpdateState(XlaBuilder* builder,
 
                                                   int64_t delta,
@@ -3612,24 +3644,10 @@ XlaOp XlaBuilder::SendWithToken(XlaOp operand, XlaOp token,
       return InvalidArgument("Send must use a device-to-device channel");
     }
 
-    // Send instruction produces a tuple of {aliased operand, U32 context,
-    // token}.
-    HloInstructionProto send_instr;
-    TF_ASSIGN_OR_RETURN(const Shape* shape, GetShapePtr(operand));
-    *send_instr.mutable_shape() =
-        ShapeUtil::MakeTupleShape({*shape, ShapeUtil::MakeShape(U32, {}),
-                                   ShapeUtil::MakeTokenShape()})
-            .ToProto();
-    send_instr.set_channel_id(handle.handle());
-    TF_ASSIGN_OR_RETURN(XlaOp send,
-                        AddInstruction(std::move(send_instr), HloOpcode::kSend,
-                                       {operand, token}));
-
-    HloInstructionProto send_done_instr;
-    *send_done_instr.mutable_shape() = ShapeUtil::MakeTokenShape().ToProto();
-    send_done_instr.set_channel_id(handle.handle());
-    return AddInstruction(std::move(send_done_instr), HloOpcode::kSendDone,
-                          {send});
+    XlaOp send_op = internal::XlaBuilderFriend::BuildSend(this, operand, token,
+                                                          handle, false);
+    return internal::XlaBuilderFriend::BuildSendDone(this, send_op, handle,
+                                                     false);
   });
 }
 

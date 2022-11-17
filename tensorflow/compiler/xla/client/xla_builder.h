@@ -121,6 +121,12 @@ struct XlaBuilderFriend {
 
   static XlaOp BuildPartitionId(XlaBuilder* builder, const Shape& shape);
 
+  static XlaOp BuildSend(XlaBuilder* builder, XlaOp operand, XlaOp token,
+                         const ChannelHandle& handle, bool is_host_transfer);
+  static XlaOp BuildSendDone(XlaBuilder* builder, XlaOp operand,
+                             const ChannelHandle& handle,
+                             bool is_host_transfer);
+
   static XlaOp BuildDomain(XlaBuilder* builder, XlaOp operand,
                            const OpSharding entry, const OpSharding exit,
                            const Shape& shape);

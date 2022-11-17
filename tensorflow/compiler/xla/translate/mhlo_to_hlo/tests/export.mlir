@@ -1471,6 +1471,58 @@ func.func @main(%token: !mhlo.token) -> !mhlo.token {
 // -----
 
 // CHECK:  HloModule
+func.func @send_0(%arg: tensor<3x4xi32>, %token: !mhlo.token) -> !mhlo.token attributes {execution_thread = "main"} {
+  %0 = "mhlo.send"(%arg, %token) {
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 2  // Device to host channel
+    >,
+    is_host_transfer = true
+  } : (tensor<3x4xi32>, !mhlo.token) -> !mhlo.token
+  func.return %0 : !mhlo.token
+}
+
+func.func @main(%arg: tensor<3x4xi32>, %token: !mhlo.token) -> !mhlo.token {
+  %0 = "mhlo.async_start"(%arg, %token) {called_computation = @send_0, execution_thread = "main"} : (tensor<3x4xi32>, !mhlo.token) -> !mhlo.async_bundle<tuple<tensor<3x4xi32>, !mhlo.token>, !mhlo.token, tensor<i32>>
+  %1 = "mhlo.async_done"(%0) {called_computation = @send_0, execution_thread = "main"} : (!mhlo.async_bundle<tuple<tensor<3x4xi32>, !mhlo.token>, !mhlo.token, tensor<i32>>) -> !mhlo.token
+  return %1 : !mhlo.token
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG:%.*]] = s32[3,4] parameter(0)
+// CHECK:  [[TOKEN:%.*]] = token[] parameter(1)
+// CHECK:  [[SEND:%.*]] = (s32[3,4], u32[], token[]) send(s32[3,4] [[ARG]], token[] [[TOKEN]]), channel_id=5, is_host_transfer
+// CHECK:  ROOT
+// CHECK-SAME:  token[] send-done((s32[3,4], u32[], token[]) [[SEND]]), channel_id=5
+
+// -----
+
+// CHECK:  HloModule
+func.func @send_0(%token: !mhlo.token) -> !mhlo.token attributes {execution_thread = "main"} {
+  %0 = "mhlo.send"(%token) {
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 1  // Device to device channel
+    >
+  } : (!mhlo.token) -> !mhlo.token
+  func.return %0 : !mhlo.token
+}
+
+func.func @main(%token: !mhlo.token) -> !mhlo.token {
+  %0 = "mhlo.async_start"(%token) {called_computation = @send_0, execution_thread = "main"} : (!mhlo.token) -> !mhlo.async_bundle<!mhlo.token, !mhlo.token, tensor<i32>>
+  %1 = "mhlo.async_done"(%0) {called_computation = @send_0, execution_thread = "main"} : (!mhlo.async_bundle<!mhlo.token, !mhlo.token, tensor<i32>>) -> !mhlo.token
+  return %1 : !mhlo.token
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[TOKEN:%.*]] = token[] parameter(0)
+// CHECK:  [[SEND:%.*]] = ((), u32[], token[]) send(() [[UNIT:%.*]], token[] [[TOKEN]]), channel_id=5
+// CHECK:  ROOT
+// CHECK-SAME:  token[] send-done(((), u32[], token[]) [[SEND]]), channel_id=5
+
+// -----
+
+// CHECK:  HloModule
 func.func @main(%arg: tensor<4x4xf32>, %size: tensor<i32>) -> tensor<4x4xf32> {
   %0 = "mhlo.set_dimension_size"(%arg, %size) {dimension = 1 : i64} : (tensor<4x4xf32>, tensor<i32>) -> tensor<4x4xf32>
   func.return %0 : tensor<4x4xf32>

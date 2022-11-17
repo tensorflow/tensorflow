@@ -909,6 +909,23 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
         ctx.builder, operands[0], copy_op.getIsCrossProgramPrefetch());
     return mlir::success();
   }
+  auto send_op = dyn_cast_or_null<SendOp>(callee.getBody().front().front());
+  if (send_op && SimplyReturnedOp(send_op)) {
+    xla::XlaOp operand;
+    if (operands.size() == 2)
+      operand = operands[0];
+    else
+      operand =
+          Tuple(ctx.builder, absl::Span<const xla::XlaOp>(operands).subspan(
+                                 0, operands.size() - 1));
+    xla::XlaOp token = operands[operands.size() - 1];
+
+    value_map[result] = xla::internal::XlaBuilderFriend::BuildSend(
+        ctx.builder, operand, token,
+        Convert_channel_handle(send_op.getChannelHandle()),
+        send_op.getIsHostTransfer());
+    return mlir::success();
+  }
 
   if (failed(ctx.converter->RunOnFunction(callee))) return failure();
   xla::XlaComputation& computation =
@@ -1042,6 +1059,14 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
   if (copy_op && SimplyReturnedOp(copy_op)) {
     value_map[op.getResult(0)] = xla::internal::XlaBuilderFriend::BuildCopyDone(
         ctx.builder, operand, xla::TypeToShape(copy_op.getType()));
+    return success();
+  }
+  auto send_op = dyn_cast_or_null<SendOp>(callee.getBody().front().front());
+  if (send_op && SimplyReturnedOp(send_op)) {
+    value_map[op.getResult(0)] = xla::internal::XlaBuilderFriend::BuildSendDone(
+        ctx.builder, operand,
+        Convert_channel_handle(send_op.getChannelHandle()),
+        send_op.getIsHostTransfer());
     return success();
   }
 
