@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
@@ -308,8 +311,8 @@ StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
 #endif
 
 using ConvCacheKey =
-    std::tuple<se::StreamExecutor*,
-               /* conv->ToString(HloPrintOptions::Canonical()) */ std::string>;
+    std::tuple<std::string /* stream_exec->device_description_str() */,
+               std::string /* conv->ToString(HloPrintOptions::Canonical()) */>;
 
 struct ConvCacheStats {
   int64_t cache_hits = 0;
@@ -325,15 +328,55 @@ ConvCacheKey AutotuneCacheKeyfromInstruction(
     const HloCustomCallInstruction* conv, se::StreamExecutor* se) {
   auto options = HloPrintOptions::Canonical();
   options.set_print_backend_config(true);
-  return std::make_tuple(se, conv->ToString(options));
+  return std::make_tuple(std::string(se->device_description_str()),
+                         conv->ToString(options));
 }
 
-absl::Mutex autotune_cache_lock(absl::kConstInit);
-auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_lock) =
+absl::Mutex autotune_cache_mu(absl::kConstInit);
+auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
     *new absl::flat_hash_map<ConvCacheKey, AutotuneResult>();
-auto& autotune_cache_stats ABSL_GUARDED_BY(autotune_cache_lock) =
+auto& autotune_cache_stats ABSL_GUARDED_BY(autotune_cache_mu) =
     *new ConvCacheStats();
+
 }  // anonymous namespace
+
+void GpuConvAlgorithmPicker::ClearAutotuneResults() {
+  absl::MutexLock lock(&autotune_cache_mu);
+  autotune_cache.clear();
+}
+
+Status GpuConvAlgorithmPicker::WriteAutotuneResults(AutotuneResults* results) {
+  absl::MutexLock lock(&autotune_cache_mu);
+
+  for (const auto& [k, result] : autotune_cache) {
+    const auto& [device_description_str, hlo] = k;
+    auto& entry = *results->add_convs();
+    entry.set_device(device_description_str);
+    entry.set_hlo(hlo);
+    *entry.mutable_result() = result;
+  }
+
+  // Sort the results so they're deterministic.
+  std::sort(results->mutable_convs()->pointer_begin(),
+            results->mutable_convs()->pointer_end(),
+            [](const auto* a, const auto* b) {
+              return std::make_pair(absl::string_view(a->device()),
+                                    absl::string_view(a->hlo())) <
+                     std::make_pair(absl::string_view(b->device()),
+                                    absl::string_view(b->hlo()));
+            });
+  return OkStatus();
+}
+
+Status GpuConvAlgorithmPicker::LoadAutotuneResults(
+    const AutotuneResults& results) {
+  absl::MutexLock lock(&autotune_cache_mu);
+  for (const auto& result : results.convs()) {
+    autotune_cache[std::make_tuple(result.device(), result.hlo())] =
+        result.result();
+  }
+  return OkStatus();
+}
 
 StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
     const HloCustomCallInstruction* instr) {
@@ -354,7 +397,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
   // models).
   ConvCacheKey key = AutotuneCacheKeyfromInstruction(instr, stream_exec_);
   {
-    absl::MutexLock lock(&autotune_cache_lock);
+    absl::MutexLock autotune_lock(&autotune_cache_mu);
     auto it = autotune_cache.find(key);
     if (it != autotune_cache.end()) {
       autotune_cache_stats.cache_hits++;
@@ -396,11 +439,16 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
 #endif
   }
 
-  if (result_or.ok()) {
-    absl::MutexLock lock(&autotune_cache_lock);
-    CHECK(autotune_cache.insert({key, result_or.value()}).second);
+  if (!result_or.ok()) {
+    return result_or;
   }
-  return result_or;
+
+  // Insert our result into the cache.  After we released the lock on
+  // autotune_cache_mu, another autotuning job may have run for this same key on
+  // another GPU on the machine.  If so, use its result.
+  absl::MutexLock autotune_lock(&autotune_cache_mu);
+  auto [it, inserted] = autotune_cache.insert({key, result_or.value()});
+  return it->second;
 }
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
@@ -1039,7 +1087,7 @@ StatusOr<bool> GpuConvAlgorithmPicker::Run(
   }
 
   {
-    absl::MutexLock lock(&autotune_cache_lock);
+    absl::MutexLock lock(&autotune_cache_mu);
     autotune_cache_stats.LogStats();
   }
 
