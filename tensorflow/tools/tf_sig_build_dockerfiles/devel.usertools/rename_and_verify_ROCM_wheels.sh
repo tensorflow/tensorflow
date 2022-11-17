@@ -24,10 +24,6 @@ for wheel in /tf/pkg/*.whl; do
   # Change linux to manylinux
   NEW_TF_WHEEL=${wheel/linux/"manylinux2014"}
 
-  # Underscores need to be dashes; fix if nightly or regular
-  NEW_TF_WHEEL=${NEW_TF_WHEEL/tf_nightly_rocm/"tf-nightly-rocm"}
-  NEW_TF_WHEEL=${NEW_TF_WHEEL/tensorflow_rocm/"tensorflow-rocm"}
-
   mv $wheel $NEW_TF_WHEEL
   auditwheel show $NEW_TF_WHEEL
 done
