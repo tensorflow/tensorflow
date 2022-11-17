@@ -19,8 +19,15 @@
 # "manylinux_xyz" into the wheel filename.
 set -euxo pipefail
 
-TF_WHEEL=$(ls -Art /tf/pkg/tensorflow*-linux_x86_64.whl | tail -n 1)
-echo "Checking and renaming $TF_WHEEL..."
-NEW_TF_WHEEL=${TF_WHEEL/linux/"manylinux2014"}
-mv $TF_WHEEL $NEW_TF_WHEEL
-auditwheel show $NEW_TF_WHEEL
+for wheel in /tf/pkg/*.whl; do
+  echo "Checking and renaming $wheel..."
+  # Change linux to manylinux
+  NEW_TF_WHEEL=${wheel/linux/"manylinux2014"}
+
+  # Underscores need to be dashes; fix if nightly or regular
+  NEW_TF_WHEEL=${NEW_TF_WHEEL/tf_nightly_rocm/"tf-nightly-rocm"}
+  NEW_TF_WHEEL=${NEW_TF_WHEEL/tensorflow_rocm/"tensorflow-rocm"}
+
+  mv $wheel $NEW_TF_WHEEL
+  auditwheel show $NEW_TF_WHEEL
+done
