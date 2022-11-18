@@ -2282,7 +2282,7 @@ StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     AddCalledComputation(*computation, &instr);
   }
   for (const auto& pair : output_operand_aliasing) {
-    auto aliasing = instr.add_custom_call_output_operand_aliasing();
+    auto aliasing = instr.add_output_operand_aliasing();
     aliasing->set_operand_index(pair.second.first);
     for (int64_t index : pair.second.second) {
       aliasing->add_operand_shape_index(index);

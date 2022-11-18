@@ -1209,6 +1209,30 @@ Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
           param_no, fusion->ToString().c_str());
     }
   }
+  const HloFusionInstruction* casted_fusion =
+      DynCast<const HloFusionInstruction>(fusion);
+  for (const auto& pair : casted_fusion->output_to_operand_aliasing()) {
+    TF_RET_CHECK(pair.second.first < casted_fusion->operand_count())
+        << "Invalid aliasing operand index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(
+        casted_fusion->operand(pair.second.first)->shape(), pair.second.second))
+        << "Invalid aliasing operand shape index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(casted_fusion->shape(), pair.first))
+        << "Invalid aliasing output shape index.";
+    const Shape& output_subshape =
+        ShapeUtil::GetSubshape(casted_fusion->shape(), pair.first);
+    const Shape& operand_subshape = ShapeUtil::GetSubshape(
+        casted_fusion->operand(pair.second.first)->shape(), pair.second.second);
+    if (opts_.layout_sensitive) {
+      TF_RET_CHECK(operand_subshape == output_subshape)
+          << "Different aliasing shapes: " << operand_subshape.ToString()
+          << " vs " << output_subshape.ToString();
+    } else {
+      TF_RET_CHECK(ShapeUtil::Compatible(output_subshape, operand_subshape))
+          << "Different aliasing shapes: " << operand_subshape.ToString()
+          << " vs " << output_subshape.ToString();
+    }
+  }
   return OkStatus();
 }
 

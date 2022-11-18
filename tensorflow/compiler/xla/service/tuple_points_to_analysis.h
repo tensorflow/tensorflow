@@ -258,6 +258,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status HandleSend(HloInstruction* send) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
+  Status HandleFusion(HloInstruction* fusion) override;
   Status HandleOptimizationBarrier(HloInstruction* barrier) override;
 
   std::string ToString() const;
