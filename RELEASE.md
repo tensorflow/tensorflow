@@ -14,6 +14,14 @@
             *   Using functools.wraps on a function with different signature
             *   Using functools.partial with an invalid tf.function input
 
+*   `tfconfig.experimental.enable_mlir_graph_optimization`:
+
+    * Experimental API removed.
+
+*   `tfconfig.experimental.disable_mlir_graph_optimization`:
+
+    * Experimental API removed.
+
 # Known Caveats
 
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
