@@ -1047,8 +1047,11 @@ static Value EncodeMemRef(ImplicitLocOpBuilder &b, MemRefType memref_ty,
   // dynamic values into the struct after all statically know values leads to a
   // better canonicalization and cleaner final LLVM IR.
   if (desc.has_value()) {
+    Value offset = b.create<ConstantOp>(i64(memref_offset));
     auto ptr = LLVM::LLVMPointerType::get(b.getContext());
-    Value data = b.create<LLVM::BitcastOp>(ptr, desc->alignedPtr(b, loc));
+    Value data = b.create<LLVM::GEPOp>(
+        ptr, b.getI8Type(),
+        b.create<LLVM::BitcastOp>(ptr, desc->alignedPtr(b, loc)), offset);
     memref = b.create<LLVM::InsertValueOp>(memref, data, 2);
   }
 
@@ -1196,7 +1199,6 @@ FailureOr<Value> MemrefRetEncoding::Decode(ImplicitLocOpBuilder &b, Type type,
                                              b.create<LLVM::LoadOp>(ptr, gep));
   memref_desc.setAllocatedPtr(b, loc, data_ptr);
   memref_desc.setAlignedPtr(b, loc, data_ptr);
-  memref_desc.setConstantOffset(b, loc, 0);
 
   // Get the statically known strides and offset from the memref type.
   SmallVector<int64_t> strides;
@@ -1204,6 +1206,8 @@ FailureOr<Value> MemrefRetEncoding::Decode(ImplicitLocOpBuilder &b, Type type,
   if (failed(getStridesAndOffset(memref_type, strides, memref_offset))) {
     return failure();
   }
+
+  memref_desc.setConstantOffset(b, loc, memref_offset);
 
   // Fill memref descriptor dimensions and strides.
   for (unsigned i = 0; i < memref_type.getRank(); ++i) {
