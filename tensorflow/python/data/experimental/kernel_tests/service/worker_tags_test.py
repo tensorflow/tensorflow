@@ -135,7 +135,7 @@ class WorkerTagsTest(data_service_test_base.TestBase, parameterized.TestCase):
         worker_tags=[_COLOCATED_WORKER_TAG])
     num_consumers = 4
     dataset = self.make_coordinated_read_dataset(cluster, num_consumers)
-    get_next = self.getNext(dataset)
+    get_next = self.getNext(dataset, requires_initialization=True)
     results = [self.evaluate(get_next()) for _ in range(200)]
     self.checkCoordinatedReadGroups(results, num_consumers)
 

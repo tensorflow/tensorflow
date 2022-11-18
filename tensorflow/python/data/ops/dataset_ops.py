@@ -5157,28 +5157,18 @@ class RandomDataset(DatasetSource):
     self._seed, self._seed2 = random_seed.get_seed(seed)
     self._rerandomize = rerandomize_each_iteration
     self._name = name
-    if (tf2.enabled() and
-        (context.executing_eagerly() or ops.inside_function())):
-      if (rerandomize_each_iteration is not None or
-          tf_compat.forward_compatible(2022, 12, 17)):
-        variant_tensor = ged_ops.random_dataset_v2(
-            seed=self._seed,
-            seed2=self._seed2,
-            seed_generator=gen_dataset_ops.dummy_seed_generator(),
-            rerandomize_each_iteration=self._rerandomize,
-            **self._common_args)
-      else:
-        variant_tensor = ged_ops.random_dataset(
-            seed=self._seed,
-            seed2=self._seed2,
-            **self._common_args)
+    if (rerandomize_each_iteration is not None or
+        tf_compat.forward_compatible(2022, 12, 17)):
+      if not tf2.enabled() and rerandomize_each_iteration:
+        warnings.warn("In TF 1, the `rerandomize_each_iteration=True` option "
+                      "is only supported for repeat-based epochs.")
+      variant_tensor = ged_ops.random_dataset_v2(
+          seed=self._seed,
+          seed2=self._seed2,
+          seed_generator=gen_dataset_ops.dummy_seed_generator(),
+          rerandomize_each_iteration=self._rerandomize,
+          **self._common_args)
     else:
-      if rerandomize_each_iteration is not None:
-        warnings.warn("The `rerandomize_each_iteration` argument is ignored "
-                      "because it is only available when running in TF2 eager "
-                      "mode or inside a `tf.function`. The mode is "
-                      f"{'TF2' if tf2.enabled() else 'TF1'} "
-                      f"{'eager' if context.executing_eagerly() else 'graph'}.")
       variant_tensor = ged_ops.random_dataset(
           seed=self._seed,
           seed2=self._seed2,

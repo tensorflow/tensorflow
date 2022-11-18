@@ -93,7 +93,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
       ], weights)
       dataset = dataset.take(num_samples)
 
-      next_element = self.getNext(dataset)
+      next_element = self.getNext(dataset, requires_initialization=True)
       freqs = np.zeros([classes])
       for _ in range(num_samples):
         freqs[self.evaluate(next_element())] += 1
@@ -116,7 +116,8 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     sample_dataset = dataset_ops.Dataset.sample_from_datasets(
         datasets, weights=weights, stop_on_empty_dataset=True)
 
-    samples_list = self.getIteratorOutput(self.getNext(sample_dataset))
+    samples_list = self.getIteratorOutput(self.getNext(
+        sample_dataset, requires_initialization=True))
     self.assertEqual(samples_list.count(-1), 1)
 
   @combinations.generate(
@@ -133,7 +134,8 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     sample_dataset = dataset_ops.Dataset.sample_from_datasets(
         datasets, weights=weights, stop_on_empty_dataset=False).take(100)
 
-    samples_list = self.getIteratorOutput(self.getNext(sample_dataset))
+    samples_list = self.getIteratorOutput(self.getNext(
+        sample_dataset, requires_initialization=True))
     self.assertLen(samples_list, 100)
     self.assertEqual(samples_list.count(-1), 1)
 
@@ -149,7 +151,8 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     ]
     sample_dataset = dataset_ops.Dataset.sample_from_datasets(
         datasets, weights=weights, stop_on_empty_dataset=True)
-    self.assertDatasetProduces(sample_dataset, [1, 1])
+    self.assertDatasetProduces(sample_dataset, [1, 1],
+                               requires_initialization=True)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
@@ -162,7 +165,8 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     ]
     sample_dataset = dataset_ops.Dataset.sample_from_datasets(
         datasets, weights=weights, stop_on_empty_dataset=True)
-    self.assertDatasetProduces(sample_dataset, [])
+    self.assertDatasetProduces(sample_dataset, [],
+                               requires_initialization=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testSampleFromDatasetsSkippingDatasetsWithZeroWeight(self):
@@ -202,7 +206,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     ds = dataset_ops.Dataset.sample_from_datasets([ds1, ds2],
                                                   weights=[0.3, 0.7])
     ds = ds.flat_map(lambda x: x)
-    next_element = self.getNext(ds)
+    next_element = self.getNext(ds, requires_initialization=True)
     self.evaluate(next_element())
 
   @combinations.generate(test_base.default_test_combinations())
