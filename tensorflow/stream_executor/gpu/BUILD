@@ -2,7 +2,7 @@
 #   GPU-platform specific StreamExecutor support code.
 
 load(
-    "//tensorflow/stream_executor:build_defs.bzl",
+    "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
 load("//tensorflow:tensorflow.bzl", "tf_copts")
@@ -12,6 +12,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/tf2xla:__subpackages__",
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",

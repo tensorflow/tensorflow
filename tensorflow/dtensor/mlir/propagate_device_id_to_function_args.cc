@@ -64,9 +64,9 @@ llvm::SmallVector<FunctionToChangeInfo, 4> FindFunctionsToRewrite(
     llvm::StringRef symbol;
     if (auto call_op =
             llvm::dyn_cast<mlir::TF::StatefulPartitionedCallOp>(op)) {
-      symbol = call_op.f();
+      symbol = call_op.getF();
     } else {
-      auto symbol_ref = llvm::dyn_cast<mlir::TF::PartitionedCallOp>(op).f();
+      auto symbol_ref = llvm::dyn_cast<mlir::TF::PartitionedCallOp>(op).getF();
       if (!symbol_ref.isa<mlir::FlatSymbolRefAttr>()) return;
       symbol = symbol_ref.getRootReference().getValue();
     }
@@ -125,15 +125,15 @@ mlir::LogicalResult PrependDeviceIdToCallsites(mlir::OpBuilder* builder,
           llvm::dyn_cast<mlir::TF::StatefulPartitionedCallOp>(op)) {
     new_call = builder->create<mlir::TF::StatefulPartitionedCallOp>(
         op->getLoc(), op->getResultTypes(), new_operands,
-        stateful_partitioned_call.f(), stateful_partitioned_call.config(),
-        stateful_partitioned_call.config_proto(),
-        stateful_partitioned_call.executor_type());
+        stateful_partitioned_call.getF(), stateful_partitioned_call.getConfig(),
+        stateful_partitioned_call.getConfigProto(),
+        stateful_partitioned_call.getExecutorType());
   } else {
     auto partitioned_call = llvm::cast<mlir::TF::PartitionedCallOp>(op);
     new_call = builder->create<mlir::TF::PartitionedCallOp>(
-        op->getLoc(), op->getResultTypes(), new_operands, partitioned_call.f(),
-        partitioned_call.config(), partitioned_call.config_proto(),
-        partitioned_call.executor_type());
+        op->getLoc(), op->getResultTypes(), new_operands,
+        partitioned_call.getF(), partitioned_call.getConfig(),
+        partitioned_call.getConfigProto(), partitioned_call.getExecutorType());
   }
 
   for (auto results : llvm::zip(op->getResults(), new_call->getResults()))

@@ -90,7 +90,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 80
+// Next ID: 81
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -282,10 +282,9 @@ message HloInstructionProto {
   // kCustomCall.
   bool custom_call_has_side_effect = 65;
 
-  // A list of CustomCallOutputOperandAliasing pairs that specifies aliasing
-  // buffers between output and operands for kCustomCall.
-  repeated xla.CustomCallOutputOperandAliasing
-      custom_call_output_operand_aliasing = 74;
+  // A list of OutputOperandAliasing pairs that specifies aliasing buffers
+  // between output and operands for kCustomCall and kFusion.
+  repeated xla.OutputOperandAliasing output_operand_aliasing = 74;
 
   // Specifies the desired schedule for the custom-call. The field is only
   // present for custom-call.
@@ -748,9 +747,6 @@ message EntryFunctionAttributes {
 // Encodes the underlying Xla runtime executable compiled from the XLA module.
 message XlaRuntimeExecutableProto {
   HloModuleProto hlo_module_proto = 1;
-
-  // XLA-specific attributes of the executable's entry function.
-  EntryFunctionAttributes entry_func_attrs = 2;
 
   // TODO(b/232263665)): We need to know the TargetMachine this executable was
   // compiled for, otherwise we can accidentally use illegal instrauctions (e.g.

@@ -2,6 +2,7 @@ load("//tensorflow:pytype.default.bzl", "pytype_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:__subpackages__",
     ],

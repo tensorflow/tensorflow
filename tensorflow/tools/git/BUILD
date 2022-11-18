@@ -6,6 +6,7 @@
 load("//tensorflow:tensorflow.bzl", "if_oss")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )

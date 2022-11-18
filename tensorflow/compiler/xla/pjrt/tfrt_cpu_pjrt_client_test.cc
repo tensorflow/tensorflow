@@ -69,7 +69,7 @@ ENTRY DonationWithExecutionError() -> f32[2, 2] {
                                     /*options=*/{});
   ASSERT_FALSE(result.ok());
   EXPECT_THAT(result.status().error_message(),
-              ::testing::HasSubstr("Donation requested for invalid buffer"));
+              ::testing::HasSubstr("buffer has been deleted or donated."));
 }
 
 }  // namespace

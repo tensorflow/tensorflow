@@ -179,6 +179,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params),
             state_(params.dataset->initial_state_) {}
 
+      bool SymbolicCheckpointCompatible() const override { return true; }
+
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
@@ -274,13 +276,11 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
             dataset()->captured_func_->CheckExternalState()));
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-        if (!state_.empty()) {
-          TF_RETURN_IF_ERROR(
-              writer->WriteScalar(full_name("state_size"), state_.size()));
-          for (int idx = 0; idx < state_.size(); idx++) {
-            TF_RETURN_IF_ERROR(writer->WriteTensor(
-                full_name(strings::StrCat("state[", idx, "]")), state_[idx]));
-          }
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(full_name("state_size"), state_.size()));
+        for (int idx = 0; idx < state_.size(); idx++) {
+          TF_RETURN_IF_ERROR(writer->WriteTensor(
+              full_name(strings::StrCat("state[", idx, "]")), state_[idx]));
         }
         return OkStatus();
       }
@@ -289,16 +289,13 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-        if (reader->Contains(full_name("state_size"))) {
-          int64_t size;
-          TF_RETURN_IF_ERROR(
-              reader->ReadScalar(full_name("state_size"), &size));
-          state_.resize(size);
-          for (int idx = 0; idx < size; idx++) {
-            TF_RETURN_IF_ERROR(reader->ReadTensor(
-                ctx->flr(), full_name(strings::StrCat("state[", idx, "]")),
-                &state_[idx]));
-          }
+        int64_t size;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("state_size"), &size));
+        state_.resize(size);
+        for (int idx = 0; idx < size; idx++) {
+          TF_RETURN_IF_ERROR(reader->ReadTensor(
+              ctx->flr(), full_name(strings::StrCat("state[", idx, "]")),
+              &state_[idx]));
         }
         return OkStatus();
       }

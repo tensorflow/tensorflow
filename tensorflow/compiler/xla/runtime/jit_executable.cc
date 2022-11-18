@@ -25,8 +25,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/STLExtras.h"
-#include "tensorflow/compiler/xla/mlir/utils/runtime/constraints.h"
+#include "tensorflow/compiler/xla/mlir/runtime/utils/constraints.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
+#include "tfrt/concurrency/async_value.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
@@ -38,8 +39,8 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
-using tfrt::MakeAvailableAsyncValueRef;
-using tfrt::MakeErrorAsyncValueRef;
+using tsl::MakeAvailableAsyncValueRef;
+using tsl::MakeErrorAsyncValueRef;
 
 using Specialization = JitExecutable::Specialization;
 
@@ -58,7 +59,7 @@ static bool HasValueConstraints(Span<const ArgumentConstraint> constraints) {
 // Returns true if all function operands have statically known shape.
 static bool HasStaticShapeOperands(const FunctionType& signature) {
   auto is_dynamic = [](Span<const int64_t> sizes) -> bool {
-    return llvm::any_of(sizes, mlir::ShapedType::isDynamic);
+    return llvm::any_of(sizes, MemrefType::IsDynamic);
   };
 
   for (unsigned i = 0; i < signature.num_operands(); ++i) {
@@ -79,7 +80,7 @@ static bool HasStaticShapeOperands(const FunctionType& signature) {
 
     // All other types are non-shaped and thus have "statically known shape".
 
-    // TODO(ezhulenev): Run time types might need to support type interfaces or
+    // TODO(ezhulenev): Run-time types might need to support type interfaces or
     // a hierarchy with a base `ShapedType` so that users can define their own
     // types that can participate in shape specialization. This becomes
     // complicated for container-like types (e.g. async value) that might

@@ -24,6 +24,7 @@ load("//tensorflow/tsl/platform/default:build_config.bzl", "tf_proto_library_py"
 # copybara:comment_end
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -141,11 +142,11 @@ cc_test(
 
 cc_library(
     name = "delegate_registry",
-    srcs = ["delegate_registry.cc"],
     hdrs = ["delegate_registry.h"],
     deps = [
         ":configuration_fbs",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -174,6 +175,7 @@ cc_library(
     srcs = ["nnapi_plugin.cc"],
     hdrs = ["nnapi_plugin.h"],
     visibility = nnapi_plugin_impl_visibility_allowlist() + [
+        "//tensorflow/lite/core/experimental/acceleration/configuration/c:__pkg__",
         "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
     ],
     deps = [
@@ -250,6 +252,7 @@ cc_library(
         "//conditions:default": [],
     }),
     visibility = [
+        "//tensorflow/lite/core/experimental/acceleration/configuration/c:__pkg__",
         "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
     ],
     deps = [

@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
     ],
@@ -95,6 +96,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/core/tools:verifier",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:constants",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
         "//tensorflow/lite/schema:schema_fbs",
@@ -111,6 +113,7 @@ cc_test(
         "//tensorflow/lite:model_builder",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:call",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_mobilenet_model",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:mini_benchmark_test_helper",

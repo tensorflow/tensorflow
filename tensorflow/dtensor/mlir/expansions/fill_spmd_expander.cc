@@ -18,7 +18,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/convert_op_folder.h"
+#include "tensorflow/compiler/xla/mlir_hlo/utils/convert_op_folder.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_location.h"
@@ -32,7 +32,7 @@ namespace dtensor {
 StatusOr<mlir::Operation*> FillSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto original_fill = mlir::cast<mlir::TF::FillOp>(op);
   TF_ASSIGN_OR_RETURN(auto dims_layout,
-                      ExtractLayoutFromOperand(original_fill.dims()));
+                      ExtractLayoutFromOperand(original_fill.getDims()));
   if (!dims_layout.has_value()) {
     return errors::InvalidArgument(
         "Failed during SPMD expansion of tf.FillOp. Layout of dimension "
@@ -65,15 +65,17 @@ StatusOr<mlir::Operation*> FillSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto int_type = mlir::RankedTensorType::get(
       static_cast<int64>(shard_values.size()), builder.getIntegerType(32));
   auto int_attr = mlir::DenseIntElementsAttr::get(int_type, shard_values);
-  auto target_type_attr = mlir::hlo::convertElementsAttr(
-      int_attr,
-      original_fill.dims().getType().cast<mlir::TensorType>().getElementType());
+  auto target_type_attr =
+      mlir::hlo::convertElementsAttr(int_attr, original_fill.getDims()
+                                                   .getType()
+                                                   .cast<mlir::TensorType>()
+                                                   .getElementType());
 
   auto location = DT_LOC(op);
   auto num_shards =
       builder.create<mlir::TF::ConstOp>(location, target_type_attr);
   // Divide the global shape by the sharding spec.
-  auto div = builder.create<mlir::TF::DivOp>(location, original_fill.dims(),
+  auto div = builder.create<mlir::TF::DivOp>(location, original_fill.getDims(),
                                              num_shards.getResult());
   // Copy over static shape information if available
   auto global_output_type =
@@ -83,8 +85,8 @@ StatusOr<mlir::Operation*> FillSPMDExpander::ExpandOp(mlir::Operation* op) {
       LocalTypeFromGlobalType(output_layout.value(), global_output_type));
 
   auto new_fill = builder.create<mlir::TF::FillOp>(
-      location, local_type, div.getResult(), original_fill.value());
-  original_fill.getResult().replaceAllUsesWith(new_fill.output());
+      location, local_type, div.getResult(), original_fill.getValue());
+  original_fill.getResult().replaceAllUsesWith(new_fill.getOutput());
   original_fill.erase();
   return InferSPMDExpandedLocalShape(new_fill);
 }
@@ -94,8 +96,9 @@ StatusOr<llvm::DenseMap<int, Layout>> FillSPMDExpander::ComputeLayoutForward(
   TF_ASSIGN_OR_RETURN(auto mesh, ExtractDeviceMeshEnclosingCluster(op));
   // Always set replicated layout for output.
   return llvm::DenseMap<int, Layout>(
-      {{0, Layout::ReplicatedOnMesh(
-               mesh, ValueRank(llvm::cast<mlir::TF::FillOp>(op).output()))}});
+      {{0,
+        Layout::ReplicatedOnMesh(
+            mesh, ValueRank(llvm::cast<mlir::TF::FillOp>(op).getOutput()))}});
 }
 
 StatusOr<llvm::DenseMap<int, Layout>> FillSPMDExpander::ComputeLayoutBackward(

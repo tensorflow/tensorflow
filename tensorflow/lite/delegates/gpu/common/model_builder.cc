@@ -2687,7 +2687,7 @@ class UnpackOperationParser : public TFLiteOperationParser {
       // Adding Identity reshape that will be removed.
       Node* node = graph->NewNode();
       node->operation.type = ToString(OperationType::RESHAPE);
-      RETURN_IF_ERROR(reader->AddInput(node, 1));
+      RETURN_IF_ERROR(reader->AddInput(node, 0));
       RETURN_IF_ERROR(reader->AddOutputs(node));
       // New shape comes from output shape.
       ReshapeAttributes attr;

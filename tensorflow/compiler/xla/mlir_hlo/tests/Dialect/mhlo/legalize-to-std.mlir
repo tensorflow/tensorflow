@@ -193,7 +193,7 @@ func.func @iota.const.bf16() -> tensor<4xbf16> {
 func.func @iota.const.complex.f32() -> tensor<4xcomplex<f32>> {
   // CHECK-NEXT: [[REAL:%.*]] = arith.constant dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<4xf32>
   // CHECK-NEXT: [[IMAG:%.*]] = arith.constant dense<0.000000e+00> : tensor<4xf32>
-  // CHECK-NEXT: [[COMPLEX:%.*]] = mhlo.complex([[REAL]], [[IMAG]])
+  // CHECK-NEXT: [[COMPLEX:%.*]] = mhlo.complex [[REAL]], [[IMAG]]
   %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xcomplex<f32>>
   // CHECK-NEXT: return [[COMPLEX]] : tensor<4xcomplex<f32>>
   func.return %0 : tensor<4xcomplex<f32>>
@@ -203,7 +203,7 @@ func.func @iota.const.complex.f32() -> tensor<4xcomplex<f32>> {
 func.func @iota.const.complex.f64() -> tensor<4xcomplex<f64>> {
   // CHECK-NEXT: [[REAL:%.*]] = arith.constant dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<4xf64>
   // CHECK-NEXT: [[IMAG:%.*]] = arith.constant dense<0.000000e+00> : tensor<4xf64>
-  // CHECK-NEXT: [[COMPLEX:%.*]] = mhlo.complex([[REAL]], [[IMAG]])
+  // CHECK-NEXT: [[COMPLEX:%.*]] = mhlo.complex [[REAL]], [[IMAG]]
   %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xcomplex<f64>>
   // CHECK-NEXT: return [[COMPLEX]] : tensor<4xcomplex<f64>>
   func.return %0 : tensor<4xcomplex<f64>>

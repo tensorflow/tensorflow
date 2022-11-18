@@ -71,7 +71,7 @@ std::unique_ptr<OperationPass<void>> CreateLegalizeTfTypesPass();
 /// Adds the TF to XLA via TF2XLA rewrite patterns to the pattern list.
 /// `prefer_tf2xla` means an op will be included iff it is not in
 /// `MlirLegalizedUnderPreferTf2XlaSet`. `!prefer_tf2xla` mean an op will be
-/// included iff it is in `IsOpAllowedTf2XlaFallback`.
+/// included if there is no native MLIR legalization for the op.
 void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
                                           RewritePatternSet& patterns,
                                           MLIRContext* ctx,
@@ -91,7 +91,7 @@ void PopulateLegalizeTfQuantizationPatterns(MLIRContext* context,
                                             RewritePatternSet* patterns);
 
 /// Checks whether the op is supported by the Tf2Xla fallback for legalization.
-bool IsOpAllowedTf2XlaFallback(Operation* op);
+bool HasTf2XlaFallback(Operation* op);
 
 /// Lowers from TF dialect's control flow to HLO dialect's control flow.
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFControlFlowPass();

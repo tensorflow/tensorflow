@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/types.h"
-#include "tensorflow/tsl/util/test_log.pb.h"
+#include "tensorflow/tsl/protobuf/test_log.pb.h"
 
 namespace tsl {
 

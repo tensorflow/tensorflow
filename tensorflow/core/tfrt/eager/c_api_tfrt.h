@@ -265,8 +265,6 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
 
   std::vector<std::string> GetLoggedOpsTestonly() override;
 
-  bool UseTfrtDistributedRuntime() { return use_tfrt_distributed_runtime_; }
-
 #if !defined(IS_MOBILE_PLATFORM)
   void SetDistributedManager(
       std::unique_ptr<tensorflow::ImmediateExecutionDistributedManager>

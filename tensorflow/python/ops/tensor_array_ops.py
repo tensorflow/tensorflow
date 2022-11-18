@@ -1182,9 +1182,9 @@ class TensorArray:
 
 
     >>> ta = tf.TensorArray(tf.int32, size=3)
-    >>> ta.write(0, tf.constant([1, 2]))
-    >>> ta.write(1, tf.constant([3, 4]))
-    >>> ta.write(2, tf.constant([5, 6]))
+    >>> ta = ta.write(0, tf.constant([1, 2]))
+    >>> ta = ta.write(1, tf.constant([3, 4]))
+    >>> ta = ta.write(2, tf.constant([5, 6]))
     >>> ta.stack()
     <tf.Tensor: shape=(3, 2), dtype=int32, numpy=
     array([[1, 2],

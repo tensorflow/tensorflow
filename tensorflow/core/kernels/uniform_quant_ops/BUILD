@@ -16,6 +16,7 @@ load(
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_kernel_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     features = ["-layering_check"],
     licenses = ["notice"],
@@ -41,6 +42,7 @@ filegroup(
         "uniform_dequantize_op.cc",
         "uniform_requantize_op.cc",
         "uniform_quantized_dot_ops.cc",
+        "uniform_quantized_convolution_ops.cc",
         "uniform_quantized_clip_by_value_op.cc",
     ],
     visibility = ["//tensorflow:__subpackages__"],
@@ -52,6 +54,7 @@ tf_kernel_library(
         "uniform_dequantize_op.cc",
         "uniform_quantize_op.cc",
         "uniform_quantized_clip_by_value_op.cc",
+        "uniform_quantized_convolution_ops.cc",
         "uniform_quantized_dot_ops.cc",
         "uniform_requantize_op.cc",
     ],
@@ -60,6 +63,8 @@ tf_kernel_library(
         ":tensor_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/util/quantization:uniform_quant_ops_params",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
     ],
@@ -137,6 +142,22 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "uniform_quantized_convolution_ops_test",
+    size = "small",
+    srcs = ["uniform_quantized_convolution_ops_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:protobuf",
     ],
 )
 

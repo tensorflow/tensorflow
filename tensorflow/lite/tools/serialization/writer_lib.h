@@ -17,9 +17,14 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_SERIALIZATION_WRITER_LIB_H_
 #define TENSORFLOW_LITE_TOOLS_SERIALIZATION_WRITER_LIB_H_
 #include <iostream>
+#include <memory>
+#include <set>
 #include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
@@ -52,13 +57,16 @@ class ModelWriter {
 
   // Construct a writer for the specified `interpreter`. Then, use
   // .Write() or .GetBuffer(...) to extract the data.
-  explicit ModelWriter(Interpreter* interpreter);
+  explicit ModelWriter(Interpreter* interpreter,
+                       bool serialize_dims_signature = true);
 
   // Same as above, except takes subgraphs as input.
-  explicit ModelWriter(const std::vector<Subgraph*>& subgraphs);
+  explicit ModelWriter(const std::vector<Subgraph*>& subgraphs,
+                       bool serialize_dims_signature = true);
 
   // For initializing the ModelWriter internal data.
-  void Init(const std::vector<Subgraph*>& subgraphs);
+  void Init(const std::vector<Subgraph*>& subgraphs,
+            bool serialize_dims_signature);
 
   // Get a buffer and size of a serialized flatbuffer.
   TfLiteStatus GetBuffer(std::unique_ptr<uint8_t[]>* out, size_t* size);
@@ -97,7 +105,7 @@ class ModelWriter {
   std::vector<std::pair<const uint8_t*, size_t>> buffers_;
   // List of used opcodes
   std::vector<OpCode> opcodes_;
-  std::unordered_map<int, int> builtin_op_to_opcode_;
+  absl::flat_hash_map<int, int> builtin_op_to_opcode_;
 };
 
 // Handles writing TensorFlow Lite running subgraph to a serialized TF lite
@@ -114,11 +122,13 @@ class SubgraphWriter {
 
   // Construct a subgraph writer for the specified `subgraph`. Then, use
   // .Write() or .GetBuffer(...) to extract the data.
-  explicit SubgraphWriter(Subgraph* subgraph)
+  explicit SubgraphWriter(Subgraph* subgraph,
+                          bool serialize_dims_signature = true)
       : subgraph_(subgraph),
         inputs_(subgraph->inputs()),
         outputs_(subgraph->outputs()),
-        execution_plan_(subgraph->execution_plan()) {
+        execution_plan_(subgraph->execution_plan()),
+        serialize_dims_signature_(serialize_dims_signature) {
     buffers_ = &buffers_data_;
     opcodes_ = &opcodes_data_;
     builtin_op_to_opcode_ = &builtin_op_to_opcode_data_;
@@ -149,11 +159,13 @@ class SubgraphWriter {
       Subgraph* subgraph,
       std::vector<std::pair<const uint8_t*, size_t>>* external_buffers,
       std::vector<OpCode>* external_opcodes,
-      std::unordered_map<int, int>* external_builtin_op_to_opcode)
+      absl::flat_hash_map<int, int>* external_builtin_op_to_opcode,
+      bool serialize_dims_signature)
       : subgraph_(subgraph),
         inputs_(subgraph->inputs()),
         outputs_(subgraph->outputs()),
-        execution_plan_(subgraph->execution_plan()) {
+        execution_plan_(subgraph->execution_plan()),
+        serialize_dims_signature_(serialize_dims_signature) {
     buffers_ = external_buffers;
     opcodes_ = external_opcodes;
     builtin_op_to_opcode_ = external_builtin_op_to_opcode;
@@ -232,13 +244,16 @@ class SubgraphWriter {
   std::vector<std::pair<const uint8_t*, size_t>>* buffers_;
   // List of used opcodes
   std::vector<OpCode>* opcodes_;
-  std::unordered_map<int, int>* builtin_op_to_opcode_;
+  absl::flat_hash_map<int, int>* builtin_op_to_opcode_;
 
   // These are used if SubgraphWriter is being used directly.
   std::vector<std::pair<const uint8_t*, size_t>> buffers_data_;
   // List of used opcodes
   std::vector<OpCode> opcodes_data_;
-  std::unordered_map<int, int> builtin_op_to_opcode_data_;
+  absl::flat_hash_map<int, int> builtin_op_to_opcode_data_;
+
+  // Specifies whether tensor dims_signature should be serialized.
+  bool serialize_dims_signature_;
 };
 
 }  // namespace tflite

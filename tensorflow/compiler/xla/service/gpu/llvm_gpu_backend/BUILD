@@ -5,6 +5,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -33,6 +34,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:BitReader",
@@ -57,8 +59,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:gpu_types",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_command_line_options",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_type_conversion_util",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/tsl/platform:random",
         "//tensorflow/tsl/profiler/lib:traceme",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/util:env_var",
@@ -79,7 +80,6 @@ tf_cc_test(
         ":llvm_gpu_backend",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:resource_loader",

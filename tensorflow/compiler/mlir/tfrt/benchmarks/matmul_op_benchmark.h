@@ -56,6 +56,9 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
   std::unique_ptr<HostContext> host = CreateSingleThreadedHostContext();
 
   TfJitRtPipelineOptions tf_jitrt_opts;
+  tf_jitrt_opts.vectorize = true;
+  tf_jitrt_opts.matmul_tile_sizes = {state.range(3), state.range(4),
+                                     state.range(5)};
   JitExecutable& jit_executable =
       CreateJitExecutable(*host, mlir_input, function_name,
                           /*lower_from_tensorflow=*/true, tf_jitrt_opts);
@@ -142,6 +145,8 @@ void RunMatMulEigenBenchmark(::testing::benchmark::State& state) {
 
   using Device = Eigen::DefaultDevice;
   Device d;
+
+  CHECK(d.numThreads() == 1) << "Executing Eigen in multi-threaded";
 
   Eigen::Tensor<T, 2, Eigen::RowMajor> dst(m, n);
   dst.setZero();

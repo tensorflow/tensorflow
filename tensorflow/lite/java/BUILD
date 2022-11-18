@@ -10,6 +10,7 @@ load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -303,7 +304,7 @@ android_library(
     deps = [
         ":tensorflowlite_gpu_api",
         "//tensorflow/lite/java:tensorflowlite_api",
-        "//third_party/java/androidx/annotation",
+        "@maven//:androidx_annotation_annotation",
     ],
 )
 
@@ -315,7 +316,7 @@ android_library(
     deps = [
         ":tensorflowlite_api",
         ":tensorflowlite_gpu_api",
-        "//third_party/java/androidx/annotation",
+        "@maven//:androidx_annotation_annotation",
     ],
 )
 

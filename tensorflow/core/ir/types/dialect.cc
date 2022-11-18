@@ -345,22 +345,6 @@ Attribute FuncAttr::parse(AsmParser &parser, Type type) {
                        dict.cast<DictionaryAttr>());
 }
 
-void FuncAttr::walkImmediateSubElements(
-    function_ref<void(Attribute)> walkAttrsFn,
-    function_ref<void(Type)> walkTypesFn) const {
-  // Walk the dictionary attribute first, so that its index is always 0.
-  walkAttrsFn(getAttrs());
-  // Walk the symbol ref attribute if it isn't empty.
-  if (!getName().getRootReference().getValue().empty()) walkAttrsFn(getName());
-}
-
-Attribute FuncAttr::replaceImmediateSubElements(
-    ArrayRef<Attribute> replAttrs, ArrayRef<Type> replTypes) const {
-  assert(replAttrs.size() == 2 && "invalid number of replacement attributes");
-  return get(getContext(), replAttrs[1].cast<SymbolRefAttr>(),
-             replAttrs[0].cast<DictionaryAttr>());
-}
-
 void PlaceholderAttr::print(AsmPrinter &os) const {
   os << "<" << StringAttr::get(getContext(), getValue()) << ">";
 }
@@ -381,7 +365,7 @@ void ShapeAttr::print(AsmPrinter &os) const {
   os << "<";
   if (hasRank()) {
     auto print_dim = [&](int64_t dim) {
-      if (dim != -1)
+      if (dim != ShapedType::kDynamicSize)
         os << dim;
       else
         os << "?";

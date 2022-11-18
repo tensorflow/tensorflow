@@ -72,6 +72,10 @@ TfLiteStatus PointwiseUnaryOpEval(TfLiteContext* context, TfLiteNode* node) {
           context,
           (PointwiseUnaryOpDoEval<Op, double>(context, input, output)));
       break;
+    case kTfLiteInt32:
+      TF_LITE_ENSURE_OK(context, (PointwiseUnaryOpDoEval<Op, int32_t>(
+                                     context, input, output)));
+      break;
     default:
       TF_LITE_KERNEL_LOG(context, "Unsupported datatype for sign output: %s",
                          TfLiteTypeGetName(output->type));

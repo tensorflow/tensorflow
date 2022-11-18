@@ -955,7 +955,7 @@ class Subgraph {
   std::unordered_set<  // NOLINT
       std::unique_ptr<const TfLiteRegistrationExternal>>
       registration_externals_;
-  // LINT.ThenChange(//tensorflow/lite/c/c_api.cc)
+  // LINT.ThenChange(//tensorflow/lite/core/c/c_api.cc)
 
   // `InterpreterOptions` object which is being used and owned by Interpreter.
   InterpreterOptions* options_;

@@ -1,9 +1,10 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -48,30 +49,6 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
-    name = "xla_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=Xla",
-            ],
-            "transforms/xla_passes.h.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "transforms/xla_passes.td",
-    deps = [
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
-        "//tensorflow/compiler/xla/mlir_hlo:hlo_ops_td_files",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncTdFiles",
-        "@llvm-project//mlir:PassBaseTdFiles",
-        "@llvm-project//mlir:TensorOpsTdFiles",
-    ],
-)
-
-gentbl_cc_library(
     name = "tf_xla_passes_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
@@ -93,39 +70,6 @@ gentbl_cc_library(
         "@llvm-project//mlir:PassBaseTdFiles",
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:TensorOpsTdFiles",
-    ],
-)
-
-cc_library(
-    name = "xla_passes",
-    srcs = [
-        "transforms/outline_with_xla_framework.cc",
-        "transforms/xla_framework_to_llvm_pass.cc",
-    ],
-    hdrs = [
-        "transforms/xla_passes.h",
-    ],
-    deps = [
-        ":xla_framework",
-        ":xla_passes_inc_gen",
-        "//tensorflow/compiler/xla/mlir_hlo",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:ArithToLLVM",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:FuncToLLVM",
-        "@llvm-project//mlir:FuncTransforms",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMCommonConversion",
-        "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:MathToLLVM",
-        "@llvm-project//mlir:MemRefToLLVM",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:ReconcileUnrealizedCasts",
-        "@llvm-project//mlir:SCFToControlFlow",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
     ],
 )
 
@@ -212,33 +156,17 @@ cc_library(
         "transforms/adjust_layout.h",
     ],
     deps = [
-        ":tf_xla_passes_inc_gen",
-        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/client:padding",
-        "//tensorflow/compiler/xla/client:sharding_builder",
-        "//tensorflow/compiler/xla/client/lib:conv_grad_size_util",
         "//tensorflow/compiler/xla/mlir_hlo",
-        "//tensorflow/compiler/xla/mlir_hlo:convert_op_folder",
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",
-        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:type_to_shape",
-        "//tensorflow/core:framework",
-        "//tensorflow/core/kernels:conv_grad_shape_utils",
-        "//tensorflow/core/tpu:tpu_api",
-        "//tensorflow/tsl/platform:bfloat16",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TensorDialect",
     ],
 )
 
@@ -335,7 +263,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",
-        "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -368,81 +295,25 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "mhlo_to_lhlo_with_xla",
-    srcs = ["transforms/mhlo_to_lhlo_with_xla.cc"],
-    hdrs = ["transforms/mhlo_to_lhlo_with_xla.h"],
-    deps = [
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:window_util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/mlir_hlo",
-        "//tensorflow/compiler/xla/mlir_hlo:lhlo",
-        "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
-        "//tensorflow/compiler/xla/service:backend",
-        "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
-        "//tensorflow/compiler/xla/service/gpu:cublas_cudnn",
-        "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
-        "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
-        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:attribute_importer",
-        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_module_importer",
-        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
-        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
-        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:type_to_shape",
-        "//tensorflow/tsl/platform:status",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/types:optional",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:BufferizationDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:TranslateLib",
-    ],
-)
-
-cc_library(
-    name = "translate_cl_registration",
-    testonly = True,
-    srcs = ["xla_mlir_translate_registration.cc"],
-    deps = [
-        "//tensorflow/compiler/jit:xla_cpu_jit",
-        "//tensorflow/compiler/jit:xla_gpu_jit",
-        "//tensorflow/compiler/mlir/xla:mhlo_to_lhlo_with_xla",
-        "@llvm-project//mlir:TranslateLib",
-    ],
-    alwayslink = 1,
-)
-
 tf_cc_binary(
     name = "xla-opt",
     testonly = True,
     srcs = ["xla_opt_main.cc"],
     deps = [
         ":adjust_layout",  # buildcleaner: keep
-        ":mhlo_to_lhlo_with_xla",  # buildcleaner: keep
         ":tf_xla_passes",  # buildcleaner: keep
-        ":xla_framework",
         ":xla_legalize_tf",  # buildcleaner: keep
         ":xla_legalize_tf_no_fallback",  # buildcleaner: keep
-        ":xla_passes",  # buildcleaner: keep
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
+        "//tensorflow/compiler/xla/mlir/framework/ir:xla_framework",
+        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/compiler/xla/service:cpu_plugin",
-        "//tensorflow/compiler/xla/service/cpu:hlo_xla_runtime_pipeline",  # buildcleaner: keep
+        "//tensorflow/compiler/xla/service/cpu:hlo_xla_runtime_pipeline",
+        "//tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla",  # buildcleaner: keep
         "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
@@ -456,86 +327,22 @@ tf_cc_binary(
     srcs = ["xla_opt_main.cc"],
     deps = [
         ":adjust_layout",  # buildcleaner: keep
-        ":mhlo_to_lhlo_with_xla",  # buildcleaner: keep
         ":tf_xla_passes",  # buildcleaner: keep
-        ":xla_framework",  # buildcleaner: keep
         ":xla_legalize_tf",  # buildcleaner: keep
         ":xla_legalize_tf_no_fallback",  # buildcleaner: keep
-        ":xla_passes",  # buildcleaner: keep
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
+        "//tensorflow/compiler/xla/mlir/framework/ir:xla_framework",
+        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service/cpu:hlo_xla_runtime_pipeline",
+        "//tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla",  # buildcleaner: keep
         "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
         "@stablehlo//:register",
-    ],
-)
-
-td_library(
-    name = "td_files",
-    srcs = [
-        "ir/xla_framework_ops.td",
-    ],
-    compatible_with = get_compatible_with_cloud(),
-    deps = [
-        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
-        "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
-    ],
-)
-
-gentbl_cc_library(
-    name = "xla_framework_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "ir/xla_framework.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "ir/xla_framework.cc.inc",
-        ),
-        (
-            ["-gen-dialect-decls"],
-            "ir/xla_framework_dialect.h.inc",
-        ),
-        (
-            ["-gen-dialect-defs"],
-            "ir/xla_framework_dialect.cc.inc",
-        ),
-        (
-            ["-gen-typedef-decls"],
-            "ir/xla_framework_types.h.inc",
-        ),
-        (
-            ["-gen-typedef-defs"],
-            "ir/xla_framework_types.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "ir/xla_framework_ops.td",
-    deps = [":td_files"],
-)
-
-cc_library(
-    name = "xla_framework",
-    srcs = [
-        "ir/xla_framework.cc",
-        "ir/xla_framework.cc.inc",
-        "ir/xla_framework.h.inc",
-    ],
-    hdrs = ["ir/xla_framework.h"],
-    deps = [
-        ":xla_framework_inc_gen",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:DialectUtils",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:Support",
     ],
 )

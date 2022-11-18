@@ -119,6 +119,29 @@ ENTRY main {
 )");
 }
 
+TEST_F(TransposeFusionTest, ReshapeAfterCopyFused) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p = f32[16,32]{1,0} parameter(0)
+  s = sqrt(p)
+  c = f32[16,32]{0,1} copy(s)
+  ROOT r = f32[16,32,1]{0,1,2} reshape(c)
+}
+  )";
+
+  CheckGpuFusion(hlo, R"(
+// CHECK: %fused_computation (param_0.2: f32[16,32]) -> f32[16,32,1] {
+// CHECK-NEXT:   [[param_0_2_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
+// CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0_2_0]])
+// CHECK-NEXT:   [[c_1_2:%[^ ]+]] = f32[16,32]{0,1} copy([[s_1_1]])
+// CHECK-NEXT:   ROOT [[r_1_3:%[^ ]+]] = f32[16,32,1]{0,1,2} reshape([[c_1_2]])
+// CHECK-NEXT: }
+// CHECK:   ROOT [[fusion_1:%[^ ]+]] = f32[16,32,1]{0,1,2} fusion
+)");
+}
+
 TEST_F(TransposeFusionTest, ReshapeSimpleFusion) {
   const char* hlo = R"(
 HloModule module
@@ -155,10 +178,10 @@ ENTRY main {
 
   CheckGpuFusion(hlo, R"(
 // CHECK: %fused_computation (param_0.1: f32[16,32]) -> f32[32,16] {
-// CHECK-NEXT:   %param_0.1 = f32[16,32]{1,0} parameter(0)
-// CHECK-NEXT:   %s.1 = f32[16,32]{1,0} sqrt(%param_0.1)
-// CHECK-NEXT:   ROOT %c.1 = f32[32,16]{1,0} transpose(%s.1), dimensions={1,0}
-// CHECK: ROOT %fusion = f32[32,16]{1,0} fusion(%p), kind=kInput, calls=%fused_computation
+// CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
+// CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0_1_0]])
+// CHECK-NEXT:   ROOT [[c_1_2:%[^ ]+]] = f32[32,16]{1,0} transpose([[s_1_1]]), dimensions={1,0}
+// CHECK: ROOT [[fusion_3:%[^ ]+]] = f32[32,16]{1,0} fusion([[p_4:%[^ ]+]]), kind=kInput, calls=[[fused_computation_5:%[^ ]+]]
 )");
 }
 
@@ -176,12 +199,12 @@ ENTRY main {
 
   CheckGpuFusion(hlo, R"(
 // CHECK: %fused_computation (param_0.2: f32[256,16]) -> f32[16,16,16] {
-// CHECK:   %param_0.2 = f32[256,16]{1,0} parameter(0)
-// CHECK:   %r.1 = f32[16,16,16]{2,1,0} reshape(%param_0.2)
-// CHECK:   %s.1 = f32[16,16,16]{2,1,0} sqrt(%r.1)
-// CHECK:   ROOT %c.1 = f32[16,16,16]{2,1,0} transpose(%s.1), dimensions={1,0,2}
+// CHECK:   [[param_0_2_0:%[^ ]+]] = f32[256,16]{1,0} parameter(0)
+// CHECK:   [[r_1_1:%[^ ]+]] = f32[16,16,16]{2,1,0} reshape([[param_0_2_0]])
+// CHECK:   [[s_1_2:%[^ ]+]] = f32[16,16,16]{2,1,0} sqrt([[r_1_1]])
+// CHECK:   ROOT [[c_1_3:%[^ ]+]] = f32[16,16,16]{2,1,0} transpose([[s_1_2]]), dimensions={1,0,2}
 // CHECK: }
-// CHECK:   ROOT %fusion = f32[16,16,16]{2,1,0} fusion(%p), kind=kLoop, calls=%fused_computation
+// CHECK:   ROOT [[fusion_0:%[^ ]+]] = f32[16,16,16]{2,1,0} fusion([[p_1:%[^ ]+]]), kind=kLoop, calls=[[fused_computation_2:%[^ ]+]]
 )");
 }
 

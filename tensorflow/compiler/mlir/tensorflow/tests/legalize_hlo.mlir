@@ -1576,6 +1576,17 @@ func.func @convert_dot_general(%arg0: tensor<3x2x6x5x1xf32>, %arg1: tensor<3x2x4
   func.return %0 : tensor<3x5x1x4xf32>
 }
 
+// CHECK-LABEL:   func @quantized_dot_general_not_converted
+// CHECK:           "mhlo.dot_general"
+func.func @quantized_dot_general_not_converted(%arg0: tensor<1x1x512xf32>, %arg1: tensor<512x512x!quant.uniform<i8:f32, 0.00285>>) -> tensor<1x1x512xf32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [0]
+    >} : (tensor<1x1x512xf32>, tensor<512x512x!quant.uniform<i8:f32, 0.00285>>) -> tensor<1x1x512xf32>
+  func.return %0 : tensor<1x1x512xf32>
+}
+
 // CHECK-LABEL:   func @convert_dot_general_repeated(
 // CHECK-SAME:                                       %[[VAL_0:.*]]: tensor<1x1x1024xf32>,
 // CHECK-SAME:                                       %[[VAL_1:.*]]: tensor<1024x1024xf32>) -> tensor<1x1x1024xf32> {

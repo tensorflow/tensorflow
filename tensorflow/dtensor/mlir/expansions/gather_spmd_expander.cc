@@ -34,15 +34,16 @@ namespace dtensor {
 
 StatusOr<mlir::Operation*> GatherV2SPMDExpander::ExpandOp(mlir::Operation* op) {
   auto gather_op = llvm::cast<mlir::TF::GatherV2Op>(op);
-  TF_ASSIGN_OR_RETURN(int64_t axis, ExtractConstIntFromValue(gather_op.axis()));
+  TF_ASSIGN_OR_RETURN(int64_t axis,
+                      ExtractConstIntFromValue(gather_op.getAxis()));
   TF_ASSIGN_OR_RETURN(auto params_layout,
-                      ExtractLayoutFromOperand(gather_op.params()));
+                      ExtractLayoutFromOperand(gather_op.getParams()));
   TF_ASSIGN_OR_RETURN(auto indices_layout,
-                      ExtractLayoutFromOperand(gather_op.indices()));
+                      ExtractLayoutFromOperand(gather_op.getIndices()));
   TF_ASSIGN_OR_RETURN(auto output_layout, ExtractSingleLayoutFromOp(gather_op));
 
-  const auto params_rank = ValueRank(gather_op.params());
-  const auto indices_rank = ValueRank(gather_op.indices());
+  const auto params_rank = ValueRank(gather_op.getParams());
+  const auto indices_rank = ValueRank(gather_op.getIndices());
   if (params_rank == -1)
     return errors::InvalidArgument("missing rank for params input");
   if (indices_rank == -1)
@@ -51,10 +52,10 @@ StatusOr<mlir::Operation*> GatherV2SPMDExpander::ExpandOp(mlir::Operation* op) {
   // Handle the case of negative axis.
   if (axis < 0) axis += params_rank;
 
-  int batch_dims = gather_op.batch_dims();
+  int batch_dims = gather_op.getBatchDims();
 
-  auto params = gather_op.params();
-  auto indices = gather_op.indices();
+  auto params = gather_op.getParams();
+  auto indices = gather_op.getIndices();
 
   mlir::OpBuilder builder(op);
 
@@ -155,8 +156,8 @@ StatusOr<mlir::Operation*> GatherV2SPMDExpander::ExpandOp(mlir::Operation* op) {
 
   auto new_gather = builder.create<mlir::TF::GatherV2Op>(
       gather_op.getLoc(), gather_op.getResult().getType(), params, indices,
-      gather_op.axis(), gather_op.batch_dims());
-  op->getResult(0).replaceAllUsesWith(new_gather.output());
+      gather_op.getAxis(), gather_op.getBatchDims());
+  op->getResult(0).replaceAllUsesWith(new_gather.getOutput());
   op->erase();
 
   return InferSPMDExpandedLocalShape(new_gather);
@@ -168,8 +169,9 @@ GatherV2SPMDExpander::ComputeLayoutForward(
   auto gather_op = llvm::cast<mlir::TF::GatherV2Op>(op);
   TF_ASSIGN_OR_RETURN(const Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
 
-  TF_ASSIGN_OR_RETURN(int64_t axis, ExtractConstIntFromValue(gather_op.axis()));
-  int batch_dims = gather_op.batch_dims();
+  TF_ASSIGN_OR_RETURN(int64_t axis,
+                      ExtractConstIntFromValue(gather_op.getAxis()));
+  int batch_dims = gather_op.getBatchDims();
 
   absl::optional<Layout> params_layout;
   if (input_layouts.find(0) != input_layouts.end())
@@ -178,8 +180,8 @@ GatherV2SPMDExpander::ComputeLayoutForward(
   if (input_layouts.find(1) != input_layouts.end())
     indices_layout.emplace(input_layouts.lookup(1));
 
-  const int params_rank = ValueRank(gather_op.params());
-  const int indices_rank = ValueRank(gather_op.indices());
+  const int params_rank = ValueRank(gather_op.getParams());
+  const int indices_rank = ValueRank(gather_op.getIndices());
   if (params_rank == -1)
     return errors::InvalidArgument("missing rank for params input");
   if (indices_rank == -1)
@@ -247,11 +249,11 @@ GatherV2SPMDExpander::ComputeLayoutBackward(
     const Layout output_layout = output_layouts.lookup(0);
 
     TF_ASSIGN_OR_RETURN(int64_t axis,
-                        ExtractConstIntFromValue(gather_op.axis()));
-    int batch_dims = gather_op.batch_dims();
+                        ExtractConstIntFromValue(gather_op.getAxis()));
+    int batch_dims = gather_op.getBatchDims();
 
-    const int params_rank = ValueRank(gather_op.params());
-    const int indices_rank = ValueRank(gather_op.indices());
+    const int params_rank = ValueRank(gather_op.getParams());
+    const int indices_rank = ValueRank(gather_op.getIndices());
     if (params_rank == -1)
       return errors::InvalidArgument("missing rank for params input");
     if (indices_rank == -1)
@@ -368,19 +370,19 @@ Status GatherNdGetInputLayoutFromOutput(const Layout& output_layout,
 StatusOr<mlir::Operation*> GatherNdSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto gather_op = llvm::cast<mlir::TF::GatherNdOp>(op);
   TF_ASSIGN_OR_RETURN(Layout params_layout,
-                      ExtractRequiredLayoutFromOperand(gather_op.params()));
+                      ExtractRequiredLayoutFromOperand(gather_op.getParams()));
   TF_ASSIGN_OR_RETURN(Layout indices_layout,
-                      ExtractRequiredLayoutFromOperand(gather_op.indices()));
+                      ExtractRequiredLayoutFromOperand(gather_op.getIndices()));
   TF_ASSIGN_OR_RETURN(Layout output_layout,
                       ExtractRequiredSingleLayoutFromOp(gather_op));
 
   TF_ASSIGN_OR_RETURN(
       llvm::ArrayRef<int64_t> indices_shape,
-      GetGlobalShapeOfValueFromDTensorLayout(gather_op.indices()));
+      GetGlobalShapeOfValueFromDTensorLayout(gather_op.getIndices()));
   const int index_dimensions = indices_shape.back();
 
-  const auto params_rank = ValueRank(gather_op.params());
-  const auto indices_rank = ValueRank(gather_op.indices());
+  const auto params_rank = ValueRank(gather_op.getParams());
+  const auto indices_rank = ValueRank(gather_op.getIndices());
   if (params_rank == -1)
     return errors::InvalidArgument("missing rank for params input");
   if (indices_rank == -1)
@@ -439,10 +441,10 @@ StatusOr<mlir::Operation*> GatherNdSPMDExpander::ExpandOp(mlir::Operation* op) {
 
   TF_ASSIGN_OR_RETURN(
       mlir::Value params,
-      EmitRelayout(gather_op.params(), params_layout, new_params_layout));
+      EmitRelayout(gather_op.getParams(), params_layout, new_params_layout));
   TF_ASSIGN_OR_RETURN(
       mlir::Value indices,
-      EmitRelayout(gather_op.indices(), indices_layout, new_indices_layout));
+      EmitRelayout(gather_op.getIndices(), indices_layout, new_indices_layout));
 
   mlir::OpBuilder builder(op);
 
@@ -450,14 +452,14 @@ StatusOr<mlir::Operation*> GatherNdSPMDExpander::ExpandOp(mlir::Operation* op) {
   // so we have to provided the output type. This output type is incorrect and
   // we manually run shape inference after.
   mlir::TF::GatherNdOp new_gather = builder.create<mlir::TF::GatherNdOp>(
-      op->getLoc(), gather_op.output().getType(), params, indices);
+      op->getLoc(), gather_op.getOutput().getType(), params, indices);
   InferSPMDExpandedLocalShape(new_gather);
 
-  TF_ASSIGN_OR_RETURN(
-      mlir::Value output,
-      EmitRelayout(new_gather.output(), merged_output_layout, output_layout));
+  TF_ASSIGN_OR_RETURN(mlir::Value output,
+                      EmitRelayout(new_gather.getOutput(), merged_output_layout,
+                                   output_layout));
 
-  gather_op.output().replaceAllUsesWith(output);
+  gather_op.getOutput().replaceAllUsesWith(output);
   gather_op.erase();
   return output.getDefiningOp();
 }
@@ -482,8 +484,8 @@ GatherNdSPMDExpander::ComputeLayoutForward(
     return errors::Unimplemented(
         "dynamic last dimension for index is not supported");
 
-  const int params_rank = ValueRank(gather_op.params());
-  const int indices_rank = ValueRank(gather_op.indices());
+  const int params_rank = ValueRank(gather_op.getParams());
+  const int indices_rank = ValueRank(gather_op.getIndices());
   if (params_rank == -1)
     return errors::InvalidArgument("missing rank for params input");
   if (indices_rank == -1)
@@ -517,8 +519,8 @@ GatherNdSPMDExpander::ComputeLayoutBackward(
     return errors::Unimplemented(
         "dynamic last dimension for index is not supported");
 
-  const int params_rank = ValueRank(gather_op.params());
-  const int indices_rank = ValueRank(gather_op.indices());
+  const int params_rank = ValueRank(gather_op.getParams());
+  const int indices_rank = ValueRank(gather_op.getIndices());
   if (params_rank == -1)
     return errors::InvalidArgument("missing rank for params input");
   if (indices_rank == -1)

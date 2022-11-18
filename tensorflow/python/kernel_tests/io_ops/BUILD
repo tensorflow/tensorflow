@@ -2,7 +2,10 @@
 
 load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
 
 tf_py_test(
     name = "checkpoint_ops_test",

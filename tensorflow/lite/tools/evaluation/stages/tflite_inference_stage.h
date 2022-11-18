@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/util/stats_calculator.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_stage.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
+#include "tensorflow/tsl/util/stats_calculator.h"
 
 namespace tflite {
 namespace evaluation {
@@ -86,7 +86,7 @@ class TfliteInferenceStage : public EvaluationStage {
   const std::vector<void*>* inputs_ = nullptr;
   std::vector<void*> outputs_;
 
-  tensorflow::Stat<int64_t> latency_stats_;
+  tsl::Stat<int64_t> latency_stats_;
 };
 
 }  // namespace evaluation

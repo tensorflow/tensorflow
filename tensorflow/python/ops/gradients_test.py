@@ -23,7 +23,6 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function as framework_function
@@ -584,7 +583,7 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       x = constant_op.constant(1.0, name="x")
 
-      @function.defun()
+      @def_function.function
       def Foo():
         y = math_ops.multiply(x, 2.0, name="y")
         g = gradients_impl.gradients(y, x)
@@ -612,7 +611,7 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       var = resource_variable_ops.ResourceVariable(1.0, name="var")
 
-      @function.defun()
+      @def_function.function
       def Foo():
         y = math_ops.multiply(var, 2.0, name="y")
         g = gradients_impl.gradients(y, var)
@@ -629,11 +628,11 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
       x2 = constant_op.constant(2.0, name="x2")
       x3 = math_ops.multiply(x1, x2, name="x3")
 
-      @function.defun()
+      @def_function.function
       def Outer():
         outer1 = array_ops.identity(x1, name="outer1")
 
-        @function.defun()
+        @def_function.function
         def Inner():
           inner1 = array_ops.identity(outer1, name="inner1")
           inner2 = array_ops.identity(x2, name="inner2")
@@ -654,11 +653,11 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       x = constant_op.constant(1.0, name="x")
 
-      @function.defun()
+      @def_function.function
       def Outer():
         y = math_ops.multiply(x, 2.0, name="y")
 
-        @function.defun()
+        @def_function.function
         def Inner():
           z = math_ops.multiply(y, 3.0, name="z")
           g = gradients_impl.gradients(z, y)
@@ -678,7 +677,7 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
     with context.eager_mode():
       c = constant_op.constant(2.0, name="c")
 
-      @function.defun
+      @def_function.function
       def Foo():
         x = constant_op.constant(10.0, name="x")
         y = math_ops.multiply(x, c, name="y")
@@ -1611,7 +1610,8 @@ class VariablesGradientTest(test_util.TensorFlowTestCase,
     grads = self._grad(F)(x)
     self.assertAllClose(grads_re, grads)
 
-    f_graph = function.defun(F, input_signature=[tensor_spec.TensorSpec(None)])
+    f_graph = def_function.function(
+        F, input_signature=[tensor_spec.TensorSpec(None)])
     grads_re = self._grad(custom_gradient.recompute_grad(f_graph))(x)
     grads = self._grad(f_graph)(x)
     self.assertAllClose(grads_re, grads)
@@ -1627,7 +1627,7 @@ class VariablesGradientTest(test_util.TensorFlowTestCase,
     grads = self._grad(F)(x1, x2)
     self.assertAllClose(grads_re, grads)
 
-    f_graph = function.defun(
+    f_graph = def_function.function(
         F,
         input_signature=[
             tensor_spec.TensorSpec(None, dtype=dtypes.int32),

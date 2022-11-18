@@ -76,16 +76,16 @@ template <typename OpType>
 StatusOr<mlir::Operation*> TensorScatterOpExpand(mlir::Operation* op) {
   auto scatter_op = llvm::cast<OpType>(op);
   TF_ASSIGN_OR_RETURN(auto tensor_layout,
-                      ExtractLayoutFromOperand(scatter_op.tensor()));
+                      ExtractLayoutFromOperand(scatter_op.getTensor()));
   TF_ASSIGN_OR_RETURN(auto indices_layout,
-                      ExtractLayoutFromOperand(scatter_op.indices()));
+                      ExtractLayoutFromOperand(scatter_op.getIndices()));
   TF_ASSIGN_OR_RETURN(auto updates_layout,
-                      ExtractLayoutFromOperand(scatter_op.updates()));
+                      ExtractLayoutFromOperand(scatter_op.getUpdates()));
   TF_ASSIGN_OR_RETURN(auto output_layout,
                       ExtractSingleLayoutFromOp(scatter_op));
 
-  const int tensor_rank = ValueRank(scatter_op.tensor());
-  const int updates_rank = ValueRank(scatter_op.updates());
+  const int tensor_rank = ValueRank(scatter_op.getTensor());
+  const int updates_rank = ValueRank(scatter_op.getUpdates());
 
   if (tensor_rank == -1 || updates_rank == -1)
     return errors::InvalidArgument("all inputs must have valid rank.");
@@ -94,18 +94,18 @@ StatusOr<mlir::Operation*> TensorScatterOpExpand(mlir::Operation* op) {
   // operations.
   TF_ASSIGN_OR_RETURN(
       llvm::ArrayRef<int64_t> tensor_shape,
-      GetGlobalShapeOfValueFromDTensorLayout(scatter_op.tensor()));
+      GetGlobalShapeOfValueFromDTensorLayout(scatter_op.getTensor()));
   TF_ASSIGN_OR_RETURN(
       llvm::ArrayRef<int64_t> indices_shape,
-      GetGlobalShapeOfValueFromDTensorLayout(scatter_op.indices()));
+      GetGlobalShapeOfValueFromDTensorLayout(scatter_op.getIndices()));
   TF_ASSIGN_OR_RETURN(
       llvm::ArrayRef<int64_t> updates_shape,
-      GetGlobalShapeOfValueFromDTensorLayout(scatter_op.updates()));
+      GetGlobalShapeOfValueFromDTensorLayout(scatter_op.getUpdates()));
 
   // Start by relaying out the inputs. Indices should replicated.
   TF_ASSIGN_OR_RETURN(
       mlir::Value new_indices,
-      EmitRelayout(scatter_op.indices(), *indices_layout,
+      EmitRelayout(scatter_op.getIndices(), *indices_layout,
                    Layout::ReplicatedOnMesh(indices_layout->mesh(),
                                             indices_shape.size())));
 
@@ -131,10 +131,10 @@ StatusOr<mlir::Operation*> TensorScatterOpExpand(mlir::Operation* op) {
                       Layout::GetLayout(updates_specs, updates_layout->mesh()));
   TF_ASSIGN_OR_RETURN(
       mlir::Value new_tensor,
-      EmitRelayout(scatter_op.tensor(), *tensor_layout, pre_output_layout));
-  TF_ASSIGN_OR_RETURN(
-      mlir::Value new_updates,
-      EmitRelayout(scatter_op.updates(), *updates_layout, new_updates_layout));
+      EmitRelayout(scatter_op.getTensor(), *tensor_layout, pre_output_layout));
+  TF_ASSIGN_OR_RETURN(mlir::Value new_updates,
+                      EmitRelayout(scatter_op.getUpdates(), *updates_layout,
+                                   new_updates_layout));
 
   mlir::OpBuilder builder(op);
   OpType new_scatter = builder.create<OpType>(
@@ -142,7 +142,7 @@ StatusOr<mlir::Operation*> TensorScatterOpExpand(mlir::Operation* op) {
 
   TF_ASSIGN_OR_RETURN(
       mlir::Value new_output,
-      EmitRelayout(new_scatter.output(), pre_output_layout, *output_layout));
+      EmitRelayout(new_scatter.getOutput(), pre_output_layout, *output_layout));
 
   op->getResult(0).replaceAllUsesWith(new_output);
   op->erase();
@@ -156,8 +156,8 @@ StatusOr<llvm::DenseMap<int, Layout>> TensorScatterOpComputeLayoutForward(
   TF_ASSIGN_OR_RETURN(Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
   auto scatter_op = llvm::cast<OpType>(op);
 
-  const int tensor_rank = ValueRank(scatter_op.tensor());
-  const int updates_rank = ValueRank(scatter_op.updates());
+  const int tensor_rank = ValueRank(scatter_op.getTensor());
+  const int updates_rank = ValueRank(scatter_op.getUpdates());
   if (tensor_rank == -1 || updates_rank == -1)
     return errors::InvalidArgument("all inputs must have valid rank.");
 
@@ -184,9 +184,9 @@ StatusOr<llvm::DenseMap<int, Layout>> TensorScatterOpComputeLayoutBackward(
   TF_ASSIGN_OR_RETURN(Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
   auto scatter_op = llvm::cast<OpType>(op);
 
-  const int tensor_rank = ValueRank(scatter_op.tensor());
-  const int indices_rank = ValueRank(scatter_op.indices());
-  const int updates_rank = ValueRank(scatter_op.updates());
+  const int tensor_rank = ValueRank(scatter_op.getTensor());
+  const int indices_rank = ValueRank(scatter_op.getIndices());
+  const int updates_rank = ValueRank(scatter_op.getUpdates());
   if (tensor_rank == -1 || indices_rank == -1 || updates_rank == -1)
     return errors::InvalidArgument("all inputs must have valid rank.");
 

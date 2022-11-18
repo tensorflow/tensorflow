@@ -48,8 +48,6 @@ TODO: Make invariants more structured so that we can reference them in ops.
   }];
 
   let cppNamespace = "::mlir::TF";
-
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 //===----------------------------------------------------------------------===//
@@ -556,7 +554,7 @@ class TF_DerivedOperandTypeListAttr<int idx> : DerivedAttr<
   "return {mlir::OperandElementTypeIterator(values.begin()), "
           "mlir::OperandElementTypeIterator(values.end())};",
   [{
-    ArrayAttr::get($_ctxt, 
+    ArrayAttr::get($_ctxt,
     [&]() {
       llvm::SmallVector<Attribute, 4> ret;
       for (auto t : $_self)
@@ -612,7 +610,7 @@ class TF_DerivedResultTypeListAttr<int idx> : DerivedAttr<
   "return {mlir::ResultElementTypeIterator(values.begin()), "
           "mlir::ResultElementTypeIterator(values.end())};",
   [{
-    ArrayAttr::get($_ctxt, 
+    ArrayAttr::get($_ctxt,
     [&]() {
       llvm::SmallVector<Attribute, 4> ret;
       for (auto t : $_self)

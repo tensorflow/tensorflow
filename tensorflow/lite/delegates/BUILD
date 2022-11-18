@@ -18,6 +18,7 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -69,6 +70,7 @@ cc_library(
     name = "interpreter_utils",
     srcs = ["interpreter_utils.cc"],
     hdrs = ["interpreter_utils.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:framework",
@@ -120,7 +122,6 @@ cc_test(
     srcs = ["delegate_test.cc"],
     data = ["//tensorflow/lite:testdata/add.bin"],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs.
-    tags = ["nomsan"],  # TODO(b/246990697)
     deps = [
         ":delegate_test_util",
         ":interpreter_utils",

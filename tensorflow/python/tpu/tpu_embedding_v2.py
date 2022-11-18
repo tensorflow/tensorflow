@@ -325,12 +325,14 @@ class TPUEmbedding(autotrackable.AutoTrackable):
 
     if self._using_tpu:
       # Extract a list of callable learning rates also in fixed order. Each
-      # table in the confix proto will get a index into this list and we will
+      # table in the config proto will get a index into this list and we will
       # pass this list in the same order after evaluation to the
       # send_tpu_embedding_gradients op.
-      self._dynamic_learning_rates = list({
-          table.optimizer.learning_rate for table in self._table_config if
-          callable(table.optimizer.learning_rate)})
+      self._dynamic_learning_rates = []
+      for table in self._table_config:
+        if (callable(table.optimizer.learning_rate) and
+            table.optimizer.learning_rate not in self._dynamic_learning_rates):
+          self._dynamic_learning_rates.append(table.optimizer.learning_rate)
 
       # We need to list of host devices for the load/retrieve operations.
       self._hosts = get_list_of_hosts(self._strategy)
@@ -1005,9 +1007,9 @@ class TPUEmbedding(autotrackable.AutoTrackable):
           "Current graph {} does not match graph which contains "
           "TPUReplicateContext {}. This is most likely due to the fact that "
           "enqueueing embedding data is called inside control flow or a "
-          "nested function inside `strategy.run`. This is not supported "
-          "because outside compilation fails to extract the enqueue ops as "
-          "head of computation.".format(ops.get_default_graph(), graph))
+          "tf.function inside `strategy.run`. This is not supported because "
+          "outside compilation fails to extract the enqueue ops as the head of "
+          "a computation.".format(ops.get_default_graph(), graph))
     return in_tpu_ctx
 
   def _raise_error_for_non_direct_inputs(self, features):
@@ -1261,10 +1263,6 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         if name is not None:
           _add_key_attr(enqueue_op, name)
 
-        # Ensure that this op has outbound control flow, otherwise it won't be
-        # executed.
-        ops.get_default_graph().control_outputs.append(enqueue_op)
-
       tpu.outside_compilation(generate_enqueue_ops)
 
     elif device is None:
@@ -1294,7 +1292,6 @@ class TPUEmbedding(autotrackable.AutoTrackable):
           if name is not None:
             _add_key_attr(enqueue_op, name)
           enqueue_ops.append(enqueue_op)
-      ops.get_default_graph().control_outputs.extend(enqueue_ops)
     else:
       mode_override = "train" if training else "inference"
       device_spec = tf_device.DeviceSpec.from_string(device)
@@ -1311,7 +1308,6 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         # Apply the name tag to the op.
         if name is not None:
           _add_key_attr(enqueue_op, name)
-        ops.get_default_graph().control_outputs.append(enqueue_op)
 
   def _get_input_shapes(self, tensors,
                         in_tpu_context: bool) -> List[TensorShape]:

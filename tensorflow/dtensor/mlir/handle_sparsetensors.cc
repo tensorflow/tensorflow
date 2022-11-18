@@ -143,10 +143,11 @@ void CreateComponentTensorsFromSparseTensors(
         block_arg.getArgNumber(), kSparseValue);
     if (is_sparse) {
       sparse_tensor_components->push_back(SparseTensorToComponentInfo{
-          /*indices=*/mlir::RankedTensorType::get({-1, ValueRank(block_arg)},
-                                                  builder.getI64Type()),
+          /*indices=*/mlir::RankedTensorType::get(
+              {mlir::ShapedType::kDynamicSize, ValueRank(block_arg)},
+              builder.getI64Type()),
           /*values=*/
-          mlir::RankedTensorType::get({-1},
+          mlir::RankedTensorType::get({mlir::ShapedType::kDynamicSize},
                                       block_arg.getType()
                                           .dyn_cast<mlir::RankedTensorType>()
                                           .getElementType()),

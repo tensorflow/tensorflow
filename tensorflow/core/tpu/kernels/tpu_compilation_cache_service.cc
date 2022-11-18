@@ -165,8 +165,8 @@ void TpuCompilationCacheService::HandleRPCsLoop() {
 
   while (cq_->Next(&tag, &ok)) {
     VLOG(2) << "HandleRPCS: " << tag;
-    UntypedCall<TpuCompilationCacheService>::Tag* callback_tag =
-        static_cast<UntypedCall<TpuCompilationCacheService>::Tag*>(tag);
+    tsl::UntypedCall<TpuCompilationCacheService>::Tag* callback_tag =
+        static_cast<tsl::UntypedCall<TpuCompilationCacheService>::Tag*>(tag);
     callback_tag->OnCompleted(this, ok);
   }
 

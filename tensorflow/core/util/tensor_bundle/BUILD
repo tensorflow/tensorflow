@@ -12,6 +12,7 @@ load(
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -27,7 +28,6 @@ filegroup(
         "naming.h",
         "tensor_bundle.cc",
         "tensor_bundle.h",
-        "//tensorflow/tsl/util/tensor_bundle:mobile_srcs",
     ],
 )
 
@@ -81,7 +81,7 @@ cc_library(
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
-        "//tensorflow/tsl/util/tensor_bundle:byte_swap_array",
+        "//tensorflow/tsl/util:byte_swap_array",
     ],
 )
 

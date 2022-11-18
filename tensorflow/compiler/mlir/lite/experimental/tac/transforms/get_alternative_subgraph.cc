@@ -183,7 +183,8 @@ void AlternativeSubgraphPass::GetAlternativeGraphForFunc(
       // see if we need to erase the func op.
       // Ideally it would be nice if we can utilize dynamic illegal op to do
       // the job.
-      if (!IsAllSupportedbySpec(cloned_func, device_inference_type)) {
+      if (device_inference_type.hardware != "CPU" &&
+          !IsAllSupportedbySpec(cloned_func, device_inference_type)) {
         cloned_func.erase();
       }
     }

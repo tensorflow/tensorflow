@@ -23,8 +23,8 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Analysis/shape_component_analysis.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -338,7 +338,7 @@ struct RemoveRedundantCstrReshapable final
       if (!isSymbolicProduct(
               dim,
               [&](int64_t c) {
-                if (c != ShapedType::kDynamicSize) concreteProductDynShape *= c;
+                if (c != -1) concreteProductDynShape *= c;
               },
               [&](Symbol s) { partialSymbolicFactorsDynShape.push_back(s); })) {
         return failure();

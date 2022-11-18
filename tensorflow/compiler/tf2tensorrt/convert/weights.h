@@ -172,6 +172,8 @@ enum class TRT_ArgumentType {
   RESOURCE = 2,
 };
 
+struct OpConverterParams;
+
 // Represents a TRT-style input to a TF node, it can be either a
 // ITensorProxyPtr (representing nvinfer1::ITensor* or SimpleITensor),
 // or TRT_ShapedWeights which is compile-time constant.
@@ -221,6 +223,8 @@ class TRT_TensorOrWeights {
   ITensorProxyPtr tensor() const;
 
   ResourceHandle resource() const;
+
+  ITensorProxyPtr as_tensor(const OpConverterParams* params);
 
   TRT_ShapedWeights& weights() {
     DCHECK(is_weights());

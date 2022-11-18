@@ -8,10 +8,11 @@ load(
 )
 load(
     "//tensorflow/tsl:tsl.bzl",
-    "tf_copts",
+    "tsl_copts",
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/platform:__subpackages__",
@@ -53,7 +54,7 @@ cc_library(
     hdrs = [
         "cpu_utils.h",
     ],
-    copts = tf_copts(),
+    copts = tsl_copts(),
     deps = [
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",

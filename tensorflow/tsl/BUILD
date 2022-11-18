@@ -3,6 +3,8 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 # Config setting to use in select()s to distinguish open source build from
 # google internal build on configurable attributes.
 #
@@ -396,11 +398,40 @@ selects.config_setting_group(
     visibility = ["//visibility:public"],
 )
 
+# DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
+# Instead, please use public APIs or public build rules TF provides.
+# If you need functionality that is not exposed, we will work with you to expand our public APIs.
+# TODO(b/173549186): Move Google-internal TF code out of learning/brain
+# TODO(jakeharmon): Prune this for use in TSL
+package_group(
+    name = "internal",
+    packages = [
+        "//devtools/python/indexer/...",
+        "//learning/brain/keras/...",
+        "//learning/brain/mlir/...",
+        "//learning/brain/tfrt/...",
+        "//learning/lib/ami/simple_ml/...",
+        "//learning/pathways/...",
+        "//smartass/brain/configure/...",
+        "//tensorflow/...",
+        "//tensorflow/tsl/...",
+        "//tensorflow_decision_forests/...",
+        "//tensorflow_federated/...",
+        "//third_party/cloud_tpu/convergence_tools/sdc_monitoring/...",
+        "//third_party/cloud_tpu/inference_converter/...",
+        "//third_party/py/cloud_ml_autoflow/...",
+        "//third_party/py/envlogger/...",
+        "//third_party/py/keras/...",
+        "//third_party/yggdrasil_decision_forests/...",
+    ],
+)
+
 bzl_library(
     name = "tsl_bzl",
     srcs = ["tsl.bzl"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/tsl/platform:rules_cc_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
@@ -410,3 +441,14 @@ bzl_library(
         "@local_config_tensorrt//:build_defs_bzl",
     ],
 )
+
+# copybara:comment_begin(oss-only)
+cc_library(
+    name = "grpc++",
+    visibility = ["//visibility:public"],
+    deps = select({
+        ":linux_s390x": ["@com_github_grpc_grpc//:grpc++_unsecure"],
+        "//conditions:default": ["@com_github_grpc_grpc//:grpc++"],
+    }),
+)
+# copybara:comment_end

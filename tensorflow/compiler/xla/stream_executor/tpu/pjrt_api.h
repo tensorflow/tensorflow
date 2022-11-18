@@ -16,17 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_PJRT_API_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_PJRT_API_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
-namespace tensorflow {
+namespace stream_executor {
 namespace tpu {
 
-// Global PJRT_Api* singleton.
-
-const PJRT_Api* PjrtApi();
-void SetPjrtApi(const PJRT_Api* api);
+// Gets and sets the global map for PJRT_Api*. Not thread safe. `device_type` is
+// case insensitive.
+xla::StatusOr<const PJRT_Api*> PjrtApi(absl::string_view device_type);
+xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api);
 
 }  // namespace tpu
-}  // namespace tensorflow
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_PJRT_API_H_

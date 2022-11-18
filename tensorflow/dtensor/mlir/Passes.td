@@ -90,6 +90,14 @@ def DTensorUndoMergeConstAcrossMesh
   ];
 }
 
+def DTensorElideIdentityBeforeCopyToMesh
+    : Pass<"dtensor-elide-identity-before-copy-to-mesh", "mlir::func::FuncOp"> {
+  let summary = "Elide IdentityOp right before CopyToMesh style Ops";
+  let constructor = "CreateDTensorElideIdentityBeforeCopyToMesh()";
+  let dependentDialects = [
+  ];
+}
+
 def DTensorSetDefaultSharding
     : Pass<"dtensor-set-default-sharding", "mlir::func::FuncOp"> {
   let summary = "Sets default sharding of TPU computation inputs/outputs to maximal.";

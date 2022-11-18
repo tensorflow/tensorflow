@@ -179,6 +179,84 @@ static std::unique_ptr<OperationState> GetContractionBiasAddOpState(
   return state;
 }
 
+// Convert Softplus+Tanh+Mul to Mish
+// Mul(x, Tanh(Softplus(x))) --> _MklFusedMish
+class MatchSofplusTanhMul : public RemapperPatternBase {
+ public:
+  explicit MatchSofplusTanhMul(OpPropertyHelper &helper)
+      : RemapperPatternBase("tfg.Mul", helper, PatternBenefit(1)) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    // Fusion only available for CPU
+    if (!util::OpHasDevice(op, tensorflow::DEVICE_CPU)) return failure();
+
+    // Not allowing control flow on op
+    if (helper_.HasControlOperandsOrResultUsers(op)) return failure();
+
+    // Fusion only available for float32 and bfloat16 data types
+    auto attr = op->getAttrOfType<TypeAttr>("T");
+    if (!attr) return failure();
+    Type dtype = attr.getValue();
+    if (!dtype.isa<Float32Type, BFloat16Type>()) return failure();
+
+    TFOp mul_wrapper(op);
+
+    // Tanh op
+    Value tanh_value = op->getOperand(0);
+    // Input
+    Value x_value = op->getOperand(1);
+
+    // The Mul op is commutative and the inputs may be swapped.
+    auto CheckTanhOperand = [&](Value tanh_value) {
+      if (!tanh_value) return false;
+      Operation *op = tanh_value.getDefiningOp();
+      return op && this->helper_.getDialect()->IsTanh(op);
+    };
+
+    if (!CheckTanhOperand(tanh_value)) {
+      std::swap(tanh_value, x_value);
+      if (!CheckTanhOperand(tanh_value)) return failure();
+    }
+
+    Operation *tanh_op = tanh_value.getDefiningOp();
+
+    // Softplus op
+    Value softplus_value = tanh_op->getOperand(0);
+    Operation *softplus_op = softplus_value.getDefiningOp();
+
+    if (!(this->helper_.getDialect()->IsSoftplus(op)) &&
+        !(softplus_op->getOperand(0) == x_value)) {
+      return failure();
+    }
+
+    if (!helper_.HasAtMostOneUserOfResult0(tanh_op) ||
+        !helper_.HasAtMostOneUserOfResult0(softplus_op)) {
+      return failure();
+    }
+
+    // TODO(intel-tf): Allow valid control dependencies
+    // Not allowing control flow on Tanh or Softplus
+    if (helper_.HasControlOperandsOrResultUsers(tanh_op) ||
+        helper_.HasControlOperandsOrResultUsers(softplus_op)) {
+      return failure();
+    }
+
+    SmallVector<Value> operands;
+    // Set up non-control operand.
+    operands.push_back(x_value);
+    // Control operands come after regular operands.
+    llvm::append_range(operands, mul_wrapper.getControlOperands());
+
+    Operation *new_op = rewriter.create(
+        op->getLoc(), rewriter.getStringAttr("tfg._MklFusedMish"), operands,
+        op->getResultTypes(), op->getAttrs());
+    rewriter.replaceOp(op, new_op->getResults());
+
+    return success();
+  }
+};
+
 // Contraction + BiasAdd
 // TODO(intel-tf): Support Contraction + {Add, AddV2} fusion in the case it has
 // similar semantic of contraction + BiasAdd
@@ -349,6 +427,7 @@ class Remapper : public impl::RemapperBase<Remapper> {
     }
     if (enable_onednn_patterns_) {
       patterns.insert<MatchMulSigmoid>(context);
+      patterns.insert<MatchSofplusTanhMul>(helper_);
       // TODO(chiahungduan): Currently, the only pattern implemented in PDLL is
       // the same one as `MatchMulSigmoid`. Remove the one of them when there's
       // a decision that which one is preferred.

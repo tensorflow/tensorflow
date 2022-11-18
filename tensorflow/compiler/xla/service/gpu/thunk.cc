@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <string>
+
 namespace xla {
 namespace gpu {
 
@@ -31,8 +36,6 @@ Thunk::ExecuteParams::ExecuteParams(
   switch (kind) {
     case Thunk::kCholesky:
       return "kCholesky";
-    case Thunk::kCollectivePermute:
-      return "kCollectivePermute";
     case Thunk::kConditional:
       return "kConditional";
     case Thunk::kConvolution:
@@ -51,6 +54,8 @@ Thunk::ExecuteParams::ExecuteParams(
       return "kNcclAllReduceStart";
     case Thunk::kNcclAllReduceDone:
       return "kNcclAllReduceDone";
+    case Thunk::kNcclCollectivePermute:
+      return "kNcclCollectivePermute";
     case Thunk::kNcclReduceScatter:
       return "kNcclReduceScatter";
     case Thunk::kNcclAllToAll:
@@ -116,6 +121,11 @@ std::string ThunkSequence::ToString(
     absl::StrAppend(&result, "\n");
   }
   return result;
+}
+
+bool IsReductionCollective(Thunk::Kind kind) {
+  return kind == Thunk::kNcclAllReduce || kind == Thunk::kNcclAllReduceStart ||
+         kind == Thunk::kNcclReduceScatter;
 }
 
 }  // namespace gpu

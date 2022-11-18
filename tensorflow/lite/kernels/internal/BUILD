@@ -5,6 +5,7 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_extra_arm_config_settings", 
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -287,6 +288,7 @@ cc_library(
         "optimized/integer_ops/depthwise_conv_hybrid_3x3_filter.h",
         "optimized/integer_ops/fully_connected.h",
         "optimized/integer_ops/leaky_relu.h",
+        "optimized/integer_ops/lut.h",
         "optimized/integer_ops/mean.h",
         "optimized/integer_ops/mul.h",
         "optimized/integer_ops/pooling.h",
@@ -375,8 +377,8 @@ cc_library(
         ":common",
         ":optimized_base",
         ":types",
-        "//tensorflow/core/kernels:eigen_spatial_convolutions-inl",
         "//tensorflow/lite/c:common",
+        "//tensorflow/tsl/framework/convolution:eigen_spatial_convolutions-inl",
         "//third_party/eigen3",
     ],
 )
@@ -545,6 +547,7 @@ cc_library(
         "reference/integer_ops/fully_connected.h",
         "reference/integer_ops/l2normalization.h",
         "reference/integer_ops/logistic.h",
+        "reference/integer_ops/lut.h",
         "reference/integer_ops/mean.h",
         "reference/integer_ops/mul.h",
         "reference/integer_ops/pooling.h",
@@ -1077,7 +1080,6 @@ cc_test(
     srcs = [
         "strided_slice_logic_test.cc",
     ],
-    shard_count = 4,
     deps = [
         ":strided_slice_logic",
         "@com_google_googletest//:gtest_main",

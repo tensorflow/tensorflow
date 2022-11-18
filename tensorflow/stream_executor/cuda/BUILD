@@ -3,7 +3,7 @@
 
 load("//tensorflow:tensorflow.bzl", "check_deps", "tf_copts")
 load(
-    "//tensorflow/stream_executor:build_defs.bzl",
+    "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
     "tf_additional_cudnn_plugin_copts",
 )
@@ -21,6 +21,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     features = ["-layering_check"],
     licenses = ["notice"],
@@ -56,13 +57,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "cuda_stub",
-    deps = [
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_stub",
-    ],
-)
-
 # Buildozer can not remove dependencies inside select guards, so we have to use
 # an intermediate target.
 cc_library(name = "ptxas_wrapper")
@@ -76,14 +70,6 @@ cc_library(
     hdrs = if_cuda_is_configured(["cuda_driver.h"]),
     deps = [
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
-    ],
-)
-
-cc_library(
-    name = "cudart_stub",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/xla/stream_executor/cuda:cudart_stub",
     ],
 )
 
@@ -359,14 +345,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_gpu_executor",
     ],
     alwayslink = True,
-)
-
-cc_library(
-    name = "cudnn_version",
-    hdrs = ["cudnn_version.h"],
-    deps = [
-        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_version",
-    ],
 )
 
 cc_library(

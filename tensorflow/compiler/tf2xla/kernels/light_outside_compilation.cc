@@ -21,6 +21,7 @@ limitations under the License.
 #include <numeric>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/kernels/callback.pb.h"
@@ -347,7 +348,12 @@ class TfCallbackDevice : public DeviceBase {
     if (attr.on_host()) {
       if (attr.gpu_compatible()) {
         GPUProcessState* ps = GPUProcessState::singleton();
-        return ps->GetGpuHostAllocator(0);
+        // TODO(jlebar): The very first call to GetGpuHostAllocator sets its
+        // memory limits.  So passing {} for the options here means that if
+        // nobody gets this allocator before us, we will not respect any limits
+        // the user might have set on host memory allocation.  Our call to
+        // GetGPUAllocator in the constructor has the same problem.
+        return ps->GetGpuHostAllocator(/*options=*/{}, 0);
       } else {
         return cpu_allocator_;
       }

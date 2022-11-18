@@ -123,6 +123,11 @@ void DynamicUpdateSlice(const TfLiteTensor* input, const TfLiteTensor* update,
   // Copies input to output first.
   memcpy(output->data.raw, input->data.raw, input->bytes);
 
+  // Update tensor has no elements. Skip.
+  if (update_shape.FlatSize() == 0) {
+    return;
+  }
+
   std::vector<int> current_dim(input_dims, 0);
   // Overwrites update to output.
   do {

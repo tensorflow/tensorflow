@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -686,6 +687,64 @@ class DatasetOpsTestBase : public ::testing::Test {
       const std::string& iterator_prefix,
       const std::vector<Tensor>& expected_outputs,
       const std::vector<int>& breakpoints, bool compare_order);
+
+  // A class for testing variant tensors.
+  class TestVariant {
+   public:
+    TestVariant() = default;
+    explicit TestVariant(const std::vector<Tensor>& tensors)
+        : tensors_(tensors) {}
+
+    bool operator!=(const TestVariant& rhs) const {
+      return !ExpectEqual(tensors_, rhs.tensors_, /*compare_order=*/true).ok();
+    }
+
+    constexpr static const char kTypeName[] = "tensorflow::data::TestVariant";
+
+    string TypeName() const { return kTypeName; }
+
+    // Encodes the contents of this object into `data`.  This function signature
+    // is required for objects to be stored in `tensorflow::Variant`s.  See the
+    // docs for `tensorflow::Variant` for more information and see
+    // `tensorflow::Variant::Encode` for how this is used.
+    void Encode(VariantTensorData* data) const {
+      data->set_type_name(TypeName());
+      for (const auto& tensor : tensors_) {
+        data->add_tensor(tensor);
+      }
+    }
+
+    // Decodes `data` and updates the contents of this object.  This function
+    // signature is required for objects to be stored in `tensorflow::Variant`s.
+    // See the docs for `tensorflow::Variant` for more information and see
+    // `tensorflow::Variant::Decode` for how this is used.
+    bool Decode(VariantTensorData data) {
+      tensors_ = data.tensors();
+      return true;
+    }
+
+    string DebugString() const {
+      string result = "TestVariant([";
+      for (const auto& tensor : tensors_) {
+        if (&tensor != &tensors_[0]) result += ", ";
+        result += tensor.DebugString();
+      }
+      result += "])";
+      return result;
+    }
+
+   private:
+    std::vector<Tensor> tensors_;
+  };
+
+  // Returns a scalar variant tensor containing a `TestVariant` object
+  // containing `tensors`.
+  static Tensor CreateTestVariantTensor(const std::vector<Tensor>& tensors) {
+    Tensor tensor{DT_VARIANT, TensorShape({})};
+    TestVariant test_variant{tensors};
+    tensor.scalar<Variant>()() = test_variant;
+    return tensor;
+  }
 
  protected:
   // Make destructor protected so that DatasetOpsTestBase objects cannot

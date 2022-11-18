@@ -24,12 +24,12 @@ import numpy
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager.polymorphic_function import monomorphic_function
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.eager.polymorphic_function import quarantine
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -71,7 +71,7 @@ def total_function_cache(defined):
   return defined._list_all_concrete_functions()  # pylint: disable=protected-access
 
 
-# TODO(b/244360686): Do not delete these tests, migrate to use tf.function or
+# TODO(b/258247871): Do not delete these tests, migrate to use tf.function or
 # TracingCompiler.
 class DefunTest(test.TestCase, parameterized.TestCase):
 
@@ -82,7 +82,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
       op = v.assign_add(1.0)
 
-      @quarantine.defun
+      @quarantine.defun_with_attributes
       def f():
         with ops.control_dependencies([op]):
           return 1.0
@@ -93,7 +93,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
   def testInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
 
-    @quarantine.defun(reduce_retracing=True)
+    @quarantine.defun_with_attributes(reduce_retracing=True)
     def func(a):
       if a._shape_tuple()[0] is None:
         unknown_dim[0] = True
@@ -113,7 +113,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
   def testNestedInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
 
-    @quarantine.defun(reduce_retracing=True)
+    @quarantine.defun_with_attributes(reduce_retracing=True)
     def func(a_, b_=None):
       del a_  # Only used to check which cache is used.
       self.assertEqual(b_[0]._shape_tuple(), ())
@@ -156,7 +156,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       _ = x * y
       return x + y
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def add_2(x, y):
       _ = x * y
       return x + y
@@ -166,13 +166,13 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   def testNestedFunctionGraphNotOutOfDate(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def f():
       return constant_op.constant(1.)
 
     class _Model(object):
 
-      @quarantine.defun
+      @quarantine.defun_with_attributes
       def g(self):
         self.f = f.get_concrete_function()
 
@@ -190,7 +190,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   def testGraphEagerIsolation(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def f():
       self.v = variables.Variable(1.0)
       return self.v.read_value()
@@ -207,7 +207,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       return x
 
     x = random_ops.random_uniform([2, 2]).numpy()
-    defined = quarantine.defun(f)
+    defined = quarantine.defun_with_attributes(f)
     defined(x)
     self.assertLen(total_function_cache(defined), 1)
 
@@ -248,7 +248,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   def testNumpyDtypeInputSupported(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def f(x, dtype):
       return constant_op.constant(dtype(x))
 
@@ -265,7 +265,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       return x
 
     x = random_ops.random_uniform([2, 2]).numpy()
-    defined = quarantine.defun(f)
+    defined = quarantine.defun_with_attributes(f)
     defined(x=x)
     self.assertLen(total_function_cache(defined), 1)
 
@@ -283,7 +283,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   def testFuncListAttr(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def test_function(val):
 
       def fn1():
@@ -298,7 +298,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       fn5 = functools.partial(fn3, 5)
 
       return gen_functional_ops.case(val, [], [dtypes.float32], [
-          quarantine.defun(f).get_concrete_function()
+          quarantine.defun_with_attributes(f).get_concrete_function()
           for f in (fn1, fn2, fn3, fn4, fn5)
       ])
 
@@ -313,7 +313,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
   @test_util.enable_control_flow_v2
   def testVariableInLoopInFunction(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def test_function():
 
       def loop_test(_):
@@ -334,7 +334,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       return self.v.read_value()
 
     self.v = None
-    defined = quarantine.defun(variable_creator)
+    defined = quarantine.defun_with_attributes(variable_creator)
     defined()  # Create the variable.
     self.assertIsInstance(self.v, resource_variable_ops.ResourceVariable)
 
@@ -352,7 +352,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       gpu_result = math_ops.reduce_sum(array_ops.gather(v_gpu, [1, 2]))
       return cpu_result, gpu_result
 
-    defined = quarantine.defun(sum_gather)
+    defined = quarantine.defun_with_attributes(sum_gather)
     if not context.executing_eagerly():
       self.evaluate(variables.global_variables_initializer())
     expected = self.evaluate(sum_gather())
@@ -361,7 +361,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testCallOptionsMemory(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def model(x):
       return x + constant_op.constant(1.)
 
@@ -377,7 +377,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
         kernel_initializer=init_ops.ones_initializer(),
         bias_initializer=init_ops.zeros_initializer())
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def model(x):
       return conv(x)
 
@@ -397,7 +397,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       def __init__(self):
         self.v = None
 
-      @quarantine.defun
+      @quarantine.defun_with_attributes
       def f(self):
         if self.v is None:
           self.v = variables.Variable(1.)
@@ -407,55 +407,6 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     with ops.device('cpu:0'):
       has_device.f()
     self.assertIn('CPU', has_device.v.device)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testMultipleDeviceCheck(self):
-
-    def f():
-      with ops.device('cpu'):
-        return test_ops.device_placement_op()
-
-    func = quarantine.defun(f)
-    with ops.device('cpu:0'):
-      output = self.evaluate(func())
-      self.assertIn(compat.as_bytes('CPU:0'), output)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testDeviceAnnotationsRespected(self):
-
-    def multi_device_fn():
-      with ops.device('/cpu:0'):
-        s0 = test_ops.device_placement_op()
-      with ops.device('/cpu:1'):
-        s1 = test_ops.device_placement_op()
-      with ops.device('/cpu:2'):
-        s2 = test_ops.device_placement_op()
-      s3 = test_ops.device_placement_op()
-      return s0, s1, s2, s3
-
-    defined = quarantine.defun(multi_device_fn)
-    outputs = self.evaluate(defined())
-    self.assertLen(total_function_cache(defined), 1)
-    self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
-    self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
-    self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
-
-    with ops.device('/cpu:3'):
-      outputs = self.evaluate(defined())
-    # All function definitions are agnostic to call site devices.
-    self.assertLen(total_function_cache(defined), 1)
-    self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
-    self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
-    self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
-    self.assertIn(compat.as_bytes('CPU:3'), outputs[3])
-
-    with ops.device('/cpu:0'):
-      outputs = self.evaluate(defined())
-    self.assertLen(total_function_cache(defined), 1)
-    self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
-    self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
-    self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
-    self.assertIn(compat.as_bytes('CPU:0'), outputs[3])
 
   def testCacheObjectHashCollisions(self):
 
@@ -467,7 +418,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     def func(foo):
       return constant_op.constant([id(foo)])
 
-    defined = quarantine.defun(func)
+    defined = quarantine.defun_with_attributes(func)
     foo_1 = Foo()
     defined(foo_1)
     self.assertLen(total_function_cache(defined), 1)
@@ -481,7 +432,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     def func(t):
       return t + t
 
-    defined = quarantine.defun(func)
+    defined = quarantine.defun_with_attributes(func)
     t = constant_op.constant([[1.0]], dtype=dtypes.complex64)
     defined(t)
     self.assertLen(total_function_cache(defined), 1)
@@ -495,7 +446,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     def func(t):
       return t + t
 
-    defined = quarantine.defun(func)
+    defined = quarantine.defun_with_attributes(func)
     t = constant_op.constant([[1.0]], dtype=dtypes.complex64)
     defined(t)
     self.assertLen(total_function_cache(defined), 1)
@@ -509,7 +460,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     def func(t):
       return t + t
 
-    defined = quarantine.defun(func)
+    defined = quarantine.defun_with_attributes(func)
     t = constant_op.constant([[1.0]], dtype=dtypes.complex64)
     defined(t)
     self.assertLen(total_function_cache(defined), 1)
@@ -524,7 +475,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       return t + t
 
     with context.graph_mode(), self.cached_session():
-      defined = quarantine.defun(func, reduce_retracing=True)
+      defined = quarantine.defun_with_attributes(func, reduce_retracing=True)
 
       p = array_ops.placeholder(dtype=dtypes.float32, shape=[])
       defined(p)
@@ -553,7 +504,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       del baz
       return
 
-    defined = quarantine.defun(func)
+    defined = quarantine.defun_with_attributes(func)
     defined(0, baz=20)
     self.assertLen(total_function_cache(defined), 1)
 
@@ -575,34 +526,6 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     defined(1, baz=3, bar=2)
     self.assertLen(total_function_cache(defined), 3)
 
-  def testDatasetIteratorCaching(self):
-
-    def func(it1, it2):
-      next(it1)
-      next(it2)
-      return 0
-
-    defined = quarantine.defun(func)
-
-    d = dataset_ops.DatasetV2.from_tensor_slices([1, 2, 3])
-    it1 = iter(d)
-    it2 = iter(d)
-    _ = defined(it1, it2)  # The two iterators are different
-    self.assertLen(total_function_cache(defined), 1)
-
-    it3 = iter(d)
-    it4 = iter(d)
-    _ = defined(it3, it4)  # The two iterators are different, should not retrace
-    self.assertLen(total_function_cache(defined), 1)
-
-    it5 = iter(d)
-    _ = defined(it5, it5)  # The two iterators are the same, should retrace
-    self.assertLen(total_function_cache(defined), 2)
-
-    it6 = iter(d)
-    _ = defined(it6, it6)  # The two iterators are the same, should not retrace
-    self.assertLen(total_function_cache(defined), 2)
-
   def testFunctoolsPartialUnwrappedCorrectly(self):
 
     def full_function(a, b, c=3):
@@ -611,7 +534,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     partial = functools.partial(full_function, 1, c=4)
     a, b, c = partial(2)
 
-    defined = quarantine.defun(partial)
+    defined = quarantine.defun_with_attributes(partial)
     func_a, func_b, func_c = defined(2)
     self.assertEqual(func_a.numpy(), a)
     self.assertEqual(func_b.numpy(), b)
@@ -624,7 +547,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       return a
 
     signature = [tensor_spec.TensorSpec(shape=(2,), dtype=dtypes.float32)]
-    defined = quarantine.defun(foo, input_signature=signature)
+    defined = quarantine.defun_with_attributes(foo, input_signature=signature)
     a = array_ops.ones([2])
     self.assertAllEqual(a, defined(a))
     self.assertLen(total_function_cache(defined), 1)
@@ -641,7 +564,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       return a
 
     signature = [tensor_spec.TensorSpec((2, None), dtypes.float32)]
-    defined = quarantine.defun(bar, input_signature=signature)
+    defined = quarantine.defun_with_attributes(bar, input_signature=signature)
     a = array_ops.ones([2, 1])
     out = defined(a)
     self.assertLen(total_function_cache(defined), 1)
@@ -655,7 +578,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   def testInputSignatureWithDictInPositionalArgs(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def f(*_args, **_kwargs):
       return None
 
@@ -671,7 +594,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     rank2_spec = tensor_spec.TensorSpec(
         shape=(None, None), dtype=dtypes.float32)
 
-    @quarantine.defun(input_signature=[rank2_spec])
+    @quarantine.defun_with_attributes(input_signature=[rank2_spec])
     def func(a):
       self.assertEqual([None, None], a.shape.as_list())
       return array_ops.shape(a)
@@ -690,7 +613,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     def expected_foo(a, b):
       return [a, b]
 
-    @quarantine.defun(input_signature=[
+    @quarantine.defun_with_attributes(input_signature=[
         [tensor_spec.TensorSpec((2, None), dtypes.float32)] * 2,
         tensor_spec.TensorSpec((1,), dtypes.float32),
     ])
@@ -738,7 +661,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     def expected_bar(a):
       return a
 
-    @quarantine.defun(input_signature=[{
+    @quarantine.defun_with_attributes(input_signature=[{
         'a': tensor_spec.TensorSpec((2, None), dtypes.float32),
         'b': tensor_spec.TensorSpec((2, None), dtypes.float32),
         'c': tensor_spec.TensorSpec((1,), dtypes.float32)
@@ -780,7 +703,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         TypeError, 'input_signature must be either a '
         'tuple or a list.*'):
-      quarantine.defun(foo, input_signature=signature)
+      quarantine.defun_with_attributes(foo, input_signature=signature)
 
   def testInputsIncompatibleWithNestedSignatureRaisesError(self):
 
@@ -789,7 +712,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     signature = [[tensor_spec.TensorSpec((1,), dtypes.float32)] * 2,
                  [tensor_spec.TensorSpec((1,), dtypes.float32)] * 2]
-    defined = quarantine.defun(foo, input_signature=signature)
+    defined = quarantine.defun_with_attributes(foo, input_signature=signature)
     a = array_ops.ones([1])
 
     with self.assertRaisesRegex(ValueError,
@@ -803,7 +726,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   def testUnderspecifiedInputSignature(self):
 
-    @quarantine.defun(input_signature=[
+    @quarantine.defun_with_attributes(input_signature=[
         tensor_spec.TensorSpec([], dtypes.float32),
     ])
     def foo(a, training=True):
@@ -833,7 +756,8 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     partial = functools.partial(full_function, 1, c=4)
     a, b, c = partial(2.0)
     signature = [tensor_spec.TensorSpec([], dtypes.float32)]
-    defined = quarantine.defun(partial, input_signature=signature)
+    defined = quarantine.defun_with_attributes(
+        partial, input_signature=signature)
     x = constant_op.constant(2.0)
     func_a, func_b, func_c = defined(x)
     self.assertEqual(func_a.numpy(), a)
@@ -842,7 +766,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   def testInputSignatureWithKeywordPositionalArgs(self):
 
-    @quarantine.defun(input_signature=[
+    @quarantine.defun_with_attributes(input_signature=[
         tensor_spec.TensorSpec([], dtypes.float32),
         tensor_spec.TensorSpec([], dtypes.int64)
     ])
@@ -878,7 +802,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       del kwargs
       return a, b
 
-    x = quarantine.defun(
+    x = quarantine.defun_with_attributes(
         foo,
         input_signature=[
             tensor_spec.TensorSpec([], dtypes.float32),
@@ -897,7 +821,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     signature = [
         ragged_tensor.RaggedTensorSpec(shape=[3, None], dtype=dtypes.int32)
     ]
-    defined = quarantine.defun(f, input_signature=signature)
+    defined = quarantine.defun_with_attributes(f, input_signature=signature)
     rt1 = ragged_factory_ops.constant([[1], [], [2, 3, 4]])
     out1 = defined(rt1)
     self.assertLen(total_function_cache(defined), 1)
@@ -939,18 +863,18 @@ class DefunTest(test.TestCase, parameterized.TestCase):
         tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32),
         tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32),
     ]
-    defined = quarantine.defun(f, input_signature=signature)
+    defined = quarantine.defun_with_attributes(f, input_signature=signature)
     self.assertEqual(defined(1, 2).numpy(), 10)
 
-    defined = quarantine.defun(
+    defined = quarantine.defun_with_attributes(
         functools.partial(f, c=4), input_signature=signature)
     self.assertEqual(defined(1, 2).numpy(), 11)
 
-    defined = quarantine.defun(
+    defined = quarantine.defun_with_attributes(
         functools.partial(f, d=5), input_signature=signature)
     self.assertEqual(defined(1, 2).numpy(), 11)
 
-    defined = quarantine.defun(
+    defined = quarantine.defun_with_attributes(
         functools.partial(f, d=array_ops.constant(5)),
         input_signature=signature)
     self.assertEqual(defined(1, 2).numpy(), 11)
@@ -973,12 +897,13 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(
         ValueError, "keyword-only arguments must have default values.*'b'"):
-      quarantine.defun(test_func, input_signature=signature)
+      quarantine.defun_with_attributes(test_func, input_signature=signature)
 
     test_func_lambda = lambda a, *, b: a + b
     with self.assertRaisesRegex(
         ValueError, "keyword-only arguments must have default values.*'b'"):
-      quarantine.defun(test_func_lambda, input_signature=signature)
+      quarantine.defun_with_attributes(
+          test_func_lambda, input_signature=signature)
 
   def testTensorKeywordArguments(self):
 
@@ -986,7 +911,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       del a
       return b
 
-    defined = quarantine.defun(foo)
+    defined = quarantine.defun_with_attributes(foo)
     a = constant_op.constant(2.0)
     b = constant_op.constant([1.0, 2.0])
     one = defined(a, b)
@@ -1078,20 +1003,25 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   def testRegisterFunction(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def add(x, y):
       return math_ops.add(x, y)
 
     def matmul(x, y):
       return math_ops.matmul(x, y)
 
-    defun_matmul = quarantine.defun(matmul)
+    defun_matmul = quarantine.defun_with_attributes(matmul)
 
     with context.graph_mode(), self.cached_session():
       with ops.get_default_graph().as_default():
         t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
-        quarantine.register(defun_matmul, t, t)
-        quarantine.register(add, t, t)
+        concrete_func_matmul = defun_matmul.get_concrete_function(t, t)
+        concrete_func_matmul.add_to_graph()
+        concrete_func_matmul.add_gradient_functions_to_graph()
+
+        concrete_func_add = add.get_concrete_function(t, t)
+        concrete_func_add.add_to_graph()
+        concrete_func_add.add_gradient_functions_to_graph()
 
         graph = ops.get_default_graph()
         # pylint: disable=protected-access
@@ -1142,7 +1072,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   def testRegisterConcreteFunction(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def py_add(x, y):
       return math_ops.add(x, y)
 
@@ -1151,7 +1081,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
         tensor_spec.TensorSpec(None, dtypes.float32),
         tensor_spec.TensorSpec(None, dtypes.float32))
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def py_composite(x, y):
       return x, add(x, y)
 
@@ -1208,7 +1138,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     for captured, op_type in [(large_tensor, 'Placeholder'),
                               (small_tensor, 'Const'), (v, 'Placeholder')]:
 
-      @quarantine.defun
+      @quarantine.defun_with_attributes
       def test_fn():
         return captured + 1  # pylint: disable=cell-var-from-loop
 
@@ -1222,7 +1152,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     def matmul(x, y):
       return math_ops.matmul(x, y)
 
-    defun_matmul = quarantine.defun(
+    defun_matmul = quarantine.defun_with_attributes(
         matmul,
         input_signature=[
             tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32),
@@ -1231,14 +1161,18 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     with context.graph_mode(), self.cached_session():
       with ops.get_default_graph().as_default():
         t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
-        quarantine.register(defun_matmul, t, t)
+        concrete_func = defun_matmul.get_concrete_function(t, t)
+        concrete_func.add_to_graph()
+        concrete_func.add_gradient_functions_to_graph()
 
         graph = ops.get_default_graph()
         # pylint: disable=protected-access
         self.assertLen(graph._functions, 3)
 
         # Test register function with cache, note inputs are ignored.
-        quarantine.register(defun_matmul)
+        concrete_func = defun_matmul.get_concrete_function()
+        concrete_func.add_to_graph()
+        concrete_func.add_gradient_functions_to_graph()
         graph = ops.get_default_graph()
         self.assertLen(graph._functions, 3)
 
@@ -1247,14 +1181,19 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     def matmul(x, y):
       return math_ops.matmul(x, y)
 
-    defun_matmul = quarantine.defun(matmul)
+    defun_matmul = quarantine.defun_with_attributes(matmul)
 
     with context.graph_mode(), self.cached_session():
       with ops.get_default_graph().as_default():
         t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
         t2 = constant_op.constant([[2.0, 3.0], [4.0, 5.0]])
-        quarantine.register(defun_matmul, t, t)
-        quarantine.register(defun_matmul, t2, t2)
+        concrete_func_t = defun_matmul.get_concrete_function(t, t)
+        concrete_func_t.add_to_graph()
+        concrete_func_t.add_gradient_functions_to_graph()
+
+        concrete_func_t2 = defun_matmul.get_concrete_function(t2, t2)
+        concrete_func_t2.add_to_graph()
+        concrete_func_t2.add_gradient_functions_to_graph()
 
         graph = ops.get_default_graph()
         # Only one function is registered since the input param are in same type
@@ -1263,7 +1202,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   def testCallingFunctionWithDifferentVariables(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def foo(v):
       v.assign_add(1.0)
       return v.read_value()
@@ -1278,7 +1217,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     w = resource_variable_ops.ResourceVariable(0.0)
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def bar(v):
       del v
       return constant_op.constant(1.0)
@@ -1289,7 +1228,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   def testCallingFunctionWithNonTensorsFails(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def foo(x):
       return x
 
@@ -1326,7 +1265,9 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
       x = constant_op.constant(1.0)
 
-      quarantine.register(cpu_boost, x)
+      concrete_func = cpu_boost.get_concrete_function(x)
+      concrete_func.add_to_graph()
+      concrete_func.add_gradient_functions_to_graph()
       y = gpu_boost(x)
       y_value = self.evaluate(y)
 
@@ -1366,9 +1307,11 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     def on_gpu(x):
       return x + 4
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def run_on_cpu(t):
-      quarantine.register(on_cpu, t)
+      concrete_func = on_cpu.get_concrete_function(t)
+      concrete_func.add_to_graph()
+      concrete_func.add_gradient_functions_to_graph()
       with ops.device('CPU:0'):
         return on_gpu(t)
 
@@ -1378,11 +1321,11 @@ class DefunTest(test.TestCase, parameterized.TestCase):
   def testDefunFunctionSeparateGraphs(self):
     with context.graph_mode():
 
-      @quarantine.defun
+      @quarantine.defun_with_attributes
       def add(x):
         return x + 5
 
-      @quarantine.defun
+      @quarantine.defun_with_attributes
       def maybe_add(x, should_add):
         if should_add:
           return add(x)
@@ -1407,7 +1350,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   def testCacheKeyOverlappingShapes(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def defined(t):
       return t
 
@@ -1416,7 +1359,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     defined(array_ops.zeros([1, 21]))
     self.assertLen(total_function_cache(defined), 2)
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def defined_again(t):
       return defined(t)
 
@@ -1427,7 +1370,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   def testCacheTensorSpecIdenticalToTensor(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def defined(t):
       return t
 
@@ -1438,7 +1381,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   def testCacheKeyNestedLists(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def defined(l):
       return l
 
@@ -1460,7 +1403,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       a = attr.ib()
       b = attr.ib()
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def defined(l):
       return l
 
@@ -1484,7 +1427,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   def testDistinctVariablesNoRetracing(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def defined(a, b, c):
       return a + b + c
 
@@ -1503,7 +1446,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   def testRetracingOnDifferentVaribleCombinationPatterns(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def defined(a, b, c):
       return a + b + c
 
@@ -1531,7 +1474,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   def testDeepcopyVariableNoRetracing(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def defined(a, b, c):
       return a + b + c
 
@@ -1549,7 +1492,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     class DefunnedMiniModel:
 
-      @quarantine.defun
+      @quarantine.defun_with_attributes
       def call(self, inputs, training=True):
         pass
 
@@ -1560,7 +1503,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
   @test_util.disable_tfrt('b/173429686')
   def testExecutorType(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def add_five(x):
       return x + 5
 
@@ -1581,7 +1524,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
   @test_util.assert_no_garbage_created
   def testReferenceCycles(self):
 
-    fn = quarantine.defun(lambda x: 2. * x)
+    fn = quarantine.defun_with_attributes(lambda x: 2. * x)
 
     fn(constant_op.constant(4.0))
     weak_fn = weakref.ref(fn)
@@ -1594,11 +1537,11 @@ class DefunTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testShapeCaching(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def func(x):
       return array_ops.shape(x)
 
-    @quarantine.defun(
+    @quarantine.defun_with_attributes(
         input_signature=[tensor_spec.TensorSpec([None, None], dtypes.float32)])
     def calls_func(x):
       return func(x)
@@ -1611,7 +1554,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
   def testLimitedRetracing(self):
     trace_count = [0]
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def func(x):
       trace_count[0] += 1
       return x
@@ -1638,7 +1581,7 @@ class DefunCollectionTest(test.TestCase):
         ops.add_to_collection('x', x)
         ops.add_to_collection('y', y)
 
-        @quarantine.defun
+        @quarantine.defun_with_attributes
         def fn():
           x_const = constant_op.constant(ops.get_collection('x')[0])
           y_const = constant_op.constant(ops.get_collection('y')[0])
@@ -1657,7 +1600,7 @@ class DefunCollectionTest(test.TestCase):
       with self.session(graph=g):
         v = resource_variable_ops.ResourceVariable(1.0)
 
-        @quarantine.defun
+        @quarantine.defun_with_attributes
         def f():
           return v.read_value()
 
@@ -1670,7 +1613,7 @@ class DefunCollectionTest(test.TestCase):
     with ops.Graph().as_default() as g:
       with self.session(graph=g):
 
-        @quarantine.defun
+        @quarantine.defun_with_attributes
         def f():
           v = resource_variable_ops.ResourceVariable(2.0)
           return v
@@ -1687,7 +1630,7 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
   def testMultiDeviceOutput(self):
     """Tests that functions can produce outputs on multiple devices."""
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def func(a, b, transpose_a):
       with ops.device('/device:CPU:0'):
         m1 = math_ops.matmul(a, b, transpose_a=transpose_a)
@@ -1705,7 +1648,7 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
   @test_util.run_gpu_only
   def testEmptyBody(self):
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def func(a, b):
       return b, a
 
@@ -1741,7 +1684,7 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
     with ops.device('/device:GPU:0'):
       int_gpu = constant_op.constant(7, dtype=dtypes.int32)
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def func(int_cpu, resource, int_gpu):
       with ops.device('/device:CPU:0'):
         m1 = int_cpu * resource + int_gpu
@@ -1767,7 +1710,7 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
   def testMultiDeviceColocateWith(self):
     """Tests that function's outputs respect colocation constraints."""
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def func(a, b):
       with ops.colocate_with(a):
         ra = 2 * a
@@ -1797,7 +1740,7 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
       g1 = resource_variable_ops.ResourceVariable(3.0)
       g2 = resource_variable_ops.ResourceVariable(5.0)
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def func(resource1, resource2):
       with ops.device('/device:CPU:0'):
         result1 = resource1 * g2
@@ -1826,7 +1769,7 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
     with ops.device('/device:GPU:0'):
       g1 = resource_variable_ops.ResourceVariable(3.0)
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def func(resource1, resource2):
       with ops.device('/device:CPU:0'):
         result1 = resource1 * 5
@@ -1882,7 +1825,7 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
     def inner(resource1):
       return resource1 * 2, resource1.handle
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def outer(resource1):
       with ops.device('/device:CPU:0'):
         r1, _ = inner(resource1)
@@ -1911,7 +1854,7 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
       resource1.assign_add(2.0)
       return resource1 * 2, resource1.handle
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def outer(resource1):
       with ops.device('/device:CPU:0'):
         r1, res1 = inner(resource1)
@@ -1953,7 +1896,7 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
     for tensor in [cg0, cg1]:
       self.assertRegex(tensor.backing_device, 'GPU:0')
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def func(rc0, cc0, cg0, rc1, cg1, rg0, rg1, cc1):
       with ops.device('/device:CPU:0'):
         m1 = rc0 * cg0
@@ -1989,7 +1932,7 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
       g2 = constant_op.constant(13.0)
       g3 = constant_op.constant(17.0)
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def func(g1, g2, c1, g3, c2):  # pylint: disable=unused-argument
       # arguments g1 and g2 are unused and can be pruned by grappler.
       return c1 * g3 * c2
@@ -2095,7 +2038,7 @@ class FunctionCallbackTest(test.TestCase, parameterized.TestCase):
     model = variables.Variable(1.0, name='model')
     count = variables.Variable(0)
 
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def forward_pass(value):
       count.assign_add(1)
       residuals = value - model
@@ -2122,7 +2065,7 @@ class DefunArgumentNamingTest(test.TestCase, parameterized.TestCase):
   """Tests for recognizable export signatures from concrete functions."""
 
   def testBasic(self):
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def fn(a, b):
       return a + b, a * b
     # Call the function to make def_function happy
@@ -2146,7 +2089,7 @@ class DefunArgumentNamingTest(test.TestCase, parameterized.TestCase):
         fn_op(a=constant_op.constant(1.), b=constant_op.constant(2.)))
 
   def testVariable(self):
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def fn(a, b):
       return a + b, a * b
     # Call the function to make def_function happy
@@ -2164,7 +2107,7 @@ class DefunArgumentNamingTest(test.TestCase, parameterized.TestCase):
     self.assertLen(fn_op.graph.structured_outputs, 2)
 
   def testDictReturned(self):
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def fn(x, z=(1., 2.), y=3.):
       z1, z2 = z
       return {'alpha': x + y + z1, 'beta': x * y + z2}
@@ -2213,7 +2156,7 @@ class DefunArgumentNamingTest(test.TestCase, parameterized.TestCase):
   def testMethod(self):
     class HasMethod(object):
 
-      @quarantine.defun
+      @quarantine.defun_with_attributes
       def method(self, x):
         return x
 
@@ -2255,7 +2198,7 @@ class DefunArgumentNamingTest(test.TestCase, parameterized.TestCase):
 
     class HasMethod(object):
 
-      @quarantine.defun(
+      @quarantine.defun_with_attributes(
           input_signature=(tensor_spec.TensorSpec(
               shape=None, dtype=dtypes.float64, name='y'),))
       def method(self, x):
@@ -2281,7 +2224,7 @@ class DefunArgumentNamingTest(test.TestCase, parameterized.TestCase):
         [inp.op.get_attr('_user_specified_name') for inp in method_op2.inputs])
 
   def testVariadic(self):
-    @quarantine.defun
+    @quarantine.defun_with_attributes
     def variadic_fn(x, *args, **kwargs):
       return x + math_ops.add_n(list(args) + list(kwargs.values()))
 
@@ -2303,7 +2246,7 @@ class DefunArgumentNamingTest(test.TestCase, parameterized.TestCase):
         [inp.op.get_attr('_user_specified_name') for inp in variadic_op.inputs])
 
   def testVariadicInputSignature(self):
-    @quarantine.defun(
+    @quarantine.defun_with_attributes(
         input_signature=(
             tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
             tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32, name='y'),
@@ -2325,3 +2268,68 @@ class DefunArgumentNamingTest(test.TestCase, parameterized.TestCase):
         [b'x', b'y', b'args_1', b'z'],
         [inp.op.get_attr('_user_specified_name')
          for inp in variadic_op.inputs])
+
+
+class DevicePlacementTest(test.TestCase, parameterized.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMultipleDeviceCheck(self):
+
+    def f():
+      with ops.device('cpu'):
+        return test_ops.device_placement_op()
+
+    func = quarantine.defun_with_attributes(f)
+    with ops.device('cpu:0'):
+      output = self.evaluate(func())
+      self.assertIn(compat.as_bytes('CPU:0'), output)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDeviceAnnotationsRespected(self):
+
+    def multi_device_fn():
+      with ops.device('/cpu:0'):
+        s0 = test_ops.device_placement_op()
+      with ops.device('/cpu:1'):
+        s1 = test_ops.device_placement_op()
+      with ops.device('/cpu:2'):
+        s2 = test_ops.device_placement_op()
+      s3 = test_ops.device_placement_op()
+      return s0, s1, s2, s3
+
+    defined = quarantine.defun_with_attributes(multi_device_fn)
+    outputs = self.evaluate(defined())
+    self.assertLen(total_function_cache(defined), 1)
+    self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
+    self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
+    self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
+
+    with ops.device('/cpu:3'):
+      outputs = self.evaluate(defined())
+    # All function definitions are agnostic to call site devices.
+    self.assertLen(total_function_cache(defined), 1)
+    self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
+    self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
+    self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
+    self.assertIn(compat.as_bytes('CPU:3'), outputs[3])
+
+    with ops.device('/cpu:0'):
+      outputs = self.evaluate(defined())
+    self.assertLen(total_function_cache(defined), 1)
+    self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
+    self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
+    self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
+    self.assertIn(compat.as_bytes('CPU:0'), outputs[3])
+
+
+if __name__ == '__main__':
+  ops.enable_eager_execution()
+  cpus = config.list_physical_devices('CPU')
+  # Set 4 virtual CPUs
+  config.set_logical_device_configuration(cpus[0], [
+      context.LogicalDeviceConfiguration(),
+      context.LogicalDeviceConfiguration(),
+      context.LogicalDeviceConfiguration(),
+      context.LogicalDeviceConfiguration()
+  ])
+  test.main()

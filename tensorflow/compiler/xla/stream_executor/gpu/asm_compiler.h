@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_GPU_ASM_COMPILER_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_GPU_ASM_COMPILER_H_
 
+#include <array>
 #include <cstdint>
+#include <tuple>
 #include <vector>
 
 #include "absl/base/const_init.h"
@@ -89,6 +91,10 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
 // single image.
 port::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
     gpu::GpuContext* context, std::vector<CubinOrPTXImage> images);
+
+// On NVIDIA GPUs, returns the CUDA toolkit version supported by the driver,
+port::StatusOr<std::array<int64_t, 3>> GetAsmCompilerVersion(
+    const std::string& preferred_cuda_dir);
 
 #if GOOGLE_CUDA
 // Maintains a cache of pointers to loaded kernels

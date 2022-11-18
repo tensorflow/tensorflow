@@ -54,7 +54,7 @@ class LiftQuantizableSpotsAsFunctionsPass
 
   LiftQuantizableSpotsAsFunctionsPass() {}
 
-  explicit LiftQuantizableSpotsAsFunctionsPass(const OpSet& op_set) {
+  explicit LiftQuantizableSpotsAsFunctionsPass(OpSet op_set) {
     op_set_ = op_set;
   }
 
@@ -96,14 +96,14 @@ class LiftQuantizableSpotsAsFunctionsPass
 class CheckQuantizableOps
     : public mlir::OpRewritePattern<TF::PartitionedCallOp> {
  public:
-  explicit CheckQuantizableOps(MLIRContext* context, const OpSet& op_set)
+  explicit CheckQuantizableOps(MLIRContext* context, OpSet op_set)
       : OpRewritePattern<TF::PartitionedCallOp>(context), op_set_(op_set) {}
 
  private:
   LogicalResult matchAndRewrite(TF::PartitionedCallOp call_op,
                                 PatternRewriter& rewriter) const override {
     StringRef function_name =
-        call_op.fAttr().cast<FlatSymbolRefAttr>().getValue();
+        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
     if (!function_name.startswith("composite_") ||
         !call_op->hasAttr(kQuantTraitAttrName)) {
       return failure();
@@ -214,8 +214,8 @@ void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateLiftQuantizableSpotsAsFunctionsPass(const OpSet& op_set) {
-  return std::make_unique<LiftQuantizableSpotsAsFunctionsPass>(op_set);
+CreateLiftQuantizableSpotsAsFunctionsPass(OpSet target_opset) {
+  return std::make_unique<LiftQuantizableSpotsAsFunctionsPass>(target_opset);
 }
 
 }  // namespace quant

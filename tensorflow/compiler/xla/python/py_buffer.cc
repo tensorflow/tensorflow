@@ -382,14 +382,7 @@ PyShardedBuffer PyShardedBuffer::CreateFromPyBuffers(
 Status PyShardedBuffer::BlockHostUntilReady() {
   GlobalPyRefManager()->CollectGarbage();
   py::gil_scoped_release gil_release;
-  Status status = OkStatus();
-  for (const auto& buffer : buffers_) {
-    // PjRtBuffer::BlockHostUntilReady() fix up the error message because some
-    // clients rely on it.
-    auto s = buffer->BlockHostUntilReady();
-    if (!s.ok()) status = std::move(s);
-  }
-  return status;
+  return AwaitBuffersReady(buffers_);
 }
 
 // PEP 3118 buffer protocol implementation.
@@ -732,6 +725,7 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       .def("get_device_buffer", &PyShardedBuffer::GetPyBuffer)
       .def("__len__", &PyShardedBuffer::num_devices)
       .def("block_until_ready", &PyShardedBuffer::BlockHostUntilReady)
+      .def("delete", &PyShardedBuffer::Delete)
       .def_static("create_sharded_buffer",
                   &PyShardedBuffer::CreateFromPyBuffers)
       .def_property_readonly("dtype", [](const PyShardedBuffer& self) {

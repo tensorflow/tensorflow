@@ -123,6 +123,35 @@ TEST_P(PjRtClientTest, Execute) {
                                      *literal));
 }
 
+TEST_P(PjRtClientTest, ExecuteWithImmutableUntilTransferCompletes) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+  auto executable =
+      MakeIncrementProgram(client.get(), /*alias=*/false, /*device=*/0);
+
+  std::vector<int32_t> data(4, 0);
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
+          nullptr, client->addressable_devices()[0]));
+
+  ExecuteOptions options;
+  options.execution_mode = GetParam();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto results,
+                          executable->Execute({{buffer.get()}}, options));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_EQ(results[0].size(), 1);
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteralSync());
+
+  std::vector<int32_t> expected(4, 1);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                     *literal));
+}
+
 TEST_P(PjRtClientTest, ExecuteWithTupleZeroCopy) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
   auto executable = MakeIncrementProgram(client.get(), /*alias=*/false,
@@ -195,6 +224,11 @@ TEST_P(PjRtClientTest, ExecuteWithDonation) {
 
 TEST_P(PjRtClientTest, ExecuteWithDonationAbort) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+  if (client->platform_id() == CpuId()) {
+    // The CPU platform currently copies donated buffers if there is an
+    // external reference.
+    return;
+  }
   auto executable =
       MakeIncrementProgram(client.get(), /*alias=*/true, /*device=*/0);
 

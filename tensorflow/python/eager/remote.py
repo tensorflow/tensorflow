@@ -188,7 +188,12 @@ def connect_to_cluster(cluster_spec_or_resolver,
     else:
       coordination_service = remote_utils.coordination_service_type(protocol)
     if coordination_service:
-      context.context().configure_coordination_service(coordination_service)
+      # If `enable_health_check` is true, coordination service agent would
+      # do connecting (and tasks would send heartbeat if connection is set up)
+      # while creating eager contexts. Enabling health check does not mutate
+      # coordination service.
+      context.context().configure_coordination_service(
+          coordination_service, enable_health_check=False)
 
   server_def = ServerDef(
       cluster=cluster_def,

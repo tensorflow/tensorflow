@@ -22,6 +22,7 @@ default_visibility = [
 # This is a TF Lite delegate that is powered by TensorFlow's Eager.
 #
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = default_visibility,
     licenses = ["notice"],
 )

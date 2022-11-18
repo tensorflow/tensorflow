@@ -39,9 +39,10 @@ class ShapeTest : public ::testing::Test {
   const Shape token_ = ShapeUtil::MakeTokenShape();
   const Shape scalar_ = ShapeUtil::MakeShape(F32, {});
   const Shape scalar_with_tile_ =
-      ShapeUtil::MakeShapeWithLayout(F32, {}, {}, {}, {Tile({256})});
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {}, {}, {Tile({256})});
   const Shape matrix_ = ShapeUtil::MakeShape(U32, {1, 2});
-  const Shape matrix2_ = ShapeUtil::MakeShapeWithLayout(S32, {3, 4}, {0, 1});
+  const Shape matrix2_ =
+      ShapeUtil::MakeShapeWithDenseLayout(S32, {3, 4}, {0, 1});
   const Shape tuple_ =
       ShapeUtil::MakeTupleShape({opaque_, scalar_, matrix_, matrix2_});
   const Shape nested_tuple_ =
@@ -94,20 +95,20 @@ TEST_F(ShapeTest, DynamicShapeToString) {
 
 TEST_F(ShapeTest, EqualityTest) {
   // Different layouts.
-  EXPECT_NE(ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}),
-            ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {0, 1}));
+  EXPECT_NE(ShapeUtil::MakeShapeWithDenseLayout(F32, {23, 44}, {1, 0}),
+            ShapeUtil::MakeShapeWithDenseLayout(F32, {23, 44}, {0, 1}));
 
   // Different dims.
-  EXPECT_NE(ShapeUtil::MakeShapeWithLayout(F32, {44, 23}, {1, 0}),
-            ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}));
+  EXPECT_NE(ShapeUtil::MakeShapeWithDenseLayout(F32, {44, 23}, {1, 0}),
+            ShapeUtil::MakeShapeWithDenseLayout(F32, {23, 44}, {1, 0}));
 
   // Different elements.
-  EXPECT_NE(ShapeUtil::MakeShapeWithLayout(S32, {44, 23}, {1, 0}),
-            ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}));
+  EXPECT_NE(ShapeUtil::MakeShapeWithDenseLayout(S32, {44, 23}, {1, 0}),
+            ShapeUtil::MakeShapeWithDenseLayout(F32, {23, 44}, {1, 0}));
 
   // Equal shapes.
-  EXPECT_EQ(ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}),
-            ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}));
+  EXPECT_EQ(ShapeUtil::MakeShapeWithDenseLayout(F32, {23, 44}, {1, 0}),
+            ShapeUtil::MakeShapeWithDenseLayout(F32, {23, 44}, {1, 0}));
 }
 
 TEST_F(ShapeTest, IsStatic) {
@@ -236,7 +237,7 @@ void BM_ShapeCopy(::testing::benchmark::State& state) {
     case 2: {
       // f32[1,2,2]{2,1,0:T(2,128)}
       shape = Shape(F32, {1, 2, 2}, {false, false, false}, {});
-      *shape.mutable_layout() = Layout({2, 1, 0}, {}, {Tile({2, 128})});
+      *shape.mutable_layout() = Layout({2, 1, 0}, {}, {}, {}, {Tile({2, 128})});
       break;
     }
   }

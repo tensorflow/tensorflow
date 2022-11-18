@@ -26,20 +26,19 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
@@ -1208,6 +1207,30 @@ Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
           "Shape mismatch between parameter number %d and its operand in "
           "%s.",
           param_no, fusion->ToString().c_str());
+    }
+  }
+  const HloFusionInstruction* casted_fusion =
+      DynCast<const HloFusionInstruction>(fusion);
+  for (const auto& pair : casted_fusion->output_to_operand_aliasing()) {
+    TF_RET_CHECK(pair.second.first < casted_fusion->operand_count())
+        << "Invalid aliasing operand index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(
+        casted_fusion->operand(pair.second.first)->shape(), pair.second.second))
+        << "Invalid aliasing operand shape index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(casted_fusion->shape(), pair.first))
+        << "Invalid aliasing output shape index.";
+    const Shape& output_subshape =
+        ShapeUtil::GetSubshape(casted_fusion->shape(), pair.first);
+    const Shape& operand_subshape = ShapeUtil::GetSubshape(
+        casted_fusion->operand(pair.second.first)->shape(), pair.second.second);
+    if (opts_.layout_sensitive) {
+      TF_RET_CHECK(operand_subshape == output_subshape)
+          << "Different aliasing shapes: " << operand_subshape.ToString()
+          << " vs " << output_subshape.ToString();
+    } else {
+      TF_RET_CHECK(ShapeUtil::Compatible(output_subshape, operand_subshape))
+          << "Different aliasing shapes: " << operand_subshape.ToString()
+          << " vs " << output_subshape.ToString();
     }
   }
   return OkStatus();
@@ -2423,7 +2446,16 @@ Status CheckElementwiseInstruction(HloInstruction* instruction) {
 // not check result shape as that is checked in the ShapeVerifier.
 class InstructionVerifier : public DfsHloVisitorWithDefault {
  public:
-  explicit InstructionVerifier(const HloVerifierOpts& opts) : opts_(opts) {}
+  InstructionVerifier(const HloModule* module, const HloVerifierOpts& opts)
+      : opts_(opts) {
+    // TODO(b/258285553): Eliminate this check when all paths that enable SPMD
+    // partitioning also set the num_partitions correctly.
+    const int64_t num_partitions = module->config().num_partitions();
+    if (module->config().use_spmd_partitioning() &&
+        opts.verify_sharding_device_numbers && num_partitions > 1) {
+      num_devices_ = module->config().num_partitions();
+    }
+  }
 
   Status DefaultAction(HloInstruction*) override { return OkStatus(); }
 
@@ -2478,6 +2510,14 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     // Allow kWhile to contain computations on separate thread.
     TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(
         xla_while, /*skip_nested_async_op_check=*/true));
+
+    // Verify consistency of sharding of while instructions and related
+    // instructions (parameters, root) in its called computations.
+    TF_RETURN_IF_ERROR(VerifyConsistentSharding(
+        xla_while, {xla_while, xla_while->while_body()->root_instruction(),
+                    xla_while->while_body()->parameter_instruction(0),
+                    xla_while->while_condition()->parameter_instruction(0)}));
+
     return OkStatus();
   }
 
@@ -2488,17 +2528,31 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   Status HandleConditional(HloInstruction* conditional) override {
-    for (int b = 0; b < conditional->branch_count(); ++b) {
-      if (conditional->branch_computation(b)->num_parameters() != 1) {
+    const std::vector<HloComputation*> branch_computations =
+        conditional->branch_computations();
+    std::vector<const HloInstruction*> sharding_check_instructions;
+    sharding_check_instructions.reserve(branch_computations.size() + 1);
+    sharding_check_instructions.push_back(conditional);
+
+    for (const HloComputation* branch_computation : branch_computations) {
+      if (branch_computation->num_parameters() != 1) {
         return FailedPrecondition(
             "Branch computation %s of %s must have 1 parameter instead of %d",
-            conditional->branch_computation(b)->name(), conditional->ToString(),
-            conditional->branch_computation(b)->num_parameters());
+            branch_computation->name(), conditional->ToString(),
+            branch_computation->num_parameters());
       }
+      sharding_check_instructions.push_back(
+          branch_computation->root_instruction());
     }
     // Allow kConditional to contain computations on separate thread.
     TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(
         conditional, /*skip_nested_async_op_check=*/true));
+
+    // Verify consistency of sharding of conditional instructions and roots of
+    // its branches.
+    TF_RETURN_IF_ERROR(
+        VerifyConsistentSharding(conditional, sharding_check_instructions));
+
     return OkStatus();
   }
 
@@ -2568,6 +2622,18 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         << previous->second->ToString()
         << " in computation: " << previous->second->parent()->name();
     instructions_by_name_[instruction->name()] = instruction;
+
+    if (instruction->has_sharding()) {
+      Status status =
+          instruction->sharding().Validate(instruction->shape(), num_devices_);
+      if (!status.ok()) {
+        return Status(status.code(),
+                      absl::StrCat("Invalid sharding for instruction: ",
+                                   instruction->ToString(), ": ",
+                                   status.error_message()));
+      }
+    }
+
     return OkStatus();
   }
 
@@ -2595,8 +2661,29 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
  private:
+  static Status VerifyConsistentSharding(
+      const HloInstruction* parent,
+      absl::Span<const HloInstruction* const> instructions) {
+    const HloInstruction* common_sharding_inst = nullptr;
+    for (const HloInstruction* check_inst : instructions) {
+      if (!check_inst->has_sharding()) {
+        continue;
+      }
+      if (!common_sharding_inst) {
+        common_sharding_inst = check_inst;
+        continue;
+      }
+      TF_RET_CHECK(check_inst->sharding() == common_sharding_inst->sharding())
+          << "Inconsistent " << HloOpcodeString(parent->opcode())
+          << " sharding among instructions: \n"
+          << common_sharding_inst->ToString() << "\n"
+          << check_inst->ToString();
+    }
+    return OkStatus();
+  }
   absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name_;
   const HloVerifierOpts& opts_;
+  std::optional<int64_t> num_devices_;
 };
 
 }  // namespace
@@ -2623,7 +2710,7 @@ StatusOr<bool> HloVerifier::Run(
     std::unique_ptr<ShapeVerifier> shape_verifier =
         target_metadata_->GetVerifier();
     InstructionVerifier instruction_verifier(
-        target_metadata_->GetVerifierOpts());
+        module, target_metadata_->GetVerifierOpts());
     for (auto* computation : module->computations(execution_threads)) {
       TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
       TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));

@@ -31,22 +31,22 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/dot_as_convolution_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/sharding_op_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
@@ -1435,19 +1435,15 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr) {
           // Set sharding only if it is different. We don't overwrite the
           // metadata if it has the same sharding besides metadata.
           if (!operand->has_sharding() || operand->sharding() != *sharding) {
-            if (operand->has_sharding() && operand->sharding().IsTuple() &&
-                !sharding->IsTuple()) {
+            HloSharding operand_sharding = *sharding;
+            if (operand->shape().IsTuple() && !sharding->IsTuple()) {
               // Expand sharding into tuple sharding per
               // CloneShardingForDomain() in
-              // third_party/tensorflow/compiler/xla/service/hlo_sharding_metadata.cc
-              // Create Tuple HloSharding.
-              ShapeTree<HloSharding> output_tuple_sharding(operand->shape(),
-                                                           *sharding);
-              d->mutable_operand(0)->set_sharding(
-                  HloSharding::Tuple(output_tuple_sharding));
-            } else {
-              d->mutable_operand(0)->set_sharding(*sharding);
+              // third_party/tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.cc
+              operand_sharding =
+                  HloSharding::SingleTuple(operand->shape(), *sharding);
             }
+            operand->set_sharding(operand_sharding);
           }
         }
         return OkStatus();
@@ -2388,11 +2384,11 @@ bool ShardingPropagation::InferShardingFromOperands(
 
 Status ShardingPropagation::CanonicalizeLayouts(HloModule* module) {
   if (!allow_spmd_sharding_propagation_to_output_) {
-    return Status::OK();
+    return OkStatus();
   }
   if (!module->layout_canonicalization_callback()) {
     LOG(INFO) << "There is no registered layout_canonicalization_callback.";
-    return Status::OK();
+    return OkStatus();
   }
   TF_ASSIGN_OR_RETURN(auto layouts,
                       module->layout_canonicalization_callback()(*module));
@@ -2401,7 +2397,7 @@ Status ShardingPropagation::CanonicalizeLayouts(HloModule* module) {
                          .mutable_entry_computation_layout()
                          ->mutable_result_layout()
                          ->CopyLayoutFromShape(result_shape));
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<bool> ShardingPropagation::Run(
@@ -2528,7 +2524,7 @@ StatusOr<bool> ShardingPropagation::Run(
         // propagate it to the other instructions, so they all share the same
         // sharding, in case the user didn't shard all of them. We don't check
         // that user shardings are consistent, because such check is already
-        // done by HloShardingVerifier.
+        // done by HLO verifier.
         const HloInstruction* sharded_inst = nullptr;
         auto related_instructions = get_related_instructions(instruction);
         for (auto inst : related_instructions) {

@@ -94,9 +94,12 @@ void AddSupportedOpsUsingFolding(MLIRContext* context,
 // fallback to the TF2XLA bridge.
 // TODO(b/168036682): Remove this once ops are supported using dynamic padder
 // on MLIR bridge.
+// TODO(b/257574556): Remove the need for this manual list by making use of old
+// bridge phase 2 op list.
 void AddSupportedOpsUsingDynamicPadder(
     MLIRContext* context, llvm::DenseSet<OperationName>* supported_ops) {
   llvm::SmallDenseSet<OperationName, 8> allowlist_ops = {
+      OperationName(TF::DynamicPartitionOp::getOperationName(), context),
       OperationName(TF::WhereOp::getOperationName(), context),
       OperationName(TF::UniqueOp::getOperationName(), context),
       OperationName(TF::XlaSetDynamicDimensionSizeOp::getOperationName(),
@@ -238,8 +241,7 @@ bool IsSupportedOp(Operation& op,
   // compile it ever for performance reasons.
   if (llvm::isa<TF::AssertOp>(op)) return true;
   return !HasStringOperand(op) && !HasStringResult(op) &&
-         (MatchesPattern(op, supported_ops) ||
-          mhlo::IsOpAllowedTf2XlaFallback(&op));
+         (MatchesPattern(op, supported_ops) || mhlo::HasTf2XlaFallback(&op));
 }
 
 // Checks all regions of `op` for captured string operands.
@@ -374,8 +376,8 @@ bool ContainsUncompilableOps(const Dialect* tf_dialect, Block* block,
 // Unmarks outside compilation for any op that has parents already
 // marked for outside compilation since the child will be extracted
 // anyways.
-void UnmarkChildren(Block* block) {
-  block->walk([&](Operation* op) {
+void UnmarkChildren(ModuleOp module) {
+  module->walk([&](Operation* op) {
     if (!op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) return;
     Operation* iter_op = op;
     bool remove_attr = false;
@@ -440,16 +442,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
 
   if (result.wasInterrupted()) return signalPassFailure();
 
-  module.walk([&](tf_device::ClusterOp cluster) {
-    // Only if `allow_soft_placement` attribute is true should we unmark ops
-    // for outside compilation.
-    auto soft_placement_attr =
-        cluster->getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
-    if (!(soft_placement_attr && soft_placement_attr.getValue())) {
-      return;
-    }
-    UnmarkChildren(&cluster.GetBody());
-  });
+  UnmarkChildren(module);
 }
 
 }  // namespace

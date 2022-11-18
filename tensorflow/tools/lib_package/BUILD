@@ -157,7 +157,6 @@ genrule(
         "@llvm-project//mlir:LICENSE.TXT",
         "@lmdb//:LICENSE",
         "@local_config_tensorrt//:LICENSE",
-        "@nasm//:LICENSE",
         "@nsync//:LICENSE",
         "@png//:LICENSE",
         "@snappy//:COPYING",
@@ -166,11 +165,8 @@ genrule(
         "@tf_runtime//third_party/llvm_derived:LICENSE",
         "@zlib//:zlib.h",
     ] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": [],
+        "//tensorflow:linux_aarch64": [],
+        "//conditions:default": ["@nasm//:LICENSE"],
     }) + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -180,11 +176,6 @@ genrule(
         "//conditions:default": [
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
-    }) + select({
-        "//tensorflow/core/kernels:xsmm": [
-            "@libxsmm_archive//:LICENSE.md",
-        ],
-        "//conditions:default": [],
     }) + select({
         "//tensorflow/tsl:with_numa_support": [
             "@hwloc//:COPYING",
@@ -232,7 +223,6 @@ genrule(
         "@llvm-project//mlir:LICENSE.TXT",
         "@lmdb//:LICENSE",
         "@local_config_tensorrt//:LICENSE",
-        "@nasm//:LICENSE",
         "@nsync//:LICENSE",
         "@png//:LICENSE",
         "@snappy//:COPYING",
@@ -241,11 +231,8 @@ genrule(
         "@tf_runtime//third_party/llvm_derived:LICENSE",
         "@zlib//:zlib.h",
     ] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": [],
+        "//tensorflow:linux_aarch64": [],
+        "//conditions:default": ["@nasm//:LICENSE"],
     }) + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -255,11 +242,6 @@ genrule(
         "//conditions:default": [
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
-    }) + select({
-        "//tensorflow/core/kernels:xsmm": [
-            "@libxsmm_archive//:LICENSE.md",
-        ],
-        "//conditions:default": [],
     }) + select({
         "//tensorflow/tsl:with_numa_support": [
             "@hwloc//:COPYING",

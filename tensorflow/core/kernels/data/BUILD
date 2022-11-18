@@ -8,6 +8,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_kernel_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -434,6 +435,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/time",
     ],
@@ -1504,6 +1506,7 @@ filegroup(
     name = "portable_all_op_kernels_headers",
     srcs = [
         "//tensorflow/core/data:captured_function.h",
+        "//tensorflow/core/data:compression_utils.h",
         "//tensorflow/core/data:dataset_utils.h",
         "//tensorflow/core/data:finalization_utils.h",
         "//tensorflow/core/data:metric_utils.h",
@@ -1530,6 +1533,7 @@ filegroup(
     srcs = [
         ":portable_all_op_kernels_headers",
         "//tensorflow/core/data:captured_function.cc",
+        "//tensorflow/core/data:compression_utils.cc",
         "//tensorflow/core/data:dataset_utils.cc",
         "//tensorflow/core/data:finalization_utils.cc",
         "//tensorflow/core/data:metric_utils.cc",

@@ -18,6 +18,7 @@ load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -213,7 +214,7 @@ tf_cuda_library(
     ],
     copts = tf_copts(),
     visibility = [
-        "//tensorflow:__subpackages__",
+        "//tensorflow/c:__subpackages__",
         "//tensorflow/python:__subpackages__",
     ],
     deps = [

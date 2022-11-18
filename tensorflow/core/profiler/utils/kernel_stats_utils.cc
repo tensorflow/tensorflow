@@ -305,7 +305,7 @@ void InsertOrUpdateKernelReport(const KernelReport& kernel,
         std::min(element.min_duration_ns, value.min_duration_ns);
     element.max_duration_ns =
         std::max(element.max_duration_ns, value.max_duration_ns);
-    element.occurrences += 1;
+    element.occurrences += value.occurrences;
   }
 }
 

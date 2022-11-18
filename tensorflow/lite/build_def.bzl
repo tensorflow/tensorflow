@@ -1,16 +1,13 @@
 """Build macros for TF Lite."""
 
-load(
-    "//tensorflow:tensorflow.bzl",
-    "clean_dep",
-    "if_oss",
-    "tf_binary_additional_srcs",
-    "tf_cc_shared_object",
-)
+load("//tensorflow:tensorflow.bzl", "clean_dep", "if_oss", "tf_binary_additional_srcs", "tf_cc_shared_object")
 load("//tensorflow/lite:special_rules.bzl", "tflite_copts_extra")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+
+def register_extension_info(**kwargs):
+    pass
 
 def tflite_copts():
     """Defines common compile time flags for TFLite libraries."""
@@ -28,8 +25,13 @@ def tflite_copts():
         ],
         clean_dep("//tensorflow:linux_x86_64_no_sse"): [],
         clean_dep("//tensorflow:windows"): [
+            # copybara:uncomment_begin(no MSVC flags in google)
+            # "-DTFL_COMPILE_LIBRARY",
+            # "-Wno-sign-compare",
+            # copybara:uncomment_end_and_comment_begin
             "/DTFL_COMPILE_LIBRARY",
             "/wd4018",  # -Wno-sign-compare
+            # copybara:comment_end
         ],
         "//conditions:default": [
             "-Wno-sign-compare",
@@ -491,6 +493,7 @@ def tflite_custom_cc_library(
         deps = depset([
             framework,
             "//tensorflow/lite/kernels:builtin_ops",
+            "//tensorflow/lite/core:private_create_op_resolver_header",
         ] + real_deps),
         visibility = visibility,
         **kwargs
@@ -616,6 +619,7 @@ def tflite_custom_c_library(
             hdrs = ["//tensorflow/lite:create_op_resolver.h"],
             copts = tflite_copts(),
             deps = [
+                "//tensorflow/lite/core:private_create_op_resolver_header",
                 "//tensorflow/lite:create_op_resolver_with_selected_ops",
                 "//tensorflow/lite:op_resolver",
                 framework,
@@ -639,6 +643,7 @@ def tflite_custom_c_library(
         ]
         experimental_deps = [
             "//tensorflow/lite/c:c_api_experimental_without_op_resolver_without_alwayslink",
+            "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver_without_alwayslink",
         ]
     else:
         hdrs = [
@@ -651,12 +656,12 @@ def tflite_custom_c_library(
         copts = tflite_copts(),
         deps = [
             op_resolver_deps,
+            "//tensorflow/lite:builtin_ops",
             "//tensorflow/lite/c:common",
-            "//tensorflow/lite/core/c:private_c_api",
             "//tensorflow/lite/c:c_api_types",
             "//tensorflow/lite/c:c_api_without_op_resolver_without_alwayslink",
             "//tensorflow/lite/core:private_headers",
-            "//tensorflow/lite:builtin_ops",
+            "//tensorflow/lite/core/c:private_c_api_without_op_resolver_without_alwayslink",
             "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         ] + experimental_deps,
         **kwargs
@@ -839,3 +844,8 @@ def tflite_cc_library_with_c_headers_test(name, hdrs, **kwargs):
         name = name + "_self_contained_c_build_tests",
         tests = build_tests,
     )
+
+register_extension_info(
+    extension = tflite_cc_library_with_c_headers_test,
+    label_regex_for_dep = "{extension_name}",
+)

@@ -20,8 +20,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
@@ -45,7 +45,7 @@ class AMDGPUCompiler : public GpuCompiler {
 
   StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
-      GpuVersion gpu_version, se::StreamExecutor* stream_exec, bool relocatable,
+      GpuVersion gpu_version, bool relocatable,
       const HloModule* debug_module) override;
 
  private:

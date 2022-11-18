@@ -20,10 +20,10 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
@@ -72,6 +72,7 @@ class SpmdPartitioningTest : public HloTestBase {
 
     HloModuleConfig config = GetModuleConfigForTest();
     config.set_use_spmd_partitioning(true);
+    config.set_num_partitions(num_devices);
     TF_ASSIGN_OR_RETURN(auto module,
                         ParseAndReturnVerifiedModule(hlo_module, config));
     HloPassPipeline pass("spmd-partitioning");
@@ -103,24 +104,6 @@ class SpmdPartitioningTest : public HloTestBase {
     }
   }
 };
-
-TEST_F(SpmdPartitioningTest, InvalidSharding) {
-  absl::string_view hlo_string = R"(
-HloModule module
-
-ENTRY entry {
-  token0 = token[] after-all(), sharding={maximal device=0}
-  infeed = (f32[8,2]{1,0}, token[]) infeed(token0),
-    sharding={{devices=[2,1]0,1}, {maximal device=0}}
-  ROOT infeed.data = f32[8,2]{1,0} get-tuple-element(infeed), index=0,
-    sharding={maximal device=0}
-})";
-  auto module_status = PartitionComputation(hlo_string, /*num_devices=*/4);
-  EXPECT_FALSE(module_status.status().ok());
-  EXPECT_THAT(module_status.status().ToString(),
-              ::testing::HasSubstr(
-                  "only supports tile sharding that includes all partitions"));
-}
 
 TEST_F(SpmdPartitioningTest, SingleDeviceToReplicated) {
   absl::string_view hlo_string = R"(
@@ -3760,8 +3743,8 @@ TEST_F(SpmdPartitioningTest, Conditional) {
 HloModule module
 
 Negate {
-  x = f32[4,5] parameter(0), sharding={replicated}
-  ROOT negate = f32[4,5] negate(x), sharding={replicated}
+  x = f32[4,5] parameter(0), sharding={devices=[2,1]0,1}
+  ROOT negate = f32[4,5] negate(x), sharding={devices=[2,1]0,1}
 }
 
 Identity {
@@ -3797,8 +3780,8 @@ ENTRY entry {
 
   auto then_branch_root = root->branch_computation(0)->root_instruction();
   EXPECT_THAT(then_branch_root,
-              AllOf(op::DynamicSlice(op::Negate(op::Parameter()), op::Reshape(),
-                                     op::Constant()),
+              AllOf(op::Negate(op::DynamicSlice(op::Parameter(), op::Reshape(),
+                                                op::Constant())),
                     op::Shape("f32[2,5]")));
 
   auto else_branch_root = root->branch_computation(1)->root_instruction();
@@ -6978,6 +6961,28 @@ ENTRY entry {
                           op::Shape("f32[8,2,2]")));
 }
 
+TEST_F(SpmdPartitioningTest, IndexAndOperandPassthroughGather) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[7,12] parameter(0),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+  %indices = s32[16,2] parameter(1),
+    sharding={devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}
+  ROOT %gather = f32[16,1,12] gather(%input, %indices),
+    offset_dims={1,2}, collapsed_slice_dims={}, start_index_map={0,1},
+    index_vector_dim=1, slice_sizes={1,12},
+    sharding={devices=[2,1,2]0,2,1,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Gather(op::Parameter(0), op::Parameter(1)),
+                          op::Shape("f32[8,1,6]")));
+}
+
 TEST_F(SpmdPartitioningTest, IndexPassthroughGatherPartitionedIndexVectorDim) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -7150,7 +7155,7 @@ ENTRY entry {
     scatter(%input0, %input1, %indices, %updates0, %updates1),
       to_apply=add_min_max, update_window_dims={1}, inserted_window_dims={0},
       scatter_dims_to_operand_dims={0}, index_vector_dim=1,
-      sharding={devices=[1,2]0,1}
+      sharding={{devices=[1,2]0,1},{devices=[1,2]0,1}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -7225,7 +7230,8 @@ ENTRY entry {
     scatter(%input0, %input1, %indices, %updates0, %updates1),
       to_apply=add_min_max, update_window_dims={1}, inserted_window_dims={0},
       scatter_dims_to_operand_dims={0}, index_vector_dim=1,
-      sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+      sharding={{devices=[1,2,2]0,1,2,3 last_tile_dim_replicate},
+                {devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/4));
@@ -7434,7 +7440,7 @@ ENTRY entry {
     scatter(%input0, %input1, %indices, %updates0, %updates1),
       to_apply=add_min_max, update_window_dims={2}, inserted_window_dims={0},
       scatter_dims_to_operand_dims={0}, index_vector_dim=2,
-      sharding={devices=[2,1]0,1}
+      sharding={{devices=[2,1]0,1},{devices=[2,1]0,1}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -7515,7 +7521,8 @@ ENTRY entry {
     scatter(%input0, %input1, %indices, %updates0, %updates1),
       to_apply=add_min_max, update_window_dims={2}, inserted_window_dims={0},
       scatter_dims_to_operand_dims={0}, index_vector_dim=2,
-      sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+      sharding={{devices=[2,1,2]0,1,2,3 last_tile_dim_replicate},
+                {devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/4));
@@ -11739,7 +11746,7 @@ ENTRY entry {
   param = f32[2,2] parameter(0),
     sharding={devices=[2,1,2]0,2,1,3 last_tile_dims={manual}}
   ROOT reduce = f32[2] reduce(param, constant), dimensions={0}, to_apply=sum,
-    sharding={devices=[2,2]0,1,2,3 last_tile_dims={manual,replicated}}
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dims={manual,replicated}}
 }
 )";
 

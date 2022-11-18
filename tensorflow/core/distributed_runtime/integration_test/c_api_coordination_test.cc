@@ -29,18 +29,23 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 
 namespace tensorflow {
 namespace {
 
 constexpr char kCoordinationServiceType[] = "standalone";
 
-void ConfigCoordinationService(
-    tensorflow::ServerDef* server_def,
-    bool agent_destruction_without_shutdown = false) {
+void ConfigCoordinationService(tensorflow::ServerDef* server_def,
+                               bool agent_destruction_without_shutdown = false,
+                               bool enable_health_check = false) {
+  // Set the number of threads here since in some environment the default number
+  // of threads may be small which could cause RPC to hang.
+  server_def->mutable_default_session_config()
+      ->set_inter_op_parallelism_threads(10);
   auto coord_config = server_def->mutable_default_session_config()
                           ->mutable_experimental()
                           ->mutable_coordination_config();
@@ -52,6 +57,7 @@ void ConfigCoordinationService(
       absl::ToInt64Milliseconds(absl::Seconds(5)));
   coord_config->set_shutdown_barrier_timeout_in_ms(
       absl::ToInt64Milliseconds(absl::Seconds(5)));
+  coord_config->set_enable_health_check(enable_health_check);
 }
 
 string SetConfigKeyValueFn() {

@@ -24,6 +24,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = if_google(
         ["//tensorflow:internal"],
         ["//visibility:public"],
@@ -154,10 +155,11 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core/activity_watcher",
-        "//tensorflow/core/distributed_runtime/coordination:coordination_service",
-        "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
-        "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_rpc_handler",
+        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
     ],
 )
 
@@ -245,10 +247,9 @@ tf_cuda_library(
 
 cc_library(
     name = "call_options",
-    srcs = ["call_options.cc"],
     hdrs = ["call_options.h"],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/tsl/distributed_runtime:call_options",
     ],
 )
 

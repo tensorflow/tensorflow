@@ -25,6 +25,7 @@ limitations under the License.
 #endif
 
 #include "tensorflow/core/common_runtime/gpu/gpu_managed_allocator.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace tensorflow {
 

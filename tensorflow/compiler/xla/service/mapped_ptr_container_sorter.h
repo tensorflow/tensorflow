@@ -42,6 +42,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -65,7 +66,7 @@ class MappedPtrContainerSorter {
   // A function to map elements from an ordered container to elements in an
   // unordered container. Not every element in ordered_container need map to an
   // element in unordered_container and vice versa.
-  using MapPtrFn = std::function<const PointedToTy*(const PointedToTy*)>;
+  using MapPtrFn = absl::FunctionRef<const PointedToTy*(const PointedToTy*)>;
 
   // A function that maps unmapped elements (from an unordered container) to an
   // index in the final sorted result. The returned index indicates that the
@@ -75,16 +76,16 @@ class MappedPtrContainerSorter {
   // indicate that an unmapped element should be placed before or after all
   // mapped elements, respectively. Unmapped elements destined for the same
   // index will retain their order from the unordered container.
-  using UnmappedPtrIndexFn = std::function<size_t(const PointedToTy*)>;
+  using UnmappedPtrIndexFn = absl::FunctionRef<size_t(const PointedToTy*)>;
 
   // Functions that return an UnmappedElementIndexFn that indicates that
   // ummapped elements (from an unordered container) should be placed before or
   // after all mapped elements, respectively.
-  static const UnmappedPtrIndexFn& IndexBeforeMappedElementsFn();
-  static const UnmappedPtrIndexFn& IndexAfterMappedElementsFn();
+  static UnmappedPtrIndexFn IndexBeforeMappedElementsFn();
+  static UnmappedPtrIndexFn IndexAfterMappedElementsFn();
 
   // Returned function always returns an error.
-  static const UnmappedPtrIndexFn& InvalidIndexFn();
+  static UnmappedPtrIndexFn InvalidIndexFn();
 
   // Sorts an unordered container of pointers according to the order of an
   // ordered container of pointers. Sorting is stable. Works with POD pointers,
@@ -93,8 +94,7 @@ class MappedPtrContainerSorter {
   // - unmapped_index() returns an invalid index
   // - An internal error occurs. (This should theoretically not happen.)
   template <typename OrderedTy, typename UnorderedTy>
-  static Status Sort(const MapPtrFn& map_ptr,
-                     const UnmappedPtrIndexFn& unmapped_index,
+  static Status Sort(MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
                      const OrderedTy& ordered_container,
                      UnorderedTy& unordered_container);
 
@@ -153,7 +153,7 @@ class MappedPtrContainerSorter {
   // index that unordered_container[i] should occupy in the sorted result.
   template <typename OrderedTy, typename UnorderedTy>
   static StatusOr<std::vector<size_t>> ComputeNewIndices(
-      const MapPtrFn& map_ptr, const UnmappedPtrIndexFn& unmapped_index,
+      MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
       const OrderedTy& ordered_container,
       const UnorderedTy& unordered_container);
 
@@ -202,27 +202,28 @@ struct PtrGetter<std::unique_ptr<T>&, T*> {
 }  // namespace mapped_ptr_container_sorter_internal
 
 template <typename PointedToTy>
-const typename MappedPtrContainerSorter<PointedToTy>::UnmappedPtrIndexFn&
+typename MappedPtrContainerSorter<PointedToTy>::UnmappedPtrIndexFn
 MappedPtrContainerSorter<PointedToTy>::IndexBeforeMappedElementsFn() {
-  static const UnmappedPtrIndexFn* fn = new UnmappedPtrIndexFn(
-      [](const PointedToTy*) { return IndexBeforeMappedElements(); });
-  return *fn;
+  static const auto fn = [](const PointedToTy*) {
+    return IndexBeforeMappedElements();
+  };
+  return fn;
 }
 
 template <typename PointedToTy>
-const typename MappedPtrContainerSorter<PointedToTy>::UnmappedPtrIndexFn&
+typename MappedPtrContainerSorter<PointedToTy>::UnmappedPtrIndexFn
 MappedPtrContainerSorter<PointedToTy>::IndexAfterMappedElementsFn() {
-  static const UnmappedPtrIndexFn* fn = new UnmappedPtrIndexFn(
-      [](const PointedToTy*) { return IndexAfterMappedElements(); });
-  return *fn;
+  static const auto fn = [](const PointedToTy*) {
+    return IndexAfterMappedElements();
+  };
+  return fn;
 }
 
 template <typename PointedToTy>
-const typename MappedPtrContainerSorter<PointedToTy>::UnmappedPtrIndexFn&
+typename MappedPtrContainerSorter<PointedToTy>::UnmappedPtrIndexFn
 MappedPtrContainerSorter<PointedToTy>::InvalidIndexFn() {
-  static const UnmappedPtrIndexFn* fn =
-      new UnmappedPtrIndexFn([](const PointedToTy*) { return InvalidIndex(); });
-  return *fn;
+  static const auto fn = [](const PointedToTy*) { return InvalidIndex(); };
+  return fn;
 }
 
 template <typename PointedToTy>
@@ -352,7 +353,7 @@ template <typename PointedToTy>
 template <typename OrderedTy, typename UnorderedTy>
 StatusOr<std::vector<size_t>>
 MappedPtrContainerSorter<PointedToTy>::ComputeNewIndices(
-    const MapPtrFn& map_ptr, const UnmappedPtrIndexFn& unmapped_index,
+    MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
     const OrderedTy& ordered_container,
     const UnorderedTy& unordered_container) {
   using UnorderedPtrGetter = mapped_ptr_container_sorter_internal::PtrGetter<
@@ -441,7 +442,7 @@ void MappedPtrContainerSorter<PointedToTy>::Reorder(
 template <typename PointedToTy>
 template <typename OrderedTy, typename UnorderedTy>
 Status MappedPtrContainerSorter<PointedToTy>::Sort(
-    const MapPtrFn& map_ptr, const UnmappedPtrIndexFn& unmapped_index,
+    MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
     const OrderedTy& ordered_container, UnorderedTy& unordered_container) {
   std::vector<size_t> indices;
   TF_ASSIGN_OR_RETURN(

@@ -160,6 +160,7 @@ message NNAPISettings {
   optional int64 support_library_handle = 12;
 }
 
+// LINT.IfChange
 // Which GPU backend to select. Default behaviour on Android is to try OpenCL
 // and if it's not available fall back to OpenGL.
 enum GPUBackend {
@@ -242,6 +243,7 @@ message GPUSettings {
   // each model needs an unique ID to avoid cache collision.
   optional string model_token = 9;
 }
+// LINT.ThenChange(GpuAccelerationConfig.java)
 
 // Hexagon Delegate settings.
 //

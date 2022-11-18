@@ -1,39 +1,5 @@
 syntax = "proto3";
 
-package tensorflow;
+package tensorflow.dummy;
 
-message ProfilerServiceMonitorResult {
-  // Represents the different types of responses from the profiling service.
-  enum ResponseType {
-    // No result is returned from the profiling service.
-    EMPTY_RESULT = 0;
-    // Only device utilization is available.
-    UTIL_ONLY = 1;
-    // Both device utilization and device idle time are available.
-    UTIL_IDLE = 2;
-    // Device utilization, device idle time, step time, and infeed percentage
-    // are all available.
-    UTIL_IDLE_STEP = 3;
-  }
-
-  // Type of profiling responses.
-  ResponseType response_type = 1;
-  // Percentage of time when device is idle.
-  double device_idle_time_percent = 2;
-  // TPU matrix unit utilization percentage.
-  double matrix_unit_utilization_percent = 3;
-  // Average step time in millisecond.
-  double step_time_ms_avg = 4;
-  // Minimum step time in millisecond.
-  double step_time_ms_min = 5;
-  // Maximum step time in millisecond.
-  double step_time_ms_max = 6;
-  // Average infeed percentage.
-  double infeed_percent_avg = 7;
-  // Minimum infeed percentage.
-  double infeed_percent_min = 8;
-  // Maximum infeed percentage.
-  double infeed_percent_max = 9;
-
-  // next-field: 10
-}
+import public "tensorflow/tsl/profiler/protobuf/profiler_service_monitor_result.proto";

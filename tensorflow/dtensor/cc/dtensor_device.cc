@@ -66,6 +66,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/dtensor/cc/constants.h"
+#include "tensorflow/dtensor/cc/default_parallel_executor.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/dtensor_device_util.h"
 #include "tensorflow/dtensor/cc/dtensor_graph_to_mlir_pass.h"
@@ -95,7 +96,11 @@ class DTensorDevice {
   explicit DTensorDevice(absl::string_view name)
       : name_(name),
         same_shape_policy_enabled_(false),
-        cancellation_manager_(std::make_unique<CancellationManager>()) {}
+        cancellation_manager_(std::make_unique<CancellationManager>()) {
+    if (getenv("DTENSOR_USE_PARALLEL_EXECUTOR") != nullptr) {
+      parallel_executor_ = CreateDefaultParallelExecutor();
+    }
+  }
 
   void AddMesh(std::unique_ptr<MeshWithParallelDevice> mesh,
                bool is_host_mesh) {
@@ -421,6 +426,9 @@ class DTensorDevice {
   // function_mesh_fingerprint and the counter together are used for generating
   // the step id, which is used for rendezvous creation.
   absl::flat_hash_map<uint64, uint64> func_mesh_fingerprint_to_step_counter_;
+
+  // Dispatchs post-SPMD functions.
+  std::unique_ptr<ParallelExecutor> parallel_executor_;
 };
 
 int64_t FingerprintShape(const absl::Span<const int64_t> shape) {
@@ -1527,6 +1535,12 @@ void DTensorDevice::ExecuteRegularOperation(
 
   LowerToSPMDFunction(context, inputs, doperation, attributes, *num_outputs,
                       &execution_functions, status);
+
+  if (parallel_executor_) {
+    RETURN_C_STATUS_IF_NOT_OK(parallel_executor_->Execute(), status);
+    return;
+  }
+
   if (TF_GetCode(status) != TF_OK) return;
 
   // Update input layouts for resource arguments.

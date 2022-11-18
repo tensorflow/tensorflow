@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -154,8 +154,8 @@ Shape TypeToShape(mlir::Type type) {
 
     llvm::SmallVector<int64_t, 4> dimensions(m.getShape().begin(),
                                              m.getShape().end());
-    return ::xla::ShapeUtil::MakeShapeWithLayout(primitive_type, dimensions,
-                                                 minor_to_major);
+    return ::xla::ShapeUtil::MakeShapeWithDenseLayout(
+        primitive_type, dimensions, minor_to_major);
   } else if (auto t = type.dyn_cast<mlir::RankedTensorType>()) {
     // TODO(jpienaar): This is only handling the base case with primitive
     // element type.
@@ -206,9 +206,14 @@ Shape TypeToShape(mlir::Type type) {
 
       std::vector<int64_t> ordering(rank);
       std::iota(ordering.rbegin(), ordering.rend(), 0);
+      // Uses an identity map for dim ordering as the default value.
+      auto dimOrder = sparse.getDimOrdering()
+                          ? sparse.getDimOrdering()
+                          : mlir::AffineMap::getMultiDimIdentityMap(
+                                rank, sparse.getContext());
       auto final_ordering = mlir::applyPermutationMap(
-          sparse.getDimOrdering(), llvm::ArrayRef<int64_t>(ordering));
-      auto sparse_shape = ::xla::ShapeUtil::MakeShapeWithLayout(
+          dimOrder, llvm::ArrayRef<int64_t>(ordering));
+      auto sparse_shape = ::xla::ShapeUtil::MakeShapeWithSparseLayout(
           primitive_type, shape, final_ordering, dim_level_types);
       return sparse_shape;
     }

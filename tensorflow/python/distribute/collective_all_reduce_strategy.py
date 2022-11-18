@@ -19,7 +19,6 @@ import threading
 import time
 import weakref
 
-from tensorflow.core.protobuf import coordination_config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.distribute import collective_util
@@ -52,6 +51,7 @@ from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.trackable import base
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tsl.protobuf import coordination_config_pb2
 
 
 # pylint: disable=line-too-long

@@ -12,5 +12,4 @@
 *PyInit_*
 *SE_*
 *SP_*
-*lite*
-*TFL*
+*tsl*profiler*RemoteProfilerSession*

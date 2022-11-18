@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <atomic>
 
 #include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
@@ -71,7 +72,7 @@ class CPUAllocator : public Allocator {
       : single_allocation_warning_count_(0),
         total_allocation_warning_count_(0) {}
 
-  ~CPUAllocator() override {}
+  ~CPUAllocator() override = default;
 
   string Name() override { return "cpu"; }
 
@@ -195,11 +196,13 @@ class CPUAllocatorFactory : public AllocatorFactory {
 
     void* Alloc(size_t alignment, size_t num_bytes,
                 size_t* bytes_received) override {
+      tsl::profiler::TraceMe traceme("CPUSubAllocator::Alloc");
       *bytes_received = num_bytes;
       return cpu_allocator_->AllocateRaw(alignment, num_bytes);
     }
 
     void Free(void* ptr, size_t num_bytes) override {
+      tsl::profiler::TraceMe traceme("CPUSubAllocator::Free");
       cpu_allocator_->DeallocateRaw(ptr);
     }
 
