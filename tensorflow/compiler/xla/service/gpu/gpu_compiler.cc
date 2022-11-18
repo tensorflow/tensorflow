@@ -1401,12 +1401,14 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   }
 
   auto maybe_backend_result =
-      this->LinkModules(stream_exec, std::move(submodule_compile_results));
+      this->LinkModules(stream_exec, std::move(submodule_compile_results),
+                        module_config.debug_options());
   if (!maybe_backend_result.ok()) {
     LOG(ERROR) << "The CUDA linking API did not work. Please use "
                   "XLA_FLAGS=--xla_gpu_force_compilation_parallelism=1 to "
                   "bypass it, but expect to get longer compilation time due to "
-                  "the lack of multi-threading.";
+                  "the lack of multi-threading. Original error: "
+               << maybe_backend_result.status();
     return maybe_backend_result.status();
   }
 

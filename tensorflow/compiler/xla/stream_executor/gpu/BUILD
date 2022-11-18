@@ -349,6 +349,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_asm_compiler",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
         "//tensorflow/compiler/xla/stream_executor/cuda:ptxas_wrapper",
+        "//tensorflow/compiler/xla/stream_executor/cuda:nvlink_wrapper",
         "//tensorflow/compiler/xla/stream_executor/cuda:fatbinary_wrapper",
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_driver",

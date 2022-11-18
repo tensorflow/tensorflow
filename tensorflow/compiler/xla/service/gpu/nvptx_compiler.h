@@ -60,7 +60,8 @@ class NVPTXCompiler : public GpuCompiler {
 
   StatusOr<std::vector<uint8_t>> LinkModules(
       se::StreamExecutor* stream_exec,
-      std::vector<std::vector<uint8_t>> modules) override;
+      std::vector<std::vector<uint8_t>> modules,
+      const DebugOptions& debug_options) override;
 
   absl::Mutex mutex_;
 

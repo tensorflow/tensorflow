@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace xla {
 namespace gpu {
@@ -474,8 +475,26 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   return cache_value->cubin_data;
 }
 
+static bool UseNvlink() {
+  const bool use_nvlink_by_default =
+#ifdef TF_DISABLE_NVLINK_BY_DEFAULT
+      false;
+#else
+      true;
+#endif
+  bool use_nvlink;
+  TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_NVLINK_FOR_PARALLEL_COMPILATION",
+                                      /*default_val=*/
+                                      use_nvlink_by_default, &use_nvlink));
+  return use_nvlink;
+}
+
 StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
     const HloModuleConfig& hlo_module_config) {
+  if (UseNvlink()) {
+    return true;
+  }
+
   // TODO(phawkins): rather than comparing version numbers, it might be more
   // robust if we simply tried to link something the first time we compile.
   auto ptxas_config =
@@ -508,16 +527,20 @@ StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
 }
 
 StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
-    se::StreamExecutor* stream_exec,
-    std::vector<std::vector<uint8_t>> modules) {
+    se::StreamExecutor* stream_exec, std::vector<std::vector<uint8_t>> modules,
+    const DebugOptions& debug_options) {
   std::vector<stream_executor::CubinOrPTXImage> images;
   images.reserve(modules.size());
   for (auto& module : modules) {
     images.push_back({"", std::move(module)});
   }
-  return LinkGpuAsm(static_cast<se::gpu::GpuContext*>(
-                        stream_exec->implementation()->GpuContextHack()),
-                    images);
+  auto context = static_cast<se::gpu::GpuContext*>(
+      stream_exec->implementation()->GpuContextHack());
+  if (UseNvlink()) {
+    return LinkUsingNvlink(debug_options.xla_gpu_cuda_data_dir(), context,
+                           images);
+  }
+  return LinkGpuAsm(context, images);
 }
 
 }  // namespace gpu

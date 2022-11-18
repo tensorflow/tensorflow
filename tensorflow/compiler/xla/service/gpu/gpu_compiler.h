@@ -185,7 +185,8 @@ class GpuCompiler : public LLVMCompiler {
 
   virtual StatusOr<std::vector<uint8_t>> LinkModules(
       se::StreamExecutor* stream_exec,
-      std::vector<std::vector<uint8_t>> modules) {
+      std::vector<std::vector<uint8_t>> modules,
+      const DebugOptions& debug_options) {
     return Unimplemented("LinkModules is not implemented.");
   }
 
