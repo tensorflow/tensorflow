@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
+#include "tensorflow/tsl/profiler/lib/scoped_memory_debug_annotation.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 
 /*static*/ MemoryDebugAnnotation*
@@ -24,4 +24,4 @@ ScopedMemoryDebugAnnotation::ThreadMemoryDebugAnnotation() {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

@@ -28,6 +28,8 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "scoped_annotation.h",
+        "scoped_memory_debug_annotation.cc",
+        "scoped_memory_debug_annotation.h",
         "traceme.h",
         "traceme_encode.h",
     ],
@@ -312,5 +314,14 @@ cc_library(
         ":profiler_interface",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "scoped_memory_debug_annotation",
+    srcs = ["scoped_memory_debug_annotation.cc"],
+    hdrs = ["scoped_memory_debug_annotation.h"],
+    visibility = ["//visibility:public"],
+    deps = [
     ],
 )
