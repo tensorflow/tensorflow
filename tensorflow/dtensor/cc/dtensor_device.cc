@@ -340,7 +340,8 @@ class DTensorDevice {
   // Takes the description of an operation and makes a function out of it with
   // the same signature, running DTensor MLIR passes. Registers that function
   // with `context`. `translated_function_name` is set to the name of the
-  // function.
+  // function. The resulting MLIR ModuleOp of MLIR passes is in the
+  // `output_module_ref` associated with the `pass_runner_`.
   //
   // The resulting function expects a device ID as its first input.
   void LowerToSPMDFunction(TFE_Context* context,
@@ -348,6 +349,7 @@ class DTensorDevice {
                            const DTensorOperation& doperation,
                            const TFE_OpAttrs* attributes, const int num_outputs,
                            const ExecutionFunctions** execution_functions,
+                           mlir::OwningOpRef<mlir::ModuleOp>& output_module_ref,
                            TF_Status* status);
 
   // Execute a given function.
@@ -356,6 +358,13 @@ class DTensorDevice {
       const MeshWithParallelDevice* parallel_device_mesh,
       const std::vector<parallel_device::ParallelTensor*>& parallel_inputs,
       const int64_t step_id, const TFE_OpAttrs* attributes, TF_Status* status);
+
+  // Execute regular operation with ParallelExecutor
+  void ParallelExecuteRegularOperation(
+      TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
+      mlir::OwningOpRef<mlir::ModuleOp> mlir_module_ref,
+      const DTensorOperation& doperation, const TFE_OpAttrs* attributes,
+      int* num_outputs, TFE_TensorHandle** outputs, TF_Status* status);
 
   // Implements `Execute` for operations which aren't special-cased in
   void ExecuteRegularOperation(TFE_Context* context,
@@ -1353,7 +1362,7 @@ void DTensorDevice::LowerToSPMDFunction(
     TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation, const TFE_OpAttrs* attributes,
     const int num_outputs, const ExecutionFunctions** execution_functions,
-    TF_Status* status) {
+    mlir::OwningOpRef<mlir::ModuleOp>& output_module_ref, TF_Status* status) {
   profiler::TraceMe activity(
       [&] { return "DTensorDevice::LowerToSPMDFunction"; },
       profiler::TraceMeLevel::kInfo);
@@ -1443,12 +1452,14 @@ void DTensorDevice::LowerToSPMDFunction(
   {
     profiler::TraceMe activity([&] { return "DTensorDevice::RunMLIRPasses"; },
                                profiler::TraceMeLevel::kInfo);
-    RETURN_C_STATUS_IF_NOT_OK(
+    ASSIGN_OR_RETURN_C_STATUS(
+        output_module_ref,
         pass_runner_.RunOnGraph(device_set, doperation.is_func(), flib_def,
                                 &graph, control_ret_nodes,
                                 cache_key_and_func.first),
         status);
   }
+
   VLOG(4) << tensorflow::DumpGraphToFile("after_mlir_spmd_lowering", *graph,
                                          flib_def);
   if (flib_def->Contains(kLoadEmbeddingFn)) {
@@ -1527,21 +1538,48 @@ void DTensorDevice::ExecuteFunctionAndWait(
   }
 }
 
+void DTensorDevice::ParallelExecuteRegularOperation(
+    TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
+    mlir::OwningOpRef<mlir::ModuleOp> mlir_module_ref,
+    const DTensorOperation& doperation, const TFE_OpAttrs* attributes,
+    int* num_outputs, TFE_TensorHandle** outputs, TF_Status* status) {
+  auto future_result = parallel_executor_->Execute(
+      context, inputs, /*module_ref=*/std::move(mlir_module_ref),
+      /*entry_function_name=*/"main", attributes);
+  auto result_with_status = future_result.Await();
+
+  std::vector<TensorWithLayout*> typed_outputs;
+  ASSIGN_OR_RETURN_C_STATUS(typed_outputs, result_with_status, status);
+  // assign outputs and take outputs' ownership
+  *num_outputs = typed_outputs.size();
+  for (int i = 0; i < *num_outputs; ++i) {
+    outputs[i] = MakeLayoutTensorHandle(
+        context, absl::WrapUnique(typed_outputs[i]), status);
+  }
+}
+
 void DTensorDevice::ExecuteRegularOperation(
     TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation, const TFE_OpAttrs* attributes,
     int* num_outputs, TFE_TensorHandle** outputs, TF_Status* status) {
   const ExecutionFunctions* execution_functions = nullptr;
 
+  // ModuleOp is associated with the pass_runner_'s MLIRContext
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module_ref;
   LowerToSPMDFunction(context, inputs, doperation, attributes, *num_outputs,
-                      &execution_functions, status);
+                      &execution_functions, mlir_module_ref, status);
+  if (TF_GetCode(status) != TF_OK) return;
 
   if (parallel_executor_) {
-    RETURN_C_STATUS_IF_NOT_OK(parallel_executor_->Execute(), status);
+    if (!mlir_module_ref) {
+      RETURN_STATUS(status, TF_INTERNAL,
+                    "ParallelExecutor is enabled but ModuleOp is missing.");
+    }
+    ParallelExecuteRegularOperation(context, inputs, std::move(mlir_module_ref),
+                                    doperation, attributes, num_outputs,
+                                    outputs, status);
     return;
   }
-
-  if (TF_GetCode(status) != TF_OK) return;
 
   // Update input layouts for resource arguments.
   for (const TranslatedFunction& function :

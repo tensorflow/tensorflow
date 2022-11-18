@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/dtensor/cc/dtensor_graph_to_mlir_pass.h"
 
+#include <utility>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -44,6 +46,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 
@@ -64,7 +67,7 @@ DTensorMlirPassRunner::DTensorMlirPassRunner()
   dtensor::CreateDTensorMLIRPass(pipeline_options, &pass_manager_);
 }
 
-Status DTensorMlirPassRunner::RunOnGraph(
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> DTensorMlirPassRunner::RunOnGraph(
     const DeviceSet& device_set, bool is_func,
     FunctionLibraryDefinition* flib_def, std::unique_ptr<Graph>* graph,
     absl::flat_hash_set<Node*>& control_ret_nodes, Fprint128 cache_key) {
@@ -120,7 +123,6 @@ Status DTensorMlirPassRunner::RunOnGraph(
   TF_RETURN_IF_ERROR(diag_handler.ConsumeStatus());
 
   if (logging_enabled_) pass_manager_.getContext()->enableMultithreading();
-
   // Convert MLIR to graphdef for execution.
   GraphExportConfig export_config;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -130,7 +132,7 @@ Status DTensorMlirPassRunner::RunOnGraph(
   Graph* output_graph = graph->get();
   VLOG(4) << DumpGraphToFile("dtensor_mlir_pass_after", *output_graph,
                              flib_def);
-  return OkStatus();
+  return std::move(module_ref).value();
 }
 
 }  // namespace tensorflow
