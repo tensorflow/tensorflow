@@ -156,7 +156,6 @@ tensorflow::Status GraphExecutionRunOnFunction(
     const GraphExecutionRunOptions& run_options,
     absl::string_view signature_name, const tfrt::Function& func,
     absl::Span<const tensorflow::Tensor> inputs,
-    absl::Span<const tensorflow::Tensor> captures,
     std::vector<tensorflow::Tensor>* outputs,
     tfrt::ResourceContext* resource_context, const Runtime& runtime,
     const FallbackState& fallback_state,
@@ -219,9 +218,6 @@ tensorflow::Status GraphExecutionRunOnFunction(
     arguments.push_back(
         tfrt::MakeAvailableAsyncValueRef<FallbackTensor>(input).release());
   }
-
-  DCHECK(captures.empty()) << "signature should have no captures, which is "
-                              "guaranteed by the compiler";
 
   if (arguments.size() != func.argument_types().size())
     return tensorflow::errors::Internal("incorrect number of inputs.");
@@ -408,9 +404,8 @@ tensorflow::Status GraphExecutor::Run(
   std::vector<tensorflow::Tensor> flat_outputs;
   TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
       options_, run_options, loaded_client_graph.name, *func, flat_inputs,
-      /*captures=*/{}, &flat_outputs,
-      loaded_client_graph.resource_context.get(), runtime(), fallback_state_,
-      &req_deadline_tracker_));
+      &flat_outputs, loaded_client_graph.resource_context.get(), runtime(),
+      fallback_state_, &req_deadline_tracker_));
 
   // Create the outputs from the actual function results, which are sorted
   // according to the output tensor names.

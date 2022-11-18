@@ -84,8 +84,15 @@ using SignatureMap = absl::flat_hash_map<std::string, internal::Signature>;
 using ::tensorflow::SessionMetadata;
 using ::tensorflow::StatusOr;
 
+struct Initializer {
+  std::string name;
+  std::vector<tensorflow::Tensor> inputs;
+};
+
 struct InitializersAndSignatures {
-  llvm::SmallVector<std::string, 4> initializers;
+  // Initializers are kept in a certain order as they need to be executed in
+  // that order.
+  std::vector<Initializer> initializers;
   SignatureMap signature_map;
 };
 
@@ -132,8 +139,7 @@ tensorflow::Tensor CreateScalarStringTensor(absl::string_view str) {
 //
 // TODO(chky): For V2 models, the bound input can also be a resource.
 StatusOr<tensorflow::Tensor> CreateTensorFromBoundInput(
-    mlir::Operation* bound_input, absl::string_view saved_model_dir,
-    absl::flat_hash_map<std::string, tensorflow::Tensor>* variables) {
+    mlir::Operation* bound_input, absl::string_view saved_model_dir) {
   // Assets are files in the saved model directory. We pass their filenames to
   // functions so that they can be used.
   if (auto asset = llvm::dyn_cast<mlir::tf_saved_model::AssetOp>(bound_input)) {
@@ -147,16 +153,31 @@ StatusOr<tensorflow::Tensor> CreateTensorFromBoundInput(
       "Failed to create captured tensors: unknown bound input type.");
 }
 
-StatusOr<SignatureMap> GetFunctionSignaturesFromTFSavedModelMLIR(
-    absl::string_view saved_model_dir, mlir::ModuleOp module) {
-  absl::flat_hash_map<std::string, tensorflow::Tensor> variables;
-  SignatureMap signatures;
+StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
+    mlir::ModuleOp module, absl::string_view saved_model_dir) {
+  InitializersAndSignatures result;
 
+  // A map for initializer inputs.
+  absl::flat_hash_map<std::string, std::vector<tensorflow::Tensor>>
+      initializer_input_map;
+
+  // Create placeholders for initializers.
+  for (auto session_initializer_name :
+       mlir::tf_saved_model::GetSessionInitializerExportedName(module)) {
+    Initializer initializer;
+    initializer.name = session_initializer_name.str();
+    initializer_input_map[initializer.name];
+    result.initializers.push_back(std::move(initializer));
+  }
+
+  auto& signatures = result.signature_map;
   tensorflow::StatusGroup status_group;
   TF_RETURN_IF_ERROR(tensorflow::MapFunctionSignaturesFromTFSavedModelMLIR(
-      module, [&status_group, &variables, &signatures, saved_model_dir](
-                  const tensorflow::TFRTSavedModelSignatureInfo& sig_info) {
-        auto& signature = signatures[std::string(sig_info.func_name)];
+      module,
+      [&status_group, &signatures, &initializer_input_map, saved_model_dir](
+          const tensorflow::TFRTSavedModelSignatureInfo& sig_info) {
+        auto signature_name = std::string(sig_info.func_name);
+        auto& signature = signatures[signature_name];
 
         auto copy = [](llvm::ArrayRef<llvm::StringRef> src,
                        std::vector<std::string>* dst) {
@@ -179,22 +200,31 @@ StatusOr<SignatureMap> GetFunctionSignaturesFromTFSavedModelMLIR(
           signature.output_specs.push_back(TensorSpec(spec.first, spec.second));
         }
 
+        auto init_iter = initializer_input_map.find(signature_name);
+        if (init_iter == initializer_input_map.end()) return;
+
+        auto& init_inputs = init_iter->second;
+
         for (auto* bound_input : sig_info.bound_inputs) {
-          auto capture = CreateTensorFromBoundInput(
-              bound_input, saved_model_dir, &variables);
+          auto capture =
+              CreateTensorFromBoundInput(bound_input, saved_model_dir);
           if (!capture.ok()) {
             status_group.Update(capture.status());
             // Insert a random tensor in case of errors.
-            signature.captures.push_back(tensorflow::Tensor());
+            init_inputs.push_back(tensorflow::Tensor());
           } else {
-            signature.captures.push_back(*std::move(capture));
+            init_inputs.push_back(*std::move(capture));
           }
         }
       }));
 
   if (!status_group.ok()) return status_group.as_concatenated_status();
 
-  return signatures;
+  for (auto& initializer : result.initializers) {
+    initializer.inputs = std::move(initializer_input_map.at(initializer.name));
+  }
+
+  return result;
 }
 
 tensorflow::Status RunInitializers(
@@ -215,22 +245,17 @@ tensorflow::Status RunInitializers(
   TF_RETURN_IF_ERROR(
       RunRuntimeInitializer(exec_ctx, bef_file, "_tfrt_fallback_init"));
 
-  for (const auto& initializer_name :
-       initializers_and_signatures.initializers) {
+  for (const auto& p : initializers_and_signatures.initializers) {
+    const auto& initializer_name = p.name;
+    const auto& initializer_inputs = p.inputs;
     GraphExecutionOptions options(&runtime);
     options.model_metadata = model_metadata;
     auto* func = bef_file->GetFunction(initializer_name);
     DCHECK(func);
-    const auto& signature =
-        initializers_and_signatures.signature_map.at(initializer_name);
     std::vector<tensorflow::Tensor> outputs;
-    // TODO(b/259113169): The captures here are non-empty, but
-    // `GraphExecutionRunOnFunction()` expects captures to be empty, so they are
-    // passed as inputs here. Clean it up.
     TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
         options, /*run_options=*/{}, initializer_name, *func,
-        /*inputs=*/signature.captures,
-        /*captures=*/{}, &outputs, resource_context, runtime, fallback_state,
+        initializer_inputs, &outputs, resource_context, runtime, fallback_state,
         /*req_deadline_tracker=*/nullptr));
     DCHECK(outputs.empty());
   }
@@ -327,19 +352,6 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
       ->Set(absl::ToInt64Seconds(import_input.GetGrapplerDuration()));
 
   return module;
-}
-
-StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
-    mlir::ModuleOp module, absl::string_view saved_model_dir) {
-  InitializersAndSignatures result;
-  TF_ASSIGN_OR_RETURN(
-      result.signature_map,
-      GetFunctionSignaturesFromTFSavedModelMLIR(saved_model_dir, module));
-  for (auto session_initializer_name :
-       mlir::tf_saved_model::GetSessionInitializerExportedName(module)) {
-    result.initializers.push_back(session_initializer_name.str());
-  }
-  return result;
 }
 
 tensorflow::Status InitSavedModel(
@@ -653,10 +665,6 @@ tensorflow::Status SavedModelImpl::Run(
           << "TFRT input specs validation failed: " << status.error_message();
     }
   }
-  std::vector<tensorflow::Tensor> captures;
-  for (const auto& capture : sig_iter->second.captures) {
-    captures.push_back(capture);
-  }
 
   const tfrt::Function* func;
   tfrt::ResourceContext* resource_context;
@@ -676,8 +684,8 @@ tensorflow::Status SavedModelImpl::Run(
   DCHECK(func);
 
   return GraphExecutionRunOnFunction(options_.graph_execution_options,
-                                     run_options, name, *func, inputs, captures,
-                                     outputs, resource_context, runtime(),
+                                     run_options, name, *func, inputs, outputs,
+                                     resource_context, runtime(),
                                      *fallback_state_, &req_deadline_tracker_);
 }
 
@@ -746,7 +754,6 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
                    << status.error_message();
       }
     }
-    DCHECK(signature.captures.empty());
 
     TF_RET_CHECK(input_tensors.size() == signature_def.inputs().size())
         << "Incorrect input size for signature: " << signature_name

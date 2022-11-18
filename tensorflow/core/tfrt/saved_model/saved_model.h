@@ -65,8 +65,6 @@ inline bool operator==(const TensorSpec& a, const TensorSpec& b) {
 namespace internal {
 
 struct Signature {
-  std::vector<tensorflow::Tensor> captures;
-
   // The following three fields should have the same size.
   std::vector<std::string> input_names;
   std::vector<TensorSpec> input_specs;
@@ -279,15 +277,6 @@ class SavedModelImpl final : public SavedModel {
   GetOrCreateLoadingResult(const RunOptions& run_options,
                            absl::Span<const std::string> names)
       TF_LOCKS_EXCLUDED(loading_result_cache_mu_);
-
-  // Runs `func` with the given inputs, and outputs the result.
-  tensorflow::Status RunInternal(const RunOptions& run_options,
-                                 absl::string_view signature_name,
-                                 const tfrt::Function& func,
-                                 absl::Span<const tensorflow::Tensor> inputs,
-                                 absl::Span<const tensorflow::Tensor> captures,
-                                 std::vector<tensorflow::Tensor>* outputs,
-                                 tfrt::ResourceContext* resource_context);
 
   Options options_;
   // `meta_graph_def_` only contains metadata of the model. The graph_def field
