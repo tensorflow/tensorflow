@@ -1340,6 +1340,7 @@ cc_library(
         "gml_st/transforms/tiling_softmax/tiling_softmax.cc",
         "gml_st/transforms/transform_map_for_cpu/transform_map_for_cpu.cc",
         "gml_st/transforms/transform_matmul_for_cpu/transform_matmul_for_cpu.cc",
+        "gml_st/transforms/transform_reduce_for_cpu/transform_reduce_for_cpu.cc",
         "gml_st/transforms/transform_scatter_for_cpu/transform_scatter_for_cpu.cc",
         "gml_st/transforms/transform_transpose_for_cpu/transform_transpose_for_cpu.cc",
         "gml_st/transforms/transforms.h",

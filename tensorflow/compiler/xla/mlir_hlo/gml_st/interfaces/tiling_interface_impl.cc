@@ -170,6 +170,8 @@ void registerGmlStTilingInterfaceExternalModels(DialectRegistry &registry) {
         ExternalLinalgOpTilingInterface<linalg::MapOp>>(*ctx);
     linalg::MatmulOp::attachInterface<
         ExternalLinalgOpTilingInterface<linalg::MatmulOp>>(*ctx);
+    linalg::ReduceOp::attachInterface<
+        ExternalLinalgOpTilingInterface<linalg::ReduceOp>>(*ctx);
     linalg::TransposeOp::attachInterface<
         ExternalLinalgOpTilingInterface<linalg::TransposeOp>>(*ctx);
   });
