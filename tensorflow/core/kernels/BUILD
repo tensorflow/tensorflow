@@ -691,6 +691,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/util/tensor_bundle",
     ],
 )
@@ -1556,6 +1557,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -3331,6 +3333,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
     ],
 )
 
@@ -6877,10 +6880,27 @@ cc_library(
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
-        "//tensorflow/core:protos_all_cc_impl",
+        "//tensorflow/core/example:example_protos_cc",
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:dataset_options_proto_cc",
+        "//tensorflow/core/framework:dataset_proto_cc",
+        "//tensorflow/core/framework:full_type_proto_cc",
+        "//tensorflow/core/framework:function_proto_cc",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:model_proto_cc",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:reader_base_proto_cc",
+        "//tensorflow/core/framework:summary_proto_cc",
+        "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/core/framework:tensor_shape_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/platform:strong_hash",
         "//tensorflow/core/platform:types",
+        "//tensorflow/core/protobuf:autotuning_proto_cc",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/util/quantization:uniform_quant_ops_attr_proto_cc",
         "//tensorflow/tsl/framework/fixedpoint",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
@@ -6907,6 +6927,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:portable_tensorflow_lib_lite",
+        "//tensorflow/core/framework:reader_base_proto_cc",
     ],
     alwayslink = 1,
 )
@@ -7664,6 +7685,11 @@ cc_library(
     textual_hdrs = glob(["*.h"]),
     visibility = [
         "//visibility:public",
+    ],
+    deps = [
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
     ],
 )
 
