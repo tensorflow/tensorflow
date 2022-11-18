@@ -417,36 +417,47 @@ struct DecodedAttr {
 // A convenience wrapper around opaque arguments memory.
 class DecodedArgs {
  public:
-  explicit DecodedArgs(void** args)
-      : args_(args), num_args_(*reinterpret_cast<int64_t*>(args_[0])) {}
+  LLVM_ATTRIBUTE_ALWAYS_INLINE explicit DecodedArgs(void** args) {
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(args, sizeof(void*));
+    size_ = *reinterpret_cast<int64_t*>(args[0]);
+    if (size_) {
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(args + 1, sizeof(void*));
+      type_table_ = reinterpret_cast<void**>(args[1]);
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(type_table_, size_ * sizeof(void*));
+      values_ = args + 2;
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(values_, size_ * sizeof(void*));
+    }
+  }
 
-  LLVM_ATTRIBUTE_ALWAYS_INLINE int64_t size() const { return num_args_; }
+  LLVM_ATTRIBUTE_ALWAYS_INLINE int64_t size() const { return size_; }
 
   LLVM_ATTRIBUTE_ALWAYS_INLINE DecodedArg operator[](size_t i) const {
-    void** arg_base = args_ + 1 + i * 2;
-
     DecodedArg arg;
-    arg.type_id = TypeID::getFromOpaquePointer(arg_base[0]);
-    arg.value = arg_base[1];
-
+    arg.type_id = TypeID::getFromOpaquePointer(type_table_[i]);
+    arg.value = values_[i];
     return arg;
   }
 
  private:
-  void** args_;
-  int64_t num_args_;
+  int64_t size_;
+  void** type_table_ = nullptr;
+  void** values_ = nullptr;
 };
 
 // A convenience wrapper around opaque attributes memory.
 class DecodedAttrs {
  public:
-  explicit DecodedAttrs(void** attrs)
-      : attrs_(attrs), num_attrs_(*reinterpret_cast<int64_t*>(attrs_[0])) {}
+  LLVM_ATTRIBUTE_ALWAYS_INLINE explicit DecodedAttrs(void** attrs)
+      : encoded_(attrs + 1) {
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(attrs, sizeof(void*));
+    size_ = *reinterpret_cast<int64_t*>(attrs[0]);
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(encoded_, 3 * size_ * sizeof(void*));
+  }
 
-  LLVM_ATTRIBUTE_ALWAYS_INLINE int64_t size() const { return num_attrs_; }
+  LLVM_ATTRIBUTE_ALWAYS_INLINE int64_t size() const { return size_; }
 
   LLVM_ATTRIBUTE_ALWAYS_INLINE DecodedAttr operator[](size_t i) const {
-    void** attr_base = attrs_ + 1 + i * 3;
+    void** attr_base = encoded_ + i * 3;
 
     DecodedAttr attr;
     auto* name = reinterpret_cast<internal::EncodedArray<char>*>(attr_base[0]);
@@ -458,8 +469,8 @@ class DecodedAttrs {
   }
 
  private:
-  void** attrs_;
-  int64_t num_attrs_;
+  void** encoded_;
+  int64_t size_;
 };
 
 // Using the same class for decoded returns
@@ -907,11 +918,6 @@ class CustomCallHandler : public CustomCall {
   LLVM_ATTRIBUTE_ALWAYS_INLINE LogicalResult
   call(void** args, void** attrs, void** rets, const UserData* user_data,
        const DiagnosticEngine* diagnostic) const final {
-    // Unpoison the first pointer to get the args, attrs, and rets sizes.
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(args, sizeof(void*));
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(attrs, sizeof(void*));
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(rets, sizeof(void*));
-
     // Decode arguments and attributes from the opaque pointers.
     internal::DecodedArgs decoded_args(args);
     internal::DecodedAttrs decoded_attrs(attrs);
@@ -920,14 +926,6 @@ class CustomCallHandler : public CustomCall {
     int64_t num_args = decoded_args.size();
     int64_t num_attrs = decoded_attrs.size();
     int64_t num_rets = decoded_rets.size();
-
-    // Unpoison the rest of the of args, attrs, and rets data.
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(args,
-                                        (1 + 2 * num_args) * sizeof(void*));
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(attrs,
-                                        (1 + 3 * num_attrs) * sizeof(void*));
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(rets,
-                                        (1 + 2 * num_rets) * sizeof(void*));
 
     if (LLVM_UNLIKELY(diagnostic == nullptr))
       diagnostic = DiagnosticEngine::DefaultDiagnosticEngine();

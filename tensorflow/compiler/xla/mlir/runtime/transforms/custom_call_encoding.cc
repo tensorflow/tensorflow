@@ -853,7 +853,7 @@ FailureOr<LLVM::GlobalOp> EncodeAttributes(
   // In addition to encoded attributes we encode the number of attributes.
   int64_t n_attrs = attrs.size();
 
-  // We store encoded attribute as `!llvm.array<ptr<i8> x len>`.
+  // We store encoded attribute as `!llvm.array<ptr x len>`.
   Type ptr = LLVM::LLVMPointerType::get(b.getContext());
   Type type = LLVM::LLVMArrayType::get(ptr, 1 + n_attrs * 3);
 

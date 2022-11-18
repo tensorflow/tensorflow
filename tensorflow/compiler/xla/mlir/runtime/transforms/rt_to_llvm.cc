@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
@@ -215,6 +216,33 @@ class IsOkOpLowering : public OpConversionPattern<IsOkOp> {
 // Convert rt.custom_call to the corresponding runtime API call.
 //===----------------------------------------------------------------------===//
 
+static LLVM::GlobalOp EncodeTypeTable(Globals &g, ImplicitLocOpBuilder &b,
+                                      ArrayRef<LLVM::GlobalOp> type_ids,
+                                      std::string_view symbol_base) {
+  // We store type table as `!llvm.array<ptr x len>`.
+  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
+  Type type = LLVM::LLVMArrayType::get(ptr, type_ids.size());
+
+  // Global initializer that encodes type ids as pointers.
+  auto init = [&](ImplicitLocOpBuilder &ib, Attribute) -> LogicalResult {
+    Value arr = b.create<LLVM::UndefOp>(type);
+    for (auto &pair : llvm::enumerate(type_ids)) {
+      arr = b.create<LLVM::InsertValueOp>(arr, Globals::AddrOf(b, pair.value()),
+                                          pair.index());
+    }
+    b.create<LLVM::ReturnOp>(arr);
+    return success();
+  };
+
+  // Put all type ids into an array attribute, so we can use it as a globals
+  // cache key, so we do not encode the same type table multiple times.
+  llvm::SmallVector<llvm::StringRef> type_id_syms;
+  for (auto type_id : type_ids) type_id_syms.push_back(type_id.getSymName());
+  auto arr_attr = b.getStrArrayAttr(type_id_syms);
+
+  return g.GetOrCreate(b, arr_attr, type, symbol_base, init);
+}
+
 static FailureOr<LLVM::AllocaOp> EncodeArguments(
     CallOp op, CustomCallArgEncodingSet &encodings, Globals &g,
     DenseMap<Value, CustomCallArgEncoding::Encoded> &encoded_args,
@@ -245,9 +273,10 @@ static FailureOr<LLVM::AllocaOp> EncodeArguments(
     encoded_args.try_emplace(std::get<0>(tuple), *encoded_arg);
   }
 
-  // We store encoded arguments as `!llvm.array<ptr<i8> x len>`.
+  // We store encoded arguments as `!llvm.array<ptr x len>`.
+  size_t len = encoded.empty() ? 1 : 2 + encoded.size();
   Type ptr = LLVM::LLVMPointerType::get(b.getContext());
-  Type type = LLVM::LLVMArrayType::get(ptr, 1 + encoded.size() * 2);
+  Type type = LLVM::LLVMArrayType::get(ptr, len);
 
   // Prepare an array for encoded arguments.
   Value arr = b.create<LLVM::UndefOp>(type);
@@ -260,13 +289,18 @@ static FailureOr<LLVM::AllocaOp> EncodeArguments(
       EncodeScalar(g, b, b.getI64IntegerAttr(encoded.size()), "__rt_num_args");
   insert_value(Globals::AddrOf(b, num_args), 0);
 
-  // Store encoded arguments into the allocated storage.
+  // Package arguments type ids into a type table global value.
+  llvm::SmallVector<LLVM::GlobalOp> type_ids;
+  for (auto &arg : encoded) type_ids.push_back(arg.type_id);
+  LLVM::GlobalOp type_table =
+      EncodeTypeTable(g, b, type_ids, "__rt_args_type_table");
+  if (!encoded.empty()) insert_value(Globals::AddrOf(b, type_table), 1);
+
+  // Store pointer to encoded arguments into the allocated storage.
   for (auto &pair : llvm::enumerate(encoded)) {
     CustomCallArgEncoding::Encoded encoded = pair.value();
-    int64_t offset = 1 + pair.index() * 2;
-
-    insert_value(Globals::AddrOf(b, encoded.type_id), offset + 0);
-    insert_value(encoded.value, offset + 1);
+    int64_t offset = 2 + pair.index();
+    insert_value(encoded.value, offset);
   }
 
   // Always create an `alloca` in the parent function entry block.
@@ -334,9 +368,10 @@ static FailureOr<EncodedResults> EncodeResults(
     encoded.push_back(*encoded_ret);
   }
 
-  // We store encoded results as `!llvm.array<ptr<i8> x len>`.
+  // We store encoded results as `!llvm.array<ptr x len>`.
+  size_t len = encoded.empty() ? 1 : 2 + encoded.size();
   Type ptr = LLVM::LLVMPointerType::get(b.getContext());
-  Type type = LLVM::LLVMArrayType::get(ptr, 1 + encoded.size() * 2);
+  Type type = LLVM::LLVMArrayType::get(ptr, len);
 
   // Prepare an array for encoding results.
   Value arr = b.create<LLVM::UndefOp>(type);
@@ -349,14 +384,18 @@ static FailureOr<EncodedResults> EncodeResults(
       EncodeScalar(g, b, b.getI64IntegerAttr(encoded.size()), "__rt_num_rets");
   insert_value(Globals::AddrOf(b, num_rets), 0);
 
+  // Package results type ids into a type table global value.
+  llvm::SmallVector<LLVM::GlobalOp> type_ids;
+  for (auto &arg : encoded) type_ids.push_back(arg.type_id);
+  LLVM::GlobalOp type_table =
+      EncodeTypeTable(g, b, type_ids, "__rt_rets_type_table");
+  if (!encoded.empty()) insert_value(Globals::AddrOf(b, type_table), 1);
+
   // Store encoded results into the allocated storage.
   for (auto &pair : llvm::enumerate(encoded)) {
     CustomCallRetEncoding::Encoded encoded_pair = pair.value();
-    int64_t offset = 1 + pair.index() * 2;
-
-    insert_value(Globals::AddrOf(b, encoded_pair.type_id), offset + 0);
-    insert_value(encoded_pair.value, offset + 1);
-
+    int64_t offset = 2 + pair.index();
+    insert_value(encoded_pair.value, offset);
     results.allocas.push_back(encoded_pair.value);
   }
 
