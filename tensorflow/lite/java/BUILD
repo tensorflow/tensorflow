@@ -134,7 +134,7 @@ aar_with_jni(
     headers = [
         "//tensorflow/lite:builtin_ops.h",
         "//tensorflow/lite/c:c_api.h",
-        "//tensorflow/lite/c:c_api_types.h",
+        "//tensorflow/lite/core/c:c_api_types.h",
         "//tensorflow/lite/c:c_api_experimental.h",
         # TODO(b/175298345): Clean up and if possible remove common.h here.
         "//tensorflow/lite/c:common.h",
@@ -155,7 +155,7 @@ aar_with_jni(
     headers = [
         "//tensorflow/lite:builtin_ops.h",
         "//tensorflow/lite/c:c_api.h",
-        "//tensorflow/lite/c:c_api_types.h",
+        "//tensorflow/lite/core/c:c_api_types.h",
         # TODO(b/175298345): move the stable parts of common.h into
         # a separate header file that contains no experimental APIs
         # (perhaps also replacing concrete struct types with opaque types

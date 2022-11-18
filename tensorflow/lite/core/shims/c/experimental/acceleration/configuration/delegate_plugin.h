@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_SHIMS_C_EXPERIMENTAL_ACCELERATION_CONFIGURATION_DELEGATE_PLUGIN_H_
 #define TENSORFLOW_LITE_CORE_SHIMS_C_EXPERIMENTAL_ACCELERATION_CONFIGURATION_DELEGATE_PLUGIN_H_
 
-#include "tensorflow/lite/experimental/acceleration/configuration/c/delegate_plugin.h"
+#include "tensorflow/lite/core/experimental/acceleration/configuration/c/delegate_plugin.h"
 
 #ifdef __cplusplus
 extern "C" {

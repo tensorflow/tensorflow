@@ -30,9 +30,9 @@ cc_library(
     deps = [
         ":telemetry_settings",
         ":telemetry_status",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:c_api_types",
     ],
 )
 
@@ -43,8 +43,8 @@ cc_test(
         ":profiler",
         ":telemetry",
         ":telemetry_status",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -54,7 +54,7 @@ cc_library(
     hdrs = ["telemetry_status.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
-    deps = ["//tensorflow/lite/c:c_api_types"],
+    deps = ["//tensorflow/lite/core/c:c_api_types"],
 )
 
 cc_library(

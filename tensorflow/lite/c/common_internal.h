@@ -15,8 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_C_COMMON_INTERNAL_H_
 #define TENSORFLOW_LITE_C_COMMON_INTERNAL_H_
 
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 
 // Internal structures and subroutines used by the C API. These are likely to
 // change and should not be depended on directly by any C API clients.

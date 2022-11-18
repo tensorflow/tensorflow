@@ -42,10 +42,10 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
+        ":c_api_types",
         ":c_api_without_op_resolver",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:create_op_resolver_with_builtin_ops",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
@@ -73,12 +73,12 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
+        ":c_api_types",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:create_op_resolver_header",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:headers",
@@ -101,8 +101,8 @@ tflite_cc_library_with_c_headers_test(
         "//visibility:public",
     ],
     deps = [
+        ":c_api_types",
         "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite/c:c_api_types",
     ],
 )
 
@@ -114,12 +114,12 @@ tflite_cc_library_with_c_headers_test(
     copts = tflite_copts(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
+        ":c_api_types",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:create_op_resolver_header",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:headers",
@@ -154,9 +154,9 @@ cc_test(
     ],
     deps = [
         ":c_api",
+        ":c_api_types",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates:delegate_test_util",
         "//tensorflow/lite/testing:util",
@@ -175,9 +175,9 @@ cc_test(
         "//tensorflow/lite:testdata/custom_sinh.bin",
     ],
     deps = [
+        ":c_api_types",
         ":c_api_without_op_resolver_without_alwayslink",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:selectively_built_c_api_test_lib",
         "//tensorflow/lite/delegates:delegate_test_util",
@@ -194,6 +194,18 @@ cc_test(
     deps = [
         ":common",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# This is a private target, its visibility is set to public only to be
+# used by "tflite_custom_c_library".
+# Do not use this target directly and don't consider it as a part of the public API.
+alias(
+    name = "private_c_api_types",
+    actual = ":c_api_types",
+    tags = ["avoid_dep"],
+    visibility = [
+        "//visibility:public",
     ],
 )
 

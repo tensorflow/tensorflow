@@ -10,7 +10,7 @@ package(
 strip_common_include_path_prefix(
     name = "strip_common_include_path_benchmark",
     hdr_labels = [
-        "//tensorflow/lite/c:c_api_types.h",
+        "//tensorflow/lite/core/c:c_api_types.h",
         "//tensorflow/lite/tools:logging.h",
         "//tensorflow/lite/tools/benchmark/experimental/c:benchmark_c_api.h",
     ],

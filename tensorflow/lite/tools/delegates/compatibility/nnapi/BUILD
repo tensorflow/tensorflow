@@ -53,7 +53,7 @@ cc_test(
     ],
     deps = [
         ":nnapi_compatibility_lib",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",

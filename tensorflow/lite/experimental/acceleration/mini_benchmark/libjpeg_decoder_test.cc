@@ -22,7 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/decode_jpeg_status.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_chessboard_jpeg.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_snow_jpeg.h"
