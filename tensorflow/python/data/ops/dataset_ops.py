@@ -1533,7 +1533,12 @@ class DatasetV2(
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    return SkipDataset(self, count, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops ->
+    # skip_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import skip_op
+    return skip_op._skip(self, count, name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def shard(self, num_shards, index, name=None):
     """Creates a `Dataset` that includes only 1/`num_shards` of this dataset.
@@ -4819,21 +4824,6 @@ class ShuffleDataset(UnaryUnchangedStructureDataset):
           reshuffle_each_iteration=self._reshuffle_each_iteration,
           **self._common_args)
     super(ShuffleDataset, self).__init__(input_dataset, variant_tensor)
-
-
-class SkipDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` skipping the first `count` elements from its input."""
-
-  def __init__(self, input_dataset, count, name=None):
-    """See `Dataset.skip()` for details."""
-    self._input_dataset = input_dataset
-    self._count = ops.convert_to_tensor(count, dtype=dtypes.int64, name="count")
-    self._name = name
-    variant_tensor = gen_dataset_ops.skip_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        count=self._count,
-        **self._common_args)
-    super(SkipDataset, self).__init__(input_dataset, variant_tensor)
 
 
 class InterleaveDataset(UnaryDataset):

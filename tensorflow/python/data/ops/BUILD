@@ -55,6 +55,11 @@ py_library(
 )
 
 py_library(
+    name = "skip_op",
+    srcs = ["skip_op.py"],
+)
+
+py_library(
     name = "dataset_ops",
     srcs = ["dataset_ops.py"],
     srcs_version = "PY3",
@@ -81,6 +86,7 @@ py_library(
         ":repeat_op",
         ":save_ops",
         ":shard_op",
+        ":skip_op",
         ":sparse_batch_op",
         ":structured_function",
         ":take_op",
