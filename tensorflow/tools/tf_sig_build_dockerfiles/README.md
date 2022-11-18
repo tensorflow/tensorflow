@@ -49,7 +49,8 @@ DOCKER_BUILDKIT=1 docker build \
 ```
 For ROCM
 ```
-docker build -f Dockerfile.rocm --build-arg ROCM_VERSION=5.3.0 --build-arg PYTHON_VERSION=3.10 -t my-tf-devel . 
+DOCKER_BUILDKIT=1 docker build -f Dockerfile.rocm \
+  --build-arg ROCM_VERSION=5.3.0 --build-arg PYTHON_VERSION=3.9 -t my-tf-devel . 
 ```
 It will take a long time to build devtoolset and install packages. After
 it's done, you can use the commands below to test your changes. Just replace
@@ -102,17 +103,34 @@ Now let's build `tf-nightly`.
    Hub](https://hub.docker.com/r/tensorflow/build/tags). The options for the
    `master` branch are:
 
+For CUDA
+
     - `tensorflow/build:latest-python3.10`
     - `tensorflow/build:latest-python3.9`
     - `tensorflow/build:latest-python3.8`
     - `tensorflow/build:latest-python3.7`
 
+For ROCM
+
+    - `rocm/tensorflow-build:latest-python3.10`
+    - `rocm/tensorflow-build:latest-python3.9`
+    - `rocm/tensorflow-build:latest-python3.8`
+    - `rocm/tensorflow-build:latest-python3.7`
+
     For this example we'll use `tensorflow/build:latest-python3.9`.
 
 3. Pull the container you decided to use.
 
+For CUDA
+
     ```bash
     docker pull tensorflow/build:latest-python3.9
+    ```
+
+For ROCM
+
+    ```bash
+    docker pull rocm/tensorflow-build:latest-python3.9
     ```
 
 4. Start a backgrounded Docker container with the three folders mounted.
@@ -151,7 +169,7 @@ Now let's build `tf-nightly`.
     -v "/tmp/packages:/tf/pkg" \
     -v "/tmp/tensorflow:/tf/tensorflow" \
     -v "/tmp/bazelcache:/tf/cache" \
-    tf_centos \
+    rocm/tensorflow-build:latest-python3.9 \
     bash
     ```
 
@@ -299,8 +317,17 @@ Now you can continue on to any of:
 
     ```
 
-    And then construct the pip package:
+    And then construct the nightly pip package:
 
+    ```
+    docker exec tf \
+	./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
+	/tf/pkg \
+	--rocm \
+	--nightly_flag
+    ```
+
+    Note: if you are creating a release (non-nightly) pip package:
     ```
     docker exec tf \
 	./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
@@ -313,7 +340,9 @@ Now you can continue on to any of:
     </details>
 
 3. Run the helper script that checks for manylinux compliance, renames the
-   wheels, and then checks the size of the packages.
+   wheels, and then checks the size of the packages. The auditwheel repair option
+   currently doesn't support ROCM and will strip needed symbols, so for ROCM
+   we use a separate script that will manually rename the whl.
 
     For CUDA
 

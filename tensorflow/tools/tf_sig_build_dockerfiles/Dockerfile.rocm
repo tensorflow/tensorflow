@@ -37,9 +37,9 @@ RUN echo $CACHEBUSTER
 ARG PYTHON_VERSION
 ENV PYTHON_LIB_PATH=/usr/local/lib/python${PYTHON_VERSION}/site-packages
 ENV PYTHON_BIN_PATH=/usr/local/bin/python${PYTHON_VERSION}
-COPY setup.python.rocm.sh /setup.python.rocm.sh
-COPY devel.requirements.rocm.txt /devel.requirements.rocm.txt
-RUN /setup.python.rocm.sh $PYTHON_VERSION /devel.requirements.rocm.txt
+COPY setup.build-python.sh /setup.build-python.sh
+COPY devel.requirements.txt /devel.requirements.txt
+RUN /setup.build-python.sh $PYTHON_VERSION /devel.requirements.txt
 
 # Setup build and environment
 COPY devel.usertools /usertools

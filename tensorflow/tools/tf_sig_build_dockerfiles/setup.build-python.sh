@@ -66,12 +66,19 @@ else
     exit 1
 fi
 
+# Setup links for TensorFlow to compile.
+# Referenced in devel.usertools/*.bazelrc
+ln -sf /usr/local/bin/$VERSION /usr/bin/python3
+ln -sf /usr/local/bin/$VERSION /usr/bin/python
+ln -sf /usr/local/lib/$VERSION /usr/lib/tf_python
+
 export PYTHON_LIB_PATH=/usr/local/lib/python${PYTHON_VERSION}/site-packages
 export PYTHON_BIN_PATH=/usr/local/bin/python${PYTHON_VERSION}
 
-# Pip version required by manylinux2014
-pip3 install --upgrade pip
-cat $REQUIREMENTS
-echo -e "\nnumpy==${NUMPY_VERSION}" | tee -a ${REQUIREMENTS}
-cat $REQUIREMENTS
-pip3 --no-cache-dir install -r ${REQUIREMENTS}
+# Install pip
+curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+python3 get-pip.py
+python3 -m pip install --no-cache-dir --upgrade pip
+
+# Disable the cache dir to save image space, and install packages
+python3 -m pip install --no-cache-dir -r $REQUIREMENTS -U
