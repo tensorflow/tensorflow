@@ -356,6 +356,7 @@ cc_library(
         ":kernel_fallback_tensor",
         ":kernel_fallback_tensor_conversion_alwayslink",
         ":kernel_fallback_utils",
+        "@com_google_absl//absl/base",
         "@llvm-project//llvm:Support",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/runtime_fallback/runtime:kernel_utils",

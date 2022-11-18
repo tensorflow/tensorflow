@@ -966,7 +966,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       /*allow_control_flow_sync_execution=*/false,
       /*shape_inference_on_tfe_dialect_import=*/true,
       /*int_args_and_retvals_on_device=*/false,
-      /*xla_compile_device_type=*/std::nullopt, ctx->RendezvousCreator(),
+      /*xla_compile_device_type=*/std::nullopt, ctx->RendezvousFactory(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.
@@ -1020,7 +1020,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
       /*allow_control_flow_sync_execution=*/false,
       /*shape_inference_on_tfe_dialect_import=*/true,
       /*int_args_and_retvals_on_device=*/false,
-      /*xla_compile_device_type=*/std::nullopt, ctx->RendezvousCreator(),
+      /*xla_compile_device_type=*/std::nullopt, ctx->RendezvousFactory(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.

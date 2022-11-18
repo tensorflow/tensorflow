@@ -154,14 +154,20 @@ Status SetUpKernelFallbackCompatRequestContext(
 
   auto step_id = builder->id();
 
+  Rendezvous::Factory creator = eager_context->RendezvousFactory();
+  Rendezvous* rendezvous;
+  TF_RETURN_IF_ERROR(
+      creator(step_id, eager_context->local_device_mgr(), &rendezvous));
+
+  // TODO(hhb): Clean up rendezvous from factory after run.
+
   auto& fallback_request_state =
       builder->context_data().emplace<KernelFallbackCompatRequestState>(
           GetDefaultRunner(), eager_context->local_device_mgr(), step_id,
           tfrt::OwnedOrUnownedPtr<ScopedStepContainer>{
               eager_context->StepContainer()},
           eager_context->GetCollectiveExecutorHandle(),
-          tensorflow::core::RefCountPtr<tensorflow::Rendezvous>(
-              eager_context->RendezvousCreator()(step_id)),
+          tensorflow::core::RefCountPtr<tensorflow::Rendezvous>(rendezvous),
           runner_table, resource_array, user_intra_op_threadpool,
           model_metadata, eager_context->pflr());
 
