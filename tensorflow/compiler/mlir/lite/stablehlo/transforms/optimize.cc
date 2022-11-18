@@ -20,6 +20,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -274,6 +275,81 @@ LogicalResult LiftDotConcat(mhlo::ConcatenateOp concat,
   return success();
 }
 
+// Convert:
+//   %y0 = slice(%x, start=0, limit=2)
+//   %y1 = slice(%x, start=2, limit=3)
+//   concat(%y0, %y1, ...)
+// To:
+//   %y = slice(%x, start=0, limit=3)
+//   concat(%y, ...)
+LogicalResult FuseSliceConcat(mhlo::ConcatenateOp concat,
+                              PatternRewriter &rewriter) {
+  if (concat.getVal().size() < 2)
+    return rewriter.notifyMatchFailure(
+        concat, "Concatenate op should have at least two operands");
+
+  auto first = concat.getVal()[0].getDefiningOp<mhlo::SliceOp>();
+  auto second = concat.getVal()[1].getDefiningOp<mhlo::SliceOp>();
+  if (!first || !second)
+    return rewriter.notifyMatchFailure(concat, "operands are not slice ops");
+  if (first.getOperand() != second.getOperand())
+    return rewriter.notifyMatchFailure(concat, "slice not on the same input");
+  if (!first.getStrides().isSplat() ||
+      first.getStrides().getSplatValue<IntegerAttr>().getInt() != 1 ||
+      first.getStrides() != second.getStrides())
+    return rewriter.notifyMatchFailure(concat, "slice ops must have stride=1");
+  if (!first->hasOneUse() || !second->hasOneUse())
+    return rewriter.notifyMatchFailure(concat, "slice ops are used elsewhere");
+
+  SmallVector<int64_t> new_start;
+  SmallVector<int64_t> new_limit;
+  SmallVector<int64_t> new_slice_shape;
+  new_start.reserve(first.getStrides().size());
+  new_limit.reserve(first.getStrides().size());
+  new_slice_shape.reserve(first.getStrides().size());
+
+  for (int i = 0; i < first.getStrides().size(); ++i) {
+    const int64_t first_start =
+        first.getStartIndicesAttr().getValues<IntegerAttr>()[i].getInt();
+    const int64_t first_limit =
+        first.getLimitIndicesAttr().getValues<IntegerAttr>()[i].getInt();
+    const int64_t second_start =
+        second.getStartIndicesAttr().getValues<IntegerAttr>()[i].getInt();
+    const int64_t second_limit =
+        second.getLimitIndicesAttr().getValues<IntegerAttr>()[i].getInt();
+
+    if (i == concat.getDimension()) {
+      if (first_limit != second_start)
+        return rewriter.notifyMatchFailure(
+            second, "slice is not continuous with previous slice");
+    } else {
+      if (first_start != second_start || first_limit != second_limit)
+        return rewriter.notifyMatchFailure(
+            second, "non-concat dims have mismatching slice bounds");
+    }
+
+    new_start.push_back(first_start);
+    new_limit.push_back(second_limit);
+    new_slice_shape.push_back(second_limit - first_start);
+  }
+
+  auto new_slice = rewriter.create<mhlo::SliceOp>(
+      FusedLoc::get(first->getContext(), {first.getLoc(), second.getLoc()}),
+      first.getType().clone(new_slice_shape), first.getOperand(),
+      /*start_indices=*/rewriter.getI64TensorAttr(new_start),
+      /*limit_indices=*/rewriter.getI64TensorAttr(new_limit),
+      /*strides=*/first.getStrides());
+
+  SmallVector<Value> new_concat_values;
+  new_concat_values.reserve(concat.getVal().size() - 1);
+  new_concat_values.push_back(new_slice);
+  llvm::append_range(new_concat_values, concat.getVal().drop_front(2));
+
+  rewriter.replaceOpWithNewOp<mhlo::ConcatenateOp>(
+      concat, concat.getType(), new_concat_values, concat.getDimension());
+  return success();
+}
+
 class OptimizePass
     : public PassWrapper<OptimizePass, OperationPass<func::FuncOp>> {
  public:
@@ -287,6 +363,7 @@ class OptimizePass
     patterns.add(ConvertDotToDotGeneral);
     patterns.add(RemoveReshapeAroundDotGeneral);
     patterns.add(LiftDotConcat);
+    patterns.add(FuseSliceConcat);
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       return signalPassFailure();

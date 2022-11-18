@@ -162,3 +162,16 @@ func.func @testLiftDotConcatComplex(%arg0: tensor<1x9x2x3x8x4x10xf32>, %arg1: te
 // CHECK-SAME: >} : (tensor<1x9x2x3x8x104x10xf32>, tensor<9x2x1x5x10x5x8x7xf32>) -> tensor<1x2x3x104x5x6x7xf32>
 // CHECK:      return %[[R1]] : tensor<1x2x3x104x5x6x7xf32>
 }
+
+// -----
+
+// CHECK-LABEL: testSliceConcat
+func.func @testSliceConcat(%arg0: tensor<3x1x512xf32>) -> tensor<3x1x512xf32> {
+  %0 = "mhlo.slice"(%arg0) {limit_indices = dense<[1, 1, 512]> : tensor<3xi64>, start_indices = dense<[0, 0, 0]> : tensor<3xi64>, strides = dense<1> : tensor<3xi64>} : (tensor<3x1x512xf32>) -> tensor<1x1x512xf32>
+  %1 = "mhlo.slice"(%arg0) {limit_indices = dense<[2, 1, 512]> : tensor<3xi64>, start_indices = dense<[1, 0, 0]> : tensor<3xi64>, strides = dense<1> : tensor<3xi64>} : (tensor<3x1x512xf32>) -> tensor<1x1x512xf32>
+  %2 = "mhlo.slice"(%arg0) {limit_indices = dense<[3, 1, 512]> : tensor<3xi64>, start_indices = dense<[2, 0, 0]> : tensor<3xi64>, strides = dense<1> : tensor<3xi64>} : (tensor<3x1x512xf32>) -> tensor<1x1x512xf32>
+  %r = "mhlo.concatenate"(%0, %1, %2) {dimension = 0 : i64} : (tensor<1x1x512xf32>, tensor<1x1x512xf32>, tensor<1x1x512xf32>) -> tensor<3x1x512xf32>
+  func.return %r : tensor<3x1x512xf32>
+
+// CHECK: return %arg0 : tensor<3x1x512xf32>
+}
