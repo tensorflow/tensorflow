@@ -50,14 +50,6 @@ cc_library(
 )
 
 cc_library(
-    name = "c_api_tfrt_distributed_interface",
-    hdrs = [
-        "c_api_tfrt_distributed_interface.h",
-    ],
-    deps = ["//tensorflow/c/eager:immediate_execution_distributed_manager"],
-)
-
-cc_library(
     name = "c_api_tfrt",
     srcs = [
         "c_api_tfrt.cc",
@@ -70,7 +62,6 @@ cc_library(
         "op_cache.h",
     ],
     deps = [
-        ":c_api_tfrt_distributed_interface",
         ":core_runtime",
         ":tfrt_context",
         ":transform_graph_function",
@@ -161,31 +152,6 @@ cc_library(
 )
 
 cc_library(
-    name = "c_api_tfrt_distributed",
-    srcs = [
-        "c_api_tfrt_distributed_impl.cc",
-    ],
-    hdrs = [
-        "c_api_tfrt_distributed_impl.h",
-    ],
-    deps = [
-        ":c_api_tfrt_distributed_interface",
-        "@com_google_absl//absl/synchronization",
-        "//tensorflow/c/eager:immediate_execution_distributed_manager",
-        "//tensorflow/core:core_cpu_base",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime/eager:context",
-        "//tensorflow/core/distributed_runtime:remote_device",
-        # copybara:uncomment "//third_party/tf_runtime_google:grpc_communicator_alwayslink",
-        "@tf_runtime//:cluster_config_cc_proto",
-        "@tf_runtime//:distributed_runtime",
-    ],
-)
-
-cc_library(
     name = "virtual_device",
     hdrs = ["virtual_device.h"],
     # TODO(fishx): Change the whole BUILD file to be gce compatible.
@@ -209,7 +175,6 @@ cc_library(
     tags = ["avoid_dep"],
     textual_hdrs = [
         "c_api_tfrt.h",
-        "c_api_tfrt_distributed_impl.h",
     ],
     visibility = ["//tensorflow/c/eager:__pkg__"],
 )
