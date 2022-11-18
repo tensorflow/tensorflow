@@ -30,10 +30,6 @@ class XlaCpu_Op<string mnemonic, list<Trait> traits = []> :
 def TensorOrMemref :
   AnyTypeOf<[AnyMemRef, AnyRankedTensor], "", "::mlir::ShapedType">;
 
-class TensorOrMemrefOf<list<Type> allowedTypes> :
-  AnyTypeOf<[MemRefOf<allowedTypes>, RankedTensorOf<allowedTypes>],
-  "", "::mlir::ShapedType">;
-
 def AllReduceOp : XlaCpu_Op<"all_reduce",
     [SameOperandsElementType,
      SameVariadicOperandSize,
@@ -50,21 +46,15 @@ def AllReduceOp : XlaCpu_Op<"all_reduce",
   }];
 
   let arguments = (ins
-      Variadic<TensorOrMemrefOf<
-        [I8, I16, I32, I64, F16, F32, F64, Complex<F<32>>, Complex<F<64>>]
-        >>:$operand,
-      Variadic<TensorOrMemrefOf<
-        [I8, I16, I32, I64, F16, F32, F64, Complex<F<32>>, Complex<F<64>>]
-        >>:$dsts,
+      Variadic<TensorOrMemref>:$operand,
+      Variadic<TensorOrMemref>:$dsts,
       I64ElementsAttr:$replica_groups,
       I64Attr:$channel_handle,
       I32Attr:$use_global_device_ids,
       XlaCpuReductionKind:$reduction_kind
   );
   let results = (outs
-      Variadic<TensorOrMemrefOf<
-        [I8, I16, I32, I64, F16, F32, F64, Complex<F<32>>, Complex<F<64>>]
-      >>
+      Variadic<TensorOrMemref>
   );
   let extraClassDeclaration = [{
     // Declarations for BufferizableOpInterface:
