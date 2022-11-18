@@ -5592,6 +5592,30 @@ bool CudnnSupport::DoBatchNormalizationForward(
       /*report_error=*/true);
 }
 
+bool CudnnSupport::DoBatchNormalizationForward(
+    Stream* stream, const DeviceMemory<Eigen::bfloat16>& x,
+    const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
+    const DeviceMemory<float>& estimated_mean,
+    const DeviceMemory<float>& estimated_variance,
+    const DeviceMemory<Eigen::bfloat16>& side_input,
+    const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
+    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::bfloat16>* y,
+    DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
+    DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
+    bool is_training, ScratchAllocator* reserve_space_allocator,
+    ScratchAllocator* workspace_allocator) {
+  return IsStatusOk(
+      DoBatchNormalizationForwardImpl<Eigen::bfloat16, float>(
+          stream, dnn::DataType::kBF16, dnn::DataType::kFloat, x, scale, offset,
+          estimated_mean, estimated_variance, side_input, x_desc,
+          scale_offset_desc, epsilon, exponential_average_factor,
+          activation_mode, y, batch_mean, batch_var, saved_mean, saved_inv_var,
+          is_training, reserve_space_allocator, workspace_allocator),
+      /*report_error=*/true);
+}
+
 template <class T, class U>
 port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
     Stream* stream, dnn::DataType input_data_type,
@@ -5777,6 +5801,28 @@ bool CudnnSupport::DoBatchNormalizationBackward(
   return IsStatusOk(
       DoBatchNormalizationBackwardImpl(
           stream, CUDNN_DATA_HALF, CUDNN_DATA_FLOAT, y_backprop, x, scale,
+          offset, mean, inv_var, y, x_desc, scale_offset_desc, epsilon,
+          activation_mode, x_backprop, scale_backprop, offset_backprop,
+          side_input_backprop, reserve_space_data, workspace_allocator),
+      /*report_error=*/true);
+}
+
+bool CudnnSupport::DoBatchNormalizationBackward(
+    Stream* stream, const DeviceMemory<Eigen::bfloat16>& y_backprop,
+    const DeviceMemory<Eigen::bfloat16>& x, const DeviceMemory<float>& scale,
+    const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
+    const DeviceMemory<float>& inv_var, const DeviceMemory<Eigen::bfloat16>& y,
+    const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    dnn::ActivationMode activation_mode,
+    DeviceMemory<Eigen::bfloat16>* x_backprop,
+    DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+    DeviceMemory<Eigen::bfloat16>* side_input_backprop,
+    DeviceMemory<uint8_t>* reserve_space_data,
+    ScratchAllocator* workspace_allocator) {
+  return IsStatusOk(
+      DoBatchNormalizationBackwardImpl(
+          stream, CUDNN_DATA_BFLOAT16, CUDNN_DATA_FLOAT, y_backprop, x, scale,
           offset, mean, inv_var, y, x_desc, scale_offset_desc, epsilon,
           activation_mode, x_backprop, scale_backprop, offset_backprop,
           side_input_backprop, reserve_space_data, workspace_allocator),

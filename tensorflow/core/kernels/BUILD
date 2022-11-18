@@ -4132,6 +4132,7 @@ tf_kernel_library(
     name = "fused_batch_norm_op",
     prefix = "fused_batch_norm_op",
     deps = NN_DEPS + [
+        ":cast_op",
         ":fill_functor",
         ":redux_functor",
         ":transpose_functor",
