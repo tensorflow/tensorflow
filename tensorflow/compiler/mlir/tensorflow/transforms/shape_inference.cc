@@ -63,7 +63,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
@@ -2337,8 +2336,8 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
     ShapedTypeComponents inferred = std::get<1>(result);
     TensorType inferred_type;
     if (inferred.hasRank()) {
-      inferred_type = tensorflow::GetTypeFromTFTensorShape(
-          inferred.getDims(), inferred.getElementType());
+      inferred_type =
+          RankedTensorType::get(inferred.getDims(), inferred.getElementType());
 
     } else {
       inferred_type = UnrankedTensorType::get(inferred.getElementType());

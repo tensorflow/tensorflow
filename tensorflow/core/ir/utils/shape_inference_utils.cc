@@ -190,7 +190,8 @@ ShapedTypeComponents CreateShapedTypeComponents(InferenceContext& context,
                                                 Type element_type) {
   auto shape = GetShapeFromHandle(context, sh);
   if (shape.has_value())
-    return ShapedTypeComponents(shape.getValue(), element_type);
+    return ShapedTypeComponents(ConvertTFShapeToMlir(shape.value()),
+                                element_type);
   return ShapedTypeComponents(element_type);
 }
 
