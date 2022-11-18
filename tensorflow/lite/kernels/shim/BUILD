@@ -139,6 +139,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":shape",
+        ":status_macros",
         ":tensor_view",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
