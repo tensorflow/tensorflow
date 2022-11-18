@@ -2782,15 +2782,20 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
   // count.
   int64_t splitCount = adaptor.getSplitCount();
   auto splitDimSize = operandRankedType.getDimSize(splitDimension);
-  if (splitDimSize % splitCount != 0) {
+  if (splitDimSize != ShapedType::kDynamicSize &&
+      (splitDimSize % splitCount != 0)) {
     return emitOptionalError(
         location, "split dimension has size ", splitDimSize,
         ", expected to be a multiple of split_count ", splitCount);
   }
   SmallVector<int64_t> resultShape(operandRankedType.getShape().begin(),
                                    operandRankedType.getShape().end());
-  resultShape[splitDimension] /= splitCount;
-  resultShape[concatDimension] *= splitCount;
+  if (resultShape[splitDimension] != ShapedType::kDynamicSize) {
+    resultShape[splitDimension] /= splitCount;
+  }
+  if (resultShape[concatDimension] != ShapedType::kDynamicSize) {
+    resultShape[concatDimension] *= splitCount;
+  }
   inferredReturnShapes.emplace_back(resultShape,
                                     operandRankedType.getElementType());
   return success();

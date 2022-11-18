@@ -236,6 +236,32 @@ func.func @alltoall_unranked_input(%data: tensor<*xf32>) -> tensor<*xf32> {
 
 // -----
 
+// CHECK-LABEL: func @alltoall_dynamic_split_dim
+func.func @alltoall_dynamic_split_dim(%data: tensor<4x?xf32>) -> tensor<20x?xf32> {
+  %0 = "mhlo.all_to_all"(%data) {
+    split_dimension = 1 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 5 : i64,
+    replica_groups = dense<[[0, 1, 2, 3, 4]]> : tensor<1x5xi64>
+  } : (tensor<4x?xf32>) -> tensor<20x?xf32>
+  func.return %0 : tensor<20x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @alltoall_dynamic_concat_dim
+func.func @alltoall_dynamic_concat_dim(%data: tensor<?x16xf32>) -> tensor<?x4xf32> {
+  %0 = "mhlo.all_to_all"(%data) {
+    split_dimension = 1 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 4 : i64,
+    replica_groups = dense<[[0, 1, 2, 3, 4]]> : tensor<1x5xi64>
+  } : (tensor<?x16xf32>) -> tensor<?x4xf32>
+  func.return %0 : tensor<?x4xf32>
+}
+
+// -----
+
 func.func @alltoall_negative_split_dimension(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
   // expected-error@+1 {{AllToAll split_dimension -1 is out-of-bounds for input rank 2}}
   %0 = "mhlo.all_to_all"(%data) {
