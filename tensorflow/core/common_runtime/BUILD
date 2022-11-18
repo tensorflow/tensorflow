@@ -197,6 +197,7 @@ filegroup(
         "graph_runner.h",
         "inline_function_utils.h",
         "lower_function_call_inline_policy.h",
+        "optimized_function_graph_info.h",
         "process_function_library_runtime.h",
         "scoped_allocator.h",
         "scoped_allocator_mgr.h",
@@ -793,6 +794,7 @@ cc_library(
         ":inline_function_utils",
         ":memory_types",
         ":optimization_registry",
+        ":optimized_function_graph_info",
         ":partitioning_utils",
         ":placer",
         ":process_util",
@@ -812,6 +814,8 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -1839,6 +1843,7 @@ tf_cuda_library(
         ":mkl_layout_pass",
         ":mkl_tfconversion_pass",
         ":optimization_registry",
+        ":optimized_function_graph_info",
         ":parallel_concat_optimizer",
         ":partitioning_utils",
         ":pending_counts",
@@ -3240,5 +3245,15 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
+    name = "optimized_function_graph_info",
+    hdrs = ["optimized_function_graph_info.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
     ],
 )
