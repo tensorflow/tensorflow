@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 
+#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamallocasync_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/framework/device_id.h"
 
 namespace tensorflow {
 namespace {
@@ -35,10 +36,10 @@ using ::testing::SizeIs;
 
 const char* kDeviceNamePrefix = "/job:localhost/replica:0/task:0";
 
-int64_t GetTotalGPUMemory(PlatformDeviceId gpu_id) {
-  se::StreamExecutor* se =
-      DeviceIdUtil::ExecutorForPlatformDeviceId(se::GPUMachineManager(), gpu_id)
-          .value();
+int64_t GetTotalGPUMemory(tsl::PlatformDeviceId gpu_id) {
+  se::StreamExecutor* se = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
+                               se::GPUMachineManager(), gpu_id)
+                               .value();
 
   int64_t total_memory, available_memory;
   CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
@@ -46,8 +47,8 @@ int64_t GetTotalGPUMemory(PlatformDeviceId gpu_id) {
 }
 
 se::CudaComputeCapability GetComputeCapability() {
-  return DeviceIdUtil::ExecutorForPlatformDeviceId(se::GPUMachineManager(),
-                                                   PlatformDeviceId(0))
+  return se::DeviceIdUtil::ExecutorForPlatformDeviceId(se::GPUMachineManager(),
+                                                       tsl::PlatformDeviceId(0))
       .value()
       ->GetDeviceDescription()
       .cuda_compute_capability();
@@ -484,7 +485,7 @@ TEST_F(GPUDeviceTest, UnifiedMemoryUnavailableOnPrePascalGpus) {
 // more memory than what is available on the device.
 TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
   static constexpr double kGpuMemoryFraction = 1.2;
-  static constexpr PlatformDeviceId kPlatformDeviceId(0);
+  static constexpr tsl::PlatformDeviceId kPlatformDeviceId(0);
 
   // Exit early if running on pre-Pascal GPUs.
   if (!GetComputeCapability().IsAtLeast(se::CudaComputeCapability::PASCAL_)) {

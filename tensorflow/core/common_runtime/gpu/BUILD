@@ -170,6 +170,7 @@ tf_cuda_library(
         ":gpu_cudamallocasync_allocator",
         ":gpu_id_impl",
         ":gpu_lib",
+        "//tensorflow/compiler/xla/stream_executor:device_id_utils",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init_impl",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
@@ -203,6 +204,7 @@ tf_cuda_library(
     ],
     deps = [
         ":gpu_id_impl",
+        "//tensorflow/compiler/xla/stream_executor:device_id_utils",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init_impl",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -218,6 +220,7 @@ tf_cuda_library(
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/xla/stream_executor:device_id_utils",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
@@ -348,6 +351,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/tsl/framework:device_id",
     ],
 )
 

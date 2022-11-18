@@ -37,9 +37,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_split.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
@@ -431,7 +431,7 @@ Status BaseGPUDevice::InitScratchBuffers() {
 }
 
 Status BaseGPUDevice::Init(const SessionOptions& options) {
-  auto executor_status = DeviceIdUtil::ExecutorForTfDeviceId(
+  auto executor_status = se::DeviceIdUtil::ExecutorForTfDeviceId(
       DEVICE_GPU, se::GPUMachineManager(), tf_device_id_);
   if (!executor_status.status().ok()) {
     return errors::Internal("Failed to get StreamExecutor for device ",
@@ -1083,7 +1083,7 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
                                       int64_t* memory_limit) {
   int64_t total_memory = 0;
   int64_t available_memory = 0;
-  se::StreamExecutor* se = DeviceIdUtil::ExecutorForPlatformDeviceId(
+  se::StreamExecutor* se = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
                                se::GPUMachineManager(), platform_device_id)
                                .value();
   if (!se->DeviceMemoryUsage(&available_memory, &total_memory)) {
@@ -1287,7 +1287,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
   // because it treats an empty gpu_options.visible_device_list as 'all GPUs
   // are visible'.
   if (num_gpus_to_use > 0) {
-    TF_RETURN_IF_ERROR(DeviceIdUtil::ParseVisibleDeviceList(
+    TF_RETURN_IF_ERROR(se::DeviceIdUtil::ParseVisibleDeviceList(
         gpu_options.visible_device_list(), gpu_manager->VisibleDeviceCount(),
         &visible_gpu_order));
     bool new_gpu_found = false;
@@ -1562,8 +1562,8 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
   CHECK_GE(tf_device_id.value(), 0);
   const string device_name =
       strings::StrCat(name_prefix, "/device:GPU:", tf_device_id.value());
-  DeviceIdUtil::CheckValidTfDeviceId(DEVICE_GPU, se::GPUMachineManager(),
-                                     tf_device_id);
+  se::DeviceIdUtil::CheckValidTfDeviceId(DEVICE_GPU, se::GPUMachineManager(),
+                                         tf_device_id);
   tsl::PlatformDeviceId platform_device_id;
   TF_RETURN_IF_ERROR(
       GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id));
@@ -1632,12 +1632,12 @@ GetPeerAccessMap(se::Platform* platform,
                        bool>);
   for (tsl::PlatformDeviceId platform_gpu_i : visible_gpu_order) {
     for (tsl::PlatformDeviceId platform_gpu_j : visible_gpu_order) {
-      se::StreamExecutor* from =
-          DeviceIdUtil::ExecutorForPlatformDeviceId(platform, platform_gpu_i)
-              .value();
-      se::StreamExecutor* to =
-          DeviceIdUtil::ExecutorForPlatformDeviceId(platform, platform_gpu_j)
-              .value();
+      se::StreamExecutor* from = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
+                                     platform, platform_gpu_i)
+                                     .value();
+      se::StreamExecutor* to = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
+                                   platform, platform_gpu_j)
+                                   .value();
       (*map)[{platform_gpu_i, platform_gpu_j}] =
           from->CanEnablePeerAccessTo(to);
     }
@@ -1853,12 +1853,12 @@ Status BaseGPUDeviceFactory::EnablePeerAccess(
     for (int j = 0; j < visible_gpu_order.size(); ++j) {
       const tsl::PlatformDeviceId platform_gpu_j = visible_gpu_order[j];
       // We have already validated that ExecutorForDevice() calls return OK.
-      se::StreamExecutor* from =
-          DeviceIdUtil::ExecutorForPlatformDeviceId(gpu_manager, platform_gpu_i)
-              .value();
-      se::StreamExecutor* to =
-          DeviceIdUtil::ExecutorForPlatformDeviceId(gpu_manager, platform_gpu_j)
-              .value();
+      se::StreamExecutor* from = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
+                                     gpu_manager, platform_gpu_i)
+                                     .value();
+      se::StreamExecutor* to = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
+                                   gpu_manager, platform_gpu_j)
+                                   .value();
 
       if (from->CanEnablePeerAccessTo(to)) {
         ++possible_peer_count;

@@ -170,6 +170,19 @@ cc_library(
 )
 
 cc_library(
+    name = "device_id_utils",
+    hdrs = ["device_id_utils.h"],
+    deps = [
+        ":platform",
+        ":stream_executor",
+        "//tensorflow/tsl/framework:device_id_impl",
+        "//tensorflow/tsl/lib/gtl:int_type",
+        "//tensorflow/tsl/platform:str_util",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "device_memory",
     hdrs = ["device_memory.h"],
     deps = ["//tensorflow/compiler/xla/stream_executor/platform"],

@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/tsl/framework/device_id.h"
 
 namespace tensorflow {
 
@@ -150,7 +151,7 @@ class GPUDeviceTestHelper {
         DeviceFactory::NewDevice(DEVICE_GPU, sops, "/job:a/replica:0/task:0");
     gpu_.reset(reinterpret_cast<BaseGPUDevice*>(device_.release()));
     gpu_allocator_ = GPUProcessState::singleton()->GetGPUAllocator(
-        GPUOptions(), TfDeviceId(0), memory_limit, /*peer_gpu_ids=*/{});
+        GPUOptions(), tsl::TfDeviceId(0), memory_limit, /*peer_gpu_ids=*/{});
     host_allocator_ = GPUProcessState::singleton()->GetGpuHostAllocator(
         /*options=*/{}, /*numa_node=*/0);
   }

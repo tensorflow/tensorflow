@@ -21,10 +21,10 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/framework/typed_allocator.h"
@@ -39,8 +39,8 @@ namespace {
 
 se::StreamExecutor* ExecutorForPlatformDeviceId(
     tsl::PlatformDeviceId platform_device_id) {
-  return DeviceIdUtil::ExecutorForPlatformDeviceId(se::GPUMachineManager(),
-                                                   platform_device_id)
+  return se::DeviceIdUtil::ExecutorForPlatformDeviceId(se::GPUMachineManager(),
+                                                       platform_device_id)
       .value();
 }
 
