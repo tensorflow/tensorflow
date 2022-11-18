@@ -375,6 +375,7 @@ cc_library(
         "tf_tensor.h",
         "tf_tstring.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/platform:status",
@@ -407,6 +408,7 @@ cc_library(
     name = "tf_datatype",
     srcs = ["tf_datatype.cc"],
     hdrs = ["tf_datatype.h"],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
@@ -476,6 +478,7 @@ cc_library(
     hdrs = [
         "tf_buffer.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":tf_buffer_internal",

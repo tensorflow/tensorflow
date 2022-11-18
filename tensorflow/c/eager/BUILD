@@ -1019,7 +1019,7 @@ cc_library(
     name = "dlpack",
     srcs = ["dlpack.cc"],
     hdrs = ["dlpack.h"],
-    copts = [
+    copts = tf_copts() + [
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
