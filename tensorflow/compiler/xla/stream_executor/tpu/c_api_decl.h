@@ -40,6 +40,9 @@ enum TpuVersionEnum {
   kTpuV2,
   kTpuV3,
   kTpuV4,
+  // BEGIN-INTERNAL
+  // reserved for internal use
+  // END-INTERNAL
 };
 
 typedef struct TpuRuntimeVersion {
