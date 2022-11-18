@@ -45,6 +45,23 @@ TEST(StateVectorTest, GetOrCreate) {
   EXPECT_EQ(cnt, 3);
 }
 
+TEST(StateVectorTest, GetOrCreateAtRandomOrder) {
+  int32_t cnt = 0;
+  auto create = [&] { return cnt++; };
+
+  StateVector<int32_t> state;
+
+  StateVector<int32_t>::Snapshot empty_snapshot = state.snapshot();
+  EXPECT_EQ(**empty_snapshot.GetOrCreate(99, create), 0);
+  EXPECT_EQ(**empty_snapshot.GetOrCreate(22, create), 1);
+  EXPECT_EQ(**empty_snapshot.GetOrCreate(33, create), 2);
+
+  StateVector<int32_t>::Snapshot snapshot = state.snapshot();
+  EXPECT_EQ(**snapshot.GetOrCreate(99, create), 0);
+  EXPECT_EQ(**snapshot.GetOrCreate(22, create), 1);
+  EXPECT_EQ(**snapshot.GetOrCreate(33, create), 2);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks.
 //===----------------------------------------------------------------------===//

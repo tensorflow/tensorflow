@@ -163,7 +163,7 @@ absl::StatusOr<T*> StateVector<T>::Snapshot::GetOrCreate(size_t id,
   if (!value.ok()) return value.status();
 
   // Update the state vector.
-  state.resize(id + 1);
+  if (id >= state.size()) state.resize(id + 1);
   state[id] = std::make_unique<T>(*std::move(value));
 
   // And take the new snapshot.
