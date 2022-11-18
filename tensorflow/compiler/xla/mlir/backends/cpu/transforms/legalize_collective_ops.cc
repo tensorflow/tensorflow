@@ -19,9 +19,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/Dialect/Utils/StaticValueUtils.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -88,6 +91,13 @@ Optional<xla_cpu::ReductionKind> MatchReductionComputation(Region& region) {
   return None;
 }
 
+// Returns a `tensor.empty` with the same shape as `tensor`.
+Value CreateEmptyLike(OpBuilder& b, Location loc, Value tensor) {
+  auto ty = tensor.getType().cast<ShapedType>();
+  auto sizes = tensor::getMixedSizes(b, loc, tensor);
+  return b.create<tensor::EmptyOp>(loc, sizes, ty.getElementType());
+}
+
 class AllReduceLowering : public OpRewritePattern<mhlo::AllReduceOp> {
   using OpRewritePattern<mhlo::AllReduceOp>::OpRewritePattern;
 
@@ -99,11 +109,9 @@ class AllReduceLowering : public OpRewritePattern<mhlo::AllReduceOp> {
     }
 
     SmallVector<Value> dsts;
-    // TODO(jreiffers): Support dynamic dims.
-    for (auto ty : op->getResultTypes()) {
-      auto shaped_ty = ty.cast<ShapedType>();
-      dsts.push_back(rewriter.create<tensor::EmptyOp>(
-          op.getLoc(), shaped_ty.getShape(), shaped_ty.getElementType()));
+    for (auto operand : op->getOperands()) {
+      // The operands and results have the same shapes.
+      dsts.push_back(CreateEmptyLike(rewriter, op.getLoc(), operand));
     }
 
     rewriter.replaceOpWithNewOp<xla_cpu::AllReduceOp>(
@@ -145,9 +153,8 @@ class CollectivePermuteLowering
 
   LogicalResult matchAndRewrite(mhlo::CollectivePermuteOp op,
                                 PatternRewriter& rewriter) const override {
-    // TODO(jreiffers): Support dynamic dims.
-    Value dst = rewriter.create<tensor::EmptyOp>(
-        op.getLoc(), op.getType().getShape(), op.getType().getElementType());
+    // The result of collective_permute has the same shape as the operand.
+    Value dst = CreateEmptyLike(rewriter, op.getLoc(), op.getOperand());
     rewriter.replaceOpWithNewOp<xla_cpu::CollectivePermuteOp>(
         op, op->getResultTypes(), op->getOperand(0), dst,
         op.getSourceTargetPairsAttr(),
@@ -163,9 +170,19 @@ class AllToAllLowering : public OpRewritePattern<mhlo::AllToAllOp> {
 
   LogicalResult matchAndRewrite(mhlo::AllToAllOp op,
                                 PatternRewriter& rewriter) const override {
-    // TODO(jreiffers): Support dynamic dims.
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    auto sizes = getAsValues(
+        b, b.getLoc(), tensor::getMixedSizes(b, op.getLoc(), op.getOperand()));
+    uint64_t split_dimension = op.getSplitDimension();
+    Value split_count = b.create<arith::ConstantIndexOp>(op.getSplitCount());
+    sizes[split_dimension] = b.createOrFold<arith::DivUIOp>(
+        b.getIndexType(), sizes[split_dimension], split_count);
+    uint64_t concat_dimension = op.getConcatDimension();
+    sizes[concat_dimension] =
+        b.createOrFold<arith::MulIOp>(sizes[concat_dimension], split_count);
+
     Value dst = rewriter.create<tensor::EmptyOp>(
-        op.getLoc(), op.getType().getShape(), op.getType().getElementType());
+        op.getLoc(), getAsOpFoldResult(sizes), op.getType().getElementType());
     rewriter.replaceOpWithNewOp<xla_cpu::AllToAllOp>(
         op, op->getResultTypes(), op->getOperand(0), dst,
         op.getReplicaGroupsAttr(), op.getSplitDimensionAttr(),

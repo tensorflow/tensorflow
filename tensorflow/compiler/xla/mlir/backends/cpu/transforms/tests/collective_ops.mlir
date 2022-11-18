@@ -27,7 +27,7 @@ func.func @max_reduce(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 //  CHECK-SAME:   use_global_device_ids = 1
 //       CHECK: return %[[RET]]
 
-func.func @min_reduce(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+func.func @min_reduce_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.all_reduce"(%arg0) ({
   ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
     %max = mhlo.minimum %lhs, %rhs : tensor<f32>
@@ -39,12 +39,16 @@ func.func @min_reduce(%arg0: tensor<10xf32>) -> tensor<10xf32> {
       handle = 5,
       type = 2
     >
-  } : (tensor<10xf32>) -> tensor<10xf32>
-   func.return %0 : tensor<10xf32>
+  } : (tensor<?xf32>) -> tensor<?xf32>
+   func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL: @min_reduce
-//       CHECK: "xla_cpu.all_reduce"(
+//  CHECK-SAME:   %[[ARG0:.*]]: tensor<?xf32>
+//   CHECK-DAG:   %[[C0:.*]] = arith.constant 0
+//       CHECK: %[[DIM:.*]] = tensor.dim %[[ARG0]], %[[C0]]
+//       CHECK: %[[DST:.*]] = tensor.empty(%[[DIM]])
+//       CHECK: "xla_cpu.all_reduce"(%[[ARG0]], %[[DST]])
 //  CHECK-SAME:   reduction_kind = 2
 //  CHECK-SAME:   use_global_device_ids = 0
 
@@ -86,6 +90,22 @@ func.func @collective_permute(%arg0: tensor<16x8xf32>) -> tensor<16x8xf32> {
 //  CHECK-SAME:    source_target_pairs = dense<
 //       CHECK: return %[[RET]]
 
+func.func @collective_permute_dynamic(%arg0: tensor<16x?xf32>)
+    -> tensor<16x?xf32> {
+  %0 = "mhlo.collective_permute"(%arg0) {
+    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+  } : (tensor<16x?xf32>) -> tensor<16x?xf32>
+  func.return %0 : tensor<16x?xf32>
+}
+
+// CHECK-LABEL: @collective_permute_dynamic
+//  CHECK-SAME: %[[ARG0:.*]]: tensor<16x?xf32>
+//   CHECK-DAG: %[[C1:.*]] = arith.constant 1
+//       CHECK: %[[DIM:.*]] = tensor.dim %[[ARG0]], %[[C1]]
+//       CHECK: %[[DST:.*]] = tensor.empty(%[[DIM]]) : tensor<16x?xf32>
+//       CHECK: "xla_cpu.collective_permute"(%[[ARG0]], %[[DST]]) {
+
 func.func @all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
   %0 = "mhlo.all_to_all"(%arg0) {
     split_dimension = 1 : i64,
@@ -105,3 +125,43 @@ func.func @all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
 //  CHECK-SAME:    split_count = 4
 //  CHECK-SAME:    split_dimension = 1
 //       CHECK: return %[[RET]]
+
+func.func @all_to_all_dynamic_concat_dim(%arg0: tensor<?x16xf32>)
+    -> tensor<?x4xf32> {
+  %0 = "mhlo.all_to_all"(%arg0) {
+    split_dimension = 1 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 4 : i64,
+    replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
+  } : (tensor<?x16xf32>) -> tensor<?x4xf32>
+  func.return %0 : tensor<?x4xf32>
+}
+
+// CHECK-LABEL: @all_to_all_dynamic_concat_dim
+//  CHECK-SAME: %[[ARG0:.*]]: tensor<?x16xf32>
+//   CHECK-DAG: %[[C0:.*]] = arith.constant 0
+//   CHECK-DAG: %[[C4:.*]] = arith.constant 4
+//       CHECK: %[[DIM:.*]] = tensor.dim %[[ARG0]], %[[C0]]
+//       CHECK: %[[CONCAT_DIM:.*]] = arith.muli %[[DIM]], %[[C4]]
+//       CHECK: %[[DST:.*]] = tensor.empty(%[[CONCAT_DIM]]) : tensor<?x4xf32>
+//       CHECK: "xla_cpu.all_to_all"(%[[ARG0]], %[[DST]]) {
+
+func.func @all_to_all_dynamic_split_dim(%arg0: tensor<4x?xf32>)
+    -> tensor<16x?xf32> {
+  %0 = "mhlo.all_to_all"(%arg0) {
+    split_dimension = 1 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 4 : i64,
+    replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
+  } : (tensor<4x?xf32>) -> tensor<16x?xf32>
+  func.return %0 : tensor<16x?xf32>
+}
+
+// CHECK-LABEL: @all_to_all_dynamic_split_dim
+//  CHECK-SAME: %[[ARG0:.*]]: tensor<4x?xf32>
+//   CHECK-DAG: %[[C1:.*]] = arith.constant 1
+//   CHECK-DAG: %[[C4:.*]] = arith.constant 4
+//       CHECK: %[[DIM:.*]] = tensor.dim %[[ARG0]], %[[C1]]
+//       CHECK: %[[CONCAT_DIM:.*]] = arith.divui %[[DIM]], %[[C4]]
+//       CHECK: %[[DST:.*]] = tensor.empty(%[[CONCAT_DIM]]) : tensor<16x?xf32>
+//       CHECK: "xla_cpu.all_to_all"(%[[ARG0]], %[[DST]]) {
