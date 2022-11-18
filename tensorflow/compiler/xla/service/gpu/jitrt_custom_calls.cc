@@ -91,7 +91,6 @@ using ::xla::runtime::AggregateAttrDef;
 using ::xla::runtime::AggregateAttrEncoding;
 using ::xla::runtime::CustomCall;
 using ::xla::runtime::CustomCallAttrEncodingSet;
-using ::xla::runtime::EnumAttrEncoding;
 using ::xla::runtime::Executable;
 using ::xla::runtime::FlatMemrefView;
 using ::xla::runtime::StridedMemrefView;
@@ -99,8 +98,6 @@ using ::xla::runtime::Tagged;
 using ::xla::runtime::TypeIDNameRegistry;
 
 namespace se = ::stream_executor;
-namespace lmhlo_gpu = ::mlir::lmhlo_gpu;
-namespace mhlo = ::mlir::mhlo;
 
 // Disable all CustomCall checks in optimized build.
 static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
@@ -116,82 +113,13 @@ static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
 // Add custom call arguments and attributes encoding for custom HLO enums and
 // structs, so that we can pass them to custom calls.
 void PopulateLmhloToXlaAttrEncoding(CustomCallAttrEncodingSet& encoding) {
-  encoding
-      .Add<EnumAttrEncoding<lmhlo_gpu::ActivationAttr, lmhlo_gpu::Activation,
-                            se::dnn::ActivationMode>>(
-          [](lmhlo_gpu::Activation value) -> se::dnn::ActivationMode {
-            return ConvertConvActivationMode(value).value();
-          });
+  PopulateConvAttrEncoding(encoding);
+  PopulateFftAttrEncoding(encoding);
+  PopulateDotDimsAttrEncoding(encoding);
 
 #if GOOGLE_CUDA
-  encoding.Add<EnumAttrEncoding<lmhlo_gpu::CublasLtMatmulEpilogueAttr,
-                                lmhlo_gpu::CublasLtMatmulEpilogue,
-                                se::cuda::BlasLt::Epilogue>>(
-      [](lmhlo_gpu::CublasLtMatmulEpilogue value)
-          -> se::cuda::BlasLt::Epilogue {
-        return cublas_lt::AsBlasLtEpilogue(value).value();
-      });
+  PopulateCublasLtMatmulAttrEncoding(encoding);
 #endif  // GOOGLE_CUDA
-
-  encoding
-      .Add<EnumAttrEncoding<mhlo::FftTypeAttr, mhlo::FftType, se::fft::Type>>(
-          [](mhlo::FftType value) -> se::fft::Type {
-            switch (value) {
-              case mhlo::FftType::FFT:
-                return se::fft::Type::kC2CForward;
-              case mhlo::FftType::IFFT:
-                return se::fft::Type::kC2CInverse;
-              case mhlo::FftType::RFFT:
-                return se::fft::Type::kR2C;
-              case mhlo::FftType::IRFFT:
-                return se::fft::Type::kC2R;
-              default:
-                return se::fft::Type::kInvalid;
-            }
-          });
-
-  using DotDimsAttr = mhlo::DotDimensionNumbersAttr;
-  encoding.Add<
-      xla::runtime::AggregateAttrEncoding<DotDimsAttr, DotDimensionNumbers>>(
-      encoding,
-      xla::runtime::AggregateAttrDef<DotDimsAttr>()
-          .Add("lhs_batch", &DotDimsAttr::getLhsBatchingDimensions)
-          .Add("lhs_contract", &DotDimsAttr::getLhsContractingDimensions)
-          .Add("rhs_batch", &DotDimsAttr::getRhsBatchingDimensions)
-          .Add("rhs_contract", &DotDimsAttr::getRhsContractingDimensions));
-
-  using ConvDimsAttr = mhlo::ConvDimensionNumbersAttr;
-  encoding.Add<
-      xla::runtime::AggregateAttrEncoding<ConvDimsAttr, ConvDimensionNumbers>>(
-      encoding,
-      xla::runtime::AggregateAttrDef<ConvDimsAttr>()
-          .Add("input_batch_dim", &ConvDimsAttr::getInputBatchDimension)
-          .Add("input_feature_dim", &ConvDimsAttr::getInputFeatureDimension)
-          .Add("input_spatial_dims", &ConvDimsAttr::getInputSpatialDimensions)
-          .Add("kernel_in_feature_dim",
-               &ConvDimsAttr::getKernelInputFeatureDimension)
-          .Add("kernel_out_feature_dim",
-               &ConvDimsAttr::getKernelOutputFeatureDimension)
-          .Add("kernel_spatial_dims", &ConvDimsAttr::getKernelSpatialDimensions)
-          .Add("output_batch_dim", &ConvDimsAttr::getOutputBatchDimension)
-          .Add("output_feature_dim", &ConvDimsAttr::getOutputFeatureDimension)
-          .Add("output_spatial_dims",
-               &ConvDimsAttr::getOutputSpatialDimensions));
-
-  using ConvConfigAttr = lmhlo_gpu::ConvolutionBackendConfigAttr;
-  encoding.Add<
-      xla::runtime::AggregateAttrEncoding<ConvConfigAttr, ConvBackendConfig>>(
-      encoding,
-      xla::runtime::AggregateAttrDef<ConvConfigAttr>()
-          .Add("algorithm", &ConvConfigAttr::getAlgorithm)
-          .Add("tensor_ops_enabled", &ConvConfigAttr::getTensorOpsEnabled)
-          .Add("is_cudnn_frontend", &ConvConfigAttr::getIsCudnnFrontend)
-          .Add("knob_ids", &ConvConfigAttr::getKnobIds)
-          .Add("knob_values", &ConvConfigAttr::getKnobValues)
-          .Add("operand_0_layout", &ConvConfigAttr::getOperand_0Layout)
-          .Add("operand_1_layout", &ConvConfigAttr::getOperand_1Layout)
-          .Add("result_layout", &ConvConfigAttr::getResultLayout)
-          .Add("workspace_size", &ConvConfigAttr::getWorkspaceSize));
 }
 
 // -------------------------------------------------------------------------- //

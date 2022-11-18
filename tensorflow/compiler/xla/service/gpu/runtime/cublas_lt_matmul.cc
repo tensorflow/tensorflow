@@ -23,6 +23,7 @@ limitations under the License.1
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/compiler/xla/runtime/state.h"
@@ -47,6 +48,8 @@ using llvm::ArrayRef;
 using xla::runtime::CustomCall;
 using xla::runtime::Executable;
 using xla::runtime::State;
+
+namespace lmhlo_gpu = ::mlir::lmhlo_gpu;
 
 #if GOOGLE_CUDA
 
@@ -166,6 +169,17 @@ static bool CublasLtMatmulBias(runtime::ExecutionContext* ctx, void** args,
           .release();
 
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+void PopulateCublasLtMatmulAttrEncoding(
+    runtime::CustomCallAttrEncodingSet& encoding) {
+  encoding.Add<runtime::EnumAttrEncoding<lmhlo_gpu::CublasLtMatmulEpilogueAttr,
+                                         lmhlo_gpu::CublasLtMatmulEpilogue,
+                                         se::cuda::BlasLt::Epilogue>>(
+      [](lmhlo_gpu::CublasLtMatmulEpilogue value)
+          -> se::cuda::BlasLt::Epilogue {
+        return cublas_lt::AsBlasLtEpilogue(value).value();
+      });
 }
 
 void RegisterMatmulCustomCalls(runtime::DirectCustomCallRegistry& registry) {
