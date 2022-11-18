@@ -50,7 +50,7 @@ struct MlirDumpConfig {
   // debug information is printed in a more readable 'pretty' form but this
   // pretty form is not parsable (so only for human readability).
   MlirDumpConfig& emit_location_information(bool pretty_form = false) {
-    this->op_printing_flags.enableDebugInfo(pretty_form);
+    this->op_printing_flags.enableDebugInfo(/*enable=*/true, pretty_form);
     return *this;
   }
 
