@@ -12,27 +12,28 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/rpc/client/profiler_client.h"
+#include "tensorflow/tsl/profiler/rpc/client/profiler_client.h"
 
 #include <memory>
 #include <string>
 
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/rpc/client/profiler_client_test_util.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_service.pb.h"
+#include "tensorflow/tsl/profiler/rpc/client/profiler_client_test_util.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
 
-using ::tensorflow::profiler::test::DurationApproxLess;
-using ::tensorflow::profiler::test::DurationNear;
-using ::tensorflow::profiler::test::StartServer;
+using tensorflow::ProfileRequest;
+using ::tsl::profiler::test::DurationApproxLess;
+using ::tsl::profiler::test::DurationNear;
+using ::tsl::profiler::test::StartServer;
 
 TEST(RemoteProfilerSession, Simple) {
   absl::Duration duration = absl::Milliseconds(10);
@@ -149,4 +150,4 @@ TEST(RemoteProfilerSession, LongDuration) {
 
 }  // namespace
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

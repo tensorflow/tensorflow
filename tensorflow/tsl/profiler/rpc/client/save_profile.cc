@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/rpc/client/save_profile.h"
+#include "tensorflow/tsl/profiler/rpc/client/save_profile.h"
 
 #include <memory>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -27,23 +28,23 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/lib/io/zlib_compression_options.h"
-#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/file_system.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/file_system_utils.h"
+#include "tensorflow/tsl/lib/io/zlib_compression_options.h"
+#include "tensorflow/tsl/lib/io/zlib_outputbuffer.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/file_system.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_service.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/utils/file_system_utils.h"
 
 // Windows.h #defines ERROR, but it is also used in
 // tensorflow/core/util/event.proto
 #undef ERROR
 #include "tensorflow/core/util/events_writer.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
 
@@ -52,7 +53,7 @@ constexpr char kTfStatsHelperSuffix[] = "tf_stats_helper_result";
 constexpr char kXPlanePb[] = "xplane.pb";
 
 Status DumpToolData(absl::string_view run_dir, absl::string_view host,
-                    const ProfileToolData& tool, std::ostream* os) {
+                    const tensorflow::ProfileToolData& tool, std::ostream* os) {
   // Don't save the intermediate results for combining the per host tool data.
   if (absl::EndsWith(tool.name(), kTfStatsHelperSuffix)) return OkStatus();
   std::string host_prefix = host.empty() ? "" : absl::StrCat(host, ".");
@@ -109,12 +110,13 @@ Status MaybeCreateEmptyEventFile(const std::string& logdir) {
       return OkStatus();
     }
   }
-  EventsWriter event_writer(ProfilerJoinPath(logdir, "events"));
+  tensorflow::EventsWriter event_writer(ProfilerJoinPath(logdir, "events"));
   return event_writer.InitWithSuffix(kProfileEmptySuffix);
 }
 
 Status SaveProfile(const std::string& repository_root, const std::string& run,
-                   const std::string& host, const ProfileResponse& response,
+                   const std::string& host,
+                   const tensorflow::ProfileResponse& response,
                    std::ostream* os) {
   if (response.tool_data().empty()) return OkStatus();
   std::string run_dir;
@@ -150,7 +152,8 @@ std::string GetCurrentTimeStampAsString() {
 }
 
 Status SaveXSpace(const std::string& repository_root, const std::string& run,
-                  const std::string& host, const XSpace& xspace) {
+                  const std::string& host,
+                  const tensorflow::profiler::XSpace& xspace) {
   std::string log_dir = ProfilerJoinPath(repository_root, run);
   VLOG(1) << "Creating " << log_dir;
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(log_dir));
@@ -166,4 +169,4 @@ Status SaveXSpace(const std::string& repository_root, const std::string& run,
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

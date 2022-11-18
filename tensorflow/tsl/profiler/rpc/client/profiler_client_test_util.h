@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // GRPC client to perform on-demand profiling
 
-#ifndef TENSORFLOW_CORE_PROFILER_RPC_CLIENT_PROFILER_CLIENT_TEST_UTIL_H_
-#define TENSORFLOW_CORE_PROFILER_RPC_CLIENT_PROFILER_CLIENT_TEST_UTIL_H_
+#ifndef TENSORFLOW_TSL_PROFILER_RPC_CLIENT_PROFILER_CLIENT_TEST_UTIL_H_
+#define TENSORFLOW_TSL_PROFILER_RPC_CLIENT_PROFILER_CLIENT_TEST_UTIL_H_
 
 #include <memory>
 #include <string>
@@ -24,17 +24,21 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_service.pb.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace test {
+
+using tensorflow::ProfileRequest;
+using tensorflow::ProfilerSession;
+using tensorflow::profiler::ProfilerServer;
 
 inline std::unique_ptr<ProfilerServer> StartServer(
     absl::Duration duration, std::string* service_address,
@@ -76,6 +80,6 @@ inline ::testing::Matcher<absl::Duration> DurationApproxLess(
 
 }  // namespace test
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_PROFILER_RPC_CLIENT_PROFILER_CLIENT_TEST_UTIL_H_
+#endif  // TENSORFLOW_TSL_PROFILER_RPC_CLIENT_PROFILER_CLIENT_TEST_UTIL_H_

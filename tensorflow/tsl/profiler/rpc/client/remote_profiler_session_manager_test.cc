@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/rpc/client/remote_profiler_session_manager.h"
+#include "tensorflow/tsl/profiler/rpc/client/remote_profiler_session_manager.h"
 
 #include <memory>
 #include <string>
@@ -20,23 +20,25 @@ limitations under the License.
 
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/rpc/client/profiler_client_test_util.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_service.pb.h"
+#include "tensorflow/tsl/profiler/rpc/client/profiler_client_test_util.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
 
-using ::tensorflow::profiler::test::DurationApproxLess;
-using ::tensorflow::profiler::test::DurationNear;
-using ::tensorflow::profiler::test::StartServer;
-using ::tensorflow::testing::TmpDir;
-using Response = tensorflow::profiler::RemoteProfilerSessionManager::Response;
+using tensorflow::ProfileRequest;
+using tensorflow::RemoteProfilerSessionManagerOptions;
+using ::tsl::profiler::test::DurationApproxLess;
+using ::tsl::profiler::test::DurationNear;
+using ::tsl::profiler::test::StartServer;
+using ::tsl::testing::TmpDir;
+using Response = tsl::profiler::RemoteProfilerSessionManager::Response;
 
 // Tests have intemittently failed with 2s grace period, so setting this to
 // a large enough value.
@@ -163,4 +165,4 @@ TEST(RemoteProfilerSessionManagerTest, LongSession) {
 
 }  // namespace
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

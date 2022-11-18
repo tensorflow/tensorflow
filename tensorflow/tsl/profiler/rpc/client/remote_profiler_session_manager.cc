@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/rpc/client/remote_profiler_session_manager.h"
+#include "tensorflow/tsl/profiler/rpc/client/remote_profiler_session_manager.h"
 
 #include <cstddef>
 #include <memory>
@@ -22,20 +22,23 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/env_time.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/rpc/client/profiler_client.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/tsl/platform/env_time.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/rpc/client/profiler_client.h"
+#include "tensorflow/tsl/profiler/utils/time_utils.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
+
+using tensorflow::ProfileRequest;
+using tensorflow::RemoteProfilerSessionManagerOptions;
 
 /*static*/ std::unique_ptr<RemoteProfilerSessionManager>
 RemoteProfilerSessionManager::Create(
     const RemoteProfilerSessionManagerOptions& options,
-    const ProfileRequest& request, tensorflow::Status& out_status,
+    const ProfileRequest& request, Status& out_status,
     AddressResolver resolver) {
   VLOG(1) << "Creating a RemoteProfilerSessionManager.";
   auto session_manager = absl::WrapUnique(
@@ -114,4 +117,4 @@ RemoteProfilerSessionManager::WaitForCompletion() {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

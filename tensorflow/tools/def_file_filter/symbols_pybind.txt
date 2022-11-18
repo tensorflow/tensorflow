@@ -384,6 +384,15 @@ tensorflow::profiler::RemoteProfilerSession::GetServiceAddress
 tensorflow::profiler::RemoteProfilerSession::WaitForCompletion
 tensorflow::profiler::RemoteProfilerSession::~RemoteProfilerSession
 
+[//tensorflow/tsl/profiler/rpc/client:profiler_client_impl] # profiler
+tsl::profiler::ProfileGrpc
+tsl::profiler::NewSessionGrpc
+tsl::profiler::MonitorGrpc
+tsl::profiler::RemoteProfilerSession::Create
+tsl::profiler::RemoteProfilerSession::GetServiceAddress
+tsl::profiler::RemoteProfilerSession::WaitForCompletion
+tsl::profiler::RemoteProfilerSession::~RemoteProfilerSession
+
 [//tensorflow/compiler/xla:status_macros] # tfcompile
 xla::status_macros::MakeErrorStream::Impl::Impl
 xla::status_macros::MakeErrorStream::Impl::~Impl

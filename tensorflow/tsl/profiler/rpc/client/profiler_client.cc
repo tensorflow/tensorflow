@@ -12,23 +12,31 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/rpc/client/profiler_client.h"
+#include "tensorflow/tsl/profiler/rpc/client/profiler_client.h"
 
 #include <limits>
+#include <memory>
 
 #include "grpcpp/grpcpp.h"
 #include "absl/memory/memory.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
+
+using tensorflow::MonitorRequest;
+using tensorflow::MonitorResponse;
+using tensorflow::NewProfileSessionRequest;
+using tensorflow::NewProfileSessionResponse;
+using tensorflow::ProfileRequest;
+using tensorflow::ProfileResponse;
 
 inline Status FromGrpcStatus(const ::grpc::Status& s) {
   return s.ok() ? OkStatus()
@@ -55,8 +63,8 @@ std::unique_ptr<typename T::Stub> CreateStub(
 Status ProfileGrpc(const std::string& service_address,
                    const ProfileRequest& request, ProfileResponse* response) {
   ::grpc::ClientContext context;
-  std::unique_ptr<grpc::ProfilerService::Stub> stub =
-      CreateStub<grpc::ProfilerService>(service_address);
+  std::unique_ptr<tensorflow::grpc::ProfilerService::Stub> stub =
+      CreateStub<tensorflow::grpc::ProfilerService>(service_address);
   TF_RETURN_IF_ERROR(
       FromGrpcStatus(stub->Profile(&context, request, response)));
   return OkStatus();
@@ -66,8 +74,8 @@ Status NewSessionGrpc(const std::string& service_address,
                       const NewProfileSessionRequest& request,
                       NewProfileSessionResponse* response) {
   ::grpc::ClientContext context;
-  std::unique_ptr<grpc::ProfileAnalysis::Stub> stub =
-      CreateStub<grpc::ProfileAnalysis>(service_address);
+  std::unique_ptr<tensorflow::grpc::ProfileAnalysis::Stub> stub =
+      CreateStub<tensorflow::grpc::ProfileAnalysis>(service_address);
   TF_RETURN_IF_ERROR(
       FromGrpcStatus(stub->NewSession(&context, request, response)));
   return OkStatus();
@@ -76,8 +84,8 @@ Status NewSessionGrpc(const std::string& service_address,
 Status MonitorGrpc(const std::string& service_address,
                    const MonitorRequest& request, MonitorResponse* response) {
   ::grpc::ClientContext context;
-  std::unique_ptr<grpc::ProfilerService::Stub> stub =
-      CreateStub<grpc::ProfilerService>(service_address);
+  std::unique_ptr<tensorflow::grpc::ProfilerService::Stub> stub =
+      CreateStub<tensorflow::grpc::ProfilerService>(service_address);
   TF_RETURN_IF_ERROR(
       FromGrpcStatus(stub->Monitor(&context, request, response)));
   return OkStatus();
@@ -97,7 +105,7 @@ RemoteProfilerSession::RemoteProfilerSession(
     const ProfileRequest& profile_request)
     : response_(absl::make_unique<ProfileResponse>()),
       service_address_(service_address),
-      stub_(CreateStub<grpc::ProfilerService>(service_address_)),
+      stub_(CreateStub<tensorflow::grpc::ProfilerService>(service_address_)),
       deadline_(deadline),
       profile_request_(profile_request) {
   response_->set_empty_trace(true);
@@ -159,4 +167,4 @@ std::unique_ptr<ProfileResponse> RemoteProfilerSession::WaitForCompletion(
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

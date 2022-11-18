@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/rpc/client/capture_profile.h"
+#include "tensorflow/tsl/profiler/rpc/client/capture_profile.h"
 
 #include <iostream>
 #include <limits>
@@ -24,23 +24,32 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/host_info.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/rpc/client/profiler_client.h"
-#include "tensorflow/core/profiler/rpc/client/remote_profiler_session_manager.h"
-#include "tensorflow/core/profiler/rpc/client/save_profile.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/host_info.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_analysis.pb.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_service.pb.h"
+#include "tensorflow/tsl/profiler/rpc/client/profiler_client.h"
+#include "tensorflow/tsl/profiler/rpc/client/remote_profiler_session_manager.h"
+#include "tensorflow/tsl/profiler/rpc/client/save_profile.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
 
-using ::tensorflow::profiler::RemoteProfilerSessionManager;
-using Response = ::tensorflow::profiler::RemoteProfilerSessionManager::Response;
+using ::tsl::profiler::RemoteProfilerSessionManager;
+using Response = ::tsl::profiler::RemoteProfilerSessionManager::Response;
+
+using tensorflow::MonitorRequest;
+using tensorflow::MonitorResponse;
+using tensorflow::NewProfileSessionRequest;
+using tensorflow::NewProfileSessionResponse;
+using tensorflow::ProfileRequest;
+using tensorflow::ProfileResponse;
+using tensorflow::RemoteProfilerSessionManagerOptions;
+using tensorflow::profiler::XSpace;
 
 constexpr uint64 kMaxEvents = 1000000;
 const absl::string_view kXPlanePb = "xplane.pb";
@@ -242,4 +251,4 @@ Status ExportToTensorBoard(const XSpace& xspace, const std::string& logdir) {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl
