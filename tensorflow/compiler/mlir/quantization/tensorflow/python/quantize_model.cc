@@ -14,17 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model.h"
 
-#include <cstdlib>
 #include <memory>
 #include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -41,6 +37,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/constants.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/debugging/mlir_dump.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -58,7 +55,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/tsl/platform/path.h"
 
 namespace tensorflow {
 namespace quantization {
@@ -132,109 +128,6 @@ absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
 
   return CreateExportedModel(std::move(graph_def),
                              GetInitNodeName(control_ret_nodes));
-}
-
-// Retrieve the MLIR dump directory. The directory is read from the environment
-// variable `TF_QUANT_MLIR_DUMP_PREFIX`. However, if a special value "sponge" is
-// set to `TF_QUANT_MLIR_DUMP_PREFIX`, it uses the directory set in
-// `TEST_UNDECLARED_OUTPUT_DIRS`. Returns `absl::FailedPreconditionError` if
-// either:
-//   1. `TF_QUANT_MLIR_DUMP_PREFIX` is not set (empty), or
-//   2. `TEST_UNDECLARED_OUTPUT_DIRS` is not set (empty) when
-//      `TF_QUANT_MLIR_DUMP_PREFIX = "sponge"`.
-[[nodiscard]] absl::StatusOr<std::string> GetMlirDumpDir() {
-  auto dump_dir = std::string(
-      absl::NullSafeStringView(std::getenv("TF_QUANT_MLIR_DUMP_PREFIX")));
-  if (dump_dir.empty()) {
-    return absl::FailedPreconditionError(
-        "Environment variable not set: TF_QUANT_MLIR_DUMP_PREFIX, "
-        "IR dump file for TF quantization is not created.");
-  }
-
-  if (absl::EqualsIgnoreCase(dump_dir, "sponge")) {
-    if (!tsl::io::GetTestUndeclaredOutputsDir(&dump_dir)) {
-      return absl::FailedPreconditionError(
-          "Environment variable TF_QUANT_MLIR_DUMP_PREFIX=sponge but "
-          "TEST_UNDECLARED_OUTPUT_DIRS not set.");
-    }
-  }
-
-  return dump_dir;
-}
-
-// Creates a new file to dump the intermediate MLIRs by prefixing the
-// `dump_file_name` with the value of the TF_QUANT_MLIR_DUMP_PREFIX env
-// variable. Returns absl::FailedPreconditionError if the env variable is not
-// set or set to an empty string.
-[[nodiscard]] absl::StatusOr<std::unique_ptr<llvm::raw_fd_ostream>>
-CreateMlirDumpFile(const absl::string_view dump_file_name) {
-  const absl::StatusOr<std::string> dump_dir = GetMlirDumpDir();
-  if (!dump_dir.ok()) {
-    return dump_dir.status();
-  }
-
-  Env *env = Env::Default();
-  const Status status = env->RecursivelyCreateDir(*dump_dir);
-  if (!status.ok()) {
-    return ToAbslStatus(status);
-  }
-
-  std::error_code ec{};  // NOLINT: Required to create llvm::raw_fd_ostream
-  const std::string dump_file_path =
-      tsl::io::JoinPath(*dump_dir, dump_file_name);
-  auto dump_file = std::make_unique<llvm::raw_fd_ostream>(dump_file_path, ec);
-  if (ec) {
-    return absl::InternalError(absl::StrFormat(
-        "Unable to open file: %s, error: %s", dump_file_path, ec.message()));
-  }
-
-  LOG(INFO) << "IR dump file created: " << dump_file_path;
-  return dump_file;
-}
-
-// If verbosity level >= 1, this will dump intermediate IRs of passes to a file.
-// The file path is given by prefixing `name`.mlir with the value of the
-// TF_QUANT_MLIR_DUMP_PREFIX env variable. Returns `nullptr` iff the verbosity
-// level < 1 or TF_QUANT_MLIR_DUMP_PREFIX is not set or set to an empty string.
-// The returned ostream instance should live until the pass run is complete.
-[[nodiscard]] absl::StatusOr<std::unique_ptr<llvm::raw_ostream>>
-MaybeEnableIrPrinting(mlir::PassManager &pm, const absl::string_view name) {
-  if (!VLOG_IS_ON(1)) {
-    // Verbosity level is too low to enable IR printing.
-    return nullptr;
-  }
-
-  absl::StatusOr<std::unique_ptr<llvm::raw_fd_ostream>> dump_file =
-      CreateMlirDumpFile(/*dump_file_name=*/absl::StrCat(name, ".mlir"));
-  if (absl::IsFailedPrecondition(dump_file.status())) {
-    // The env variable TF_QUANT_MLIR_DUMP_PREFIX is not set. IR printing will
-    // not be enabled.
-    LOG(WARNING) << dump_file.status();
-    return nullptr;
-  } else if (!dump_file.ok()) {
-    return dump_file.status();
-  }
-
-  mlir::OpPrintingFlags flag{};
-  flag.useLocalScope().elideLargeElementsAttrs().enableDebugInfo();
-
-  // IR printing requires multithreading disabled.
-  pm.getContext()->disableMultithreading();
-
-  // The configuration uses the default parameter values for
-  // `PassManager::enableIRPrinting`, except for the `printModuleScope`
-  // parameter, which is true by default. It is set to false to avoid the dump
-  // file size becoming too large when the passes are running on a large model.
-  pm.enableIRPrinting(
-      /*shouldPrintBeforePass=*/[](mlir::Pass *,
-                                   mlir::Operation *) { return true; },
-      /*shouldPrintAfterPass=*/
-      [](mlir::Pass *, mlir::Operation *) { return true; },
-      /*printModuleScope=*/false, /*printAfterOnlyOnChange=*/true,
-      /*printAfterOnlyOnFailure=*/false, **dump_file, flag);
-
-  LOG(INFO) << "IR dump for TensorFlow quantization pipeline enabled. ";
-  return dump_file;
 }
 
 }  // namespace
