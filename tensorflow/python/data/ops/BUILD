@@ -75,6 +75,7 @@ py_library(
         ":from_tensor_slices_op",
         ":from_tensors_op",
         ":ignore_errors_op",
+        ":interleave_op",
         ":iterator_ops",
         ":load_ops",
         ":map_op",
@@ -178,6 +179,11 @@ py_library(
 py_library(
     name = "ignore_errors_op",
     srcs = ["ignore_errors_op.py"],
+)
+
+py_library(
+    name = "interleave_op",
+    srcs = ["interleave_op.py"],
 )
 
 py_library(
