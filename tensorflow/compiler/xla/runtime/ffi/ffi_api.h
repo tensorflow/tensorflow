@@ -169,6 +169,39 @@ enum class PrimitiveType : uint8_t {
   F64 = 12,
 };
 
+constexpr std::string_view PrimitiveTypeToString(PrimitiveType type) {
+  switch (type) {
+    case PrimitiveType::PRIMITIVE_TYPE_INVALID:
+      return "invalid";
+    case PrimitiveType::PRED:
+      return "pred";
+    case PrimitiveType::S8:
+      return "s8";
+    case PrimitiveType::S16:
+      return "s16";
+    case PrimitiveType::S32:
+      return "s32";
+    case PrimitiveType::S64:
+      return "s64";
+    case PrimitiveType::U8:
+      return "u8";
+    case PrimitiveType::U16:
+      return "u16";
+    case PrimitiveType::U32:
+      return "u32";
+    case PrimitiveType::U64:
+      return "u64";
+    case PrimitiveType::F16:
+      return "f16";
+    case PrimitiveType::F32:
+      return "f32";
+    case PrimitiveType::BF16:
+      return "bf16";
+    case PrimitiveType::F64:
+      return "f64";
+  }
+}
+
 // TODO(ezhulenev): Replace with `std::span` when C++20 is available.
 template <typename T>
 class Span {
@@ -186,6 +219,8 @@ class Span {
 // A view into the buffer argument. Buffers with non-identity layouts can be
 // decoded only as a StridedBufferArg.
 struct StridedBufferArg {
+  std::string ToString() const;
+
   PrimitiveType dtype;
   void* data;
   Span<const int64_t> sizes;
@@ -194,6 +229,8 @@ struct StridedBufferArg {
 
 // A view into the buffer argument with an identity (row major) layout.
 struct BufferArg {
+  std::string ToString() const;
+
   PrimitiveType dtype;
   void* data;
   Span<const int64_t> sizes;
@@ -213,6 +250,35 @@ bool Ffi::Isa(ExecutionContext* ctx, TypeId type_id) {
     // Static assert has to be type-dependent, and `!sizeof` is just one of the
     // ways to always produce `false`.
     static_assert(!sizeof(T), "Unsupported type");
+}
+
+//===----------------------------------------------------------------------===//
+// Pretty printing for buffers.
+//===----------------------------------------------------------------------===//
+
+static void PrintArray(std::stringstream& ss, Span<const int64_t> arr) {
+  ss << "[";
+  for (unsigned i = 0; i < arr.size(); ++i)
+    (i > 0) ? ss << ", " << arr[i] : ss << arr[i];
+  ss << "]";
+}
+
+inline std::string StridedBufferArg::ToString() const {
+  std::stringstream ss;
+  ss << "Buffer: dtype=" << PrimitiveTypeToString(dtype);
+  ss << " sizes=";
+  PrintArray(ss, sizes);
+  ss << " strides=";
+  PrintArray(ss, strides);
+  return ss.str();
+}
+
+inline std::string BufferArg::ToString() const {
+  std::stringstream ss;
+  ss << "Buffer: dtype=" << PrimitiveTypeToString(dtype);
+  ss << " sizes=";
+  PrintArray(ss, sizes);
+  return ss.str();
 }
 
 //===----------------------------------------------------------------------===//
