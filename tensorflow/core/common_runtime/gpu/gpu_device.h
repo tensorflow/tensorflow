@@ -20,9 +20,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
 
+#include <functional>
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -93,7 +96,7 @@ class BaseGPUDevice : public LocalDevice {
                     AsyncOpKernel::DoneCallback done) override;
 
   Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
+                             AllocatorAttributes alloc_attrs,
                              Tensor* tensor) override;
 
   void CopyTensorInSameDevice(const Tensor* input_tensor, Tensor* output_tensor,
@@ -247,7 +250,7 @@ class GPUKernelTracker {
     if (!timing_counter_) {
       // There's not a preexisting counter owned by GPUProcessState, i.e.
       // pending_cap > 0 but timestamped_allocator == false.
-      owned_counter_.reset(new SharedCounter);
+      owned_counter_ = std::make_unique<SharedCounter>();
       timing_counter_ = owned_counter_.get();
     }
   }
@@ -316,10 +319,7 @@ class GPUKernelTracker {
     uint64 queued_count;
     int weight;
     bool terminated;
-    PendingKernel(const PendingKernel& pk)
-        : queued_count(pk.queued_count),
-          weight(pk.weight),
-          terminated(pk.terminated) {}
+    PendingKernel(const PendingKernel& pk) = default;
     PendingKernel() : queued_count(0), weight(0), terminated(false) {}
   };
   mutex mu_;
