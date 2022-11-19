@@ -57,7 +57,7 @@ void RecvOutputsFromRendezvousAsync(
     RendezvousInterface* rendezvous, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
     const std::vector<string>& keys, std::vector<Tensor>* received_tensors,
-    StatusCallback done) {
+    StatusCallback done, const bool batch_allocate_tensor) {
   if (keys.empty()) {
     done(Status::OK());
     return;
@@ -88,6 +88,33 @@ void RecvOutputsFromRendezvousAsync(
                            alloc_attr);
   }
 
+  std::vector<Tensor*> outputs(keys.size(), nullptr);
+  if (batch_allocate_tensor) {
+    for (int i = 0; i < keys.size(); ++i) {
+      Rendezvous::ParsedKey parsed;
+      Rendezvous::ParseKey(keys[i], &parsed);
+      Device* dev = rendezvous->GetRecvDeviceByParsedKey(&parsed);
+      Allocator* out_allocator = dev->GetAllocator(alloc_attrs[i]);
+      Tensor* in = rendezvous->GetSendTensor(&parsed);
+      Tensor* out = nullptr;
+      if (in && in->IsInitialized()) {
+        if (in->dtype() != DT_VARIANT) {
+          out = new Tensor(out_allocator, in->dtype(), in->shape(), true);
+          VLOG(2) << "create batch out:" << out->DeviceSafeDebugString()
+                  << ",in:" << in->DeviceSafeDebugString()
+                  << ",key:" << parsed.FullKey();
+        }
+      }
+      outputs[i] = out;
+    }
+    auto* gpu_device_ctx = rendezvous->GetGPUDeviceContext();
+    VLOG(1) << "Batch create and single wait compute stream :"
+            << gpu_device_ctx;
+    auto h2d_stream = gpu_device_ctx->host_to_device_stream();
+    auto compute_stream = gpu_device_ctx->stream();
+    h2d_stream->ThenWaitFor(compute_stream);
+  }
+
   auto status_cb = new ReffedStatusCallback(std::move(done));
   for (auto& p : arguments) {
     const string& key = std::get<0>(p);
@@ -96,6 +123,7 @@ void RecvOutputsFromRendezvousAsync(
     Rendezvous::Args rendez_args;
     rendez_args.device_context = device_context;
     rendez_args.alloc_attrs = std::get<3>(p);
+    rendez_args.output = outputs[i];
     status_cb->Ref();
     rendezvous->RecvAsync(
         parsed, rendez_args,

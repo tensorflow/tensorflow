@@ -135,7 +135,15 @@ void IntraProcessRecvAsyncImpl(const DeviceMgr* device_mgr,
         // If "in" is an uninitialized tensor, do copy-construction to
         // preserve the uninitialized state, along with data type and shape
         // info, which is useful for debugger purposes.
-        Tensor* out = in.IsInitialized() ? new Tensor : new Tensor(in);
+        Tensor* out = nullptr;
+        bool h2d_wait_self = false;
+        if (recv_args.output) {
+          out = recv_args.output;
+          VLOG(1) << "Use batch output .";
+          h2d_wait_self = true;
+        } else {
+          out = in.IsInitialized() ? new Tensor : new Tensor(in);
+        }
 
         auto final_callback = [send_args, recv_args, out, is_dead,
                                done = std::move(done)](const Status& s) {
@@ -145,7 +153,7 @@ void IntraProcessRecvAsyncImpl(const DeviceMgr* device_mgr,
 
         if (status.ok() && in.IsInitialized()) {
           SameWorkerRecvDone(device_mgr, parsed, send_args, recv_args, in, out,
-                             std::move(final_callback));
+                             std::move(final_callback), h2d_wait_self);
         } else {
           final_callback(status);
         }

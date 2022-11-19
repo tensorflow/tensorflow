@@ -299,7 +299,8 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
 void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
                                  const DeviceContext* device_context,
                                  Device* gpu_device, Tensor* gpu_tensor,
-                                 StatusCallback done, bool sync_dst_compute) {
+                                 StatusCallback done, bool sync_dst_compute, 
+                                 const bool h2d_wait_self) {
   VLOG(1) << "CopyCPUTensorToGPU";
   const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
   se::Stream* recv_stream = nullptr;
@@ -318,7 +319,7 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
     return;
   }
   // Wait for the recv-stream to make sure the buffer is truly available.
-  if (sync_dst_compute) {
+  if (!h2d_wait_self && sync_dst_compute) {
     recv_host_to_device_stream->ThenWaitFor(recv_stream);
   }
 
@@ -329,6 +330,16 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
     void* dst_ptr = GetBase(gpu_tensor);
     DeviceMemoryBase gpu_dst_ptr(dst_ptr, total_bytes);
     recv_host_to_device_stream->ThenMemcpy(&gpu_dst_ptr, src_ptr, total_bytes);
+    if (h2d_wait_self) {
+      static int64 transfer_size = 0;
+      transfer_size += total_bytes;
+      if (transfer_size > SyncSelfSizeOnce()) {
+        auto h2d_stream =
+            stream_executor::gpu::AsGpuStreamValue(recv_host_to_device_stream);
+        cudaStreamSynchronize(h2d_stream);
+        transfer_size = 0;
+      }
+    }
   }
   // Use of cpu_tensor may outlive stack scope, so keep a ref.
   TensorReference input_ref(*cpu_tensor);

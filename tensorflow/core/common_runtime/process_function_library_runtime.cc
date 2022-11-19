@@ -142,7 +142,8 @@ void ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
     DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
     RendezvousInterface* rendezvous, std::vector<Tensor>* received_tensors,
-    StatusCallback done) {
+    StatusCallback done,
+    const bool h2d_stream_wait_self) {
   std::vector<string> keys;
   for (int64_t i = 0; i < num_tensors; ++i) {
     string name = strings::StrCat(key_prefix, i);
@@ -151,7 +152,8 @@ void ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
     keys.push_back(key);
   }
   RecvOutputsFromRendezvousAsync(rendezvous, device_context, alloc_attrs, keys,
-                                 received_tensors, std::move(done));
+                                 received_tensors, std::move(done), 
+                                 h2d_stream_wait_self);
 }
 
 Status ProcessFunctionLibraryRuntime::GetRetTypes(
@@ -1807,10 +1809,15 @@ void ProcessFunctionLibraryRuntime::RunInternal(
     const std::vector<AllocatorAttributes>& rets_alloc_attrs =
         opts.rets_alloc_attrs;
     std::vector<Tensor>* remote_rets = new std::vector<Tensor>;
+    if (opts.h2d_stream_wait_self) {
+      VLOG(1) << "rendezvous set gpu device context:" << device_context;
+      rendezvous->SetGPUDeviceContext(device_context);
+    }
+    const bool h2d_stream_wait_self = opts.h2d_stream_wait_self;
     flr->Run(opts, handle, local_args, remote_rets,
              [source_device, target_device, target_incarnation, rendezvous,
               device_context, rets_alloc_attrs, remote_rets, rets,
-              done = std::move(done)](const Status& status) mutable {
+              done = std::move(done), h2d_stream_wait_self](const Status& status) mutable {
                if (!status.ok()) {
                  delete remote_rets;
                  done(status);
@@ -1825,7 +1832,7 @@ void ProcessFunctionLibraryRuntime::RunInternal(
                                    device_context, rets_alloc_attrs, rendezvous,
                                    recv_tensors,
                                    TensorsToFunctionRetsDoneCallback(
-                                       rets, recv_tensors, std::move(done)));
+                                       rets, recv_tensors, std::move(done)), h2d_stream_wait_self);
              });
     return;
   }

@@ -273,11 +273,13 @@ REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_DEFAULT),
                         SymbolicGradientOp);
 
-RemoteCallOp::RemoteCallOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
+RemoteCallOp::RemoteCallOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx), low_priority_h2d_(false) {
   OP_REQUIRES_OK(ctx,
                  ctx->GetAttr(FunctionLibraryDefinition::kFuncAttr, &func_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("Tin", &input_dtypes_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("Tout", &output_dtypes_));
+  ReadBoolFromEnvVar("TF_FEATURES_WAIT_SELF", false, &low_priority_h2d_);
+  LOG(INFO) << "RemoteCallOp TF_FEATURES_WAIT_SELF:" << low_priority_h2d_;
 }
 
 void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
@@ -344,6 +346,8 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     opts.remote_execution = true;
   }
   opts.create_rendezvous = true;
+  // batch send/recv, suitable for all communication scenarios .
+  opts.h2d_stream_wait_self = low_priority_h2d_;
   CancellationManager* cancel_mgr = nullptr;
   if (ctx->cancellation_manager() != nullptr) {
     cancel_mgr = new CancellationManager(ctx->cancellation_manager());

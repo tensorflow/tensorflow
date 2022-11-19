@@ -108,7 +108,7 @@ class ProcessFunctionLibraryRuntime {
       DeviceContext* device_context,
       const std::vector<AllocatorAttributes>& alloc_attrs,
       RendezvousInterface* rendezvous, std::vector<Tensor>* received_tensors,
-      StatusCallback done);
+      StatusCallback done, const bool h2d_stream_wait_self = false);
 
   static const char kDefaultFLRDevice[];
   // Returns the FunctionLibraryRuntime for the corresponding device_name.

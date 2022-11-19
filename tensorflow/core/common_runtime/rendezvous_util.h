@@ -43,7 +43,7 @@ void RecvOutputsFromRendezvousAsync(
     RendezvousInterface* rendezvous, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
     const std::vector<string>& keys, std::vector<Tensor>* received_tensors,
-    StatusCallback done);
+    StatusCallback done, const bool batch_allocate_tensor = false);
 
 Status RecvOutputsFromRendezvous(RendezvousInterface* rendezvous,
                                  NamedTensors* out,
