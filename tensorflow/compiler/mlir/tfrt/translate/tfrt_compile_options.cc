@@ -34,6 +34,8 @@ std::ostream& operator<<(std::ostream& os,
       return os << "TfFallback";
     case TfrtDeviceInfraTarget::kBridgeFallback:
       return os << "BridgeFallback";
+    case TfrtDeviceInfraTarget::kGpu:
+      return os << "Gpu";
   }
 }
 
