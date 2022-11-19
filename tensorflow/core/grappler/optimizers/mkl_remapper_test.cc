@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL) && defined(ENABLE_MKL)
+#if defined(INTEL_MKL)
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -38,8 +39,8 @@ class MklRemapperTest : public GrapplerTest {
   void FuseConv2DWithBiasAndAddNOrAdd(const string& data_format,
                                       const string& activation, string add_op,
                                       bool add_with_bcast) {
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     using ::tensorflow::ops::Placeholder;
-
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
     auto input_shape = (data_format == "NHWC")
@@ -217,6 +218,7 @@ CREATE_CONV2DFUSION_ADD_BCAST_TEST(AddV2);
 
 #define REGISTER_TEST(NAME, T, INPUT)                                         \
   TEST_F(MklRemapperTest, NAME##_##T) {                                       \
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";   \
     using ::tensorflow::ops::Placeholder;                                     \
                                                                               \
     for (const string& activation : {"Relu", "Relu6", "Elu", "None"}) {       \
@@ -310,6 +312,7 @@ REGISTER_TEST_ALL_TYPES(FuseDepthwiseConv2DWithBiasAndActivation);
 #undef REGISTER_TEST
 
 TEST_F(MklRemapperTest, FuseBatchNormWithRelu) {
+  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
   using ::tensorflow::ops::Placeholder;
 
   for (bool is_training : {true, false}) {
@@ -447,6 +450,7 @@ TEST_F(MklRemapperTest, FuseBatchNormWithRelu) {
 }
 
 TEST_F(MklRemapperTest, FuseMatMulWithBiasAddAndAdd) {
+  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
   using ::tensorflow::ops::Placeholder;
 
   for (const string& add_op : {"BiasAdd", "AddV2", "Add"}) {
@@ -539,6 +543,7 @@ class RelpaceAddWithBiasAddTest : public GrapplerTest {
  protected:
   template <DataType DTYPE>
   void RelpaceAddWithBiasAddDepthwiseConv2D(const string& add_op) {
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     using ::tensorflow::ops::Placeholder;
 
     for (const string& activation : {"None", "Relu", "Relu6", "Elu"}) {
@@ -652,6 +657,7 @@ class FusedMatMulBiasAddAndGeluTest : public GrapplerTest {
  public:
   template <DataType DTYPE>
   void RunTest() {
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     using ::tensorflow::ops::Placeholder;
 
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -829,6 +835,7 @@ class MklFusedBatchMatMul : public MklRemapperTest {
 };
 
 TEST_F(MklFusedBatchMatMul, MulAndAdd) {
+  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
   for (const auto adjx : {false, true})
     for (const auto adjy : {false, true}) {
       this->VerifyFused<float>(adjx, adjy);
@@ -840,6 +847,7 @@ class MklRemapperSwishTest : public GrapplerTest {
  protected:
   template <DataType DTYPE>
   void RunTest() {
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     using ::tensorflow::ops::Placeholder;
 
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
