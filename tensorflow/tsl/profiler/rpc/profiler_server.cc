@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/rpc/profiler_server.h"
+#include "tensorflow/tsl/profiler/rpc/profiler_server.h"
 
 #include <memory>
 #include <string>
 
 #include "grpcpp/grpcpp.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_service.grpc.pb.h"
+#include "tensorflow/tsl/profiler/rpc/profiler_service_impl.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 
 void ProfilerServer::StartProfilerServer(int32_t port) {
@@ -57,4 +57,4 @@ ProfilerServer::~ProfilerServer() {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

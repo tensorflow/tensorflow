@@ -368,9 +368,9 @@ tsl::ProfilerSession::CollectData
 tsl::ProfilerSession::Status
 tsl::ProfilerSession::~ProfilerSession
 
-[//tensorflow/core/profiler/rpc:profiler_server_impl] # profiler
-tensorflow::profiler::ProfilerServer::StartProfilerServer
-tensorflow::profiler::ProfilerServer::~ProfilerServer
+[//tensorflow/tsl/profiler/rpc:profiler_server_impl] # profiler
+tsl::profiler::ProfilerServer::StartProfilerServer
+tsl::profiler::ProfilerServer::~ProfilerServer
 
 [//tensorflow/core/profiler/convert:hlo_to_tools_data_impl] # profiler
 tensorflow::profiler::ConvertHloProtoToToolData

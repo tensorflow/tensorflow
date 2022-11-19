@@ -13,33 +13,40 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
+#include "tensorflow/tsl/profiler/rpc/profiler_service_impl.h"
 
 #include <memory>
 
 #include "grpcpp/support/status.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_replace.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/env_time.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/lib/profiler_session.h"
-#include "tensorflow/core/profiler/rpc/client/save_profile.h"
-#include "tensorflow/core/profiler/utils/file_system_utils.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/env_time.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/profiler/lib/profiler_session.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_service.pb.h"
 #include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/rpc/client/save_profile.h"
+#include "tensorflow/tsl/profiler/utils/file_system_utils.h"
+#include "tensorflow/tsl/profiler/utils/math_utils.h"
+#include "tensorflow/tsl/profiler/utils/time_utils.h"
+#include "tensorflow/tsl/profiler/utils/xplane_utils.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
+
+using tensorflow::MonitorRequest;
+using tensorflow::MonitorResponse;
+using tensorflow::ProfileRequest;
+using tensorflow::ProfileResponse;
+using tensorflow::TerminateRequest;
+using tensorflow::TerminateResponse;
 
 // Collects data in XSpace format. The data is saved to a repository
 // unconditionally.
@@ -57,7 +64,7 @@ Status CollectDataToRepository(const ProfileRequest& request,
                     request.host_name(), xspace);
 }
 
-class ProfilerServiceImpl : public grpc::ProfilerService::Service {
+class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
  public:
   ::grpc::Status Monitor(::grpc::ServerContext* ctx, const MonitorRequest* req,
                          MonitorResponse* response) override {
@@ -121,9 +128,10 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
 
 }  // namespace
 
-std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService() {
+std::unique_ptr<tensorflow::grpc::ProfilerService::Service>
+CreateProfilerService() {
   return std::make_unique<ProfilerServiceImpl>();
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

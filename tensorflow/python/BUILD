@@ -3393,7 +3393,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/profiler/convert:hlo_to_tools_data_impl",
-        "//tensorflow/core/profiler/rpc:profiler_server_impl",
+        "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
         "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/core/profiler/backends/cpu:python_tracer",
@@ -3517,7 +3517,7 @@ filegroup(
         "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "//tensorflow/core/profiler/convert:hlo_to_tools_data_impl",  # profiler
         "//tensorflow/tsl/profiler/lib:profiler_session_impl",  # profiler
-        "//tensorflow/core/profiler/rpc:profiler_server_impl",  # profiler
+        "//tensorflow/tsl/profiler/rpc:profiler_server_impl",  # profiler
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler
         "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
         "//tensorflow/python/framework:python_api_info",  # python_api_info
