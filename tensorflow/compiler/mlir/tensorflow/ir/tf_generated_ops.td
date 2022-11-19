@@ -19562,7 +19562,7 @@ left-hand side.}]>:$rhs,
 
 def TF_TruncateDivOp : TF_Op<"TruncateDiv", [Pure, ResultsBroadcastableShape]>,
                        WithBroadcastableBinOpBuilder {
-  let summary = "Returns x / y element-wise for integer types.";
+  let summary = "Returns x / y element-wise, rounded towards zero.";
 
   let description = [{
 Truncation designates that negative numbers will round fractional quantities
