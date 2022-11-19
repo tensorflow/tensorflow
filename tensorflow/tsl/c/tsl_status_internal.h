@@ -13,11 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_C_TF_STATUS_INTERNAL_H_
-#define TENSORFLOW_C_TF_STATUS_INTERNAL_H_
+#ifndef TENSORFLOW_TSL_C_TSL_STATUS_INTERNAL_H_
+#define TENSORFLOW_TSL_C_TSL_STATUS_INTERNAL_H_
 
-#include "tensorflow/tsl/c/tsl_status_internal.h"
+#include "tensorflow/tsl/platform/status.h"
 
-typedef struct TSL_Status TF_Status;
+// Internal structures used by the status C API. These are likely to change
+// and should not be depended on.
 
-#endif  // TENSORFLOW_C_TF_STATUS_INTERNAL_H_
+struct TSL_Status {
+  tsl::Status status;
+};
+
+#endif  // TENSORFLOW_TSL_C_TSL_STATUS_INTERNAL_H_

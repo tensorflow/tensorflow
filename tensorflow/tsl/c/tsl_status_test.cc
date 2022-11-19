@@ -13,32 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/c/tf_status.h"
+#include "tensorflow/tsl/c/tsl_status.h"
 
 #include <utility>
 
-#include "tensorflow/c/tf_status_internal.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/c/tsl_status_internal.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
 
-TEST(TF_Status, PayloadsSet) {
-  TF_Status* tf_status = TF_NewStatus();
-  TF_SetStatus(tf_status, TF_CANCELLED, "Error Message");
-  TF_SetPayload(tf_status, "a", "1");
-  TF_SetPayload(tf_status, "b", "2");
-  TF_SetPayload(tf_status, "c", "3");
+TEST(TSL_Status, PayloadsSet) {
+  TSL_Status* tsl_status = TSL_NewStatus();
+  TSL_SetStatus(tsl_status, TSL_CANCELLED, "Error Message");
+  TSL_SetPayload(tsl_status, "a", "1");
+  TSL_SetPayload(tsl_status, "b", "2");
+  TSL_SetPayload(tsl_status, "c", "3");
 
   const std::unordered_map<std::string, std::string> payloads =
-      errors::GetPayloads(tf_status->status);
+      errors::GetPayloads(tsl_status->status);
   EXPECT_EQ(payloads.size(), 3);
   EXPECT_EQ(payloads.at("a"), "1");
   EXPECT_EQ(payloads.at("b"), "2");
   EXPECT_EQ(payloads.at("c"), "3");
-  TF_DeleteStatus(tf_status);
+  TSL_DeleteStatus(tsl_status);
 }
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace tsl

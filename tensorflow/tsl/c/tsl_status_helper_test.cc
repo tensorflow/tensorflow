@@ -13,32 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/tsl/c/tsl_status_helper.h"
 
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
 
 TEST(StatusHelper, TestStatusHelper) {
-  TF_Status* s = TF_NewStatus();
+  TSL_Status* s = TSL_NewStatus();
   Status cc_status(errors::InvalidArgument("some error"));
   cc_status.SetPayload("key1", "value1");
   cc_status.SetPayload("key2", "value2");
-  Set_TF_Status_from_Status(s, cc_status);
-  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s));
-  ASSERT_EQ(std::string("some error"), TF_Message(s));
+  Set_TSL_Status_from_Status(s, cc_status);
+  ASSERT_EQ(TSL_INVALID_ARGUMENT, TSL_GetCode(s));
+  ASSERT_EQ(std::string("some error"), TSL_Message(s));
 
-  Status another_cc_status(StatusFromTF_Status(s));
+  Status another_cc_status(StatusFromTSL_Status(s));
   ASSERT_FALSE(another_cc_status.ok());
   ASSERT_EQ(std::string("some error"), another_cc_status.error_message());
   ASSERT_EQ(error::INVALID_ARGUMENT, another_cc_status.code());
   // Ensure the payloads are not lost during conversions
   ASSERT_EQ(cc_status.GetPayload("key1"), another_cc_status.GetPayload("key1"));
   ASSERT_EQ(cc_status.GetPayload("key2"), another_cc_status.GetPayload("key2"));
-  TF_DeleteStatus(s);
+  TSL_DeleteStatus(s);
 }
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace tsl
