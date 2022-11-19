@@ -66,7 +66,7 @@ includedir=\${prefix}/include/tensorflow
 
 Name: TensorFlowLite
 Version: ${TF_VERSION}
-Description: Library for computation using data flow graphs for scalable machine learning
+Description: Library for deploying models on mobile, microcontrollers and other edge devices.
 Requires:
 Libs: -L\${libdir} -ltensorflowlite
 Cflags: -I\${includedir}
