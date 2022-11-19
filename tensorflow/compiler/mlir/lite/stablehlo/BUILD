@@ -294,6 +294,7 @@ cc_library(
         "-Ithird_party",
     ],
     deps = [
+        "fold_broadcast_pass",
         ":drop_savedmodel_semantics",
         ":optimize",
         ":rename_entrypoint_to_main",
@@ -352,6 +353,29 @@ cc_library(
     name = "unfuse_batch_norm_pass",
     srcs = [
         "transforms/unfuse_batch_norm_pass.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "fold_broadcast_pass",
+    srcs = [
+        "transforms/fold_broadcast_pass.cc",
     ],
     hdrs = [
         "transforms/passes.h",
@@ -438,6 +462,7 @@ tf_cc_binary(
     testonly = True,
     tags = ["hostonly"],
     deps = [
+        ":fold_broadcast_pass",
         ":mhlo_tfl",
         ":optimize",
         ":tf_mhlo",
