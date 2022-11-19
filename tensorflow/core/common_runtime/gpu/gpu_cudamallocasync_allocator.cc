@@ -53,18 +53,18 @@ static std::string GetCudaErrorMessage(CUresult result) {
 void GpuCudaMallocAsyncAllocator::PrintAllocatorStatistics() {
   tsl::mutex_lock lock(lock_);
 
-  std::map<size_t, int> size_map_historgram;
+  std::map<size_t, int> size_map_histogram;
   std::vector<std::string> ptr_size_string;
   for (auto p : size_map_) {
     if (VLOG_IS_ON(8)) {
       ptr_size_string.push_back(
           absl::StrCat("(", absl::Hex(p.first), ",", p.second) + ")");
     }
-    size_map_historgram[p.second]++;
+    size_map_histogram[p.second]++;
   }
   LOG(ERROR) << "Histogram of current allocation: (allocation_size_in_bytes, "
              << "nb_allocation_of_that_sizes), ...;";
-  for (auto p : size_map_historgram) {
+  for (auto p : size_map_histogram) {
     LOG(ERROR) << p.first << ", " << p.second;
   }
 
