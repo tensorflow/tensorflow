@@ -215,7 +215,10 @@ cc_library(
     srcs = ["gpu_device_info.cc"],
     hdrs = ["gpu_device_info.h"],
     compatible_with = get_compatible_with_cloud(),
-    deps = ["//tensorflow/compiler/xla/stream_executor:stream_executor_headers"],
+    deps = [
+        "//tensorflow/compiler/xla/stream_executor:device_description_proto_cc",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
+    ],
 )
 
 cc_library(
@@ -1853,6 +1856,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/spmd:collective_permute_motion",
         "//tensorflow/compiler/xla/service/spmd:stateful_rng_spmd_partitioner",
         "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:device_description_proto_cc",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_platform_id",
