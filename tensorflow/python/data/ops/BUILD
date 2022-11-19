@@ -91,6 +91,7 @@ py_library(
         ":sparse_batch_op",
         ":structured_function",
         ":take_op",
+        ":unbatch_op",
         ":unique_op",
         ":window_op",
         ":zip_op",
@@ -267,6 +268,11 @@ py_library(
 py_library(
     name = "unique_op",
     srcs = ["unique_op.py"],
+)
+
+py_library(
+    name = "unbatch_op",
+    srcs = ["unbatch_op.py"],
 )
 
 py_library(

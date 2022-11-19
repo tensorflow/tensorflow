@@ -2900,8 +2900,12 @@ name=None))
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    normalized_dataset = normalize_to_dense(self)
-    return _UnbatchDataset(normalized_dataset, name=name)
+    # Loaded lazily due to a circular dependency (
+    # dataset_ops -> unbatch_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import unbatch_op
+    return unbatch_op._unbatch(self, name=name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def with_options(self, options, name=None):
     """Returns a new `tf.data.Dataset` with the given options set.
@@ -4932,38 +4936,6 @@ class _RestructuredDataset(UnaryDataset):
   @property
   def element_spec(self):
     return self._element_spec
-
-
-class _UnbatchDataset(UnaryDataset):
-  """A dataset that splits the elements of its input into multiple elements."""
-
-  def __init__(self, input_dataset, name=None):
-    """See `unbatch()` for more details."""
-    flat_shapes = input_dataset._flat_shapes  # pylint: disable=protected-access
-    if any(s.ndims == 0 for s in flat_shapes):
-      raise ValueError("Cannot unbatch an input with scalar components.")
-    known_batch_dim = tensor_shape.Dimension(None)
-    for s in flat_shapes:
-      try:
-        known_batch_dim = known_batch_dim.merge_with(s[0])
-      except ValueError:
-        raise ValueError(f"`unbatch()` is only supported for datasets of "
-                         f"elements whose components have a matching leading "
-                         f"dimension. Encountered both {known_batch_dim} and "
-                         f"{s[0]}.")
-    self._input_dataset = input_dataset
-    self._structure = nest.map_structure(
-        lambda component_spec: component_spec._unbatch(),  # pylint: disable=protected-access
-        get_structure(input_dataset))
-    self._name = name
-    variant_tensor = ged_ops.unbatch_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        **self._common_args)
-    super(_UnbatchDataset, self).__init__(input_dataset, variant_tensor)
-
-  @property
-  def element_spec(self):
-    return self._structure
 
 
 class _GroupByWindowDataset(UnaryDataset):
