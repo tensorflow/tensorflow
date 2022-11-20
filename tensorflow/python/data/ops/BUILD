@@ -89,6 +89,7 @@ py_library(
         ":save_ops",
         ":shard_op",
         ":skip_op",
+        ":snapshot_op",
         ":sparse_batch_op",
         ":structured_function",
         ":take_op",
@@ -270,6 +271,11 @@ py_library(
         "//tensorflow/python/platform",
         "//tensorflow/python/util",
     ],
+)
+
+py_library(
+    name = "snapshot_op",
+    srcs = ["snapshot_op.py"],
 )
 
 py_library(
