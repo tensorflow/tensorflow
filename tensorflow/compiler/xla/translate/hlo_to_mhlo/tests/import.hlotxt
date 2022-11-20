@@ -1,5 +1,5 @@
-// RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
-// RUN: xla-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s -check-prefix=NO_DEAD_FUNCTION
+// RUN: xla-translate --print-sugar=false -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
+// RUN: xla-translate --print-sugar=false -hlo-text-to-mlir-hlo %s -o - | FileCheck %s -check-prefix=NO_DEAD_FUNCTION
 
 // NO_DEAD_FUNCTION-NOT: @test
 
@@ -1318,7 +1318,7 @@ add {
   %Arg_0.1 = f32[4,4] parameter(0)
   %Arg_1.2 = s32[] parameter(1)
   // CHECK-NEXT:  "mhlo.set_dimension_size"([[ARG]], [[SIZE]]) {dimension = 1 : i64} : (tensor<4x4xf32>, tensor<i32>)
-  // CHECK-SAME: tensor<4x?xf32, #mhlo.type_extensions<bounds = [-1, 4]>>
+  // CHECK-SAME: tensor<4x?xf32, #mhlo.type_extensions<bounds = [?, 4]>>
   ROOT %set-dimension-size.2 = f32[4,<=4] set-dimension-size(f32[4,4] %Arg_0.1, s32[] %Arg_1.2), dimensions={1}
 }
 
@@ -1531,7 +1531,7 @@ add {
 // CHECK-SAME:    (%[[ARG0:.*]]: tensor<3x4xf32>)
 %reduce_precision (Arg_0.1: f32[3,4]) -> f32[3,4] {
   %Arg_0.1 = f32[3,4] parameter(0)
-  // CHECK: "mhlo.reduce_precision"(%[[ARG0]]) {exponent_bits = 8 : i32, mantissa_bits = 10 : i32} : (tensor<3x4xf32>) -> tensor<3x4xf32>
+  // CHECK: mhlo.reduce_precision %[[ARG0]], format = e8m10 : tensor<3x4xf32>
   ROOT %reduce_precision = f32[3,4] reduce-precision(f32[3,4] %Arg_0.1), exponent_bits=8, mantissa_bits=10
 }
 

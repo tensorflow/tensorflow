@@ -70,6 +70,7 @@ import builtins
 import numbers
 import numpy as np
 
+from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -966,6 +967,12 @@ def cast(x, dtype, name=None):
 
   Note casting nan and inf values to integral types has undefined behavior.
 
+  Note this operation can lead to a loss of precision when converting native
+  Python `float` and `complex` variables to `tf.float64` or `tf.complex128`
+  tensors, since the input is first converted to the `float32` data type and
+  then widened. It is recommended to use `tf.convert_to_tensor` instead of
+  `tf.cast` for any non-tensor inputs.
+
   Args:
     x: A `Tensor` or `SparseTensor` or `IndexedSlices` of numeric type. It could
       be `uint8`, `uint16`, `uint32`, `uint64`, `int8`, `int16`, `int32`,
@@ -981,6 +988,7 @@ def cast(x, dtype, name=None):
 
   Raises:
     TypeError: If `x` cannot be cast to the `dtype`.
+
   """
   base_type = dtypes.as_dtype(dtype).base_dtype
   if isinstance(x,
@@ -1012,9 +1020,10 @@ def cast(x, dtype, name=None):
 def saturate_cast(value, dtype, name=None):
   """Performs a safe saturating cast of `value` to `dtype`.
 
-  This function casts the input to `dtype` without applying any scaling.  If
+  This function casts the input to `dtype` without overflow.  If
   there is a danger that values would over or underflow in the cast, this op
-  applies the appropriate clamping before the cast.
+  applies the appropriate clamping before the cast.  See `tf.cast` for more
+  details.
 
   Args:
     value: A `Tensor`.
@@ -1029,14 +1038,53 @@ def saturate_cast(value, dtype, name=None):
   with ops.name_scope(name, "saturate_cast", [value]) as name:
     value = ops.convert_to_tensor(value, name="value")
     dtype = dtypes.as_dtype(dtype).base_dtype
-    if value.dtype.min < dtype.min:
-      value = gen_math_ops.maximum(
-          value,
-          ops.convert_to_tensor(dtype.min, dtype=value.dtype, name="min"))
-    if value.dtype.max > dtype.max:
-      value = gen_math_ops.minimum(
-          value,
-          ops.convert_to_tensor(dtype.max, dtype=value.dtype, name="max"))
+
+    in_dtype = value.dtype
+    if in_dtype.is_complex:
+      if dtype.is_complex:
+        # Clamp real and imag components separately, if required.
+        real_in_dtype = in_dtype.real_dtype
+        real_out_dtype = dtype.real_dtype
+        if real_in_dtype.min < real_out_dtype.min or real_in_dtype.max > real_out_dtype.max:
+          value = gen_math_ops._clip_by_value(
+              value,
+              ops.convert_to_tensor(
+                  np.complex(real_out_dtype.min, real_out_dtype.min),
+                  dtype=in_dtype),
+              ops.convert_to_tensor(
+                  np.complex(real_out_dtype.max, real_out_dtype.max),
+                  dtype=in_dtype),
+              name="clamp")
+        return cast(value, dtype, name=name)
+      else:
+        # Extract real component and fall through to clamp+cast.
+        value = real(value)
+        logging.warn("Casting complex to real discards imaginary part.")
+        in_dtype = in_dtype.real_dtype
+
+    # in_dtype is real, but out_dtype could be complex.
+    out_real_dtype = dtype.real_dtype
+    if in_dtype.min < out_real_dtype.min or in_dtype.max > out_real_dtype.max:
+
+      # Forward-compatibility required for Brella if output is real:
+      if not dtype.is_complex and not tf_compat.forward_compatible(
+          2022, 12, 16):
+        # Old behavior using max/min.
+        if in_dtype.min < dtype.min:
+          value = gen_math_ops.maximum(
+              value,
+              ops.convert_to_tensor(dtype.min, dtype=value.dtype, name="min"))
+        if in_dtype.max > dtype.max:
+          value = gen_math_ops.minimum(
+              value,
+              ops.convert_to_tensor(dtype.max, dtype=value.dtype, name="max"))
+      else:
+        # New behavior using clip.
+        value = gen_math_ops._clip_by_value(
+            value,
+            ops.convert_to_tensor(out_real_dtype.min, dtype=in_dtype),
+            ops.convert_to_tensor(out_real_dtype.max, dtype=in_dtype),
+            name="clamp")
     return cast(value, dtype, name=name)
 
 
@@ -5264,6 +5312,40 @@ def reciprocal_no_nan(x, name=None):
     return gen_math_ops.div_no_nan(one, x, name=scope)
 
 
+@tf_export("math.xdivy")
+@dispatch.register_binary_elementwise_api
+@dispatch.add_dispatch_support
+def xdivy(x, y, name=None):
+  """Computes `x / y`.
+
+  Given `x` and `y`, computes `x / y`. This function safely returns
+  zero when `x = 0`, no matter what the value of `y` is.
+
+  Example:
+
+  >>> tf.math.xdivy(1., 2.)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.5>
+  >>> tf.math.xdivy(0., 1.)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
+  >>> tf.math.xdivy(0., 0.)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
+  >>> tf.math.xdivy(1., 0.)
+  <tf.Tensor: shape=(), dtype=float32, numpy=inf>
+
+  Args:
+    x: A `tf.Tensor` of type `half`, `float32`, `float64`, `complex64`,
+      `complex128`
+    y: A `tf.Tensor` of type `half`, `float32`, `float64`, `complex64`,
+      `complex128`
+    name: A name for the operation (optional).
+
+  Returns:
+    `x / y`.
+  """
+  with ops.name_scope(name, "xdivy", [x]):
+    return gen_math_ops.xdivy(x, y)
+
+
 @tf_export("math.xlog1py")
 @dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
@@ -5285,10 +5367,10 @@ def xlog1py(x, y, name=None):
   <tf.Tensor: shape=(), dtype=float32, numpy=0.>
 
   Args:
-    x: A `tf.Tensor` of type `bfloat16`, `half`, `float32`, `float64`,
-      `complex64`, `complex128`
-    y: A `tf.Tensor` of type `bfloat16`, `half`, `float32`, `float64`,
-      `complex64`, `complex128`
+    x: A `tf.Tensor` of type `half`, `float32`, `float64`, `complex64`,
+      `complex128`
+    y: A `tf.Tensor` of type `half`, `float32`, `float64`, `complex64`,
+      `complex128`
     name: A name for the operation (optional).
 
   Returns:
@@ -5559,8 +5641,7 @@ def acos(x, name=None):
 
   Args:
     x: A `Tensor`. Must be one of the following types: `bfloat16`, `half`,
-      `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`,
-      `complex64`, `complex128`.
+      `float32`, `float64`, `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -5618,7 +5699,6 @@ dispatch.register_binary_elementwise_api(gen_math_ops.real_div)
 dispatch.register_binary_elementwise_api(gen_math_ops.squared_difference)
 dispatch.register_binary_elementwise_api(gen_math_ops.truncate_div)
 dispatch.register_binary_elementwise_api(gen_math_ops.truncate_mod)
-dispatch.register_binary_elementwise_api(gen_math_ops.xdivy)
 dispatch.register_binary_elementwise_api(gen_math_ops.xlogy)
 dispatch.register_binary_elementwise_api(gen_math_ops.zeta)
 

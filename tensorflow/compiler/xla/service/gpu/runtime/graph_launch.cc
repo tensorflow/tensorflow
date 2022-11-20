@@ -47,11 +47,13 @@ using xla::runtime::StridedMemrefView;
 // Define the cuda graph launch custom call.
 //===----------------------------------------------------------------------===//
 
-static absl::Status LaunchGraph(
-    const ServiceExecutableRunOptions* run_options, const std::string* ptx,
-    const std::vector<uint8_t>* cubin, se::DeviceMemoryBase* temp_buffer,
-    GpuExecutableKernelsCache* kernels_cache, runtime::Executable* executable,
-    CustomCall::RemainingArgs fwd_args, CustomCall::FunctionOrdinal capture) {
+static absl::Status LaunchGraph(const ServiceExecutableRunOptions* run_options,
+                                const std::string* ptx,
+                                const std::vector<uint8_t>* cubin,
+                                se::DeviceMemoryBase* temp_buffer,
+                                runtime::Executable* executable,
+                                CustomCall::RemainingArgs fwd_args,
+                                CustomCall::FunctionOrdinal capture) {
 #if GOOGLE_CUDA
   // Get a reference to exported function that captures the cuda graph.
   runtime::FunctionRef function_ref = executable->function_ref(capture.ordinal);
@@ -60,8 +62,7 @@ static absl::Status LaunchGraph(
 
   // Forward user data required for launching kernels.
   CustomCall::UserData user_data;
-  user_data.insert_all(run_options, ptx, cubin, temp_buffer, kernels_cache,
-                       executable);
+  user_data.insert_all(run_options, ptx, cubin, temp_buffer, executable);
 
   // Graph capture function should not launch any async tasks.
   Executable::ExecuteOpts opts;
@@ -149,7 +150,6 @@ static bool Launch(runtime::ExecutionContext* ctx, void** args, void** attrs,
                              .UserData<const std::string*>()
                              .UserData<const std::vector<uint8_t>*>()
                              .UserData<se::DeviceMemoryBase*>()
-                             .UserData<GpuExecutableKernelsCache*>()
                              .UserData<Executable*>()
                              .RemainingArgs()
                              .Attr<CustomCall::FunctionOrdinal>("capture")

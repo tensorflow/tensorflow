@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/dump.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/triangular_solve_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace xla {
 namespace gpu {
@@ -75,7 +76,8 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
       /*allow_mixed_precision=*/false);
   pipeline.AddPass<GpusolverRewriter>();
   pipeline.AddPass<GpuConvRewriter>();
-  pipeline.AddPass<CudnnFusedConvRewriter>();
+  pipeline.AddPass<CudnnFusedConvRewriter>(
+      stream_exec->GetDeviceDescription().cuda_compute_capability());
   pipeline.AddPass<GpuConvPaddingLegalization>();
   pipeline.AddPass<CudnnPadForConvolutions>(
       stream_exec->GetDeviceDescription().cuda_compute_capability());
@@ -316,9 +318,7 @@ GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
 StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    llvm::Module* llvm_module,
-                                   GpuVersion gpu_version,
-                                   se::StreamExecutor* stream_exec,
-                                   bool relocatable,
+                                   GpuVersion gpu_version, bool relocatable,
                                    const HloModule* debug_module) {
   std::string libdevice_dir;
   {
@@ -345,8 +345,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   std::string ptx;
   if (!(debug_module &&
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
-    XLA_SCOPED_LOGGING_TIMER(
-        "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
+    XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+        "NVPTXCompiler::CompileTargetBinary - CompileToPtx for ",
+        (debug_module != nullptr ? debug_module->name() : "(unknown")));
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
     TF_ASSIGN_OR_RETURN(ptx, nvptx::CompileToPtx(selected_module, gpu_version,
                                                  module_config, libdevice_dir));
@@ -358,18 +359,20 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   }
 
   std::vector<uint8_t> cubin = CompileGpuAsmOrGetCachedResult(
-      stream_exec, ptx, std::get<se::CudaComputeCapability>(gpu_version),
-      module_config, relocatable);
+      ptx, std::get<se::CudaComputeCapability>(gpu_version), module_config,
+      (debug_module != nullptr ? debug_module->name() : "(unknown)"),
+      relocatable);
 
   return std::pair<std::string, std::vector<uint8_t>>(std::move(ptx),
                                                       std::move(cubin));
 }
 
 std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
-    se::StreamExecutor* stream_exec, const std::string& ptx,
-    se::CudaComputeCapability cc, const HloModuleConfig& hlo_module_config,
+    const std::string& ptx, se::CudaComputeCapability cc,
+    const HloModuleConfig& hlo_module_config, absl::string_view module_name,
     bool relocatable) {
-  XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompileGpuAsmOrGetCachedResult");
+  XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+      "NVPTXCompiler::CompileGpuAsmOrGetCachedResult for ", module_name));
   tsl::profiler::TraceMe activity("PTX->CUBIN",
                                   tsl::profiler::TraceMeLevel::kInfo);
   bool inserted;
@@ -405,7 +408,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
         uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
         StatusOr<std::vector<uint8_t>> maybe_cubin = se::CompileGpuAsm(
-            stream_exec->device_ordinal(), cache_ptx->c_str(), ptxas_config);
+            cc.major, cc.minor, cache_ptx->c_str(), ptxas_config);
 
         if (maybe_cubin.ok()) {
           uint64_t end_usecs = tsl::Env::Default()->NowMicros();
@@ -472,8 +475,26 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   return cache_value->cubin_data;
 }
 
+static bool UseNvlink() {
+  const bool use_nvlink_by_default =
+#ifdef TF_DISABLE_NVLINK_BY_DEFAULT
+      false;
+#else
+      true;
+#endif
+  bool use_nvlink;
+  TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_NVLINK_FOR_PARALLEL_COMPILATION",
+                                      /*default_val=*/
+                                      use_nvlink_by_default, &use_nvlink));
+  return use_nvlink;
+}
+
 StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
     const HloModuleConfig& hlo_module_config) {
+  if (UseNvlink()) {
+    return true;
+  }
+
   // TODO(phawkins): rather than comparing version numbers, it might be more
   // robust if we simply tried to link something the first time we compile.
   auto ptxas_config =
@@ -506,16 +527,20 @@ StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
 }
 
 StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
-    se::StreamExecutor* stream_exec,
-    std::vector<std::vector<uint8_t>> modules) {
+    se::StreamExecutor* stream_exec, std::vector<std::vector<uint8_t>> modules,
+    const DebugOptions& debug_options) {
   std::vector<stream_executor::CubinOrPTXImage> images;
   images.reserve(modules.size());
   for (auto& module : modules) {
     images.push_back({"", std::move(module)});
   }
-  return LinkGpuAsm(static_cast<se::gpu::GpuContext*>(
-                        stream_exec->implementation()->GpuContextHack()),
-                    images);
+  auto context = static_cast<se::gpu::GpuContext*>(
+      stream_exec->implementation()->GpuContextHack());
+  if (UseNvlink()) {
+    return LinkUsingNvlink(debug_options.xla_gpu_cuda_data_dir(), context,
+                           images);
+  }
+  return LinkGpuAsm(context, images);
 }
 
 }  // namespace gpu

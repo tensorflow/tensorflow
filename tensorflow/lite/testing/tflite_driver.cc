@@ -26,8 +26,8 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/lite/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #if !defined(__APPLE__)
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #endif

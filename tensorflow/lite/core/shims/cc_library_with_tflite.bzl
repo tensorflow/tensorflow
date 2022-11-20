@@ -103,6 +103,31 @@ def cc_library_with_tflite(
         **kwargs
     )
 
+def cc_library_with_stable_tflite_abi(
+        deps = [],
+        non_stable_abi_deps = [],
+        stable_abi_deps = [],  # @unused
+        **kwargs):
+    """Defines a cc_library that uses the TFLite shims.
+
+    This is a proxy method for cc_library_with_tflite() for targets that use
+    the TFLite shims.
+
+    Args:
+      deps: Same as for cc_library_with_tflite.
+      non_stable_abi_deps: dependencies that will be enabled only when NOT
+        using TFLite with stable ABI.  This should be used for dependencies
+        arising from code inside '#if !TFLITE_WITH_STABLE_ABI'.
+      stable_abi_deps: dependencies that will be enabled only when using TFLite
+        with stable ABI. This should be used for dependencies arising from code
+        inside '#if TFLITE_WITH_STABLE_ABI'.
+      **kwargs: Additional cc_library_with_tflite parameters.
+    """
+    cc_library_with_tflite(
+        deps = deps + non_stable_abi_deps,
+        **kwargs
+    )
+
 def cc_test_with_tflite(
         name,
         deps = [],

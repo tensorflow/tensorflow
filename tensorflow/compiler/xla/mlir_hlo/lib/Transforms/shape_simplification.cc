@@ -20,7 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/Optional.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"

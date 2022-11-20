@@ -840,7 +840,7 @@ LogicalResult Rewrite(
     } else if (compile_device_op) {
       result_id->setAttr("device", compile_device_op);
     }
-    res.output().replaceAllUsesWith(compile_op->getResult(0));
+    res.getOutput().replaceAllUsesWith(compile_op->getResult(0));
   }
 
   BuildTPUCompileSucceededAssertOp(

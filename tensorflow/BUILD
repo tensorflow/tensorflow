@@ -13,6 +13,7 @@ load(
     "tf_cc_shared_object",
     "tf_custom_op_library_additional_deps_impl",
     "tf_native_cc_binary",
+    "tsl_async_value_deps",
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -100,7 +101,7 @@ PACKAGE_STATIC_DEPS = [
     "@snappy//:__subpackages__",
     "@upb//:__subpackages__",
     "@zlib//:__subpackages__",
-]
+] + tsl_async_value_deps()
 
 package(
     # copybara:uncomment default_applicable_licenses = [":license"],

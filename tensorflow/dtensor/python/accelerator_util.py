@@ -20,7 +20,6 @@ from absl import logging
 
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
-from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import tpu_util
 from tensorflow.python.eager import context
@@ -36,13 +35,19 @@ def is_initialized() -> bool:
   return bool(_INITIALIZED_ACCELERATOR_SYSTEM_TYPE)
 
 
+def set_initialized(value):
+  """Sets if accelerator system has been initialized."""
+  global _INITIALIZED_ACCELERATOR_SYSTEM_TYPE
+  _INITIALIZED_ACCELERATOR_SYSTEM_TYPE = value
+
+
 def initialize_multi_client_cluster(job_name: str,
                                     dtensor_jobs: List[str],
                                     client_id: int,
                                     collective_leader: str,
                                     port: Optional[int] = None,
                                     gpu_use_nccl_communication: bool = False,
-                                    enable_coordination_service: bool = False):
+                                    enable_coordination_service: bool = True):
   """Initialize GRPC servers and collectives for multi-client DTensor setup.
 
   This function can be used to initialize a multi-client cluster and enable
@@ -113,7 +118,7 @@ def initialize_multi_client_cluster(job_name: str,
     v1=[])
 def initialize_accelerator_system(
     device_type: Optional[str] = None,
-    enable_coordination_service: Optional[bool] = False) -> str:
+    enable_coordination_service: Optional[bool] = True) -> str:
   """Initializes accelerators and communication fabrics for DTensor.
 
   DTensor configures TensorFlow to run in the local mode or multi-client mode.
@@ -180,7 +185,7 @@ def initialize_accelerator_system(
                      "Allowed values are CPU, GPU, or TPU")
 
   if config.gpu_use_nccl_communication():
-    logical_gpu_count = api.num_local_devices("GPU")
+    logical_gpu_count = config.num_local_devices("GPU")
     physical_gpu_count = len(tf_config.list_physical_devices("GPU"))
     if logical_gpu_count != physical_gpu_count:
       raise ValueError(
@@ -191,8 +196,8 @@ def initialize_accelerator_system(
 
   # Configure logical host CPU devices for accelerators.
   if device_type in ("GPU", "TPU"):
-    num_local_devices = api.num_local_devices(device_type)
-    if api.num_local_devices("CPU") < num_local_devices:
+    num_local_devices = config.num_local_devices(device_type)
+    if config.num_local_devices("CPU") < num_local_devices:
       tf_config.set_logical_device_configuration(
           tf_config.list_physical_devices("CPU")[0],
           [context.LogicalDeviceConfiguration()] * num_local_devices)

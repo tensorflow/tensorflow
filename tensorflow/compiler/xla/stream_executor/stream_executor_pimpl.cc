@@ -185,7 +185,15 @@ StreamExecutor::~StreamExecutor() {
 }
 
 port::Status StreamExecutor::Init(DeviceOptions device_options) {
-  return implementation_->Init(device_ordinal_, std::move(device_options));
+  TF_RETURN_IF_ERROR(
+      implementation_->Init(device_ordinal_, std::move(device_options)));
+
+  // By contract, implementation_ can return nullopt and we'll just use the
+  // Platform's name.
+  device_description_str_ =
+      implementation_->MakeDeviceDescriptionStr().value_or(platform_->Name());
+
+  return ::tsl::OkStatus();
 }
 
 port::Status StreamExecutor::Init() { return Init(DeviceOptions::Default()); }

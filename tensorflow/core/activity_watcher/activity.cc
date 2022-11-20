@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace activity_watcher {
-void MaybeEnableMultiWorkersWatching(CoordinationServiceAgent* agent) {}
+void MaybeEnableMultiWorkersWatching(tsl::CoordinationServiceAgent* agent) {}
 
 namespace tfw_internal {
 

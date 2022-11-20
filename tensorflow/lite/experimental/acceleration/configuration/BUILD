@@ -24,6 +24,7 @@ load("//tensorflow/tsl/platform/default:build_config.bzl", "tf_proto_library_py"
 # copybara:comment_end
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -174,14 +175,15 @@ cc_library(
     srcs = ["nnapi_plugin.cc"],
     hdrs = ["nnapi_plugin.h"],
     visibility = nnapi_plugin_impl_visibility_allowlist() + [
+        "//tensorflow/lite/core/experimental/acceleration/configuration/c:__pkg__",
         "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
     ],
     deps = [
         ":configuration_fbs",
         ":delegate_registry",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/experimental/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite/nnapi:nnapi_implementation_headers",
         "@com_google_absl//absl/memory",
     ],
@@ -250,6 +252,7 @@ cc_library(
         "//conditions:default": [],
     }),
     visibility = [
+        "//tensorflow/lite/core/experimental/acceleration/configuration/c:__pkg__",
         "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
     ],
     deps = [

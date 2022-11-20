@@ -185,8 +185,6 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
       return MlirOptimizationPassState::Enabled;
     case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis:
       return MlirOptimizationPassState::FallbackEnabled;
-    case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysisSafeModeFallback:
-      return MlirOptimizationPassState::FallbackEnabled;
     case MlirBridgeRolloutPolicy::kDisabledByUser:
       VLOG(1) << "Skipping MLIR TPU Bridge, MLIR TPU bridge disabled by user. "
                  "Old bridge will evaluate.";
@@ -279,8 +277,6 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
   switch (policy) {
     case MlirBridgeRolloutPolicy::kEnabledByUser:
       return MlirOptimizationPassState::Enabled;
-    case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysisSafeModeFallback:
-      return MlirOptimizationPassState::FallbackEnabled;
     case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis:
       return MlirOptimizationPassState::FallbackEnabled;
     case MlirBridgeRolloutPolicy::kDisabledByUser:

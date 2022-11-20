@@ -34,9 +34,9 @@ func.func @map_unary(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 // CHECK-SAME:                          [1, %[[MIN_DIM]]] [1, 1]
 // CHECK-NEXT:   %[[INIT_SLICE:.*]] = gml_st.materialize %[[INIT]]
 // CHECK-NEXT:   %[[MAPPED:.*]] = linalg.map
-// CHECK-SAME:     ins(%[[INPUT_SLICE]] : tensor<1x?xf32>)
-// CHECK-SAME:     outs(%[[INIT_SLICE]] : tensor<1x?xf32>)
-// CHECK-SAME:     (%[[IN_ELEM:.*]]: f32) {
+// CHECK-NEXT:     ins(%[[INPUT_SLICE]] : tensor<1x?xf32>)
+// CHECK-NEXT:     outs(%[[INIT_SLICE]] : tensor<1x?xf32>)
+// CHECK-NEXT:     (%[[IN_ELEM:.*]]: f32) {
 // CHECK-NEXT:       %[[RES_ELEM:.*]] = math.absf %[[IN_ELEM]] : f32
 // CHECK-NEXT:       linalg.yield %[[RES_ELEM]] : f32
 // CHECK-NEXT:     }

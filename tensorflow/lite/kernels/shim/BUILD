@@ -3,6 +3,7 @@
 load("//tensorflow:tensorflow.bzl", "if_mobile", "if_not_mobile", "tf_cc_test", "tf_copts")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # The public targets are marked public individually
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],
@@ -138,7 +139,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":shape",
+        ":status_macros",
         ":tensor_view",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

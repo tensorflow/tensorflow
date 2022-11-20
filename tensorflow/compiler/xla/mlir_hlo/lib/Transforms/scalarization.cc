@@ -16,8 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
+#include "gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "thlo/IR/thlo_ops.h"
 
 namespace mlir {
 namespace {
@@ -34,7 +34,7 @@ namespace {
 #define GEN_PASS_DEF_SCALARIZATIONPASS
 #include "mlir-hlo/Transforms/passes.h.inc"
 
-using linalg::GenericOp;
+using linalg::LinalgOp;
 using tensor::ExtractOp;
 using tensor::FromElementsOp;
 using tensor::InsertOp;
@@ -44,60 +44,77 @@ bool hasSingleElement(ShapedTy type) {
   return type.hasStaticShape() && type.getNumElements() == 1;
 }
 
-struct ScalarizeGenericOp : public OpRewritePattern<GenericOp> {
-  using OpRewritePattern::OpRewritePattern;
+struct ScalarizeLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
+  using OpInterfaceRewritePattern<LinalgOp>::OpInterfaceRewritePattern;
 
-  LogicalResult matchAndRewrite(GenericOp genericOp,
-                                PatternRewriter &rewriter) const override {
-    auto isNonScalar = [](Type type) {
-      return type.isa<TensorType>() &&
-             !hasSingleElement(type.cast<TensorType>());
-    };
-    if (llvm::any_of(genericOp.getOperandTypes(), isNonScalar) ||
-        llvm::any_of(genericOp.getResultTypes(), isNonScalar))
-      return failure();
-
-    // Map block arguments of genericOp to tensor.extract ops of its args.
-    Location loc = genericOp.getLoc();
-    BlockAndValueMapping bvm;
-    for (OpOperand &opOperand : genericOp->getOpOperands()) {
-      Value operandValue = opOperand.get();
-      Type operandType = operandValue.getType();
-      auto bbArg = genericOp.getMatchingBlockArgument(&opOperand);
-      if (!operandType.isa<ShapedType>()) continue;
-
-      SmallVector<Value> indices(
-          operandType.cast<RankedTensorType>().getRank(),
-          rewriter.create<arith::ConstantIndexOp>(loc, 0));
-      Value extractedElement =
-          rewriter.create<ExtractOp>(loc, operandValue, indices);
-      bvm.map(bbArg, extractedElement);
-    }
-
+  static LogicalResult inlinePayload(PatternRewriter &rewriter, Location loc,
+                                     LinalgOp linalgOp, ValueRange argValues) {
     // Clone everything but terminator.
-    Block *body = genericOp.getBody();
-    for (Operation &op : body->without_terminator()) {
-      // `linalg.index` can only result in 0 for scalar linalg.generic.
-      if (auto indexOp = dyn_cast<linalg::IndexOp>(op)) {
+    Block *body = linalgOp.getBlock();
+    BlockAndValueMapping map;
+    map.map(body->getArguments(), argValues);
+    for (auto &op : body->without_terminator()) {
+      if (auto indexOp = dyn_cast<linalg::IndexOp>(&op)) {
         Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
-        bvm.map(indexOp.getResult(), zero);
+        map.map(indexOp.getResult(), zero);
         continue;
       }
-      rewriter.clone(op, bvm);
+      rewriter.clone(op, map);
     }
 
     // Wrap every scalar result into a tensor using `tensor.from_elements`.
     SmallVector<Value> newResults;
     for (auto [resultType, yieldOperand] :
-         llvm::zip(genericOp->getResultTypes(),
+         llvm::zip(linalgOp->getResultTypes(),
                    body->getTerminator()->getOperands())) {
-      auto scalarValue = bvm.lookupOrDefault(yieldOperand);
+      auto scalarValue = map.lookupOrDefault(yieldOperand);
       newResults.push_back(
           rewriter.create<FromElementsOp>(loc, resultType, scalarValue));
     }
-    rewriter.replaceOp(genericOp, newResults);
-
+    rewriter.replaceOp(linalgOp, newResults);
     return success();
+  }
+
+  LogicalResult matchAndRewrite(LinalgOp linalgOp,
+                                PatternRewriter &rewriter) const override {
+    // Fail if not every argument is a scalar or a single-element tensor.
+    auto isNonScalar = [](Type type) {
+      return type.isa<mlir::ShapedType>() &&
+             !(type.isa<TensorType>() &&
+               hasSingleElement(type.cast<TensorType>()));
+    };
+
+    if (llvm::any_of(linalgOp->getOperandTypes(), isNonScalar) ||
+        llvm::any_of(linalgOp->getResultTypes(), isNonScalar))
+      return failure();
+    // TODO(aliia): fix scalarization of FillOp.
+    if (auto *fillOp = dyn_cast<linalg::FillOp>(&linalgOp)) return failure();
+
+    // Load the data corresponding to the block arguments that
+    // represent input operands.
+    SmallVector<Value> indexedValues;
+    indexedValues.reserve(linalgOp->getNumOperands());
+    Location loc = linalgOp->getLoc();
+    auto zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+    for (OpOperand &operand : linalgOp->getOpOperands()) {
+      if (!linalgOp.payloadUsesValueFromOperand(&operand)) {
+        indexedValues.push_back(nullptr);
+        continue;
+      }
+      if (linalgOp.isScalar(&operand)) {
+        indexedValues.push_back(operand.get());
+        continue;
+      }
+      Value operandValue = operand.get();
+      Type operandType = operandValue.getType();
+      SmallVector<Value> indices(operandType.cast<RankedTensorType>().getRank(),
+                                 zero);
+      Value load = rewriter.create<ExtractOp>(loc, operandValue, indices);
+      indexedValues.push_back(load);
+    }
+
+    // Inline the op payload and rewrite the operation.
+    return inlinePayload(rewriter, loc, linalgOp, indexedValues);
   }
 };
 
@@ -259,7 +276,8 @@ struct ScalarizeGatherOp : public OpRewritePattern<thlo::GatherOp> {
 
   LogicalResult matchAndRewrite(thlo::GatherOp gatherOp,
                                 PatternRewriter &rewriter) const override {
-    ImplicitLocOpBuilder b(gatherOp.getLoc(), rewriter);
+    Location loc = gatherOp.getLoc();
+    ImplicitLocOpBuilder b(loc, rewriter);
     auto startIndices = extractStartIndices(b, gatherOp.getStartIndices());
     if (!startIndices) return failure();
 
@@ -267,15 +285,15 @@ struct ScalarizeGatherOp : public OpRewritePattern<thlo::GatherOp> {
     ShapedType initTy = init.getType();
     int64_t initRank = initTy.getRank();
     SmallVector<OpFoldResult> initDimSizes =
-        tensor::getMixedSizes(rewriter, gatherOp.getLoc(), init);
+        tensor::getMixedSizes(b, loc, init);
     SmallVector<Value> initDimSizeValues =
-        getValueOrCreateConstantIndexOp(b, gatherOp.getLoc(), initDimSizes);
+        getValueOrCreateConstantIndexOp(b, loc, initDimSizes);
 
     IntegerAttr oneAttr = b.getI64IntegerAttr(1);
 
     TypedValue<ShapedType> operand = gatherOp.getOperand();
-    SmallVector<Value> operandSizes =
-        tensor::createDimValues(rewriter, gatherOp.getLoc(), operand);
+    auto operandSizes = getValueOrCreateConstantIndexOp(
+        b, loc, tensor::createDimValues(b, loc, operand));
 
     Value zero = b.create<arith::ConstantIndexOp>(0);
     Value one = b.create<arith::ConstantIndexOp>(1);
@@ -507,7 +525,7 @@ struct ScalarizationPass
         ScalarizeConcatenateOp,
         ScalarizeDynamicBroadcastInDimOp,
         ScalarizeGatherOp,
-        ScalarizeGenericOp,
+        ScalarizeLinalgOp,
         ScalarizeScatterOp
     >(context);
     // clang-format on

@@ -2419,7 +2419,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
     crash_analysis::RemoveReportData(flib_crash_handle);
   });
 
-  VLOG(1) << "Importing: "
+  VLOG(2) << "Importing: "
           << ::tensorflow::DumpGraphToFile("tf_mlir_importer_base", graph,
                                            &flib_def);
 
@@ -2522,7 +2522,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
                           : mlir::func::FuncOp::Visibility::Private;
     function.setVisibility(visibility);
   }
-  VLOG(1) << "Imported: "
+  VLOG(2) << "Imported: "
           << tensorflow::DumpMlirOpToFile("tf_mlir_imported_base",
                                           module.get());
   return module;
@@ -3970,6 +3970,16 @@ Status SavedModelSignatureDefImporterLite::ConvertSignature(
     func_op.setResultAttr(
         output_and_idx.index(), "tf_saved_model.index_path",
         builder.getStrArrayAttr({output_and_idx.value().first}));
+  }
+
+  // Add the original TF function name as a function attribute.
+  // TODO(b/258817244) Remove this after TFRT exports functions.
+  for (const auto& [tf_name, mlir_name] : tf_name_to_mlir_name) {
+    auto func_op = sub_symbol_table.lookup<mlir::func::FuncOp>(mlir_name);
+    TF_RET_CHECK(func_op)
+        << "Graphdef importer should have created a function named "
+        << mlir_name << ".";
+    func_op->setAttr("tf._original_func_name", builder.getStringAttr(tf_name));
   }
 
   // Move the converted functions to top level MLIR module.

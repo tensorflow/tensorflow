@@ -41,7 +41,7 @@ namespace data {
 /* static */ constexpr const char* const FilterDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const FilterDatasetOp::kOutputShapes;
 
-constexpr char kInputImplsEmpty[] = "input_impls_empty";
+constexpr char kInputImplEmpty[] = "input_impl_empty";
 constexpr char kFilteredElements[] = "filtered_elements";
 constexpr char kDroppedElements[] = "dropped_elements";
 
@@ -114,6 +114,8 @@ class FilterDatasetOp::Dataset : public DatasetBase {
           filtered_elements_(0),
           dropped_elements_(0) {}
 
+    bool SymbolicCheckpointCompatible() const override { return true; }
+
     Status Initialize(IteratorContext* ctx) override {
       TF_RETURN_IF_ERROR(
           dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
@@ -121,13 +123,12 @@ class FilterDatasetOp::Dataset : public DatasetBase {
           ctx, &instantiated_captured_func_);
     }
 
+    // NOTE(mrry): This method is thread-safe as long as `input_impl_` and `f`
+    // are thread-safe. However, if multiple threads enter this method,
+    // outputs may be observed in a non-deterministic order.
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      // NOTE(mrry): This method is thread-safe as long as
-      // `input_impl_` and `f` are thread-safe. However, if multiple
-      // threads enter this method, outputs may be observed in a
-      // non-deterministic order.
       auto stats_aggregator = ctx->stats_aggregator();
       bool matched;
       do {
@@ -204,11 +205,11 @@ class FilterDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(mu_);
-      if (input_impl_)
+      TF_RETURN_IF_ERROR(writer->WriteScalar(
+          full_name(kInputImplEmpty), static_cast<int64_t>(!input_impl_)));
+      if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-      else
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kInputImplsEmpty), ""));
+      }
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kFilteredElements),
                                              filtered_elements_));
       TF_RETURN_IF_ERROR(
@@ -219,10 +220,14 @@ class FilterDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      if (reader->Contains(full_name(kInputImplsEmpty)))
+      int64_t input_empty;
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(full_name(kInputImplEmpty), &input_empty));
+      if (static_cast<bool>(input_empty)) {
         input_impl_.reset();
-      else
+      } else {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+      }
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kFilteredElements),
                                             &filtered_elements_));
       TF_RETURN_IF_ERROR(

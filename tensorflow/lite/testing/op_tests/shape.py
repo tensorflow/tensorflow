@@ -14,7 +14,7 @@
 # ==============================================================================
 """Test configs for shape."""
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -46,7 +46,7 @@ def make_shape_tests(options):
     new_shape = tf.compat.v1.placeholder(
         dtype=tf.int32, shape=shape_of_new_shape, name="new_shape")
     reshaped = tf.reshape(input_value, shape=new_shape)
-    out = tf.shape(reshaped, out_type=parameters["out_type"])
+    out = tf.shape(input=reshaped, out_type=parameters["out_type"])
     return [input_value, new_shape], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

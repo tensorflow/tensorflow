@@ -26,18 +26,10 @@ limitations under the License.
 // But to provide a C API to access the GPU delegate plugin, we do expose
 // some functions, which are declared below.
 
-#include "tensorflow/lite/experimental/acceleration/configuration/c/delegate_plugin.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// C API for the GPU delegate plugin.
-// Returns a pointer to a statically allocated table of function pointers.
-const TfLiteDelegatePlugin* TfLiteGpuDelegatePluginCApi();
-
-#ifdef __cplusplus
-}  // extern "C"
-#endif
+// NOLINTBEGIN(whitespace/line_length)
+/// For documentation, see
+/// third_party/tensorflow/lite/core/experimental/acceleration/configuration/c/gpu_plugin.h.
+// NOLINTEND(whitespace/line_length)
+#include "tensorflow/lite/core/experimental/acceleration/configuration/c/gpu_plugin.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_GPU_PLUGIN_H_

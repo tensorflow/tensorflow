@@ -29,10 +29,7 @@ nested_structure_coder = lazy_loader.LazyLoader(
     "tensorflow.python.saved_model.nested_structure_coder")
 
 
-def load(path,
-         element_spec,
-         compression,
-         reader_func):
+def _load(path, element_spec, compression, reader_func):
   return _LoadDataset(path, element_spec, compression, reader_func)
 
 
@@ -75,7 +72,7 @@ class _LoadDataset(dataset_ops.DatasetSource):
         compression=compression,
         reader_func=self._reader_func.function,
         **self._flat_structure)
-    super(_LoadDataset, self).__init__(variant_tensor)
+    super().__init__(variant_tensor)
 
   def _functions(self):
     return [self._reader_func]

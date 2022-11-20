@@ -14,9 +14,6 @@
 # ==============================================================================
 """Tests for `tf.data.Options`."""
 
-import platform
-import sys
-
 from absl.testing import parameterized
 
 from tensorflow.core.framework import dataset_options_pb2
@@ -73,9 +70,6 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsTwiceSameOption(self):
-    if sys.version_info >= (3, 8) and platform.system() == "Windows":
-      # TODO(b/165013260): Fix this
-      self.skipTest("Test is currently broken on Windows with Python 3.8")
     options1 = options_lib.Options()
     options1.autotune.enabled = False
     options2 = options_lib.Options()

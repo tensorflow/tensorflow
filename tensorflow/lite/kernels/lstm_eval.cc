@@ -667,12 +667,13 @@ void CalculateLstmOutputInteger8x8_16(
   // Note: unlike float/hybrid, the activation is always Tanh.
   tensor_utils::ApplyTanh(15 + cell_state_scale, cell_state, n_batch, n_cell,
                           scratch0);
-  tensor_utils::CwiseMul(output_gate, scratch0, hidden_scale_a, hidden_scale_b,
-                         n_batch, n_cell, hidden_zp, scratch1);
-
   const bool use_projection = (projection_weights != nullptr);
 
   if (use_projection) {
+    // b/246629213 the projection operation assumes -hidden_zp in CwiseMul
+    tensor_utils::CwiseMul(output_gate, scratch0, hidden_scale_a,
+                           hidden_scale_b, n_batch, n_cell, -hidden_zp,
+                           scratch1);
     // Note: no bias like in float/hybrid
     std::fill_n(output_state, n_batch * n_output, 0);
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
@@ -684,7 +685,9 @@ void CalculateLstmOutputInteger8x8_16(
                                   quantized_proj_clip);
     }
   } else {
-    std::copy_n(scratch1, n_batch * n_output, output_state);
+    tensor_utils::CwiseMul(output_gate, scratch0, hidden_scale_a,
+                           hidden_scale_b, n_batch, n_cell, hidden_zp,
+                           output_state);
   }
 }
 

@@ -21,10 +21,10 @@ limitations under the License.
 #include <stack>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -130,6 +130,27 @@ const HloInstruction* GetRealHeroForMultiOutputFusion(
   return fused_expression_root->operands()[0];
 }
 
+// Returns whether the output of a fusion with reduction are consistent with
+// `first_reduce`.
+static bool IsFusedReductionOutputConsistent(
+    const HloInstruction* inst, const HloInstruction* first_reduce) {
+  if (IsReductionFromOrToContiguousDimensions(*inst)) {
+    // Shapes, layouts and dimensions must be the same for all reduces
+    // inside of this fusion.
+    return ShapeUtil::EqualIgnoringElementType(first_reduce->shape(),
+                                               inst->shape()) &&
+           ShapeUtil::EqualIgnoringElementType(
+               first_reduce->operand(0)->shape(), inst->operand(0)->shape()) &&
+           ShapeUtil::EqualIgnoringElementType(
+               first_reduce->operand(1)->shape(), inst->operand(1)->shape()) &&
+           first_reduce->dimensions() == inst->dimensions();
+  }
+  return ShapeUtil::CompatibleIgnoringElementType(
+             first_reduce->operand(0)->shape(), inst->shape()) &&
+         LayoutUtil::Equal(first_reduce->operand(0)->shape().layout(),
+                           inst->shape().layout());
+}
+
 FusionDecision ShapesCompatibleForMultiOutputFusion(
     const HloInstruction& instr1, const HloInstruction& instr2) {
   // Multi-output fusion kernels share a common parallel loop. The loop
@@ -159,7 +180,7 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
   bool hero2_is_unnested_transpose = FindAnyTiledTranspose(*hero2).has_value();
 
   if (hero1_is_unnested_reduce && hero2_is_unnested_reduce &&
-      !AreFusedReductionOutputsConsistent({hero1, hero2}, hero1)) {
+      !IsFusedReductionOutputConsistent(hero2, hero1)) {
     return "tiled reductions with different shapes";
   } else if (hero1_is_unnested_transpose && hero2_is_unnested_transpose &&
              (!ShapeUtil::EqualIgnoringElementType(hero1->shape(),
@@ -258,10 +279,6 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
     return "the producer is not fusible as it is a multi-output fusion";
   }
 
-  if (CreatesHeavyComputation(producer, consumer)) {
-    return "the fusion would create a heavy computation";
-  }
-
   // Fuse scalar constants into loop fusion nodes. This reduces the number of
   // parameters and makes matching scalar broadcasts easier.
   //
@@ -319,8 +336,6 @@ FusionDecision IsProducerConsumerMultiOutputFusible(
     return "producer is not loop-fusible";
   } else if (!IsFusibleAsMultiOutputFusionRoot(consumer)) {
     return "consumer is not fusible as multi-output-fusion-root";
-  } else if (CreatesHeavyComputation(producer, consumer)) {
-    return "fusion creates heavy computation";
   } else if (NoFusionPossible fusible =
                  !ShapesCompatibleForMultiOutputFusion(producer, consumer)) {
     return !fusible;
@@ -367,8 +382,7 @@ static int64_t SharedMemoryUsageNoCache(const HloInstruction& instr) {
   return 0;
 }
 
-static int64_t SharedMemoryUsage(const HloInstruction& instr,
-                                 FusionInfoCache* cache = nullptr) {
+int64_t SharedMemoryUsage(const HloInstruction& instr, FusionInfoCache* cache) {
   if (!cache) {
     return SharedMemoryUsageNoCache(instr);
   }

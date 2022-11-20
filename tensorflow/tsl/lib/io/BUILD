@@ -6,6 +6,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/c/experimental/filesystem:__pkg__",
         "//tensorflow/c/experimental/filesystem/plugins/posix:__pkg__",
@@ -14,6 +15,7 @@ package(
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/io:__subpackages__",
+        "//tensorflow/tsl/profiler:__subpackages__",
     ],
     licenses = ["notice"],
 )

@@ -694,12 +694,20 @@ class BinaryOpsTest(xla_test.XLATestCase):
           rtol=7e-15 if dtype == np.float64 else None,
           atol=3.9e-15 if dtype == np.float64 else None)
 
-    if dtype not in self.complex_types:  # floordiv unsupported for complex.
+    # floordiv/truncatediv unsupported for complex.
+    if dtype not in self.complex_types:
       self._testBinary(
           gen_math_ops.floor_div,
           np.array([3, 3, -1, -9, -8], dtype=dtype),
           np.array([2, -2, 7, 2, -4], dtype=dtype),
           expected=np.array([1, -2, -1, -5, 2], dtype=dtype))
+
+      self._testBinary(
+          gen_math_ops.truncate_div,
+          np.array([3, 3, -1, -9, -8.1], dtype=dtype),
+          np.array([2, -2, 7, 2, -4], dtype=dtype),
+          expected=np.array([1, -1, 0, -4, 2], dtype=dtype))
+
     if dtype in self.signed_int_types:
       # Overflow cases.
       int_min = np.iinfo(dtype).min

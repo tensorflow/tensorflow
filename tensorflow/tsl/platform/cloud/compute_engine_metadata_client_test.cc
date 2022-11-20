@@ -24,8 +24,8 @@ TEST(ComputeEngineMetadataClientTest, GetMetadata) {
   const string example_response = "example response";
 
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
-      "Uri: http://metadata/computeMetadata/v1/instance/service-accounts"
-      "/default/token\n"
+      "Uri: http://metadata.google.internal/computeMetadata/v1/instance"
+      "/service-accounts/default/token\n"
       "Header Metadata-Flavor: Google\n",
       example_response)});
 
@@ -46,13 +46,13 @@ TEST(ComputeEngineMetadataClientTest, RetryOnFailure) {
 
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
-           "Uri: http://metadata/computeMetadata/v1/instance/service-accounts"
-           "/default/token\n"
+           "Uri: http://metadata.google.internal/computeMetadata/v1/instance"
+           "/service-accounts/default/token\n"
            "Header Metadata-Flavor: Google\n",
            "", errors::Unavailable("503"), 503),
        new FakeHttpRequest(
-           "Uri: http://metadata/computeMetadata/v1/instance/service-accounts"
-           "/default/token\n"
+           "Uri: http://metadata.google.internal/computeMetadata/v1/instance"
+           "/service-accounts/default/token\n"
            "Header Metadata-Flavor: Google\n",
            example_response)});
 

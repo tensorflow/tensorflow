@@ -1,25 +1,10 @@
-exports_files(["LICENSE"])
+load("@org_tensorflow//tensorflow:tensorflow.bzl", "tf_openmp_copts")
+load("@org_tensorflow//third_party/mkl:build_defs.bzl", "if_mkl")
+load("@org_tensorflow//third_party/mkl_dnn:build_defs.bzl", "if_mkldnn_openmp")
+load("@org_tensorflow//third_party/mkl:build_defs.bzl", "if_mkl_ml")
+load("@org_tensorflow//third_party:common.bzl", "template_rule")
 
-load(
-    "@org_tensorflow//third_party/mkl:build_defs.bzl",
-    "if_mkl",
-)
-load(
-    "@org_tensorflow//tensorflow:tensorflow.bzl",
-    "tf_openmp_copts",
-)
-load(
-    "@org_tensorflow//third_party/mkl_dnn:build_defs.bzl",
-    "if_mkldnn_openmp",
-)
-load(
-    "@org_tensorflow//third_party/mkl:build_defs.bzl",
-    "if_mkl_ml",
-)
-load(
-    "@org_tensorflow//third_party:common.bzl",
-    "template_rule",
-)
+exports_files(["LICENSE"])
 
 _CMAKE_COMMON_LIST = {
     "#cmakedefine DNNL_GPU_RUNTIME DNNL_RUNTIME_${DNNL_GPU_RUNTIME}": "#define DNNL_GPU_RUNTIME DNNL_RUNTIME_NONE",

@@ -151,6 +151,14 @@ message LayoutProto {
   // array is assumed to be dense.
   repeated DimLevelType dim_level_types = 9;
 
+  // Whether each dimension is unique or ordered.  Each of the following lists
+  // must be empty, or have one entry for each entry of dim_level_types.  If
+  // either list is empty, all dimensions are assumed to be unique and ordered,
+  // respectively.  Entries in this list may not be false for some DimLevelType
+  // values (such as DIM_DENSE in particular).
+  repeated bool dim_unique = 13;
+  repeated bool dim_ordered = 14;
+
   // Sequence of dimension numbers, from minor (fastest varying index) to major
   // (slowest varying index). This field is required.
   repeated int64 minor_to_major = 1;
@@ -794,9 +802,9 @@ message WhileLoopBackendConfig {
   KnownTripCount known_trip_count = 1;
 }
 
-// Specifies a pair of output/operand buffers for kCustomCall that alias each
-// other.
-message CustomCallOutputOperandAliasing {
+// Specifies a pair of output/operand buffers that alias each other for
+// kCustomCall and kFusion
+message OutputOperandAliasing {
   repeated int64 output_shape_index = 1;
   int64 operand_index = 2;
   repeated int64 operand_shape_index = 3;

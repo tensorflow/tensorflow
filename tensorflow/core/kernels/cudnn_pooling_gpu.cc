@@ -137,6 +137,11 @@ void DnnPooling3dGradOp<T>::Compute(
       << "For MaxPoolGrad, both tensor_in and tensor_out needs to be "
          "specified";
 
+  // If input is empty, we are done.
+  if (tensor_in_shape.num_elements() == 0) {
+    return;
+  }
+
   const int64_t in_batch = GetTensorDim(tensor_in_shape, data_format, 'N');
   const int64_t in_features = GetTensorDim(tensor_in_shape, data_format, 'C');
 

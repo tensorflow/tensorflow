@@ -2,7 +2,10 @@
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
-package(default_visibility = [":friends"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
+)
 
 package_group(
     name = "friends",
@@ -27,9 +30,9 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:heap_simulator",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_live_range",
         "//tensorflow/compiler/xla/service:hlo_memory_scheduler",
         "//tensorflow/compiler/xla/service:hlo_ordering",
@@ -57,7 +60,7 @@ tf_cc_binary(
     deps = [
         ":auto_sharding",
         "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
         "//tensorflow/tsl/platform:platform_port",

@@ -12,6 +12,7 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud", "get_co
 
 # TF to TFRT kernels conversion.
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -38,7 +39,6 @@ package_group(
         "//smartass/brain/ops/...",
         "//tensorflow_serving/servables/tensorflow/google/...",
         "//third_party/tf_runtime_google/...",
-        "//third_party/auroraml/...",
     ]),
 )
 
@@ -113,8 +113,8 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
-        "//tensorflow/compiler/xla/mlir/ir/runtime:rt",
-        "//tensorflow/compiler/xla/mlir/transforms/runtime:compiler",
+        "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:compiler",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_passes",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/compiler/xla/mlir_hlo:transforms_passes",
@@ -198,8 +198,8 @@ tfrt_cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
-        "//tensorflow/compiler/xla/mlir/transforms/runtime:compiler",
-        "//tensorflow/compiler/xla/mlir/utils/runtime:async_runtime_api",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:compiler",
+        "//tensorflow/compiler/xla/mlir/runtime/utils:async_runtime_api",
         "//tensorflow/compiler/xla/runtime:arguments",
         "//tensorflow/compiler/xla/runtime:async_runtime",
         "//tensorflow/compiler/xla/runtime:executable",
@@ -372,7 +372,6 @@ cc_library(
         "transforms/merge_tf_if_ops.cc",
         "transforms/optimize.cc",
         "transforms/optimize_tf_control_flow_side_effect.cc",
-        "transforms/remote_run_encapsulate.cc",
         "transforms/remove_device_attribute.cc",
         "transforms/remove_tf_if_const_args.cc",
         "transforms/reorder_assert.cc",

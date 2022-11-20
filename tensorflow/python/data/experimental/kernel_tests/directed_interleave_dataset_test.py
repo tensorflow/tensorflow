@@ -19,12 +19,14 @@ import numpy as np
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import test
 
 
@@ -91,7 +93,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
       ], weights)
       dataset = dataset.take(num_samples)
 
-      next_element = self.getNext(dataset)
+      next_element = self.getNext(dataset, requires_initialization=True)
       freqs = np.zeros([classes])
       for _ in range(num_samples):
         freqs[self.evaluate(next_element())] += 1
@@ -114,7 +116,8 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     sample_dataset = dataset_ops.Dataset.sample_from_datasets(
         datasets, weights=weights, stop_on_empty_dataset=True)
 
-    samples_list = self.getIteratorOutput(self.getNext(sample_dataset))
+    samples_list = self.getIteratorOutput(self.getNext(
+        sample_dataset, requires_initialization=True))
     self.assertEqual(samples_list.count(-1), 1)
 
   @combinations.generate(
@@ -131,7 +134,8 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     sample_dataset = dataset_ops.Dataset.sample_from_datasets(
         datasets, weights=weights, stop_on_empty_dataset=False).take(100)
 
-    samples_list = self.getIteratorOutput(self.getNext(sample_dataset))
+    samples_list = self.getIteratorOutput(self.getNext(
+        sample_dataset, requires_initialization=True))
     self.assertLen(samples_list, 100)
     self.assertEqual(samples_list.count(-1), 1)
 
@@ -147,7 +151,8 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     ]
     sample_dataset = dataset_ops.Dataset.sample_from_datasets(
         datasets, weights=weights, stop_on_empty_dataset=True)
-    self.assertDatasetProduces(sample_dataset, [1, 1])
+    self.assertDatasetProduces(sample_dataset, [1, 1],
+                               requires_initialization=True)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
@@ -160,7 +165,8 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     ]
     sample_dataset = dataset_ops.Dataset.sample_from_datasets(
         datasets, weights=weights, stop_on_empty_dataset=True)
-    self.assertDatasetProduces(sample_dataset, [])
+    self.assertDatasetProduces(sample_dataset, [],
+                               requires_initialization=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testSampleFromDatasetsSkippingDatasetsWithZeroWeight(self):
@@ -200,7 +206,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     ds = dataset_ops.Dataset.sample_from_datasets([ds1, ds2],
                                                   weights=[0.3, 0.7])
     ds = ds.flat_map(lambda x: x)
-    next_element = self.getNext(ds)
+    next_element = self.getNext(ds, requires_initialization=True)
     self.evaluate(next_element())
 
   @combinations.generate(test_base.default_test_combinations())
@@ -330,24 +336,67 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
       dataset_ops.Dataset.choose_from_datasets(datasets, choice_dataset=None)
 
 
+class ChooseFromDatasetsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                       parameterized.TestCase):
+
+  def _build_dataset(self,
+                     num_datasets,
+                     num_elements_per_dataset,
+                     options=None):
+    datasets = [
+        dataset_ops.Dataset.range(num_elements_per_dataset)
+        for _ in range(num_datasets)
+    ]
+    indices = []
+    for i in range(num_datasets):
+      indices = indices + ([i] * num_elements_per_dataset)
+    shuffled_indices = stateless_random_ops.stateless_shuffle(
+        np.int64(indices), seed=[1, 2])
+    choice_dataset = dataset_ops.Dataset.from_tensor_slices(shuffled_indices)
+    dataset = dataset_ops.Dataset.choose_from_datasets(datasets, choice_dataset)
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, symbolic_checkpoint):
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(
+        self, lambda: self._build_dataset(5, 20, options), num_outputs=100)
+
+
 class SampleFromDatasetsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                        parameterized.TestCase):
 
-  def _build_dataset(self, probs, num_samples):
+  def _build_dataset(self, probs, num_samples, options=None):
     datasets = [
         dataset_ops.Dataset.from_tensors(i).repeat(None)
         for i in range(len(probs))
     ]
     dataset = dataset_ops.Dataset.sample_from_datasets(
         datasets, probs, seed=1813)
-    return dataset.take(num_samples)
+    dataset = dataset.take(num_samples)
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def test(self, verify_fn):
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, symbolic_checkpoint):
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
     verify_fn(
-        self, lambda: self._build_dataset([0.5, 0.5], 100), num_outputs=100)
+        self,
+        lambda: self._build_dataset([0.5, 0.5], 100, options),
+        num_outputs=100)
 
 
 if __name__ == "__main__":

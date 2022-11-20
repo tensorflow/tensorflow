@@ -6,6 +6,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -50,7 +51,7 @@ py_strict_test(
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
-        "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",

@@ -87,7 +87,7 @@ mlir::LogicalResult CreateSplitOp(const int num_split,
   // Creates a split op that splits |src_input| along |split_dimension|.
   llvm::SmallVector<mlir::Type, 4> output_types(num_split, output_type);
   *split_op = builder->create<mlir::TF::SplitOp>(
-      location, output_types, split_dimension_op.output(), src_input);
+      location, output_types, split_dimension_op.getOutput(), src_input);
   (*split_op)->setAttr(
       kNumSplitAttr,
       builder->getIntegerAttr(builder->getIntegerType(32), num_split));
@@ -129,7 +129,7 @@ mlir::TF::ConcatOp CreateConcatOp(const int concat_dimension,
   }
 
   return builder->create<mlir::TF::ConcatOp>(
-      location, output_type, concat_dimension_op.output(), inputs);
+      location, output_type, concat_dimension_op.getOutput(), inputs);
 }
 
 // For tile sharded inputs to TPU computation, inject split op between the
@@ -264,14 +264,15 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
         }
       } else {
         assert(input_sharding_type == xla::OpSharding::OTHER);
-        if (partitioned_input.inputs().size() != num_cores_per_replica)
-          return tiled_sharding_mismatched(partitioned_input.inputs().size());
+        if (partitioned_input.getInputs().size() != num_cores_per_replica)
+          return tiled_sharding_mismatched(
+              partitioned_input.getInputs().size());
 
         for (int i = 0; i < sharding.tile_assignment_devices_size(); ++i) {
           const int assigned_logical_device =
               sharding.tile_assignment_devices(i);
           (*input_list)[assigned_logical_device].emplace_back(
-              partitioned_input.inputs()[i]);
+              partitioned_input.getInputs()[i]);
         }
       }
       continue;
@@ -604,7 +605,7 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
 
       if (output_sharding_type == xla::OpSharding::REPLICATED) {
         for (const auto& index_and_output :
-             llvm::enumerate(partitioned_output.output())) {
+             llvm::enumerate(partitioned_output.getOutput())) {
           const auto output_from_logical_device =
               new_parallel_execute.GetRegionOutputs(
                   cluster_idx +
@@ -621,7 +622,7 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
                 &tile_sharded_outputs)))
           return mlir::failure();
         for (auto result :
-             llvm::zip(partitioned_output.output(), tile_sharded_outputs))
+             llvm::zip(partitioned_output.getOutput(), tile_sharded_outputs))
           std::get<0>(result).replaceAllUsesWith(std::get<1>(result));
       }
       continue;

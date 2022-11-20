@@ -68,6 +68,7 @@ class L2LossOp<GPUDevice, T> : public OpKernel {
 REGISTER_GPU_KERNEL(float);
 REGISTER_GPU_KERNEL(double);
 REGISTER_GPU_KERNEL(Eigen::half);
+REGISTER_GPU_KERNEL(Eigen::bfloat16);
 #undef REGISTER_GPU_KERNEL
 
 }  // namespace tensorflow

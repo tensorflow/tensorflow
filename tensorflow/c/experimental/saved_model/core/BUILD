@@ -11,6 +11,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/c:__subpackages__",
         "//tensorflow/c/experimental/saved_model/internal:__pkg__",

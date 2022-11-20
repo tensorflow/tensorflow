@@ -273,6 +273,35 @@ module {
 
 // -----
 
+// Cluster formation that requires reordering users of the cluster op.
+
+module {
+  // CHECK-LABEL: func @dominanceorder
+  // CHECK-SAME: (%[[ARG0:.*]]: tensor<?xi32>)
+  func.func @dominanceorder(%arg0: tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>) {
+    %0:2 = tf_executor.graph {
+      %1:3 = tf_executor.island {
+        %2 = "tf.A"(%arg0) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
+        %3 = "tf.B"(%2) : (tensor<?xi32>) -> tensor<?xi32>
+        %4 = "tf.C"(%2) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
+        tf_executor.yield %3, %4 : tensor<?xi32>, tensor<?xi32>
+
+        // CHECK: %[[TPU0_OUTPUT:.*]]:2 = "tf_device.launch"
+        // CHECK: %[[A:.*]] = "tf.A"(%[[ARG0]])
+        // CHECK: %[[C:.*]] = "tf.C"(%[[A]])
+        // CHECK: tf_device.return %[[A]], %[[C]]
+
+        // CHECK: %[[B:.*]] = "tf.B"(%[[TPU0_OUTPUT]]#0)
+        // CHECK: tf_executor.yield %[[B]], %[[TPU0_OUTPUT]]#1
+      }
+      tf_executor.fetch %1#0, %1#1 : tensor<?xi32>, tensor<?xi32>
+    }
+    func.return %0#0, %0#1 : tensor<?xi32>, tensor<?xi32>
+  }
+}
+
+// -----
+
 // Multiple device clusters with intertwined instructions in original block.
 
 module {

@@ -8,7 +8,10 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_custom_op_library")
 
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
 
 tf_custom_op_library(
     name = "zero_out_op_kernel_1.so",

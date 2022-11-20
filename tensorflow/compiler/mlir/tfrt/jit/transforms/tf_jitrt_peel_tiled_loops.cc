@@ -15,7 +15,8 @@ limitations under the License.
 
 #include <utility>
 
-#include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
+#include "gml_st/transforms/peeling/peeling.h"
+#include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
@@ -32,28 +33,19 @@ namespace {
 #define GEN_PASS_DEF_PEELTILEDLOOPS
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
-constexpr llvm::StringRef kWasPeeledAttr = "PeelStLoopsPeeledAttr";
-
+using mlir::gml_st::ForOp;
 using mlir::gml_st::LoopOp;
+using mlir::gml_st::ParallelOp;
 
-struct PeelGmlStLoop : public mlir::OpRewritePattern<LoopOp> {
-  using mlir::OpRewritePattern<LoopOp>::OpRewritePattern;
+template <typename LoopTy>
+struct PeelGmlStLoop : public mlir::OpRewritePattern<LoopTy> {
+  using mlir::OpRewritePattern<LoopTy>::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
-      LoopOp loop, mlir::PatternRewriter &rewriter) const override {
-    if (loop->hasAttr(kWasPeeledAttr)) return mlir::failure();
-    auto true_attr = mlir::BoolAttr::get(rewriter.getContext(), true);
-    loop->setAttr(kWasPeeledAttr, true_attr);
-    for (int peeled_idx = loop.getNumLoops() - 1; peeled_idx >= 0;
-         peeled_idx--) {
-      LoopOp peel;
-      // Mark the new loop if one was created
-      if (mlir::gml_st::peelAndCanonicalizeGmlStLoop(rewriter, loop, peeled_idx,
-                                                     peel)
-              .succeeded())
-        peel->setAttr(kWasPeeledAttr, true_attr);
-    }
-    return mlir::success();
+      LoopTy loop, mlir::PatternRewriter &rewriter) const override {
+    if (hasTransformationAttr(loop, mlir::gml_st::kPeeledMarker))
+      return mlir::failure();
+    return mlir::failure(peelAllLoops(loop, rewriter).empty());
   }
 };
 
@@ -68,16 +60,24 @@ struct PeelTiledLoopsPass
     mlir::RewritePatternSet canonicalizations(func_op.getContext());
     LoopOp::getCanonicalizationPatterns(canonicalizations,
                                         func_op.getContext());
+    ForOp::getCanonicalizationPatterns(canonicalizations, func_op.getContext());
     mlir::linalg::populateLinalgTilingCanonicalizationPatterns(
         canonicalizations);
     (void)applyPatternsAndFoldGreedily(func_op, std::move(canonicalizations));
 
     mlir::RewritePatternSet loop_peeling(func_op.getContext());
-    loop_peeling.add<PeelGmlStLoop>(func_op.getContext());
+    loop_peeling.add<PeelGmlStLoop<LoopOp>, PeelGmlStLoop<ParallelOp>,
+                     PeelGmlStLoop<ForOp>>(func_op.getContext());
     (void)applyPatternsAndFoldGreedily(func_op, std::move(loop_peeling));
 
     func_op->walk([&](LoopOp op) {
-      if (op->hasAttr(kWasPeeledAttr)) op->removeAttr(kWasPeeledAttr);
+      removeTransformationAttr(op, mlir::gml_st::kPeeledMarker);
+    });
+    func_op->walk([&](ParallelOp op) {
+      removeTransformationAttr(op, mlir::gml_st::kPeeledMarker);
+    });
+    func_op->walk([&](ForOp op) {
+      removeTransformationAttr(op, mlir::gml_st::kPeeledMarker);
     });
   }
 };

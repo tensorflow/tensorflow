@@ -15,6 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_SHIMS_C_EXPERIMENTAL_ACCELERATION_CONFIGURATION_XNNPACK_H_
 #define TENSORFLOW_LITE_CORE_SHIMS_C_EXPERIMENTAL_ACCELERATION_CONFIGURATION_XNNPACK_H_
 
-#include "tensorflow/lite/experimental/acceleration/configuration/c/xnnpack_plugin.h"
+#include "tensorflow/lite/core/experimental/acceleration/configuration/c/xnnpack_plugin.h"
 
 #endif  // TENSORFLOW_LITE_CORE_SHIMS_C_EXPERIMENTAL_ACCELERATION_CONFIGURATION_XNNPACK_H_

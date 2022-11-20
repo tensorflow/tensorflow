@@ -1318,6 +1318,7 @@ result_shapes: Shapes of all results.
 REGISTER_OP("XlaCallModule")
     .Input("args: Tin")
     .Output("output: Tout")
+    .Attr("version: int")
     .Attr("module: string")
     .Attr("Sout: list(shape) >= 0")
     .Attr("Tout: list(type) >= 0")
@@ -1350,11 +1351,7 @@ very likely to change. This op will be used only in jax2tf under an
 experimental flag.
 
 This is an experimental op to allow a smooth evolution of jax2tf towards
-emitting and serializing MHLO directly from JAX. At the moment this op
-carries a serialized MHLO module, therefore there are no backward-compatibility
-guarantees, and should not be used for serialization.
-Eventually, the op will carry a MHLO object, which will have
-backwards-compatibility guarantees.
+emitting and serializing StableHLO directly from JAX.
 
 The serialized module must return a tuple if and only if the Sout is an empty
 list or a list with more than 1 elements. The length of Tout and Sout must
@@ -1373,6 +1370,9 @@ E.g., the specification "2.1" denotes the value args[2].shape[1].
 
 args: A list of `Tensor` with possibly different types to be passed as arguments
   to the HLO module.
+version: Changes when we change the semantics of the op, to support backwards
+  compatibility. Version 1 carries an MHLO text or bytecode `module`. From
+  version 2, the op carries a StableHLO text or bytecode `module`.
 module: A serialized computation, a text or bytecode representation of
   an mlir.Module.
 Tout: List of output tensor data types.

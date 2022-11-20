@@ -24,8 +24,8 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -121,10 +121,10 @@ class PjRtExecutable {
       const = 0;
 
   // Returns a list of parameter OpSharding protos.
-  std::optional<std::vector<OpSharding>> GetParameterShardings() const;
+  virtual std::optional<std::vector<OpSharding>> GetParameterShardings() const;
 
   // Returns a list of output OpSharding protos.
-  std::optional<std::vector<OpSharding>> GetOutputShardings() const;
+  virtual std::optional<std::vector<OpSharding>> GetOutputShardings() const;
 
   // Return memory stats that allow callers to estimate device memory usage
   // when running this executable.
@@ -140,6 +140,10 @@ class PjRtExecutable {
   // Return a fingerprint of this executable.
   virtual StatusOr<std::string> FingerprintExecutable() const {
     return Unimplemented("Fingerprinting executable is not supported.");
+  }
+
+  virtual StatusOr<struct CompileOptions> GetCompileOptions() const {
+    return Unimplemented("CompileOptions not available.");
   }
 };
 

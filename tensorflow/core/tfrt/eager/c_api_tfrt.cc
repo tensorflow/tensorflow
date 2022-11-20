@@ -55,7 +55,6 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_tensor.h"
 #include "tensorflow/core/runtime_fallback/util/attr_util.h"
 #include "tensorflow/core/runtime_fallback/util/tensor_util.h"
-#include "tensorflow/core/tfrt/eager/c_api_tfrt_distributed_interface.h"
 #include "tensorflow/core/tfrt/eager/core_runtime/op_handler_registry.h"
 #include "tensorflow/core/tfrt/eager/core_runtime/op_handler_selector.h"
 #include "tensorflow/core/tfrt/eager/virtual_device.h"
@@ -1024,10 +1023,6 @@ tensorflow::Status ContextInterface::BuildFunctionRequestContext(
 
   TF_RETURN_IF_ERROR(tensorflow::tfd::SetUpKernelFallbackCompatRequestContext(
       &request_context_builder, runner_table, GetEagerContext()));
-  if (distributed_manager_ != nullptr) {
-    down_cast<DistributedManagerContextInterface*>(distributed_manager_.get())
-        ->UpdateRequestContextBuilder(&request_context_builder);
-  }
   auto expected_request_context = std::move(request_context_builder).build();
   if (!expected_request_context) {
     return tensorflow::errors::Internal(
@@ -1497,12 +1492,6 @@ tensorflow::Status OperationInterface::Initialize() {
     return tensorflow::errors::NotFound("Cannot find device manager");
   // TODO(tfrt-devs): support remote devices in TFRT.
   for (auto d : device_mgr->ListDevices()) dev_set.AddDevice(d);
-  if (context_->GetDistributedManager() != nullptr &&
-      context_->UseTfrtDistributedRuntime()) {
-    down_cast<DistributedManagerContextInterface*>(
-        context_->GetDistributedManager())
-        ->PopulateRemoteDevices(&dev_set);
-  }
   FunctionCache::FunctionCacheResult result;
 
   tensorflow::TfrtFunctionCompileOptions compile_options;

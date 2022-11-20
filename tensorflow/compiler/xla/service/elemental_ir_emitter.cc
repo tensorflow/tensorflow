@@ -32,12 +32,12 @@ limitations under the License.
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -240,6 +240,23 @@ llvm::Value* EmitIntegralToFloating(llvm::Value* integer_value,
 }
 
 }  // namespace
+
+/*static*/ bool ElementalIrEmitter::OpInvalidatesCache(
+    const HloInstruction* hlo) {
+  switch (hlo->opcode()) {
+    // This list of ops was created by inspecting the code. There is no
+    // guarantee that it is complete.
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kDot:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kPad:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow:
+      return true;
+    default:
+      return false;
+  }
+}
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitUnaryOp(
     const HloInstruction* op, llvm::Value* operand_value) {

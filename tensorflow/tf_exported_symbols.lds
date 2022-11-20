@@ -12,3 +12,5 @@
 *PyInit_*
 *SE_*
 *SP_*
+*tsl*profiler*RemoteProfilerSession*
+*tsl*profiler*ProfilerServer*

@@ -24,6 +24,7 @@ load(
 # A lot of packages try to minimize binary size by depending on individual ops,\
 # so they need access here.
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],

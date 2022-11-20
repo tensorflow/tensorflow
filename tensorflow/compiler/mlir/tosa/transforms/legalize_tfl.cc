@@ -1886,7 +1886,7 @@ LogicalResult ConvertTFLRankOp::matchAndRewrite(
 
   RankedTensorType rank_type =
       RankedTensorType::get({1}, rewriter.getIntegerType(32));
-  auto rank_attr = DenseElementsAttr::get(rank_type, {rank});
+  auto rank_attr = DenseI32ArrayAttr::get(rewriter.getContext(), {rank});
   auto rank_const = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
                                                     rank_type, rank_attr);
 
@@ -1918,8 +1918,8 @@ LogicalResult ConvertTFLShapeOp::matchAndRewrite(
 
   RankedTensorType shape_type = RankedTensorType::get(
       {static_cast<int32_t>(shape_arr.size())}, rewriter.getIntegerType(32));
-  auto shape_attr =
-      DenseElementsAttr::get(shape_type, llvm::makeArrayRef(shape_arr));
+  auto shape_attr = DenseI32ArrayAttr::get(rewriter.getContext(),
+                                           llvm::makeArrayRef(shape_arr));
   auto shape_const = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
                                                      shape_type, shape_attr);
 
@@ -1990,17 +1990,19 @@ LogicalResult ConvertTFLFillOp::matchAndRewrite(
 
   RankedTensorType fill_type = RankedTensorType::get(
       ArrayRef<int64_t>(dims_vals), value_elem.getType().getElementType());
-  DenseElementsAttr fill_attr;
+  DenseArrayAttr fill_attr;
 
   // Convert to a compatible zero type.
   if (value_elem.getType().getElementType().isa<FloatType>()) {
     SmallVector<float> fill_arr(
         total_size, value_elem.getValues<APFloat>()[0].convertToFloat());
-    fill_attr = DenseElementsAttr::get(fill_type, llvm::makeArrayRef(fill_arr));
+    fill_attr = DenseF32ArrayAttr::get(rewriter.getContext(),
+                                       llvm::makeArrayRef(fill_arr));
   } else {
     SmallVector<int32_t> fill_arr(
         total_size, value_elem.getValues<APInt>()[0].getLimitedValue());
-    fill_attr = DenseElementsAttr::get(fill_type, llvm::makeArrayRef(fill_arr));
+    fill_attr = DenseI32ArrayAttr::get(rewriter.getContext(),
+                                       llvm::makeArrayRef(fill_arr));
   }
   auto fill_const_op = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
                                                        fill_type, fill_attr);
@@ -3169,9 +3171,9 @@ LogicalResult ConvertTFLYieldOp::matchAndRewrite(
 LogicalResult ConvertTFLCustomOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_custom_op = cast<TFL::CustomOp>(op);
-  rewriter.replaceOpWithNewOp<tosa::CustomOp>(op, op->getResultTypes(),
-                                              tfl_custom_op.getCustomCode(),
-                                              op->getOperands());
+  rewriter.replaceOpWithNewOp<tosa::CustomOp>(
+      op, op->getResultTypes(), tfl_custom_op.getCustomCode(), StringRef{},
+      StringRef{}, op->getOperands());
 
   return success();
 }

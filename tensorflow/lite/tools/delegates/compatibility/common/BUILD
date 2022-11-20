@@ -1,4 +1,5 @@
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -30,8 +31,8 @@ cc_library(
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:model_builder",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/tools/delegates/compatibility/protos:compatibility_result_cc",
         "//tensorflow/lite/tools/versioning:op_signature",

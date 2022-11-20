@@ -23,6 +23,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core:__subpackages__",
         "//tensorflow/security/fuzzing:__subpackages__",
@@ -313,6 +314,7 @@ filegroup(
         "tensor_shape.cc",
         "tensor_shape.h",
         "tensor_types.h",
+        "tensor_util.h",
         "tracking_allocator.h",
         "type_index.h",
         "type_traits.h",
@@ -575,7 +577,7 @@ cc_library(
     testonly = 1,
     srcs = ["fake_input.cc"],
     hdrs = ["fake_input.h"],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":attr_value_proto_cc",
         ":op_def_proto_cc",
@@ -616,31 +618,6 @@ cc_library(
         "//third_party/eigen3",
     ],
     alwayslink = 1,
-)
-
-cc_library(
-    name = "float8",
-    srcs = ["float8.cc"],
-    hdrs = ["float8.h"],
-    visibility = [
-        "//tensorflow/core:__subpackages__",
-        "//tensorflow/security/fuzzing:__subpackages__",
-    ],
-    deps = [
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
-tf_cc_test(
-    name = "float8_test",
-    srcs = ["float8_test.cc"],
-    deps = [
-        ":float8",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:test_benchmark",
-    ],
 )
 
 cc_library(
@@ -799,6 +776,7 @@ tf_cuda_library(
         "log_memory.h",
         "register_types.h",
         "tensor.h",
+        "tensor_util.h",
         "typed_allocator.h",
         "types.h",
         "variant.h",
@@ -825,6 +803,7 @@ tf_cuda_library(
         ":tensor_description_proto_cc",
         ":tensor_proto_cc",
         ":tensor_shape",
+        ":tensor_shape_proto_cc",
         ":tensor_types",
         ":type_index",
         ":type_traits",
@@ -852,6 +831,7 @@ tf_cuda_library(
         "//tensorflow/core/public:version",
         "//tensorflow/core/util:managed_stack_trace",
         "//tensorflow/tsl/framework:device_type",
+        "//tensorflow/tsl/util:byte_swap_array",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -1810,6 +1790,17 @@ tf_proto_library(
     make_default_target_header_only = True,
     protodeps = [
         ":model_proto",
+    ],
+)
+
+tf_proto_library(
+    name = "optimized_function_graph_proto",
+    srcs = ["optimized_function_graph.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    protodeps = [
+        ":types_proto",
+        ":graph_proto",
     ],
 )
 

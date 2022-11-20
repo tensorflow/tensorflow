@@ -30,13 +30,11 @@ limitations under the License.
 #include "pybind11/pytypes.h"
 #include "pybind11/stl_bind.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/pjrt/cpu_device.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/distributed.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
-#include "tensorflow/core/distributed_runtime/preemption/preemption_sync_manager.h"
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
@@ -78,6 +76,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/python/lib/core/bfloat16.h"
+#include "tensorflow/tsl/distributed_runtime/preemption/preemption_sync_manager.h"
 
 // TODO(phawkins): remove host_id properties after JAX is update to avoid them.
 
@@ -283,15 +282,6 @@ PYBIND11_MODULE(xla_extension, m) {
            py::arg("has_side_effects") = false);
 
   m.def(
-      "get_cpu_client",
-      [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
-        py::gil_scoped_release gil_release;
-        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
-                            GetCpuClient(asynchronous));
-        return std::make_shared<PyClient>(std::move(client));
-      },
-      py::arg("asynchronous") = true);
-  m.def(
       "get_tfrt_cpu_client",
       [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
         py::gil_scoped_release gil_release;
@@ -323,6 +313,10 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<StreamExecutorGpuDevice, PjRtDevice,
              ClientAndPtr<StreamExecutorGpuDevice>>
       gpu_device(m, "GpuDevice");
+  gpu_device.def_property_readonly(
+      "slice_index", &StreamExecutorGpuDevice::slice_index,
+      "Integer ID of a set of devices connected by "
+      "fast network, e.g., NVLink.");
   m.def(
       "get_gpu_client",
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
@@ -362,7 +356,7 @@ PYBIND11_MODULE(xla_extension, m) {
         []() -> StatusOr<std::shared_ptr<PyClient>> {
           py::gil_scoped_release gil_release;
           TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> c_api_client,
-                              GetCApiClient());
+                              GetCApiClient("TPU"));
           return std::make_shared<PyClient>(std::move(c_api_client));
         });
 #endif  // XLA_PYTHON_ENABLE_TPU
@@ -445,6 +439,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("get_parameter_shardings",
            &PyLoadedExecutable::GetParameterShardings)
       .def("keep_alive", &PyLoadedExecutable::KeepAlive)
+      .def("compile_options",
+           [](const PyLoadedExecutable& self) {
+             return self.pjrt_executable().GetCompileOptions();
+           })
       .def_property_readonly("traceback", &PyLoadedExecutable::traceback)
       .def_property_readonly("fingerprint",
                              [](PyLoadedExecutable* exec) -> py::object {
@@ -478,25 +476,25 @@ PYBIND11_MODULE(xla_extension, m) {
   BuildMlirSubmodule(m);
   BuildCustomCallShardingPybindAPI(m);
 
-  py::class_<tensorflow::PreemptionSyncManager,
-             std::unique_ptr<tensorflow::PreemptionSyncManager>>
+  py::class_<tsl::PreemptionSyncManager,
+             std::unique_ptr<tsl::PreemptionSyncManager>>
       preemption_sync_manager(m, "PreemptionSyncManager");
   preemption_sync_manager
       .def(
           "initialize",
-          [](tensorflow::PreemptionSyncManager& manager,
+          [](tsl::PreemptionSyncManager& manager,
              DistributedRuntimeClient* client) {
-            TF_ASSIGN_OR_RETURN(tensorflow::CoordinationServiceAgent * agent,
+            TF_ASSIGN_OR_RETURN(tsl::CoordinationServiceAgent * agent,
                                 client->GetCoordinationServiceAgent());
             return manager.Initialize(agent);
           },
           py::arg("distributed_client"))
       .def("reached_sync_point",
-           [](tensorflow::PreemptionSyncManager& manager, int step_counter) {
+           [](tsl::PreemptionSyncManager& manager, int step_counter) {
              return manager.ReachedSyncPoint(step_counter);
            });
   m.def("create_preemption_sync_manager",
-        []() { return tensorflow::CreatePreemptionSyncManager(); });
+        []() { return tsl::CreatePreemptionSyncManager(); });
 
   py::class_<DistributedRuntimeService,
              std::unique_ptr<DistributedRuntimeService>>
@@ -644,7 +642,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("get_output_shardings", &PjRtExecutable::GetOutputShardings)
       .def("get_parameter_shardings", &PjRtExecutable::GetParameterShardings)
       .def("get_compiled_memory_stats", &PjRtExecutable::GetCompiledMemoryStats)
-      .def("serialize", &PjRtExecutable::SerializeExecutable);
+      .def("compile_options", &PjRtExecutable::GetCompileOptions)
+      .def("serialize", [](const PjRtExecutable& exec) -> py::bytes {
+        return ValueOrThrow(exec.SerializeExecutable());
+      });
 
   m.def(
       "compile",

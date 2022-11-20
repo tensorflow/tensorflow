@@ -43,14 +43,21 @@ namespace tfrt_stub {
 // Contains request related info.
 struct RequestInfo {
   tfrt::RCReference<tfrt::RequestContext> tfrt_request_context;
-  std::unique_ptr<WorkQueueInterface> request_queue;
+  // If this request needs to create a new queue, it is stored here. Otherwise,
+  // it can be nullptr.
+  std::unique_ptr<WorkQueueInterface> request_queue_owner;
+  // The inter-op thread pool to be used for this request, and it must not be
+  // nullptr. If `request_queue_owner` is not nullptr, then `request_queue` is
+  // the raw pointer inside `request_queue_owner`.
+  WorkQueueInterface* request_queue = nullptr;
+  // The task runner used by tensorflow::OpKernel.
   std::function<void(std::function<void()>)> runner;
 };
 
 // Creates a `RequestInfo` given relative data.
 StatusOr<std::unique_ptr<RequestInfo>> SetUpRequestContext(
     const GraphExecutionRunOptions& run_options,
-    const SessionMetadata& model_metadata, tfrt::HostContext* host,
+    const SessionMetadata& model_metadata, const Runtime& runtime,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
     tfrt::ResourceContext* resource_context,
     const FallbackState& fallback_state);
@@ -61,11 +68,10 @@ tensorflow::Status GraphExecutionRunOnFunction(
     const GraphExecutionRunOptions& run_options,
     absl::string_view signature_name, const tfrt::Function& func,
     absl::Span<const tensorflow::Tensor> inputs,
-    absl::Span<const tensorflow::Tensor> captures,
     std::vector<tensorflow::Tensor>* outputs,
     tfrt::ResourceContext* resource_context, const Runtime& runtime,
     const FallbackState& fallback_state,
-    tfrt::RequestDeadlineTracker& req_deadline_tracker);
+    tfrt::RequestDeadlineTracker* req_deadline_tracker);
 
 // Creates a ResourceContext and populate it with per model resource from
 // Runtime. If `tpu_target` is set to kTpurt, also call a special
@@ -74,7 +80,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
 // TODO(b/178227859): Remove the need for the special handling for TPU here.
 std::unique_ptr<tfrt::ResourceContext> CreateResourceContext(
     const Runtime& runtime, tfrt::tpu::TpuModelResource* tpu_model_resource,
-    tensorflow::TfrtTpuInfraTarget tpu_target);
+    tensorflow::TfrtDeviceInfraTarget tpu_target);
 
 // Loads (if not yet) and runs a subgraph in a graph as per each request.
 class GraphExecutor {
@@ -178,6 +184,7 @@ class GraphExecutor {
   // no existing one yet, creates one first.
   StatusOr<std::reference_wrapper<const GraphExecutor::LoadedClientGraph>>
   GetOrCreateLoadedClientGraph(
+      const RunOptions& run_options,
       absl::Span<const std::string> input_tensor_names,
       absl::Span<const tensorflow::DataType> input_tensor_dtypes,
       absl::Span<const std::string> output_tensor_names,

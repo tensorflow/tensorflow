@@ -33,6 +33,9 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/cpu/backend_config.pb.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
@@ -42,9 +45,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/cpu/tiled_dot_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/vector_support_library.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -317,9 +317,9 @@ Status DotOpEmitter::EmitLinalgMatmul() {
           }
         }
 
-        llvm::SmallVector<llvm::StringRef, 4> iteratorTypes(
-            parallel_exprs.size(), mlir::getParallelIteratorTypeName());
-        iteratorTypes.push_back(mlir::getReductionIteratorTypeName());
+        llvm::SmallVector<mlir::utils::IteratorType, 4> iteratorTypes(
+            parallel_exprs.size(), mlir::utils::IteratorType::parallel);
+        iteratorTypes.push_back(mlir::utils::IteratorType::reduction);
         builder->create<mlir::linalg::GenericOp>(
             function.getLoc(),
             /*inputs=*/mlir::ValueRange{b, c},

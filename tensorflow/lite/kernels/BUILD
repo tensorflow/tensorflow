@@ -4,6 +4,7 @@ load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pybind_extension")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -387,6 +388,7 @@ cc_library(
         "//tensorflow/lite:macros",
         "//tensorflow/lite:external_cpu_backend_context",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "@pthreadpool//:pthreadpool",
     ] + select({
         # This select must match the similar select in `copts`
         "//tensorflow:linux_ppc64le": [],
@@ -743,7 +745,7 @@ cc_library(
         "@ruy//ruy/profiler:instrumentation",
         "//tensorflow/core/lib/random:philox_random",
         "//tensorflow/core/lib/random:random_distributions_utils",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         # TODO(b/179298174): Move out from the experimental directory.
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:cppmath",
@@ -2447,7 +2449,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",

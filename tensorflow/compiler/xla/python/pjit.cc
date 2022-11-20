@@ -59,12 +59,11 @@ struct PjitCacheEntry {
 
 class PjitFunction {
  public:
-  PjitFunction(py::function fun, py::function cache_miss,
+  PjitFunction(std::string function_name, py::function cache_miss,
                std::vector<int> static_argnums)
-      : cache_miss_(std::move(cache_miss)),
-        static_argnums_(std::move(static_argnums)) {
-    function_name_ = py::str(py::getattr(fun, "__name__", py::none()));
-  }
+      : function_name_(std::move(function_name)),
+        cache_miss_(std::move(cache_miss)),
+        static_argnums_(std::move(static_argnums)) {}
 
   PjitFunction(const PjitFunction&) = delete;
   PjitFunction& operator=(const PjitFunction&) = delete;
@@ -401,9 +400,9 @@ void BuildPjitSubmodule(py::module& m) {
   py::class_<PjitFunction>(m, "PjitFunction", py::dynamic_attr())
       .def("__call__", &PjitFunction::Call);
 
-  m.def("pjit", [](py::function fun, py::function cache_miss,
+  m.def("pjit", [](std::string function_name, py::function cache_miss,
                    std::vector<int> static_argnums) {
-    return PjitFunction(std::move(fun), std::move(cache_miss),
+    return PjitFunction(std::move(function_name), std::move(cache_miss),
                         std::move(static_argnums));
   });
 }

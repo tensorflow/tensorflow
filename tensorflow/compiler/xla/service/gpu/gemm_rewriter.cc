@@ -25,16 +25,16 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -354,7 +354,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                          HloInstruction **broadcast) {
     TF_RET_CHECK(slice_or_bitcast->user_count() == 1);
     TF_RET_CHECK((*broadcast)->user_count() == 1);
-    TF_RET_CHECK((*binary)->IsRoot() || (*binary)->user_count() == 1);
 
     // Re-broadcast the operand of broadcast to the shape of the GEMM.
     HloInstruction *gemm = slice_or_bitcast->mutable_operand(0);

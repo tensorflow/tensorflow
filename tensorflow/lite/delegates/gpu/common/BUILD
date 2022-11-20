@@ -3,6 +3,7 @@ load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//tensorflow:tensorflow.bzl", "workspace_root")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -93,6 +94,7 @@ cc_library(
         ":status",
         "//tensorflow/lite/delegates/gpu/common/task:testing_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:cast",
+        "//tensorflow/lite/delegates/gpu/common/tasks:concat_z",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_generic",
         "//tensorflow/lite/delegates/gpu/common/tasks:elementwise",
         "//tensorflow/lite/delegates/gpu/common/tasks:prelu",
@@ -241,7 +243,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite:framework_lib",

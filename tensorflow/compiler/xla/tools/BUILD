@@ -1,6 +1,6 @@
 # Tools and utilities that aid in XLA development and usage.
 
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -15,6 +15,7 @@ load(
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
@@ -199,8 +200,8 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/tsl/platform:env",
@@ -245,7 +246,7 @@ cc_library(
     hdrs = ["hlo_extractor.h"],
     deps = [
         "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -295,7 +296,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
@@ -326,8 +327,8 @@ cc_library(
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:despecializer",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_runner_interface",
         "//tensorflow/compiler/xla/stream_executor:platform",
@@ -355,7 +356,6 @@ xla_py_proto_library(
 
 cc_library(
     name = "run_hlo_module_lib",
-    testonly = True,
     srcs = ["run_hlo_module.cc"],
     hdrs = ["run_hlo_module.h"],
     deps = [
@@ -370,7 +370,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client/lib:testing",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_runner",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/tests:test_utils",
@@ -413,9 +413,9 @@ cc_library(
     hdrs = ["hlo_control_flow_flattening.h"],
     deps = [
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:call_graph",
         "//tensorflow/compiler/xla/service:collective_ops_utils",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_dce",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:tuple_util",

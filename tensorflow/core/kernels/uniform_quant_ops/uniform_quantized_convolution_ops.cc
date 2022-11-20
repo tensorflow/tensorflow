@@ -267,6 +267,125 @@ void ConvWithAccFunctionAndOutFunction(
   }
 }
 
+// Quantized Conv on per-tensor quantized padded and dilated transposed lhs and
+// per-tensor quantized transposed rhs.
+template <typename Tin, typename Tout>
+Status EvalLhsPerTensorAndRhsPerTensorQuantizedConv(
+    const Tensor& lhs, const Tensor& rhs,
+    const UniformQuantizedConvolutionParams& convolution_params,
+    const float lhs_scale, const int32_t lhs_zero_point, const float rhs_scale,
+    const int32_t rhs_zero_point, const float output_scale,
+    const int32_t output_zero_point, const int output_quantization_min_val,
+    const int output_quantization_max_val, Tensor& out) {
+  const double effective_multiplier =
+      static_cast<double>(lhs_scale) * rhs_scale / output_scale;
+  int32_t effective_quantized_multiplier;
+  int effective_shift;
+  TF_RETURN_IF_ERROR(QuantizeMultiplier(
+      effective_multiplier, effective_quantized_multiplier, effective_shift));
+
+  ConvWithAccFunctionAndOutFunction<Tin, Tin, Tout>(
+      lhs, rhs, convolution_params, out,
+      /*acc_f=*/
+      [lhs_zero_point, rhs_zero_point](Tin lhs_val, Tin rhs_val,
+                                       int64_t lhs_batch_idx,
+                                       int64_t out_feature_idx) {
+        return (static_cast<int32_t>(lhs_val) - lhs_zero_point) *
+               (static_cast<int32_t>(rhs_val) - rhs_zero_point);
+      },
+      /*out_f=*/
+      [effective_quantized_multiplier, effective_shift, output_zero_point,
+       output_quantization_min_val, output_quantization_max_val](
+          int32_t acc, int64_t lhs_batch_idx, int64_t out_feature_idx) {
+        return AffineRequantizeWithQuantizedMultiplierAndShift<int32_t, Tout>(
+            acc, effective_quantized_multiplier, effective_shift,
+            /*input_zero_point=*/0, output_zero_point,
+            output_quantization_min_val, output_quantization_max_val);
+      });
+  return OkStatus();
+}
+
+// Quantized Conv on per-tensor quantized padded and dilated transposed lhs and
+// per-channel quantized transposed rhs.
+template <typename Tin, typename Tout>
+Status EvalLhsPerTensorAndRhsPerChannelQuantizedConv(
+    OpKernelContext* context, const Tensor& lhs, const Tensor& rhs,
+    const UniformQuantizedConvolutionParams& convolution_params,
+    const float lhs_scale, const int32_t lhs_zero_point,
+    const Tensor& rhs_scales, const Tensor& rhs_zero_points,
+    const Tensor& output_scales, const Tensor& output_zero_points,
+    const int output_quantization_min_val,
+    const int output_quantization_max_val, Tensor& out) {
+  const int64_t out_feature_size = out.dim_size(1);
+  const float* rhs_scales_data = rhs_scales.flat<float>().data();
+  const int32_t* rhs_zero_points_data = rhs_zero_points.flat<int32_t>().data();
+
+  Tensor effective_quantized_multipliers;
+  TF_RETURN_IF_ERROR(context->allocate_temp(DT_INT32, rhs_scales.shape(),
+                                            &effective_quantized_multipliers));
+  Tensor effective_shifts;
+  TF_RETURN_IF_ERROR(
+      context->allocate_temp(DT_INT32, rhs_scales.shape(), &effective_shifts));
+  int32_t* effective_quantized_multipliers_data =
+      effective_quantized_multipliers.flat<int32_t>().data();
+  int32_t* effective_shifts_data = effective_shifts.flat<int32_t>().data();
+
+  const bool is_output_scales_scalar = output_scales.dims() == 0;
+
+  if (!is_output_scales_scalar) {
+    const float* output_scales_data = output_scales.flat<float>().data();
+    for (int64_t out_feature_idx = 0; out_feature_idx < out_feature_size;
+         ++out_feature_idx) {
+      const double effective_multiplier = static_cast<double>(lhs_scale) *
+                                          rhs_scales_data[out_feature_idx] /
+                                          output_scales_data[out_feature_idx];
+      TF_RETURN_IF_ERROR(QuantizeMultiplier(
+          effective_multiplier,
+          effective_quantized_multipliers_data[out_feature_idx],
+          effective_shifts_data[out_feature_idx]));
+    }
+  } else {
+    const float output_scale = output_scales.scalar<float>()();
+    for (int64_t out_feature_idx = 0; out_feature_idx < out_feature_size;
+         ++out_feature_idx) {
+      const double effective_multiplier = static_cast<double>(lhs_scale) *
+                                          rhs_scales_data[out_feature_idx] /
+                                          output_scale;
+      TF_RETURN_IF_ERROR(QuantizeMultiplier(
+          effective_multiplier,
+          effective_quantized_multipliers_data[out_feature_idx],
+          effective_shifts_data[out_feature_idx]));
+    }
+  }
+
+  const int32_t* output_zero_points_data =
+      output_zero_points.flat<int32_t>().data();
+  ConvWithAccFunctionAndOutFunction<Tin, Tin, Tout>(
+      lhs, rhs, convolution_params, out,
+      /*acc_f=*/
+      [lhs_zero_point, rhs_zero_points_data](Tin lhs_val, Tin rhs_val,
+                                             int64_t lhs_batch_idx,
+                                             int64_t out_feature_idx) {
+        return (static_cast<int32_t>(lhs_val) - lhs_zero_point) *
+               (static_cast<int32_t>(rhs_val) -
+                rhs_zero_points_data[out_feature_idx]);
+      },
+      /*out_f=*/
+      [effective_quantized_multipliers_data, effective_shifts_data,
+       output_zero_points_data, output_quantization_min_val,
+       output_quantization_max_val, is_output_scales_scalar](
+          int32_t acc, int64_t lhs_batch_idx, int64_t out_feature_idx) {
+        return AffineRequantizeWithQuantizedMultiplierAndShift<int32_t, Tout>(
+            acc, effective_quantized_multipliers_data[out_feature_idx],
+            effective_shifts_data[out_feature_idx],
+            /*input_zero_point=*/0,
+            output_zero_points_data[is_output_scales_scalar ? 0
+                                                            : out_feature_idx],
+            output_quantization_min_val, output_quantization_max_val);
+      });
+  return OkStatus();
+}
+
 // Quantized Conv on per-batch quantized padded and dilated transposed lhs and
 // per-tensor quantized transposed rhs.
 template <typename Tlhs, typename Trhs>
@@ -325,6 +444,72 @@ void EvalLhsPerBatchAndRhsPerChannelQuantizedConv(
         return acc * lhs_scales_data[lhs_batch_idx] *
                rhs_scales_data[out_feature_idx];
       });
+}
+
+// Given quantized `lhs` and quantized `rhs`, performs quantized convolution and
+// writes to `out`. Assumes that `out` is already allocated with correct size.
+template <typename Tin, typename Tout>
+Status EvalQuantizedConv(
+    OpKernelContext* context, const Tensor& lhs, const Tensor& rhs,
+    const UniformQuantizedConvolutionParams& convolution_params,
+    const Tensor& lhs_scales, const Tensor& lhs_zero_points,
+    const Tensor& rhs_scales, const Tensor& rhs_zero_points,
+    const Tensor& output_scales, const Tensor& output_zero_points,
+    int output_quantization_min_val, int output_quantization_max_val,
+    Tensor& out) {
+  const auto& dimension_numbers = convolution_params.dimension_numbers();
+  // Transpose lhs.
+  const auto& lhs_perm = LhsTransposePerm(dimension_numbers, lhs.dims());
+  Tensor lhs_transposed;
+  TF_RETURN_IF_ERROR(context->allocate_temp(
+      lhs.dtype(), TransposedShape(lhs.shape(), lhs_perm), &lhs_transposed));
+  Transpose<Tin>(lhs, lhs_perm, lhs_transposed);
+  // Transpose rhs.
+  const auto& rhs_perm = RhsTransposePerm(dimension_numbers, rhs.dims());
+  Tensor rhs_transposed;
+  TF_RETURN_IF_ERROR(context->allocate_temp(
+      rhs.dtype(), TransposedShape(rhs.shape(), rhs_perm), &rhs_transposed));
+  Transpose<Tin>(rhs, rhs_perm, rhs_transposed);
+  // Allocate tranposed_out.
+  const auto& out_perm = OutTransposePerm(dimension_numbers, out.dims());
+  Tensor out_transposed;
+  TF_RETURN_IF_ERROR(context->allocate_temp(
+      out.dtype(), TransposedShape(out.shape(), out_perm), &out_transposed));
+
+  Tensor lhs_padded_and_dilated;
+  TF_RETURN_IF_ERROR(
+      context->allocate_temp(lhs_transposed.dtype(),
+                             PaddedAndDilatedTransposedLhsShape(
+                                 lhs_transposed.shape(), convolution_params),
+                             &lhs_padded_and_dilated));
+  PadAndDilateTransposedLhs<Tin>(lhs_transposed, convolution_params,
+                                 lhs_zero_points, lhs_padded_and_dilated);
+
+  const float lhs_scale = lhs_scales.scalar<float>()();
+  const int32_t lhs_zero_point = lhs_zero_points.scalar<int32_t>()();
+  if (rhs_scales.dims() != 0) {
+    TF_RETURN_IF_ERROR(EvalLhsPerTensorAndRhsPerChannelQuantizedConv<Tin, Tout>(
+        context, lhs_padded_and_dilated, rhs_transposed, convolution_params,
+        lhs_scale, lhs_zero_point, rhs_scales, rhs_zero_points, output_scales,
+        output_zero_points, output_quantization_min_val,
+        output_quantization_max_val, out_transposed));
+  } else {
+    DCHECK_EQ(output_scales.dims(), 0);
+    const float rhs_scale = rhs_scales.scalar<float>()();
+    const int32_t rhs_zero_point = rhs_zero_points.scalar<int32_t>()();
+    const float output_scale = output_scales.scalar<float>()();
+    const int32_t output_zero_point = output_zero_points.scalar<int32_t>()();
+    TF_RETURN_IF_ERROR(EvalLhsPerTensorAndRhsPerTensorQuantizedConv<Tin, Tout>(
+        lhs_padded_and_dilated, rhs_transposed, convolution_params, lhs_scale,
+        lhs_zero_point, rhs_scale, rhs_zero_point, output_scale,
+        output_zero_point, output_quantization_min_val,
+        output_quantization_max_val, out_transposed));
+  }
+
+  // Transpose transposed_out back to out.
+  const auto& out_perm_back = OutBackTransposePerm(out_perm);
+  Transpose<Tout>(out_transposed, out_perm_back, out);
+  return OkStatus();
 }
 
 // Given float `lhs` and quantized `rhs`, performs per-batch dynamic range
@@ -413,6 +598,122 @@ Status EvalHybridConv(
 
 }  // namespace
 
+template <typename Tin, typename Tout>
+class UniformQuantizedConvolutionOp : public OpKernel {
+ public:
+  explicit UniformQuantizedConvolutionOp(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, convolution_params_.LoadFromAttrs(*context));
+
+    OP_REQUIRES_OK(context, context->GetAttr("output_quantization_min_val",
+                                             &output_quantization_min_val_));
+    OP_REQUIRES_OK(context, context->GetAttr("output_quantization_max_val",
+                                             &output_quantization_max_val_));
+
+    int lhs_quantization_axis;
+    OP_REQUIRES_OK(context, context->GetAttr("lhs_quantization_axis",
+                                             &lhs_quantization_axis));
+    OP_REQUIRES(
+        context, (lhs_quantization_axis == -1),
+        InvalidArgument("lhs_quantization_axis Attr must be -1 (per-tensor)."));
+    OP_REQUIRES_OK(context, context->GetAttr("rhs_quantization_axis",
+                                             &rhs_quantization_axis_));
+    OP_REQUIRES_OK(context, context->GetAttr("output_quantization_axis",
+                                             &output_quantization_axis_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& lhs = context->input(0);
+    const Tensor& rhs = context->input(1);
+    const Tensor& lhs_scales = context->input(2);
+    const Tensor& lhs_zero_points = context->input(3);
+    const Tensor& rhs_scales = context->input(4);
+    const Tensor& rhs_zero_points = context->input(5);
+    const Tensor& output_scales = context->input(6);
+    const Tensor& output_zero_points = context->input(7);
+
+    OP_REQUIRES(context, (AllElementsPositive<float>(lhs_scales)),
+                InvalidArgument("lhs scales elements must be all positive."));
+    OP_REQUIRES(context, (AllElementsPositive<float>(rhs_scales)),
+                InvalidArgument("rhs scales elements must be all positive."));
+    OP_REQUIRES(
+        context, (AllElementsPositive<float>(output_scales)),
+        InvalidArgument("output scales elements must be all positive."));
+
+    OP_REQUIRES_OK(context,
+                   convolution_params_.ValidateOrFillParamsAndValidateShape(
+                       lhs.shape(), rhs.shape()));
+
+    // Check lhs scales/zero_points shapes.
+    OP_REQUIRES(
+        context,
+        (lhs_scales.IsSameSize(lhs_zero_points) && lhs_scales.dims() == 0),
+        InvalidArgument(
+            "lhs scales/zero_points must be all scalar tensors. Given: ",
+            lhs_scales.shape().DebugString(),
+            lhs_zero_points.shape().DebugString()));
+
+    // Check rhs axis.
+    OP_REQUIRES(
+        context,
+        (rhs_quantization_axis_ == -1 ||
+         rhs_quantization_axis_ == convolution_params_.dimension_numbers()
+                                       .kernel_output_feature_dimension()),
+        InvalidArgument("rhs_quantization_axis Attr must be -1 (per-tensor) or "
+                        "dimension_numbers.kernel_output_feature_dimension "
+                        "(per-channel)."));
+    // Check rhs scales/zero_points shapes.
+    OP_REQUIRES_OK(
+        context, QuantizationAxisAndShapeValid(rhs.shape(), rhs_scales.shape(),
+                                               rhs_zero_points.shape(),
+                                               rhs_quantization_axis_));
+
+    // Check output axis.
+    OP_REQUIRES(
+        context,
+        (output_quantization_axis_ == -1 ||
+         output_quantization_axis_ == convolution_params_.dimension_numbers()
+                                          .output_feature_dimension()),
+        InvalidArgument(
+            "output_quantization_axis Attr must be -1 (per-tensor) or "
+            "dimension_numbers.output_feature_dimension (per-channel)."));
+
+    auto output_shape =
+        convolution_params_.CalculateOutputShape(lhs.shape(), rhs.shape());
+    OP_REQUIRES_OK(context, output_shape.status());
+    // Check output scales/zero_points shapes.
+    OP_REQUIRES_OK(context,
+                   QuantizationAxisAndShapeValid(
+                       output_shape.value(), output_scales.shape(),
+                       output_zero_points.shape(), output_quantization_axis_));
+    OP_REQUIRES(
+        context, (rhs_scales.dims() > 0 || output_scales.dims() == 0),
+        InvalidArgument(
+            "If rhs is per-tensor quantized, output must be also per-tensor "
+            "quantized. Given output scales/zero_points of rank ",
+            output_scales.dims()));
+
+    Tensor* output;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, output_shape.value(), &output));
+
+    OP_REQUIRES_OK(
+        context,
+        EvalQuantizedConv<Tin, Tout>(
+            context, lhs, rhs, convolution_params_, lhs_scales, lhs_zero_points,
+            rhs_scales, rhs_zero_points, output_scales, output_zero_points,
+            output_quantization_min_val_, output_quantization_max_val_,
+            *output));
+  }
+
+ private:
+  UniformQuantizedConvolutionParams convolution_params_;
+  int rhs_quantization_axis_;
+  int output_quantization_axis_;
+  int output_quantization_min_val_;
+  int output_quantization_max_val_;
+};
+
 // This kernel internally quantizes lhs with following conditions, which aligns
 // with current TFLite behavior.
 // - lhs_quantization_min = -128 (narrow_range = false)
@@ -471,6 +772,12 @@ class UniformQuantizedConvolutionHybridOp : public OpKernel {
   UniformQuantizedConvolutionParams convolution_params_;
   int rhs_quantization_axis_;
 };
+
+REGISTER_KERNEL_BUILDER(Name("UniformQuantizedConvolution")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint8>("Tin")
+                            .TypeConstraint<qint32>("Tout"),
+                        UniformQuantizedConvolutionOp<qint8, qint32>);
 
 REGISTER_KERNEL_BUILDER(
     Name("UniformQuantizedConvolutionHybrid")

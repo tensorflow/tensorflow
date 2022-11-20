@@ -33,6 +33,7 @@ namespace mlir {
 using ::mlir::func::FuncOp;
 
 namespace {
+
 class AllocToArgPass : public impl::AllocToArgPassBase<AllocToArgPass> {
  public:
   using AllocToArgPassBase<AllocToArgPass>::AllocToArgPassBase;
@@ -40,28 +41,67 @@ class AllocToArgPass : public impl::AllocToArgPassBase<AllocToArgPass> {
  private:
   void runOnOperation() override;
 };
+
 }  // namespace
 
 void AllocToArgPass::runOnOperation() {
+  // Find unique block and return op.
   FuncOp funcOp = getOperation();
-  IRRewriter rewriter(funcOp.getContext());
-  BitVector resultsToErase(funcOp.getNumResults());
-  Operation *terminator = funcOp.getBody().back().getTerminator();
-  for (OpOperand &result : terminator->getOpOperands()) {
-    Operation *allocOp = result.get().getDefiningOp();
-    if (!allocOp || !isa<memref::AllocOp>(allocOp)) {
-      terminator->emitOpError("expected operand #")
-          << result.getOperandNumber() << " to be defined by an memref.alloc";
-      return signalPassFailure();
-    }
-    resultsToErase.set(result.getOperandNumber());
-    auto attrs = funcOp.getResultAttrDict(result.getOperandNumber());
-    funcOp.insertArgument(funcOp.getNumArguments(), result.get().getType(),
-                          attrs, result.get().getLoc());
-    rewriter.replaceOp(allocOp, funcOp.getArguments().back());
+  auto &blocks = funcOp.getFunctionBody().getBlocks();
+  if (blocks.size() != 1) {
+    funcOp.emitError("expect function with single-block body");
+    return signalPassFailure();
   }
+  Block &bodyBlock = blocks.front();
+  auto returnOp = llvm::cast<func::ReturnOp>(bodyBlock.getTerminator());
+
+  IRRewriter rewriter(&getContext());
+  BitVector resultsToErase(funcOp.getNumResults());
+  Location loc = returnOp.getLoc();
+
+  for (auto [i, result] : llvm::enumerate(returnOp.operands())) {
+    Operation *resultDef = result.getDefiningOp();
+    Type resultTy = result.getType();
+
+    // Case: plain alloc.
+    if (auto allocOp = llvm::dyn_cast_or_null<memref::AllocOp>(resultDef)) {
+      resultsToErase.set(i);
+      auto attrs = funcOp.getResultAttrDict(i);
+      funcOp.insertArgument(funcOp.getNumArguments(), resultTy, attrs, loc);
+      rewriter.replaceOp(allocOp, funcOp.getArguments().back());
+      continue;
+    }
+
+    // Case: shape-expanded alloc.
+    if (auto expandOp =
+            llvm::dyn_cast_or_null<memref::ExpandShapeOp>(resultDef)) {
+      Operation *expandDef = expandOp.getOperand().getDefiningOp();
+      if (auto allocOp = llvm::dyn_cast_or_null<memref::AllocOp>(expandDef)) {
+        resultsToErase.set(i);
+        auto attrs = funcOp.getResultAttrDict(i);
+        funcOp.insertArgument(funcOp.getNumArguments(), resultTy, attrs, loc);
+
+        // Collapse buffer argument to replace possible uses of the unexpanded
+        // buffer.
+        rewriter.setInsertionPoint(allocOp);
+        Value arg = funcOp.getArguments().back();
+        Value collapsedArg = rewriter.create<memref::CollapseShapeOp>(
+            loc, arg, expandOp.getReassociationIndices());
+
+        // Replace alloc and its expansion.
+        rewriter.replaceOp(allocOp, collapsedArg);
+        rewriter.replaceOp(expandOp, arg);
+        continue;
+      }
+    }
+
+    returnOp.emitOpError("expected operand #")
+        << i << " to be defined by (shape-expanded) memref.alloc";
+    return signalPassFailure();
+  }
+
   funcOp.eraseResults(resultsToErase);
-  terminator->eraseOperands(resultsToErase);
+  returnOp->eraseOperands(resultsToErase);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> hlo::createAllocToArgPass() {

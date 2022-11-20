@@ -3,6 +3,7 @@ load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tf
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -117,6 +118,7 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -149,6 +151,7 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:compatibility",

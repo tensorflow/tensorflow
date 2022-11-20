@@ -33,6 +33,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -192,7 +193,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/tsl/platform/default/build_config:platformlib",
+        "//tensorflow/core/platform/default/build_config:platformlib",
     ],
 )
 

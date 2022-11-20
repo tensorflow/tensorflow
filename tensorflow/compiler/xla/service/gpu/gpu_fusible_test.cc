@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 

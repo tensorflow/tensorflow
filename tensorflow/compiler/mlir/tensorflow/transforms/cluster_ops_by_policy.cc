@@ -386,7 +386,7 @@ static Optional<ValuesConstraintSet> CanBeClustered(
     const std::function<bool(Operation *op)> &filter) {
   // Check that op has no side effects. This guarantees that we will not
   // reorder side-effecting ops during cluster formation.
-  if (!MemoryEffectOpInterface::hasNoEffect(op)) return llvm::None;
+  if (!isMemoryEffectFree(op)) return llvm::None;
 
   // Operation rejected by the custom filter.
   if (filter && !filter(op)) return llvm::None;

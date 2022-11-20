@@ -31,11 +31,20 @@ namespace tensorflow {
 namespace data {
 namespace grpc_util {
 
+constexpr char kStreamRemovedMessage[] = "Stream removed";
+
 Status WrapError(const std::string& message, const ::grpc::Status& status) {
   if (status.ok()) {
     return errors::Internal("Expected a non-ok grpc status. Wrapping message: ",
                             message);
   } else {
+    // FromGrpcStatus checks for "Stream removed" as well, but only when the
+    // status code is "Unknown". We have observed that sometimes stream removed
+    // errors use other status codes (b/258285154).
+    // TODO(aaudibert): Upstream this to FromGrpcStatus.
+    if (status.error_message() == kStreamRemovedMessage) {
+      return Status(tensorflow::error::UNAVAILABLE, kStreamRemovedMessage);
+    }
     Status s = FromGrpcStatus(status);
     return Status(s.code(),
                   absl::StrCat(message, ": ", status.error_message()));

@@ -515,7 +515,8 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
   void InitDevices();
 };
 
-StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient();
+StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
+    absl::string_view device_type);
 
 }  // namespace xla
 

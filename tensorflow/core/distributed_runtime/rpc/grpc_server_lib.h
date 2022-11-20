@@ -37,8 +37,8 @@ limitations under the License.
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
+#include "tensorflow/tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 
 namespace tensorflow {
 
@@ -118,7 +118,7 @@ class GrpcServer : public ServerInterface {
   Status UpdateServerDef(const ServerDef& server_def) override;
   // Pass coordination service agent instance to server's RPC handler
   Status SetCoordinationServiceAgentInstance(
-      CoordinationServiceAgent* agent) override;
+      tsl::CoordinationServiceAgent* agent) override;
   // TODO(hanyangtay): Remove this method once gRPC server clean shutdown is
   // supported.
   Status StopCoordinationService() override;
@@ -172,6 +172,9 @@ class GrpcServer : public ServerInterface {
   const ServerDef& server_def() const { return server_def_; }
   GrpcWorker* worker_impl() const { return worker_impl_.get(); }
   GrpcWorkerEnv* grpc_worker_env() const { return grpc_worker_env_.get(); }
+
+  Status SetCoordinationServiceInstance(
+      tsl::CoordinationServiceInterface* service);
 
  private:
   Env* env_;

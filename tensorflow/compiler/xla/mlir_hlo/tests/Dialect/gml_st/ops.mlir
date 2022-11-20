@@ -22,6 +22,26 @@ func.func @dynamic_types(%size : index) {
 
 // -----
 
+// CHECK-LABEL: @materialize_complex
+// CHECK-SAME: %[[TENSOR:.*]]: tensor<3x1xcomplex<f32>>, %[[TILE:.*]]: !gml_st.tile<1x1>
+func.func @materialize_complex(%tensor: tensor<3x1xcomplex<f32>>, %tile: !gml_st.tile<1x1>) {
+  // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]][%[[TILE]]] : tensor<3x1xcomplex<f32>>[!gml_st.tile<1x1>]
+  %0 = gml_st.materialize %tensor[%tile] : tensor<3x1xcomplex<f32>>[!gml_st.tile<1x1>] to complex<f32>
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: @materialize_index
+// CHECK-SAME: %[[TENSOR:.*]]: tensor<3x1xindex>, %[[TILE:.*]]: !gml_st.tile<1x1>
+func.func @materialize_index(%tensor: tensor<3x1xindex>, %tile: !gml_st.tile<1x1>) {
+  // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]][%[[TILE]]] : tensor<3x1xindex>[!gml_st.tile<1x1>]
+  %0 = gml_st.materialize %tensor[%tile] : tensor<3x1xindex>[!gml_st.tile<1x1>] to index
+  func.return
+}
+
+// -----
+
 // CHECK-LABEL: @materialize_static_tensor
 // CHECK-SAME: %[[TENSOR:.*]]: tensor<64x32xf32>, %[[TILE:.*]]: !gml_st.tile<42x16>
 func.func @materialize_static_tensor(%tensor: tensor<64x32xf32>, %tile: !gml_st.tile<42x16>) {

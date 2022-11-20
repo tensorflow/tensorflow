@@ -170,13 +170,13 @@ Value CreateXlaConvOp(OpBuilder &builder, Location loc, Value input,
               rhs_dilation, feature_group_count,
               builder.getStringAttr(dnums.SerializeAsString()),
               /*precision_config=*/builder.getStringAttr(precision_config_str))
-          .output();
+          .getOutput();
   if (input_zp_value == 0) return xla_conv_output;
 
   Value zp_offset = CalculateZeroPointOffset(builder, loc, /*filter=*/filter,
                                              /*input_zp=*/input_zp_value,
                                              /*output_dim=*/num_dims - 1);
-  return builder.create<TF::SubOp>(loc, xla_conv_output, zp_offset).z();
+  return builder.create<TF::SubOp>(loc, xla_conv_output, zp_offset).getZ();
 }
 
 // Creates a XlaConvV2Op from TF Conv2DOp and returns its output.

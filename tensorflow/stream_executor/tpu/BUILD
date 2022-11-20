@@ -3,6 +3,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//learning/brain/experimental/dtensor:__subpackages__",
         "//learning/brain/google/xla/kernels:__subpackages__",

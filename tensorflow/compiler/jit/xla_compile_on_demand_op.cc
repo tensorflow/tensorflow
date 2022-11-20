@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/jit/device_compilation_profiler.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
@@ -97,8 +98,8 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
 
 Status XlaCompileOnDemandOp::Compile(
     OpKernelContext* ctx, const XlaCompiler::CompilationResult** result,
-    XlaCompilationCache** cache, ResourceVarsSnapshot* variable_args,
-    xla::LocalExecutable** executable) {
+    XlaCompilationCache** cache, DeviceCompilationProfiler** profiler,
+    ResourceVarsSnapshot* variable_args, xla::LocalExecutable** executable) {
   TF_ASSIGN_OR_RETURN(std::vector<int> constant_input_indices,
                       GetConstantInputIndicesFromContext(ctx));
   std::vector<const Tensor*> inputs = InputsFromContext(ctx);
@@ -113,6 +114,13 @@ Status XlaCompileOnDemandOp::Compile(
       [&](XlaCompilationCache** write_into_cache) {
         return BuildXlaCompilationCache(ctx->device(), ctx->function_library(),
                                         platform_info_, write_into_cache);
+      }));
+
+  TF_RETURN_IF_ERROR(rm->LookupOrCreate<DeviceCompilationProfiler>(
+      rm->default_container(), "device_compilation_profiler", profiler,
+      [](DeviceCompilationProfiler** profiler) {
+        *profiler = new DeviceCompilationProfiler();
+        return OkStatus();
       }));
 
   XlaCompiler::Options options = GenerateCompilerOptions(
@@ -146,8 +154,8 @@ Status XlaCompileOnDemandOp::Compile(
     TF_RETURN_IF_ERROR(args.status());
   }
 
-  return (*cache)->CompileSingleOp(options, *args, ctx, compile_options, result,
-                                   executable);
+  return (*cache)->CompileSingleOp(options, *args, compile_options, ctx,
+                                   *profiler, result, executable);
 }
 
 void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {
@@ -155,15 +163,17 @@ void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {
   xla::LocalExecutable* executable;
   ResourceVarsSnapshot variable_args;
   XlaCompilationCache* cache;
+  DeviceCompilationProfiler* profiler;
   OP_REQUIRES(ctx, ctx->function_library(),
               errors::Internal("Function library missing"));
-  OP_REQUIRES_OK(ctx,
-                 Compile(ctx, &result, &cache, &variable_args, &executable));
+  OP_REQUIRES_OK(ctx, Compile(ctx, &result, &cache, &profiler, &variable_args,
+                              &executable));
 
-  // Hold the reference to the JIT during evaluation. (We could probably
-  // free it sooner because the ResourceMgr will retain a reference, but
-  // this is more obviously correct.)
+  // Hold the reference to the JIT cache and profiler during evaluation. (We
+  // could probably free them sooner because the ResourceMgr will retain
+  // references, but this is more obviously correct.)
   core::ScopedUnref cache_ref(cache);
+  core::ScopedUnref profiler_ref(profiler);
   OP_REQUIRES_OK(ctx, Run(ctx, cache, result, executable, variable_args));
 }
 

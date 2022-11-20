@@ -21,11 +21,11 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 
-#include "tensorflow/core/util/test_log.pb.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/protobuf/test_log.pb.h"
 
 namespace tsl {
 

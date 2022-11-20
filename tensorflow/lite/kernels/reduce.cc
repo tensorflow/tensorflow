@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/mean.h"

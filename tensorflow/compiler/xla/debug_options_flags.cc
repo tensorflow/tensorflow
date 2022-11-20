@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/debug_options_parsers.h"
 #include "tensorflow/compiler/xla/parse_flags_from_env.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
 
@@ -41,6 +42,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_multi_thread_eigen(true);
   opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
   opts.set_xla_gpu_asm_extra_flags("");
+  opts.set_xla_gpu_use_runtime_fusion(true);
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
   opts.set_xla_dump_hlo_as_html(false);
   opts.set_xla_dump_fusion_visualization(false);
@@ -55,7 +57,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_use_acl(true);
 #endif
   opts.set_xla_cpu_use_xla_runtime(false);
-  opts.set_xla_gpu_max_kernel_unroll_factor(4);
 
   opts.set_xla_cpu_enable_fast_math(false);
   // Disable forms of fast math that have caused users problems in the past.
@@ -70,6 +71,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_cudnn_frontend(true);
 
   opts.set_xla_gpu_enable_cublaslt(false);
+
+  // TODO(b/258036887): Remove this flag once CUDA Graphs are fully supported.
+  opts.set_xla_gpu_enable_cuda_graphs(false);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
@@ -95,7 +99,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_enable_mlir_lowering(false);
   opts.set_xla_gpu_enable_mlir_lowering(true);
   opts.set_xla_gpu_enable_softmax_fusion(false);
-  opts.set_xla_gpu_normalize_layouts(false);
+  opts.set_xla_gpu_normalize_layouts(true);
   opts.set_xla_gpu_simplify_all_fp_conversions(true);
   return opts;
 }
@@ -175,6 +179,16 @@ static void AllocateFlags() {
         };
       };
 
+  // Custom "sub-parser" lambda for xla_gpu_shape_checks.
+  auto setter_for_xla_gpu_shape_checks = [](const std::string& value) {
+    DebugOptions::ShapeChecks shape_checks;
+    if (!DebugOptions::ShapeChecks_Parse(value, &shape_checks)) {
+      return false;
+    }
+    flag_values->set_xla_gpu_shape_checks(shape_checks);
+    return true;
+  };
+
   // Custom "sub-parser" lambda for xla_disable_hlo_passes.
   auto setter_for_xla_disable_hlo_passes =
       [](std::string comma_separated_values) {
@@ -216,6 +230,30 @@ static void AllocateFlags() {
                                         comma_separated_values);
         return true;
       };
+
+  auto setter_for_xla_gpu_enable_softmax_fusion = [](bool value) {
+    // It is only possible to enable softmax fusion if
+    // xla_gpu_enable_mlir_lowering is also enabled.
+    if (value && !flag_values->xla_gpu_enable_mlir_lowering()) {
+      LOG(ERROR) << "xla_gpu_enable_softmax_fusion can only be enabled if "
+                    "xla_gpu_enable_mlir_lowering is enabled as well";
+      return false;
+    }
+    flag_values->set_xla_gpu_enable_softmax_fusion(value);
+    return true;
+  };
+
+  auto setter_for_xla_gpu_enable_mlir_lowering = [](bool value) {
+    // It is only possible to disable mlir lowering if
+    // xla_gpu_enable_softmax_fusion is also disabled.
+    if (!value && flag_values->xla_gpu_enable_softmax_fusion()) {
+      LOG(ERROR) << "xla_gpu_enable_mlir_lowering can only be disabled if "
+                    "xla_gpu_enable_softmax_fusion is disabled as well";
+      return false;
+    }
+    flag_values->set_xla_gpu_enable_mlir_lowering(value);
+    return true;
+  };
 
   // Custom "sub-parser" for xla_fuel.  Note that ConsumeFuel does not do any
   // locking on the fuel global variables.  This means that it's
@@ -390,11 +428,6 @@ static void AllocateFlags() {
       flag_values->xla_gpu_ftz(),
       "If true, flush-to-zero semantics are enabled in the code generated for "
       "GPUs."));
-  flag_objects->push_back(tsl::Flag(
-      "xla_gpu_max_kernel_unroll_factor",
-      int32_setter_for(&DebugOptions::set_xla_gpu_max_kernel_unroll_factor),
-      flag_values->xla_gpu_max_kernel_unroll_factor(),
-      "Specify the maximum kernel unroll factor for the GPU backend."));
   flag_objects->push_back(tsl::Flag(
       "xla_gpu_ptx_file", setter_for_xla_gpu_ptx_file, "",
       "If non-empty, specifies a file containing ptx to use. The filename "
@@ -621,6 +654,11 @@ static void AllocateFlags() {
       flag_values->xla_gpu_algorithm_denylist_path(),
       "An AlgorithmDenylist text proto file as a denylist of convolutions to "
       "avoid to use."));
+  flag_objects->push_back(
+      tsl::Flag("xla_gpu_use_runtime_fusion",
+                bool_setter_for(&DebugOptions::set_xla_gpu_use_runtime_fusion),
+                flag_values->xla_gpu_use_runtime_fusion(),
+                "For using cuDNN runtime compiled fusion kernels."));
   flag_objects->push_back(tsl::Flag(
       "xla_tpu_detect_nan",
       bool_setter_for(&DebugOptions::set_xla_tpu_detect_nan),
@@ -710,6 +748,11 @@ static void AllocateFlags() {
                 bool_setter_for(&DebugOptions::set_xla_gpu_enable_cublaslt),
                 flag_values->xla_gpu_enable_cublaslt(),
                 "Use cuBLASLt for GEMMs when possible."));
+  flag_objects->push_back(tsl::Flag(
+      "xla_gpu_enable_cuda_graphs",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_cuda_graphs),
+      flag_values->xla_gpu_enable_cuda_graphs(),
+      "Use CUDA graphs to execute XLA GPU executables when possible."));
   flag_objects->push_back(
       tsl::Flag("xla_dump_disable_metadata",
                 bool_setter_for(&DebugOptions::set_xla_dump_disable_metadata),
@@ -749,19 +792,21 @@ static void AllocateFlags() {
       flag_values->xla_gpu_simplify_all_fp_conversions(),
       "Allows any chain of floating-point conversions to be simplified."));
   flag_objects->push_back(tsl::Flag(
+      "xla_gpu_shape_checks", setter_for_xla_gpu_shape_checks,
+      DebugOptions::ShapeChecks_Name(flag_values->xla_gpu_shape_checks()),
+      "When to perform shape checks in XLA:GPU."));
+  flag_objects->push_back(tsl::Flag(
       "xla_cpu_enable_mlir_lowering",
       bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_lowering),
       flag_values->xla_cpu_enable_mlir_lowering(),
       "Enable MLIR-based lowering in XLA:CPU instead of LLVM emitters."));
   flag_objects->push_back(tsl::Flag(
-      "xla_gpu_enable_mlir_lowering",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_mlir_lowering),
+      "xla_gpu_enable_mlir_lowering", setter_for_xla_gpu_enable_mlir_lowering,
       flag_values->xla_gpu_enable_mlir_lowering(),
       "Enable MLIR-based lowering in XLA:GPU instead of LLVM emitters."));
   flag_objects->push_back(tsl::Flag(
-      "xla_gpu_enable_softmax_fusion",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_softmax_fusion),
-      flag_values->xla_gpu_enable_mlir_lowering(),
+      "xla_gpu_enable_softmax_fusion", setter_for_xla_gpu_enable_softmax_fusion,
+      flag_values->xla_gpu_enable_softmax_fusion(),
       "Enable MLIR-based softmax fusion."));
   flag_objects->push_back(
       tsl::Flag("xla_gpu_normalize_layouts",

@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -tf-executor-to-tfrt-pipeline=enable-native-ops=false %s | FileCheck %s --dump-input=fail
+// RUN: tf-tfrt-opt -tf-executor-to-tfrt-pipeline %s | FileCheck %s --dump-input=fail
 
 // CHECK-LABEL: func @__inference_pruned_131
 // CHECK-SAME: ([[in_chain:%.*]]: !tfrt.chain) -> (!tfrt.chain, !corert.tensorhandle)

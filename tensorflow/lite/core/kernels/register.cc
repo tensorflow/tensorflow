@@ -35,7 +35,7 @@ namespace builtin {
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_ABS, Register_ABS(), /* min_version = */ 1,
-             /* max_version = */ 4);
+             /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_HARD_SWISH, Register_HARD_SWISH());
   AddBuiltin(BuiltinOperator_RELU, Register_RELU(), /* min_version = */ 1,
              /* max_version = */ 3);
@@ -139,7 +139,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE(),
              /* min_version = */ 1,
-             /* max_version = */ 5);
+             /* max_version = */ 6);
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN(),
              /* min_version = */ 1,
              /* max_version = */ 3);
@@ -206,7 +206,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_NEG, Register_NEG());
   AddBuiltin(BuiltinOperator_SELECT, Register_SELECT(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_SELECT_V2, Register_SELECT_V2());
   AddBuiltin(BuiltinOperator_SLICE, Register_SLICE(),
              /* min_version = */ 1,
@@ -352,7 +352,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_UNSORTED_SEGMENT_SUM,
              Register_UNSORTED_SEGMENT_SUM());
   AddBuiltin(BuiltinOperator_ATAN2, Register_ATAN2());
-  AddBuiltin(BuiltinOperator_SIGN, Register_SIGN());
+  AddBuiltin(BuiltinOperator_SIGN, Register_SIGN(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddCustom("NumericVerify", tflite::ops::custom::Register_NUMERIC_VERIFY());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.
@@ -367,8 +369,17 @@ BuiltinOpResolver::BuiltinOpResolver() {
 
   // Populate the list of TF Lite delegate creators. The created delegates could
   // be applied to the model graph by default at runtime.
-  delegate_creators_.push_back([](int num_threads) {
-    return tflite::MaybeCreateXNNPACKDelegate(num_threads);
+  delegate_creators_.push_back([](TfLiteContext* context) {
+    return tflite::MaybeCreateXNNPACKDelegate(
+        context, /*enable_xnnpack_unsigned_quantized=*/false);
+  });
+}
+
+BuiltinOpResolverWithXNNPACK::BuiltinOpResolverWithXNNPACK() {
+  delegate_creators_.clear();
+  delegate_creators_.push_back([](TfLiteContext* context) {
+    return tflite::MaybeCreateXNNPACKDelegate(
+        context, /*enable_xnnpack_unsigned_quantized=*/true);
   });
 }
 

@@ -6,6 +6,7 @@ load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
 load("//tensorflow/core/platform:build_config.bzl", "tf_protos_profiler_service")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],

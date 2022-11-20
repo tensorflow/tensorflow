@@ -12,6 +12,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -194,7 +195,10 @@ py_library(
     name = "context",
     srcs = ["context.py"],
     srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/jax_tpu_embedding:__subpackages__",
+    ],
     deps = [
         ":executor",
         ":monitoring",

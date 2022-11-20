@@ -106,64 +106,6 @@ func.func @scatter_memref(%indices: memref<2x2xindex>,
 
 // -----
 
-func.func @map_binary(%lhs: tensor<64xf32>, %rhs: tensor<64xf32>,
-                      %init: tensor<64xf32>) -> tensor<64xf32> {
-   %add = thlo.map
-          ins(%lhs:tensor<64xf32>, %rhs:tensor<64xf32>)
-          outs(%init:tensor<64xf32>)
-          (%lhs_elem: f32, %rhs_elem: f32) {
-            %0 = arith.addf %lhs_elem, %rhs_elem: f32
-            thlo.yield %0: f32
-          }
-  func.return %add : tensor<64xf32>
-}
-// CHECK-LABEL: func @map_binary
-
-// -----
-
-func.func @map_binary_memref(%lhs: memref<64xf32>, %rhs: memref<64xf32>,
-                      %init: memref<64xf32>) {
-   thlo.map
-      ins(%lhs:memref<64xf32>, %rhs:memref<64xf32>)
-      outs(%init:memref<64xf32>)
-      (%lhs_elem: f32, %rhs_elem: f32) {
-        %0 = arith.addf %lhs_elem, %rhs_elem: f32
-        thlo.yield %0: f32
-      }
-  func.return
-}
-// CHECK-LABEL: func @map_binary_memref
-
-// -----
-
-func.func @map_unary(%input: tensor<64xf32>, %init: tensor<64xf32>) -> tensor<64xf32> {
-   %abs = thlo.map
-          ins(%input:tensor<64xf32>)
-          outs(%init:tensor<64xf32>)
-          (%input_elem: f32) {
-            %0 = math.absf %input_elem: f32
-            thlo.yield %0: f32
-          }
-  func.return %abs : tensor<64xf32>
-}
-// CHECK-LABEL: func @map_unary
-
-// -----
-
-func.func @map_unary_memref(%input: memref<64xf32>, %init: memref<64xf32>) {
-   thlo.map
-      ins(%input:memref<64xf32>)
-      outs(%init:memref<64xf32>)
-      (%input_elem: f32) {
-        %0 = math.absf %input_elem: f32
-        thlo.yield %0: f32
-      }
-  func.return
-}
-// CHECK-LABEL: func @map_unary_memref
-
-// -----
-
 func.func @sort(%input1: tensor<?x?xf32>, %input2: tensor<?x?xi32>,
                 %init1: tensor<?x?xf32>, %init2: tensor<?x?xi32>)
     -> (tensor<?x?xf32>, tensor<?x?xi32>) {
@@ -178,6 +120,9 @@ func.func @sort(%input1: tensor<?x?xf32>, %input2: tensor<?x?xi32>,
   func.return %sorted1, %sorted2 : tensor<?x?xf32>, tensor<?x?xi32>
 }
 // CHECK-LABEL: func @sort
+// CHECK:         %[[RES1:sorted0]], %[[RES2:sorted1]] = thlo.sort
+// CHECK:         %[[LHS0:lhs0: f32]], %[[RHS0:rhs0: f32]],
+// CHECK-SAME:    %[[LHS1:lhs1: i32]], %[[RHS1:rhs1: i32]]
 
 // -----
 

@@ -88,6 +88,12 @@ class Runtime {
     }
   }
 
+  // Creates a work queue for a request.
+  StatusOr<std::unique_ptr<WorkQueueInterface>> CreateRequestQueue(
+      int64_t request_id) const {
+    return work_queue_->InitializeRequest(request_id);
+  }
+
  private:
   explicit Runtime(std::unique_ptr<tfrt::CoreRuntime> core_runtime,
                    WorkQueueInterface* work_queue);

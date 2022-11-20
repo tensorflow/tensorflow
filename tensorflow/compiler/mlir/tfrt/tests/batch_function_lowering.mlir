@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -tf-executor-to-tfrt-pipeline="enable-native-ops=false func-use-fallback-tensor=true" %s | FileCheck %s --dump-input=always
+// RUN: tf-tfrt-opt -tf-executor-to-tfrt-pipeline="func-use-fallback-tensor=true" %s | FileCheck %s --dump-input=always
 
 func.func private @batched_function(%arg0: tensor<1x3xf32> {tf._user_specified_name = "0"}, %arg1: tensor<*x!tf_type.resource>) -> tensor<1x3xf32> attributes {tf._input_shapes = [#tf_type.shape<1x3>, #tf_type.shape<*>], tf.signature.is_stateful} {
   %0 = "tf.ReadVariableOp"(%arg1) {device = "/device:CPU:0"} : (tensor<*x!tf_type.resource>) -> tensor<1x3xf32>

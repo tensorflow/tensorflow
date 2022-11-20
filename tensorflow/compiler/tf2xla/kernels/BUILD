@@ -12,6 +12,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         # copybara:uncomment "//learning/infra/mira:__subpackages__",
         "//third_party/cloud_tpu/inference_converter:__subpackages__",
@@ -411,6 +412,7 @@ tf_kernel_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:chlo_ops",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 

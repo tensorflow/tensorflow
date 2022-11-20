@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stdarg.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include <array>
 #include <cmath>
@@ -28,14 +29,36 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace {
 
-TEST(CAPI, Version) { EXPECT_STRNE("", TfLiteVersion()); }
+TEST(CApiSimple, Version) {
+  const char* version = TfLiteVersion();
+  ASSERT_NE(version, nullptr);
+  EXPECT_STRNE(version, "");
+  int major = -1, minor = -1, patch = -1;
+  int ret = sscanf(version, "%d.%d.%d", &major, &minor, &patch);
+  // The version number should contain all three components.
+  EXPECT_GE(ret, 3);
+  // The following checks should work for all TF Lite 2.* versions,
+  // but will need updating for TF Lite version 3.0.0.
+  EXPECT_EQ(major, 2);
+  EXPECT_GE(minor, 12);
+  EXPECT_GE(patch, 0);
+  // Calling the function again should give the same result.
+  EXPECT_STREQ(TfLiteVersion(), version);
+}
+
+TEST(CApiSimple, SchemaVersion) {
+  // The following checks will need updating if we change the schema version.
+  EXPECT_EQ(TfLiteSchemaVersion(), 3);
+  // Calling the function again should give the same result.
+  EXPECT_EQ(TfLiteSchemaVersion(), 3);
+}
 
 TEST(CApiSimple, Smoke) {
   TfLiteModel* model =

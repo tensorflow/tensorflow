@@ -17,7 +17,6 @@ load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additiona
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_xla_deps_py")
 
 visibility = [
-    # copybara:uncomment "//third_party/auroraml:__subpackages__",
     "//tensorflow:__subpackages__",
     "//learning/brain/tfrt:__subpackages__",
     "//third_party/py/tensorflow_numerics:__subpackages__",
@@ -26,6 +25,7 @@ visibility = [
 ]
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = visibility,
     licenses = ["notice"],
 )
@@ -315,6 +315,7 @@ py_library(
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/lib/core:_pywrap_bfloat16",
+        "//tensorflow/python/lib/core:_pywrap_float8",
         "//tensorflow/python/types:doc_typealias",
     ],
 )

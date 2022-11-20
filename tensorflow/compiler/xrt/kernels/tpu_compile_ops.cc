@@ -127,7 +127,7 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
       ctx->cancellation_manager()->get_cancellation_token();
   const bool already_cancelled =
       !ctx->cancellation_manager()->RegisterCallback(token, [ctx, done]() {
-        if (tpu::OpsApiFn()
+        if (stream_executor::tpu::OpsApiFn()
                 ->TpuCompile_ShouldTpuCompileOpIgnoreCancellationFn()) {
           return;
         }

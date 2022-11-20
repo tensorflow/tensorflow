@@ -119,7 +119,7 @@ void PropagateUsage(
     }
   } else if (auto if_op = dyn_cast<TF::IfRegionOp>(user_op)) {
     (*arguments_to_erase)[if_op].push_back(argument_index);
-    for (auto callee : {&if_op.then_branch(), &if_op.else_branch()}) {
+    for (auto callee : {&if_op.getThenBranch(), &if_op.getElseBranch()}) {
       work_list->push_back(std::make_pair(callee, argument_index));
     }
   } else if (auto while_op = dyn_cast<TF::WhileOp>(user_op)) {
@@ -130,7 +130,7 @@ void PropagateUsage(
     }
   } else if (auto while_op = dyn_cast<TF::WhileRegionOp>(user_op)) {
     (*arguments_to_erase)[while_op].push_back(argument_index);
-    for (auto callee : {&while_op.cond(), &while_op.body()}) {
+    for (auto callee : {&while_op.getCond(), &while_op.getBody()}) {
       work_list->push_back(std::make_pair(callee, argument_index));
     }
   }
@@ -324,7 +324,7 @@ LogicalResult FreezeVariables(ModuleOp module, tensorflow::Session* session) {
   for (auto func : module.getOps<func::FuncOp>()) {
     if (func == session_init_func) continue;
     for (auto var_handle_op : func.getOps<TF::VarHandleOp>()) {
-      if (!analyzer.IsPotentiallyWritten(var_handle_op.resource())) {
+      if (!analyzer.IsPotentiallyWritten(var_handle_op.getResource())) {
         variables.push_back(var_handle_op);
       }
     }
@@ -390,20 +390,20 @@ LogicalResult FreezeVariables(ModuleOp module, tensorflow::Session* session) {
       while_op->erase();
     } else if (auto while_op = dyn_cast<TF::WhileRegionOp>(user_op)) {
       auto new_while_op = GetUpdatedWhileOp(
-          while_op, while_op.cond().getArgumentTypes(), args_to_erase);
-      new_while_op.cond().takeBody(while_op.cond());
-      new_while_op.body().takeBody(while_op.body());
+          while_op, while_op.getCond().getArgumentTypes(), args_to_erase);
+      new_while_op.getCond().takeBody(while_op.getCond());
+      new_while_op.getBody().takeBody(while_op.getBody());
       llvm::BitVector erase_indices;
-      UpdateTerminatorArguments(new_while_op.body(), args_to_erase,
+      UpdateTerminatorArguments(new_while_op.getBody(), args_to_erase,
                                 erase_indices);
       llvm::BitVector body_bit_vector(
-          new_while_op.body().front().getNumArguments());
+          new_while_op.getBody().front().getNumArguments());
       for (auto i : args_to_erase) body_bit_vector.set(i);
-      new_while_op.body().front().eraseArguments(body_bit_vector);
+      new_while_op.getBody().front().eraseArguments(body_bit_vector);
       llvm::BitVector cond_bit_vector(
-          new_while_op.cond().front().getNumArguments());
+          new_while_op.getCond().front().getNumArguments());
       for (auto i : args_to_erase) cond_bit_vector.set(i);
-      new_while_op.cond().front().eraseArguments(cond_bit_vector);
+      new_while_op.getCond().front().eraseArguments(cond_bit_vector);
       while_op->erase();
     } else {
       llvm::BitVector erase_indices(user_op->getNumOperands());

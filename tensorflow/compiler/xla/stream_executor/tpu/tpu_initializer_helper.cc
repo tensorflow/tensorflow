@@ -27,6 +27,7 @@ limitations under the License.
 #include <fstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
@@ -173,13 +174,14 @@ stream_executor::port::Status TryAcquireTpuLock() {
       auto pid = FindLibtpuProcess();
       if (pid.ok()) {
         return tsl::errors::Aborted(absl::StrCat(
-            "libtpu.so is already in use by process with pid ", pid.value(),
+            "The TPU is already in use by process with pid ", pid.value(),
             ". Not attempting to load libtpu.so in this process."));
       } else {
         return tsl::errors::Aborted(
-            "libtpu.so already in use by another process probably owned by "
+            "The TPU is already in use by another process probably owned by "
             "another user. Run \"$ sudo lsof -w /dev/accel0\" to figure out "
-            "which process is using the TPU. Not attempting to load "
+            "which process is using the TPU. If you still get this message, "
+            "run \"$ sudo rm /tmp/libtpu_lockfile\". Not attempting to load "
             "libtpu.so in this process.");
       }
     } else {
@@ -219,15 +221,16 @@ stream_executor::port::Status InitializeTpuLibrary(void* library_handle) {
 }
 
 typedef const PJRT_Api* (*PjRtFuncPtr)();
-void InitializePjRt(void* library_handle) {
+stream_executor::port::Status MaybeInitializePjRt(void* library_handle) {
   PjRtFuncPtr fptr = &GetTpuPjrtApi;
   *reinterpret_cast<void**>(&fptr) = dlsym(library_handle, "GetTpuPjrtApi");
   if (fptr == nullptr) {
-    LOG(INFO) << "GetTpuPjrtApi not found";
+    LOG(INFO) << "GetTpuPjrtApi not found. PjrtApi will not be used.";
   } else {
     LOG(INFO) << "GetTpuPjrtApi was found";
-    tensorflow::tpu::SetPjrtApi(fptr());
+    TF_RETURN_IF_ERROR(stream_executor::tpu::SetPjrtApi("TPU", fptr()));
   }
+  return ::tsl::OkStatus();
 }
 
 namespace {
@@ -278,7 +281,7 @@ stream_executor::port::Status FindAndLoadTpuLibrary() {
     // Try to acquire exclusive access.
     TF_RETURN_IF_ERROR(TryAcquireTpuLock());
     TF_RETURN_IF_ERROR(InitializeTpuLibrary(library));
-    InitializePjRt(library);
+    TF_RETURN_IF_ERROR(MaybeInitializePjRt(library));
   }
 
   InitializeCreateGcsFileSystemFnPtr();

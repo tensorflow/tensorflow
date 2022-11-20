@@ -1,4 +1,5 @@
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -69,9 +70,9 @@ cc_test(
     deps = [
         ":writer_lib",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/schema:schema_fbs",

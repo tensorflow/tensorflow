@@ -5,6 +5,7 @@ load(
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -25,7 +26,7 @@ cc_library(
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
@@ -63,9 +64,9 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/lite:stderr_reporter",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
