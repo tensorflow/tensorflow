@@ -236,7 +236,7 @@ ParseResult ParseReplicateOpOperands(
   llvm::SmallVector<Type, 8> packed_region_arg_types;
   do {
     OpAsmParser::UnresolvedOperand operand_type;
-    if (parser->parseOptionalOperand(operand_type).hasValue()) {
+    if (parser->parseOptionalOperand(operand_type).has_value()) {
       packed_inputs->emplace_back(operand_type);
       if (parser->parseKeyword("as",
                                " between packed input and block argument") ||
