@@ -74,6 +74,7 @@ py_library(
         ":from_sparse_tensor_slices_op",
         ":from_tensor_slices_op",
         ":from_tensors_op",
+        ":group_by_window_op",
         ":ignore_errors_op",
         ":interleave_op",
         ":iterator_ops",
@@ -165,6 +166,11 @@ py_library(
 py_library(
     name = "from_tensors_op",
     srcs = ["from_tensors_op.py"],
+)
+
+py_library(
+    name = "group_by_window_op",
+    srcs = ["group_by_window_op.py"],
 )
 
 py_library(
