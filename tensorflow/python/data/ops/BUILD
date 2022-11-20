@@ -92,6 +92,7 @@ py_library(
         ":sparse_batch_op",
         ":structured_function",
         ":take_op",
+        ":take_while_op",
         ":unbatch_op",
         ":unique_op",
         ":window_op",
@@ -269,6 +270,11 @@ py_library(
         "//tensorflow/python/platform",
         "//tensorflow/python/util",
     ],
+)
+
+py_library(
+    name = "take_while_op",
+    srcs = ["take_while_op.py"],
 )
 
 py_library(

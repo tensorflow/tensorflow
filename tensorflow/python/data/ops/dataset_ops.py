@@ -3371,8 +3371,12 @@ name=None))
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-
-    return _TakeWhileDataset(self, predicate, name=name)
+    # Loaded lazily due to a circular dependency (
+    # dataset_ops -> take_while_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import take_while_op
+    return take_while_op._take_while(self, predicate, name=name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def unique(self, name=None):
     """A transformation that discards duplicate elements of a `Dataset`.
@@ -5172,38 +5176,6 @@ def _calculate_acceptance_probs_with_mixing(initial_probs, target_probs):
   # TODO(joelshor): Simplify fraction, if possible.
   a_i = (ratio_l - m) / (max_ratio - m)
   return a_i, m
-
-
-class _TakeWhileDataset(UnaryUnchangedStructureDataset):
-  """A dataset that stops iteration when `predicate` returns false."""
-
-  def __init__(self, input_dataset, predicate, name=None):
-    """See `take_while()` for details."""
-
-    self._input_dataset = input_dataset
-    wrapped_func = structured_function.StructuredFunctionWrapper(
-        predicate, self._transformation_name(), dataset=self._input_dataset)
-
-    if not wrapped_func.output_structure.is_compatible_with(
-        tensor_spec.TensorSpec([], dtypes.bool)):
-      raise ValueError(f"Invalid `predicate`. `predicate` must return a "
-                       f"`tf.bool` scalar tensor but its return type is"
-                       f"{wrapped_func.output_structure}.")
-
-    self._predicate = wrapped_func
-    self._name = name
-    variant_tensor = ged_ops.take_while_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        other_arguments=self._predicate.function.captured_inputs,
-        predicate=self._predicate.function,
-        **self._common_args)
-    super(_TakeWhileDataset, self).__init__(input_dataset, variant_tensor)
-
-  def _functions(self):
-    return [self._predicate]
-
-  def _transformation_name(self):
-    return "Dataset.take_while()"
 
 
 class _SnapshotDataset(UnaryUnchangedStructureDataset):
