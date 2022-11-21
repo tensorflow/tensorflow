@@ -398,14 +398,9 @@ class GpuSolver {
 #if TF_ROCM_VERSION >= 40500
   // Hermitian (Symmetric) Eigen decomposition.
   template <typename Scalar>
-<<<<<<< HEAD
-  Status Heevd(hipsolverEigMode_t jobz, gpuSolverFill_t uplo, int n, Scalar* dev_A,
-               int lda, typename Eigen::NumTraits<Scalar>::Real* dev_W,
-=======
   Status Heevd(hipsolverEigMode_t jobz, gpuSolverFill_t uplo, int n,
                Scalar* dev_A, int lda,
                typename Eigen::NumTraits<Scalar>::Real* dev_W,
->>>>>>> upstream/master
                int* dev_lapack_info);
 #endif
 

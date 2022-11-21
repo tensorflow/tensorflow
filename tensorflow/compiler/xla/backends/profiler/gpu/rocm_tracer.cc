@@ -1022,11 +1022,7 @@ tsl::Status RocmActivityCallbackImpl::operator()(const char* begin,
 #else
         roctracer_next_record(record, &record)
 #endif
-<<<<<<< HEAD:tensorflow/core/profiler/backends/gpu/rocm_tracer.cc
-	));
-=======
             ));
->>>>>>> upstream/master:tensorflow/compiler/xla/backends/profiler/gpu/rocm_tracer.cc
   }
 
   return tsl::OkStatus();

@@ -807,21 +807,15 @@ struct FusedBatchNormImplGPU {
     //   from
     //       FusedBatchNormV3, i.e. use_reserved_space is true.
     const bool fast_nhwc_batch_norm =
-<<<<<<< HEAD
-        !is_training ||
-        (BatchnormSpatialPersistentEnabled() &&
-         DataTypeToEnum<T>::value == DT_HALF && use_reserved_space);
+        !is_training || (BatchnormSpatialPersistentEnabled() &&
+                         (DataTypeToEnum<T>::value == DT_HALF ||
+                          DataTypeToEnum<T>::value == DT_BFLOAT16) &&
+                         use_reserved_space);
 #elif TENSORFLOW_USE_ROCM
     // Ensure that NHWC is enabled on ROCm
     const bool fast_nhwc_batch_norm = 
         ((!is_training || DataTypeToEnum<T>::value == DT_HALF) && use_reserved_space) &&
         UseNhwcLayoutForBatchnormRocm(); 
-=======
-        !is_training || (BatchnormSpatialPersistentEnabled() &&
-                         (DataTypeToEnum<T>::value == DT_HALF ||
-                          DataTypeToEnum<T>::value == DT_BFLOAT16) &&
-                         use_reserved_space);
->>>>>>> upstream/master
 #else
     const bool fast_nhwc_batch_norm = false;
 #endif
@@ -1111,22 +1105,16 @@ struct FusedBatchNormGradImplGPU {
     // Check if cuDNN batch normalization has a fast NHWC implementation:
     //   (1) Tensorflow enabled batchnorm spatial persistence, and
     //       FusedBatchNormGradV3 passed non-null reserve space and allocator.
-<<<<<<< HEAD
-    const bool fast_nhwc_batch_norm = BatchnormSpatialPersistentEnabled() &&
-                                      DataTypeToEnum<T>::value == DT_HALF &&
-                                      use_reserved_space;
-#elif TENSORFLOW_USE_ROCM
-    // Ensure that NHWC is enabled on ROCm
-    const bool fast_nhwc_batch_norm = DataTypeToEnum<T>::value == DT_HALF &&
-                                      use_reserved_space &&
-                                      UseNhwcLayoutForBatchnormRocm(); 
-=======
     const bool fast_nhwc_batch_norm =
         BatchnormSpatialPersistentEnabled() &&
         (DataTypeToEnum<T>::value == DT_HALF ||
          DataTypeToEnum<T>::value == DT_BFLOAT16) &&
         use_reserved_space;
->>>>>>> upstream/master
+#elif TENSORFLOW_USE_ROCM
+    // Ensure that NHWC is enabled on ROCm
+    const bool fast_nhwc_batch_norm = DataTypeToEnum<T>::value == DT_HALF &&
+                                      use_reserved_space &&
+                                      UseNhwcLayoutForBatchnormRocm();         
 #else
     const bool fast_nhwc_batch_norm = false;
 #endif

@@ -58,11 +58,6 @@ class BatchMatmulOpTest(test.TestCase):
     x = x_in if not adjoint_a else x_in.reshape(x_t_shape)
     y = y_in if not adjoint_b else y_in.reshape(y_t_shape)
     is_floating = x.dtype != np.int32
-<<<<<<< HEAD
-    tol = 100 * np.finfo(x.dtype).eps if is_floating else 0
-    if dtol != None:
-      tol *= dtol
-=======
     # np.finfo doesn't support bfloat16. So, we manually compute the eps which
     # defines the difference between 1.0 and the next smallest representable
     # float larger than 1.0. For bfloat16, the difference is 1/128.
@@ -71,7 +66,8 @@ class BatchMatmulOpTest(test.TestCase):
     elif is_floating:
       epsilon = np.finfo(x.dtype).eps
     tol = 100 * epsilon if is_floating else 0
->>>>>>> upstream/master
+    if dtol != None:
+      tol *= dtol 
     with self.cached_session(use_gpu=is_floating) as sess:
       if static_shape:
         z0 = math_ops.matmul(x, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b)

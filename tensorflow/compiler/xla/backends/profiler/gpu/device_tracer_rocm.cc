@@ -181,16 +181,9 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
 
   void Export(XSpace* space) {
     uint64_t end_gputime_ns = RocmTracer::GetTimestamp();
-<<<<<<< HEAD:tensorflow/core/profiler/backends/gpu/device_tracer_rocm.cc
-    XPlaneBuilder host_plane(
-        FindOrAddMutablePlaneWithName(space, kRoctracerApiPlaneName));
-    int i = 0;
-    for (auto& device : per_device_collector_) {
-=======
     XPlaneBuilder host_plane(FindOrAddMutablePlaneWithName(
         space, tsl::profiler::kRoctracerApiPlaneName));
     for (int i = 0; i < options_.num_gpus; ++i) {
->>>>>>> upstream/master:tensorflow/compiler/xla/backends/profiler/gpu/device_tracer_rocm.cc
       std::string name = GpuPlaneName(i);
       XPlaneBuilder device_plane(FindOrAddMutablePlaneWithName(space, name));
       device_plane.SetId(device.first);
