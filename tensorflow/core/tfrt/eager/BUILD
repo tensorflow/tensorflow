@@ -110,7 +110,6 @@ cc_library(
         "@tf_runtime//:tensor_alwayslink",
         "@tf_runtime//backends/cpu:core_runtime_alwayslink",
         "@tf_runtime//backends/common:eigentype",
-        "@tf_runtime//:distributed_kernels_alwayslink",
         "//tensorflow/compiler/jit:common",
         "//tensorflow/core/tfrt/eager/backends/cpu:cpu_registration_alwayslink",
     ] + if_cuda([

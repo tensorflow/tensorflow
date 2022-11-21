@@ -574,10 +574,9 @@ llvm::Optional<const TensorMetadata*> TensorHandleInterface::Metadata() const {
 ContextInterface::ContextInterface(
     const tensorflow::SessionOptions& opts,
     tensorflow::ContextDevicePlacementPolicy default_device_placement_policy,
-    bool is_async, bool use_tfrt_distributed_runtime)
+    bool is_async)
     : ImmediateExecutionContext(kTfrt),
-      context_(opts, default_device_placement_policy, is_async),
-      use_tfrt_distributed_runtime_(use_tfrt_distributed_runtime) {
+      context_(opts, default_device_placement_policy, is_async) {
   LOG(INFO) << "TFRT Enabled";
   metrics::AddTFRTVersionMetric();
 
@@ -952,9 +951,6 @@ void ContextInterface::EndStep() { GetEagerContext()->EndStep(); }
 
 tensorflow::Status ContextInterface::EnableCollectiveOps(
     const tensorflow::ServerDef& server_def) {
-  if (use_tfrt_distributed_runtime_) {
-    return distributed_manager_->EnableCollectiveOps(server_def);
-  }
   // Preserve the local virtual device names, since local virtual devices are
   // added by TFRT and we need to add it back after worker server is
   // initialized. Currently one such use case is the TPU_SYSTEM device, which

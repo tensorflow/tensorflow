@@ -122,7 +122,8 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
         opts->session_options.options,
         static_cast<tensorflow::ContextDevicePlacementPolicy>(
             opts->device_placement_policy),
-        opts->async, opts->use_tfrt_distributed_runtime);
+        opts->async);
+    // TODO(b/244443477) Clean up the opts use_tfrt_distributed_runtime field.
     return tensorflow::wrap(tfrt_context);
 #else
     status->status = tensorflow::errors::Unimplemented("TFRT is not supported");
