@@ -640,7 +640,7 @@ cc_library(
         [
             ":cudart_stub",
         ] + select({
-            "//tensorflow:macos": ["IOKit"],
+            "//tensorflow/tsl:macos": ["IOKit"],
             "//conditions:default": [],
         }),
     ),

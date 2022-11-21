@@ -249,7 +249,7 @@ cc_library(
         "statusor.h",
     ],
     linkopts = select({
-        "//tensorflow:freebsd": ["-lexecinfo"],
+        "//tensorflow/tsl:freebsd": ["-lexecinfo"],
         "//conditions:default": [],
     }),
     visibility = ["//visibility:public"],
