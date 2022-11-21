@@ -74,7 +74,13 @@ static std::string ReplicaGroupsToString(
     llvm::ArrayRef<int64_t> inner_data(start, start + stride);
 
     absl::StrAppend(&result, "{");
-    absl::StrAppend(&result, absl::StrJoin(inner_data, ", "));
+    absl::StrAppend(
+        &result,
+        // The replica groups can have different sizes. Smaller groups are
+        // padded with -1.
+        absl::StrJoin(llvm::make_filter_range(
+                          inner_data, [](int64_t id) { return id >= 0; }),
+                      ", "));
     absl::StrAppend(&result, "}");
   }
   absl::StrAppend(&result, "}");
