@@ -44,6 +44,10 @@ limitations under the License.
 namespace tensorflow {
 namespace dtensor {
 
+// Returns true if `size` is a dynamic size based on either MLIR and TF
+// standards.
+bool IsDynamicSize(int64_t size);
+
 // The location of a device in a mesh.
 //
 // Each device has a unique location in the mesh, which is indicated by the
