@@ -4349,25 +4349,17 @@ bool IsUnrollingColumnReductionBeneficial(mlir::lmhlo::FusionOp fusion,
   int64_t cannot_be_vectorized = 0;
   llvm::SmallVector<mlir::Operation*> fusion_roots = fusion.getFusionRoots();
   absl::flat_hash_set<mlir::Operation*> use_chain_endings;
-  auto hlo_roots = GetFusionRoots(fused_computation);
+  std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fused_computation);
 
-  if (fusion_roots.size() == 1) {
-    if (IsReductionFromOrToContiguousDimensions(*hlo_roots[0])) {
-      use_chain_endings.insert(fusion_roots[0]);
+  for (int i = 0; i < fusion_roots.size(); i++) {
+    if (IsReductionFromOrToContiguousDimensions(*hlo_roots[i])) {
       // Atomic.add of the reduction result can't be vectorized.
       cannot_be_vectorized++;
+    } else {
+      // Write of the non-reduction result can be vectorized.
+      can_be_vectorized++;
     }
-  } else {
-    for (int i = 0; i < fusion_roots.size(); i++) {
-      if (IsReductionFromOrToContiguousDimensions(*hlo_roots[i])) {
-        // Atomic.add of the reduction result can't be vectorized.
-        cannot_be_vectorized++;
-      } else {
-        // Write of the non-reduction result can be vectorized.
-        can_be_vectorized++;
-      }
-      use_chain_endings.insert(fusion_roots[i]);
-    }
+    use_chain_endings.insert(fusion_roots[i]);
   }
   // Fusion inputs that have the same dimension as the reduce input and
   // only involve in elementwise operations can be vectorized.
