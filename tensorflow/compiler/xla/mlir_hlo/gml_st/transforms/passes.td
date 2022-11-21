@@ -148,6 +148,13 @@ def VectorizeGmlStLoopsPass :
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }
 
+def LoweringVectorContractPass :
+    Pass<"lowering-vector-contract", "mlir::func::FuncOp"> {
+  let summary = "Pass to lower vector.contract";
+  let constructor = "::mlir::gml_st::createLoweringVectorContractPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect"];
+}
+
 def TransformScatterForCpuPass :
     Pass<"xla-cpu-transform-scatter", "mlir::func::FuncOp"> {
   let summary = "Transform scatter ops for running on CPU";

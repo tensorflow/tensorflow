@@ -32,6 +32,7 @@ namespace gml_st {
 namespace {
 
 #define GEN_PASS_DEF_VECTORIZEGMLSTLOOPSPASS
+#define GEN_PASS_DEF_LOWERINGVECTORCONTRACTPASS
 #include "gml_st/transforms/passes.h.inc"
 
 using mlir::linalg::FillOp;
@@ -571,12 +572,40 @@ struct VectorizeGmlStLoopsPass
   }
 };
 
+struct LoweringVectorContractPass
+    : public impl::LoweringVectorContractPassBase<LoweringVectorContractPass> {
+  LoweringVectorContractPass() = default;
+
+  void runOnOperation() override {
+    auto func = getOperation();
+    auto *ctx = func.getContext();
+
+    RewritePatternSet patterns(ctx);
+
+    vector::populateVectorToVectorCanonicalizationPatterns(patterns);
+    // Currently we always lower vector.contract into vector.outerproduct.
+    patterns.add<mlir::vector::ContractionOpToOuterProductOpLowering>(
+        mlir::vector::VectorTransformsOptions().setVectorTransformsOptions(
+            mlir::vector::VectorContractLowering::OuterProduct),
+        ctx, 2);
+    mlir::vector::populateVectorTransferPermutationMapLoweringPatterns(
+        patterns);
+
+    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  }
+};
+
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeGmlStLoopsPass(
     bool vectorizeGmlStOps, ArrayRef<StringRef> distributionLabels) {
   return std::make_unique<VectorizeGmlStLoopsPass>(vectorizeGmlStOps,
                                                    distributionLabels);
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>>
+createLoweringVectorContractPass() {
+  return std::make_unique<LoweringVectorContractPass>();
 }
 
 }  // namespace gml_st
