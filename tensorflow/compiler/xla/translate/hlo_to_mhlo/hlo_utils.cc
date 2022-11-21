@@ -226,6 +226,10 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
   switch (element_type) {
     case PrimitiveType::PRED:
       return builder.getI1Type();
+    case PrimitiveType::F8E5M2:
+      return builder.getFloat8E5M2Type();
+    case PrimitiveType::F8E4M3FN:
+      return builder.getFloat8E4M3FNType();
     case PrimitiveType::F16:
       return builder.getF16Type();
     case PrimitiveType::BF16:

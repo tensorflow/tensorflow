@@ -199,6 +199,10 @@ XLA_TEST_F(MathTest, RealFpOnlyOps) {
     } else {
       continue;
     }
+    if (ty == F8E5M2 || ty == F8E4M3FN) {
+      // TODO(b/259609697): Add FP8 support to math ops
+      continue;
+    }
 
     for (const auto& test :
          std::vector<std::pair<std::function<XlaOp(XlaOp)>, std::string>>({

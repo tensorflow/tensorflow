@@ -365,6 +365,11 @@ static bool isRewritableType(Type type) {
   // Unsigned integers are not yet supported.
   if (auto intType = shapedType.getElementType().dyn_cast<IntegerType>())
     return !intType.isUnsigned();
+  // F8 types are not yet supported.
+  // TODO(b/259609697): Support F8 types.
+  if (shapedType.getElementType().isFloat8E5M2() ||
+      shapedType.getElementType().isFloat8E4M3FN())
+    return false;
   return true;
 }
 

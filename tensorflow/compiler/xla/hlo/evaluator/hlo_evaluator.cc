@@ -1203,6 +1203,9 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
           "expected element type in shape to be floating point, but "
           "got: %s",
           PrimitiveType_Name(elem_ty));
+    case F8E5M2:
+    case F8E4M3FN:
+      return InvalidArgument("F8 is unsupported in IsFinite");
 
     case F16: {
       auto result_or = ElementWiseUnaryOpImpl<bool, Eigen::half>(

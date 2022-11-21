@@ -44,7 +44,11 @@ using xla::ShapeUtil;
 namespace xla {
 
 PrimitiveType TypeToPrimitiveType(mlir::Type type) {
-  if (type.isBF16()) {
+  if (type.isFloat8E5M2()) {
+    return PrimitiveType::F8E5M2;
+  } else if (type.isFloat8E4M3FN()) {
+    return PrimitiveType::F8E4M3FN;
+  } else if (type.isBF16()) {
     return PrimitiveType::BF16;
   } else if (type.isF16()) {
     return PrimitiveType::F16;

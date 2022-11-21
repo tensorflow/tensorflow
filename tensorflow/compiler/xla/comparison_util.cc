@@ -52,6 +52,8 @@ bool IsValidComparison(xla::PrimitiveType type, Comparison::Order order) {
     case TUPLE:
     case OPAQUE_TYPE:
     case TOKEN:
+    case F8E5M2:
+    case F8E4M3FN:
     case PRIMITIVE_TYPE_INVALID:
     case PrimitiveType_INT_MAX_SENTINEL_DO_NOT_USE_:
     case PrimitiveType_INT_MIN_SENTINEL_DO_NOT_USE_:
@@ -317,6 +319,8 @@ std::optional<Comparison> Comparison::Inverse() const {
     case TUPLE:
     case OPAQUE_TYPE:
     case TOKEN:
+    case F8E5M2:
+    case F8E4M3FN:
     case PRIMITIVE_TYPE_INVALID:
     case PrimitiveType_INT_MAX_SENTINEL_DO_NOT_USE_:
     case PrimitiveType_INT_MIN_SENTINEL_DO_NOT_USE_:
