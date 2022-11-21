@@ -25,6 +25,7 @@ from tensorflow.compiler.mlir.quantization.tensorflow import quantization_option
 from tensorflow.compiler.mlir.quantization.tensorflow.python import quantize_model
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
 from tensorflow.compiler.mlir.quantization.tensorflow.python.integration_test import quantize_model_test_base
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
@@ -437,49 +438,15 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   )
   @test_util.run_in_graph_and_eager_modes
   def test_conv_ptq_model(self, activation_fn: Optional[ops.Operation],
-                          has_bias: bool, has_bn: bool,
+                          has_bias: bool, has_batch_norm: bool,
                           target_opset: quant_opts_pb2.OpSet,
                           input_shape_dynamic: bool):
     input_shape = [None, None, None, 3] if input_shape_dynamic else [1, 3, 4, 3]
-
-    class ConvModel(module.Module):
-
-      @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(shape=input_shape, dtype=dtypes.float32)
-      ])
-      def conv(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
-        """Performs a 2D convolution operation.
-
-        Args:
-          input_tensor: Input tensor to perform convolution on.
-
-        Returns:
-          A map of: output key -> output result.
-        """
-        filters = np.random.uniform(
-            low=-10, high=10, size=(2, 3, 3, 2)).astype('f4')
-        bias = np.random.uniform(low=0, high=10, size=(2)).astype('f4')
-        scale, offset = [1.0, 1.0], [0.5, 0.5]
-        mean, variance = scale, offset
-        out = nn_ops.conv2d(
-            input_tensor,
-            filters,
-            strides=[1, 1, 2, 1],
-            dilations=[1, 1, 1, 1],
-            padding='SAME',
-            data_format='NHWC')
-        if has_bias:
-          out = nn_ops.bias_add(out, bias)
-        if has_bn:
-          # Fusing is supported for non-training case.
-          out, _, _, _, _, _ = nn_ops.fused_batch_norm_v3(
-              out, scale, offset, mean, variance, is_training=False)
-        if activation_fn is not None:
-          out = activation_fn(out)
-        return {'output': out}
+    filter_shape = [2, 3, 3, 2]
 
     np.random.seed(1234)
-    model = ConvModel()
+    model = self._create_conv2d_model(input_shape, filter_shape, has_bias,
+                                      has_batch_norm, activation_fn)
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
@@ -545,49 +512,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   @test_util.run_in_graph_and_eager_modes
   def test_depthwise_conv_ptq_model(self,
                                     activation_fn: Optional[ops.Operation],
-                                    has_bias: bool, has_bn: bool,
+                                    has_bias: bool, has_batch_norm: bool,
                                     target_opset: quant_opts_pb2.OpSet,
                                     input_shape_dynamic: bool):
-    input_shape = [None, None, None, 3] if input_shape_dynamic else [1, 3, 4, 3]
-
-    class DepthwiseConvModel(module.Module):
-
-      @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(shape=input_shape, dtype=dtypes.float32)
-      ])
-      def conv(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
-        """Performs a 2D convolution operation.
-
-        Args:
-          input_tensor: Input tensor to perform convolution on.
-
-        Returns:
-          A map of: output key -> output result.
-        """
-        filters = np.random.uniform(
-            low=-10, high=10, size=(2, 3, 3, 1)).astype('f4')
-        bias = np.random.uniform(low=0, high=10, size=(3)).astype('f4')
-        scale, offset = [1.0, 1.0, 1.0], [0.5, 0.5, 0.5]
-        mean, variance = scale, offset
-        out = nn_ops.depthwise_conv2d_native(
-            input_tensor,
-            filters,
-            strides=[1, 2, 2, 1],
-            dilations=[1, 1, 1, 1],
-            padding='SAME',
-            data_format='NHWC')
-        if has_bias:
-          out = nn_ops.bias_add(out, bias)
-        if has_bn:
-          # Fusing is supported for non-training case.
-          out, _, _, _, _, _ = nn_ops.fused_batch_norm_v3(
-              out, scale, offset, mean, variance, is_training=False)
-        if activation_fn is not None:
-          out = activation_fn(out)
-        return {'output': out}
-
+    input_shape = ([None, None, None, 3]
+                   if input_shape_dynamic else [1, 3, 4, 3])
+    filter_shape = [2, 3, 3, 1]
+    model = self._create_depthwise_conv2d_model(input_shape, filter_shape,
+                                                has_bias, has_batch_norm,
+                                                activation_fn)
     np.random.seed(1234)
-    model = DepthwiseConvModel()
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
@@ -1670,7 +1604,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
        quant_opts_pb2.XLA, True, 'VALID'),
   )
   def test_conv3d_ptq_model(self, activation_fn: Optional[ops.Operation],
-                            has_bias: bool, has_bn: bool,
+                            has_bias: bool, has_batch_norm: bool,
                             target_opset: quant_opts_pb2.OpSet,
                             input_shape_dynamic: bool, padding: str):
     input_shape = [1, 3, 4, 3, 3]
@@ -1792,8 +1726,12 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   (default in TF2) to ensure support for when TF2 is disabled.
   """
 
+  @parameterized.named_parameters(
+      ('to_tf', quant_opts_pb2.TF),
+      ('to_uniform_quantized', quant_opts_pb2.UNIFORM_QUANTIZED),
+  )
   @test_util.run_in_graph_and_eager_modes
-  def test_matmul_model(self):
+  def test_matmul_model(self, target_opset: quant_opts_pb2.OpSet):
     model = self._create_matmul_model()
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
@@ -1804,7 +1742,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.DYNAMIC_RANGE),
-        op_set=quant_opts_pb2.OpSet.UNIFORM_QUANTIZED)
+        op_set=target_opset)
 
     converted_model = quantize_model.quantize(input_saved_model_path,
                                               ['serving_default'], tags,
@@ -1818,13 +1756,28 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(
         self._contains_quantized_function_call(output_meta_graphdef))
-    self.assertTrue(
-        self._contains_op(output_meta_graphdef, 'UniformQuantizedDotHybrid'))
-    self.assertFalse(self._contains_op(output_meta_graphdef, 'MatMul'))
+    if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
+      self.assertTrue(
+          self._contains_op(output_meta_graphdef, 'UniformQuantizedDotHybrid'))
+      self.assertFalse(self._contains_op(output_meta_graphdef, 'MatMul'))
+    else:
+      self.assertTrue(self._contains_op(output_meta_graphdef, 'MatMul'))
 
+  @parameterized.named_parameters(
+      ('to_tf', quant_opts_pb2.TF),
+      # TODO(b/214483019): enable once uniform quantized op is supported
+      # ('to_uniform_quantized', quant_opts_pb2.UNIFORM_QUANTIZED),
+  )
   @test_util.run_in_graph_and_eager_modes
-  def test_conv_model(self):
-    model = self._create_conv2d_model()
+  def test_conv_model(self, target_opset: quant_opts_pb2.OpSet):
+
+    model = self._create_conv2d_model(
+        input_shape=(1, 3, 4, 512),
+        filter_shape=(2, 3, 512, 2),
+        has_bias=True,
+        has_batch_norm=True,
+        activation_fn=nn_ops.relu6)
+
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
@@ -1834,7 +1787,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.DYNAMIC_RANGE),
-        op_set=quant_opts_pb2.OpSet.UNIFORM_QUANTIZED)
+        op_set=target_opset)
 
     converted_model = quantize_model.quantize(input_saved_model_path,
                                               ['serving_default'], tags,
@@ -1847,9 +1800,70 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    # Currently conv is not supported.
-    self.assertFalse(
+    self.assertTrue(
         self._contains_quantized_function_call(output_meta_graphdef))
+    if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
+      # TODO(b/214483019): enable once uniform quantized op is supported
+      self.assertFalse(
+          self._contains_op(output_meta_graphdef,
+                            'UniformQuantizedConvolutionHybrid'))
+      self.assertTrue(self._contains_op(output_meta_graphdef, 'Conv2D'))
+    else:
+      self.assertTrue(self._contains_op(output_meta_graphdef, 'Conv2D'))
+
+  @parameterized.named_parameters(
+      ('to_tf', quant_opts_pb2.TF),
+      # TODO(b/214483019): enable once uniform quantized op is supported
+      # ('to_uniform_quantized', quant_opts_pb2.UNIFORM_QUANTIZED),
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def test_depthwise_conv_model(self, target_opset: quant_opts_pb2.OpSet):
+
+    strides = (1, 2, 2, 1)
+    model = self._create_depthwise_conv2d_model(
+        input_shape=(1, 3, 4, 1024),
+        filter_shape=(2, 3, 1024, 2),
+        strides=strides)
+
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    tags = [tag_constants.SERVING]
+    output_directory = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE),
+        op_set=target_opset)
+
+    converted_model = quantize_model.quantize(input_saved_model_path,
+                                              ['serving_default'], tags,
+                                              output_directory,
+                                              quantization_options)
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(
+        self._contains_quantized_function_call(output_meta_graphdef))
+    if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
+      # TODO(b/214483019): enable once uniform quantized op is supported
+      self.assertFalse(
+          self._contains_op(output_meta_graphdef,
+                            'UniformQuantizedConvolutionHybrid'))
+      self.assertTrue(
+          self._contains_op(output_meta_graphdef, 'DepthwiseConv2dNative'))
+    else:
+      strides_attr = attr_value_pb2.AttrValue(
+          list=attr_value_pb2.AttrValue.ListValue(i=strides))
+      self.assertTrue(
+          self._contains_op(output_meta_graphdef, 'DepthwiseConv2dNative'))
+      self.assertTrue(
+          self._contains_op(output_meta_graphdef, 'DepthwiseConv2dNative',
+                            'strides', strides_attr))
 
   @parameterized.named_parameters(
       ('use_constant', False),
