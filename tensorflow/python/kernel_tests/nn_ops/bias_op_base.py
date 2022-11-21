@@ -26,6 +26,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
@@ -194,6 +195,9 @@ class BiasAddTestBase(test.TestCase):
                                                     output_tensor, output_shape)
       (input_jacob_a, input_jacob_n), (bias_jacob_a, bias_jacob_n) = jacobians
       # Test gradient of BiasAddGrad
+      if dtype == dtypes.bfloat16:
+        # L2Loss is not supported for bfloat16 on CPU.
+        output_tensor = math_ops.cast(output_tensor, dtype=dtypes.float32)
       bias_add_grad = gradients_impl.gradients(
           nn_ops.l2_loss(output_tensor), bias_tensor)[0]
       grad_jacob_a, grad_jacob_n = gradient_checker.compute_gradient(
