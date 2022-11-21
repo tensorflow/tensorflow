@@ -63,24 +63,6 @@ using FusedMatMulRunner =
 template <typename T>
 class CommonTestUtilities : public OpsTestBase {
  public:
-  void PerformConversion(DataType dtype, const Tensor& tensor,
-                         const Tensor& mkl_meta_tensor, Tensor* output) {
-    // Create an MKL to TF conversion node and execute it
-    TF_EXPECT_OK(NodeDefBuilder("mkl_to_tf_op", "_MklToTf")
-                     .Input(FakeInput(dtype))     // Input
-                     .Input(FakeInput(DT_UINT8))  // Mkl second tensor
-                     .Attr("T", dtype)
-                     .Attr("_kernel", "MklLayoutDependentOp")
-                     .Finalize(node_def()));
-    TF_EXPECT_OK(InitOp());
-    AddInputFromArray<T>(tensor.shape(), tensor.flat<T>());
-    AddInputFromArray<uint8>(mkl_meta_tensor.shape(),
-                             mkl_meta_tensor.flat<uint8>());
-    TF_ASSERT_OK(RunOpKernel());
-
-    *output = *GetOutput(0);
-  }
-
   // Runs a Tensorflow graph defined by the root scope, and fetches the result
   // of 'fetch' node into the output Tensor.
   static void RunAndFetch(const tensorflow::Scope& root, const string& fetch,
@@ -98,21 +80,6 @@ class CommonTestUtilities : public OpsTestBase {
     *output = unfused_tensors[0];
   }
 
-  void ConvertAndCompare(DataType dtype, const Tensor& tensor,
-                         const Tensor& mkl_meta_tensor,
-                         const Tensor& expected) {
-    Tensor output;
-    PerformConversion(dtype, tensor, mkl_meta_tensor, &output);
-    test::ExpectTensorNear<T>(expected, output, 1e-5);
-  }
-
-  void ConvertAndCompareIntegral(DataType dtype, const Tensor& tensor,
-                                 const Tensor& mkl_meta_tensor,
-                                 const Tensor& expected) {
-    Tensor output;
-    PerformConversion(dtype, tensor, mkl_meta_tensor, &output);
-    test::ExpectTensorEqual<T>(expected, output);
-  }
   void TestBody() {}
 
   static void VerifyBiasAddTensorsClose(int depth, int image_width,
@@ -326,26 +293,26 @@ class MklFusedConv2DOpTest : public OpsTestBase {
                          int depth = kDepth, int image_width = kImageWidth,
                          int image_height = kImageHeight,
                          int image_batch_count = kImageBatchCount) {
-    const FusedGraphRunner run_default =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, const std::vector<string>& fused_ops,
-               Tensor* out, const int padding) {
-          RunConv2DUnfused(input_data, filter_data, bias_data, fused_ops, out,
-                           padding);
-        };
+    const FusedGraphRunner run_default = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, const std::vector<string>& fused_ops,
+        Tensor* out, const int padding) {
+      RunConv2DUnfused(input_data, filter_data, bias_data, fused_ops, out,
+                       padding);
+    };
 
-    const FusedGraphRunner run_fused =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, const std::vector<string>& fused_ops,
-               Tensor* out, const int padding) {
-          std::vector<Tensor> fused_input = {bias_data};
-          if (std::find(fused_ops.begin(), fused_ops.end(), "Add") !=
-              fused_ops.end()) {
-            fused_input.push_back(input_data);
-          }
-          RunMklFusedConv2DOp(input_data, filter_data, fused_input, fused_ops,
-                              out, padding);
-        };
+    const FusedGraphRunner run_fused = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, const std::vector<string>& fused_ops,
+        Tensor* out, const int padding) {
+      std::vector<Tensor> fused_input = {bias_data};
+      if (std::find(fused_ops.begin(), fused_ops.end(), "Add") !=
+          fused_ops.end()) {
+        fused_input.push_back(input_data);
+      }
+      RunMklFusedConv2DOp(input_data, filter_data, fused_input, fused_ops, out,
+                          padding);
+    };
 
     const int bias_size = filter_count;
     CommonTestUtilities<T>::VerifyFusedTensorsClose(
@@ -617,22 +584,22 @@ class MklFusedDepthwiseConv2DOpTest : public OpsTestBase {
                                   int image_width = kImageWidth,
                                   int image_height = kImageHeight,
                                   int image_batch_count = kImageBatchCount) {
-    const FusedGraphRunner run_default =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, const std::vector<string>& fused_ops,
-               Tensor* out, const int padding) {
-          RunDepthwiseConv2DUnfused(input_data, filter_data, bias_data,
-                                    fused_ops, out);
-        };
+    const FusedGraphRunner run_default = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, const std::vector<string>& fused_ops,
+        Tensor* out, const int padding) {
+      RunDepthwiseConv2DUnfused(input_data, filter_data, bias_data, fused_ops,
+                                out);
+    };
 
-    const FusedGraphRunner run_fused =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, const std::vector<string>& fused_ops,
-               Tensor* out, const int padding) {
-          std::vector<Tensor> fused_input = {bias_data};
-          RunMklFusedDepthwiseConv2DOp(input_data, filter_data, fused_input,
-                                       fused_ops, out);
-        };
+    const FusedGraphRunner run_fused = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, const std::vector<string>& fused_ops,
+        Tensor* out, const int padding) {
+      std::vector<Tensor> fused_input = {bias_data};
+      RunMklFusedDepthwiseConv2DOp(input_data, filter_data, fused_input,
+                                   fused_ops, out);
+    };
 
     CommonTestUtilities<T>::VerifyFusedTensorsClose(
         depth, image_width, image_height, image_batch_count, filter_size,
@@ -736,8 +703,9 @@ class FusedPadConvOpTest : public OpsTestBase {
 
     // FusedPadConv op is only supported on AVX512.
     // So skip test if CPU instruction set is AVX2 or ealer version.
-    if ((dtype == DT_BFLOAT16) && !tensorflow::port::TestCPUFeature(
-                                      tensorflow::port::CPUFeature::AVX512F))
+    if ((dtype == DT_BFLOAT16) &&
+        !tensorflow::port::TestCPUFeature(
+            tensorflow::port::CPUFeature::AVX512F))
       return;
 
     const int depth = 1;
@@ -922,81 +890,80 @@ class MklFusedMatMulOpTest : public OpsTestBase {
   void VerifyFusedMatMul(const int kBatch, const int kInputChannel,
                          const int kOutputChannel,
                          const std::vector<string>& fused_ops) {
-    const FusedMatMulRunner run_default =
-        [this](const Tensor& input, const Tensor& weight, const Tensor& bias,
-               const std::vector<string>& fused_ops, Tensor* output) {
-          auto root = tensorflow::Scope::NewRootScope();
-          auto input_op =
-              ops::Const(root.WithOpName("input"), Input::Initializer(input));
-          Output next_op = ops::MatMul(root.WithOpName("matmul"), input_op,
-                                       ops::Const(root.WithOpName("weight"),
-                                                  Input::Initializer(weight)));
+    const FusedMatMulRunner run_default = [this](
+        const Tensor& input, const Tensor& weight, const Tensor& bias,
+        const std::vector<string>& fused_ops, Tensor* output) {
+      auto root = tensorflow::Scope::NewRootScope();
+      auto input_op =
+          ops::Const(root.WithOpName("input"), Input::Initializer(input));
+      Output next_op = ops::MatMul(
+          root.WithOpName("matmul"), input_op,
+          ops::Const(root.WithOpName("weight"), Input::Initializer(weight)));
 
-          string last_op = "";
-          if (std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") !=
-              fused_ops.end()) {
-            last_op = "with_bias";
-            next_op = ops::BiasAdd(
-                root.WithOpName(last_op), next_op,
-                ops::Const(root.WithOpName("bias"), Input::Initializer(bias)));
-          }
+      string last_op = "";
+      if (std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") !=
+          fused_ops.end()) {
+        last_op = "with_bias";
+        next_op = ops::BiasAdd(
+            root.WithOpName(last_op), next_op,
+            ops::Const(root.WithOpName("bias"), Input::Initializer(bias)));
+      }
 
-          if (std::find(fused_ops.begin(), fused_ops.end(), "Relu") !=
-              fused_ops.end()) {
-            last_op = "with_relu";
-            next_op = ops::Relu(root.WithOpName(last_op), next_op);
-          }
+      if (std::find(fused_ops.begin(), fused_ops.end(), "Relu") !=
+          fused_ops.end()) {
+        last_op = "with_relu";
+        next_op = ops::Relu(root.WithOpName(last_op), next_op);
+      }
 
-          if (std::find(fused_ops.begin(), fused_ops.end(), "Relu6") !=
-              fused_ops.end()) {
-            last_op = "with_relu6";
-            next_op = ops::Relu6(root.WithOpName(last_op), next_op);
-          }
+      if (std::find(fused_ops.begin(), fused_ops.end(), "Relu6") !=
+          fused_ops.end()) {
+        last_op = "with_relu6";
+        next_op = ops::Relu6(root.WithOpName(last_op), next_op);
+      }
 
-          if (std::find(fused_ops.begin(), fused_ops.end(), "Elu") !=
-              fused_ops.end()) {
-            last_op = "with_elu";
-            next_op = ops::Elu(root.WithOpName(last_op), next_op);
-          }
+      if (std::find(fused_ops.begin(), fused_ops.end(), "Elu") !=
+          fused_ops.end()) {
+        last_op = "with_elu";
+        next_op = ops::Elu(root.WithOpName(last_op), next_op);
+      }
 
-          if (std::find(fused_ops.begin(), fused_ops.end(), "Tanh") !=
-              fused_ops.end()) {
-            last_op = "with_tanh";
-            next_op = ops::Tanh(root.WithOpName(last_op), next_op);
-          }
+      if (std::find(fused_ops.begin(), fused_ops.end(), "Tanh") !=
+          fused_ops.end()) {
+        last_op = "with_tanh";
+        next_op = ops::Tanh(root.WithOpName(last_op), next_op);
+      }
 
-          if (std::find(fused_ops.begin(), fused_ops.end(), "Sigmoid") !=
-              fused_ops.end()) {
-            last_op = "with_Sigmoid";
-            next_op = ops::Sigmoid(root.WithOpName(last_op), next_op);
-          }
+      if (std::find(fused_ops.begin(), fused_ops.end(), "Sigmoid") !=
+          fused_ops.end()) {
+        last_op = "with_Sigmoid";
+        next_op = ops::Sigmoid(root.WithOpName(last_op), next_op);
+      }
 
-          if (std::find(fused_ops.begin(), fused_ops.end(), "Add") !=
-              fused_ops.end()) {
-            last_op = "with_add";
-            next_op = ops::Add(root.WithOpName("with_add"), next_op, input_op);
-          }
+      if (std::find(fused_ops.begin(), fused_ops.end(), "Add") !=
+          fused_ops.end()) {
+        last_op = "with_add";
+        next_op = ops::Add(root.WithOpName("with_add"), next_op, input_op);
+      }
 
-          if (std::find(fused_ops.begin(), fused_ops.end(), "LeakyRelu") !=
-              fused_ops.end()) {
-            last_op = "with_leakyrelu";
-            next_op =
-                ops::internal::LeakyRelu(root.WithOpName(last_op), next_op);
-          }
+      if (std::find(fused_ops.begin(), fused_ops.end(), "LeakyRelu") !=
+          fused_ops.end()) {
+        last_op = "with_leakyrelu";
+        next_op = ops::internal::LeakyRelu(root.WithOpName(last_op), next_op);
+      }
 
-          CommonTestUtilities<T>::RunAndFetch(root, last_op, output);
-        };
+      CommonTestUtilities<T>::RunAndFetch(root, last_op, output);
+    };
 
-    const FusedMatMulRunner run_fused =
-        [this](const Tensor& input, const Tensor& weight, const Tensor& bias,
-               const std::vector<string>& fused_ops, Tensor* output) {
-          std::vector<Tensor> fused_input = {bias};
-          if (std::find(fused_ops.begin(), fused_ops.end(), "Add") !=
-              fused_ops.end()) {
-            fused_input.push_back(input);
-          }
-          RunMklFusedMatMulOp(input, weight, fused_input, fused_ops, output);
-        };
+    const FusedMatMulRunner run_fused = [this](
+        const Tensor& input, const Tensor& weight, const Tensor& bias,
+        const std::vector<string>& fused_ops, Tensor* output) {
+      std::vector<Tensor> fused_input = {bias};
+      if (std::find(fused_ops.begin(), fused_ops.end(), "Add") !=
+          fused_ops.end()) {
+        fused_input.push_back(input);
+      }
+      RunMklFusedMatMulOp(input, weight, fused_input, fused_ops, output);
+    };
 
     CommonTestUtilities<T>::VerifyFusedMatrixClose(kInputChannel, kBatch,
                                                    kOutputChannel, fused_ops,
@@ -1316,19 +1283,18 @@ class MklPadWithFusedConv2DOpTest : public OpsTestBase {
                                   int image_width = kImageWidth,
                                   int image_height = kImageHeight,
                                   int image_batch_count = kImageBatchCount) {
-    const BiasAddGraphRunner run_default = [this](const Tensor& input_data,
-                                                  const Tensor& filter_data,
-                                                  const Tensor& bias_data,
-                                                  Tensor* out) {
+    const BiasAddGraphRunner run_default = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
       RunMklPadWithFusedConv2DAndBias(input_data, filter_data, bias_data, out);
     };
 
-    const BiasAddGraphRunner run_fused =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunMklFusedConv2DWithPadOp(input_data, filter_data, {bias_data},
-                                     {"BiasAdd"}, out);
-        };
+    const BiasAddGraphRunner run_fused = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunMklFusedConv2DWithPadOp(input_data, filter_data, {bias_data},
+                                 {"BiasAdd"}, out);
+    };
 
     CommonTestUtilities<T>::VerifyBiasAddTensorsClose(
         depth, image_width, image_height, image_batch_count, filter_size,
@@ -1341,19 +1307,19 @@ class MklPadWithFusedConv2DOpTest : public OpsTestBase {
       int filter_size, int filter_count, int depth = kDepth,
       int image_width = kImageWidth, int image_height = kImageHeight,
       int image_batch_count = kImageBatchCount) {
-    const BiasAddGraphRunner run_default =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunMklPadWithFusedConv2DAndBiasRelu(input_data, filter_data,
-                                              bias_data, out);
-        };
+    const BiasAddGraphRunner run_default = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunMklPadWithFusedConv2DAndBiasRelu(input_data, filter_data, bias_data,
+                                          out);
+    };
 
-    const BiasAddGraphRunner run_fused =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunMklFusedConv2DWithPadOp(input_data, filter_data, {bias_data},
-                                     {"BiasAdd", "Relu"}, out);
-        };
+    const BiasAddGraphRunner run_fused = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunMklFusedConv2DWithPadOp(input_data, filter_data, {bias_data},
+                                 {"BiasAdd", "Relu"}, out);
+    };
 
     CommonTestUtilities<T>::VerifyBiasAddTensorsClose(
         depth, image_width, image_height, image_batch_count, filter_size,

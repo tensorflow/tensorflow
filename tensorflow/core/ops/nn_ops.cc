@@ -2564,63 +2564,6 @@ of MaxPool3D function.
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("_MklLRN")
-    .Input("input: T")
-    .Input("mkl_input: uint8")
-    .Output("output: T")
-    .Output("workspace: uint8")
-    .Output("mkl_output: uint8")
-    .Output("mkl_workspace: uint8")
-    .Attr("depth_radius: int = 5")
-    .Attr("bias: float = 1.0")
-    .Attr("alpha: float = 1.0")
-    .Attr("beta: float = 0.5")
-    .Attr("workspace_enabled: bool = false")
-    .Attr("T: {float, half} = DT_FLOAT")
-    .SetShapeFn([](InferenceContext* c) {
-      return UnchangedShapeWithRank(c, 4);
-    })
-    .Doc(R"doc(
-MKL version of LRN operator. Uses MKL DNN APIs to perform local response
-normalization.
-
-NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
-expected to invoke these operators.
-)doc");
-
-REGISTER_OP("_MklLRNGrad")
-    .Input("input_grads: T")
-    .Input("input_image: T")
-    .Input("output_image: T")
-    .Input("workspace: uint8")
-    .Input("mkl_input_grads: uint8")
-    .Input("mkl_input_image: uint8")
-    .Input("mkl_output_image: uint8")
-    .Input("mkl_workspace: uint8")
-    .Output("output: T")
-    .Output("mkl_output: uint8")
-    .Attr("depth_radius: int = 5")
-    .Attr("bias: float = 1.0")
-    .Attr("alpha: float = 1.0")
-    .Attr("beta: float = 0.5")
-    .Attr("workspace_enabled: bool = false")
-    .Attr("T: {float, half} = DT_FLOAT")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle s;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &s));  // input_grads
-      TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));     // input_image
-      TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));     // output_image
-      c->set_output(0, s);
-      return OkStatus();
-    })
-    .Doc(R"doc(
-MKL version of LRNGrad operator. Uses MKL DNN APIs to compute gradient for
-local response normalization.
-
-NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
-expected to invoke these operators.
-)doc");
-
 REGISTER_OP("_MklFusedBatchNorm")
     .Input("x: T")
     .Input("scale: T")
