@@ -1138,7 +1138,7 @@ cc_header_only_library(
         ":xla_data_proto_cc",
         ":xla_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:stream_executor_headers_lib",
     ],
