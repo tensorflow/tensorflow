@@ -39,6 +39,7 @@ using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
 using mlir::linalg::MatmulOp;
 using mlir::tensor::ExpandShapeOp;
+using mlir::vector::OuterProductOp;
 using mlir::vector::TransferReadOp;
 using mlir::vector::TransferWriteOp;
 
@@ -148,6 +149,41 @@ struct SetYieldOfScalarToVectorPattern : public OpRewritePattern<SetYieldOp> {
 
     return success();
   }
+};
+
+struct OuterProductOpCanonicalizationPattern
+    : public OpRewritePattern<OuterProductOp> {
+  OuterProductOpCanonicalizationPattern(
+      MLIRContext *context, llvm::function_ref<bool(OuterProductOp)> filterFn,
+      PatternBenefit benefit = 1)
+      : OpRewritePattern(context, benefit), filterFn(filterFn) {}
+
+  LogicalResult matchAndRewrite(OuterProductOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!filterFn(op))
+      return rewriter.notifyMatchFailure(op, "did not match filter");
+
+    bool changed = false;
+    SmallVector<Value> newAccs{op.getAcc()};
+    for (auto &acc : newAccs) {
+      auto materializeOp = acc.getDefiningOp<MaterializeOp>();
+      auto src = materializeOp.getSource();
+      auto srcType = src.getType().cast<ShapedType>();
+      if (auto resType = op.getResult().getType().dyn_cast<ShapedType>()) {
+        if (resType.hasStaticShape() && srcType == resType) {
+          acc = src;
+          changed = true;
+        }
+      }
+    }
+    if (!changed) return failure();
+    rewriter.updateRootInPlace(op,
+                               [&]() { op.getAccMutable().assign(newAccs); });
+    return success();
+  }
+
+ private:
+  llvm::function_ref<bool(OuterProductOp)> filterFn;
 };
 
 template <typename OpTy>
@@ -582,12 +618,20 @@ struct LoweringVectorContractPass
 
     RewritePatternSet patterns(ctx);
 
+    auto outerProductOpFilter = [&](OuterProductOp op) {
+      return (llvm::any_of(op.getAcc(), [](auto acc) {
+        return acc.template getDefiningOp<MaterializeOp>() != nullptr;
+      }));
+    };
+
     vector::populateVectorToVectorCanonicalizationPatterns(patterns);
     // Currently we always lower vector.contract into vector.outerproduct.
     patterns.add<mlir::vector::ContractionOpToOuterProductOpLowering>(
         mlir::vector::VectorTransformsOptions().setVectorTransformsOptions(
             mlir::vector::VectorContractLowering::OuterProduct),
         ctx, 2);
+    patterns.add<OuterProductOpCanonicalizationPattern>(ctx,
+                                                        outerProductOpFilter);
     mlir::vector::populateVectorTransferPermutationMapLoweringPatterns(
         patterns);
 
