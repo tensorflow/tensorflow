@@ -52,7 +52,10 @@ class LeakyReLU(Layer):
   >>> output = layer([-3.0, -1.0, 0.0, 2.0])
   >>> list(output.numpy())
   [-0.3, -0.1, 0.0, 2.0]
-
+  >>> layer = tf.keras.layers.LeakyReLU(alpha=0.1)
+  >>> output = layer([-3.0, -1.0, 0.3, 0.0, 2.0])
+  >>> list(output.numpy())
+  [-0.3, -0.1, 0.3, 0.0, 2.0]
   Input shape:
     Arbitrary. Use the keyword argument `input_shape`
     (tuple of integers, does not include the batch axis)
