@@ -109,7 +109,7 @@ xla::Shape HostShapeToDeviceShape(const xla::Shape& host_shape) {
   XLA_Shape c_host_shape;
   XLA_Shape c_device_shape;
   ApiConverter::ToC(host_shape, &c_host_shape);
-  tensorflow::tpu::OpsApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
+  stream_executor::tpu::OpsApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
       &c_host_shape, &c_device_shape);
   xla::Shape device_shape = ApiConverter::FromC(&c_device_shape);
   ApiConverter::Destroy(&c_host_shape);
@@ -121,7 +121,8 @@ int64_t ShapeSizeCompact(const xla::Shape& shape) {
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
   int64_t size =
-      tensorflow::tpu::OpsApiFn()->HardwareLayout_ShapeSizeCompactFn(&c_shape);
+      stream_executor::tpu::OpsApiFn()->HardwareLayout_ShapeSizeCompactFn(
+          &c_shape);
   ApiConverter::Destroy(&c_shape);
   return size;
 }
@@ -130,7 +131,7 @@ int64_t ShapeSizeCompactRaw(const xla::Shape& shape) {
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
   int64_t size =
-      tensorflow::tpu::OpsApiFn()->HardwareLayout_ShapeSizeCompactRawFn(
+      stream_executor::tpu::OpsApiFn()->HardwareLayout_ShapeSizeCompactRawFn(
           &c_shape);
   ApiConverter::Destroy(&c_shape);
   return size;
@@ -255,8 +256,8 @@ xla::Status UpdateDynamicInputs(
             params.compile_time_shape = &c_compile_time_shape;
             params.status = status.c_status;
 
-            tensorflow::tpu::OpsApiFn()->TpuExecute_RuntimeInputToPaddedDataFn(
-                &params);
+            stream_executor::tpu::OpsApiFn()
+                ->TpuExecute_RuntimeInputToPaddedDataFn(&params);
             ApiConverter::Destroy(&c_runtime_shape);
             ApiConverter::Destroy(&c_compile_time_shape);
             return status.status();
@@ -514,8 +515,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
     // If cancellation manager is already cancelled or cancelling, it means
     // another failure has occurred earlier and this TpuExecuteOp is cancelled
     // regardless of whether itself is an error.
-    already_cancelled = cancellation_manager->IsCancelling() ||
-                        cancellation_manager->IsCancelled();
+    already_cancelled = cancellation_manager->IsCancelRequested();
     if (already_cancelled) {
       return errors::Cancelled(
           "RPC cancelled, not running TPU program on device ", device_ordinal);

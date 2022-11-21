@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
@@ -36,8 +37,7 @@ class JitCompilationListener : public XlaActivityListener {
 
   Status Listen(
       const XlaJitCompilationActivity& jit_compilation_activity) override {
-    used_persistent_cache_.push_back(
-        jit_compilation_activity.used_persistent_cache());
+    activity_history_.push_back(jit_compilation_activity);
     return OkStatus();
   }
 
@@ -45,28 +45,33 @@ class JitCompilationListener : public XlaActivityListener {
     return OkStatus();
   }
 
-  ~JitCompilationListener() override {}
+  ~JitCompilationListener() override = default;
 
-  Status VerifyListenerHistory(bool expect_persistent_cache_use) {
-    for (bool used_persistent_cache : used_persistent_cache_) {
-      if (used_persistent_cache != expect_persistent_cache_use) {
+  Status VerifyPersistentCacheUseListenerHistory(
+      bool expect_persistent_cache_use) {
+    for (const auto& activity : activity_history_) {
+      if (activity.used_persistent_cache() != expect_persistent_cache_use) {
         return errors::FailedPrecondition("Unexpected listener history.");
       }
     }
     return OkStatus();
   }
 
-  void ClearListenerHistory() { used_persistent_cache_.clear(); }
+  std::vector<XlaJitCompilationActivity> GetListenerHistory() {
+    return activity_history_;
+  }
+
+  void ClearListenerHistory() { activity_history_.clear(); }
 
  private:
-  std::vector<bool> used_persistent_cache_;
+  std::vector<XlaJitCompilationActivity> activity_history_;
 };
 
 // Fixture for testing XLA compilation cache serialization.
 class XlaCompilationCacheSerializeTest : public ::testing::Test {
  protected:
   XlaCompilationCacheSerializeTest() {
-    auto listener = absl::make_unique<JitCompilationListener>();
+    auto listener = std::make_unique<JitCompilationListener>();
     listener_ = listener.get();
     RegisterXlaActivityListener(std::move(listener));
   }

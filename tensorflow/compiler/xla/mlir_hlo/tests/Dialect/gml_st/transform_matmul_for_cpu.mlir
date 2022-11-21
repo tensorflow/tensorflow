@@ -5,7 +5,6 @@
 
 func.func @matmul_static(%arg0: tensor<128x16xf32>, %arg1: tensor<16x64xf32>,
                          %output: tensor<128x64xf32>) -> tensor<128x64xf32> {
-  %cst = arith.constant 0.000000e+00 : f32
   %2 = linalg.matmul ins(%arg0, %arg1 : tensor<128x16xf32>, tensor<16x64xf32>)
                      outs(%output : tensor<128x64xf32>) -> tensor<128x64xf32>
   return %2 : tensor<128x64xf32>

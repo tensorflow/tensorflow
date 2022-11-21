@@ -4,6 +4,7 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -294,6 +295,9 @@ cc_library(
     ],
     deps = [
         ":drop_savedmodel_semantics",
+        ":fold_broadcast_pass",
+        ":fuse_convolution_pass",
+        ":optimize",
         ":rename_entrypoint_to_main",
         ":smuggle_disallowed_ops",
         ":tf_mhlo",
@@ -369,6 +373,75 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "fold_broadcast_pass",
+    srcs = [
+        "transforms/fold_broadcast_pass.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "fuse_convolution_pass",
+    srcs = [
+        "transforms/fuse_convolution_pass.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:validators",
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "optimize",
+    srcs = [
+        "transforms/optimize.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
 tf_cc_binary(
     name = "odml_to_stablehlo",
     srcs = [
@@ -414,7 +487,10 @@ tf_cc_binary(
     testonly = True,
     tags = ["hostonly"],
     deps = [
+        ":fold_broadcast_pass",
+        ":fuse_convolution_pass",
         ":mhlo_tfl",
+        ":optimize",
         ":tf_mhlo",
         ":tf_mhlo_tfl",
         ":tf_poly",

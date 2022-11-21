@@ -36,7 +36,14 @@ namespace {
 
 namespace m = ::xla::match;
 
-using SoftmaxFusionTest = HloTestBase;
+class SoftmaxFusionTest : public HloTestBase {
+ private:
+  DebugOptions GetDebugOptionsForTest() override {
+    auto debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_softmax_fusion(true);
+    return debug_options;
+  }
+};
 
 TEST_F(SoftmaxFusionTest, SingleSoftmaxPattern) {
   const std::string& hlo_string = R"(
@@ -346,6 +353,54 @@ ENTRY main {
       std::move(module), std::move(initial_module), ErrorSpec(1e-6, 1e-6)));
 }
 
+TEST_F(SoftmaxFusionTest, 4DWithBroadcast) {
+  const std::string& hlo_string = R"(
+HloModule module, entry_computation_layout={(f32[],f32[],f16[32,4,72,150]{3,2,1,0},f32[],f32[150]{0},f32[])->f32[32,4,72,150]{3,2,1,0}}
+
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+
+add_computation {
+  arg_0.1 = f32[] parameter(0)
+  arg_1.1 = f32[] parameter(1)
+  ROOT maximum.1 = f32[] add(arg_0.1, arg_1.1)
+}
+
+ENTRY main {
+  parameter_0.6 = f32[] parameter(0)
+  broadcast.595 = f32[32,4,72,150]{3,2,1,0} broadcast(parameter_0.6), dimensions={}
+  parameter_3.5 = f32[] parameter(3)
+  broadcast.596 = f32[150]{0} broadcast(parameter_3.5), dimensions={}
+  parameter_5.5 = f32[] parameter(5)
+  broadcast.597 = f32[150]{0} broadcast(parameter_5.5), dimensions={}
+  parameter_4.5 = f32[150]{0} parameter(4)
+  subtract.67 = f32[150]{0} subtract(broadcast.597, parameter_4.5)
+  multiply.65 = f32[150]{0} multiply(broadcast.596, subtract.67)
+  broadcast.598 = f32[32,4,72,150]{3,2,1,0} broadcast(multiply.65), dimensions={3}
+  parameter_2.5 = f16[32,4,72,150]{3,2,1,0} parameter(2)
+  convert.462 = f32[32,4,72,150]{3,2,1,0} convert(parameter_2.5)
+  add.123 = f32[32,4,72,150]{3,2,1,0} add(broadcast.598, convert.462)
+  parameter_1.6 = f32[] parameter(1)
+  broadcast.599 = f32[32,4,72,150]{3,2,1,0} broadcast(parameter_1.6), dimensions={}
+  clamp.55 = f32[32,4,72,150]{3,2,1,0} clamp(broadcast.595, add.123, broadcast.599)
+  constant.474 = f32[] constant(-inf)
+  reduce.45 = f32[32,4,72]{2,1,0} reduce(clamp.55, constant.474), dimensions={3}, to_apply=max_computation
+  broadcast.600 = f32[32,4,72,150]{3,2,1,0} broadcast(reduce.45), dimensions={0,1,2}
+  subtract.68 = f32[32,4,72,150]{3,2,1,0} subtract(clamp.55, broadcast.600)
+  exponential.35 = f32[32,4,72,150]{3,2,1,0} exponential(subtract.68)
+  constant.476 = f32[] constant(0)
+  reduce.46 = f32[32,4,72]{2,1,0} reduce(exponential.35, constant.476), dimensions={3}, to_apply=add_computation
+  broadcast.601 = f32[32,4,72,150]{3,2,1,0} broadcast(reduce.46), dimensions={0,1,2}
+  ROOT divide.28 = f32[32,4,72,150]{3,2,1,0} divide(exponential.35, broadcast.601)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec(1e-6, 1e-6)));
+}
+
 TEST_F(SoftmaxFusionTest, DoubleSoftmaxPatternWithExtraStuff) {
   const std::string& hlo_string = R"(
 
@@ -625,18 +680,17 @@ ENTRY main {
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
   auto* root = module->entry_computation()->root_instruction();
-  HloInstruction* exp;
   // Assert that we have matched both softmax patterns, but they are in separate
   // custom calls.
-  ASSERT_THAT(root, GmockMatch(m::CustomCall(m::Exp(&exp, m::CustomCall()))));
-  ASSERT_THAT(exp, GmockMatch(m::Exp(m::CustomCall(m::Parameter(0)))));
+  ASSERT_THAT(root, GmockMatch(m::CustomCall(m::CustomCall(m::Parameter(0)))));
   ASSERT_TRUE(root->has_to_apply());
   ASSERT_THAT(root->to_apply()->root_instruction(),
-              GmockMatch(m::Divide(m::Add(m::Parameter(0), m::Parameter(0)),
-                                   m::Broadcast(m::Reduce(
-                                       m::Add(m::Parameter(0), m::Parameter(0)),
-                                       m::Constant())))));
-  const HloInstruction* custom_call = exp->operand(0);
+              GmockMatch(m::Divide(
+                  m::Add(m::Exp(m::Parameter(0)), m::Exp(m::Parameter(0))),
+                  m::Broadcast(m::Reduce(
+                      m::Add(m::Exp(m::Parameter(0)), m::Exp(m::Parameter(0))),
+                      m::Constant())))));
+  const HloInstruction* custom_call = root->operand(0);
   ASSERT_TRUE(custom_call->has_to_apply());
   ASSERT_THAT(custom_call->to_apply()->root_instruction(),
               GmockMatch(m::Subtract(
@@ -681,21 +735,23 @@ ENTRY main {
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   VLOG(2) << module->ToString();
   auto* root = module->entry_computation()->root_instruction();
-  HloInstruction* exp;
+  HloInstruction* exp1;
+  HloInstruction* exp2;
   HloInstruction* custom_call;
   // Assert that we have matched both softmax patterns, but they are in separate
   // custom calls.
   ASSERT_THAT(root,
-              GmockMatch(m::Add(m::CustomCall(&custom_call, m::CustomCall()),
-                                m::Exp(&exp, m::CustomCall()))));
-  ASSERT_THAT(exp, GmockMatch(m::Exp(m::CustomCall(m::Parameter(0)))));
+              GmockMatch(m::Add(
+                  m::CustomCall(&custom_call, m::Exp(&exp1, m::CustomCall())),
+                  m::Exp(&exp2, m::CustomCall()))));
+  EXPECT_EQ(exp1, exp2);
+  ASSERT_THAT(exp1, GmockMatch(m::Exp(m::CustomCall(m::Parameter(0)))));
   ASSERT_TRUE(custom_call->has_to_apply());
-  ASSERT_THAT(
-      custom_call->to_apply()->root_instruction(),
-      GmockMatch(m::Divide(
-          m::Exp(m::Parameter(0)),
-          m::Broadcast(m::Reduce(m::Exp(m::Parameter(0)), m::Constant())))));
-  const HloInstruction* custom_call2 = exp->operand(0);
+  ASSERT_THAT(custom_call->to_apply()->root_instruction(),
+              GmockMatch(m::Divide(
+                  m::Parameter(0),
+                  m::Broadcast(m::Reduce(m::Parameter(0), m::Constant())))));
+  const HloInstruction* custom_call2 = exp1->operand(0);
   ASSERT_TRUE(custom_call2->has_to_apply());
   ASSERT_THAT(custom_call2->to_apply()->root_instruction(),
               GmockMatch(m::Subtract(
@@ -737,10 +793,11 @@ max_computation {
 
 ENTRY main {
   param_0 = f32[$0,$1]{1,0} parameter(0)
+  exponential = f32[$0,$1]{1,0} exponential(param_0)
   constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[$0]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  reduce = f32[$0]{0} reduce(exponential, constant_neg_inf), dimensions={1}, to_apply=max_computation
   broadcast = f32[$0,$1]{1,0} broadcast(reduce), dimensions={0}
-  ROOT subtract = f32[$0,$1]{1,0} subtract(param_0, broadcast)
+  ROOT subtract = f32[$0,$1]{1,0} subtract(exponential, broadcast)
 }
 )";
   TestSoftmaxPattern(hlo_string_template);
@@ -763,13 +820,16 @@ add_computation {
 }
 
 ENTRY main {
-  param_0 = f32[$0,$1]{1,0} parameter(0)
-  param_1 = f32[$0,$1]{1,0} parameter(1)
-  add = f32[$0,$1]{1,0} add(param_0, param_1)
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  param_2 = f32[$0,$1]{1,0} parameter(2)
+  broadcast_param_0 = f32[$0,$1]{1,0} broadcast(param_0), dimensions={}
+  broadcast_param_1 = f32[$0,$1]{1,0} broadcast(param_1), dimensions={}
+  clamp = f32[$0,$1]{1,0} clamp(broadcast_param_0, param_2, broadcast_param_1)
   constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[$0]{0} reduce(add, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  reduce = f32[$0]{0} reduce(clamp, constant_neg_inf), dimensions={1}, to_apply=max_computation
   broadcast = f32[$0,$1]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f32[$0,$1]{1,0} subtract(add, broadcast)
+  subtract = f32[$0,$1]{1,0} subtract(clamp, broadcast)
   exponential = f32[$0,$1]{1,0} exponential(subtract)
   constant_zero = f32[] constant(0)
   second_reduce = f32[$0]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
@@ -800,7 +860,7 @@ INSTANTIATE_TEST_SUITE_P(
          std::make_tuple(32, 15), std::make_tuple(32, 16),
          std::make_tuple(32, 17), std::make_tuple(32, 18),
          std::make_tuple(127, 125), std::make_tuple(128, 128),
-         std::make_tuple(0, 0)}),
+         std::make_tuple(9216, 150), std::make_tuple(0, 0)}),
     TestDataToString);
 
 }  // anonymous namespace

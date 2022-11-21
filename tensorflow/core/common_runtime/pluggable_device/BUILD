@@ -4,6 +4,7 @@ load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -43,6 +44,7 @@ cc_library(
         ":pluggable_device_simple_allocator",
         "//tensorflow/c/experimental/stream_executor",
         "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
+        "//tensorflow/compiler/xla/stream_executor:device_id_utils",
         "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:kernel",

@@ -5,7 +5,10 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 licenses(["notice"])
 
-package(default_visibility = ["//tensorflow:internal"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//tensorflow:internal"],
+)
 
 tf_proto_library(
     name = "protocol_proto",

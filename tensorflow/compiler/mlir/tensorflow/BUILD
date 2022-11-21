@@ -9,6 +9,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gen_op_wrapper_py")
 #
 # copybara:uncomment_end(google-only)
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -1274,6 +1275,7 @@ cc_library(
     ],
     hdrs = [
         "transforms/bridge.h",
+        "transforms/call_graph_util.h",
         "transforms/cluster_ops_by_policy.h",
         "transforms/collection_ops_util.h",
         "transforms/einsum.h",
@@ -2255,6 +2257,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
+        "@stablehlo//:stablehlo_ops",
     ],
     alwayslink = 1,
 )

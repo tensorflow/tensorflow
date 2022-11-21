@@ -38,7 +38,9 @@ constexpr int32_t kNodeNotAssigned = std::numeric_limits<int32_t>::max();
 bool ShareFirstInputWithFirstOutputForNode(const TfLiteRegistration& node_reg) {
   // TODO (b/254230751): add support for more ops which support forwarding.
   switch (node_reg.builtin_code) {
+    case kTfLiteBuiltinExpandDims:
     case kTfLiteBuiltinReshape:
+    case kTfLiteBuiltinSqueeze:
       return true;
     default:
       return false;

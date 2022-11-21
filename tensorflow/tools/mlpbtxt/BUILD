@@ -5,6 +5,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],
 )

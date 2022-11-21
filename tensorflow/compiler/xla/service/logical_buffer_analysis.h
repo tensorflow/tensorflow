@@ -68,6 +68,7 @@ class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
   Status HandleSend(HloInstruction* send) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
+  Status HandleFusion(HloInstruction* fusion) override;
 
   // A map from the buffer ID to the logical buffer
   std::vector<std::unique_ptr<LogicalBuffer>> logical_buffers_;

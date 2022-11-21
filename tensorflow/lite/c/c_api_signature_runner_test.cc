@@ -18,8 +18,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/c_api_experimental.h"
 #include "tensorflow/lite/core/c/c_api.h"
+#include "tensorflow/lite/core/c/c_api_experimental.h"
 
 namespace tflite {
 namespace {

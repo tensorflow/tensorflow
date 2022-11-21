@@ -70,13 +70,12 @@ class Globals;
 // Custom call arguments encoding.
 //===----------------------------------------------------------------------===//
 
-// Encodes argument into stack allocated storage according to the ABI. If
-// argument is a constant, then it can be packed as a global constant.
+// Encodes argument into stack allocated storage according to the ABI.
 class CustomCallArgEncoding {
  public:
   struct Encoded {
-    mlir::Value type_id;  // !llvm.ptr<i64>
-    mlir::Value value;    // !llvm.ptr<ArgType>
+    mlir::LLVM::GlobalOp type_id;  // llvm.mlir.global external $type_name : i64
+    mlir::LLVM::AllocaOp value;    // llvm.alloca 1 x ArgType
   };
 
   virtual ~CustomCallArgEncoding() = default;
@@ -128,8 +127,8 @@ class CustomCallArgEncodingSet {
 class CustomCallRetEncoding {
  public:
   struct Encoded {
-    mlir::Value type_id;         // !llvm.ptr<i64>
-    mlir::LLVM::AllocaOp value;  // !llvm.alloca 1 x ResultType
+    mlir::LLVM::GlobalOp type_id;  // llvm.mlir.global external $type_name : i64
+    mlir::LLVM::AllocaOp value;    // !llvm.alloca 1 x ResultType
   };
 
   virtual ~CustomCallRetEncoding() = default;
@@ -193,9 +192,9 @@ struct CustomCallAttrEncoding {
   static constexpr char kAttrValue[] = "__rt_attr_value";
 
   struct Encoded {
-    mlir::Value name;     // !llvm.ptr<i8>
-    mlir::Value type_id;  // !llvm.ptr<i64>
-    mlir::Value value;    // !llvm.ptr<EncodedAttrType>
+    mlir::LLVM::GlobalOp name;     // llvm.mlir.global <encoded-name>
+    mlir::LLVM::GlobalOp type_id;  // llvm.mlir.global external $type_name : i64
+    mlir::LLVM::GlobalOp value;    // llvm.mlir.global <encoded-attribute>
   };
 
   virtual ~CustomCallAttrEncoding() = default;
@@ -243,26 +242,28 @@ class CustomCallAttrEncodingSet {
 };
 
 //===----------------------------------------------------------------------===//
-// A set of helper functions for packing primitive attributes.
+// A set of helper functions for packing encoding attributes.
 //===----------------------------------------------------------------------===//
 
-// Packs TypeID as `i64` constant value and casts it to the `!llvm.ptr<i8>`,
-// because type id internally is implemented as an opaque pointer.
-mlir::Value PackTypeId(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                       mlir::TypeID type_id);
+// Encodes type id as an external LLVM global of type `i64`. The global name is
+// defined by the type id name registry. Internally type id implemented as an
+// opaque pointer (void*), and type equality check at run time is just a pointer
+// comparison. All type id symbols at run time must be resolved to the type id
+// instances defined in the current process.
+mlir::LLVM::GlobalOp EncodeTypeId(Globals &g, mlir::ImplicitLocOpBuilder &b,
+                                  mlir::TypeID type_id);
 
-// Packs string as a module global null-terminated string constant. We reuse
-// the encoding scheme for arrays to store sting with its size, to avoid
-// computing the length of the null-terminated string at run tine.
-//
-// Returns `!llvm.ptr<EncodedArray<char>>`.
-mlir::Value PackString(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                       std::string_view strref, std::string_view symbol_base);
+// Encodes string as a module global null-terminated string constant + size. We
+// reuse the encoding scheme for arrays to store sting with its size, to avoid
+// computing the length of the null-terminated string at run time.
+mlir::LLVM::GlobalOp EncodeString(Globals &g, mlir::ImplicitLocOpBuilder &b,
+                                  std::string_view strref,
+                                  std::string_view symbol_base);
 
-// Packs scalar attribute as a global constant. Returns `!llvm.ptr<AttrType>`.
-mlir::Value PackScalarAttribute(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                mlir::Attribute value,
-                                std::string_view symbol_base);
+// Encodes scalar attribute as a global constant.
+mlir::LLVM::GlobalOp EncodeScalar(Globals &g, mlir::ImplicitLocOpBuilder &b,
+                                  mlir::Attribute value,
+                                  std::string_view symbol_base);
 
 //===----------------------------------------------------------------------===//
 // A helper class to create global constants in the module.
@@ -357,7 +358,7 @@ class Globals {
 //   2. Custom call attributes, where the attributes sorted lexicographically by
 //      name, to be able to efficiently decode named attributes.
 //
-mlir::FailureOr<mlir::Value> EncodeAttributes(
+mlir::FailureOr<mlir::LLVM::GlobalOp> EncodeAttributes(
     mlir::SymbolTable &sym_table, Globals &g, mlir::ImplicitLocOpBuilder &b,
     const CustomCallAttrEncodingSet &encoding, std::string_view symbol_base,
     llvm::ArrayRef<mlir::NamedAttribute> attrs);
@@ -475,9 +476,9 @@ struct EnumAttrEncoding : public CustomCallAttrEncoding {
     mlir::Attribute underlying_attr = AsAttr(b, underlying_value);
 
     Encoded encoded;
-    encoded.name = PackString(g, b, name, kAttrName);
-    encoded.type_id = PackTypeId(g, b, type_id);
-    encoded.value = PackScalarAttribute(g, b, underlying_attr, kAttrValue);
+    encoded.name = EncodeString(g, b, name, kAttrName);
+    encoded.type_id = EncodeTypeId(g, b, type_id);
+    encoded.value = EncodeScalar(g, b, underlying_attr, kAttrValue);
 
     return encoded;
   }
@@ -564,8 +565,8 @@ struct AggregateAttrEncoding : public CustomCallAttrEncoding {
     if (mlir::failed(aggregate)) return mlir::failure();
 
     Encoded encoded;
-    encoded.name = PackString(g, b, name, kAttrName);
-    encoded.type_id = PackTypeId(g, b, type_id);
+    encoded.name = EncodeString(g, b, name, kAttrName);
+    encoded.type_id = EncodeTypeId(g, b, type_id);
     encoded.value = *aggregate;
     return encoded;
   }

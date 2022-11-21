@@ -112,6 +112,10 @@ class CoordinationServiceInterface {
           post_aggregate_device_fn) = 0;
 
   // Register a task to the service.
+  // Possible service errors:
+  //   - InvalidArgument: Unexpected task request.
+  //   - Aborted: (1) task is in error state, or (2) task is in connected state
+  //       with a different incarnation, indicating that it restarted.
   virtual Status RegisterTask(const tensorflow::CoordinatedTask& task,
                               uint64_t incarnation) = 0;
 

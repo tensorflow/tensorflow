@@ -3972,6 +3972,16 @@ Status SavedModelSignatureDefImporterLite::ConvertSignature(
         builder.getStrArrayAttr({output_and_idx.value().first}));
   }
 
+  // Add the original TF function name as a function attribute.
+  // TODO(b/258817244) Remove this after TFRT exports functions.
+  for (const auto& [tf_name, mlir_name] : tf_name_to_mlir_name) {
+    auto func_op = sub_symbol_table.lookup<mlir::func::FuncOp>(mlir_name);
+    TF_RET_CHECK(func_op)
+        << "Graphdef importer should have created a function named "
+        << mlir_name << ".";
+    func_op->setAttr("tf._original_func_name", builder.getStringAttr(tf_name));
+  }
+
   // Move the converted functions to top level MLIR module.
   return MoveConvertedFunctionsToModule(sig_def_key, *sub_module,
                                         tf_name_to_mlir_name);

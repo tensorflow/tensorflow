@@ -123,6 +123,10 @@ std::string ToVlogString(const Eigen::half &h) {
   return absl::StrCat(static_cast<float>(h));
 }
 
+std::string ToVlogString(const Eigen::bfloat16 &bf) {  // NOLINT
+  return absl::StrCat(static_cast<float>(bf));
+}
+
 std::string ToVlogString(int i) { return absl::StrCat(i); }
 
 std::string ToVlogString(uint32_t i) { return absl::StrCat(i); }
@@ -186,6 +190,8 @@ std::string ToVlogString(dnn::DataType data_type) {
       return "dnn::DataType::kInt8";
     case dnn::DataType::kInt32:
       return "dnn::DataType::kInt32";
+    case dnn::DataType::kBF16:
+      return "dnn::DataType::kBF16";
     default:
       return "unknown DataType";
   }
@@ -417,6 +423,63 @@ Stream &Stream::ThenBatchNormalizationBackward(
     dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half> *x_backprop,
     DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
     DeviceMemory<Eigen::half> *side_input_backprop,
+    DeviceMemory<uint8_t> *reserve_space_data,
+    ScratchAllocator *workspace_allocator) {
+  VLOG_CALL(PARAM(y_backprop), PARAM(x), PARAM(scale), PARAM(x_desc),
+            PARAM(scale_offset_desc), PARAM(epsilon), PARAM(x_backprop),
+            PARAM(scale_backprop), PARAM(offset_backprop));
+  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+    CheckError(dnn->DoBatchNormalizationBackward(
+        this, y_backprop, x, scale, offset, mean, inv_var, y, x_desc,
+        scale_offset_desc, epsilon, activation_mode, x_backprop, scale_backprop,
+        offset_backprop, side_input_backprop, reserve_space_data,
+        workspace_allocator));
+
+  } else {
+    SetErrorAndLogNoDnnSupport();
+  }
+  return *this;
+}
+
+Stream &Stream::ThenBatchNormalizationForward(
+    const DeviceMemory<Eigen::bfloat16> &x, const DeviceMemory<float> &scale,
+    const DeviceMemory<float> &offset,
+    const DeviceMemory<float> &estimated_mean,
+    const DeviceMemory<float> &estimated_variance,
+    const DeviceMemory<Eigen::bfloat16> &side_input,
+    const dnn::BatchDescriptor &x_desc,
+    const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
+    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::bfloat16> *y,
+    DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
+    DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
+    bool is_training, ScratchAllocator *reserve_space_allocator,
+    ScratchAllocator *workspace_allocator) {
+  VLOG_CALL(PARAM(x), PARAM(scale), PARAM(offset), PARAM(x_desc),
+            PARAM(scale_offset_desc), PARAM(epsilon), PARAM(y));
+  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+    CheckError(dnn->DoBatchNormalizationForward(
+        this, x, scale, offset, estimated_mean, estimated_variance, side_input,
+        x_desc, scale_offset_desc, epsilon, exponential_average_factor,
+        activation_mode, y, batch_mean, batch_var, saved_mean, saved_inv_var,
+        is_training, reserve_space_allocator, workspace_allocator));
+  } else {
+    SetErrorAndLogNoDnnSupport();
+  }
+  return *this;
+}
+
+Stream &Stream::ThenBatchNormalizationBackward(
+    const DeviceMemory<Eigen::bfloat16> &y_backprop,
+    const DeviceMemory<Eigen::bfloat16> &x, const DeviceMemory<float> &scale,
+    const DeviceMemory<float> &offset, const DeviceMemory<float> &mean,
+    const DeviceMemory<float> &inv_var, const DeviceMemory<Eigen::bfloat16> &y,
+    const dnn::BatchDescriptor &x_desc,
+    const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+    dnn::ActivationMode activation_mode,
+    DeviceMemory<Eigen::bfloat16> *x_backprop,
+    DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
+    DeviceMemory<Eigen::bfloat16> *side_input_backprop,
     DeviceMemory<uint8_t> *reserve_space_data,
     ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(y_backprop), PARAM(x), PARAM(scale), PARAM(x_desc),
@@ -1726,6 +1789,33 @@ Stream &Stream::ThenBlasGemmBatchedWithScratch(
       const port::ArraySlice<DeviceMemory<Eigen::half> *> &,  // non-absl ok
       int, float,
       const port::ArraySlice<DeviceMemory<Eigen::half> *> &,  // non-absl ok
+      int, int, ScratchAllocator *>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasGemmBatched, transa, transb, m, n,
+              k, alpha, a, lda, b, ldb, beta, c, ldc, batch_count,
+              scratch_allocator);
+}
+
+Stream &Stream::ThenBlasGemmBatchedWithScratch(
+    blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
+    uint64_t k, float alpha,
+    const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &a,  // non-absl ok
+    int lda,
+    const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &b,  // non-absl ok
+    int ldb, float beta,
+    const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &c,  // non-absl ok
+    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
+  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
+            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
+            PARAM(beta), PARAM(c), PARAM(ldc), PARAM(batch_count));
+
+  ThenBlasImpl<
+      blas::Transpose, blas::Transpose, uint64_t, uint64_t, uint64, float,
+      const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &,  // non-absl ok
+      int,
+      const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &,  // non-absl ok
+      int, float,
+      const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &,  // non-absl ok
       int, int, ScratchAllocator *>
       impl;
   return impl(this, &blas::BlasSupport::DoBlasGemmBatched, transa, transb, m, n,

@@ -23,8 +23,8 @@ limitations under the License.
 
 extern "C" {
 
-struct TF_Status;
-typedef struct TF_Status TF_Status;
+struct TSL_Status;
+typedef TSL_Status TF_Status;
 
 // Maximum number of array elements to inline into structs for performance.
 #define TPU_C_API_MAX_INLINED 6
@@ -40,6 +40,9 @@ enum TpuVersionEnum {
   kTpuV2,
   kTpuV3,
   kTpuV4,
+  // BEGIN-INTERNAL
+  // reserved for internal use
+  // END-INTERNAL
 };
 
 typedef struct TpuRuntimeVersion {

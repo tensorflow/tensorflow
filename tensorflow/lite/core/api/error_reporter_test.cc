@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdio>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/core/api/error_reporter_macro.h"
 
 namespace tflite {
 

@@ -27,6 +27,7 @@ limitations under the License.
 #include <fstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
@@ -220,15 +221,16 @@ stream_executor::port::Status InitializeTpuLibrary(void* library_handle) {
 }
 
 typedef const PJRT_Api* (*PjRtFuncPtr)();
-void InitializePjRt(void* library_handle) {
+stream_executor::port::Status MaybeInitializePjRt(void* library_handle) {
   PjRtFuncPtr fptr = &GetTpuPjrtApi;
   *reinterpret_cast<void**>(&fptr) = dlsym(library_handle, "GetTpuPjrtApi");
   if (fptr == nullptr) {
-    LOG(INFO) << "GetTpuPjrtApi not found";
+    LOG(INFO) << "GetTpuPjrtApi not found. PjrtApi will not be used.";
   } else {
     LOG(INFO) << "GetTpuPjrtApi was found";
-    tensorflow::tpu::SetPjrtApi(fptr());
+    TF_RETURN_IF_ERROR(stream_executor::tpu::SetPjrtApi("TPU", fptr()));
   }
+  return ::tsl::OkStatus();
 }
 
 namespace {
@@ -279,7 +281,7 @@ stream_executor::port::Status FindAndLoadTpuLibrary() {
     // Try to acquire exclusive access.
     TF_RETURN_IF_ERROR(TryAcquireTpuLock());
     TF_RETURN_IF_ERROR(InitializeTpuLibrary(library));
-    InitializePjRt(library);
+    TF_RETURN_IF_ERROR(MaybeInitializePjRt(library));
   }
 
   InitializeCreateGcsFileSystemFnPtr();

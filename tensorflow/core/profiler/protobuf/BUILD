@@ -1,6 +1,7 @@
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/core/profiler:internal"],
     licenses = ["notice"],
 )
@@ -232,5 +233,12 @@ tf_proto_library(
 #     api_version = 2,
 #     visibility = [":memory_viewer_friends"],
 #     deps = [":memory_viewer_preprocess_proto"],
+# )
+#
+# py_proto_library(
+#     name = "op_profile_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":op_profile_proto"],
 # )
 # copybara:uncomment_end

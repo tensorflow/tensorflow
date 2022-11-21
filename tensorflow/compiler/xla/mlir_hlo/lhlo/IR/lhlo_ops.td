@@ -20,7 +20,7 @@ limitations under the License.
 // to merge these two files together, but we need to consider the following
 // obstacles:
 // * We need to have a common representation for arguments. That is to say,
-//   HLO_Array<X> translates to HLO_Tensor<X> in HLO dialect, and
+//   HLO_Array<X> translates to MHLO_Tensor<X> in HLO dialect, and
 //   Arg<LHLO_Buffer<X>, "", [Mem(Read|Write)]> in LHLO. Array types within
 //   tuples also need to be transformed.
 // * As of now, TableGen's dag functions are not sufficient to accomplish the
@@ -634,7 +634,7 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]> {
     DefaultValuedStrAttr<StrAttr, "">:$backend_config,
     // TODO(b/189822916): Remove this field when all clients are migrated to
     // the status-returning API.
-    DefaultValuedOptionalAttr<HLO_CustomCallApiVersionAttr,
+    DefaultValuedOptionalAttr<MHLO_CustomCallApiVersionAttr,
                       "mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL">:
                       $api_version,
     OptionalAttr<CustomCallTargetArgMappingAttr>:$target_arg_mapping
@@ -662,8 +662,8 @@ def LHLO_CompareOp: LHLO_Op<"compare", []> {
     Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
     Arg<LHLO_PredBuffer, "", [MemWrite]>:$out,
     OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions,
-    HLO_ComparisonDirectionAttr:$comparison_direction,
-    OptionalAttr<HLO_ComparisonTypeAttr>:$compare_type
+    MHLO_ComparisonDirectionAttr:$comparison_direction,
+    OptionalAttr<MHLO_ComparisonTypeAttr>:$compare_type
   );
 }
 
@@ -874,7 +874,7 @@ def LHLO_ConvolutionOp : LHLO_Op<"convolution", []> {
        Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
        Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
        Arg<LHLO_Buffer, "", [MemWrite]>:$output),
-    ConvolutionAttributes.attributes);
+    MHLO_ConvolutionAttributes.attributes);
 
   code extraClassDeclaration = [{
     bool hasWindowReversal() {
@@ -921,8 +921,8 @@ def LHLO_DotOp: LHLO_Op<"dot", []> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
-    DotDimensionNumbers:$dot_dimension_numbers,
-    HLO_PrecisionConfigAttr:$precision_config,
+    MHLO_DotDimensionNumbers:$dot_dimension_numbers,
+    MHLO_PrecisionConfigAttr:$precision_config,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
 }
@@ -931,7 +931,7 @@ def LHLO_GatherOp: LHLO_Op<"gather", []> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     Arg<LHLO_IntBuffer, "", [MemRead]>:$start_indices,
-    GatherDimensionNumbers:$dimension_numbers,
+    MHLO_GatherDimensionNumbers:$dimension_numbers,
     I64ElementsAttr:$slice_sizes,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
@@ -964,7 +964,7 @@ def LHLO_ScatterOp: LHLO_Op<"scatter", []> {
     Arg<LHLO_Buffer, "", [MemRead]>:$scatter_indices,
     Arg<LHLO_Buffer, "", [MemRead]>:$updates,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
-    ScatterDimensionNumbers:$scatter_dimension_numbers,
+    MHLO_ScatterDimensionNumbers:$scatter_dimension_numbers,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$indices_are_sorted,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$unique_indices
   );
@@ -1091,7 +1091,7 @@ class LHLO_CollectiveCommunicationOp<string name, list<Trait> traits = []> :
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs,
     I64ElementsAttr:$replica_groups,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$constrain_layout,
-    OptionalAttr<ChannelHandle>:$channel_id,
+    OptionalAttr<MHLO_ChannelHandle>:$channel_id,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$use_global_device_ids
   );
   let hasVerifier = 1;
@@ -1162,7 +1162,7 @@ def LHLO_CollectivePermuteOp: LHLO_Op<"collective_permute", [SameTypeOperands]> 
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
     I64ElementsAttr:$source_target_pairs,
-    OptionalAttr<ChannelHandle>:$channel_id
+    OptionalAttr<MHLO_ChannelHandle>:$channel_id
   );
   let hasVerifier = 1;
 }
@@ -1178,7 +1178,7 @@ def LHLO_FftOp: LHLO_Op<"fft", []> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
-    HLO_FftTypeAttr:$fft_type,
+    MHLO_FftTypeAttr:$fft_type,
     I64ElementsAttr:$fft_length
   );
 }
@@ -1289,10 +1289,10 @@ def LHLO_TriangularSolveOp: LHLO_Op<"triangular_solve", [SameOperandsElementType
     BoolAttr:$left_side,
     BoolAttr:$lower,
     BoolAttr:$unit_diagonal,
-    HLO_TransposeAttr:$transpose_a,
-    HLO_LayoutAttr:$layout_a,
-    HLO_LayoutAttr:$layout_b,
-    HLO_LayoutAttr:$layout_output
+    MHLO_TransposeAttr:$transpose_a,
+    MHLO_LayoutAttr:$layout_a,
+    MHLO_LayoutAttr:$layout_b,
+    MHLO_LayoutAttr:$layout_output
   );
 }
 
@@ -1475,8 +1475,8 @@ def LHLO_DotGeneralOp: LHLO_Op<"dot_general", []> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
-    DotDimensionNumbers:$dot_dimension_numbers,
-    HLO_PrecisionConfigAttr:$precision_config,
+    MHLO_DotDimensionNumbers:$dot_dimension_numbers,
+    MHLO_PrecisionConfigAttr:$precision_config,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
 }
@@ -1491,7 +1491,7 @@ def LHLO_DynamicGatherOp: LHLO_Op<"dynamic_gather", []> {
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     Arg<LHLO_IntBuffer, "", [MemRead]>:$start_indices,
     Arg<LHLO_DimensionBuffer, "", [MemRead]>:$slice_sizes,
-    GatherDimensionNumbers:$dimension_numbers,
+    MHLO_GatherDimensionNumbers:$dimension_numbers,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
 }
@@ -1568,7 +1568,7 @@ def LHLO_DynamicConvOp : LHLO_Op<"dynamic_conv", []> {
     Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$d_padding,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output),
-    ConvolutionAttributes.attributes);
+    MHLO_ConvolutionAttributes.attributes);
 }
 
 def LHLO_DynamicReshapeOp: LHLO_Op<"dynamic_reshape", []> {

@@ -59,32 +59,26 @@ struct XlaBuilderFriend {
   static XlaOp BuildAddDependency(XlaBuilder* builder, XlaOp operand,
                                   XlaOp token, const Shape& shape);
 
-  static XlaOp BuildAsyncStart(XlaBuilder* builder,
-                               absl::Span<const XlaOp> operands,
-                               std::string execution_thread, int64_t group_id,
-                               const XlaComputation& called_computation,
-                               const Shape& shape);
-  static XlaOp BuildAsyncStart(XlaBuilder* builder,
-                               absl::Span<const XlaOp> operands,
-                               std::string execution_thread,
-                               const XlaComputation& called_computation,
-                               const Shape& shape);
+  static std::pair<XlaOp, int64_t> BuildAsyncStart(
+      XlaBuilder* builder, absl::Span<const XlaOp> operands,
+      std::string execution_thread, int64_t group_id,
+      const XlaComputation& called_computation, const Shape& shape);
+  static std::pair<XlaOp, int64_t> BuildAsyncStart(
+      XlaBuilder* builder, absl::Span<const XlaOp> operands,
+      std::string execution_thread, const XlaComputation& called_computation,
+      const Shape& shape);
   static XlaOp BuildAsyncUpdate(XlaBuilder* builder, const XlaOp operands,
                                 std::string execution_thread, int64_t group_id,
-                                const XlaComputation& called_computation,
-                                const Shape& shape);
+                                int64_t called_computation, const Shape& shape);
   static XlaOp BuildAsyncUpdate(XlaBuilder* builder, const XlaOp operands,
                                 std::string execution_thread,
-                                const XlaComputation& called_computation,
-                                const Shape& shape);
+                                int64_t called_computation, const Shape& shape);
   static XlaOp BuildAsyncDone(XlaBuilder* builder, const XlaOp operands,
                               std::string execution_thread, int64_t group_id,
-                              const XlaComputation& called_computation,
-                              const Shape& shape);
+                              int64_t called_computation, const Shape& shape);
   static XlaOp BuildAsyncDone(XlaBuilder* builder, const XlaOp operands,
                               std::string execution_thread,
-                              const XlaComputation& called_computation,
-                              const Shape& shape);
+                              int64_t called_computation, const Shape& shape);
 
   static XlaOp BuildAllGatherStart(
       XlaBuilder* builder, XlaOp operand, int64_t all_gather_dimension,
@@ -104,6 +98,19 @@ struct XlaBuilderFriend {
   static XlaOp BuildAllReduceDone(XlaBuilder* builder, const XlaOp operands,
                                   const Shape& shape);
 
+  static XlaOp BuildCollectivePermuteStart(
+      XlaBuilder* builder, XlaOp operand,
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
+  static XlaOp BuildCollectivePermuteDone(XlaBuilder* builder,
+                                          const XlaOp operands,
+                                          const Shape& shape);
+
+  static XlaOp BuildCopyStart(XlaBuilder* builder, const XlaOp operand,
+                              bool is_cross_program_prefetch);
+  static XlaOp BuildCopyDone(XlaBuilder* builder, const XlaOp operand,
+                             const Shape& shape);
+
   static XlaOp BuildFusion(XlaBuilder* builder,
                            absl::Span<const XlaOp> operands,
                            absl::string_view fusion_kind,
@@ -113,6 +120,18 @@ struct XlaBuilderFriend {
                             const Shape& shape);
 
   static XlaOp BuildPartitionId(XlaBuilder* builder, const Shape& shape);
+
+  static XlaOp BuildSend(XlaBuilder* builder, XlaOp operand, XlaOp token,
+                         const ChannelHandle& handle, bool is_host_transfer);
+  static XlaOp BuildSendDone(XlaBuilder* builder, XlaOp operand,
+                             const ChannelHandle& handle,
+                             bool is_host_transfer);
+
+  static XlaOp BuildRecv(XlaBuilder* builder, XlaOp token, const Shape& shape,
+                         const ChannelHandle& handle, bool is_host_transfer);
+  static XlaOp BuildRecvDone(XlaBuilder* builder, XlaOp token,
+                             const Shape& shape, const ChannelHandle& handle,
+                             bool is_host_transfer);
 
   static XlaOp BuildDomain(XlaBuilder* builder, XlaOp operand,
                            const OpSharding entry, const OpSharding exit,
@@ -1583,6 +1602,11 @@ class XlaBuilder {
                       const std::optional<Shape>& layout,
                       const std::optional<bool> use_global_device_ids,
                       bool async);
+
+  XlaOp CollectivePermuteImpl(
+      XlaOp operand,
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id, bool async);
 
   XlaOp ConditionalImpl(
       XlaOp branch_index,

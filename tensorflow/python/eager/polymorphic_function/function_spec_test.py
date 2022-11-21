@@ -371,7 +371,7 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(
         tuple(spec.fullargspec),
         (['self', 'x', 'y'], None, None, (1,), [], None, {}))
-    self.assertEqual(spec.is_method, decorator is transparent_decorator)
+    self.assertEqual(spec.is_method, True)
     self.assertEqual(spec.default_values, {'y': 1})
     self.assertEqual(
         spec.function_type,

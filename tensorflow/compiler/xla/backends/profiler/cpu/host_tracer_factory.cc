@@ -15,8 +15,8 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/backends/profiler/cpu/host_tracer.h"
-#include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/tsl/profiler/lib/profiler_factory.h"
+#include "tensorflow/tsl/profiler/protobuf/profiler_options.pb.h"
 
 namespace xla {
 namespace profiler {

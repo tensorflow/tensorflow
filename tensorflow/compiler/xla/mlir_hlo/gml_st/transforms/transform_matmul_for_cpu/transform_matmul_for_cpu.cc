@@ -29,7 +29,6 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "thlo/IR/thlo_ops.h"
 
 namespace mlir::gml_st {
 namespace {
@@ -38,54 +37,53 @@ namespace {
 #include "gml_st/transforms/passes.h.inc"
 
 FailureOr<TilingResult> tileMatmul(PatternRewriter &rewriter,
-                                   TilingInterface op,
+                                   linalg::MatmulOp matmulOp,
                                    ArrayRef<int64_t> tileSizes,
                                    bool distribute) {
   TilingOptions opts;
   opts.setTileSizeComputationFn(tileSizes);
   opts.distribute = distribute;
-  return tile(opts, rewriter, op);
+  return tile(opts, rewriter, cast<TilingInterface>(matmulOp.getOperation()));
 }
 
 /// Pattern to tile `linalg.matmul` and fuse `linalg.fill` into generated
 /// `gml_st.parallel`.
-struct MatmulTransformPattern
-    : public OpInterfaceRewritePattern<TilingInterface> {
-  using OpInterfaceRewritePattern<TilingInterface>::OpInterfaceRewritePattern;
+struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
+  using OpRewritePattern<linalg::MatmulOp>::OpRewritePattern;
 
   explicit MatmulTransformPattern(MLIRContext *context,
                                   int64_t lhsParallelDimTileSize = 2,
                                   int64_t rhsParallelDimTileSize = 4,
                                   int64_t reductionDimTileSize = 8,
                                   PatternBenefit benefit = 1)
-      : OpInterfaceRewritePattern<TilingInterface>(context, benefit),
+      : OpRewritePattern<linalg::MatmulOp>(context, benefit),
         lhsParallelDimTileSize(lhsParallelDimTileSize),
         rhsParallelDimTileSize(rhsParallelDimTileSize),
         reductionDimTileSize(reductionDimTileSize) {}
 
-  LogicalResult matchAndRewrite(TilingInterface op,
+  LogicalResult matchAndRewrite(linalg::MatmulOp matmulOp,
                                 PatternRewriter &rewriter) const override {
-    if (hasTransformationAttr(op) || !isa<mlir::linalg::MatmulOp>(op))
-      return failure();
-
-    TilingInterface matmul = op;
+    if (hasTransformationAttr(matmulOp))
+      return rewriter.notifyMatchFailure(matmulOp,
+                                         "has already been transformed.");
 
     // First level tiling: parallel dimensions.
     SmallVector<int64_t> parallelDimsTileSizes{lhsParallelDimTileSize,
                                                rhsParallelDimTileSize, 0};
     auto tilingParallelDimsResult = tileMatmul(
-        rewriter, matmul, parallelDimsTileSizes, /*distribute=*/true);
+        rewriter, matmulOp, parallelDimsTileSizes, /*distribute=*/true);
     if (failed(tilingParallelDimsResult)) return failure();
 
-    // Update the results if tiling succeeded.
+    // Update the results if tiling occurred.
     if (tilingParallelDimsResult->loop != nullptr) {
-      rewriter.replaceOp(matmul, tilingParallelDimsResult->loop->getResults());
-      matmul = cast<TilingInterface>(tilingParallelDimsResult->tiledOp);
+      rewriter.replaceOp(matmulOp,
+                         tilingParallelDimsResult->loop->getResults());
+      matmulOp = cast<linalg::MatmulOp>(tilingParallelDimsResult->tiledOp);
     }
 
     // Fusion into the output.
     OpOperand *matmulOutput =
-        cast<linalg::MatmulOp>(matmul.getOperation()).getDpsInitOperand(0);
+        cast<linalg::MatmulOp>(matmulOp.getOperation()).getDpsInitOperand(0);
     auto materialize = matmulOutput->get().getDefiningOp<MaterializeOp>();
     if (!materialize) return failure();
     if (materialize.getSource().getDefiningOp<linalg::FillOp>()) {
@@ -95,16 +93,17 @@ struct MatmulTransformPattern
     // Second level tiling: reduction dimension.
     SmallVector<int64_t> reductionDimsTileSizes{0, 0, reductionDimTileSize};
     auto tilingReductionDimsResult = tileMatmul(
-        rewriter, matmul, reductionDimsTileSizes, /*distribute=*/false);
+        rewriter, matmulOp, reductionDimsTileSizes, /*distribute=*/false);
     if (failed(tilingReductionDimsResult)) return failure();
 
     // Update the results if tiling succeeded.
     if (tilingReductionDimsResult->loop != nullptr) {
-      rewriter.replaceOp(matmul, tilingReductionDimsResult->loop->getResults());
-      matmul = cast<TilingInterface>(tilingReductionDimsResult->tiledOp);
+      rewriter.replaceOp(matmulOp,
+                         tilingReductionDimsResult->loop->getResults());
+      matmulOp = cast<linalg::MatmulOp>(tilingReductionDimsResult->tiledOp);
     }
 
-    setTransformationAttr(rewriter, matmul);
+    setTransformationAttr(rewriter, matmulOp);
 
     // Peel parallel loops.
     if (auto loop =
@@ -139,8 +138,7 @@ struct TransformMatmulForCpuPass
     : public impl::TransformMatmulForCpuPassBase<TransformMatmulForCpuPass> {
   TransformMatmulForCpuPass() = default;
 
-  explicit TransformMatmulForCpuPass(
-      llvm::ArrayRef<int64_t> matmulTileSizes) {
+  explicit TransformMatmulForCpuPass(llvm::ArrayRef<int64_t> matmulTileSizes) {
     tileSizes = matmulTileSizes;
   }
 
@@ -154,7 +152,7 @@ struct TransformMatmulForCpuPass
     func::FuncOp f = getOperation();
     MLIRContext *ctx = &getContext();
 
-    if ((*tileSizes).empty()) {
+    if (tileSizes.empty()) {
       tileSizes = {2, 4, 8};
     }
 
@@ -162,15 +160,15 @@ struct TransformMatmulForCpuPass
            "Tiling sizes for MatMul should have 3 elements");
 
     RewritePatternSet patterns(ctx);
-    patterns.add<MatmulTransformPattern>(ctx, (*tileSizes)[0], (*tileSizes)[1],
-                                         (*tileSizes)[2]);
+    patterns.add<MatmulTransformPattern>(ctx, tileSizes[0], tileSizes[1],
+                                         tileSizes[2]);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();
     }
 
     // Ensure we drop the marker in the end.
-    f.walk([](linalg::LinalgOp op) { gml_st::removeTransformationAttr(op); });
+    f.walk([](linalg::MatmulOp op) { gml_st::removeTransformationAttr(op); });
   }
 };
 

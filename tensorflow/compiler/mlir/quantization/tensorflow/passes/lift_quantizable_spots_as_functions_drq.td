@@ -24,6 +24,33 @@ include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
 // Pattern rules for lifting ops as functions
 //===----------------------------------------------------------------------===//
 
+def LiftConv : Pat<
+  (TF_Conv2DOp:$res $input, $filter, $strides, $use_cudnn_on_gpu, $padding,
+    $explicit_paddings, IsDataFormatNHWC:$data_format, $dilations),
+  (LiftAsFunctionCall<"composite_conv2d_fn">
+    (ArgumentList $input, $filter),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"strides"> $strides),
+      (NamedAttr<"use_cudnn_on_gpu"> $use_cudnn_on_gpu),
+      (NamedAttr<"padding"> $padding),
+      (NamedAttr<"explicit_paddings"> $explicit_paddings),
+      (NamedAttr<"dilations"> $dilations))),
+  [(IsNotInLiftedFunc $res), (IsConstTensor $filter)], (addBenefit 1)>;
+
+def LiftDepthwiseConv : Pat<
+  (TF_DepthwiseConv2dNativeOp:$res $input, $filter, $strides, $padding,
+    $explicit_paddings, IsDataFormatNHWC:$data_format, $dilations),
+  (LiftAsFunctionCall<"composite_depthwise_conv2d_fn">
+    (ArgumentList $input, $filter),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"strides"> $strides),
+      (NamedAttr<"padding"> $padding),
+      (NamedAttr<"explicit_paddings"> $explicit_paddings),
+      (NamedAttr<"dilations"> $dilations))),
+  [(IsNotInLiftedFunc $res), (IsConstTensor $filter)], (addBenefit 1)>;
+
 def LiftMatMul : Pat<
   (TF_MatMulOp:$res $a, $b, $transpose_a, $transpose_b),
   (LiftAsFunctionCall<"composite_matmul_fn">

@@ -4,6 +4,7 @@ load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 visibility = ["//tensorflow/core/function:__subpackages__"]
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = visibility,
 )
 

@@ -14,7 +14,7 @@
 # ==============================================================================
 """Base test class for quantize_model Tests."""
 import os
-from typing import Collection, Iterable, Mapping, Sequence, Tuple, Optional
+from typing import Collection, Iterable, Mapping, Sequence, Tuple, Optional, Union, List
 
 from absl.testing import parameterized
 import numpy as np
@@ -42,10 +42,14 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import builder
+from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.saved_model import signature_def_utils_impl
 from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.types import core
+
+# Type aliases for supported attribute types.
+_AttrValType = Union[List[int], bool, str, None]
 
 
 class QuantizedModelTest(test.TestCase, parameterized.TestCase):
@@ -73,18 +77,28 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     """
     return func.signature.name.startswith('composite_')
 
-  def _contains_op_with_name(self, nodes: Iterable[node_def_pb2.NodeDef],
-                             op_name: str) -> bool:
+  def _contains_op_with_name_and_attribute(self, nodes: Iterable[
+      node_def_pb2.NodeDef], op_name: str, attr_name: Union[str],
+                                           attr_val: _AttrValType) -> bool:
     """Determine whether there is a node whose operation name matches `op_name`.
+
+    If `attr_name` is given, additionally check if the `attr_val` matches with
+    the attribute value of the op.
 
     Args:
       nodes: Iterable of NodeDefs.
       op_name: Name of the op to match.
+      attr_name: Name of the attribute of the op to match.
+      attr_val: Value of the attr_name to check.
 
     Returns:
-      True iff there exists a node whose name matches `op_name`.
+      True if there exists a node whose name matches `op_name` and 'attr_val' if
+      'attr_name' is given.
     """
-    return any(node.op == op_name for node in nodes)
+    return any(
+        node.attr.get(attr_name) == attr_val
+        for node in nodes
+        if node.op == op_name)
 
   def _contains_quantized_function_call(
       self, meta_graphdef: meta_graph_pb2.MetaGraphDef) -> bool:
@@ -114,26 +128,41 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         map(self._is_composite_function,
             meta_graphdef.graph_def.library.function))
 
-  def _contains_op(self, meta_graphdef: meta_graph_pb2.MetaGraphDef,
-                   op_name: str) -> bool:
+  def _contains_op(self,
+                   meta_graphdef: meta_graph_pb2.MetaGraphDef,
+                   op_name: str,
+                   attr_name: Union[str] = '',
+                   attr_val: _AttrValType = None) -> bool:
     """Determines if the graph def contains the given op.
 
     Args:
       meta_graphdef: A MetaGraphDef object.
       op_name: Name of the operation to find within the graph.
+      attr_name: Name of the attribute of the op to match.
+      attr_val: Value of the attr_name to check.
 
     Returns:
-      True if and only if the graph def contains an op named `op_name`.
+      True if and only if the graph def contains an op named `op_name`. If
+      `attr_name` is given, check if the `attr_val` matches with the attribute
+      value of the op.
     """
     # Check the main graph
-    if self._contains_op_with_name(
-        nodes=meta_graphdef.graph_def.node, op_name=op_name):
+    if self._contains_op_with_name_and_attribute(
+        nodes=meta_graphdef.graph_def.node,
+        op_name=op_name,
+        attr_name=attr_name,
+        attr_val=attr_val):
       return True
 
     # Check the graph genederated from user defined functions
-    return any(
-        self._contains_op_with_name(nodes=func.node_def, op_name=op_name)
-        for func in meta_graphdef.graph_def.library.function)
+    for func in meta_graphdef.graph_def.library.function:
+      if self._contains_op_with_name_and_attribute(
+          nodes=func.node_def,
+          op_name=op_name,
+          attr_name=attr_name,
+          attr_val=attr_val):
+        return True
+    return False
 
   def _create_simple_tf1_conv_model(self,
                                     use_variable_for_filter=False
@@ -385,13 +414,74 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
 
     return GatherModel(use_variable)
 
-  def _create_conv2d_model(self):
+  def _create_depthwise_conv2d_model(
+      self,
+      input_shape: Sequence[int],
+      filter_shape: Sequence[int],
+      has_bias: bool = False,
+      has_batch_norm: bool = False,
+      activation_fn: Optional[ops.Operation] = None,
+      strides: Sequence[int] = (1, 2, 2, 1),
+      dilations: Sequence[int] = (1, 1, 1, 1),
+      padding: str = 'SAME'):
+
+    class DepthwiseConvModel(module.Module):
+      """A simple model with a single depthwise conv2d, bias and relu."""
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=input_shape, dtype=dtypes.float32)
+      ])
+      def depthwise_conv(
+          self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+        """Performs a 2D depthwise convolution operation.
+
+        Args:
+          input_tensor: Input tensor to perform convolution on.
+
+        Returns:
+          A map of: output key -> output result.
+        """
+        filters = np.random.uniform(
+            low=-10, high=10, size=filter_shape).astype('f4')
+        out_channel_size = filter_shape[2] * filter_shape[3]
+        bias = np.random.uniform(
+            low=0, high=10, size=(out_channel_size)).astype('f4')
+        scale, offset = [1.0] * out_channel_size, [0.5] * out_channel_size
+        mean, variance = scale, offset
+        out = nn_ops.depthwise_conv2d_native(
+            input_tensor,
+            filters,
+            strides=[1, 2, 2, 1],
+            dilations=[1, 1, 1, 1],
+            padding='SAME',
+            data_format='NHWC')
+        if has_bias:
+          out = nn_ops.bias_add(out, bias)
+        if has_batch_norm:
+          # Fusing is supported for non-training case.
+          out, _, _, _, _, _ = nn_ops.fused_batch_norm_v3(
+              out, scale, offset, mean, variance, is_training=False)
+        if activation_fn is not None:
+          out = activation_fn(out)
+        return {'output': out}
+
+    return DepthwiseConvModel()
+
+  def _create_conv2d_model(self,
+                           input_shape: Sequence[int],
+                           filter_shape: Sequence[int],
+                           has_bias: bool = False,
+                           has_batch_norm: bool = False,
+                           activation_fn: Optional[ops.Operation] = None,
+                           strides: Sequence[int] = (1, 2, 2, 1),
+                           dilations: Sequence[int] = (1, 1, 1, 1),
+                           padding: str = 'SAME'):
 
     class ConvModel(module.Module):
       """A simple model with a single conv2d, bias and relu."""
 
       @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(shape=[1, 3, 4, 512], dtype=dtypes.float32)
+          tensor_spec.TensorSpec(shape=input_shape, dtype=dtypes.float32)
       ])
       def conv(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
         """Performs a 2D convolution operation.
@@ -403,8 +493,12 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
           A map of: output key -> output result.
         """
         filters = np.random.uniform(
-            low=-10, high=10, size=(2, 3, 512, 2)).astype('f4')
-        bias = np.random.uniform(low=0, high=10, size=(2)).astype('f4')
+            low=-10, high=10, size=filter_shape).astype('f4')
+        out_channel_size = filter_shape[-1]
+        bias = np.random.uniform(
+            low=0, high=10, size=(out_channel_size)).astype('f4')
+        scale, offset = [1.0] * out_channel_size, [0.5] * out_channel_size
+        mean, variance = scale, offset
         out = nn_ops.conv2d(
             input_tensor,
             filters,
@@ -412,16 +506,24 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
             dilations=[1, 1, 1, 1],
             padding='SAME',
             data_format='NHWC')
-        out = nn_ops.bias_add(out, bias, data_format='NHWC')
-        out = nn_ops.relu6(out)
+        if has_bias:
+          out = nn_ops.bias_add(out, bias, data_format='NHWC')
+        if has_batch_norm:
+          # Fusing is supported for non-training case.
+          out, _, _, _, _, _ = nn_ops.fused_batch_norm_v3(
+              out, scale, offset, mean, variance, is_training=False)
+        if activation_fn is not None:
+          out = activation_fn(out)
         return {'output': out}
 
     return ConvModel()
 
-  def _create_matmul_model(
-      self,
-      has_bias: bool = False,
-      activation_fn: Optional[ops.Operation] = None) -> module.Module:
+  def _create_matmul_model(self,
+                           input_shape: Sequence[int],
+                           weight_shape: Sequence[int],
+                           saved_model_path: str,
+                           has_bias: bool = False,
+                           activation_fn: Optional[ops.Operation] = None) ->...:
 
     class MatmulModel(module.Module):
       """A simple model with a single matmul.
@@ -430,24 +532,23 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       """
 
       def __init__(self,
+                   weight_shape: Sequence[int],
                    has_bias: bool = False,
                    activation_fn: Optional[ops.Operation] = None) -> None:
         """Initializes a MatmulModel.
 
         Args:
+          weight_shape: Shape of the weight tensor.
           has_bias: If True, creates and adds a bias term.
           activation_fn: The activation function to be used. No activation
             function if None.
         """
         self.has_bias = has_bias
         self.activation_fn = activation_fn
-        self.filters = np.random.uniform(low=-1.0, high=1.0, size=(1024, 3))
-        self.bias = np.random.uniform(low=-1.0, high=1.0, size=(3,))
+        self.filters = np.random.uniform(low=-1.0, high=1.0, size=weight_shape)
+        self.bias = np.random.uniform(low=-1.0, high=1.0, size=weight_shape[-1])
 
-      @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(
-              shape=(1, 1024), dtype=dtypes.float32, name='input_tensor')
-      ])
+      @def_function.function
       def matmul(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
         """Performs a matrix multiplication.
 
@@ -471,7 +572,14 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
 
         return {'output': out}
 
-    return MatmulModel(has_bias, activation_fn)
+    model = MatmulModel(weight_shape, has_bias, activation_fn)
+    saved_model_save.save(
+        model,
+        saved_model_path,
+        signatures=model.matmul.get_concrete_function(
+            tensor_spec.TensorSpec(
+                shape=input_shape, dtype=dtypes.float32, name='input_tensor')))
+    return model
 
   def _create_and_save_tf1_conv_model(self,
                                       saved_model_path: str,

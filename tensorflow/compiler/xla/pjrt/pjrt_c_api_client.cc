@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 // TODO(skyewm): remove when everything goes through C API
@@ -1082,11 +1083,13 @@ PjRtFuture<Status> PjRtCApiBuffer::GetReadyFuture() {
 
 // -------------------------------- API access ---------------------------------
 
-StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient() {
+StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
+    absl::string_view device_type) {
 #if !defined(PLATFORM_GOOGLE) || defined(LIBTPU_STATIC)
   TF_RETURN_IF_ERROR(tensorflow::tpu::FindAndLoadTpuLibrary());
 #endif
-  const PJRT_Api* c_api = tensorflow::tpu::PjrtApi();
+  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api,
+                      stream_executor::tpu::PjrtApi(device_type));
   if (c_api == nullptr) {
     return InternalError("PJRT C API is nullptr");
   }

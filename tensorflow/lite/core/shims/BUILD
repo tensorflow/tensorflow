@@ -370,7 +370,7 @@ cc_library(
         "@mediapipe//mediapipe/tasks:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
-    deps = ["//tensorflow/lite/c:c_api_experimental"],
+    deps = ["//tensorflow/lite/core/c:c_api_experimental"],
 )
 
 cc_library(
@@ -382,7 +382,7 @@ cc_library(
         "@mediapipe//mediapipe/tasks:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
-    deps = ["//tensorflow/lite/c:c_api_types"],
+    deps = ["//tensorflow/lite/core/c:c_api_types"],
 )
 
 cc_library(
@@ -419,7 +419,7 @@ cc_library(
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
-        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
+        "//tensorflow/lite/core/experimental/acceleration/configuration/c:delegate_plugin",
     ],
 )
 
@@ -433,7 +433,7 @@ cc_library(
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
-        "//tensorflow/lite/experimental/acceleration/configuration/c:gpu_plugin",
+        "//tensorflow/lite/core/experimental/acceleration/configuration/c:gpu_plugin",
     ],
 )
 
@@ -447,7 +447,7 @@ cc_library(
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
-        "//tensorflow/lite/experimental/acceleration/configuration/c:nnapi_plugin",
+        "//tensorflow/lite/core/experimental/acceleration/configuration/c:nnapi_plugin",
     ],
 )
 
@@ -461,7 +461,7 @@ cc_library(
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
-        "//tensorflow/lite/experimental/acceleration/configuration/c:xnnpack_plugin",
+        "//tensorflow/lite/core/experimental/acceleration/configuration/c:xnnpack_plugin",
     ],
 )
 

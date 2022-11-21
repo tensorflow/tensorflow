@@ -22,6 +22,14 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {
+// The number of compiler threads to use for asynchronous device compilation.
+inline constexpr int64_t kNumAsyncDeviceCompilerThreads = 10;
+
+enum class DeviceCompileMode {
+  kLazy,
+  kStrict,
+  kAsync,
+};
 
 // Creates a single-node graph using the specified `node_def` as the only op
 // apart from the arg and retval nodes corresponding to `args` and

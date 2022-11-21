@@ -35,8 +35,6 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/Dialect/Tensor/Utils/Utils.h"
-#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -190,7 +188,7 @@ struct DimOfMaterializedTilePattern : public OpRewritePattern<tensor::DimOp> {
 /// `gml_st.for` for iterating over the tiles.
 struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
   TilingPattern(MLIRContext *context,
-                llvm::function_ref<LogicalResult(Operation *)> filterFn,
+                llvm::function_ref<LogicalResult(TilingInterface)> filterFn,
                 TilingOptions options, PatternBenefit benefit = 1)
       : OpInterfaceRewritePattern<TilingInterface>(context, benefit),
         filterFn(filterFn),
@@ -214,7 +212,7 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
   }
 
  private:
-  llvm::function_ref<LogicalResult(Operation *)> filterFn;
+  llvm::function_ref<LogicalResult(TilingInterface)> filterFn;
   TilingOptions options;
 };
 
@@ -251,7 +249,7 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
       }));
     };
 
-    auto filterFn = [&](Operation *op) {
+    auto filterFn = [&](TilingInterface op) {
       if (!opName.empty() && op->getName().getStringRef() != opName)
         return failure();
       if (!opLabel.empty() && !hasMatchingLabel(op, opLabel)) return failure();
@@ -340,7 +338,7 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
 
 void populateTilingPatterns(
     MLIRContext *context,
-    llvm::function_ref<LogicalResult(Operation *)> filterFn,
+    llvm::function_ref<LogicalResult(TilingInterface)> filterFn,
     const TilingOptions &opts, RewritePatternSet *patterns) {
   patterns->add<TilingPattern>(context, filterFn, opts);
 }

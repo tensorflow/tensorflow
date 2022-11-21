@@ -5,6 +5,7 @@ load("//tensorflow/tsl:tsl.bzl", "if_not_fuchsia", "if_not_windows", "tsl_copts"
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core/platform:__pkg__",
         "//tensorflow/tsl/platform:__pkg__",
@@ -420,7 +421,7 @@ cc_library(
 cc_library(
     name = "stacktrace_handler",
     srcs = ["stacktrace_handler.cc"],
-    hdrs = ["//tensorflow/tsl/platform:stacktrace_handler.h"],
+    hdrs = ["//tensorflow/tsl/platform:stacktrace_handler_hdrs"],
     linkstatic = 1,
     deps = [
         "//tensorflow/tsl/platform",

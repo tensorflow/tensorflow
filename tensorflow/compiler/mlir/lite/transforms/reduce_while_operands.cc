@@ -142,8 +142,7 @@ bool AllOperationSafe(Block &block) {
   auto walk_result = block.walk([&](Operation *op) {
     // op has SideEffect.
     if (!isa_and_nonnull<TFL::WhileOp>(op) &&
-        !op->hasTrait<OpTrait::IsTerminator>() &&
-        !MemoryEffectOpInterface::hasNoEffect(op)) {
+        !op->hasTrait<OpTrait::IsTerminator>() && !isMemoryEffectFree(op)) {
       return WalkResult::interrupt();
     }
     // op has implict arguments not listed in operands.

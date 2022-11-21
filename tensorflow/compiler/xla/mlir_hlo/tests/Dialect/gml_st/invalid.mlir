@@ -176,7 +176,7 @@ func.func @tile_op_mismatch_strides_and_static_strides(%i: index)  -> !gml_st.ti
 
 func.func @tile_op_negative_static_size(%i: index)  -> !gml_st.tile<?x?> {
   // expected-error@+1 {{'gml_st.tile' op expected size = -2 to be non-negative}}
-  %1 = "gml_st.tile"(%i) {static_offsets = [0, 0], static_sizes = [-1, -2], static_strides = [1, 1], operand_segment_sizes = array<i32: 0, 1, 0>} : (index) -> !gml_st.tile<?x?>
+  %1 = "gml_st.tile"(%i) {static_offsets = [0, 0], static_sizes = [-9223372036854775808, -2], static_strides = [1, 1], operand_segment_sizes = array<i32: 0, 1, 0>} : (index) -> !gml_st.tile<?x?>
   func.return %1 : !gml_st.tile<?x?>
 }
 
@@ -184,7 +184,7 @@ func.func @tile_op_negative_static_size(%i: index)  -> !gml_st.tile<?x?> {
 
 func.func @tile_op_negative_static_stride(%i: index)  -> !gml_st.tile<?x8> {
   // expected-error@+1 {{'gml_st.tile' op expected stride = -2 to be non-negative}}
-  %1 = "gml_st.tile"(%i) {static_offsets = [0, 0], static_sizes = [-1, 8], static_strides = [1, -2], operand_segment_sizes = array<i32: 0, 1, 0>} : (index) -> !gml_st.tile<?x8>
+  %1 = "gml_st.tile"(%i) {static_offsets = [0, 0], static_sizes = [-9223372036854775808, 8], static_strides = [1, -2], operand_segment_sizes = array<i32: 0, 1, 0>} : (index) -> !gml_st.tile<?x8>
   func.return %1 : !gml_st.tile<?x8>
 }
 
@@ -192,7 +192,7 @@ func.func @tile_op_negative_static_stride(%i: index)  -> !gml_st.tile<?x8> {
 
 func.func @tile_op_negative_static_offset(%i: index)  -> !gml_st.tile<?x8> {
   // expected-error@+1 {{'gml_st.tile' op expected offset = -2 to be non-negative}}
-  %1 = "gml_st.tile"(%i) {static_offsets = [0, -2], static_sizes = [-1, 8], static_strides = [1, 1], operand_segment_sizes = array<i32: 0, 1, 0>} : (index) -> !gml_st.tile<?x8>
+  %1 = "gml_st.tile"(%i) {static_offsets = [0, -2], static_sizes = [-9223372036854775808, 8], static_strides = [1, 1], operand_segment_sizes = array<i32: 0, 1, 0>} : (index) -> !gml_st.tile<?x8>
   func.return %1 : !gml_st.tile<?x8>
 }
 

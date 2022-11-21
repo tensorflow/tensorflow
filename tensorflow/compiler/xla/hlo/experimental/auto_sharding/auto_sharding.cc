@@ -1956,13 +1956,17 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
   std::unique_ptr<MPSolver> solver(std::make_unique<MPSolver>("", MPSolver::GLPK_MIXED_INTEGER_PROGRAMMING));
   CHECK(solver);
   solver->MutableObjective()->SetMinimization();
+  std::string solver_parameter_str;
 #if !defined(__APPLE__)
   if (solver->ProblemType() ==
       operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
-    // Set random_seed and interleave_search for determinism,
-    // num_workers for parallelism.
-    solver->SetSolverSpecificParametersAsString(absl::StrCat(
-        "random_seed:1,interleave_search:true,num_workers:", num_workers));
+    // Set random_seed, interleave_search and share_binary_clauses for
+    // determinism, and num_workers for parallelism.
+    solver_parameter_str = absl::StrCat(
+        "share_binary_clauses:false,random_seed:1,interleave_"
+        "search:true,num_workers:",
+        num_workers);
+    solver->SetSolverSpecificParametersAsString(solver_parameter_str);
   }
 #endif
   // Create variables
@@ -2149,6 +2153,7 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
 
   solver->set_time_limit(3600 * 1000);  // in ms
   VLOG(0) << "Starting solver " << solver->ProblemType() << "\n"
+          << "Solver parameter string: " << solver_parameter_str << "\n"
           << "Number of workers: " << num_workers << "\n"
           << "Number of threads: " << solver->GetNumThreads() << "\n"
           << "Time limit: " << solver->time_limit() << "\n"
@@ -3176,22 +3181,17 @@ StatusOr<bool> AutoSharding::Run(
               << " GB.";
     if (set_to_memory_lower_bound) {
       LOG(INFO)
-          << "--xla_tpu_auto_spmd_partitioning_memory_budget_gb is 0, setting "
-             "option.memory_budget_per_device to be the estimated memory "
-             "consumption lower bound of this module to maximize sharding. "
-             "Note "
-             "that the memory consumption estimation does not take into "
-             "account "
-             "alias pairs or while op inputs. So if the model "
-             "is very small such that the alias pairs and while op inputs "
-             "consist significant memory usage percentage, this lower bound "
-             "will "
-             "cause solver being unable to find feasible solutison. Please set "
-             "xla_tpu_auto_spmd_partitioning_memory_budget_gb to be greater "
-             "than "
-          << memory_lower_bound_gb << " if this behavior is undesired.";
-      option_.memory_budget_per_device =
-          memory_lower_bound_gb * (1024 * 1024 * 1024);
+          << "--xla_tpu_auto_spmd_partitioning_memory_budget_gb is 0, and "
+             "--xla_tpu_auto_spmd_partitioning_memory_budget_ratio is "
+          << option_.memory_budget_ratio
+          << ", so setting "
+             "option.memory_budget_per_device to "
+          << memory_lower_bound_gb << " x " << option_.memory_budget_ratio
+          << " = " << memory_lower_bound_gb * option_.memory_budget_ratio
+          << " GB";
+      option_.memory_budget_per_device = memory_lower_bound_gb *
+                                         (1024 * 1024 * 1024) *
+                                         option_.memory_budget_ratio;
     } else if (option_.memory_budget_per_device > 0) {
       option_.memory_budget_per_device = original_memory_budget *
                                          original_device_mesh.num_elements() /

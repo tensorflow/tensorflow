@@ -118,7 +118,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   if (output->type == kTfLiteString) {
     TfLiteTensorRealloc(input->bytes, output);
   }
-  memcpy(output->data.raw, input->data.raw, input->bytes);
+  // Only copy data if input and output do not share a buffer.
+  if (output->data.data != input->data.data) {
+    memcpy(output->data.data, input->data.data, input->bytes);
+  }
   return kTfLiteOk;
 }
 

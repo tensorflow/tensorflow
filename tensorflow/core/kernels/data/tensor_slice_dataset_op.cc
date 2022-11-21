@@ -151,6 +151,8 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
 
+    bool SymbolicCheckpointCompatible() const override { return true; }
+
     Status Initialize(IteratorContext* ctx) override {
       if (ctx->split_providers().empty() || dataset()->replicate_on_split_) {
         split_provider_ = std::make_shared<IndexSplitProvider>(

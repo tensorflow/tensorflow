@@ -131,10 +131,44 @@ class DenseSpec(type_spec.TypeSpec):
 @type_spec.register("tf.TensorSpec")
 class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
                  trace_type.Serializable):
-  """Describes a tf.Tensor.
+  """Describes the type of a tf.Tensor.
 
-  Metadata for describing the `tf.Tensor` objects accepted or returned
-  by some TensorFlow APIs.
+  >>> t = tf.constant([[1,2,3],[4,5,6]])
+  >>> tf.TensorSpec.from_tensor(t)
+  TensorSpec(shape=(2, 3), dtype=tf.int32, name=None)
+
+  Contains metadata for describing the the nature of `tf.Tensor` objects
+  accepted or returned by some TensorFlow APIs.
+
+  For example, it can be used to constrain the type of inputs accepted by
+  a tf.function:
+
+  >>> @tf.function(input_signature=[tf.TensorSpec([1, None])])
+  ... def constrained_foo(t):
+  ...   print("tracing...")
+  ...   return t
+
+  Now the `tf.function` is able to assume that `t` is always of the type
+  `tf.TensorSpec([1, None])` which will avoid retracing as well as enforce the
+  type restriction on inputs.
+
+  As a result, the following call with tensor of type `tf.TensorSpec([1, 2])`
+  triggers a trace and succeeds:
+  >>> constrained_foo(tf.constant([[1., 2]])).numpy()
+  tracing...
+  array([[1., 2.]], dtype=float32)
+
+  The following subsequent call with tensor of type `tf.TensorSpec([1, 4])`
+  does not trigger a trace and succeeds:
+  >>> constrained_foo(tf.constant([[1., 2, 3, 4]])).numpy()
+  array([[1., 2., 3., 4.], dtype=float32)
+
+  But the following call with tensor of type `tf.TensorSpec([2, 2])` fails:
+  >>> constrained_foo(tf.constant([[1., 2], [3, 4]])).numpy()
+  Traceback (most recent call last):
+  ...
+  ValueError: Python inputs incompatible with input_signature
+
   """
 
   __slots__ = []

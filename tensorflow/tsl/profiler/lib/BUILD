@@ -9,6 +9,8 @@ load(
     "tf_profiler_pybind_cc_library_wrapper",
 )
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 cc_library(
     name = "context_types_hdrs",
     hdrs = ["context_types.h"],
@@ -26,6 +28,8 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "scoped_annotation.h",
+        "scoped_memory_debug_annotation.cc",
+        "scoped_memory_debug_annotation.h",
         "traceme.h",
         "traceme_encode.h",
     ],
@@ -149,6 +153,59 @@ tsl_cc_test(
 )
 
 cc_library(
+    name = "profiler_session",
+    hdrs = ["profiler_session.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
+        "//tensorflow/tsl/platform:thread_annotations",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:platform",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:types",
+    ] + if_not_android([
+        ":profiler_interface",
+        ":profiler_lock",
+    ]) + if_static([
+        ":profiler_session_impl",
+    ]),
+)
+
+cc_library(
+    name = "profiler_session_impl",
+    srcs = [
+        "profiler_session.cc",
+        "profiler_session.h",
+    ],
+    copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/core/profiler/lib:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:thread_annotations",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@com_google_absl//absl/memory",
+    ] + if_not_android([
+        ":profiler_collection",
+        ":profiler_factory",
+        ":profiler_interface",
+        ":profiler_lock",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/tsl/profiler/convert:post_process_single_host_xplane",
+        "//tensorflow/tsl/profiler/utils:time_utils",
+    ]),
+    alwayslink = True,
+)
+
+cc_library(
     name = "traceme_encode",
     hdrs = ["traceme_encode.h"],
     visibility = ["//visibility:public"],
@@ -246,5 +303,25 @@ cc_library(
         ":traceme_encode",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "profiler_collection",
+    srcs = ["profiler_collection.cc"],
+    hdrs = ["profiler_collection.h"],
+    deps = [
+        ":profiler_interface",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "scoped_memory_debug_annotation",
+    srcs = ["scoped_memory_debug_annotation.cc"],
+    hdrs = ["scoped_memory_debug_annotation.h"],
+    visibility = ["//visibility:public"],
+    deps = [
     ],
 )

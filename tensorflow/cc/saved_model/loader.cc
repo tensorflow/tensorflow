@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/loader.h"
 
+#include <string>
 #include <unordered_set>
 
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/cc/saved_model/fingerprinting.h"
 #include "tensorflow/cc/saved_model/loader_util.h"
 #include "tensorflow/cc/saved_model/metrics.h"
 #include "tensorflow/cc/saved_model/reader.h"
@@ -296,6 +298,13 @@ Status LoadSavedModel(const SessionOptions& session_options,
                       const std::unordered_set<string>& tags,
                       SavedModelBundle* const bundle) {
   metrics::SavedModelReadApi(kCCLoadLabel).IncrementBy(1);
+  auto fingerprint_proto =
+      saved_model::fingerprinting::ReadSavedModelFingerprint(export_dir);
+  if (fingerprint_proto.ok()) {
+    // Set gauge cell with graph_def_checksum.
+    metrics::SavedModelReadFingerprint().Set(
+        std::to_string(fingerprint_proto->saved_model_checksum()));
+  }
 
   // TODO(robson): Add tests for the counters.
   const uint64 start_microseconds = Env::Default()->NowMicros();

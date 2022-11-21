@@ -20,6 +20,7 @@ limitations under the License.
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/transforms.h"
 #include "gml_st/utils/linalg_utils.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -46,8 +47,10 @@ SmallVector<ReassociationIndices> getCollapsingReassociationIndices(
     int64_t rank, int64_t retainTrailingDims) {
   SmallVector<ReassociationIndices> reassociation;
   reassociation.reserve(retainTrailingDims + 1);
-  auto seq = llvm::seq<int64_t>(0, rank - retainTrailingDims);
-  reassociation.emplace_back(seq.begin(), seq.end());
+  if (rank > retainTrailingDims) {
+    auto seq = llvm::seq<int64_t>(0, rank - retainTrailingDims);
+    reassociation.emplace_back(seq.begin(), seq.end());
+  }
   for (int64_t i = rank - retainTrailingDims; i < rank; ++i)
     reassociation.push_back({i});
   return reassociation;
@@ -62,40 +65,80 @@ struct CollapseBcastPattern : OpRewritePattern<linalg::GenericOp> {
 
   LogicalResult matchAndRewrite(linalg::GenericOp op,
                                 PatternRewriter& rewriter) const override {
-    int64_t bcastDim;
-    if (!isSimpleBcast(op, &bcastDim)) {
+    if (!isBcast(op)) {
       return rewriter.notifyMatchFailure(op, "not a bcast op");
     }
 
     Value init = op.getOutputs().front();
     auto initTy = init.getType().cast<RankedTensorType>();
     int64_t initRank = initTy.getRank();
+    int64_t numCollapsedDims = initRank - retainTrailingDims;
 
-    if (initRank <= retainTrailingDims + 1) {
+    if (numCollapsedDims < 2) {
       return rewriter.notifyMatchFailure(op, "no dimension to collapse");
     }
 
-    if (initRank - 1 - bcastDim >= retainTrailingDims) {
-      return rewriter.notifyMatchFailure(op,
-                                         "bcast dimension must be retained");
+    // Dimensions to be collapsed must either be all broadcasted or not
+    // broadcasted.
+    AffineMap inputMap = op.getIndexingMapsArray().front();
+    llvm::SmallVector<unsigned> broadcastedDims;
+    for (const auto& expr : inputMap.getResults()) {
+      auto dimExpr = expr.dyn_cast<AffineDimExpr>();
+      if (!dimExpr) {
+        return rewriter.notifyMatchFailure(
+            op, "affine map does not only contain dim expressions");
+      }
+      broadcastedDims.push_back(dimExpr.getPosition());
+    }
+    bool firstDimsBroadcasted = false;
+    if (!broadcastedDims.empty()) {
+      int i = 0;
+      while (i < broadcastedDims.size() && broadcastedDims[i] == i) {
+        ++i;
+      }
+      if (i >= numCollapsedDims) {
+        firstDimsBroadcasted = true;
+      } else if (llvm::any_of(broadcastedDims,
+                              [numCollapsedDims](unsigned dim) {
+                                return dim < numCollapsedDims;
+                              })) {
+        return rewriter.notifyMatchFailure(
+            op, "collapsed dims are not broadcasted in order");
+      }
     }
 
     Value operand = op.getInputs().front();
     auto operandTy = operand.getType().cast<RankedTensorType>();
     int64_t operandRank = operandTy.getRank();
+    llvm::DenseSet<unsigned> broadcastedDimsSet(broadcastedDims.begin(),
+                                                broadcastedDims.end());
+    llvm::SmallVector<int64_t> collapsedNonBroadcastedDims;
+    collapsedNonBroadcastedDims.reserve(numCollapsedDims +
+                                        (firstDimsBroadcasted ? 1 : 0));
+    for (unsigned dim = numCollapsedDims; dim < initRank; ++dim) {
+      if (!broadcastedDimsSet.contains(dim)) {
+        collapsedNonBroadcastedDims.push_back(dim - numCollapsedDims + 1);
+      }
+    }
+    int64_t operandRetainTrailingDims =
+        retainTrailingDims - collapsedNonBroadcastedDims.size();
 
     // Collapse operand and init tensor.
     // For bcasts, this retains the last `retainTrailingDims` dimensions of the
     // *result* and collapses all others.
     Location loc = op.getLoc();
-    SmallVector<ReassociationIndices> operandReassociation =
-        getCollapsingReassociationIndices(operandRank, retainTrailingDims - 1);
-    Value collapsedOperand = rewriter.createOrFold<tensor::CollapseShapeOp>(
-        loc, operand, operandReassociation);
-    SmallVector<ReassociationIndices> initReassosiation =
+    Value collapsedOperand = operand;
+    if (operandRank > operandRetainTrailingDims + 1) {
+      SmallVector<ReassociationIndices> operandReassociation =
+          getCollapsingReassociationIndices(operandRank,
+                                            operandRetainTrailingDims);
+      collapsedOperand = rewriter.createOrFold<tensor::CollapseShapeOp>(
+          loc, operand, operandReassociation);
+    }
+    SmallVector<ReassociationIndices> initReassociation =
         getCollapsingReassociationIndices(initRank, retainTrailingDims);
     Value collapsedInit =
-        rewriter.create<tensor::CollapseShapeOp>(loc, init, initReassosiation);
+        rewriter.create<tensor::CollapseShapeOp>(loc, init, initReassociation);
 
     auto collapsedInitTy = collapsedInit.getType().cast<RankedTensorType>();
     int64_t collapsedInitRank = collapsedInitTy.getRank();
@@ -104,9 +147,11 @@ struct CollapseBcastPattern : OpRewritePattern<linalg::GenericOp> {
     MLIRContext* ctx = getContext();
     AffineMap collapsedInitMap =
         AffineMap::getMultiDimIdentityMap(collapsedInitRank, ctx);
-    int64_t collapsedBcastDim = bcastDim - initRank + collapsedInitRank;
+    if (!firstDimsBroadcasted) {
+      collapsedNonBroadcastedDims.push_back(0);
+    }
     AffineMap collapsedOperandMap =
-        collapsedInitMap.dropResult(collapsedBcastDim);
+        collapsedInitMap.dropResults(collapsedNonBroadcastedDims);
     SmallVector<AffineMap> collapsedMaps = {collapsedOperandMap,
                                             collapsedInitMap};
     SmallVector<utils::IteratorType> collapsedIteratorTypes(
@@ -116,9 +161,9 @@ struct CollapseBcastPattern : OpRewritePattern<linalg::GenericOp> {
         collapsedIteratorTypes);
     collapsedBcastOp.getRegion().takeBody(op.getBodyRegion());
 
-    // Re-expand reduction op and replace the original.
+    // Re-expand broadcast op and replace the original.
     auto reexpandedBcastOp = rewriter.create<tensor::ExpandShapeOp>(
-        loc, initTy, collapsedBcastOp.getResult(0), initReassosiation);
+        loc, initTy, collapsedBcastOp.getResult(0), initReassociation);
     rewriter.replaceOp(op, reexpandedBcastOp.getResult());
     return success();
   }
@@ -166,10 +211,10 @@ struct CollapseReductionPattern : OpRewritePattern<linalg::GenericOp> {
         getCollapsingReassociationIndices(operandRank, retainTrailingDims);
     Value collapsedOperand = rewriter.create<tensor::CollapseShapeOp>(
         loc, operand, operandReassociation);
-    SmallVector<ReassociationIndices> initReassosiation =
+    SmallVector<ReassociationIndices> initReassociation =
         getCollapsingReassociationIndices(initRank, retainTrailingDims - 1);
     Value collapsedInit =
-        rewriter.create<tensor::CollapseShapeOp>(loc, init, initReassosiation);
+        rewriter.create<tensor::CollapseShapeOp>(loc, init, initReassociation);
 
     auto collapsedOperandTy =
         collapsedOperand.getType().cast<RankedTensorType>();
@@ -197,7 +242,7 @@ struct CollapseReductionPattern : OpRewritePattern<linalg::GenericOp> {
 
     // Re-expand reduction op and replace the original.
     auto reexpandedReductionOp = rewriter.create<tensor::ExpandShapeOp>(
-        loc, initTy, collapsedReductionOp.getResult(0), initReassosiation);
+        loc, initTy, collapsedReductionOp.getResult(0), initReassociation);
     rewriter.replaceOp(op, reexpandedReductionOp.getResult());
     return success();
   }

@@ -1,4 +1,5 @@
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -24,11 +25,19 @@ py_library(
 py_library(
     name = "counter_op",
     srcs = ["counter_op.py"],
+    deps = [
+        "//third_party/py/numpy",
+    ],
 )
 
 py_library(
     name = "padded_batch_op",
     srcs = ["padded_batch_op.py"],
+)
+
+py_library(
+    name = "take_op",
+    srcs = ["take_op.py"],
 )
 
 py_library(
@@ -46,24 +55,46 @@ py_library(
 )
 
 py_library(
+    name = "skip_op",
+    srcs = ["skip_op.py"],
+)
+
+py_library(
     name = "dataset_ops",
     srcs = ["dataset_ops.py"],
     srcs_version = "PY3",
     deps = [
         ":batch_op",
+        ":cache_op",
+        ":concatenate_op",
         ":counter_op",
         ":filter_op",
+        ":flat_map_op",
+        ":from_generator_op",
+        ":from_sparse_tensor_slices_op",
         ":from_tensor_slices_op",
+        ":from_tensors_op",
+        ":group_by_window_op",
         ":ignore_errors_op",
+        ":interleave_op",
         ":iterator_ops",
         ":load_ops",
+        ":map_op",
         ":options",
         ":padded_batch_op",
         ":ragged_batch_op",
+        ":range_op",
         ":rebatch_op",
+        ":repeat_op",
         ":save_ops",
+        ":shard_op",
+        ":skip_op",
+        ":snapshot_op",
         ":sparse_batch_op",
         ":structured_function",
+        ":take_op",
+        ":take_while_op",
+        ":unbatch_op",
         ":unique_op",
         ":window_op",
         ":zip_op",
@@ -100,8 +131,33 @@ py_library(
 )
 
 py_library(
+    name = "cache_op",
+    srcs = ["cache_op.py"],
+)
+
+py_library(
+    name = "concatenate_op",
+    srcs = ["concatenate_op.py"],
+)
+
+py_library(
     name = "filter_op",
     srcs = ["filter_op.py"],
+)
+
+py_library(
+    name = "flat_map_op",
+    srcs = ["flat_map_op.py"],
+)
+
+py_library(
+    name = "from_generator_op",
+    srcs = ["from_generator_op.py"],
+)
+
+py_library(
+    name = "from_sparse_tensor_slices_op",
+    srcs = ["from_sparse_tensor_slices_op.py"],
 )
 
 py_library(
@@ -110,8 +166,33 @@ py_library(
 )
 
 py_library(
+    name = "from_tensors_op",
+    srcs = ["from_tensors_op.py"],
+)
+
+py_library(
+    name = "group_by_window_op",
+    srcs = ["group_by_window_op.py"],
+)
+
+py_library(
+    name = "range_op",
+    srcs = ["range_op.py"],
+)
+
+py_library(
+    name = "repeat_op",
+    srcs = ["repeat_op.py"],
+)
+
+py_library(
     name = "ignore_errors_op",
     srcs = ["ignore_errors_op.py"],
+)
+
+py_library(
+    name = "interleave_op",
+    srcs = ["interleave_op.py"],
 )
 
 py_library(
@@ -146,6 +227,11 @@ py_library(
         "//tensorflow/python/platform",
         "//tensorflow/python/util",
     ],
+)
+
+py_library(
+    name = "map_op",
+    srcs = ["map_op.py"],
 )
 
 py_library(
@@ -188,8 +274,23 @@ py_library(
 )
 
 py_library(
+    name = "snapshot_op",
+    srcs = ["snapshot_op.py"],
+)
+
+py_library(
+    name = "take_while_op",
+    srcs = ["take_while_op.py"],
+)
+
+py_library(
     name = "unique_op",
     srcs = ["unique_op.py"],
+)
+
+py_library(
+    name = "unbatch_op",
+    srcs = ["unbatch_op.py"],
 )
 
 py_library(
@@ -269,4 +370,9 @@ py_library(
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/util:tf_export",
     ],
+)
+
+py_library(
+    name = "shard_op",
+    srcs = ["shard_op.py"],
 )

@@ -1,4 +1,5 @@
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -46,8 +47,8 @@ cc_library(
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/kernels/internal:compatibility",
     ],
 )
@@ -73,8 +74,8 @@ cc_test(
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/delegates:delegate_test_util",
         "//tensorflow/lite/delegates/utils/experimental/sample_stable_delegate",
         "//tensorflow/lite/kernels:builtin_ops",

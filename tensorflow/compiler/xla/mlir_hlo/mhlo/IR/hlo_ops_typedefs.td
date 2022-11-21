@@ -17,7 +17,7 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_TYPEDEFS
 #define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_TYPEDEFS
 
-def AsyncBundle : TypeDef<HLO_Dialect, "AsyncBundle"> {
+def MHLO_AsyncBundleTypeDef : TypeDef<MHLO_Dialect, "AsyncBundle"> {
   let mnemonic = "async_bundle";
   let summary = "Opaque collection of other types";
   let parameters = (ins ArrayRefParameter<"Type">:$types);
@@ -51,10 +51,10 @@ def AsyncBundle : TypeDef<HLO_Dialect, "AsyncBundle"> {
 }
 
 // Whether a type is a AsyncBundleType.
-def IsAsyncBundleTypePred : CPred<"$_self.isa<::mlir::mhlo::AsyncBundleType>()">;
+def MHLO_IsAsyncBundleTypePred : CPred<"$_self.isa<::mlir::mhlo::AsyncBundleType>()">;
 
-def HLO_AsyncBundle :
-    MixedContainerType<AnyTypeOf<[HLO_Tensor, HLO_Token]>, IsAsyncBundleTypePred,
+def MHLO_AsyncBundle :
+    MixedContainerType<AnyTypeOf<[MHLO_Tensor, MHLO_Token]>, MHLO_IsAsyncBundleTypePred,
                        "AsyncBundleType::getFlattenedTypes($_self.cast<::mlir::mhlo::AsyncBundleType>())",
                        "async_bundle">;
 

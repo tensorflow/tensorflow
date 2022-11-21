@@ -42,7 +42,7 @@ def I32Buffer : MemRefOf<[I32]>;
 
 class GpuConvolutionAttributes<dag extraAttribs> {
   dag attributes = !con(
-    ConvolutionAttributes.attributes,
+    MHLO_ConvolutionAttributes.attributes,
     (ins F64Attr:$result_scale),
     extraAttribs,
     (ins ConvolutionBackendConfigAttr:$backend_config));
@@ -131,8 +131,8 @@ def LHLOGPU_GEMMOp : LHLOGPU_Op<"gemm"> {
     Arg<LHLO_Buffer, "", [MemRead]>:$a,
     Arg<LHLO_Buffer, "", [MemRead]>:$b,
     Arg<LHLO_Buffer, "", [MemRead, MemWrite]>:$c,
-    DotDimensionNumbers:$dot_dimension_numbers,
-    HLO_PrecisionConfigAttr:$precision_config,
+    MHLO_DotDimensionNumbers:$dot_dimension_numbers,
+    MHLO_PrecisionConfigAttr:$precision_config,
     F64Attr:$alpha_real,
     F64Attr:$alpha_imag,
     F64Attr:$beta,
@@ -146,8 +146,8 @@ def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul"> {
     Arg<LHLO_Buffer, "", [MemRead]>:$c,
     Arg<LHLO_Buffer, "", [MemWrite]>:$d,
     Arg<Optional<LHLO_Buffer>, "", [MemRead]>:$bias,
-    DotDimensionNumbers:$dot_dimension_numbers,
-    HLO_PrecisionConfigAttr:$precision_config,
+    MHLO_DotDimensionNumbers:$dot_dimension_numbers,
+    MHLO_PrecisionConfigAttr:$precision_config,
     F64Attr:$alpha_real,
     F64Attr:$alpha_imag,
     F64Attr:$beta,
@@ -175,10 +175,10 @@ def LHLOGPU_AllReduceStartOp :
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs,
     I64ElementsAttr:$replica_groups,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$constrain_layout,
-    OptionalAttr<ChannelHandle>:$channel_id,
+    OptionalAttr<MHLO_ChannelHandle>:$channel_id,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$use_global_device_ids
   );
-  let results = (outs HLO_Token:$token);
+  let results = (outs MHLO_Token:$token);
   let regions = (region SizedRegion<1>:$computation);
   let hasVerifier = 1;
 }
@@ -187,7 +187,7 @@ def LHLOGPU_AllReduceDoneOp:
   LHLOGPU_Op<"all_reduce_done", [SameVariadicOperandSize]> {
   let summary = "AllReduceDone operator";
   let arguments = (ins
-    HLO_Token:$token,
+    MHLO_Token:$token,
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs
   );

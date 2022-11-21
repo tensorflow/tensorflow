@@ -8,6 +8,7 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 # TODO: Tighten visibility once targets are at the right granularity.
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":internal"],
     licenses = ["notice"],
 )

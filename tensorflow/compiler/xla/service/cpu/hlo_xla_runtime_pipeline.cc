@@ -61,13 +61,13 @@ using mlir::func::FuncOp;
 
 mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions() {
   using mlir::bufferization::BufferizationOptions;
+  using mlir::bufferization::LayoutMapOption;
   using mlir::bufferization::OneShotBufferizationOptions;
 
   OneShotBufferizationOptions options;
   options.bufferizeFunctionBoundaries = true;
   options.allowReturnAllocs = true;
-  options.functionBoundaryTypeConversion =
-      BufferizationOptions::LayoutMapOption::IdentityLayoutMap;
+  options.functionBoundaryTypeConversion = LayoutMapOption::IdentityLayoutMap;
   options.unknownTypeConverterFn = [](mlir::Value value, unsigned memorySpace,
                                       const BufferizationOptions& options) {
     return mlir::bufferization::getMemRefTypeWithStaticIdentityLayout(
@@ -82,9 +82,11 @@ void AddSparsificationPasses(mlir::OpPassManager& pm) {
       mlir::bufferization::createEmptyTensorToAllocTensorPass());
   pm.addPass(mlir::bufferization::createTensorCopyInsertionPass(
       GetBufferizationOptions()));
-  pm.addPass(mlir::createSparseTensorRewritePass());
+  pm.addPass(mlir::createPreSparsificationRewritePass());
   pm.addPass(mlir::createSparsificationPass());
-  pm.addPass(mlir::createSparseTensorConversionPass());
+  pm.addPass(mlir::createPostSparsificationRewritePass(/*enableRT=*/false));
+  pm.addPass(mlir::createSparseTensorCodegenPass());
+  pm.addPass(mlir::createSparseBufferRewritePass());
   pm.addPass(mlir::createDenseBufferizationPass(GetBufferizationOptions()));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createFinalizingBufferizePass());
@@ -119,6 +121,8 @@ static Status CreateHloXlaPipeline(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeControlFlowPass());
   pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      xla::cpu::createLegalizeCollectiveOpsPass());
   // TODO(kramerb): Give THLO lowerings priority over linalg when it's ready for
   // concat, reduce and friends.
   pm.addNestedPass<mlir::func::FuncOp>(

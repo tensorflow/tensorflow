@@ -10,6 +10,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":internal",
         "//third_party/cloud_tpu/inference_converter:__pkg__",
@@ -154,9 +155,9 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core/common_runtime/gpu:gpu_init",
     ] + if_libtpu(
         if_false = [
             "//tensorflow/compiler/xla/service:gpu_plugin",  # buildcleaner: keep
@@ -303,6 +304,7 @@ cc_library(
     # Public visibility is needed for external TF/XLA backends.
     visibility = ["//visibility:public"],
     deps = XLA_DEVICE_DEPS + [
+        ":device_compilation_profiler",
         ":flags_headers",
         ":xla_compilation_cache",
         "//tensorflow/core/tpu:tpu_defs",
@@ -321,6 +323,7 @@ cc_library(
     # Public visibility is needed for external TF/XLA backends.
     visibility = ["//visibility:public"],
     deps = XLA_DEVICE_DEPS + [
+        ":device_compilation_profiler",
         ":jit_compilation_passes",
         ":xla_device_no_jit_rewrite_registration",
     ],
@@ -481,13 +484,12 @@ cc_library(
         "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
     ],
     deps = [
+        ":device_compilation_profiler",
         ":flags",
         ":tf_graph_to_hlo_compiler",
-        ":tf_to_hlo_compiler",
-        ":xla_activity_listener",
-        ":xla_activity_proto_cc",
         ":xla_cluster_util",
         ":xla_compilation_cache_proto_cc",
+        ":xla_compile_util",
         "//tensorflow/compiler/mlir:array_container_utils",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
@@ -543,6 +545,7 @@ tf_cc_test(
         "xla_compilation_cache_disable_test.cc",
     ],
     deps = [
+        ":device_compilation_profiler",
         ":flags",
         ":xla_compilation_cache",
         ":xla_cpu_jit",
@@ -1269,5 +1272,34 @@ cc_library(
     deps = [
         ":tf_to_hlo_compiler",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+    ],
+)
+
+cc_library(
+    name = "device_compilation_profiler",
+    srcs = ["device_compilation_profiler.cc"],
+    hdrs = ["device_compilation_profiler.h"],
+    deps = [
+        ":xla_activity_listener",
+        ":xla_activity_proto_cc",
+        ":xla_compile_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/platform:mutex",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "device_compilation_profiler_test",
+    srcs = ["device_compilation_profiler_test.cc"],
+    deps = [
+        ":device_compilation_profiler",
+        ":xla_activity_proto_cc",
+        "//tensorflow/compiler/jit/tests:xla_compilation_cache_test_helper",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_googletest//:gtest_main",
     ],
 )

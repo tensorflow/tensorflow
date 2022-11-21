@@ -94,7 +94,7 @@ std::vector<std::vector<uint8_t>> ToCustomInputData(
 
 void TfLiteBlockingValidatorRunnerTriggerValidationImpl(
     const TfLiteMinibenchmarkSettings& settings,
-    TfLiteMiniBenchmarkResult& result) {
+    TfLiteMiniBenchmarkResult& result, tflite::ErrorReporter* error_reporter) {
   // Create ValidatorRunnerOptions.
   const tflite::MinibenchmarkSettings* minibenchmark_settings =
       flatbuffers::GetRoot<tflite::MinibenchmarkSettings>(
@@ -103,17 +103,14 @@ void TfLiteBlockingValidatorRunnerTriggerValidationImpl(
       tflite::acceleration::CreateValidatorRunnerOptionsFrom(
           *minibenchmark_settings);
 
-  std::unique_ptr<CErrorReporter> error_reporter;
-  if (settings.error_reporter_func != nullptr) {
-    error_reporter = std::make_unique<CErrorReporter>(
-        settings.error_reporter_user_data, settings.error_reporter_func);
-    options.error_reporter = error_reporter.get();
-  }
   if (settings.custom_validation_info.buffer) {
     options.custom_input_batch_size =
         settings.custom_validation_info.batch_size;
     options.custom_input_data =
         ToCustomInputData(settings.custom_validation_info);
+  }
+  if (error_reporter) {
+    options.error_reporter = error_reporter;
   }
 
   tflite::acceleration::BlockingValidatorRunner runner(options);
@@ -136,10 +133,26 @@ TfLiteMiniBenchmarkResult* TfLiteBlockingValidatorRunnerTriggerValidation(
     TfLiteMinibenchmarkSettings* settings) {
   TfLiteMiniBenchmarkResult* return_value =
       new TfLiteMiniBenchmarkResult{0, nullptr, 0};
-  if (!settings || !settings->flatbuffer_data ||
-      settings->flatbuffer_data_size == 0) {
+
+  if (!settings) {
     return_value->init_status =
         tflite::acceleration::kMinibenchmarkPreconditionNotMet;
+    return return_value;
+  }
+
+  std::unique_ptr<CErrorReporter> error_reporter;
+  if (settings->error_reporter_func != nullptr) {
+    error_reporter = std::make_unique<CErrorReporter>(
+        settings->error_reporter_user_data, settings->error_reporter_func);
+  }
+
+  if (!settings->flatbuffer_data || settings->flatbuffer_data_size == 0) {
+    return_value->init_status =
+        tflite::acceleration::kMinibenchmarkPreconditionNotMet;
+    if (error_reporter) {
+      TF_LITE_REPORT_ERROR(error_reporter.get(),
+                           "MinibenchmarkSettings config is not set.");
+    }
     return return_value;
   }
   // Verify data is not corrupted.
@@ -148,10 +161,15 @@ TfLiteMiniBenchmarkResult* TfLiteBlockingValidatorRunnerTriggerValidation(
   if (!verifier.VerifyBuffer<tflite::MinibenchmarkSettings>()) {
     return_value->init_status =
         tflite::acceleration::kMinibenchmarkCorruptSizePrefixedFlatbufferFile;
+    if (error_reporter) {
+      TF_LITE_REPORT_ERROR(error_reporter.get(),
+                           "MinibenchmarkSettings is corruprted.");
+    }
     return return_value;
   }
 
-  TfLiteBlockingValidatorRunnerTriggerValidationImpl(*settings, *return_value);
+  TfLiteBlockingValidatorRunnerTriggerValidationImpl(*settings, *return_value,
+                                                     error_reporter.get());
   return return_value;
 }
 

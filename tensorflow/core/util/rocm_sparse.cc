@@ -152,9 +152,15 @@ Status GpuSparse::Initialize() {
   return OkStatus();
 }
 
+<<<<<<< HEAD
 #define TF_CALL_HIPSPARSE_DTYPES(m)          \
   m(float, HIP_R_32F) m(double, HIP_R_64F) \
       m(std::complex<float>, HIP_C_32F) m(std::complex<double>, HIP_C_64F)
+=======
+#define TF_CALL_HIPSPARSE_DTYPES(m)                                          \
+  m(float, HIP_R_32F) m(double, HIP_R_64F) m(std::complex<float>, HIP_C_32F) \
+      m(std::complex<double>, HIP_C_64F)
+>>>>>>> upstream/master
 
 // Macro that specializes a sparse method for all 4 standard
 // numeric types.

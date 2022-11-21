@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -371,8 +372,10 @@ static mlir::LogicalResult MlirTfGraphToHloTextTranslateFunction(
 }
 
 static void RegisterMlirInputDialects(mlir::DialectRegistry& registry) {
-  registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
-                  mlir::TF::TensorFlowDialect>();
+  // TODO(b/259459405): Remove support for stablehlo as an input.
+  registry
+      .insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
+              mlir::TF::TensorFlowDialect, mlir::stablehlo::StablehloDialect>();
 }
 
 static void RegisterGraphInputDialects(mlir::DialectRegistry& registry) {

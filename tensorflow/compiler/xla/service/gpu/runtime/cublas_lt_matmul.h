@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_CUBLAS_LT_MATMUL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_CUBLAS_LT_MATMUL_H_
 
+#include "absl/container/node_hash_map.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 
@@ -29,22 +31,17 @@ namespace gpu {
 
 #if GOOGLE_CUDA
 
-class MatmulPlanCache {
- public:
-  const cublas_lt::MatmulPlan* Get(int64_t uid);
-  const cublas_lt::MatmulPlan* Set(int64_t uid, cublas_lt::MatmulPlan plan);
-
- private:
-  mutable absl::Mutex mutex_;
-
-  llvm::SmallDenseMap<int64_t, cublas_lt::MatmulPlan> plans_
-      ABSL_GUARDED_BY(mutex_);
-};
+// Keep cublas_lt::MatmulPlan's for all matmul instances in the executable.
+class MatmulPlans : public runtime::StateVector<cublas_lt::MatmulPlan> {};
 
 #endif  // GOOGLE_CUDA
 
 // Registers XLA Gpu runtime cuBLASLt custom calls.
 void RegisterMatmulCustomCalls(runtime::DirectCustomCallRegistry& registry);
+
+// Add cuBLASLt attributes encoding
+void PopulateCublasLtMatmulAttrEncoding(
+    runtime::CustomCallAttrEncodingSet& encoding);
 
 }  // namespace gpu
 }  // namespace xla

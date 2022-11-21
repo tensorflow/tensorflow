@@ -31,6 +31,9 @@ def CreateXlaDotV2OpFromTfMatMulOp : NativeCodeCall<
 def CreateXLAConvOpFromTFConv3DOp : NativeCodeCall<
   "CreateXlaConvOpFromTfConv3dOp($_builder, $_loc, $0...)">;
 
+def CreateXlaDotV2OpFromTfBatchMatMulOp : NativeCodeCall<
+  "CreateXlaDotV2OpFromTfBatchMatMulOp($_builder, $_loc, $0...)">;
+
 // Converts inlined Conv2D pattern to TF XlaConvV2 op. This pattern doesn't
 // support non-constant weights.
 def ConvertTFConv2DToXLAConvOp : Pat<
@@ -192,4 +195,37 @@ def ConvertTFConv3DWithNoZeroPointToXLAConvOp : Pat<
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
    (HasStaticShapeAtDimsConstraint<"4"> $input)],
+  (addBenefit 10)>;
+
+// Converts inlined BatchMatMul pattern to TF XlaDotV2 op. This pattern doesn't
+// support non-constant weights.
+def ConvertTFBatchMatMulToXLADotV2Op : Pat<
+  (TF_BatchMatMulV2Op:$batch_matmul
+    (TF_SubOp (TF_CastOp $input, $truncate), $input_zp),
+    (TF_CastOp (TF_IdentityOp $weight), $truncate1),
+    $adj_x, $adj_y),
+  (CreateXlaDotV2OpFromTfBatchMatMulOp
+    $input, $weight, $input_zp, $batch_matmul, $adj_x, $adj_y),
+  [(IsInt8ElementType $input),
+   (IsInt8ElementType $weight),
+   (IsConstTensor $weight),
+   (IsInt32ElementType $batch_matmul),
+   (HasStaticShapeConstraint $weight)],
+  (addBenefit 10)>;
+
+// Same as ConvertTFBatchMatMulToXLADotV2Op but handles the case where input
+// zero point is 0 and the Sub op has been folded.
+def ConvertTFBatchMatMulWithNoZeroPointToXLADotV2Op : Pat<
+  (TF_BatchMatMulV2Op:$batch_matmul
+    (TF_CastOp $input, $truncate),
+    (TF_CastOp (TF_IdentityOp $weight), $truncate1),
+    $adj_x, $adj_y),
+  (CreateXlaDotV2OpFromTfBatchMatMulOp
+    $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    $batch_matmul, $adj_x, $adj_y),
+  [(IsInt8ElementType $input),
+   (IsInt8ElementType $weight),
+   (IsConstTensor $weight),
+   (IsInt32ElementType $batch_matmul),
+   (HasStaticShapeConstraint $weight)],
   (addBenefit 10)>;

@@ -7,6 +7,7 @@ load("@bazel_skylib//rules:build_test.bzl", "build_test")
 # in Java. Please don't use them for other purposes.
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/lite/android:__subpackages__",
     ],

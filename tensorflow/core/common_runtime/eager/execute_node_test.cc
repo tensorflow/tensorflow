@@ -43,7 +43,8 @@ class TestKernelAndDeviceFunc final : public KernelAndDeviceFunc {
             /*shape_inference_on_tfe_dialect_import=*/true,
             /*int_args_and_retvals_on_device=*/false,
             /*xla_compile_device_type=*/absl::nullopt,
-            /*rendezvous_creator=*/nullptr, /*get_op_id=*/nullptr),
+            /*rendezvous_factory=*/Rendezvous::Factory(),
+            /*get_op_id=*/nullptr),
         test_input_devices_(std::move(input_devices)) {}
 
   Device* InputDevice(int i) const override { return test_input_devices_[i]; }

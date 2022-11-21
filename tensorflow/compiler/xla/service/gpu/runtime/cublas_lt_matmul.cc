@@ -23,11 +23,11 @@ limitations under the License.1
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
+#include "tensorflow/compiler/xla/runtime/state.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
@@ -44,45 +44,28 @@ namespace gpu {
 namespace se = ::stream_executor;
 
 using llvm::ArrayRef;
-using mlir::succeeded;
-using tsl::ToAbslStatus;
+
 using xla::runtime::CustomCall;
 using xla::runtime::Executable;
+using xla::runtime::State;
 
-// TODO(ezhulenev): Cache matmul plans similar to GemmConfig for Gemm.
+namespace lmhlo_gpu = ::mlir::lmhlo_gpu;
 
 #if GOOGLE_CUDA
-
-const cublas_lt::MatmulPlan* MatmulPlanCache::Get(int64_t uid) {
-  absl::MutexLock lock(&mutex_);
-  auto it = plans_.find(uid);
-  if (it != plans_.end()) return &it->second;
-  return nullptr;
-}
-
-const cublas_lt::MatmulPlan* MatmulPlanCache::Set(int64_t uid,
-                                                  cublas_lt::MatmulPlan plan) {
-  absl::MutexLock lock(&mutex_);
-  auto it = plans_.find(uid);
-  if (it != plans_.end()) return &it->second;
-
-  auto emplaced = plans_.try_emplace(uid, std::move(plan));
-  return &emplaced.first->second;
-}
 
 namespace {
 struct CublasLtMatmul {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   absl::Status operator()(
       const ServiceExecutableRunOptions* run_options,
-      const DebugOptions* debug_options, GemmConfigCache* configs,
-      MatmulPlanCache* plans, runtime::StridedMemrefView a,
+      const DebugOptions* debug_options, State<GemmConfig> gemm_config,
+      State<cublas_lt::MatmulPlan> matmul_plan, runtime::StridedMemrefView a,
       runtime::StridedMemrefView b, runtime::StridedMemrefView c,
       runtime::StridedMemrefView d,
       std::optional<runtime::StridedMemrefView> bias, int64_t algorithm,
       double alpha_real, double alpha_imag, double beta,
       DotDimensionNumbers dot_dims, se::cuda::BlasLt::Epilogue epilogue,
-      ArrayRef<int32_t> precision, int64_t uid) const;
+      ArrayRef<int32_t> precision) const;
 
   static CublasLtMatmul Handler() { return CublasLtMatmul(); }
 };
@@ -90,36 +73,31 @@ struct CublasLtMatmul {
 
 absl::Status CublasLtMatmul::operator()(
     const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, GemmConfigCache* configs,
-    MatmulPlanCache* plans, runtime::StridedMemrefView a,
+    const DebugOptions* debug_options, State<GemmConfig> gemm_config,
+    State<cublas_lt::MatmulPlan> matmul_plan, runtime::StridedMemrefView a,
     runtime::StridedMemrefView b, runtime::StridedMemrefView c,
     runtime::StridedMemrefView d,
     std::optional<runtime::StridedMemrefView> bias, int64_t algorithm,
     double alpha_real, double alpha_imag, double beta,
     DotDimensionNumbers dot_dims, se::cuda::BlasLt::Epilogue epilogue,
-    ArrayRef<int32_t> precision, int64_t uid) const {
+    ArrayRef<int32_t> precision) const {
   VLOG(3) << "Running CublasLtMatmul";
   se::Stream* stream = run_options->stream();
 
-  // Find the gemm config for this instance of operation based on uid.
-  const GemmConfig* config = configs->Get(uid);
-  if (config == nullptr) {
-    auto cfg = GetGemmConfig(a, b, c, algorithm, alpha_real, alpha_imag, beta,
-                             dot_dims.lhs_batch, dot_dims.lhs_contract,
-                             dot_dims.rhs_batch, dot_dims.rhs_contract);
-    if (!cfg.ok()) return ToAbslStatus(cfg.status());
-    config = configs->Set(uid, std::move(*cfg));
-  }
+  // Find the gemm config for this instance of matmul.
+  absl::StatusOr<GemmConfig*> config = gemm_config.GetOrCreate([&] {
+    return ToAbsl(GetGemmConfig(a, b, c, algorithm, alpha_real, alpha_imag,
+                                beta, dot_dims.lhs_batch, dot_dims.lhs_contract,
+                                dot_dims.rhs_batch, dot_dims.rhs_contract));
+  });
+  if (!config.ok()) return config.status();
 
-  // Find the matmul plan instance based on uid.
-  const cublas_lt::MatmulPlan* plan = plans->Get(uid);
-  if (plan == nullptr) {
-    auto p = cublas_lt::MatmulPlan::From(*config, epilogue);
-    if (!p.ok()) return ToAbslStatus(p.status());
-    plan = plans->Set(uid, std::move(*p));
-  }
+  // Get the matmul plan for this instance of matmul.
+  absl::StatusOr<cublas_lt::MatmulPlan*> plan = matmul_plan.GetOrCreate(
+      [&] { return ToAbsl(cublas_lt::MatmulPlan::From(**config, epilogue)); });
+  if (!plan.ok()) return plan.status();
 
-  auto algos = plan->GetAlgorithms(stream);
+  auto algos = (*plan)->GetAlgorithms(stream);
   if (!algos.ok()) return ToAbslStatus(algos.status());
 
   se::DeviceMemoryBase a_data = GetDeviceAddress(a);
@@ -132,9 +110,9 @@ absl::Status CublasLtMatmul::operator()(
   se::OwningScratchAllocator<> scratch_allocator(
       stream->parent()->device_ordinal(), stream->parent()->GetAllocator());
 
-  auto st =
-      plan->ExecuteOnStream(stream, a_data, b_data, c_data, d_data, bias_data,
-                            (*algos)[algorithm], scratch_allocator);
+  auto st = (*plan)->ExecuteOnStream(stream, a_data, b_data, c_data, d_data,
+                                     bias_data, (*algos)[algorithm],
+                                     scratch_allocator);
   if (!st.ok()) return ToAbslStatus(st);
 
   return absl::OkStatus();
@@ -150,8 +128,7 @@ static auto BindMatmulAttributes(runtime::CustomCallBinding<Ts...> binding) {
       .template Attr<double>("beta")
       .template Attr<DotDimensionNumbers>("dot_dims")
       .template Attr<se::cuda::BlasLt::Epilogue>("epilogue")
-      .template Attr<ArrayRef<int32_t>>("precision")
-      .template Attr<int64_t>("uid");
+      .template Attr<ArrayRef<int32_t>>("precision");
 }
 
 static bool CublasLtMatmul(runtime::ExecutionContext* ctx, void** args,
@@ -160,8 +137,8 @@ static bool CublasLtMatmul(runtime::ExecutionContext* ctx, void** args,
       BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul")
                                .UserData<const ServiceExecutableRunOptions*>()
                                .UserData<const DebugOptions*>()
-                               .UserData<GemmConfigCache*>()
-                               .UserData<MatmulPlanCache*>()
+                               .State<GemmConfig>("uid")
+                               .State<cublas_lt::MatmulPlan>("uid")
                                .Arg<runtime::StridedMemrefView>()  // a
                                .Arg<runtime::StridedMemrefView>()  // b
                                .Arg<runtime::StridedMemrefView>()  // c
@@ -180,8 +157,8 @@ static bool CublasLtMatmulBias(runtime::ExecutionContext* ctx, void** args,
       BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul.bias")
                                .UserData<const ServiceExecutableRunOptions*>()
                                .UserData<const DebugOptions*>()
-                               .UserData<GemmConfigCache*>()
-                               .UserData<MatmulPlanCache*>()
+                               .State<GemmConfig>("uid")
+                               .State<cublas_lt::MatmulPlan>("uid")
                                .Arg<runtime::StridedMemrefView>()  // a
                                .Arg<runtime::StridedMemrefView>()  // b
                                .Arg<runtime::StridedMemrefView>()  // c
@@ -192,6 +169,17 @@ static bool CublasLtMatmulBias(runtime::ExecutionContext* ctx, void** args,
           .release();
 
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+void PopulateCublasLtMatmulAttrEncoding(
+    runtime::CustomCallAttrEncodingSet& encoding) {
+  encoding.Add<runtime::EnumAttrEncoding<lmhlo_gpu::CublasLtMatmulEpilogueAttr,
+                                         lmhlo_gpu::CublasLtMatmulEpilogue,
+                                         se::cuda::BlasLt::Epilogue>>(
+      [](lmhlo_gpu::CublasLtMatmulEpilogue value)
+          -> se::cuda::BlasLt::Epilogue {
+        return cublas_lt::AsBlasLtEpilogue(value).value();
+      });
 }
 
 void RegisterMatmulCustomCalls(runtime::DirectCustomCallRegistry& registry) {

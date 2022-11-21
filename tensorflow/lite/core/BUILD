@@ -3,6 +3,7 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tflite_portable_test_suite")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -211,11 +212,11 @@ cc_library(
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite:util",
         "//tensorflow/lite:version",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/delegates:telemetry",
         "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qs8",
         "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qu8",
@@ -283,11 +284,11 @@ cc_library(
         "//tensorflow/lite:string",
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/experimental/remat:metadata_util",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
@@ -431,7 +432,7 @@ cc_library(
         "//tensorflow/lite:memory_planner",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/api",

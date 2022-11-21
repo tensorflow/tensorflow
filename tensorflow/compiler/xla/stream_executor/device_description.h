@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/launch_dim.h"
 
 namespace stream_executor {
@@ -46,6 +47,11 @@ struct CudaComputeCapability {
   CudaComputeCapability(int major, int minor) {
     this->major = major;
     this->minor = minor;
+  }
+
+  explicit CudaComputeCapability(const CudaComputeCapabilityProto &proto) {
+    this->major = proto.major();
+    this->minor = proto.minor();
   }
 
   bool IsAtLeast(int other_major, int other_minor = 0) const {
@@ -93,6 +99,13 @@ struct CudaComputeCapability {
   std::string ToString() const { return absl::StrCat(major, ".", minor); }
 
   std::pair<int, int> ToPair() const { return std::make_pair(major, minor); }
+
+  CudaComputeCapabilityProto ToProto() const {
+    CudaComputeCapabilityProto proto;
+    proto.set_major(major);
+    proto.set_minor(minor);
+    return proto;
+  }
 };
 
 // ROCm compute capability, as reported by the device description.
@@ -102,6 +115,9 @@ class RocmComputeCapability {
   // gfx_version is the "gfx90a" part of the gcn_arch_name
   explicit RocmComputeCapability(const std::string &gcn_arch_name)
       : gcn_arch_name_(gcn_arch_name) {}
+
+  explicit RocmComputeCapability(const RocmComputeCapabilityProto &proto)
+      : gcn_arch_name_(proto.gcn_arch_name()) {}
 
   ~RocmComputeCapability() {}
 
@@ -138,6 +154,12 @@ class RocmComputeCapability {
 
   bool has_fp16_atomics_support() {
     return gfx_versions_with_fp16_atomics_support().count(gfx_version()) != 0;
+  }
+
+  RocmComputeCapabilityProto ToProto() const {
+    RocmComputeCapabilityProto proto;
+    proto.set_gcn_arch_name(gcn_arch_name_);
+    return proto;
   }
 
  private:

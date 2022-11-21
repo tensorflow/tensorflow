@@ -82,8 +82,12 @@ def _find_rocm_config(rocm_install_path):
         break
     if not version_file:
       raise ConfigError(
+<<<<<<< HEAD
           "ROCm version file not found in {}".format(
               possible_version_files))
+=======
+          "ROCm version file not found in {}".format(possible_version_files))
+>>>>>>> upstream/master
 
     major = _get_header_version(version_file, "ROCM_VERSION_MAJOR")
     minor = _get_header_version(version_file, "ROCM_VERSION_MINOR")
@@ -113,9 +117,14 @@ def _find_hipruntime_config(rocm_install_path):
         version_file = version_file_path
         break
     if not version_file:
+<<<<<<< HEAD
       raise ConfigError(
           "HIP Runtime version file not found in {}".format(
               possible_version_files))
+=======
+      raise ConfigError("HIP Runtime version file not found in {}".format(
+          possible_version_files))
+>>>>>>> upstream/master
 
     # This header file has an explicit #define for HIP_VERSION, whose value
     # is (HIP_VERSION_MAJOR * 100 + HIP_VERSION_MINOR)
@@ -136,8 +145,13 @@ def _find_miopen_config(rocm_install_path):
 
   def miopen_version_numbers(path):
     possible_version_files = [
+<<<<<<< HEAD
             "include/miopen/version.h",         # ROCm 5.2 and prior
             "miopen/include/miopen/version.h",  # ROCm 5.1 and prior
+=======
+        "include/miopen/version.h",  # ROCm 5.2 and prior
+        "miopen/include/miopen/version.h",  # ROCm 5.1 and prior
+>>>>>>> upstream/master
     ]
     version_file = None
     for f in possible_version_files:
@@ -236,8 +250,12 @@ def _find_rocfft_config(rocm_install_path):
         break
     if not version_file:
       raise ConfigError(
+<<<<<<< HEAD
           "rocfft version file not found in {}".format(
               possible_version_files))
+=======
+          "rocfft version file not found in {}".format(possible_version_files))
+>>>>>>> upstream/master
     major = _get_header_version(version_file, "rocfft_version_major")
     minor = _get_header_version(version_file, "rocfft_version_minor")
     patch = _get_header_version(version_file, "rocfft_version_patch")
@@ -268,8 +286,12 @@ def _find_hipfft_config(rocm_install_path):
         break
     if not version_file:
       raise ConfigError(
+<<<<<<< HEAD
           "hipfft version file not found in {}".format(
               possible_version_files))
+=======
+          "hipfft version file not found in {}".format(possible_version_files))
+>>>>>>> upstream/master
     major = _get_header_version(version_file, "hipfftVersionMajor")
     minor = _get_header_version(version_file, "hipfftVersionMinor")
     patch = _get_header_version(version_file, "hipfftVersionPatch")
@@ -299,9 +321,14 @@ def _find_roctracer_config(rocm_install_path):
         version_file = version_file_path
         break
     if not version_file:
+<<<<<<< HEAD
       raise ConfigError(
           "roctracer version file not found in {}".format(
               possible_version_files))
+=======
+      raise ConfigError("roctracer version file not found in {}".format(
+          possible_version_files))
+>>>>>>> upstream/master
     major = _get_header_version(version_file, "ROCTRACER_VERSION_MAJOR")
     minor = _get_header_version(version_file, "ROCTRACER_VERSION_MINOR")
     # roctracer header does not have a patch version number
@@ -332,9 +359,14 @@ def _find_hipsparse_config(rocm_install_path):
         version_file = version_file_path
         break
     if not version_file:
+<<<<<<< HEAD
       raise ConfigError(
           "hipsparse version file not found in {}".format(
               possible_version_files))
+=======
+      raise ConfigError("hipsparse version file not found in {}".format(
+          possible_version_files))
+>>>>>>> upstream/master
     major = _get_header_version(version_file, "hipsparseVersionMajor")
     minor = _get_header_version(version_file, "hipsparseVersionMinor")
     patch = _get_header_version(version_file, "hipsparseVersionPatch")
@@ -395,9 +427,14 @@ def _find_rocsolver_config(rocm_install_path):
         version_file = version_file_path
         break
     if not version_file:
+<<<<<<< HEAD
       raise ConfigError(
           "rocsolver version file not found in {}".format(
               possible_version_files))
+=======
+      raise ConfigError("rocsolver version file not found in {}".format(
+          possible_version_files))
+>>>>>>> upstream/master
     major = _get_header_version(version_file, "ROCSOLVER_VERSION_MAJOR")
     minor = _get_header_version(version_file, "ROCSOLVER_VERSION_MINOR")
     patch = _get_header_version(version_file, "ROCSOLVER_VERSION_PATCH")

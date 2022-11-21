@@ -7,6 +7,7 @@ load(
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/core/runtime_fallback:internal"],
     features = ["-layering_check"],
     licenses = ["notice"],
@@ -355,6 +356,7 @@ cc_library(
         ":kernel_fallback_tensor",
         ":kernel_fallback_tensor_conversion_alwayslink",
         ":kernel_fallback_utils",
+        "@com_google_absl//absl/base",
         "@llvm-project//llvm:Support",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/runtime_fallback/runtime:kernel_utils",

@@ -108,6 +108,7 @@ struct FusedBatchNormFreezeGrad<GPUDevice, T, U> {
 
 template struct FusedBatchNormFreezeGrad<GPUDevice, float, float>;
 template struct FusedBatchNormFreezeGrad<GPUDevice, Eigen::half, float>;
+template struct FusedBatchNormFreezeGrad<GPUDevice, Eigen::bfloat16, float>;
 
 // -------------------------------------------------------------------------- //
 // FusedBatchNormInferenceFunctor implementation.                             //
@@ -390,6 +391,8 @@ struct FusedBatchNormInferenceFunctor<GPUDevice, T, U> {
 
 template struct FusedBatchNormInferenceFunctor<GPUDevice, float, float>;
 template struct FusedBatchNormInferenceFunctor<GPUDevice, Eigen::half, float>;
+template struct FusedBatchNormInferenceFunctor<GPUDevice, Eigen::bfloat16,
+                                               float>;
 
 }  // namespace functor
 }  // namespace tensorflow

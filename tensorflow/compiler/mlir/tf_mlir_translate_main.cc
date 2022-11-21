@@ -88,7 +88,7 @@ int main(int argc, char** argv) {
   tensorflow::InitMlir y(&argc, &argv);
 
   // Add flags for all the registered translations.
-  llvm::cl::opt<const mlir::TranslateFunction*, false, mlir::TranslationParser>
+  llvm::cl::opt<const mlir::Translation*, false, mlir::TranslationParser>
       requested_translation("", llvm::cl::desc("Translation to perform"));
   mlir::registerAsmPrinterCLOptions();
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF MLIR translation driver\n");

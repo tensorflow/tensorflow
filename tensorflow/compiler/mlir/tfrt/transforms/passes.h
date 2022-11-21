@@ -92,12 +92,6 @@ mlir::LogicalResult TFSavedModelToCoreRTConversionPassRun(
     mlir::ConversionTarget* target, mlir::RewritePatternSet* patterns,
     CoreRTConverter* corert_converter);
 
-// Create an operation pass that converts each tfrt_dist.remote_execute_func op
-// into a combination of tfrt_dist.register_tfrt_function op and
-// tfrt_dist.remote_execute op.
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateDistRemoteRunEncapsulatePass();
-
 // Create an operation pass that removes the device attribute from every
 // corert.executeop.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
@@ -167,12 +161,6 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, fallback executeops that produce inputs to tpu "
                      "program will use tpu host allocator."),
       llvm::cl::init(false)};
-  Option<bool> enable_native_ops{
-      *this, "enable-native-ops",
-      llvm::cl::desc(
-          "If true, native ops will be used on an opt-in basis instead of "
-          "fallback ops. If false, no native ops are used."),
-      llvm::cl::init(true)};
   Option<bool> func_use_fallback_tensor{
       *this, "func-use-fallback-tensor",
       llvm::cl::desc(

@@ -63,7 +63,7 @@ bool FindAndLoadTpuModelServer() {
       InitializeTpuLibrary(library);
     }
   }
-  OpsApiFn()->TfTpu_InitializeTpuModelServerFn();
+  stream_executor::tpu::OpsApiFn()->TfTpu_InitializeTpuModelServerFn();
   return true;
 }
 

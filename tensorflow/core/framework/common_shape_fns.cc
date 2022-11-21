@@ -2178,7 +2178,7 @@ Status RandomShape(shape_inference::InferenceContext* c) {
   return OkStatus();
 }
 
-Status UnsortedSegmentReductionShapeFn(InferenceContext* c) {
+Status SegmentReductionWithNumSegmentsShapeFn(InferenceContext* c) {
   ShapeHandle s_data = c->input(0);
   ShapeHandle s_segment_ids = c->input(1);
   ShapeHandle s_num_segments = c->input(2);

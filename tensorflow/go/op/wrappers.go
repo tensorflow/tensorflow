@@ -13349,6 +13349,11 @@ func DynamicEnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices
 // <img style="width:100%" src="https://www.tensorflow.org/images/DynamicPartition.png" alt>
 // </div>
 //
+// Raises:
+//   - `InvalidArgumentError` in following cases:
+//   - If partitions is not in range `[0, num_partiions)`
+//   - If `partitions.shape` does not match prefix of `data.shape` argument.
+//
 // Arguments:
 //
 //	partitions: Any shape.  Indices in the range `[0, num_partitions)`.
@@ -16338,7 +16343,11 @@ func FakeQuantWithMinMaxArgsNarrowRange(value bool) FakeQuantWithMinMaxArgsAttr 
 	}
 }
 
-// Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same type.
+// Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same shape and type.
+//
+//	Quantization is called fake since the output is still in floating point.
+//	The API converts inputs into values within the range [min and max] and returns
+//	as output.
 //
 // # Attributes
 //
@@ -16359,7 +16368,26 @@ func FakeQuantWithMinMaxArgsNarrowRange(value bool) FakeQuantWithMinMaxArgsAttr 
 // *   If `min <= 0 <= max`: `scale = (max - min) / (2^num_bits - 1) `,
 // `min_adj = scale * round(min / scale)` and `max_adj = max + min_adj - min`.
 //
-// Quantization is called fake since the output is still in floating point.
+// # Examples
+//
+// ```python
+//
+// inp = tf.constant ([10.03, -10.23, 3])
+// out = tf.quantization.fake_quant_with_min_max_args(inp, min=-5, max=5,
+//
+//	num_bits=16)
+//
+// print(out)
+//
+// #  Output:
+// #  tf.Tensor([ 4.9999237 -5.0000763  3.0000763], shape=(3,), dtype=float32)
+// ```
+//
+// Raises:
+//   - InvalidArgumentError:
+//   - If num_bits are outside of range [2, 16].
+//   - If min >= max.
+//   - ValueError: If `inputs` are of any other type than float32.
 func FakeQuantWithMinMaxArgs(scope *Scope, inputs tf.Output, optional ...FakeQuantWithMinMaxArgsAttr) (outputs tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -34846,6 +34874,69 @@ func RandomDataset(scope *Scope, seed tf.Output, seed2 tf.Output, output_types [
 	return op.Output(0)
 }
 
+// RandomDatasetV2Attr is an optional argument to RandomDatasetV2.
+type RandomDatasetV2Attr func(optionalAttr)
+
+// RandomDatasetV2RerandomizeEachIteration sets the optional rerandomize_each_iteration attribute to value.
+//
+// value: A boolean attribute to rerandomize the sequence of random numbers generated
+// at each epoch.
+// If not specified, defaults to false
+func RandomDatasetV2RerandomizeEachIteration(value bool) RandomDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["rerandomize_each_iteration"] = value
+	}
+}
+
+// RandomDatasetV2Metadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func RandomDatasetV2Metadata(value string) RandomDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
+// Creates a Dataset that returns pseudorandom numbers.
+//
+// Creates a Dataset that returns a stream of uniformly distributed
+// pseudorandom 64-bit signed integers. It accepts a boolean attribute that
+// determines if the random number generators are re-applied at each epoch. The
+// default value is True which means that the seeds are applied and the same
+// sequence of random numbers are generated at each epoch. If set to False, the
+// seeds are not re-applied and a different sequence of random numbers are
+// generated at each epoch.
+//
+// In the TensorFlow Python API, you can instantiate this dataset via the
+// class `tf.data.experimental.RandomDatasetV2`.
+//
+// Arguments:
+//
+//	seed: A scalar seed for the random number generator. If either seed or
+//
+// seed2 is set to be non-zero, the random number generator is seeded
+// by the given seed.  Otherwise, a random seed is used.
+//
+//	seed2: A second scalar seed to avoid seed collision.
+//	seed_generator: A resource for the random number seed generator.
+func RandomDatasetV2(scope *Scope, seed tf.Output, seed2 tf.Output, seed_generator tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...RandomDatasetV2Attr) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RandomDatasetV2",
+		Input: []tf.Input{
+			seed, seed2, seed_generator,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // RandomGammaAttr is an optional argument to RandomGamma.
 type RandomGammaAttr func(optionalAttr)
 
@@ -42396,6 +42487,48 @@ func SegmentSum(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.
 		Type: "SegmentSum",
 		Input: []tf.Input{
 			data, segment_ids,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes the sum along segments of a tensor.
+//
+// Read
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+// for an explanation of segments.
+//
+// Computes a tensor such that
+// \\(output_i = \sum_j data_j\\) where sum is over `j` such
+// that `segment_ids[j] == i`.
+//
+// If the sum is empty for a given segment ID `i`, `output[i] = 0`.
+//
+// Note that this op is currently only supported with jit_compile=True.
+// </div>
+//
+// Arguments:
+//
+//	segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
+//
+// first dimension.  Values should be sorted and can be repeated.
+// The values must be less than `num_segments`.
+//
+// Caution: The values are always validated to be sorted on CPU, never validated
+// on GPU.
+//
+// Returns Has same shape as data, except for the first `segment_ids.rank`
+// dimensions, which are replaced with a single dimension which has size
+// `num_segments`.
+func SegmentSumV2(scope *Scope, data tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SegmentSumV2",
+		Input: []tf.Input{
+			data, segment_ids, num_segments,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -53051,8 +53184,15 @@ func TileGrad(scope *Scope, input tf.Output, multiples tf.Output) (output tf.Out
 //
 // Returns the timestamp as a `float64` for seconds since the Unix epoch.
 //
-// Note: the timestamp is computed when the op is executed, not when it is added
-// to the graph.
+// Common usages include:
+// * Logging
+// * Providing a random number seed
+// * Debugging graph execution
+// * Generating timing information, mainly through comparison of timestamps
+//
+// Note: In graph mode, the timestamp is computed when the op is executed,
+// not when it is added to the graph.  In eager mode, the timestamp is computed
+// when the op is eagerly executed.
 func Timestamp(scope *Scope) (ts tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -53407,7 +53547,7 @@ func TridiagonalSolve(scope *Scope, diagonals tf.Output, rhs tf.Output, optional
 	return op.Output(0)
 }
 
-// Returns x / y element-wise for integer types.
+// Returns x / y element-wise, rounded towards zero.
 //
 // Truncation designates that negative numbers will round fractional quantities
 // toward zero. I.e. -7 / 5 = -1. This matches C semantics but it is different
@@ -54336,6 +54476,136 @@ func UniformQuantize(scope *Scope, input tf.Output, scales tf.Output, zero_point
 		Type: "UniformQuantize",
 		Input: []tf.Input{
 			input, scales, zero_points,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// UniformQuantizedAddAttr is an optional argument to UniformQuantizedAdd.
+type UniformQuantizedAddAttr func(optionalAttr)
+
+// UniformQuantizedAddLhsQuantizationAxis sets the optional lhs_quantization_axis attribute to value.
+//
+// value: Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+// If set to -1 (default), this indicates per-tensor quantization.
+// For the `lhs`, only per-tensor quantization is supported.
+// Thus, this must be set to -1.
+// Other values will raise error at OpKernel construction.
+// If not specified, defaults to -1
+func UniformQuantizedAddLhsQuantizationAxis(value int64) UniformQuantizedAddAttr {
+	return func(m optionalAttr) {
+		m["lhs_quantization_axis"] = value
+	}
+}
+
+// UniformQuantizedAddRhsQuantizationAxis sets the optional rhs_quantization_axis attribute to value.
+//
+// value: Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+// If set to -1 (default), this indicates per-tensor quantization.
+// For the `rhs`, only per-tensor quantization
+// or per-channel quantization along `kernel_output_feature_dimension` is supported.
+// Thus, this must be set to -1 or `dimension_numbers.kernel_output_feature_dimension`.
+// Other values will raise error at OpKernel construction.
+// If not specified, defaults to -1
+func UniformQuantizedAddRhsQuantizationAxis(value int64) UniformQuantizedAddAttr {
+	return func(m optionalAttr) {
+		m["rhs_quantization_axis"] = value
+	}
+}
+
+// UniformQuantizedAddOutputQuantizationAxis sets the optional output_quantization_axis attribute to value.
+//
+// value: Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+// If set to -1 (default), this indicates per-tensor quantization.
+// For the `output`, only per-tensor quantization or per-channel quantization along `output_feature_dimension` is supported.
+// Thus, this must be set to -1 or `dimension_numbers.output_feature_dimension`.
+// Other values will raise error at OpKernel construction.
+// If not specified, defaults to -1
+func UniformQuantizedAddOutputQuantizationAxis(value int64) UniformQuantizedAddAttr {
+	return func(m optionalAttr) {
+		m["output_quantization_axis"] = value
+	}
+}
+
+// Perform quantized add of quantized Tensor `lhs` and quantized Tensor `rhs` to make quantized `output`.
+//
+// Given quantized `lhs` and quantized `rhs`, performs quantized add on `lhs` and `rhs` to make quantized `output`.
+//
+// `UniformQuantizedAdd` follows Numpy broadcasting rules.
+// The two input array shapes are compared element-wise.
+// Starting with the trailing dimensions, the two dimensions either have to be equal or one of them needs to be 1.
+//
+// `lhs` and `rhs` must be quantized Tensor, where data value is quantized using the formula:
+// ```
+// quantized_data = clip(original_data / scale + zero_point, quantization_min_val, quantization_max_val)
+// ```
+// `output` is also quantized, using the same formula.
+//
+// If `lhs` and `output` is both per-axis quantized, the quantization axis must match.
+// Also, if `rhs` and `output` is both per-axis quantized, the quantization axis must match.
+// *Match* means the axis must match when adding, regarding the broadcasting.
+// i.e. For both operands `lhs` and `rhs`,
+// if `operand.quantization_axis` >= 0 and `output.quantization_axis` >= 0,
+// `operand.dims` - `operand.quantization_axis` must be equal to `output.dims` - `output.quantization_axis`.
+//
+// Arguments:
+//
+//	lhs: Must be a quantized tensor.
+//	rhs: Must be a quantized tensor.
+//	lhs_scales: The float value(s) used as scale factors when quantizing the original data that `lhs` represents.
+//	lhs_zero_points: The int32 value(s) used as zero points when quantizing original data that `lhs` represents.
+//
+// Must have same shape with `lhs_scales`.
+//
+//	rhs_scales: The float value(s) used as scale factors when quantizing the original data that `rhs` represents.
+//	rhs_zero_points: The int32 value(s) used as zero points when quantizing original data that `rhs` represents.
+//
+// Must have same shape with `rhs_scales`.
+//
+//	output_scales: The float value(s) to use as scale factors when quantizing original data that `output` represents.
+//	output_zero_points: The int32 value(s) used as zero points when quantizing original data that output represents.
+//
+// Must have same shape with `output_scales`.
+//
+//	lhs_quantization_min_val: The min value of the quantized data stored in `lhs`.
+//
+// For example, if `Tin` is `qint8`, this must be set to -127 if narrow range quantized or -128 if not.
+//
+//	lhs_quantization_max_val: The max value of the quantized data stored in `lhs`.
+//
+// For example, if `Tin` is `qint8`, this must be set to 127.
+//
+//	rhs_quantization_min_val: The min value of the quantized data stored in `rhs`.
+//
+// For example, if `Tin` is `qint8`, this must be set to -127 if narrow range quantized or -128 if not.
+//
+//	rhs_quantization_max_val: The max value of the quantized data stored in `rhs`.
+//
+// For example, if `Tin` is `qint8`, this must be set to 127.
+//
+//	output_quantization_min_val: The min value of the quantized data stored in `output`.
+//
+// For example, if  `Tout` is `qint8`, this must be set to -127 if narrow range quantized or -128 if not.
+//
+//	output_quantization_max_val: The max value of the quantized data stored in `output`.
+//
+// For example, if `Tout` is `qint8`, this must be set to 127.
+//
+// Returns The output quantized tensor.
+func UniformQuantizedAdd(scope *Scope, lhs tf.Output, rhs tf.Output, lhs_scales tf.Output, lhs_zero_points tf.Output, rhs_scales tf.Output, rhs_zero_points tf.Output, output_scales tf.Output, output_zero_points tf.Output, lhs_quantization_min_val int64, lhs_quantization_max_val int64, rhs_quantization_min_val int64, rhs_quantization_max_val int64, output_quantization_min_val int64, output_quantization_max_val int64, optional ...UniformQuantizedAddAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"lhs_quantization_min_val": lhs_quantization_min_val, "lhs_quantization_max_val": lhs_quantization_max_val, "rhs_quantization_min_val": rhs_quantization_min_val, "rhs_quantization_max_val": rhs_quantization_max_val, "output_quantization_min_val": output_quantization_min_val, "output_quantization_max_val": output_quantization_max_val}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "UniformQuantizedAdd",
+		Input: []tf.Input{
+			lhs, rhs, lhs_scales, lhs_zero_points, rhs_scales, rhs_zero_points, output_scales, output_zero_points,
 		},
 		Attrs: attrs,
 	}
@@ -55367,7 +55637,7 @@ func UniqueWithCountsV2OutIdx(value tf.DataType) UniqueWithCountsV2Attr {
 //
 // ```
 // x = tf.constant([1, 1, 2, 4, 4, 4, 7, 8, 8])
-// y, idx, count = UniqueWithCountsV2(x, axis = [0])
+// y, idx, count = tf.raw_ops.UniqueWithCountsV2(x=x, axis = [0])
 // y ==> [1, 2, 4, 7, 8]
 // idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
 // count ==> [2, 1, 3, 1, 2]
@@ -55381,7 +55651,7 @@ func UniqueWithCountsV2OutIdx(value tf.DataType) UniqueWithCountsV2Attr {
 //	[1, 0, 0],
 //	[2, 0, 0]])
 //
-// y, idx, count = UniqueWithCountsV2(x, axis=[0])
+// y, idx, count = tf.raw_ops.UniqueWithCountsV2(x=x, axis=[0])
 // y ==> [[1, 0, 0],
 //
 //	[2, 0, 0]]
@@ -55398,7 +55668,7 @@ func UniqueWithCountsV2OutIdx(value tf.DataType) UniqueWithCountsV2Attr {
 //	[1, 0, 0],
 //	[2, 0, 0]])
 //
-// y, idx, count = UniqueWithCountsV2(x, axis=[1])
+// y, idx, count = tf.raw_ops.UniqueWithCountsV2(x=x, axis=[1])
 // y ==> [[1, 0],
 //
 //	[1, 0],

@@ -23,7 +23,11 @@ limitations under the License.
 #include "rocm/include/roctracer/roctracer.h"
 #include "rocm/include/roctracer/roctracer_hcc.h"
 #include "rocm/include/roctracer/roctracer_hip.h"
+<<<<<<< HEAD
 #include "rocm/include/roctracer/roctracer_roctx.h"
+=======
+#include "rocm/rocm_config.h"
+>>>>>>> upstream/master
 #include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
@@ -98,7 +102,10 @@ namespace wrap {
   DO_FUNC(roctracer_open_pool_expl)              \
   DO_FUNC(roctracer_set_properties)
 #endif
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/master
 FOREACH_ROCTRACER_API(ROCTRACER_API_WRAPPER)
 
 #undef FOREACH_ROCTRACER_API

@@ -1,5 +1,5 @@
-// RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
-// RUN: xla-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s -check-prefix=NO_DEAD_FUNCTION
+// RUN: xla-translate --print-sugar=false -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
+// RUN: xla-translate --print-sugar=false -hlo-text-to-mlir-hlo %s -o - | FileCheck %s -check-prefix=NO_DEAD_FUNCTION
 
 // NO_DEAD_FUNCTION-NOT: @test
 
@@ -123,6 +123,14 @@ add {
   ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2,3}, {5,6,7,8}}, use_global_device_ids=true, to_apply=add
 }
 
+// CHECK-LABEL:  func private @test_all_reduce_heterogeneous
+// CHECK-SAME:  ([[INPUT:%.*]]: tensor<8xf32>)
+%test_all_reduce_heterogeneous {
+  input = f32[8] parameter(0)
+  // CHECK-NEXT:  "mhlo.all_reduce"([[INPUT]])
+  // CHECK{LITERAL}:  replica_groups = dense<[[0, -1], [1, 2], [3, -1]]> : tensor<3x2xi64>
+  ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0}, {1,2}, {3}}, use_global_device_ids=true, to_apply=add
+}
 
 // CHECK-LABEL:  func private @test_and
 %test_and (Arg_0.1: pred[4], Arg_1.2: pred[4]) -> pred[4] {
@@ -1318,7 +1326,7 @@ add {
   %Arg_0.1 = f32[4,4] parameter(0)
   %Arg_1.2 = s32[] parameter(1)
   // CHECK-NEXT:  "mhlo.set_dimension_size"([[ARG]], [[SIZE]]) {dimension = 1 : i64} : (tensor<4x4xf32>, tensor<i32>)
-  // CHECK-SAME: tensor<4x?xf32, #mhlo.type_extensions<bounds = [-1, 4]>>
+  // CHECK-SAME: tensor<4x?xf32, #mhlo.type_extensions<bounds = [?, 4]>>
   ROOT %set-dimension-size.2 = f32[4,<=4] set-dimension-size(f32[4,4] %Arg_0.1, s32[] %Arg_1.2), dimensions={1}
 }
 

@@ -45,6 +45,21 @@ void DefineFingerprintingModule(py::module main_module) {
       py::arg("saved_model"), py::arg("export_dir"),
       py::doc(
           "Returns the serialized FingerprintDef of a serialized SavedModel."));
+
+  m.def(
+      "MaybeReadSavedModelChecksum",
+      [](std::string export_dir) {
+        StatusOr<FingerprintDef> fingerprint =
+            fingerprinting::ReadSavedModelFingerprint(export_dir);
+        if (fingerprint.ok()) {
+          return fingerprint->saved_model_checksum();
+        }
+        return (uint64_t)0;
+      },
+      py::arg("export_dir"),
+      py::doc(
+          "Reads the fingerprint checksum from SavedModel directory. Returns "
+          "0 if an error occurs."));
 }
 
 }  // namespace python

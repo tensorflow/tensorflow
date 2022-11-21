@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -42,6 +43,12 @@ inline constexpr runtime::CustomCall::RuntimeChecks checks =  // NOLINT
 #else
     runtime::CustomCall::RuntimeChecks::kDefault;
 #endif
+
+template <typename T>
+absl::StatusOr<T> ToAbsl(StatusOr<T> status_or) {
+  if (!status_or.ok()) return ToAbslStatus(status_or.status());
+  return std::move(status_or).value();
+}
 
 inline se::DeviceMemoryBase GetDeviceAddress(
     const runtime::FlatMemrefView& memref) {
@@ -91,6 +98,20 @@ inline StatusOr<GemmConfig> GetGemmConfig(
                          rhs_batch, rhs_contract, ToShape(out), alpha_real,
                          alpha_imag, beta, algorithm,
                          se::blas::kDefaultComputePrecision);
+}
+
+// adds Dot Dimension Attribute encodings for calls to Gemm and cuBLASLt
+inline void PopulateDotDimsAttrEncoding(
+    runtime::CustomCallAttrEncodingSet& encoding) {
+  using DotDimsAttr = mlir::mhlo::DotDimensionNumbersAttr;
+  encoding.Add<
+      xla::runtime::AggregateAttrEncoding<DotDimsAttr, DotDimensionNumbers>>(
+      encoding,
+      xla::runtime::AggregateAttrDef<DotDimsAttr>()
+          .Add("lhs_batch", &DotDimsAttr::getLhsBatchingDimensions)
+          .Add("lhs_contract", &DotDimsAttr::getLhsContractingDimensions)
+          .Add("rhs_batch", &DotDimsAttr::getRhsBatchingDimensions)
+          .Add("rhs_contract", &DotDimsAttr::getRhsContractingDimensions));
 }
 
 }  // namespace gpu

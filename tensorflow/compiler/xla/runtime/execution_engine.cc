@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "llvm/IR/Attributes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -143,7 +144,15 @@ static absl::Status SetUpExportedFunction(llvm::Module &module,
   }
 
   // Call the implementation function with the extracted arguments.
-  builder.CreateCall(func, args);
+  auto *call = builder.CreateCall(func, args);
+
+  // Force LLVM to inline original function into the interface function.
+  call->addFnAttr(llvm::Attribute::AlwaysInline);
+
+  // And make sure that we do not keep exported function in the binary if we do
+  // not have other callers.
+  func->setLinkage(llvm::GlobalValue::LinkageTypes::PrivateLinkage);
+
   builder.CreateRetVoid();
 
   // Always keep the frame pointer inside jit-compiled modules, so that we can
@@ -222,13 +231,6 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
   module->setDataLayout(options.target_machine->createDataLayout());
   module->setTargetTriple(options.target_machine->getTargetTriple().str());
 
-  // Run an optimization pipeline over the LLVM module.
-  auto transformer = options.make_optimizing_transformer(
-      options.opt_level, /*sizeLevel=*/0, options.target_machine);
-  if (auto err = transformer(module_ptr))
-    return InternalError("failed to run optimization pipeline: %s",
-                         ToString(err));
-
   // Set up exported functions interface functions in the LLVM module.
   for (std::string_view name : exported) {
     if (auto status = SetUpExportedFunction(*module, name); !status.ok())
@@ -236,6 +238,13 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
           "failed to set up exported function %s interface: %s", name,
           status.message());
   }
+
+  // Run an optimization pipeline over the LLVM module.
+  auto transformer = options.make_optimizing_transformer(
+      options.opt_level, /*sizeLevel=*/0, options.target_machine);
+  if (auto err = transformer(module_ptr))
+    return InternalError("failed to run optimization pipeline: %s",
+                         ToString(err));
 
   // Callback to create the object layer with a user-provided section memory
   // mapper and JIT event listeners.

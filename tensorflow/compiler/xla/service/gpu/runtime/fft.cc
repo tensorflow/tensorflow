@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
 
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
@@ -28,6 +29,8 @@ using xla::runtime::Executable;
 using xla::runtime::StridedMemrefView;
 
 using llvm::ArrayRef;
+
+namespace mhlo = ::mlir::mhlo;
 
 namespace {
 struct Fft {
@@ -92,6 +95,25 @@ static bool Fft(runtime::ExecutionContext* ctx, void** args, void** attrs,
                              .To<checks>(Fft::Handler())
                              .release();
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+void PopulateFftAttrEncoding(runtime::CustomCallAttrEncodingSet& encoding) {
+  encoding.Add<runtime::EnumAttrEncoding<mhlo::FftTypeAttr, mhlo::FftType,
+                                         se::fft::Type>>(
+      [](mhlo::FftType value) -> se::fft::Type {
+        switch (value) {
+          case mhlo::FftType::FFT:
+            return se::fft::Type::kC2CForward;
+          case mhlo::FftType::IFFT:
+            return se::fft::Type::kC2CInverse;
+          case mhlo::FftType::RFFT:
+            return se::fft::Type::kR2C;
+          case mhlo::FftType::IRFFT:
+            return se::fft::Type::kC2R;
+          default:
+            return se::fft::Type::kInvalid;
+        }
+      });
 }
 
 void RegisterFftCustomCalls(runtime::DirectCustomCallRegistry& registry) {

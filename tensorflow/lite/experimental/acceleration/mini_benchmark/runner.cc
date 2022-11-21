@@ -182,8 +182,8 @@ bool ProcessRunner::KillProcessWhenTimedOut(FILE* fstream) {
   ssize_t length = fread(buffer, 1, kPidBufferLength, fstream);
   int pid;
   if (length != kPidBufferLength || !absl::SimpleAtoi(buffer, &pid)) {
-    error_reporter_->Report("Failed to get Validator subprocess id: %s",
-                            buffer);
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Failed to get Validator subprocess id: %s", buffer);
     return false;
   }
   struct pollfd pfd[1];
@@ -196,7 +196,8 @@ bool ProcessRunner::KillProcessWhenTimedOut(FILE* fstream) {
     kill(pid, SIGKILL);
     return true;
   } else if (poll_ret < 0) {
-    error_reporter_->Report("Validator timer failed: %s", strerror(errno));
+    TF_LITE_REPORT_ERROR(error_reporter_, "Validator timer failed: %s",
+                         strerror(errno));
   }
   return false;
 }
@@ -344,7 +345,8 @@ int ProcessRunner::RunInprocess(const flatbuffers::FlatBufferBuilder* model,
           }
           close(pipe_fds[1]);
           if (written_bytes < 0 || remaining_bytes > 0) {
-            error_reporter->Report(
+            TF_LITE_REPORT_ERROR(
+                error_reporter,
                 "Failed to write Model to pipe: %s. Expect to write %d "
                 "bytes, %d bytes written.",
                 strerror(errno), remaining_bytes, written_bytes);

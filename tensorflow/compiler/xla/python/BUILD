@@ -16,6 +16,7 @@ load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 load("//tensorflow:pytype.default.bzl", "pytype_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -110,7 +111,6 @@ py_test(
         "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python:framework_test_lib",
     ] + xla_py_test_deps(),
 )
 
@@ -239,12 +239,14 @@ cc_library(
     name = "pprof_profile_builder",
     srcs = ["pprof_profile_builder.cc"],
     hdrs = ["pprof_profile_builder.h"],
+    compatible_with = [],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":traceback",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/tsl/platform:protobuf",
@@ -318,6 +320,7 @@ cc_library(
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "//tensorflow/compiler/xla/pjrt:host_callback",
+        "//tensorflow/compiler/xla/pjrt:pjrt_future",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -542,9 +545,9 @@ tf_cc_test(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/pjrt:cpu_device",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
+        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
@@ -613,9 +616,9 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":types",
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/mlir/utils:error_util",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
@@ -680,6 +683,7 @@ cc_library(
 
 cc_library(
     name = "util",
+    srcs = ["util.cc"],
     hdrs = ["util.h"],
     compatible_with = [],
     copts = [
@@ -688,6 +692,10 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_future",
         "@com_google_absl//absl/strings:str_format",
         "@pybind11",
     ],
@@ -884,7 +892,6 @@ pybind_extension(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
-        "//tensorflow/compiler/xla/pjrt:cpu_device",
         "//tensorflow/compiler/xla/pjrt:interpreter_device",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_compiler",

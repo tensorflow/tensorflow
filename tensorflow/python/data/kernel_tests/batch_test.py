@@ -19,7 +19,6 @@ import time
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python import pywrap_sanitizers
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.experimental.ops import random_access
@@ -277,8 +276,6 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCheckpointLargeBatches(self):
-    if pywrap_sanitizers.is_tsan_enabled():
-      self.skipTest('Creating a large buffer causes OOM when using tsan.')
     # Batches of size 512M
     dataset = dataset_ops.Dataset.from_tensors(
         array_ops.ones((64, 1024, 1024), dtype=dtypes.float32)).repeat()
@@ -302,23 +299,35 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 class BatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                           parameterized.TestCase):
 
-  def build_dataset(self, multiplier=15.0, tensor_slice_len=2, batch_size=2):
+  def _build_dataset(self,
+                     multiplier=15.0,
+                     tensor_slice_len=2,
+                     batch_size=2,
+                     options=None):
     components = (np.arange(tensor_slice_len), np.array([[1, 2, 3]]) *
                   np.arange(tensor_slice_len)[:, np.newaxis],
                   np.array(multiplier) * np.arange(tensor_slice_len))
 
-    return dataset_ops.Dataset.from_tensor_slices(components).batch(batch_size)
+    dataset = dataset_ops.Dataset.from_tensor_slices(components).batch(
+        batch_size)
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def test(self, verify_fn):
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, symbolic_checkpoint):
     tensor_slice_len = 8
     batch_size = 2
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
     num_outputs = tensor_slice_len // batch_size
-    verify_fn(self,
-              lambda: self.build_dataset(15.0, tensor_slice_len, batch_size),
-              num_outputs)
+    verify_fn(
+        self, lambda: self._build_dataset(15.0, tensor_slice_len, batch_size,
+                                          options), num_outputs)
 
   def _sparse(self, i):
     return sparse_tensor.SparseTensorValue(

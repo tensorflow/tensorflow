@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/libtftpu.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"

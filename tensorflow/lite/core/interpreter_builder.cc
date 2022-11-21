@@ -27,10 +27,10 @@ limitations under the License.
 #include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/core/model_builder.h"
@@ -494,8 +494,9 @@ TfLiteStatus InterpreterBuilder::ParseSparsity(
     const auto* src_metadata = src_sparsity->dim_metadata()->Get(i);
     if (src_metadata->format() != DimensionType_DENSE &&
         src_metadata->format() != DimensionType_SPARSE_CSR) {
-      error_reporter_->Report("The %dth dimension has unknown type: %d.", i,
-                              src_metadata->format());
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "The %dth dimension has unknown type: %d.", i,
+                           src_metadata->format());
       return kTfLiteError;
     }
     auto* tgt_metadata = &sparsity->dim_metadata[i];
@@ -507,7 +508,8 @@ TfLiteStatus InterpreterBuilder::ParseSparsity(
       tgt_metadata->dense_size = src_metadata->dense_size();
     } else {
       if (ParseSparseIndexVector(src_metadata, tgt_metadata) != kTfLiteOk) {
-        error_reporter_->Report(
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
             "The %dth sparse dimension has invalid parameters.", i);
         return kTfLiteError;
       }
@@ -528,22 +530,24 @@ TfLiteStatus InterpreterBuilder::ParseSignatureDefs(
   signature_defs.reserve(signature_def_list->size());
   for (const auto fb_signature_def : *signature_def_list) {
     if (fb_signature_def == nullptr) {
-      error_reporter_->Report("NULL SignatureDef in the model.");
+      TF_LITE_REPORT_ERROR(error_reporter_, "NULL SignatureDef in the model.");
       return kTfLiteError;
     }
     if (fb_signature_def->signature_key() == nullptr) {
-      error_reporter_->Report("Missing exported method name for SignatureDef");
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Missing exported method name for SignatureDef");
       return kTfLiteError;
     }
     if (fb_signature_def->inputs() == nullptr) {
-      error_reporter_->Report("NULL SignatureDef inputs for exported method %s",
-                              fb_signature_def->signature_key()->c_str());
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "NULL SignatureDef inputs for exported method %s",
+                           fb_signature_def->signature_key()->c_str());
       return kTfLiteError;
     }
     if (fb_signature_def->outputs() == nullptr) {
-      error_reporter_->Report(
-          "NULL SignatureDef outputs for exported method %s",
-          fb_signature_def->signature_key()->c_str());
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "NULL SignatureDef outputs for exported method %s",
+                           fb_signature_def->signature_key()->c_str());
       return kTfLiteError;
     }
     signature_defs.resize(signature_defs.size() + 1);
@@ -743,12 +747,12 @@ TfLiteStatus InterpreterBuilder::operator()(
   auto* buffers = model_->buffers();
 
   if (subgraphs->size() == 0) {
-    error_reporter_->Report("No subgraph in the model.\n");
+    TF_LITE_REPORT_ERROR(error_reporter_, "No subgraph in the model.\n");
     return cleanup_and_error();
   }
 
   if (!buffers) {
-    error_reporter_->Report("No buffers in the model.\n");
+    TF_LITE_REPORT_ERROR(error_reporter_, "No buffers in the model.\n");
     return cleanup_and_error();
   }
 
@@ -774,8 +778,9 @@ TfLiteStatus InterpreterBuilder::operator()(
     auto operators = subgraph->operators();
     auto tensors = subgraph->tensors();
     if (!tensors) {
-      error_reporter_->Report("Did not get tensors in subgraph %d.\n",
-                              subgraph_index);
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Did not get tensors in subgraph %d.\n",
+                           subgraph_index);
       return cleanup_and_error();
     }
     if (modified_subgraph->AddTensors(tensors->size()) != kTfLiteOk) {
@@ -836,7 +841,7 @@ TfLiteStatus InterpreterBuilder::operator()(
 
 void InterpreterBuilder::AddDelegate(TfLiteDelegate* delegate) {
   if (delegate == nullptr) {
-    error_reporter_->Report("Null delegate.");
+    TF_LITE_REPORT_ERROR(error_reporter_, "Null delegate.");
   } else {
     delegates_.push_back(delegate);
   }

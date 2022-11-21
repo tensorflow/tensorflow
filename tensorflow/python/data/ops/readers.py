@@ -70,8 +70,10 @@ def _create_or_validate_filenames_dataset(filenames, name=None):
           "The `filenames` argument must contain `tf.string` elements. Got "
           f"`{filenames.dtype!r}` elements.")
     filenames = array_ops.reshape(filenames, [-1], name="flat_filenames")
-    filenames = from_tensor_slices_op.TensorSliceDataset(
-        filenames, is_files=True, name=name)
+    filenames = from_tensor_slices_op._TensorSliceDataset(  # pylint: disable=protected-access
+        filenames,
+        is_files=True,
+        name=name)
   return filenames
 
 

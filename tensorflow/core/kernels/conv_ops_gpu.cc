@@ -37,6 +37,7 @@ bool ComputeInNhwcEnabled(DataType data_type, se::Stream* stream,
                           bool use_4d_tensor) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Tensor Core supports efficient convolution with fp16 for NVIDIA Volta+
+<<<<<<< HEAD
   // GPUs and tf32 for Ampere+ GPUs in NHWC data layout. AMD Matrix Cores 
   // on MI100 and MI200 also allow for efficient FP16 NHWC convolutions. In all 
   // other configurations it's more efficient to run computation in NCHW data format.
@@ -45,15 +46,29 @@ bool ComputeInNhwcEnabled(DataType data_type, se::Stream* stream,
                                   se::CudaComputeCapability::VOLTA) ||
                                   UseNhwcLayoutForConvOnRocm(stream);
 #if GOOGLE_CUDA
+=======
+  // GPUs and bf16/tf32 for Ampere+ GPUs in NHWC data layout. In all other
+  // configurations it's more efficient to run computation in NCHW data format.
+>>>>>>> upstream/master
   bool use_nhwc_tf32 = data_type == DT_FLOAT &&
                        stream->GetCudaComputeCapability().IsAtLeast(
                            se::CudaComputeCapability::AMPERE) &&
                        tensorflow::tensor_float_32_execution_enabled();
+<<<<<<< HEAD
 
+=======
+  bool use_nhwc_fp16 =
+      data_type == DT_HALF && stream->GetCudaComputeCapability().IsAtLeast(
+                                  se::CudaComputeCapability::VOLTA);
+  bool use_nhwc_bf16 =
+      data_type == DT_BFLOAT16 && stream->GetCudaComputeCapability().IsAtLeast(
+                                      se::CudaComputeCapability::AMPERE);
+>>>>>>> upstream/master
   if (use_4d_tensor) {
-    return use_nhwc_fp16 || use_nhwc_tf32;
+    return use_nhwc_fp16 || use_nhwc_tf32 || use_nhwc_bf16;
   }
-  return CUDNN_VERSION >= 8000 && (use_nhwc_fp16 || use_nhwc_tf32);
+  return CUDNN_VERSION >= 8000 &&
+         (use_nhwc_fp16 || use_nhwc_tf32 || use_nhwc_bf16);
 #else
   return use_nhwc_fp16;
 #endif
@@ -404,42 +419,27 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
   return autotune_entry;
 }
 
-template StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv<double>(
-    bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvOp>>* autotune_map,
-    const ConvParameters& conv_parameters, OpKernelContext* ctx,
-    se::dnn::ConvolutionKind kind, const se::dnn::BatchDescriptor& input_desc,
-    se::DeviceMemory<double> input_ptr,
-    const se::dnn::FilterDescriptor& filter_desc,
-    se::DeviceMemory<double> filter_ptr,
-    const se::dnn::ConvolutionDescriptor& conv_desc,
-    const se::dnn::BatchDescriptor& output_desc,
-    se::DeviceMemory<double> output_ptr, int64_t scratch_size_limit);
+#define DECLARE_GPU_SPEC(T)                                                 \
+  template StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv<T>( \
+      bool cudnn_use_autotune,                                              \
+      AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvOp>>*          \
+          autotune_map,                                                     \
+      const ConvParameters& conv_parameters, OpKernelContext* ctx,          \
+      se::dnn::ConvolutionKind kind,                                        \
+      const se::dnn::BatchDescriptor& input_desc,                           \
+      se::DeviceMemory<T> input_ptr,                                        \
+      const se::dnn::FilterDescriptor& filter_desc,                         \
+      se::DeviceMemory<T> filter_ptr,                                       \
+      const se::dnn::ConvolutionDescriptor& conv_desc,                      \
+      const se::dnn::BatchDescriptor& output_desc,                          \
+      se::DeviceMemory<T> output_ptr, int64_t scratch_size_limit);
 
-template StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv<float>(
-    bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvOp>>* autotune_map,
-    const ConvParameters& conv_parameters, OpKernelContext* ctx,
-    se::dnn::ConvolutionKind kind, const se::dnn::BatchDescriptor& input_desc,
-    se::DeviceMemory<float> input_ptr,
-    const se::dnn::FilterDescriptor& filter_desc,
-    se::DeviceMemory<float> filter_ptr,
-    const se::dnn::ConvolutionDescriptor& conv_desc,
-    const se::dnn::BatchDescriptor& output_desc,
-    se::DeviceMemory<float> output_ptr, int64_t scratch_size_limit);
+DECLARE_GPU_SPEC(double);
+DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(Eigen::half);
+DECLARE_GPU_SPEC(Eigen::bfloat16);
 
-template StatusOr<AutotuneEntry<se::dnn::ConvOp>>
-AutotuneUnfusedConv<Eigen::half>(
-    bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvOp>>* autotune_map,
-    const ConvParameters& conv_parameters, OpKernelContext* ctx,
-    se::dnn::ConvolutionKind kind, const se::dnn::BatchDescriptor& input_desc,
-    se::DeviceMemory<Eigen::half> input_ptr,
-    const se::dnn::FilterDescriptor& filter_desc,
-    se::DeviceMemory<Eigen::half> filter_ptr,
-    const se::dnn::ConvolutionDescriptor& conv_desc,
-    const se::dnn::BatchDescriptor& output_desc,
-    se::DeviceMemory<Eigen::half> output_ptr, int64_t scratch_size_limit);
+#undef DECLARE_GPU_SPEC
 
 }  // namespace tensorflow
 

@@ -1,8 +1,9 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -13,7 +14,7 @@ exports_files([
 ])
 
 # Python extension sources.
-exports_files(["python/MlirHloModule.cc"])
+exports_files(["bindings/python/MlirHloModule.cc"])
 
 filegroup(
     name = "hlo_ops_td_filegroup",
@@ -679,6 +680,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:LinalgDialect",
+        "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:LinalgUtils",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MemRefDialect",
@@ -686,6 +688,7 @@ cc_library(
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:ShapeTransforms",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
@@ -1196,6 +1199,7 @@ cc_library(
         "@llvm-project//mlir:MathToLLVM",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:MemRefToLLVM",
+        "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ROCDLDialect",
@@ -1336,6 +1340,7 @@ cc_library(
         "gml_st/transforms/tiling_softmax/tiling_softmax.cc",
         "gml_st/transforms/transform_map_for_cpu/transform_map_for_cpu.cc",
         "gml_st/transforms/transform_matmul_for_cpu/transform_matmul_for_cpu.cc",
+        "gml_st/transforms/transform_reduce_for_cpu/transform_reduce_for_cpu.cc",
         "gml_st/transforms/transform_scatter_for_cpu/transform_scatter_for_cpu.cc",
         "gml_st/transforms/transform_transpose_for_cpu/transform_transpose_for_cpu.cc",
         "gml_st/transforms/transforms.h",
@@ -1492,18 +1497,18 @@ gentbl_filegroup(
                 "-gen-python-op-bindings",
                 "-bind-dialect=mhlo",
             ],
-            "python/mlir/dialects/_mhlo_ops_gen.py",
+            "bindings/python/mlir/dialects/_mhlo_ops_gen.py",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "python/mlir/dialects/MhloOps.td",
+    td_file = "bindings/python/mlir/dialects/MhloOps.td",
     deps = [":MhloOpsPyTdFiles"],
 )
 
 filegroup(
     name = "MhloOpsPyFiles",
     srcs = [
-        "python/mlir/dialects/mhlo.py",
+        "bindings/python/mlir/dialects/mhlo.py",
         ":MhloOpsPyGen",
     ],
 )

@@ -20,8 +20,8 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/eigen_backward_spatial_convolutions.h"
-#include "tensorflow/core/kernels/eigen_spatial_convolutions.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/tsl/framework/convolution/eigen_spatial_convolutions.h"
 
 // Returns true if TF_CONV2D_USE_FP16_ACCUMULATE == 1, false otherwise.
 static bool Conv2dUseFp16Accumulate() {

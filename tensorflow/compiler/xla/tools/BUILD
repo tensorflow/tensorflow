@@ -1,6 +1,6 @@
 # Tools and utilities that aid in XLA development and usage.
 
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -15,6 +15,7 @@ load(
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )

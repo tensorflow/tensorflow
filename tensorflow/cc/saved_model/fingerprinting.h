@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 
@@ -26,6 +27,11 @@ namespace tensorflow::saved_model::fingerprinting {
 // (.index) in `export_dir`.
 FingerprintDef CreateFingerprintDef(const SavedModel& saved_model,
                                     absl::string_view export_dir);
+
+// Loads the `fingerprint.pb` from `export_dir`, returns an error if there is
+// none.
+StatusOr<FingerprintDef> ReadSavedModelFingerprint(
+    absl::string_view export_dir);
 
 }  // namespace tensorflow::saved_model::fingerprinting
 

@@ -26,7 +26,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 
 // We only really care about Android, but we want the code to be portable for
 // ease of testing. See also discussion in cl/224174491.
@@ -60,7 +60,8 @@ MinibenchmarkStatus FileStorage::ReadFileIntoBuffer() {
       return kMinibenchmarkSuccess;
     }
     int create_error_no = errno;
-    error_reporter_->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
         "Could not open %s for reading: %s, creating failed as well: %s",
         path_.c_str(), std::strerror(open_error_no),
         std::strerror(create_error_no));
@@ -70,8 +71,8 @@ MinibenchmarkStatus FileStorage::ReadFileIntoBuffer() {
   int lock_error_no = errno;
   if (lock_status < 0) {
     close(fd);
-    error_reporter_->Report("Could not flock %s: %s", path_.c_str(),
-                            std::strerror(lock_error_no));
+    TF_LITE_REPORT_ERROR(error_reporter_, "Could not flock %s: %s",
+                         path_.c_str(), std::strerror(lock_error_no));
     return kMinibenchmarkFlockingStorageFileFailed;
   }
   char buffer[512];
@@ -84,8 +85,8 @@ MinibenchmarkStatus FileStorage::ReadFileIntoBuffer() {
       return kMinibenchmarkSuccess;
     } else if (bytes_read < 0) {
       close(fd);
-      error_reporter_->Report("Error reading %s: %s", path_.c_str(),
-                              std::strerror(read_error_no));
+      TF_LITE_REPORT_ERROR(error_reporter_, "Error reading %s: %s",
+                           path_.c_str(), std::strerror(read_error_no));
       return kMinibenchmarkErrorReadingStorageFile;
     } else {
       buffer_.append(buffer, bytes_read);
@@ -106,16 +107,16 @@ MinibenchmarkStatus FileStorage::AppendDataToFile(absl::string_view data) {
       open(path_.c_str(), O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC, 0600));
   if (fd < 0) {
     int error_no = errno;
-    error_reporter_->Report("Could not open %s for writing: %s", path_.c_str(),
-                            std::strerror(error_no));
+    TF_LITE_REPORT_ERROR(error_reporter_, "Could not open %s for writing: %s",
+                         path_.c_str(), std::strerror(error_no));
     return kMinibenchmarkFailedToOpenStorageFileForWriting;
   }
   int lock_status = flock(fd, LOCK_EX);
   int lock_error_no = errno;
   if (lock_status < 0) {
     close(fd);
-    error_reporter_->Report("Could not flock %s: %s", path_.c_str(),
-                            std::strerror(lock_error_no));
+    TF_LITE_REPORT_ERROR(error_reporter_, "Could not flock %s: %s",
+                         path_.c_str(), std::strerror(lock_error_no));
     return kMinibenchmarkFlockingStorageFileFailed;
   }
   absl::string_view bytes = data;
@@ -125,8 +126,8 @@ MinibenchmarkStatus FileStorage::AppendDataToFile(absl::string_view data) {
     if (bytes_written < 0) {
       int error_no = errno;
       close(fd);
-      error_reporter_->Report("Could not write to %s: %s", path_.c_str(),
-                              std::strerror(error_no));
+      TF_LITE_REPORT_ERROR(error_reporter_, "Could not write to %s: %s",
+                           path_.c_str(), std::strerror(error_no));
       return kMinibenchmarkErrorWritingStorageFile;
     }
     bytes.remove_prefix(bytes_written);
@@ -134,14 +135,14 @@ MinibenchmarkStatus FileStorage::AppendDataToFile(absl::string_view data) {
   if (TEMP_FAILURE_RETRY(fsync(fd)) < 0) {
     int error_no = errno;
     close(fd);
-    error_reporter_->Report("Failed to fsync %s: %s", path_.c_str(),
-                            std::strerror(error_no));
+    TF_LITE_REPORT_ERROR(error_reporter_, "Failed to fsync %s: %s",
+                         path_.c_str(), std::strerror(error_no));
     return kMinibenchmarkErrorFsyncingStorageFile;
   }
   if (TEMP_FAILURE_RETRY(close(fd)) < 0) {
     int error_no = errno;
-    error_reporter_->Report("Failed to close %s: %s", path_.c_str(),
-                            std::strerror(error_no));
+    TF_LITE_REPORT_ERROR(error_reporter_, "Failed to close %s: %s",
+                         path_.c_str(), std::strerror(error_no));
     return kMinibenchmarkErrorClosingStorageFile;
   }
   return kMinibenchmarkSuccess;

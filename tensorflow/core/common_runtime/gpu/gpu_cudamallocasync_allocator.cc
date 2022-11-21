@@ -28,9 +28,9 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/framework/device_id.h"
 #include "tensorflow/tsl/platform/logging.h"
@@ -51,20 +51,20 @@ static std::string GetCudaErrorMessage(CUresult result) {
 #endif  // GOOGLE_CUDA
 
 void GpuCudaMallocAsyncAllocator::PrintAllocatorStatistics() {
-  mutex_lock lock(lock_);
+  tsl::mutex_lock lock(lock_);
 
-  std::map<size_t, int> size_map_historgram;
-  std::vector<string> ptr_size_string;
+  std::map<size_t, int> size_map_histogram;
+  std::vector<std::string> ptr_size_string;
   for (auto p : size_map_) {
     if (VLOG_IS_ON(8)) {
       ptr_size_string.push_back(
           absl::StrCat("(", absl::Hex(p.first), ",", p.second) + ")");
     }
-    size_map_historgram[p.second]++;
+    size_map_histogram[p.second]++;
   }
   LOG(ERROR) << "Histogram of current allocation: (allocation_size_in_bytes, "
              << "nb_allocation_of_that_sizes), ...;";
-  for (auto p : size_map_historgram) {
+  for (auto p : size_map_histogram) {
     LOG(ERROR) << p.first << ", " << p.second;
   }
 
@@ -118,8 +118,8 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   (void)reserve_memory_;
 
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
-  stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
-                                                           platform_device_id)
+  stream_exec_ = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
+                     se::GPUMachineManager(), platform_device_id)
                      .value();
   // Initialized here as it only exist if compiled with a recent
   // enough CUDA.
@@ -307,7 +307,7 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
 
   // Update stats.
   if (stats_) {
-    mutex_lock lock(lock_);
+    tsl::mutex_lock lock(lock_);
     ++(stats_->num_allocs);
     stats_->bytes_in_use += num_bytes;
     if (stats_->bytes_in_use > stats_->peak_bytes_in_use) {
@@ -350,7 +350,7 @@ void GpuCudaMallocAsyncAllocator::DeallocateRaw(void* ptr) {
 
   // Updates the stats.
   if (stats_) {
-    mutex_lock lock(lock_);
+    tsl::mutex_lock lock(lock_);
     DCHECK(size_map_.contains(ptr));
     size_t size = size_map_[ptr];
     stats_->bytes_in_use -= size;
@@ -367,25 +367,25 @@ bool GpuCudaMallocAsyncAllocator::TracksAllocationSizes() const {
 
 size_t GpuCudaMallocAsyncAllocator::RequestedSize(const void* ptr) const {
   if (!stats_ || !ptr) return 0;
-  mutex_lock l(lock_);
+  tsl::mutex_lock l(lock_);
   return size_map_.at(ptr);
 }
 
 size_t GpuCudaMallocAsyncAllocator::AllocatedSize(const void* ptr) const {
   if (!stats_ || !ptr) return 0;
-  mutex_lock l(lock_);
+  tsl::mutex_lock l(lock_);
   return size_map_.at(ptr);
 }
 
 std::optional<tsl::AllocatorStats> GpuCudaMallocAsyncAllocator::GetStats() {
   if (!stats_) return std::nullopt;
-  mutex_lock l(lock_);
+  tsl::mutex_lock l(lock_);
   return *stats_;
 }
 
 bool GpuCudaMallocAsyncAllocator::ClearStats() {
   if (!stats_) return false;
-  mutex_lock l(lock_);
+  tsl::mutex_lock l(lock_);
   stats_->num_allocs = 0;
   stats_->peak_bytes_in_use = stats_->bytes_in_use;
   stats_->largest_alloc_size = 0;
@@ -408,7 +408,7 @@ void GpuCudaMallocAsyncAllocator::SetStreamAndPreallocateMemory(void* stream) {
         "Failed to get CUDA pool attribute: " << GetCudaErrorMessage(status);
   }
   cuda_stream_ = new_cuda_stream;
-  int64 prealloc_size = 0;
+  int64_t prealloc_size = 0;
   // TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC=-1 is a special value that
   // preallocates the total pool size.
   TF_CHECK_OK(tsl::ReadInt64FromEnvVar(

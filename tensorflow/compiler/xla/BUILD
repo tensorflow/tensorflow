@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library")
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
@@ -7,8 +7,10 @@ load(
     "tf_proto_library",
 )
 load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -1070,6 +1072,42 @@ cc_library(
     name = "side_effect_util",
     srcs = ["side_effect_util.cc"],
     hdrs = ["side_effect_util.h"],
+)
+
+tf_proto_library(
+    name = "autotune_results_proto",
+    srcs = ["autotune_results.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        "//tensorflow/tsl/protobuf:autotuning_proto",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+xla_py_proto_library(
+    name = "autotune_results_py_pb2",
+    api_version = 2,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":autotune_results_proto",
+    ],
+)
+
+cc_library(
+    name = "autotune_serialize",
+    srcs = ["autotune_serialize.cc"],
+    hdrs = ["autotune_serialize.h"],
+    # TODO(aminim): There appears to be an in-progress refactoring in TF/XLA to
+    # mark rules as compatible_with GCE.  The rules that this depends on are
+    # not yet marked as compatible, so this one can't be either (yet).
+    compatible_with = [],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":autotune_results_proto_cc",
+        ":statusor",
+        "//tensorflow/compiler/xla/service/gpu:gemm_algorithm_picker",
+        "//tensorflow/compiler/xla/service/gpu:gpu_conv_algorithm_picker",
+    ],
 )
 
 # -----------------------------------------------------------------------------

@@ -29,22 +29,22 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_dataset_ops
 
 
-def padded_batch(self,
-                 batch_size,
-                 padded_shapes=None,
-                 padding_values=None,
-                 drop_remainder=False,
-                 name=None):
+def _padded_batch(input_dataset,
+                  batch_size,
+                  padded_shapes=None,
+                  padding_values=None,
+                  drop_remainder=False,
+                  name=None):
   """See `tf.data.Dataset.padded_batch` for details."""
   if padded_shapes is None:
-    padded_shapes = dataset_ops.get_legacy_output_shapes(self)
+    padded_shapes = dataset_ops.get_legacy_output_shapes(input_dataset)
     for i, shape in enumerate(nest.flatten(padded_shapes)):
       # A `tf.TensorShape` is only false if its *rank* is unknown.
       if not shape:
         raise ValueError(f"You must provide `padded_shapes` argument because "
                          f"component {i} has unknown rank.")
   return _PaddedBatchDataset(
-      self,
+      input_dataset,
       batch_size,
       padded_shapes,
       padding_values,
@@ -251,7 +251,7 @@ class _PaddedBatchDataset(dataset_ops.UnaryDataset):
         drop_remainder=self._drop_remainder,
         output_shapes=structure.get_flat_tensor_shapes(self._structure),
         metadata=self._metadata.SerializeToString())
-    super(_PaddedBatchDataset, self).__init__(input_dataset, variant_tensor)
+    super().__init__(input_dataset, variant_tensor)
 
   @property
   def element_spec(self):

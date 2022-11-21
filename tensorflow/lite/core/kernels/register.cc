@@ -370,7 +370,16 @@ BuiltinOpResolver::BuiltinOpResolver() {
   // Populate the list of TF Lite delegate creators. The created delegates could
   // be applied to the model graph by default at runtime.
   delegate_creators_.push_back([](TfLiteContext* context) {
-    return tflite::MaybeCreateXNNPACKDelegate(context);
+    return tflite::MaybeCreateXNNPACKDelegate(
+        context, /*enable_xnnpack_unsigned_quantized=*/false);
+  });
+}
+
+BuiltinOpResolverWithXNNPACK::BuiltinOpResolverWithXNNPACK() {
+  delegate_creators_.clear();
+  delegate_creators_.push_back([](TfLiteContext* context) {
+    return tflite::MaybeCreateXNNPACKDelegate(
+        context, /*enable_xnnpack_unsigned_quantized=*/true);
   });
 }
 

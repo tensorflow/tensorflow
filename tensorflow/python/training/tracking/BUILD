@@ -2,6 +2,7 @@
 #   Utilities for reading and writing object-based checkpoints.
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],

@@ -94,7 +94,7 @@ class PtrMapByType {
   template <typename... Ts, size_t... Is>
   void insert_all(Ts*... values, std::index_sequence<Is...>) {
     static constexpr size_t kNumInserted = sizeof...(Ts);
-    if constexpr (kNumInserted) {
+    if constexpr (kNumInserted > 0) {
       std::array<size_t, kNumInserted> ids = {GetDenseTypeId<Ts>()...};
       data_.resize(1 + *std::max_element(ids.begin(), ids.end()), nullptr);
       ((data_[ids[Is]] = const_cast<std::decay_t<Ts>*>(values)), ...);

@@ -37,6 +37,7 @@ load(
 load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -649,7 +650,10 @@ exports_files(
         "tracing.h",
         "tracing.cc",
     ],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
 )
 
 filegroup(

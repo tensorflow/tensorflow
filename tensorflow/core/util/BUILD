@@ -34,6 +34,7 @@ default_package_visibility = [
 ]
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = default_package_visibility,
     features = [
         "-layering_check",
@@ -732,7 +733,11 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_wrapper",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_gpu_executor",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
+<<<<<<< HEAD
 	"//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
+=======
+        "//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
+>>>>>>> upstream/master
     ] + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
@@ -755,7 +760,11 @@ tf_kernel_library(
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
         "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
+<<<<<<< HEAD
 	"//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
+=======
+        "//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
+>>>>>>> upstream/master
         "//tensorflow/compiler/xla/stream_executor/rocm:hipsparse_wrapper",
     ]),
 )

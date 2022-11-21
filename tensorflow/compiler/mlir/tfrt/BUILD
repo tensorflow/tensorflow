@@ -12,6 +12,7 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud", "get_co
 
 # TF to TFRT kernels conversion.
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -371,7 +372,6 @@ cc_library(
         "transforms/merge_tf_if_ops.cc",
         "transforms/optimize.cc",
         "transforms/optimize_tf_control_flow_side_effect.cc",
-        "transforms/remote_run_encapsulate.cc",
         "transforms/remove_device_attribute.cc",
         "transforms/remove_tf_if_const_args.cc",
         "transforms/reorder_assert.cc",

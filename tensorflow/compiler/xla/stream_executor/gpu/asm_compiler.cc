@@ -163,8 +163,8 @@ port::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int device_ordinal,
   return CompileGpuAsm(cc_major, cc_minor, ptx_contents, options);
 }
 
-static std::string FindCudaExecutable(const std::string& binary_name,
-                                      const std::string& preferred_cuda_dir) {
+std::string FindCudaExecutable(const std::string& binary_name,
+                               const std::string& preferred_cuda_dir) {
   static absl::Mutex mu(absl::kConstInit);
   static auto* seen_binary_paths ABSL_GUARDED_BY(mu) =
       new absl::flat_hash_map<std::pair<std::string, std::string>,

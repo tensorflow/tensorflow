@@ -1,4 +1,4 @@
-// RUN: tf-quant-opt %s -quant-insert-quantized-functions='quantization-method=drq target-opset=UNIFORM_QUANTIZED' | FileCheck %s
+// RUN: tf-quant-opt %s -quant-insert-quantized-functions='quantization-method=drq' | FileCheck %s
 
 // Empty module
 module {
@@ -12,3 +12,5 @@ module {
 // CHECK-NOT: func private @internal_quantize_i8
 // CHECK-NOT: func private @internal_matmul_fn
 // CHECK: func private @quantized_matmul_fn
+// CHECK: func private @quantized_conv2d_fn
+// CHECK: func private @quantized_depthwise_conv2d_fn

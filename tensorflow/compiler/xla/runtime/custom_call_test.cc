@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
+#include "tensorflow/compiler/xla/runtime/state.h"
 #include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
 
@@ -94,7 +95,8 @@ static absl::StatusOr<JitExecutable> Compile(
 
 static absl::Status CompileAndExecute(
     std::string_view module, ArgumentsRef args, const TestOpts& test_opts,
-    absl::Span<const std::string_view> exported = {"test"}) {
+    absl::Span<const std::string_view> exported = {"test"},
+    CustomCall::UserData user_data = {}) {
   StatusOr<JitExecutable> jit_executable = Compile(module, test_opts, exported);
   if (!jit_executable.ok()) return jit_executable.status();
 
@@ -113,7 +115,6 @@ static absl::Status CompileAndExecute(
     test_opts.dynamic_custom_calls(dynamic_custom_calls);
 
   // Always add a pointer to `self` to user data.
-  CustomCall::UserData user_data;
   user_data.insert(&executable.get());
 
   Executable::ExecuteOpts execute_opts;
@@ -1014,11 +1015,49 @@ TEST(CustomCallTest, OptionalAttr) {
   EXPECT_EQ(attrs[1], 42);
 }
 
+TEST(CustomCallTest, StateArg) {
+  absl::string_view module = R"(
+    func.func private @custom_call()
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
+
+    func.func @test() {
+      call @custom_call() { id = 0 : i64 } : () -> ()
+      return
+    }
+  )";
+
+  auto handler = [](int64_t id, State<int32_t> state0, State<int64_t> state1) {
+    state0.GetOrCreate([] { return 42; }).IgnoreError();
+    state1.GetOrCreate([] { return 42; }).IgnoreError();
+    return success();
+  };
+
+  StateVector<int32_t> state_i32;
+  StateVector<int64_t> state_i64;
+
+  StateVector<int32_t>::Snapshot snapshot_i32 = state_i32.snapshot();
+  StateVector<int64_t>::Snapshot snapshot_i64 = state_i64.snapshot();
+  CustomCall::UserData user_data(&snapshot_i32, &snapshot_i64);
+
+  TestOpts opts;
+  opts.dynamic_custom_calls = [&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call")
+                          .Attr<int64_t>("id")
+                          .State<int32_t>("id")
+                          .State<int64_t>("id")
+                          .To(handler));
+  };
+
+  ASSERT_TRUE(CompileAndExecute(module, {}, opts, {"test"}, user_data).ok());
+  ASSERT_EQ(*state_i32[0], 42);
+  ASSERT_EQ(*state_i64[0], 42);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks are below.
 //===----------------------------------------------------------------------===//
 
-using benchmark::State;
+namespace bm = ::testing::benchmark;
 
 using DirectCustomCall = DirectCustomCallRegistry::DirectCustomCall;
 using RuntimeChecks = CustomCall::RuntimeChecks;
@@ -1029,7 +1068,7 @@ static constexpr RuntimeChecks less = RuntimeChecks::kLess;
 static constexpr RuntimeChecks none = RuntimeChecks::kNone;
 
 static void BenchmarkCustomCall(
-    State& state, std::string_view module, ArgumentsRef args,
+    bm::State& state, std::string_view module, ArgumentsRef args,
     std::string_view name, DirectCustomCall custom_call,
     std::function<void(TypeIDNameRegistry&)> types = {},
     std::function<void(CustomCallAttrEncodingSet&)> attrs = {},
@@ -1086,7 +1125,7 @@ static bool I32X1(ExecutionContext* ctx, void** args, void** attrs,
 }
 
 template <RuntimeChecks checks>
-static void I32X1(State& state) {
+static void I32X1(bm::State& state) {
   absl::string_view module = R"(
     func.func private @custom_call(%arg0: i32)
       attributes { rt.custom_call = "test.custom_call" }
@@ -1101,8 +1140,8 @@ static void I32X1(State& state) {
   BenchmarkCustomCall(state, module, {}, "test.custom_call", &I32X1<checks>);
 }
 
-static void BM_I32X1All(State& s) { I32X1<all>(s); }
-static void BM_I32X1None(State& s) { I32X1<none>(s); }
+static void BM_I32X1All(bm::State& s) { I32X1<all>(s); }
+static void BM_I32X1None(bm::State& s) { I32X1<none>(s); }
 
 BENCHMARK(BM_I32X1All);
 BENCHMARK(BM_I32X1None);
@@ -1141,7 +1180,7 @@ static bool I32X12(ExecutionContext* ctx, void** args, void** attrs,
 }
 
 template <CustomCall::RuntimeChecks checks>
-static void I32X12(State& state) {
+static void I32X12(bm::State& state) {
   absl::string_view module = R"(
     func.func private @custom_call(%arg0: i32, %arg1: i32, %arg2: i32,
                                    %arg3: i32, %arg4: i32, %arg5: i32,
@@ -1171,8 +1210,8 @@ static void I32X12(State& state) {
   BenchmarkCustomCall(state, module, {}, "test.custom_call", &I32X12<checks>);
 }
 
-static void BM_I32X12All(State& s) { I32X12<all>(s); }
-static void BM_I32X12None(State& s) { I32X12<none>(s); }
+static void BM_I32X12All(bm::State& s) { I32X12<all>(s); }
+static void BM_I32X12None(bm::State& s) { I32X12<none>(s); }
 
 BENCHMARK(BM_I32X12All);
 BENCHMARK(BM_I32X12None);
@@ -1193,7 +1232,7 @@ static bool RetI32X1(ExecutionContext* ctx, void** args, void** attrs,
 }
 
 template <RuntimeChecks checks>
-static void RetI32X1(State& state) {
+static void RetI32X1(bm::State& state) {
   absl::string_view module = R"(
     func.func private @custom_call() -> i32
       attributes { rt.custom_call = "test.custom_call" }
@@ -1207,8 +1246,8 @@ static void RetI32X1(State& state) {
   BenchmarkCustomCall(state, module, {}, "test.custom_call", &RetI32X1<checks>);
 }
 
-static void BM_RetI32X1All(State& s) { RetI32X1<all>(s); }
-static void BM_RetI32X1None(State& s) { RetI32X1<none>(s); }
+static void BM_RetI32X1All(bm::State& s) { RetI32X1<all>(s); }
+static void BM_RetI32X1None(bm::State& s) { RetI32X1<none>(s); }
 
 BENCHMARK(BM_RetI32X1All);
 BENCHMARK(BM_RetI32X1None);
@@ -1245,7 +1284,7 @@ static bool RetI32X12(ExecutionContext* ctx, void** args, void** attrs,
 }
 
 template <RuntimeChecks checks>
-static void RetI32X12(State& state) {
+static void RetI32X12(bm::State& state) {
   absl::string_view module = R"(
     func.func private @custom_call()
       -> (i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32)
@@ -1262,8 +1301,8 @@ static void RetI32X12(State& state) {
                       &RetI32X12<checks>);
 }
 
-static void BM_RetI32X12All(State& s) { RetI32X12<all>(s); }
-static void BM_RetI32X12None(State& s) { RetI32X12<none>(s); }
+static void BM_RetI32X12All(bm::State& s) { RetI32X12<all>(s); }
+static void BM_RetI32X12None(bm::State& s) { RetI32X12<none>(s); }
 
 BENCHMARK(BM_RetI32X12All);
 BENCHMARK(BM_RetI32X12None);
@@ -1289,7 +1328,7 @@ static bool MemrefX1(ExecutionContext* ctx, void** args, void** attrs,
 }
 
 template <CustomCall::RuntimeChecks checks, typename MemrefType>
-static void MemrefX1(State& state) {
+static void MemrefX1(bm::State& state) {
   absl::string_view module = R"(
     func.func private @custom_call(%arg0: memref<4x4xf32>)
       attributes { rt.custom_call = "test.custom_call" }
@@ -1305,12 +1344,12 @@ static void MemrefX1(State& state) {
                       &MemrefX1<checks, MemrefType>);
 }
 
-static void BM_FlatMemrefX1All(State& s) { MemrefX1<all, Flat>(s); }
-static void BM_FlatMemrefX1None(State& s) { MemrefX1<none, Flat>(s); }
-static void BM_MemrefX1All(State& s) { MemrefX1<all, MemrefView>(s); }
-static void BM_MemrefX1None(State& s) { MemrefX1<none, MemrefView>(s); }
-static void BM_StridedMemrefX1All(State& s) { MemrefX1<all, Strided>(s); }
-static void BM_StridedMemrefX1None(State& s) { MemrefX1<none, Strided>(s); }
+static void BM_FlatMemrefX1All(bm::State& s) { MemrefX1<all, Flat>(s); }
+static void BM_FlatMemrefX1None(bm::State& s) { MemrefX1<none, Flat>(s); }
+static void BM_MemrefX1All(bm::State& s) { MemrefX1<all, MemrefView>(s); }
+static void BM_MemrefX1None(bm::State& s) { MemrefX1<none, MemrefView>(s); }
+static void BM_StridedMemrefX1All(bm::State& s) { MemrefX1<all, Strided>(s); }
+static void BM_StridedMemrefX1None(bm::State& s) { MemrefX1<none, Strided>(s); }
 
 BENCHMARK(BM_FlatMemrefX1All);
 BENCHMARK(BM_FlatMemrefX1None);
@@ -1366,7 +1405,7 @@ static bool MemrefX12(ExecutionContext* ctx, void** args, void** attrs,
 }
 
 template <CustomCall::RuntimeChecks checks, typename MemrefType>
-static void MemrefX12(State& state) {
+static void MemrefX12(bm::State& state) {
   absl::string_view module = R"(
     func.func private @custom_call(
       %arg0: memref<4x4xf32>, %arg1: memref<4x4xf32>, %arg2: memref<4x4xf32>,
@@ -1390,12 +1429,14 @@ static void MemrefX12(State& state) {
                       &MemrefX12<checks, MemrefType>);
 }
 
-static void BM_FlatMemrefX12All(State& s) { MemrefX12<all, Flat>(s); }
-static void BM_FlatMemrefX12None(State& s) { MemrefX12<none, Flat>(s); }
-static void BM_MemrefX12All(State& s) { MemrefX12<all, MemrefView>(s); }
-static void BM_MemrefX12None(State& s) { MemrefX12<none, MemrefView>(s); }
-static void BM_StridedMemrefX12All(State& s) { MemrefX12<all, Strided>(s); }
-static void BM_StridedMemrefX12None(State& s) { MemrefX12<none, Strided>(s); }
+static void BM_FlatMemrefX12All(bm::State& s) { MemrefX12<all, Flat>(s); }
+static void BM_FlatMemrefX12None(bm::State& s) { MemrefX12<none, Flat>(s); }
+static void BM_MemrefX12All(bm::State& s) { MemrefX12<all, MemrefView>(s); }
+static void BM_MemrefX12None(bm::State& s) { MemrefX12<none, MemrefView>(s); }
+static void BM_StridedMemrefX12All(bm::State& s) { MemrefX12<all, Strided>(s); }
+static void BM_StridedMemrefX12None(bm::State& s) {
+  MemrefX12<none, Strided>(s);
+}
 
 BENCHMARK(BM_FlatMemrefX12All);
 BENCHMARK(BM_FlatMemrefX12None);
@@ -1424,7 +1465,7 @@ static bool I32AttrX1(ExecutionContext* ctx, void** args, void** attrs,
 }
 
 template <CustomCall::RuntimeChecks checks>
-static void I32AttrX1(State& state) {
+static void I32AttrX1(bm::State& state) {
   absl::string_view module = R"(
     func.func private @custom_call()
       attributes { rt.custom_call = "test.custom_call" }
@@ -1439,9 +1480,9 @@ static void I32AttrX1(State& state) {
                       &I32AttrX1<checks>);
 }
 
-static void BM_I32AttrX1All(State& s) { I32AttrX1<all>(s); }
-static void BM_I32AttrX1None(State& s) { I32AttrX1<none>(s); }
-static void BM_I32AttrX1Less(State& s) { I32AttrX1<less>(s); }
+static void BM_I32AttrX1All(bm::State& s) { I32AttrX1<all>(s); }
+static void BM_I32AttrX1None(bm::State& s) { I32AttrX1<none>(s); }
+static void BM_I32AttrX1Less(bm::State& s) { I32AttrX1<less>(s); }
 
 BENCHMARK(BM_I32AttrX1All);
 BENCHMARK(BM_I32AttrX1Less);
@@ -1482,7 +1523,7 @@ static bool I32AttrX12(ExecutionContext* ctx, void** args, void** attrs,
 }
 
 template <CustomCall::RuntimeChecks checks>
-static void I32AttrX12(State& state) {
+static void I32AttrX12(bm::State& state) {
   absl::string_view module = R"(
     func.func private @custom_call()
       attributes { rt.custom_call = "test.custom_call" }
@@ -1502,9 +1543,9 @@ static void I32AttrX12(State& state) {
                       &I32AttrX12<checks>);
 }
 
-static void BM_I32AttrX12All(State& s) { I32AttrX12<all>(s); }
-static void BM_I32AttrX12None(State& s) { I32AttrX12<none>(s); }
-static void BM_I32AttrX12Types(State& s) { I32AttrX12<less>(s); }
+static void BM_I32AttrX12All(bm::State& s) { I32AttrX12<all>(s); }
+static void BM_I32AttrX12None(bm::State& s) { I32AttrX12<none>(s); }
+static void BM_I32AttrX12Types(bm::State& s) { I32AttrX12<less>(s); }
 
 BENCHMARK(BM_I32AttrX12All);
 BENCHMARK(BM_I32AttrX12Types);
@@ -1528,7 +1569,7 @@ static bool AggregateAttrX1(ExecutionContext* ctx, void** args, void** attrs,
 }
 
 template <CustomCall::RuntimeChecks checks>
-static void AggregateAttrX1(State& state) {
+static void AggregateAttrX1(bm::State& state) {
   absl::string_view module = R"(
     func.func private @custom_call()
       attributes { rt.custom_call = "test.custom_call" }
@@ -1557,9 +1598,9 @@ static void AggregateAttrX1(State& state) {
                       &AggregateAttrX1<checks>, types, attrs);
 }
 
-static void BM_AggregateAttrX1All(State& s) { AggregateAttrX1<all>(s); }
-static void BM_AggregateAttrX1None(State& s) { AggregateAttrX1<none>(s); }
-static void BM_AggregateAttrX1Less(State& s) { AggregateAttrX1<less>(s); }
+static void BM_AggregateAttrX1All(bm::State& s) { AggregateAttrX1<all>(s); }
+static void BM_AggregateAttrX1None(bm::State& s) { AggregateAttrX1<none>(s); }
+static void BM_AggregateAttrX1Less(bm::State& s) { AggregateAttrX1<less>(s); }
 
 BENCHMARK(BM_AggregateAttrX1All);
 BENCHMARK(BM_AggregateAttrX1Less);
@@ -1574,7 +1615,7 @@ template <int value>
 using Data = std::integral_constant<int, value>;
 
 // Benchmark how long it takes to prepare UserData.
-static void BM_PrepareUserData(benchmark::State& state) {
+static void BM_PrepareUserData(bm::State& state) {
   Data<0> data0;
   Data<1> data1;
   Data<2> data2;
@@ -1635,7 +1676,7 @@ static bool UserDataX12(ExecutionContext* ctx, void** args, void** attrs,
 }
 
 template <CustomCall::RuntimeChecks checks>
-static void UserDataX12(State& state) {
+static void UserDataX12(bm::State& state) {
   absl::string_view module = R"(
     func.func private @custom_call()
       attributes { rt.custom_call = "test.custom_call" }
@@ -1667,13 +1708,83 @@ static void UserDataX12(State& state) {
                       &UserDataX12<checks>, {}, {}, user_data);
 }
 
-static void BM_UserDataX12All(State& s) { UserDataX12<all>(s); }
-static void BM_UserDataX12None(State& s) { UserDataX12<none>(s); }
-static void BM_UserDataX12Less(State& s) { UserDataX12<less>(s); }
+static void BM_UserDataX12All(bm::State& s) { UserDataX12<all>(s); }
+static void BM_UserDataX12None(bm::State& s) { UserDataX12<none>(s); }
+static void BM_UserDataX12Less(bm::State& s) { UserDataX12<less>(s); }
 
 BENCHMARK(BM_UserDataX12All);
 BENCHMARK(BM_UserDataX12Less);
 BENCHMARK(BM_UserDataX12None);
+
+//===----------------------------------------------------------------------===//
+// Benchmark memref encoding for a sequence of custom calls.
+//===----------------------------------------------------------------------===//
+
+template <CustomCall::RuntimeChecks checks>
+static bool RemainingArgsSink(ExecutionContext* ctx, void** args, void** attrs,
+                              void** rets) {
+  static auto* handler =
+      CustomCall::Bind("test.custom_call")
+          .RemainingArgs()
+          .To<checks>([](CustomCall::RemainingArgs) { return success(); })
+          .release();
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+template <CustomCall::RuntimeChecks checks>
+static void MemrefEncoding(bm::State& state) {
+  absl::string_view module = R"(
+    func.func private @custom_call(
+      %arg0: memref<4x4xf32>, %arg1: memref<5x5xf32>, %arg2: memref<6x6xf32>,
+      %arg3: memref<4x4xf32>, %arg4: memref<5x5xf32>, %arg5: memref<6x6xf32>
+    ) attributes { rt.custom_call = "test.custom_call" }
+
+    func.func @test() {
+      %0 = memref.alloca() : memref<4x4xf32>
+      %1 = memref.alloca() : memref<5x5xf32>
+      %2 = memref.alloca() : memref<6x6xf32>
+
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      call @custom_call(%0, %1, %2, %0, %1, %2)
+        : (memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>,
+           memref<4x4xf32>, memref<5x5xf32>, memref<6x6xf32>) -> ()
+      return
+    }
+  )";
+
+  BenchmarkCustomCall(state, module, {}, "test.custom_call",
+                      &RemainingArgsSink<checks>);
+}
+
+static void BM_MemrefEncoding(bm::State& s) { MemrefEncoding<none>(s); }
+
+BENCHMARK(BM_MemrefEncoding);
 
 }  // namespace runtime
 }  // namespace xla

@@ -53,15 +53,21 @@ limitations under the License.
 // TODO(b/186367334)
 #define CUPTI_NVBUG_3299481_WAR (10000 <= CUDA_VERSION && CUDA_VERSION < 11000)
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+namespace xla {
+namespace profiler {
+extern std::unique_ptr<tensorflow::profiler::ProfilerInterface> CreateGpuTracer(
+    const tensorflow::ProfileOptions& options);
+}  // namespace profiler
+}  // namespace xla
+#endif
 namespace tensorflow {
 namespace profiler {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-extern std::unique_ptr<ProfilerInterface> CreateGpuTracer(
-    const ProfileOptions& options);
 std::unique_ptr<ProfilerInterface> CreateGpuTracer() {
   ProfileOptions options = ProfilerSession::DefaultOptions();
-  return CreateGpuTracer(options);
+  return xla::profiler::CreateGpuTracer(options);
 }
 
 #else

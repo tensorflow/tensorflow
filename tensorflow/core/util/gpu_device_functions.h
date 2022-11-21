@@ -664,6 +664,18 @@ __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
 }
 
 template <typename F>
+__device__ Eigen::bfloat16 GpuAtomicCasHelper(Eigen::bfloat16* ptr,
+                                              F accumulate) {
+  Eigen::half ret = detail::GpuAtomicCasHelper(
+      reinterpret_cast<Eigen::half*>(ptr), [accumulate](Eigen::half a) {
+        Eigen::bfloat16 acc =
+            accumulate(Eigen::numext::bit_cast<Eigen::bfloat16>(a));
+        return Eigen::numext::bit_cast<Eigen::half>(acc);
+      });
+  return Eigen::numext::bit_cast<Eigen::bfloat16>(ret);
+}
+
+template <typename F>
 __device__ long long GpuAtomicCasHelper(long long* ptr, F accumulate) {
   return static_cast<long long>(
       GpuAtomicCasHelper(reinterpret_cast<unsigned long long*>(ptr),
@@ -723,6 +735,12 @@ __device__ inline Eigen::half GpuAtomicAdd(Eigen::half* ptr,
                                            Eigen::half value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](Eigen::half a) { return a + value; });
+}
+
+__device__ inline Eigen::bfloat16 GpuAtomicAdd(Eigen::bfloat16* ptr,
+                                               Eigen::bfloat16 value) {
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](Eigen::bfloat16 a) { return a + value; });
 }
 
 #if (__CUDA_ARCH__ < 600) || TENSORFLOW_USE_ROCM

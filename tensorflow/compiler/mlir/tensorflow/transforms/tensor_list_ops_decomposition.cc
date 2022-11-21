@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <tuple>
+#include <vector>
+
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -33,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -532,7 +537,7 @@ LogicalResult GetConstShapeValue(Value shape_value,
   if (!shape_const_op) return failure();
   for (const auto& v : shape_const_op.getValue().getValues<APInt>()) {
     int64_t dim_size = v.getSExtValue();
-    if (dim_size == ShapedType::kDynamicSize) return failure();
+    if (dim_size == tensorflow::kTFDynamicSize) return failure();
     shape->push_back(dim_size);
   }
   return success();

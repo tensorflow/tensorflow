@@ -15,10 +15,12 @@ load(
 # Config setting to enable go/libtpu support.
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/xrt/kernels:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/dtensor:__subpackages__",
+        "//third_party/py/jax_tpu_embedding:__subpackages__",
     ],
     licenses = ["notice"],
 )
