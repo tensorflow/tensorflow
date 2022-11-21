@@ -39,6 +39,7 @@ filegroup(
         "math_utils.cc",
         "tensor_utils.cc",
         "uniform_quantize_op.cc",
+        "uniform_quantized_add_op.cc",
         "uniform_dequantize_op.cc",
         "uniform_requantize_op.cc",
         "uniform_quantized_dot_ops.cc",
@@ -53,6 +54,7 @@ tf_kernel_library(
     srcs = [
         "uniform_dequantize_op.cc",
         "uniform_quantize_op.cc",
+        "uniform_quantized_add_op.cc",
         "uniform_quantized_clip_by_value_op.cc",
         "uniform_quantized_convolution_ops.cc",
         "uniform_quantized_dot_ops.cc",
@@ -158,6 +160,20 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:protobuf",
+    ],
+)
+
+tf_cc_test(
+    name = "uniform_quantized_add_op_test",
+    size = "small",
+    srcs = ["uniform_quantized_add_op_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
