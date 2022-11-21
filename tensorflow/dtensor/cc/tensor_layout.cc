@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/errors.h"
@@ -170,10 +169,6 @@ bool ShardVector::ContainsShard(const Shard& shard) const {
   for (const auto& shard_in_vec : shards)
     if (shard_in_vec == shard) return true;
   return false;
-}
-
-bool IsDynamicSize(int64_t size) {
-  return size == mlir::ShapedType::kDynamicSize || size == -1;
 }
 
 // static
@@ -1023,9 +1018,7 @@ std::vector<int64_t> Layout::GlobalShapeFromLocalShape(
   for (int i = 0; i < sharding_specs().size(); ++i) {
     int64_t l_shape = local_shape.empty() ? 1 : local_shape[i];
     int64_t dim_shards = num_shards()[i];
-    int64_t global_size =
-        IsDynamicSize(l_shape) ? l_shape : l_shape * dim_shards;
-    global_shape.emplace_back(global_size);
+    global_shape.emplace_back(l_shape * dim_shards);
   }
   return global_shape;
 }
@@ -1040,10 +1033,7 @@ std::vector<int64_t> Layout::LocalShapeFromGlobalShape(
   for (int i = 0; i < sharding_specs().size(); ++i) {
     int64_t dim_shards = shards[i];
     // TODO(hthu): Shape might not be always divisible.
-    int64_t local_size = IsDynamicSize(global_shape[i])
-                             ? global_shape[i]
-                             : global_shape[i] / dim_shards;
-    local_shape.emplace_back(local_size);
+    local_shape.emplace_back(global_shape[i] / dim_shards);
   }
   return local_shape;
 }
@@ -1057,9 +1047,7 @@ PartialTensorShape Layout::LocalShapeFromGlobalShape(
   PartialTensorShape local_shape({});
   for (int spec_index = 0; spec_index < sharding_specs().size(); ++spec_index) {
     int64_t dim_size = global_shape.dim_size(spec_index);
-    int64_t local_size =
-        IsDynamicSize(dim_size) ? dim_size : dim_size / shards[spec_index];
-    local_shape.AddDim(local_size);
+    local_shape.AddDim(dim_size == -1 ? -1 : dim_size / shards[spec_index]);
   }
   return local_shape;
 }
