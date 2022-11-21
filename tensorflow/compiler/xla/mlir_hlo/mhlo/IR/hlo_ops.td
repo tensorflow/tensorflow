@@ -3064,6 +3064,7 @@ def MHLO_BitcastOp : MHLO_Op<"bitcast", [Pure]> {
   let arguments = (ins MHLO_Tensor:$operand);
   let results = (outs MHLO_Tensor);
   let hasCustomHLOConverter = 1;
+  let hasFolder = 1;
 
   let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }

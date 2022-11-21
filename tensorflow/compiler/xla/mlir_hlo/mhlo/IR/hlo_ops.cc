@@ -2946,6 +2946,27 @@ LogicalResult BatchNormInferenceOp::inferReturnTypeComponents(
 }
 
 //===----------------------------------------------------------------------===//
+// BitcastOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult BitcastOp::fold(ArrayRef<Attribute>) {
+  if (getResult().getType() != getOperand().getType()) {
+    return {};
+  }
+
+  auto sourceLayout =
+      getOperation()->getAttrOfType<DenseIntElementsAttr>("source_layout");
+  auto resultLayout =
+      getOperation()->getAttrOfType<DenseIntElementsAttr>("result_layout");
+
+  if (sourceLayout == resultLayout) {
+    return getOperand();
+  }
+
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // BitcastConvertOp
 //===----------------------------------------------------------------------===//
 
