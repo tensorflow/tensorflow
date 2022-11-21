@@ -27,6 +27,7 @@ REQUIREMENTS=$2
 if [ "$PYTHON_VERSION" = "3.7" ]; then
     wget https://www.python.org/ftp/python/3.7.11/Python-3.7.11.tgz && tar xvf Python-3.7.11.tgz && cd Python-3.7*/ && ./configure --enable-optimizations && make altinstall
     ln -sf /usr/local/bin/python3.7 /usr/bin/python3 && ln -sf /usr/local/bin/pip3.7 /usr/bin/pip3
+    ln -sf /usr/local/bin/python3.7 /usr/bin/python && ln -sf /usr/local/lib/python3.7 /usr/lib/tf_python
 
     scl enable devtoolset-10 'bash'
     rm -f /usr/bin/ld && ln -s /opt/rh/devtoolset-10/root/usr/bin/ld /usr/bin/ld
@@ -35,6 +36,7 @@ if [ "$PYTHON_VERSION" = "3.7" ]; then
 elif [ "$PYTHON_VERSION" = "3.8" ]; then
     wget https://www.python.org/ftp/python/3.8.9/Python-3.8.9.tgz && tar xvf Python-3.8.9.tgz && cd Python-3.8*/ && ./configure --enable-optimizations && make altinstall
     ln -sf /usr/local/bin/python3.8 /usr/bin/python3 && ln -sf /usr/local/bin/pip3.8 /usr/bin/pip3
+    ln -sf /usr/local/bin/python3.8 /usr/bin/python && ln -sf /usr/local/lib/python3.8 /usr/lib/tf_python
 
     scl enable devtoolset-10 'bash'
     rm -f /usr/bin/ld && ln -s /opt/rh/devtoolset-10/root/usr/bin/ld /usr/bin/ld
@@ -43,6 +45,7 @@ elif [ "$PYTHON_VERSION" = "3.8" ]; then
 elif [ "$PYTHON_VERSION" = "3.9" ]; then
     wget https://www.python.org/ftp/python/3.9.7/Python-3.9.7.tgz && tar xvf Python-3.9.7.tgz && cd Python-3.9*/ && ./configure --enable-optimizations && make altinstall
     ln -sf /usr/local/bin/python3.9 /usr/bin/python3 && ln -sf /usr/local/bin/pip3.9 /usr/bin/pip3
+    ln -sf /usr/local/bin/python3.9 /usr/bin/python && ln -sf /usr/local/lib/python3.9 /usr/lib/tf_python
 
     scl enable devtoolset-10 'bash'
     rm -f /usr/bin/ld && ln -s /opt/rh/devtoolset-10/root/usr/bin/ld /usr/bin/ld
@@ -56,6 +59,7 @@ elif [ "$PYTHON_VERSION" = "3.10" ]; then
     wget https://www.python.org/ftp/python/3.10.2/Python-3.10.2.tgz && tar xvf Python-3.10.2.tgz && cd Python-3.10*/ &&
         sed -i 's/PKG_CONFIG openssl /PKG_CONFIG openssl11 /g' configure && ./configure --enable-optimizations && make altinstall
     ln -sf /usr/local/bin/python3.10 /usr/bin/python3 && ln -sf /usr/local/bin/pip3.10 /usr/bin/pip3
+    ln -sf /usr/local/bin/python3.10 /usr/bin/python && ln -sf /usr/local/lib/python3.10 /usr/lib/tf_python
 
     scl enable devtoolset-10 'bash'
     rm -f /usr/bin/ld && ln -s /opt/rh/devtoolset-10/root/usr/bin/ld /usr/bin/ld
@@ -65,12 +69,6 @@ else
     printf '%s\n' "Python Version not Supported" >&2
     exit 1
 fi
-
-# Setup links for TensorFlow to compile.
-# Referenced in devel.usertools/*.bazelrc
-ln -sf /usr/local/bin/$VERSION /usr/bin/python3
-ln -sf /usr/local/bin/$VERSION /usr/bin/python
-ln -sf /usr/local/lib/$VERSION /usr/lib/tf_python
 
 export PYTHON_LIB_PATH=/usr/local/lib/python${PYTHON_VERSION}/site-packages
 export PYTHON_BIN_PATH=/usr/local/bin/python${PYTHON_VERSION}
