@@ -7,7 +7,7 @@ func.func @concatenate(%arg1: tensor<?x?xf32>,
   %cat = thlo.concatenate
       ins(%arg1: tensor<?x?xf32>, %arg2: tensor<?x?xi32>)
       outs(%dst: tensor<?x?xf32>)
-      { dimension = 0 : i64 }
+      dimension = 0
   func.return %cat : tensor<?x?xf32>
 }
 
@@ -20,7 +20,7 @@ func.func @concatenate_mismatch_rank(%arg1: tensor<?x?xf32>,
   %cat = thlo.concatenate
       ins(%arg1: tensor<?x?xf32>, %arg2: tensor<?x?x?xf32>)
       outs(%dst: tensor<?x?xf32>)
-      { dimension = 0 : i64 }
+      dimension = 0
   func.return %cat : tensor<?x?xf32>
 }
 
@@ -33,7 +33,7 @@ func.func @concatenate_mismatch_shape(%arg1: tensor<?x8xf32>,
   %cat = thlo.concatenate
       ins(%arg1: tensor<?x8xf32>, %arg2: tensor<?x?xf32>)
       outs(%dst: tensor<?x?xf32>)
-      { dimension = 0 : i64 }
+      dimension = 0
   func.return %cat : tensor<?x?xf32>
 }
 
@@ -210,7 +210,8 @@ func.func @sort_mismatched_number_of_inputs_and_outputs(
   %sorted = thlo.sort
       ins(%input1: tensor<?x?xf32>, %input2: tensor<?x?xi32>)
       outs(%init1: tensor<?x?xf32>)
-      { dimension = 0 : i64, is_stable = true }
+      dimension = 0
+      is_stable = true
       (%e11: f32, %e12: f32) {
         %gt = arith.cmpf ogt, %e11, %e12: f32
         thlo.yield %gt : i1
@@ -228,7 +229,8 @@ func.func @sort_mismatched_number_of_inputs_and_comparator_arguments(
   %sorted1, %sorted2 = thlo.sort
       ins(%input1: tensor<?x?xf32>, %input2: tensor<?x?xi32>)
       outs(%init1: tensor<?x?xf32>, %init2: tensor<?x?xi32>)
-      { dimension = 0 : i64, is_stable = true }
+      dimension = 0
+      is_stable = true
       (%e11: f32, %e12: f32, %e21: i32) {
         %gt = arith.cmpf ogt, %e11, %e12: f32
         thlo.yield %gt : i1
@@ -246,7 +248,8 @@ func.func @sort_mismatched_input_and_comparator_type(
   %sorted1, %sorted2 = thlo.sort
       ins(%input1: tensor<?x?xf32>, %input2: tensor<?x?xi32>)
       outs(%init1: tensor<?x?xf32>, %init2: tensor<?x?xi32>)
-      { dimension = 0 : i64, is_stable = true }
+      dimension = 0
+      is_stable = true
       (%e11: f32, %e12: f32, %e21: i32, %e22: f32) {
         %gt = arith.cmpf ogt, %e11, %e12: f32
         thlo.yield %gt : i1
@@ -263,7 +266,8 @@ func.func @sort_comparator_yields_different_than_one_output(
   %sorted1, %sorted2 = thlo.sort
       ins(%input1: tensor<?x?xf32>, %input2: tensor<?x?xi32>)
       outs(%init1: tensor<?x?xf32>, %init2: tensor<?x?xi32>)
-      { dimension = 0 : i64, is_stable = true }
+      dimension = 0
+      is_stable = true
       (%e11: f32, %e12: f32, %e21: i32, %e22: i32) {
         %gt = arith.cmpf ogt, %e11, %e12: f32
         // expected-error@+1{{'thlo.yield' op expects number of tensor output args = 1 to match the number of yield operands = 2}}
@@ -281,7 +285,8 @@ func.func @sort_comparator_yields_non_boolean(
   %sorted1, %sorted2 = thlo.sort
       ins(%input1: tensor<?x?xf32>, %input2: tensor<?x?xi32>)
       outs(%init1: tensor<?x?xf32>, %init2: tensor<?x?xi32>)
-      { dimension = 0 : i64, is_stable = true }
+      dimension = 0
+      is_stable = true
       (%e11: f32, %e12: f32, %e21: i32, %e22: i32) {
         // expected-error@+1{{'thlo.yield' op expects yield operand 0 with type = 'f32' to match output arg element type = 'i1'}}
         thlo.yield %e11 : f32
@@ -299,7 +304,8 @@ func.func @sort_inputs_have_different_shapes(
   %sorted1, %sorted2 = thlo.sort
       ins(%input1: tensor<64x32xf32>, %input2: tensor<32x32xi32>)
       outs(%init1: tensor<?x?xf32>, %init2: tensor<?x?xi32>)
-      { dimension = 0 : i64, is_stable = true }
+      dimension = 0
+      is_stable = true
       (%e11: f32, %e12: f32, %e21: i32, %e22: i32) {
         %gt = arith.cmpf ogt, %e11, %e12: f32
         thlo.yield %gt : i1
@@ -317,7 +323,8 @@ func.func @sort_output_has_different_shape_from_inputs(
   %sorted1, %sorted2 = thlo.sort
       ins(%input1: tensor<64x32xf32>, %input2: tensor<64x32xi32>)
       outs(%init1: tensor<32x64xf32>, %init2: tensor<?x?xi32>)
-      { dimension = 0 : i64, is_stable = true }
+      dimension = 0
+      is_stable = true
       (%e11: f32, %e12: f32, %e21: i32, %e22: i32) {
         %gt = arith.cmpf ogt, %e11, %e12: f32
         thlo.yield %gt : i1
@@ -335,7 +342,8 @@ func.func @sort_dimension_is_incompatible_with_rank_of_inputs(
   %sorted1, %sorted2 = thlo.sort
       ins(%input1: tensor<?x?xf32>, %input2: tensor<?x?xi32>)
       outs(%init1: tensor<?x?xf32>, %init2: tensor<?x?xi32>)
-      { dimension = 2 : i64, is_stable = true }
+      dimension = 2
+      is_stable = true
       (%e11: f32, %e12: f32, %e21: i32, %e22: i32) {
         %gt = arith.cmpf ogt, %e11, %e12: f32
         thlo.yield %gt : i1

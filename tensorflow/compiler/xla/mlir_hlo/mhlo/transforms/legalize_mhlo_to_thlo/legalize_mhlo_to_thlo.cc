@@ -124,7 +124,8 @@ struct ConcatenateOpPattern : public OpConversionPattern<mhlo::ConcatenateOp> {
     auto emptyTensor = rewriter.create<tensor::EmptyOp>(
         loc, staticInitSizes, resultTy.getElementType(), dynamicInitSizes);
     rewriter.replaceOpWithNewOp<thlo::ConcatenateOp>(
-        op, resultTy, adaptor.getVal(), emptyTensor, concatDim);
+        op, resultTy, adaptor.getVal(), emptyTensor,
+        rewriter.getIndexAttr(concatDim));
     return success();
   }
 };
@@ -332,7 +333,7 @@ struct SortPattern : public OpConversionPattern<mhlo::SortOp> {
 
     auto thloSort = rewriter.create<thlo::SortOp>(
         loc, resultTypes, adaptor.getInputs(), outputs,
-        rewriter.getI64IntegerAttr(dimension), rewriter.getBoolAttr(isStable));
+        rewriter.getIndexAttr(dimension), rewriter.getBoolAttr(isStable));
 
     Region& region = thloSort.getComparator();
     rewriter.inlineRegionBefore(op.getComparator(), region, region.end());

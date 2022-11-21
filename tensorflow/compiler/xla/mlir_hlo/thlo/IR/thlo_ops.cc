@@ -65,27 +65,28 @@ void printDstStyleOp(
     DstOpTy op, OpAsmPrinter &p,
     function_ref<SmallVector<StringRef>(DstOpTy op, OpAsmPrinter &)>
         printAttrsFn = nullptr) {
+  p.increaseIndent();
   if (op.getNumDpsInputs() != 0) {
     p.printNewline();
-    p << " ins(";
+    p << "ins(";
     llvm::interleaveComma(
         op.getOperands().take_front(op.getNumDpsInputs()), p,
         [&](Value input) { p << input << " : " << input.getType(); });
     p << ")";
   }
   p.printNewline();
-  p << " outs(";
+  p << "outs(";
   llvm::interleaveComma(
       op.getOperands().take_back(op.getNumDpsInits()), p,
       [&](Value output) { p << output << " : " << output.getType(); });
   p << ")";
-  p.printNewline();
 
   // Print attributes with custom printing logic.
   SmallVector<StringRef> elidedAttrs;
   if (printAttrsFn) elidedAttrs = printAttrsFn(op, p);
 
   p.printOptionalAttrDict(op->getAttrs(), elidedAttrs);
+  p.decreaseIndent();
 }
 
 ParseResult parseKeywordOperandListWithTypes(
@@ -150,7 +151,7 @@ ParseResult parseDenseI64ArrayAttr(OpAsmParser &parser,
 
 void printDenseI64ArrayAttr(OpAsmPrinter &p, StringRef attributeName,
                             ArrayRef<int64_t> attributeValue) {
-  p << " " << attributeName << " = [" << attributeValue << "] ";
+  p << attributeName << " = [" << attributeValue << "] ";
 }
 
 SmallVector<utils::IteratorType> getParallelIteratorTypes(int64_t dimCount) {
@@ -256,7 +257,7 @@ namespace {
 // size in the concatenation dimension.
 Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
                                    Location loc, Value tile) {
-  uint64_t concatDim = op.getDimension();
+  int64_t concatDim = op.getDimension().getSExtValue();
   RankedTensorType resultTy = op.getType(0).cast<RankedTensorType>();
   int64_t rank = resultTy.getRank();
   OperandRange allOperands = op.getInputs();
@@ -358,7 +359,7 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
       RankedTensorType::get(tileType.getShape(), resultTy.getElementType());
   return builder
       .create<thlo::ConcatenateOp>(loc, subResultType, subOperands, subInit,
-                                   concatDim)
+                                   builder.getIndexAttr(concatDim))
       ->getResult(0);
 }
 
@@ -441,13 +442,32 @@ FailureOr<Value> ConcatenateOp::generateResultTileValue(
 }
 
 ParseResult ConcatenateOp::parse(OpAsmParser &parser, OperationState &result) {
-  return parseDstStyleOp(parser, result);
+  return parseDstStyleOp(
+      parser, result, [&](OpAsmParser &parser, NamedAttrList &attributes) {
+        int64_t dimension = 0;
+        if (parser.parseKeyword("dimension") || parser.parseEqual() ||
+            parser.parseInteger(dimension))
+          return failure();
+
+        attributes.set("dimension",
+                       parser.getBuilder().getIndexAttr(dimension));
+        return success();
+      });
 }
 
-void ConcatenateOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
+void ConcatenateOp::print(OpAsmPrinter &p) {
+  printDstStyleOp<ConcatenateOp>(
+      *this, p,
+      [](ConcatenateOp op, OpAsmPrinter &p) -> SmallVector<StringRef> {
+        p.printNewline();
+        p << op.getDimensionAttrName().str() << " = " << op.getDimension();
+
+        return {op.getDimensionAttrName()};
+      });
+}
 
 LogicalResult ConcatenateOp::verify() {
-  int64_t concatDim = getDimension();
+  int64_t concatDim = getDimension().getSExtValue();
 
   ShapedType inputType =
       getDpsInputOperand(0)->get().getType().cast<ShapedType>();
@@ -509,6 +529,7 @@ void DynamicBroadcastInDimOp::print(OpAsmPrinter &p) {
       *this, p,
       [](DynamicBroadcastInDimOp op,
          OpAsmPrinter &p) -> SmallVector<StringRef> {
+        p.printNewline();
         printDenseI64ArrayAttr(p, op.getBroadcastDimensionsAttrName(),
                                op.getBroadcastDimensions());
         return {op.getBroadcastDimensionsAttrName()};
@@ -668,12 +689,15 @@ ParseResult ScatterOp::parse(OpAsmParser &parser, OperationState &result) {
 void ScatterOp::print(OpAsmPrinter &p) {
   printDstStyleOp<ScatterOp>(*this, p);
 
+  p.increaseIndent();
+  p.printNewline();
   p << "(";
   llvm::interleaveComma(getUpdateComputation().getArguments(), p,
                         [&](auto arg) { p.printRegionArgument(arg); });
   p << ") ";
 
   p.printRegion(getUpdateComputation(), /*printEntryBlockArgs=*/false);
+  p.decreaseIndent();
 }
 
 LogicalResult ScatterOp::verify() {
@@ -901,7 +925,23 @@ void SortOp::getAsmBlockArgumentNames(Region &region,
 }
 
 ParseResult SortOp::parse(OpAsmParser &parser, OperationState &result) {
-  if (parseDstStyleOp(parser, result)) return failure();
+  if (parseDstStyleOp(
+          parser, result, [&](OpAsmParser &parser, NamedAttrList &attributes) {
+            int64_t dimension = 0;
+            int64_t isStable = 0;
+            if (parser.parseKeyword("dimension") || parser.parseEqual() ||
+                parser.parseInteger(dimension) ||
+                parser.parseKeyword("is_stable") || parser.parseEqual() ||
+                parser.parseInteger(isStable))
+              return failure();
+
+            llvm::errs() << "is stable " << isStable << "\n";
+            Builder &b = parser.getBuilder();
+            attributes.set("dimension", b.getIndexAttr(dimension));
+            attributes.set("is_stable", b.getBoolAttr(isStable != 0));
+            return success();
+          }))
+    return failure();
 
   SmallVector<OpAsmParser::Argument> regionArgs;
   if (parser.parseArgumentList(regionArgs, OpAsmParser::Delimiter::Paren,
@@ -916,14 +956,25 @@ ParseResult SortOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void SortOp::print(OpAsmPrinter &p) {
-  printDstStyleOp<SortOp>(*this, p);
+  printDstStyleOp<SortOp>(
+      *this, p, [](SortOp op, OpAsmPrinter &p) -> SmallVector<StringRef> {
+        p.printNewline();
+        p << op.getDimensionAttrName().str() << " = " << op.getDimension();
 
+        p.printNewline();
+        p << op.getIsStableAttrName().str() << " = " << op.getIsStable();
+        return {op.getDimensionAttrName(), op.getIsStableAttrName()};
+      });
+
+  p.increaseIndent();
+  p.printNewline();
   p << "(";
   llvm::interleaveComma(getComparator().getArguments(), p,
                         [&](auto arg) { p.printRegionArgument(arg); });
   p << ") ";
 
   p.printRegion(getComparator(), /*printEntryBlockArgs=*/false);
+  p.decreaseIndent();
 }
 
 LogicalResult SortOp::verify() {
@@ -998,9 +1049,10 @@ LogicalResult SortOp::verify() {
   // is valid, since all inputs are known to have the same shape. `getDimension`
   // returns an unsigned int, so no need to check for negative values.
   size_t referenceRank = referenceShape.size();
-  if (getDimension() >= referenceRank) {
+  if (getDimension().getSExtValue() >= referenceRank) {
     return emitOpError() << "sorting dimension must be in range [0, "
-                         << referenceRank << ") but got " << getDimension();
+                         << referenceRank << ") but got "
+                         << getDimension().getSExtValue();
   }
 
   return verifyDestinationStyleOp(getOperation());
@@ -1023,7 +1075,7 @@ SmallVector<Range> SortOp::getIterationDomain(OpBuilder &b) {
 
   IntegerAttr zero = b.getIndexAttr(0);
   IntegerAttr one = b.getIndexAttr(1);
-  int64_t sortDimension = getDimension();
+  int64_t sortDimension = getDimension().getSExtValue();
 
   for (auto axis : llvm::seq<int64_t>(0, operandsRank - 1)) {
     int64_t operandAxis = (axis >= sortDimension) ? axis + 1 : axis;
@@ -1043,7 +1095,7 @@ mlir::gml_st::TilingInterface SortOp::getTiledImplementation(
   SmallVector<OpFoldResult> tileSizes = llvm::to_vector(sizes);
 
   size_t numOutputs = getNumDpsInits();
-  int64_t sortDimension = getDimension();
+  int64_t sortDimension = getDimension().getSExtValue();
 
   Value oneInput = getInputs().front();
 

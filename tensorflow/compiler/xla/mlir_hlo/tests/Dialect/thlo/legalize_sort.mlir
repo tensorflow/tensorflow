@@ -5,7 +5,8 @@ func.func @sort(%input1: memref<?x?xf32>, %input2: memref<?x?xi32>,
   thlo.sort
       ins(%input1: memref<?x?xf32>, %input2: memref<?x?xi32>)
       outs(%init1: memref<?x?xf32>, %init2: memref<?x?xi32>)
-      { dimension = 0 : i64, is_stable = true }
+      dimension = 0
+      is_stable = true
       (%e11: f32, %e12: f32, %e21: i32, %e22: i32) {
         %gt = arith.cmpf ogt, %e11, %e12: f32
         thlo.yield %gt : i1

@@ -415,7 +415,7 @@ func.func @concatenate(
         %arg1: tensor<?x?x?xf32>,
         %arg2: tensor<?x?x?xf32>)
     outs(%init: tensor<?x1x?xf32>)
-    { dimension = 1 : i64 }
+    dimension = 1
   func.return %cat : tensor<?x1x?xf32>
 }
 

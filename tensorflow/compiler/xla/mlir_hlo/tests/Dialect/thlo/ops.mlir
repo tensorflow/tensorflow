@@ -9,7 +9,7 @@ func.func @concatenate(%arg1: tensor<?x?xf32>,
   %cat = thlo.concatenate
       ins(%arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>)
       outs(%dst: tensor<?x?xf32>)
-      { dimension = 0 : i64 }
+      dimension = 0
   func.return %cat : tensor<?x?xf32>
 }
 // CHECK-LABEL: func @concatenate
@@ -22,7 +22,7 @@ func.func @concatenate_memref(%arg1: memref<?x?xf32>,
   thlo.concatenate
       ins(%arg1: memref<?x?xf32>, %arg2: memref<?x?xf32>)
       outs(%dst: memref<?x?xf32>)
-      { dimension = 0 : i64 }
+      dimension = 0
   func.return
 }
 // CHECK-LABEL: func @concatenate_memref
@@ -112,7 +112,8 @@ func.func @sort(%input1: tensor<?x?xf32>, %input2: tensor<?x?xi32>,
   %sorted1, %sorted2 = thlo.sort
       ins(%input1: tensor<?x?xf32>, %input2: tensor<?x?xi32>)
       outs(%init1: tensor<?x?xf32>, %init2: tensor<?x?xi32>)
-      { dimension = 0 : i64, is_stable = true }
+      dimension = 0
+      is_stable = true
       (%e11: f32, %e12: f32, %e21: i32, %e22: i32) {
         %gt = arith.cmpf ogt, %e11, %e12: f32
         thlo.yield %gt : i1
@@ -131,7 +132,8 @@ func.func @sort_memref(%input1: memref<?x?xf32>, %input2: memref<?x?xi32>,
   thlo.sort
       ins(%input1: memref<?x?xf32>, %input2: memref<?x?xi32>)
       outs(%init1: memref<?x?xf32>, %init2: memref<?x?xi32>)
-      { dimension = 0 : i64, is_stable = true }
+      dimension = 0
+      is_stable = true
       (%e11: f32, %e12: f32, %e21: i32, %e22: i32) {
         %gt = arith.cmpf ogt, %e11, %e12: f32
         thlo.yield %gt : i1

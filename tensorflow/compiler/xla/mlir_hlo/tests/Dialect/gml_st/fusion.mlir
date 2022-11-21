@@ -65,9 +65,9 @@ func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
   %tile = gml_st.tile [%i, %j] [%arg_dim0, %arg_dim1] [1, 1] : !gml_st.tile<?x?>
   %concat = thlo.concatenate
       ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>, %c : tensor<?x?xi32>)
-      outs(%init : tensor<?x?xi32>) {
-      dimension = 1 : i64,
-      op_label = "producer" }
+      outs(%init : tensor<?x?xi32>)
+      dimension = 1
+      { op_label = "producer" }
   %concat_sub = gml_st.materialize %concat[%tile]
       : tensor<?x?xi32>[!gml_st.tile<?x?>] to tensor<?x?xi32>
   func.return { op_label = "consumer" } %concat_sub : tensor<?x?xi32>
@@ -296,7 +296,7 @@ func.func @dim_reification_concatenate(%init : tensor<?x?xi32>,
   %concat = thlo.concatenate
       ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>, %c : tensor<?x?xi32>)
       outs(%init : tensor<?x?xi32>)
-      {dimension = 1 : i64}
+      dimension = 1
   %dim = tensor.dim %concat, %c1 : tensor<?x?xi32>
   func.return %dim : index
 }

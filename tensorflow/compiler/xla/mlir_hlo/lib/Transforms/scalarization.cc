@@ -345,7 +345,7 @@ struct ScalarizeConcatenateOp : public OpRewritePattern<thlo::ConcatenateOp> {
   LogicalResult matchAndRewrite(thlo::ConcatenateOp concatenateOp,
                                 PatternRewriter &rewriter) const override {
     Location loc = concatenateOp.getLoc();
-    int64_t concatDim = concatenateOp.getDimension();
+    int64_t concatDim = concatenateOp.getDimension().getSExtValue();
 
     auto initTensor = concatenateOp.getInit();
     auto initType = initTensor.getType();

@@ -364,7 +364,7 @@ Value emitBottomUpMergeSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
 }
 
 struct Slicer {
-  Slicer(OpBuilder& b, uint64_t sortDim, Value sortDimSize,
+  Slicer(OpBuilder& b, int64_t sortDim, Value sortDimSize,
          ValueRange inductionVariables)
       : sizes(inductionVariables.size() + 1, b.getI64IntegerAttr(1)),
         strides(inductionVariables.size() + 1, b.getI64IntegerAttr(1)) {
@@ -402,11 +402,10 @@ SmallVector<Value> sliceMemrefs(ImplicitLocOpBuilder& b,
   if (inductionVariables.empty()) return memrefs;
 
   SmallVector<Value> slices;
-  Slicer slicer(b, op.getDimension(), sortDimSize, inductionVariables);
+  Slicer slicer(b, op.getDimension().getSExtValue(), sortDimSize,
+                inductionVariables);
 
-  for (Value out : memrefs) {
-    slices.push_back(slicer.slice(b, out));
-  }
+  for (Value out : memrefs) slices.push_back(slicer.slice(b, out));
 
   return slices;
 }
@@ -432,7 +431,7 @@ struct SortOpPattern : public OpRewritePattern<SortOp> {
     auto firstInputType = firstInput.getType().cast<ShapedType>();
     int64_t inputRank = firstInputType.getRank();
 
-    int64_t sortDim = op.getDimension();
+    int64_t sortDim = op.getDimension().getSExtValue();
     Value sortDimSize = b.createOrFold<memref::DimOp>(
         firstInput, b.create<arith::ConstantIndexOp>(sortDim));
     int64_t staticSortDimSize = firstInputType.getDimSize(sortDim);
