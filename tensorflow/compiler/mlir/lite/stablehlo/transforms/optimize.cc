@@ -171,8 +171,8 @@ LogicalResult RemoveReshapeAroundDotGeneral(mhlo::ReshapeOp reshape_after,
 // To:
 //   %x = concatenate(%x0, %x1, ...)
 //   dot_general(%x, %w)
-LogicalResult LiftDotConcat(mhlo::ConcatenateOp concat,
-                            PatternRewriter &rewriter) {
+LogicalResult LiftDotConcatLHS(mhlo::ConcatenateOp concat,
+                               PatternRewriter &rewriter) {
   if (concat.getVal().size() < 2)
     return rewriter.notifyMatchFailure(
         concat, "Concatenate op should have at least two operands");
@@ -271,6 +271,107 @@ LogicalResult LiftDotConcat(mhlo::ConcatenateOp concat,
       rewriter.getI64IntegerAttr(new_concat_dim));
   rewriter.replaceOpWithNewOp<mhlo::DotGeneralOp>(
       concat, concat.getType(), new_concat, first_dot.getRhs(),
+      first_dot.getDotDimensionNumbers(), first_dot.getPrecisionConfigAttr());
+  return success();
+}
+
+// Convert:
+//   %y0 = dot_general(%x0, %w0)
+//   %y1 = dot_general(%x1, %w1)
+//   ...
+//   concatenate(%y0, %y1, ...)
+// To:
+//   %x = concatenate(%x0, %x1, ...)
+//   %w = concatenate(%w0, %w1, ...)
+//   dot_general(%x, %w)
+//
+// To simplify the implementation, we only handle the case where the final
+// concat is on the only batching dim.
+LogicalResult LiftDotConcatLHSAndRHS(mhlo::ConcatenateOp concat,
+                                     PatternRewriter &rewriter) {
+  if (concat.getVal().size() < 2)
+    return rewriter.notifyMatchFailure(
+        concat, "Concatenate op should have at least two operands");
+
+  auto first_dot = concat.getVal()[0].getDefiningOp<mhlo::DotGeneralOp>();
+  if (!first_dot)
+    return rewriter.notifyMatchFailure(concat, "Operand is not dot_general");
+  if (!first_dot.getLhs().getType().hasStaticShape())
+    return rewriter.notifyMatchFailure(
+        first_dot, "All dot_general LHS must be statically shaped");
+  if (!first_dot->hasOneUse())
+    return rewriter.notifyMatchFailure(first_dot, "Op has multiple uses");
+
+  SmallVector<Value> all_dot_lhs;
+  all_dot_lhs.reserve(concat.getVal().size());
+  all_dot_lhs.push_back(first_dot.getLhs());
+  SmallVector<Value> all_dot_rhs;
+  all_dot_rhs.reserve(concat.getVal().size());
+  all_dot_rhs.push_back(first_dot.getRhs());
+
+  if (first_dot.getDotDimensionNumbers().getLhsBatchingDimensions().size() != 1)
+    return rewriter.notifyMatchFailure(first_dot, "One batching dim required");
+  if (concat.getDimension() != 0)
+    return rewriter.notifyMatchFailure(
+        concat, "Not concating on the first batching dim");
+
+  for (auto value : concat.getVal().drop_front()) {
+    auto dot = value.getDefiningOp<mhlo::DotGeneralOp>();
+    if (!dot)
+      return rewriter.notifyMatchFailure(concat, "Operand is not dot_general");
+
+    if (dot.getDotDimensionNumbers() != first_dot.getDotDimensionNumbers())
+      return rewriter.notifyMatchFailure(
+          dot, "dot_general ops have different dimension numbers");
+    if (dot.getPrecisionConfig() != first_dot.getPrecisionConfig())
+      return rewriter.notifyMatchFailure(
+          dot, "dot_general ops have different precision configs");
+    if (!dot.getLhs().getType().hasStaticShape() ||
+        !dot.getRhs().getType().hasStaticShape())
+      return rewriter.notifyMatchFailure(
+          dot, "all dot_general operands must be statically shaped");
+    if (dot.getLhs().getType().getElementType() !=
+            first_dot.getLhs().getType().getElementType() ||
+        dot.getRhs().getType().getElementType() !=
+            first_dot.getRhs().getType().getElementType() ||
+        dot.getType().getElementType() != first_dot.getType().getElementType())
+      return rewriter.notifyMatchFailure(
+          dot, "all dot_general ops must have the same element type");
+    if (!dot->hasOneUse())
+      return rewriter.notifyMatchFailure(dot, "Op has multiple uses");
+
+    all_dot_lhs.push_back(dot.getLhs());
+    all_dot_rhs.push_back(dot.getRhs());
+  }
+
+  // Now get the output shapes of the lifted concat ops.
+  const int64_t lhs_batch_dim =
+      first_dot.getDotDimensionNumbers().getLhsBatchingDimensions()[0];
+  SmallVector<int64_t> lhs_new_concat_shape(
+      first_dot.getLhs().getType().getShape());
+  lhs_new_concat_shape[lhs_batch_dim] = 0;
+  for (auto v : all_dot_lhs) {
+    lhs_new_concat_shape[lhs_batch_dim] +=
+        v.getType().dyn_cast<ShapedType>().getShape()[lhs_batch_dim];
+  }
+  const int64_t rhs_batch_dim =
+      first_dot.getDotDimensionNumbers().getRhsBatchingDimensions()[0];
+  SmallVector<int64_t> rhs_new_concat_shape(
+      first_dot.getRhs().getType().getShape());
+  rhs_new_concat_shape[rhs_batch_dim] = 0;
+  for (auto v : all_dot_rhs) {
+    rhs_new_concat_shape[rhs_batch_dim] +=
+        v.getType().dyn_cast<ShapedType>().getShape()[rhs_batch_dim];
+  }
+
+  auto lhs_new_concat = rewriter.create<mhlo::ConcatenateOp>(
+      concat->getLoc(), concat.getType().clone(lhs_new_concat_shape),
+      all_dot_lhs, rewriter.getI64IntegerAttr(lhs_batch_dim));
+  auto rhs_new_concat = rewriter.create<mhlo::ConcatenateOp>(
+      concat->getLoc(), concat.getType().clone(rhs_new_concat_shape),
+      all_dot_rhs, rewriter.getI64IntegerAttr(rhs_batch_dim));
+  rewriter.replaceOpWithNewOp<mhlo::DotGeneralOp>(
+      concat, concat.getType(), lhs_new_concat, rhs_new_concat,
       first_dot.getDotDimensionNumbers(), first_dot.getPrecisionConfigAttr());
   return success();
 }
@@ -425,7 +526,8 @@ class OptimizePass
     RewritePatternSet patterns(&getContext());
     patterns.add(ConvertDotToDotGeneral);
     patterns.add(RemoveReshapeAroundDotGeneral);
-    patterns.add(LiftDotConcat);
+    patterns.add(LiftDotConcatLHS);
+    patterns.add(LiftDotConcatLHSAndRHS);
     patterns.add(FuseSliceConcat);
     patterns.add(ConvertReshapeDotRhsToBatchedDot);
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
