@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/tests/exhaustive_op_test_utils.h"
+#include "tensorflow/compiler/xla/tests/exhaustive/exhaustive_op_test_utils.h"
 
 #include <array>
 #include <string>

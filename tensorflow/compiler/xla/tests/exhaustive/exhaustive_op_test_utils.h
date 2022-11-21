@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_TESTS_EXHAUSTIVE_OP_TEST_UTILS_H_
-#define TENSORFLOW_COMPILER_XLA_TESTS_EXHAUSTIVE_OP_TEST_UTILS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_TESTS_EXHAUSTIVE_EXHAUSTIVE_OP_TEST_UTILS_H_
+#define TENSORFLOW_COMPILER_XLA_TESTS_EXHAUSTIVE_EXHAUSTIVE_OP_TEST_UTILS_H_
 
 #include <algorithm>
 #include <array>
@@ -1065,4 +1065,4 @@ using ExhaustiveBinaryTest = ExhaustiveOpTestBase<T, 2>;
 
 }  // namespace exhaustive_op_test
 }  // namespace xla
-#endif  // TENSORFLOW_COMPILER_XLA_TESTS_EXHAUSTIVE_OP_TEST_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_TESTS_EXHAUSTIVE_EXHAUSTIVE_OP_TEST_UTILS_H_
