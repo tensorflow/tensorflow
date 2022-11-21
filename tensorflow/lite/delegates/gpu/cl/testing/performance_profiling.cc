@@ -297,7 +297,7 @@ absl::Status RunModelSample(const std::string& model_name) {
       context.InitFromGraphWithTransforms(create_info, &graph_cl, &env));
   const auto end_init = std::chrono::high_resolution_clock::now();
   std::cout << "Graph initialization time: "
-            << (end_init - start_init).count() * 1e-6f << " ms.";
+            << (end_init - start_init).count() * 1e-6f << " ms." << std::endl;
 
   auto* queue = env.profiling_queue();
   ProfilingInfo profiling_info;
