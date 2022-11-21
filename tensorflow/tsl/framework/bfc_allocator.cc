@@ -32,7 +32,7 @@ limitations under the License.
 #ifdef TENSORFLOW_MEM_DEBUG
 #include "tensorflow/tsl/stacktrace.h"
 #endif
-#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
+#include "tensorflow/tsl/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 #include "tensorflow/tsl/protobuf/bfc_memory_map.pb.h"
 
@@ -481,9 +481,8 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
         << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
         << " (rounded to " << rounded_bytes << ")"
         << "requested by op "
-        << tensorflow::profiler::ScopedMemoryDebugAnnotation::
-               CurrentAnnotation()
-                   .pending_op_name
+        << tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation()
+               .pending_op_name
         << "\nIf the cause is memory fragmentation maybe the environment "
         << "variable 'TF_GPU_ALLOCATOR=cuda_malloc_async' will "
         << "improve the situation. \nCurrent allocation summary follows."
@@ -523,8 +522,8 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
           TF_NO_THREAD_SAFETY_ANALYSIS {
             int64_t bytes_available =
                 memory_limit_ - stats_.bytes_reserved - stats_.bytes_in_use;
-            const auto& annotation = tensorflow::profiler::
-                ScopedMemoryDebugAnnotation::CurrentAnnotation();
+            const auto& annotation =
+                tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
             const auto op_name = annotation.pending_op_name
                                      ? annotation.pending_op_name
                                      : "(null)";
