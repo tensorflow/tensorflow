@@ -2175,7 +2175,7 @@ func.func @dynamic_broadcast_in_dim(%shape: tensor<1xindex>) -> tensor<?xf32> {
   } : (tensor<f32>, tensor<1xindex>) -> tensor<?xf32>
   func.return %result : tensor<?xf32>
 }
-// CHECK: [[CST:%.*]] = arith.constant
+// CHECK: [[CST:%.*]] = arith.constant dense
 // CHECK: [[INIT:%.*]] = tensor.empty
 // CHECK: linalg.generic
 // CHECK-SAME: indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
@@ -2183,6 +2183,13 @@ func.func @dynamic_broadcast_in_dim(%shape: tensor<1xindex>) -> tensor<?xf32> {
 // CHECK-SAME: {someattr}
 // CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32, %[[RESULT:.*]]: f32):
 // CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
+
+// CHECK-PRIMITIVE-LABEL: func @dynamic_broadcast_in_dim
+// CHECK-PRIMITIVE: [[CST:%.*]] = arith.constant dense
+// CHECK-PRIMITIVE: [[INIT:%.*]] = tensor.empty
+// CHECK-PRIMITIVE: linalg.broadcast
+// CHECK-PRIMITIVE-NEXT: ins([[CST]]
+// CHECK-PRIMITIVE-NEXT: outs([[INIT]]
 
 // -----
 
@@ -2206,6 +2213,10 @@ func.func @dynamic_broadcast_in_dim(%scalar: tensor<f32>, %shape: tensor<2xindex
 // CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32, %[[RESULT:.*]]: f32):
 // CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
 
+// CHECK-PRIMITIVE-LABEL: func @dynamic_broadcast_in_dim
+// CHECK-PRIMITIVE: tensor.empty
+// CHECK-PRIMITIVE: linalg.broadcast
+
 // -----
 
 // CHECK: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1, d2) -> (d1)>
@@ -2228,9 +2239,15 @@ func.func @dynamic_broadcast_in_dim(%vector: tensor<42xf32>, %shape: tensor<3xin
 // CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32, %[[RESULT:.*]]: f32):
 // CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
 
+// CHECK-PRIMITIVE-LABEL: func @dynamic_broadcast_in_dim
+// CHECK-PRIMITIVE: tensor.empty
+// CHECK-PRIMITIVE: %[[RESULT:.*]] = linalg.broadcast
+// CHECK-PRIMITIVE: tensor.cast %[[RESULT]] : tensor<?x42x?xf32> to tensor<?x?x?xf32>
+
 // -----
 
 // CHECK-LABEL: func @dynamic_broadcast_in_dim(
+// CHECK-PRIMITIVE-LABEL: func @dynamic_broadcast_in_dim
 // Note: this test requires no checks. The tensor.empty verifier will
 // fail if the %shape i32 -> index cast is not performed properly.
 func.func @dynamic_broadcast_in_dim(%scalar: tensor<f32>, %shape: tensor<2xi32>)
@@ -2264,6 +2281,13 @@ func.func @dynamic_broadcast_in_dim(%shape: tensor<1xindex>, %cst: tensor<ui32>)
 // CHECK: [[RES:%.*]] = builtin.unrealized_conversion_cast [[GENERIC]] : tensor<?xi32> to tensor<?xui32>
 // CHECK: return [[RES]] : tensor<?xui32>
 
+// CHECK-PRIMITIVE-LABEL: func @dynamic_broadcast_in_dim
+// CHECK-PRIMITIVE: tensor.empty
+// CHECK-PRIMITIVE: %[[BROADCASTED:.*]] = linalg.broadcast
+// CHECK-PRIMITIVE: %[[RES:.*]] = builtin.unrealized_conversion_cast %[[BROADCASTED]]
+// CHECK-PRIMITIVE-SAME:  tensor<?xi32> to tensor<?xui32>
+// CHECK-PRIMITIVE: return %[[RES]] : tensor<?xui32>
+
 // -----
 
 // CHECK: #[[ARG_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4, d5, d6) -> (0, 0, d3, d4, 0, d6)>
@@ -2271,30 +2295,10 @@ func.func @dynamic_broadcast_in_dim(%shape: tensor<1xindex>, %cst: tensor<ui32>)
 
 // CHECK-LABEL: @dynamic_broadcast_in_dim
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x?x?x?x1x42xf32>, %[[SHAPE:.*]]: tensor<7xindex>
+// CHECK-PRIMITIVE-LABEL: func @dynamic_broadcast_in_dim
+// CHECK-PRIMITIVE-SAME:  %[[ARG:.*]]: tensor<?x?x?x?x1x42xf32>, %[[SHAPE:.*]]: tensor<7xindex>
 func.func @dynamic_broadcast_in_dim(%arg: tensor<?x?x?x?x1x42xf32>,
     %shape: tensor<7xindex>) -> tensor<?x?x?x?x?x?x?xf32> {
-  // CHECK-DAG:  %[[C0:.*]] = arith.constant 0
-  // CHECK-DAG:  %[[C1:.*]] = arith.constant 1
-  // CHECK-DAG:  %[[C2:.*]] = arith.constant 2
-  // CHECK-DAG:  %[[C3:.*]] = arith.constant 3
-  // CHECK-DAG:  %[[C4:.*]] = arith.constant 4
-  // CHECK-DAG:  %[[C5:.*]] = arith.constant 5
-  // CHECK-DAG:  %[[C6:.*]] = arith.constant 6
-  // CHECK-DAG:  %[[DIM0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
-  // CHECK-DAG:  %[[DIM1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
-  // CHECK-DAG:  %[[DIM2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
-  // CHECK-DAG:  %[[DIM3:.*]] = tensor.extract %[[SHAPE]][%[[C3]]]
-  // CHECK-DAG:  %[[DIM4:.*]] = tensor.extract %[[SHAPE]][%[[C4]]]
-  // CHECK-DAG:  %[[DIM5:.*]] = tensor.extract %[[SHAPE]][%[[C5]]]
-  // CHECK-DAG:  %[[DIM6:.*]] = tensor.extract %[[SHAPE]][%[[C6]]]
-  // CHECK-DAG:  %[[INIT:.*]] = tensor.empty(%[[DIM0]], %[[DIM1]], %[[DIM2]], %[[DIM3]], %[[DIM4]], %[[DIM5]], %[[DIM6]]) : tensor<?x?x?x?x?x?x?xf32>
-  // CHECK:      %[[RES:.*]] = linalg.generic {
-  // CHECK-SAME:     indexing_maps = [#[[ARG_MAP]], #[[RES_MAP]]],
-  // CHECK-SAME:     iterator_types = ["parallel", "parallel", "parallel", "parallel", "parallel", "parallel", "parallel"]}
-  // CHECK-SAME:     ins(%[[ARG]] : tensor<?x?x?x?x1x42xf32>) outs(%[[INIT]] : tensor<?x?x?x?x?x?x?xf32>) {
-  // CHECK:      ^bb0(%[[ARG_:.*]]: f32, %{{.*}}: f32):
-  // CHECK:        linalg.yield %[[ARG_]]
-  // CHECK:      return %[[RES]]
   %result = "mhlo.dynamic_broadcast_in_dim"(%arg, %shape) {
       broadcast_dimensions = dense<[1, 2, 3, 4, 5, 6]> : tensor<6xi64>,
       known_expanding_dimensions = dense<[0, 1]> : tensor<2xi64>,
@@ -2302,6 +2306,55 @@ func.func @dynamic_broadcast_in_dim(%arg: tensor<?x?x?x?x1x42xf32>,
       : (tensor<?x?x?x?x1x42xf32>, tensor<7xindex>) -> tensor<?x?x?x?x?x?x?xf32>
   func.return %result : tensor<?x?x?x?x?x?x?xf32>
 }
+
+// CHECK-DAG:  %[[C0:.*]] = arith.constant 0
+// CHECK-DAG:  %[[C1:.*]] = arith.constant 1
+// CHECK-DAG:  %[[C2:.*]] = arith.constant 2
+// CHECK-DAG:  %[[C3:.*]] = arith.constant 3
+// CHECK-DAG:  %[[C4:.*]] = arith.constant 4
+// CHECK-DAG:  %[[C5:.*]] = arith.constant 5
+// CHECK-DAG:  %[[C6:.*]] = arith.constant 6
+// CHECK-DAG:  %[[DIM0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
+// CHECK-DAG:  %[[DIM1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
+// CHECK-DAG:  %[[DIM2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
+// CHECK-DAG:  %[[DIM3:.*]] = tensor.extract %[[SHAPE]][%[[C3]]]
+// CHECK-DAG:  %[[DIM4:.*]] = tensor.extract %[[SHAPE]][%[[C4]]]
+// CHECK-DAG:  %[[DIM5:.*]] = tensor.extract %[[SHAPE]][%[[C5]]]
+// CHECK-DAG:  %[[DIM6:.*]] = tensor.extract %[[SHAPE]][%[[C6]]]
+// CHECK-DAG:  %[[INIT:.*]] = tensor.empty(%[[DIM0]], %[[DIM1]], %[[DIM2]], %[[DIM3]], %[[DIM4]], %[[DIM5]], %[[DIM6]]) : tensor<?x?x?x?x?x?x?xf32>
+// CHECK:      %[[RES:.*]] = linalg.generic {
+// CHECK-SAME:     indexing_maps = [#[[ARG_MAP]], #[[RES_MAP]]],
+// CHECK-SAME:     iterator_types = ["parallel", "parallel", "parallel", "parallel", "parallel", "parallel", "parallel"]}
+// CHECK-SAME:     ins(%[[ARG]] : tensor<?x?x?x?x1x42xf32>) outs(%[[INIT]] : tensor<?x?x?x?x?x?x?xf32>) {
+// CHECK:      ^bb0(%[[ARG_:.*]]: f32, %{{.*}}: f32):
+// CHECK:        linalg.yield %[[ARG_]]
+// CHECK:      return %[[RES]]
+
+// CHECK-PRIMITIVE-DAG:  %[[C0:.*]] = arith.constant 0
+// CHECK-PRIMITIVE-DAG:  %[[C1:.*]] = arith.constant 1
+// CHECK-PRIMITIVE-DAG:  %[[C2:.*]] = arith.constant 2
+// CHECK-PRIMITIVE-DAG:  %[[C3:.*]] = arith.constant 3
+// CHECK-PRIMITIVE-DAG:  %[[C4:.*]] = arith.constant 4
+// CHECK-PRIMITIVE-DAG:  %[[C5:.*]] = arith.constant 5
+// CHECK-PRIMITIVE:      tensor.cast %[[ARG]]
+// CHECK-PRIMITIVE-SAME:   tensor<?x?x?x?x1x42xf32> to tensor<1x1x?x?x1x42xf32>
+// CHECK-PRIMITIVE:      %[[COLLAPSED:.*]] = tensor.collapse_shape
+// CHECK-PRIMITIVE-SAME{literal}:   [[0, 1, 2], [3], [4, 5]]
+// CHECK-PRIMITIVE-SAME:   tensor<1x1x?x?x1x42xf32> into tensor<?x?x42xf32>
+// CHECK-PRIMITIVE-DAG:  %[[DIM0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
+// CHECK-PRIMITIVE-DAG:  %[[DIM1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
+// CHECK-PRIMITIVE-DAG:  %[[DIM2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
+// CHECK-PRIMITIVE-DAG:  %[[DIM3:.*]] = tensor.extract %[[SHAPE]][%[[C3]]]
+// CHECK-PRIMITIVE-DAG:  %[[DIM4:.*]] = tensor.extract %[[SHAPE]][%[[C4]]]
+// CHECK-PRIMITIVE-DAG:  %[[DIM5:.*]] = tensor.extract %[[SHAPE]][%[[C5]]]
+// CHECK-PRIMITIVE:      %[[INIT:.*]] = tensor.empty(%[[DIM0]], %[[DIM1]], %[[DIM2]], %[[DIM3]], %[[DIM4]], %[[DIM5]]) : tensor<?x?x?x?x?x?x42xf32>
+// CHECK-PRIMITIVE:      %[[BROADCASTED:.*]] = linalg.broadcast
+// CHECK-PRIMITIVE-NEXT:   ins(%[[COLLAPSED]] : tensor<?x?x42xf32>)
+// CHECK-PRIMITIVE-NEXT:   outs(%[[INIT]] : tensor<?x?x?x?x?x?x42xf32>)
+// CHECK-PRIMITIVE-NEXT:   dimensions = [3, 4, 6]
+// CHECK-PRIMITIVE:      %[[RES:.*]] = tensor.cast %[[BROADCASTED]]
+// CHECK-PRIMITIVE-SAME:    tensor<?x?x?x?x?x?x42xf32> to tensor<?x?x?x?x?x?x?xf32>
+// CHECK-PRIMITIVE:      return %[[RES]]
 
 // -----
 
