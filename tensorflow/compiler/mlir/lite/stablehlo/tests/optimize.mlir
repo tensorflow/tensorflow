@@ -175,3 +175,25 @@ func.func @testSliceConcat(%arg0: tensor<3x1x512xf32>) -> tensor<3x1x512xf32> {
 
 // CHECK: return %arg0 : tensor<3x1x512xf32>
 }
+
+// -----
+
+// CHECK-LABEL: testConvertReshapeDotRhsToBatchedDot
+func.func @testConvertReshapeDotRhsToBatchedDot(%arg0: tensor<1x72x72xf32>, %arg1: tensor<1x72x128xf32>) -> tensor<1x72x128xf32> {
+  %0 = mhlo.reshape %arg1 : (tensor<1x72x128xf32>) -> tensor<72x128xf32>
+  %1 = "mhlo.dot_general"(%arg0, %0) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [0]
+    >} : (tensor<1x72x72xf32>, tensor<72x128xf32>) -> tensor<1x72x128xf32>
+  func.return %1 : tensor<1x72x128xf32>
+
+// CHECK:      %[[R:.*]] = "mhlo.dot_general"(%arg0, %arg1) {
+// CHECK-SAME: dot_dimension_numbers = #mhlo.dot<
+// CHECK-SAME:   lhs_batching_dimensions = [0],
+// CHECK-SAME:   rhs_batching_dimensions = [0],
+// CHECK-SAME:   lhs_contracting_dimensions = [2],
+// CHECK-SAME:   rhs_contracting_dimensions = [1]
+// CHECK-SAME: >} : (tensor<1x72x72xf32>, tensor<1x72x128xf32>) -> tensor<1x72x128xf32>
+// CHECK:      return %[[R]] : tensor<1x72x128xf32>
+}

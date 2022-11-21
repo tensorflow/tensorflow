@@ -350,6 +350,69 @@ LogicalResult FuseSliceConcat(mhlo::ConcatenateOp concat,
   return success();
 }
 
+// Convert:
+//   %input : 1xYxC
+//   %1 = mhlo.reshape %param : (1xCxZ) -> CxZ
+//   mhlo.dot_general %input, %1 {batch_dims = []}
+// To:
+//   mhlo.dot_general %input, %param {batch_dims = [0]}
+//
+// This usage will mostly come from tf-unroll-batch-matmul, so it's fine to only
+// handle the case where batching dim is the leftmost dim.
+LogicalResult ConvertReshapeDotRhsToBatchedDot(mhlo::DotGeneralOp dot,
+                                               PatternRewriter &rewriter) {
+  mhlo::DotDimensionNumbersAttr dim_nums = dot.getDotDimensionNumbers();
+  if (!dim_nums.getLhsBatchingDimensions().empty()) return failure();
+
+  auto reshape = dot.getRhs().getDefiningOp<mhlo::ReshapeOp>();
+  if (!reshape) return failure();
+  if (!reshape->hasOneUse())
+    return rewriter.notifyMatchFailure(reshape, "reshape has multiple usages");
+  if (!reshape.getType().hasStaticShape() ||
+      !reshape.getOperand().getType().hasStaticShape() ||
+      !dot.getLhs().getType().hasStaticShape()) {
+    return rewriter.notifyMatchFailure(dot, "dynamic shaping not supported");
+  }
+
+  ArrayRef<int64_t> orig_param_shape =
+      reshape.getOperand().getType().getShape();
+  ArrayRef<int64_t> dot_param_shape = reshape.getType().getShape();
+  if (orig_param_shape.size() != dot_param_shape.size() + 1 ||
+      orig_param_shape.front() != 1) {
+    return rewriter.notifyMatchFailure(reshape, "unsupported reshape pattern");
+  }
+
+  int lhs_first_other_dim = -1;
+  for (int i = 0; i < dot.getLhs().getType().getRank(); ++i) {
+    if (!llvm::is_contained(dim_nums.getLhsContractingDimensions(), i)) {
+      lhs_first_other_dim = i;
+      break;
+    }
+  }
+  if (lhs_first_other_dim == -1 ||
+      dot.getLhs().getType().getShape()[lhs_first_other_dim] != 1) {
+    return rewriter.notifyMatchFailure(dot, "unsupported LHS shape");
+  }
+
+  SmallVector<int64_t, 4> new_rhs_contracting_dims;
+  new_rhs_contracting_dims.reserve(
+      dim_nums.getRhsContractingDimensions().size());
+  for (int64_t d : dim_nums.getRhsContractingDimensions()) {
+    new_rhs_contracting_dims.push_back(d + 1);
+  }
+
+  rewriter.replaceOpWithNewOp<mhlo::DotGeneralOp>(
+      dot, dot.getType(), dot.getLhs(), reshape.getOperand(),
+      mhlo::DotDimensionNumbersAttr::get(
+          dot.getContext(),
+          /*lhsBatchingDimensions=*/{lhs_first_other_dim},
+          /*rhsBatchingDimensions=*/{0},
+          /*lhsContractingDimensions=*/dim_nums.getLhsContractingDimensions(),
+          /*rhsContractingDimensions=*/new_rhs_contracting_dims),
+      dot.getPrecisionConfigAttr());
+  return success();
+}
+
 class OptimizePass
     : public PassWrapper<OptimizePass, OperationPass<func::FuncOp>> {
  public:
@@ -364,6 +427,7 @@ class OptimizePass
     patterns.add(RemoveReshapeAroundDotGeneral);
     patterns.add(LiftDotConcat);
     patterns.add(FuseSliceConcat);
+    patterns.add(ConvertReshapeDotRhsToBatchedDot);
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       return signalPassFailure();
