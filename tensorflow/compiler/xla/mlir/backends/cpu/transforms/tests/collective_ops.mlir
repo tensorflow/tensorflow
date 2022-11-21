@@ -27,6 +27,34 @@ func.func @max_reduce(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 //  CHECK-SAME:   use_global_device_ids = 1
 //       CHECK: return %[[RET]]
 
+func.func @and_reduce(%arg0: tensor<1xi1>) -> tensor<1xi1> {
+  %0 = "mhlo.all_reduce"(%arg0) ({
+    ^bb0(%lhs: tensor<i1>, %rhs: tensor<i1>):
+    %1 = mhlo.and %lhs, %rhs : tensor<i1>
+    mhlo.return %1 : tensor<i1>
+  }) {
+    replica_groups = dense<> : tensor<0x0xi64>
+  } : (tensor<1xi1>) -> tensor<1xi1>
+  func.return %0 : tensor<1xi1>
+}
+
+// CHECK-LABEL: @and_reduce
+//       CHECK:   reduction_kind = 2 : i32,
+
+func.func @or_reduce(%arg0: tensor<1xi1>) -> tensor<1xi1> {
+  %0 = "mhlo.all_reduce"(%arg0) ({
+    ^bb0(%lhs: tensor<i1>, %rhs: tensor<i1>):
+    %1 = mhlo.or %lhs, %rhs : tensor<i1>
+    mhlo.return %1 : tensor<i1>
+  }) {
+    replica_groups = dense<> : tensor<0x0xi64>
+  } : (tensor<1xi1>) -> tensor<1xi1>
+  func.return %0 : tensor<1xi1>
+}
+
+// CHECK-LABEL: @or_reduce
+//       CHECK:   reduction_kind = 3 : i32,
+
 func.func @min_reduce_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.all_reduce"(%arg0) ({
   ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):

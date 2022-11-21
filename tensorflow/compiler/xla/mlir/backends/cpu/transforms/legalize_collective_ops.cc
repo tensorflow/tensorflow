@@ -77,7 +77,8 @@ Optional<xla_cpu::ReductionKind> MatchReductionComputation(Region& region) {
     return xla_cpu::ReductionKind::ALL_REDUCE_MAX;
   }
 
-  if (!computation->getOperandTypes().front().isInteger(1)) {
+  auto type = computation->getOperandTypes().front().dyn_cast<ShapedType>();
+  if (!type || !type.getElementType().isInteger(1)) {
     return None;
   }
 
