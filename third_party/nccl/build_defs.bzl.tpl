@@ -180,6 +180,7 @@ _device_link = rule(
 def _prune_relocatable_code_impl(ctx):
     """Clears __nv_relfatbin section containing relocatable device code."""
 
+    return ctx.attr.input[DefaultInfo]
     if _cuda_version < (11, 3):
         # -no-relocatable-elf not supported, return unpruned input.
         return ctx.attr.input[DefaultInfo]
