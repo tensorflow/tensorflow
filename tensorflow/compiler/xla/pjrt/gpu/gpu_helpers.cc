@@ -100,7 +100,7 @@ StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   // setting memory_fraction > 1.
   size_t allocator_memory = enable_unified_memory
                                 ? total_memory * fmax(1.0, memory_fraction)
-                                : free_memory * memory_fraction;
+                                : total_memory * memory_fraction;
   if (preallocate) {
     LOG(INFO) << "XLA backend allocating " << allocator_memory
               << " bytes on device " << device_ordinal << " for BFCAllocator.";

@@ -81,7 +81,7 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateCudaAsyncAllocator(
     // unified memory.
     // When unified memory is enabled, allow GPU memory oversubscription by
     // setting memory_fraction > 1.
-    size_t allocator_memory = free_memory * memory_fraction;
+    size_t allocator_memory = total_memory * memory_fraction;
     if (preallocate) {
       LOG(INFO) << "XLA backend allocating " << allocator_memory
                 << " bytes on device " << device_ordinal
