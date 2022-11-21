@@ -1046,11 +1046,11 @@ static Value EncodeMemRef(ImplicitLocOpBuilder &b, MemRefType memref_ty,
   // better canonicalization and cleaner final LLVM IR.
   if (desc.has_value()) {
     Value offset = b.create<ConstantOp>(i64(memref_offset));
+    Value data = b.create<LLVM::GEPOp>(desc->getElementPtrType(),
+                                       desc->alignedPtr(b, loc), offset);
     auto ptr = LLVM::LLVMPointerType::get(b.getContext());
-    Value data = b.create<LLVM::GEPOp>(
-        ptr, b.getI8Type(),
-        b.create<LLVM::BitcastOp>(ptr, desc->alignedPtr(b, loc)), offset);
-    memref = b.create<LLVM::InsertValueOp>(memref, data, 2);
+    memref = b.create<LLVM::InsertValueOp>(
+        memref, b.create<LLVM::BitcastOp>(ptr, data), 2);
   }
 
   return memref;
