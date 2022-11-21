@@ -69,6 +69,7 @@ from tensorflow.python.autograph.utils import tensors
 from tensorflow.python.data.experimental.ops import take_while_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import scan_op
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -748,8 +749,7 @@ def _general_purpose_scan(ds, init_state, body):
   # TODO(mdan): s/use_default_device/specialize_for_input_pipeline.
   # TODO(mdan): Don't use private symbols.
   # pylint:disable=protected-access
-  return dataset_ops._ScanDataset(
-      ds, init_state, body, use_default_device=False)
+  return scan_op._ScanDataset(ds, init_state, body, use_default_device=False)
 
 
 def _tf_dataset_for_stmt(

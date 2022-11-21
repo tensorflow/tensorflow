@@ -41,6 +41,11 @@ py_library(
 )
 
 py_library(
+    name = "scan_op",
+    srcs = ["scan_op.py"],
+)
+
+py_library(
     name = "rebatch_op",
     srcs = ["rebatch_op.py"],
     deps = [
@@ -87,6 +92,7 @@ py_library(
         ":rebatch_op",
         ":repeat_op",
         ":save_ops",
+        ":scan_op",
         ":shard_op",
         ":skip_op",
         ":snapshot_op",
