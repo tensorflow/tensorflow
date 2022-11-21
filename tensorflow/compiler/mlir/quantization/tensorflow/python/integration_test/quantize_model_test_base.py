@@ -42,6 +42,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import builder
+from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.saved_model import signature_def_utils_impl
 from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import autotrackable
@@ -517,10 +518,12 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
 
     return ConvModel()
 
-  def _create_matmul_model(
-      self,
-      has_bias: bool = False,
-      activation_fn: Optional[ops.Operation] = None) -> module.Module:
+  def _create_matmul_model(self,
+                           input_shape: Sequence[int],
+                           weight_shape: Sequence[int],
+                           saved_model_path: str,
+                           has_bias: bool = False,
+                           activation_fn: Optional[ops.Operation] = None) ->...:
 
     class MatmulModel(module.Module):
       """A simple model with a single matmul.
@@ -529,24 +532,23 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       """
 
       def __init__(self,
+                   weight_shape: Sequence[int],
                    has_bias: bool = False,
                    activation_fn: Optional[ops.Operation] = None) -> None:
         """Initializes a MatmulModel.
 
         Args:
+          weight_shape: Shape of the weight tensor.
           has_bias: If True, creates and adds a bias term.
           activation_fn: The activation function to be used. No activation
             function if None.
         """
         self.has_bias = has_bias
         self.activation_fn = activation_fn
-        self.filters = np.random.uniform(low=-1.0, high=1.0, size=(1024, 3))
-        self.bias = np.random.uniform(low=-1.0, high=1.0, size=(3,))
+        self.filters = np.random.uniform(low=-1.0, high=1.0, size=weight_shape)
+        self.bias = np.random.uniform(low=-1.0, high=1.0, size=weight_shape[-1])
 
-      @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(
-              shape=(1, 1024), dtype=dtypes.float32, name='input_tensor')
-      ])
+      @def_function.function
       def matmul(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
         """Performs a matrix multiplication.
 
@@ -570,7 +572,14 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
 
         return {'output': out}
 
-    return MatmulModel(has_bias, activation_fn)
+    model = MatmulModel(weight_shape, has_bias, activation_fn)
+    saved_model_save.save(
+        model,
+        saved_model_path,
+        signatures=model.matmul.get_concrete_function(
+            tensor_spec.TensorSpec(
+                shape=input_shape, dtype=dtypes.float32, name='input_tensor')))
+    return model
 
   def _create_and_save_tf1_conv_model(self,
                                       saved_model_path: str,

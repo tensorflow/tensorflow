@@ -15,7 +15,7 @@
 """Tests for quantize_model."""
 import itertools
 import os
-from typing import List, Mapping, Optional
+from typing import List, Mapping, Optional, Sequence
 
 from absl.testing import parameterized
 import numpy as np
@@ -568,15 +568,20 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       parameter_combinations([{
           'activation_fn': [None, nn_ops.relu, nn_ops.relu6],
           'has_bias': [True, False],
+          'batch_sizes': [(), (2, 3)],
           'target_opset': [quant_opts_pb2.XLA],
       }]))
   @test_util.run_in_graph_and_eager_modes
   def test_matmul_ptq_model(self, activation_fn: Optional[ops.Operation],
-                            has_bias: bool, target_opset: quant_opts_pb2.OpSet):
+                            has_bias: bool, batch_sizes: Sequence[int],
+                            target_opset: quant_opts_pb2.OpSet):
     np.random.seed(1234)
-    model = self._create_matmul_model(has_bias, activation_fn)
+    input_shape = (*batch_sizes, 1, 1024)
+    filter_shape = (*batch_sizes, 1024, 3)
     input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    model = self._create_matmul_model(input_shape, filter_shape,
+                                      input_saved_model_path, has_bias,
+                                      activation_fn)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(500):
@@ -584,7 +589,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             'input_tensor':
                 ops.convert_to_tensor(
                     np.random.uniform(low=0.0, high=1.0,
-                                      size=(1, 1024)).astype('f4')),
+                                      size=input_shape).astype('f4')),
         }
 
     tags = {tag_constants.SERVING}
@@ -610,7 +615,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self._contains_quantized_function_call(output_meta_graphdef))
 
     input_data = ops.convert_to_tensor(
-        np.random.uniform(low=0.0, high=1.0, size=(1, 1024)).astype('f4'))
+        np.random.uniform(low=0.0, high=1.0, size=input_shape).astype('f4'))
     expected_outputs = model.matmul(input_data)
     got_outputs = converted_model.signatures['serving_default'](
         input_tensor=ops.convert_to_tensor(input_data))
@@ -636,17 +641,18 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     new_outputs = converted_model.signatures['serving_default'](
         input_tensor=ops.convert_to_tensor(input_data))
-    # The difference between TF and target path is expected to be small (smaller
-    # or equal to 1 in the quantized domain).
-    self.assertAllClose(new_outputs, got_outputs, atol=0.1048)
+    # The difference between TF and target path is expected to be small.
+    self.assertAllClose(new_outputs, got_outputs, atol=0.1202)
     self.assertAllClose(new_outputs, expected_outputs, atol=0.1023)
 
   # Raises error because the constant unfreezing is not yet fully implemented.
   @test_util.run_in_graph_and_eager_modes
   def test_matmul_ptq_model_with_unfreeze_constants_raises_error(self):
-    model = self._create_matmul_model()
     input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    self._create_matmul_model(
+        input_shape=(1, 1024),
+        weight_shape=(1024, 3),
+        saved_model_path=input_saved_model_path)
 
     repr_ds = self._create_data_generator(
         input_key='input_tensor', shape=(1, 1024), num_examples=2)
@@ -717,9 +723,11 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @test_util.run_in_graph_and_eager_modes
   def test_model_ptq_use_representative_samples_list(self):
-    model = self._create_matmul_model()
     input_savedmodel_dir = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_savedmodel_dir)
+    self._create_matmul_model(
+        input_shape=(1, 1024),
+        weight_shape=(1024, 3),
+        saved_model_path=input_savedmodel_dir)
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -747,9 +755,11 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @test_util.run_in_graph_and_eager_modes
   def test_model_ptq_use_ndarray_representative_dataset(self):
-    model = self._create_matmul_model()
     input_savedmodel_dir = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_savedmodel_dir)
+    self._create_matmul_model(
+        input_shape=(1, 1024),
+        weight_shape=(1024, 3),
+        saved_model_path=input_savedmodel_dir)
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -779,9 +789,11 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @test_util.run_in_graph_and_eager_modes
   def test_model_ptq_use_python_list_representative_dataset(self):
-    model = self._create_matmul_model()
     input_savedmodel_dir = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_savedmodel_dir)
+    self._create_matmul_model(
+        input_shape=(1, 1024),
+        weight_shape=(1024, 3),
+        saved_model_path=input_savedmodel_dir)
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -811,9 +823,11 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @test_util.run_in_graph_and_eager_modes
   def test_model_ptq_call_twice(self):
-    model = self._create_matmul_model()
     input_savedmodel_dir = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_savedmodel_dir)
+    self._create_matmul_model(
+        input_shape=(1, 1024),
+        weight_shape=(1024, 3),
+        saved_model_path=input_savedmodel_dir)
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -863,9 +877,11 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   # dataset) only in TF2 (eager mode).
   @test_util.run_v2_only
   def test_model_ptq_use_tf_dataset_for_representative_dataset(self):
-    model = self._create_matmul_model()
     input_savedmodel_dir = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_savedmodel_dir)
+    self._create_matmul_model(
+        input_shape=(1, 1024),
+        weight_shape=(1024, 3),
+        saved_model_path=input_savedmodel_dir)
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -901,10 +917,12 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @test_util.run_in_graph_and_eager_modes
   def test_model_ptq_no_representative_sample_shows_warnings(self):
-    model = self._create_matmul_model()
     input_savedmodel_dir = self.create_tempdir('input').full_path
+    self._create_matmul_model(
+        input_shape=(1, 1024),
+        weight_shape=(1024, 3),
+        saved_model_path=input_savedmodel_dir)
     output_savedmodel_dir = self.create_tempdir().full_path
-    saved_model_save.save(model, input_savedmodel_dir)
 
     tags = {tag_constants.SERVING}
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -1732,9 +1750,11 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   )
   @test_util.run_in_graph_and_eager_modes
   def test_matmul_model(self, target_opset: quant_opts_pb2.OpSet):
-    model = self._create_matmul_model()
     input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    self._create_matmul_model(
+        input_shape=(1, 1024),
+        weight_shape=(1024, 3),
+        saved_model_path=input_saved_model_path)
 
     tags = {tag_constants.SERVING}
     output_directory = self.create_tempdir().full_path
@@ -1939,9 +1959,11 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   )
   @test_util.run_in_graph_and_eager_modes
   def test_minimum_elements_for_weights(self, quantize, num_elements):
-    model = self._create_matmul_model()
     input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    self._create_matmul_model(
+        input_shape=(1, 1024),
+        weight_shape=(1024, 3),
+        saved_model_path=input_saved_model_path)
 
     tags = {tag_constants.SERVING}
     output_directory = self.create_tempdir().full_path
@@ -2013,11 +2035,11 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @test_util.run_in_graph_and_eager_modes
   def test_non_empty_directory_raises_file_exists_error(self):
-    model = self._create_matmul_model()
-
     input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
-
+    self._create_matmul_model(
+        input_shape=(1, 1024),
+        weight_shape=(1024, 3),
+        saved_model_path=input_saved_model_path)
     tags = {tag_constants.SERVING}
 
     # Create a file inside the output directory.
@@ -2037,11 +2059,11 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @test_util.run_in_graph_and_eager_modes
   def test_non_empty_directory_overwritten(self):
-    model = self._create_matmul_model()
-
     input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
-
+    self._create_matmul_model(
+        input_shape=(1, 1024),
+        weight_shape=(1024, 3),
+        saved_model_path=input_saved_model_path)
     tags = {tag_constants.SERVING}
 
     # Create a file inside the output directory.
