@@ -275,6 +275,17 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   >>> a_identity.numpy()
   5
 
+  This function can also be used to explicitly transfer tensors between devices.
+  For example, to transfer a tensor in GPU memory back to host memory, one can
+  use:
+
+  >>> with tf.device("/gpu:0"):
+  ...   x_on_gpu = tf.constant(1)
+  >>> with tf.device("/cpu:0"):
+  ...   x_on_cpu = tf.identity(x_on_gpu)
+  >>> x_on_cpu.device
+  '/job:localhost/replica:0/task:0/device:CPU:0'
+
   Args:
     input: A `Tensor`, a `Variable`, a `CompositeTensor` or anything that can be
     converted to a tensor using `tf.convert_to_tensor`.
