@@ -35,7 +35,6 @@ filegroup(
         "cancellation.h",
         "device_type.h",
         "fixedpoint_types.h",
-        "lazy.h",
         "numeric_types.h",
         "tracking_allocator.h",
         "type_traits.h",
@@ -67,7 +66,6 @@ filegroup(
         "cancellation.cc",
         "cancellation.h",
         "fixedpoint_types.h",
-        "lazy.h",
         "metrics.cc",
         "metrics.h",
     ],
@@ -339,8 +337,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":lazy",
+        "//tensorflow/tsl/lib/gtl:flatmap",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:hash",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:notification",
@@ -348,7 +347,6 @@ cc_library(
         "//tensorflow/tsl/platform:stringpiece",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -363,27 +361,6 @@ tsl_cc_test(
         "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:notification",
         "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
-cc_library(
-    name = "lazy",
-    hdrs = [
-        "lazy.h",
-    ],
-    deps = [
-        "//tensorflow/tsl/platform:mutex",
-    ],
-)
-
-tsl_cc_test(
-    name = "lazy_test",
-    size = "small",
-    srcs = ["lazy_test.cc"],
-    deps = [
-        ":lazy",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
     ],
