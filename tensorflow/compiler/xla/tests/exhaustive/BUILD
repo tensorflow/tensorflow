@@ -5,7 +5,19 @@ load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    includes = [
+        "//tensorflow/compiler/xla:friends",
+    ],
+    packages = [
+        "//platforms/testing/tests/...",
+    ],
 )
 
 cc_library(
