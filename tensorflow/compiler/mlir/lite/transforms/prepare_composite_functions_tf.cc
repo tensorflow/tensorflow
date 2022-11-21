@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/lstm_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/nms_utils.h"
@@ -100,14 +101,15 @@ LogicalResult CreateTflFusableOpCustomOptions(
 
 // Convert func annotated with `tfl_fusable_op` attribute to tfl custom op.
 LogicalResult ConvertTflFusableOp(
-    func::FuncOp func, StringRef custom_op_name,
-    ArrayRef<std::pair<StringRef, Attribute>> attrs) {
+    func::FuncOp func, ArrayRef<std::pair<StringRef, Attribute>> attrs,
+    StringRef custom_op_name,
+    ArrayRef<std::pair<StringRef, Attribute>> custom_option) {
   func.eraseBody();
   func.addEntryBlock();
 
   OpBuilder builder(func.getBody());
   std::string custom_option_buffer;
-  if (failed(CreateTflFusableOpCustomOptions(attrs, &builder,
+  if (failed(CreateTflFusableOpCustomOptions(custom_option, &builder,
                                              custom_option_buffer))) {
     return failure();
   }
@@ -115,6 +117,10 @@ LogicalResult ConvertTflFusableOp(
   auto tfl_fusable_op = builder.create<TFL::CustomOp>(
       func->getLoc(), func.getFunctionType().getResults(), func.getArguments(),
       custom_op_name, CustomOption(&builder, custom_option_buffer));
+  // Loop to avoid overriding attributes with tfl_fusable_op->setAttrs(attrs)
+  for (const auto& attr : attrs) {
+    tfl_fusable_op->setAttr(attr.first, attr.second);
+  }
   builder.create<func::ReturnOp>(func->getLoc(), tfl_fusable_op.getResults());
   return success();
 }
@@ -361,21 +367,25 @@ void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
     // We will look for the `tfl_fusable_op` attribute and fuse as a custom op.
     DictionaryAttr dict_attr = attr.getAttrs();
 
-    SmallVector<std::pair<StringRef, Attribute>, 4> attributes;
+    SmallVector<std::pair<StringRef, Attribute>, 1> attributes;
+    SmallVector<std::pair<StringRef, Attribute>, 4> custom_option;
     bool tfl_fusable_op = false;
     for (auto attr_item : dict_attr) {
       // Push other attributes except the TFLFusableOp.
       if (attr_item.getName() == kTFLFusableOp &&
           attr_item.getValue().dyn_cast<BoolAttr>().getValue()) {
         tfl_fusable_op = true;
-      } else {
+      } else if (attr_item.getName() == mlir::quant::kQuantTraitAttrName) {
         attributes.push_back({attr_item.getName(), attr_item.getValue()});
+      } else {
+        custom_option.push_back({attr_item.getName(), attr_item.getValue()});
       }
     }
 
     if (!tfl_fusable_op) return;
 
-    if (failed(ConvertTflFusableOp(func, api_name, attributes))) {
+    if (failed(
+            ConvertTflFusableOp(func, attributes, api_name, custom_option))) {
       func->emitError(absl::StrCat("failed to fuse for op: ", api_name.str()));
       return signalPassFailure();
     }

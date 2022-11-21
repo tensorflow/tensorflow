@@ -349,14 +349,14 @@ struct PruneUnusedOpsWithSideEffect : public OpRewritePattern<OpTy> {
       }
     }
     // Remove if the custom op is in the provided map and is NoSideEffect.
-    auto custom_op = llvm::isa<CustomOp>(op);
-    if (custom_op) {
-      auto q = llvm::cast<CustomOp>(op);
-      std::string op_name = q.getCustomCode().str();
-      if ((custom_op_map.find(op_name) == custom_op_map.end()) ||
-          !custom_op_map.find(op_name)->second.no_side_effect)
-        return failure();
-    }
+    // auto custom_op = llvm::isa<CustomOp>(op);
+    // if (custom_op) {
+    //   auto q = llvm::cast<CustomOp>(op);
+    //   std::string op_name = q.getCustomCode().str();
+    //   if ((custom_op_map.find(op_name) == custom_op_map.end()) ||
+    //       !custom_op_map.find(op_name)->second.no_side_effect)
+    //     return failure();
+    // }
     rewriter.eraseOp(op);
     return success();
   }
