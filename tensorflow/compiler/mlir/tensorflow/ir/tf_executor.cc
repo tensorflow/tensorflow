@@ -511,7 +511,7 @@ void SwitchNOp::print(OpAsmPrinter &p) {
   p.printOperands(operands.begin(), std::next(operands.begin(), 2));
   p << " of " << (getNumResults() - 1);
   // print control dependencies if any
-  if (!llvm::empty(getControlInputs())) {
+  if (!getControlInputs().empty()) {
     p << " (";
     p.printOperands(getControlInputs());
     p << ")";
