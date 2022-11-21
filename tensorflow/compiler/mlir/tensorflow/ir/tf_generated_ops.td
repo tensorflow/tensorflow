@@ -19710,6 +19710,63 @@ Same shape condition as scales.}]>:$zero_points,
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_UniformQuantizedAddOp : TF_Op<"UniformQuantizedAdd", [Pure]> {
+  let summary = [{
+Perform quantized add of quantized Tensor `lhs` and quantized Tensor `rhs` to make quantized `output`.
+  }];
+
+  let description = [{
+Given quantized `lhs` and quantized `rhs`, performs quantized add on `lhs` and `rhs` to make quantized `output`.
+
+`UniformQuantizedAdd` follows Numpy broadcasting rules.
+The two input array shapes are compared element-wise.
+Starting with the trailing dimensions, the two dimensions either have to be equal or one of them needs to be 1.
+
+`lhs` and `rhs` must be quantized Tensor, where data value is quantized using the formula:
+```
+quantized_data = clip(original_data / scale + zero_point, quantization_min_val, quantization_max_val)
+```
+`output` is also quantized, using the same formula.
+
+If `lhs` and `output` is both per-axis quantized, the quantization axis must match.
+Also, if `rhs` and `output` is both per-axis quantized, the quantization axis must match.
+*Match* means the axis must match when adding, regarding the broadcasting.
+i.e. For both operands `lhs` and `rhs`,
+if `operand.quantization_axis` >= 0 and `output.quantization_axis` >= 0,
+`operand.dims` - `operand.quantization_axis` must be equal to `output.dims` - `output.quantization_axis`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Qint32Tensor, [{Must be a quantized tensor.}]>:$lhs,
+    Arg<TF_Qint32Tensor, [{Must be a quantized tensor.}]>:$rhs,
+    Arg<TF_Float32Tensor, [{The float value(s) used as scale factors when quantizing the original data that `lhs` represents.}]>:$lhs_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero points when quantizing original data that `lhs` represents.
+Must have same shape with `lhs_scales`.}]>:$lhs_zero_points,
+    Arg<TF_Float32Tensor, [{The float value(s) used as scale factors when quantizing the original data that `rhs` represents.}]>:$rhs_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero points when quantizing original data that `rhs` represents.
+Must have same shape with `rhs_scales`.}]>:$rhs_zero_points,
+    Arg<TF_Float32Tensor, [{The float value(s) to use as scale factors when quantizing original data that `output` represents.}]>:$output_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero points when quantizing original data that output represents.
+Must have same shape with `output_scales`.}]>:$output_zero_points,
+
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$lhs_quantization_axis,
+    I64Attr:$lhs_quantization_min_val,
+    I64Attr:$lhs_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$rhs_quantization_axis,
+    I64Attr:$rhs_quantization_min_val,
+    I64Attr:$rhs_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$output_quantization_axis,
+    I64Attr:$output_quantization_min_val,
+    I64Attr:$output_quantization_max_val
+  );
+
+  let results = (outs
+    Res<TF_Qint32Tensor, [{The output quantized tensor.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_UniformQuantizedClipByValueOp : TF_Op<"UniformQuantizedClipByValue", [Pure]> {
   let summary = "Perform clip by value on the quantized Tensor `operand`.";
 
@@ -19740,6 +19797,136 @@ Same shape condition as scales.}]>:$zero_points,
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_UniformQuantizedConvolutionOp : TF_Op<"UniformQuantizedConvolution", [Pure]> {
+  let summary = [{
+Perform quantized convolution of quantized Tensor `lhs` and quantized Tensor `rhs`. to make quantized `output`.
+  }];
+
+  let description = [{
+Given quantized `lhs` and quantized `rhs`, performs quantized dot on `lhs` and `rhs` to make quantized `output`.
+
+`lhs` and `rhs` must be Tensors of same rank, and meet following shape conditions.
+- `lhs_feature` % `feature_group_count` == 0
+- `lhs_feature` % `rhs_input_feature` == 0
+- `lhs_feature` / `feature_group_count` == `rhs_input_feature`
+- `rhs_output_feature` % `feature_group_count` == 0
+- `lhs_batch` % `batch_group_count` == 0
+- `rhs_output_feature` % `batch_group_count` == 0
+
+`lhs` and `rhs` must be quantized Tensor, where data value is quantized using the formula:
+```
+quantized_data = clip(original_data / scale + zero_point, quantization_min_val, quantization_max_val)
+```
+`output` is also quantized, using the same formula.
+If `rhs` is per-tensor quantized, `output` must be also per-tensor quantized.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Qint8Tensor, [{Must be a quantized tensor, rank >= 3.}]>:$lhs,
+    Arg<TF_Qint8Tensor, [{Must be a quantized tensor, same rank as `lhs`.}]>:$rhs,
+    Arg<TF_Float32Tensor, [{The float value(s) used as scale factors when quantizing the original data that `lhs` represents.
+Must be a scalar `Tensor` (`lhs` supports only per-tensor quantization).}]>:$lhs_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero points when quantizing original data that `lhs` represents.
+Same shape condition as `lhs_scales`.}]>:$lhs_zero_points,
+    Arg<TF_Float32Tensor, [{The float value(s) used as scale factors when quantizing the original data that `rhs` represents.
+Must be a scalar `Tensor` for per-tensor quantization,
+or 1D `Tensor` of size `rhs.dim_size(kernel_output_feature_dimension)`, for per-channel quantization.}]>:$rhs_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero points when quantizing original data that `rhs` represents.
+Same shape condition as `rhs_scales`.}]>:$rhs_zero_points,
+    Arg<TF_Float32Tensor, [{The float value(s) to use as scale factors when quantizing original data that `output` represents.
+Must be a scalar `Tensor` for per-tensor quantization,
+or 1D `Tensor` of size `rhs.dim_size(kernel_output_feature_dimension)`
+- which is equal to `output.dim_size(output_feature_dimension)`,
+for per-channel quantization.
+If `rhs` is per-tensor quantized, output must be also per-tensor quantized.
+This means that if `rhs_scales` and `rhs_zero_points` are scalar `Tensor`s, `output_scales` and `output_zero_points` must be scalar `Tensor`s as well.}]>:$output_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero points when quantizing original data that output represents.
+Same shape condition as `output_scales`.}]>:$output_zero_points,
+
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$window_strides,
+    StrAttr:$padding,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$explicit_padding,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$lhs_dilation,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$rhs_dilation,
+    DefaultValuedOptionalAttr<I64Attr, "1">:$batch_group_count,
+    DefaultValuedOptionalAttr<I64Attr, "1">:$feature_group_count,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$dimension_numbers,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$lhs_quantization_axis,
+    I64Attr:$lhs_quantization_min_val,
+    I64Attr:$lhs_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$rhs_quantization_axis,
+    I64Attr:$rhs_quantization_min_val,
+    I64Attr:$rhs_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$output_quantization_axis,
+    I64Attr:$output_quantization_min_val,
+    I64Attr:$output_quantization_max_val
+  );
+
+  let results = (outs
+    Res<TF_Qint32Tensor, [{The output quantized tensor of `Tout`, same rank as `lhs` and `rhs`.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_UniformQuantizedConvolutionHybridOp : TF_Op<"UniformQuantizedConvolutionHybrid", [Pure]> {
+  let summary = [{
+Perform hybrid quantized convolution of float Tensor `lhs` and quantized Tensor `rhs`.
+  }];
+
+  let description = [{
+Given float `lhs` and quantized `rhs`, internally performs quantization on `lhs`,
+and then performs quantized convolution on quantized `lhs` and `rhs`.
+
+The internal quantization on `lhs` is a quantization to `Trhs`, dynamic range,
+per-batch (per-axis along axis `dimension_numbers.input_batch_dimension`), asymmetric,
+and not narrow range (the range is [Trhs_MIN, Trhs_MAX]).
+
+`lhs` and `rhs` must be Tensors of same rank, and meet following shape conditions.
+- lhs_feature % feature_group_count == 0
+- lhs_feature % rhs_input_feature == 0
+- lhs_feature / feature_group_count == rhs_input_feature
+- rhs_output_feature % feature_group_count == 0
+- lhs_batch % batch_group_count == 0
+- rhs_output_feature % batch_group_count == 0
+
+`rhs` must be quantized Tensor, where its data value is quantized using the formula:
+quantized_data = clip(original_data / scale + zero_point, quantization_min_val, quantization_max_val).
+  }];
+
+  let arguments = (ins
+    Arg<TF_Float32Tensor, [{Must be a non-quantized Tensor of `Tlhs`, rank >= 3.}]>:$lhs,
+    Arg<TF_Qint8Tensor, [{Must be a quantized Tensor of `Trhs`, same rank as `lhs`.}]>:$rhs,
+    Arg<TF_Float32Tensor, [{The float value(s) used as scale factors when quantizing the original data that `rhs` represents.
+Must be a scalar Tensor for per-tensor quantization,
+or 1D Tensor of size `rhs.dim_size(kernel_output_feature_dimension)`, for per-channel quantization.}]>:$rhs_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero_point when quantizing original data that `rhs` represents.
+Same shape condition as `rhs_scales`.}]>:$rhs_zero_points,
+
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$window_strides,
+    StrAttr:$padding,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$explicit_padding,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$lhs_dilation,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$rhs_dilation,
+    DefaultValuedOptionalAttr<I64Attr, "1">:$batch_group_count,
+    DefaultValuedOptionalAttr<I64Attr, "1">:$feature_group_count,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$dimension_numbers,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$rhs_quantization_axis,
+    I64Attr:$rhs_quantization_min_val,
+    I64Attr:$rhs_quantization_max_val
+  );
+
+  let results = (outs
+    Res<TF_Float32Tensor, [{The output Tensor of `Tout`, same rank as `lhs` and `rhs`.
+The output data is the non-quantized output data.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tlhs = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Trhs = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_UniformQuantizedDotOp : TF_Op<"UniformQuantizedDot", [Pure]> {
