@@ -112,7 +112,7 @@ static Status VerifyMemrefArgument(
     llvm::raw_string_ostream os(err);
 
     auto dim = [](int64_t d) -> std::string {
-      return d == MemrefType::kDynamicSize ? "?" : std::to_string(d);
+      return d == MemrefType::kDynamic ? "?" : std::to_string(d);
     };
 
     auto print_shaped = [&](std::optional<absl::Span<const int64_t>> dims,

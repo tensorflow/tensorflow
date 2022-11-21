@@ -221,12 +221,12 @@ LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   // Input dimensions must be defined. MatMulBCast does not support partial
   // shapes.
   for (auto dim : lhs_shape) {
-    if (dim == mlir::ShapedType::kDynamicSize) {
+    if (dim == mlir::ShapedType::kDynamic) {
       return failure();
     }
   }
   for (auto dim : rhs_shape) {
-    if (dim == mlir::ShapedType::kDynamicSize) {
+    if (dim == mlir::ShapedType::kDynamic) {
       return failure();
     }
   }

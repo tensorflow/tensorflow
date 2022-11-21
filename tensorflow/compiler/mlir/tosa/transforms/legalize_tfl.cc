@@ -1831,20 +1831,20 @@ LogicalResult ConvertTFLReshapeOp::matchAndRewrite(
   ShapedType shape_type = shape.getType().dyn_cast<ShapedType>();
   ShapedType output_type = tfl_reshape_op.getType().dyn_cast<ShapedType>();
 
-  int64_t rank = ShapedType::kDynamicSize;
+  int64_t rank = ShapedType::kDynamic;
   if (output_type.hasRank()) rank = output_type.getRank();
 
   // Check the inferred rank from the shape tensor matches the output.
   if (shape_type.hasRank() && !shape_type.isDynamicDim(0)) {
     int64_t dim = shape_type.getDimSize(0);
-    if (rank != ShapedType::kDynamicSize && rank != dim) {
+    if (rank != ShapedType::kDynamic && rank != dim) {
       return rewriter.notifyMatchFailure(op,
                                          "static dim mismatch on tfl.reshape");
     }
     rank = dim;
   }
 
-  if (rank == ShapedType::kDynamicSize) {
+  if (rank == ShapedType::kDynamic) {
     return rewriter.notifyMatchFailure(op, "unknown rank for output shape");
   }
 

@@ -119,7 +119,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
     SmallVector<Value> resultShapes;
     resultShapes.reserve(k);
     auto resultType =
-        MemRefType::get({ShapedType::kDynamicSize}, lb.getIndexType());
+        MemRefType::get({ShapedType::kDynamic}, lb.getIndexType());
     Value one = lb.create<arith::ConstantIndexOp>(1);
     for (size_t i = 0; i < k; ++i) {
       // We assume the buffer will be small, so we allocate it on the stack.
@@ -367,7 +367,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
     Value leadingOnes = countLeadingOnes(lb, extentMemref, rank);
     Value newRank = lb.create<arith::SubIOp>(rank, leadingOnes);
     auto resultType =
-        MemRefType::get({ShapedType::kDynamicSize}, lb.getIndexType());
+        MemRefType::get({ShapedType::kDynamic}, lb.getIndexType());
     // We cannot use SubView here to return a MemRef with 'leading_ones' as
     // offset, because that also changes the size, so the result type would need
     // to have an affine map to change the layout. This is incompatible to our

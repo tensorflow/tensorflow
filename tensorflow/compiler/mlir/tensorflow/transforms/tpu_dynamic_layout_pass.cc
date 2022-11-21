@@ -127,7 +127,7 @@ TF::TPUGetLayoutOp BuildGetLayout(const int64_t execute_arg_index,
                                   OpBuilder* builder) {
   return builder->create<TF::TPUGetLayoutOp>(
       compile_launch.getLoc(),
-      llvm::ArrayRef<Type>{RankedTensorType::get({ShapedType::kDynamicSize},
+      llvm::ArrayRef<Type>{RankedTensorType::get({ShapedType::kDynamic},
                                                  builder->getIntegerType(64))},
       llvm::ArrayRef<Value>{compilation_key},
       llvm::ArrayRef<NamedAttribute>{

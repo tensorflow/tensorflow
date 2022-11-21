@@ -921,7 +921,7 @@ func.func @broadcast_scalar(%arg: tensor<f32>) -> tensor<4x2x1xf32> {
 // CHECK-PRIMITIVE: linalg.broadcast
 // CHECK-PRIMITIVE-NEXT: ins(
 // CHECK-PRIMITIVE-NEXT: outs(
-// CHECK-PRIMITIVE-NEXT: dimensions = []
+// CHECK-PRIMITIVE-NEXT: dimensions = [0, 1, 2]
 
 // -----
 
@@ -944,7 +944,7 @@ func.func @broadcast(%arg: tensor<4x?x16xf32>) -> tensor<4x2x1x4x?x16xf32> {
 // CHECK-PRIMITIVE: %[[DIM:.*]] = tensor.dim %{{.*}}, %[[C1]] : tensor<4x?x16xf32>
 // CHECK-PRIMITIVE: %{{.*}} = tensor.empty(%[[DIM]]) : tensor<4x2x1x4x?x16xf32>
 // CHECK-PRIMITIVE: linalg.broadcast
-// CHECK-PRIMITIVE:   dimensions = [3, 4, 5]
+// CHECK-PRIMITIVE:   dimensions = [0, 1, 2]
 
 // -----
 
@@ -968,7 +968,7 @@ func.func @broadcast_in_dim(%operand: tensor<5x7x1xf32>) -> tensor<7x10x6x4x5xf3
 // CHECK-PRIMITIVE:   permutation = [1, 0]
 // CHECK-PRIMITIVE: tensor.empty() : tensor<7x10x6x4x5xf32>
 // CHECK-PRIMITIVE: linalg.broadcast
-// CHECK-PRIMITIVE:   dimensions = [0, 4]
+// CHECK-PRIMITIVE:   dimensions = [1, 2, 3]
 
 // -----
 
@@ -994,7 +994,7 @@ func.func @broadcast_in_dim_ui32(%operand: tensor<5x7x1xui32>) -> tensor<7x10x6x
 // CHECK-PRIMITIVE:   permutation = [1, 0]
 // CHECK-PRIMITIVE: tensor.empty() : tensor<7x10x6x4x5xi32>
 // CHECK-PRIMITIVE: %[[RES:.*]] = linalg.broadcast
-// CHECK-PRIMITIVE:   dimensions = [0, 4]
+// CHECK-PRIMITIVE:   dimensions = [1, 2, 3]
 // CHECK-PRIMITIVE: builtin.unrealized_conversion_cast %[[RES]] : tensor<7x10x6x4x5xi32> to tensor<7x10x6x4x5xui32>
 
 // -----
@@ -1018,7 +1018,7 @@ func.func @broadcast_in_dim_with_one_to_one(
 // CHECK-PRIMITIVE-NOT: tensor.collapse_shape
 // CHECK-PRIMITIVE-NOT: linalg.transpose
 // CHECK-PRIMITIVE:     linalg.broadcast
-// CHECK-PRIMITIVE:       dimensions = [0]
+// CHECK-PRIMITIVE:       dimensions = [1]
 
 // -----
 
@@ -1043,7 +1043,7 @@ func.func @broadcast_in_dim_with_transpose(
 // CHECK-PRIMITIVE:   permutation = [1, 2, 0]
 // CHECK-PRIMITIVE: tensor.empty() : tensor<3x4x2x5xf32>
 // CHECK-PRIMITIVE: linalg.broadcast
-// CHECK-PRIMITIVE:   dimensions = [0, 1, 2]
+// CHECK-PRIMITIVE:   dimensions = [3]
 
 // -----
 
@@ -1064,7 +1064,7 @@ func.func @broadcast_in_dim_scalar(%operand: tensor<f32>) -> tensor<7x10x6xf32> 
 // CHECK-PRIMITIVE-LABEL: func @broadcast_in_dim_scalar
 // CHECK-PRIMITIVE: tensor.empty() : tensor<7x10x6xf32>
 // CHECK-PRIMITIVE: linalg.broadcast
-// CHECK-PRIMITIVE:   dimensions = []
+// CHECK-PRIMITIVE:   dimensions = [0, 1, 2]
 
 // -----
 
@@ -2351,7 +2351,7 @@ func.func @dynamic_broadcast_in_dim(%arg: tensor<?x?x?x?x1x42xf32>,
 // CHECK-PRIMITIVE:      %[[BROADCASTED:.*]] = linalg.broadcast
 // CHECK-PRIMITIVE-NEXT:   ins(%[[COLLAPSED]] : tensor<?x?x42xf32>)
 // CHECK-PRIMITIVE-NEXT:   outs(%[[INIT]] : tensor<?x?x?x?x?x?x42xf32>)
-// CHECK-PRIMITIVE-NEXT:   dimensions = [3, 4, 6]
+// CHECK-PRIMITIVE-NEXT:   dimensions = [0, 1, 2, 5]
 // CHECK-PRIMITIVE:      %[[RES:.*]] = tensor.cast %[[BROADCASTED]]
 // CHECK-PRIMITIVE-SAME:    tensor<?x?x?x?x?x?x42xf32> to tensor<?x?x?x?x?x?x?xf32>
 // CHECK-PRIMITIVE:      return %[[RES]]

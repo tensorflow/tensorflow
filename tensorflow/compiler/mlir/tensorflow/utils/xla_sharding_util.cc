@@ -62,8 +62,7 @@ mlir::LogicalResult CreateSplitOp(const int num_split,
   auto input_type = src_input.getType().cast<mlir::TensorType>();
 
   if (input_type.hasRank()) {
-    if (input_type.getShape()[split_dimension] ==
-        mlir::ShapedType::kDynamicSize) {
+    if (input_type.getShape()[split_dimension] == mlir::ShapedType::kDynamic) {
       output_type = input_type;
     } else {
       auto shape = llvm::to_vector<4>(input_type.getShape());
@@ -115,8 +114,7 @@ mlir::TF::ConcatOp CreateConcatOp(const int concat_dimension,
   auto input_type = inputs[0].getType().cast<mlir::TensorType>();
 
   if (input_type.hasRank()) {
-    if (input_type.getShape()[concat_dimension] ==
-        mlir::ShapedType::kDynamicSize) {
+    if (input_type.getShape()[concat_dimension] == mlir::ShapedType::kDynamic) {
       output_type = input_type;
     } else {
       auto shape = llvm::to_vector<4>(input_type.getShape());
@@ -480,7 +478,7 @@ mlir::LogicalResult ValidateAndGetTiledExecuteOutputShape(
     const auto output_splits = dimension_and_output_splits.value();
     const auto output_shape = cluster_func_output_type.getShape();
 
-    if (output_shape[dimension_index] == mlir::ShapedType::kDynamicSize) {
+    if (output_shape[dimension_index] == mlir::ShapedType::kDynamic) {
       *tiled_logical_computation_type = cluster_func_output_type;
       break;
     }

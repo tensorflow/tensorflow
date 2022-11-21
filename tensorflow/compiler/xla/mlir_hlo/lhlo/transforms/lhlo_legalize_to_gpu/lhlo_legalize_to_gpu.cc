@@ -126,8 +126,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       auto output = *reduceOp.getOut().begin();
       auto resType = MemRefType::get(
           llvm::None, getElementTypeOrSelf(output.getType()),
-          makeStridedLinearLayoutMap(llvm::None,
-                                     MemRefType::getDynamicStrideOrOffset(),
+          makeStridedLinearLayoutMap(llvm::None, ShapedType::kDynamic,
                                      rewriter.getContext()));
       OpFoldResult offset = launchOp.getThreadIds().x;
       auto oneAttr = rewriter.getI64IntegerAttr(1);

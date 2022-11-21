@@ -1366,7 +1366,7 @@ class Result<MemrefView> {
 
     for (unsigned i = 0; i < storage_->rank; ++i) {
       is_compatible = (storage_->dims[i] == value.sizes[i]) ||
-                      (storage_->dims[i] == /*MemrefType::kDynamicSize=*/-1);
+                      (storage_->dims[i] == /*MemrefType::kDynamic=*/-1);
     }
     return is_compatible;
   }

@@ -84,9 +84,9 @@ TEST(SymbolicShapeResolverTest, UnrankedInputs) {
   // Operands: tensor<*xf32>, tensor<?xi32>, tensor<?x4xi1>
   auto dtypes = {PrimitiveType::F32, PrimitiveType::S32, PrimitiveType::PRED};
 
-  auto type = GetFunctionType(dtypes, {std::nullopt,
-                                       {{MemrefType::kDynamicSize}},
-                                       {{MemrefType::kDynamicSize, 4}}});
+  auto type = GetFunctionType(
+      dtypes,
+      {std::nullopt, {{MemrefType::kDynamic}}, {{MemrefType::kDynamic, 4}}});
 
   auto constraints = {ArgumentConstraint::kResolved,
                       ArgumentConstraint::kResolved,
@@ -146,9 +146,9 @@ TEST(SymbolicShapeResolverTest, UnrankedInputs) {
 TEST(SymbolicShapeResolverTest, DynamicInputShapes) {
   // Operands: tensor<?xf32>, tensor<?xi32>, tensor<?xi1>
   auto dtypes = {PrimitiveType::F32, PrimitiveType::S32, PrimitiveType::PRED};
-  auto type = GetFunctionType(dtypes, {{{MemrefType::kDynamicSize}},
-                                       {{MemrefType::kDynamicSize}},
-                                       {{MemrefType::kDynamicSize}}});
+  auto type = GetFunctionType(dtypes, {{{MemrefType::kDynamic}},
+                                       {{MemrefType::kDynamic}},
+                                       {{MemrefType::kDynamic}}});
 
   auto constraints = {ArgumentConstraint::kResolved,
                       ArgumentConstraint::kResolved,
@@ -208,9 +208,9 @@ TEST(SymbolicShapeResolverTest, DynamicInputShapes) {
 TEST(SymbolicShapeResolverTest, PartialInputShapes) {
   // Operands: tensor<?x4xf32>, tensor<?x8xi32>, tensor<?xi1>
   auto dtypes = {PrimitiveType::F32, PrimitiveType::S32, PrimitiveType::PRED};
-  auto type = GetFunctionType(dtypes, {{{MemrefType::kDynamicSize, 4}},
-                                       {{MemrefType::kDynamicSize, 8}},
-                                       {{MemrefType::kDynamicSize}}});
+  auto type = GetFunctionType(dtypes, {{{MemrefType::kDynamic, 4}},
+                                       {{MemrefType::kDynamic, 8}},
+                                       {{MemrefType::kDynamic}}});
 
   auto constraints = {ArgumentConstraint::kResolved,
                       ArgumentConstraint::kResolved,
@@ -284,7 +284,7 @@ TEST(SymbolicShapeResolverTest, ShapeConstrainedInput) {
   auto dtypes = {PrimitiveType::F32, PrimitiveType::S32};
 
   auto type =
-      GetFunctionType(dtypes, {std::nullopt, {{MemrefType::kDynamicSize, 4}}});
+      GetFunctionType(dtypes, {std::nullopt, {{MemrefType::kDynamic, 4}}});
 
   auto constraints = {ArgumentConstraint::kShape, ArgumentConstraint::kShape};
 
@@ -307,9 +307,9 @@ TEST(SymbolicShapeResolverTest, ShapeConstrainedInputAfterDynamicInput) {
   // Operands: tensor<?x?xf32>, tensor<?x?xi32>
   auto dtypes = {PrimitiveType::F32, PrimitiveType::S32};
 
-  auto type = GetFunctionType(
-      dtypes, {{{MemrefType::kDynamicSize, MemrefType::kDynamicSize}},
-               {{MemrefType::kDynamicSize, MemrefType::kDynamicSize}}});
+  auto type =
+      GetFunctionType(dtypes, {{{MemrefType::kDynamic, MemrefType::kDynamic}},
+                               {{MemrefType::kDynamic, MemrefType::kDynamic}}});
 
   auto constraints = {ArgumentConstraint::kResolved,
                       ArgumentConstraint::kShape};
@@ -347,8 +347,7 @@ TEST(SymbolicShapeResolverTest, StaticShapeOperandHash) {
   auto dtypes = {PrimitiveType::F32, PrimitiveType::S32};
 
   auto type = GetFunctionType(
-      dtypes,
-      {{{MemrefType::kDynamicSize, MemrefType::kDynamicSize}}, {{4, 4}}});
+      dtypes, {{{MemrefType::kDynamic, MemrefType::kDynamic}}, {{4, 4}}});
 
   auto constraints = {ArgumentConstraint::kResolved,
                       ArgumentConstraint::kShape};
@@ -371,7 +370,7 @@ TEST(SymbolicShapeResolverTest, StaticShapeOperandHash) {
 TEST(SymbolicShapeResolverTest, IncompatibleInput) {
   // Operands: tensor<?x4xi32>
   auto dtypes = {PrimitiveType::F32};
-  auto type = GetFunctionType(dtypes, {{{MemrefType::kDynamicSize, 4}}});
+  auto type = GetFunctionType(dtypes, {{{MemrefType::kDynamic, 4}}});
   auto constraints = {ArgumentConstraint::kResolved};
 
   SymbolicShapesResolver resolver(type, constraints);
@@ -396,7 +395,7 @@ TEST(SymbolicShapeResolverTest, IncompatibleInput) {
 }
 
 TEST(SymbolicShapeResolverTest, OpaqueAndShapedInputs) {
-  std::vector<int64_t> shape = {MemrefType::kDynamicSize, 4};
+  std::vector<int64_t> shape = {MemrefType::kDynamic, 4};
 
   // Operands: !async.token, tensor<?x4xf32>, tensor<?x4xf32>
   std::vector<std::unique_ptr<Type>> operands;
@@ -470,11 +469,11 @@ static void BenchmarkFullyDynamic(benchmark::State& state) {
   auto dtypes = {PrimitiveType::F32, PrimitiveType::S32, PrimitiveType::PRED,
                  PrimitiveType::F32};
 
-  auto type = GetFunctionType(
-      dtypes, {{{MemrefType::kDynamicSize, MemrefType::kDynamicSize}},
-               {{MemrefType::kDynamicSize, MemrefType::kDynamicSize}},
-               {{MemrefType::kDynamicSize, MemrefType::kDynamicSize}},
-               {{MemrefType::kDynamicSize, MemrefType::kDynamicSize}}});
+  auto type =
+      GetFunctionType(dtypes, {{{MemrefType::kDynamic, MemrefType::kDynamic}},
+                               {{MemrefType::kDynamic, MemrefType::kDynamic}},
+                               {{MemrefType::kDynamic, MemrefType::kDynamic}},
+                               {{MemrefType::kDynamic, MemrefType::kDynamic}}});
 
   auto constraints = {
       ArgumentConstraint::kResolved, ArgumentConstraint::kResolved,
@@ -495,11 +494,11 @@ static void BenchmarkSameDynamic(benchmark::State& state) {
   auto dtypes = {PrimitiveType::F32, PrimitiveType::S32, PrimitiveType::PRED,
                  PrimitiveType::F32};
 
-  auto type = GetFunctionType(
-      dtypes, {{{MemrefType::kDynamicSize, MemrefType::kDynamicSize}},
-               {{MemrefType::kDynamicSize, MemrefType::kDynamicSize}},
-               {{MemrefType::kDynamicSize, MemrefType::kDynamicSize}},
-               {{MemrefType::kDynamicSize, MemrefType::kDynamicSize}}});
+  auto type =
+      GetFunctionType(dtypes, {{{MemrefType::kDynamic, MemrefType::kDynamic}},
+                               {{MemrefType::kDynamic, MemrefType::kDynamic}},
+                               {{MemrefType::kDynamic, MemrefType::kDynamic}},
+                               {{MemrefType::kDynamic, MemrefType::kDynamic}}});
 
   auto constraints = {
       ArgumentConstraint::kResolved, ArgumentConstraint::kResolved,
@@ -520,11 +519,11 @@ static void BenchmarkSomeDynamic(benchmark::State& state) {
   auto dtypes = {PrimitiveType::F32, PrimitiveType::S32, PrimitiveType::PRED,
                  PrimitiveType::F32};
 
-  auto type = GetFunctionType(
-      dtypes, {{{2, 2}},
-               {{4, 4}},
-               {{8, 8}},
-               {{MemrefType::kDynamicSize, MemrefType::kDynamicSize}}});
+  auto type =
+      GetFunctionType(dtypes, {{{2, 2}},
+                               {{4, 4}},
+                               {{8, 8}},
+                               {{MemrefType::kDynamic, MemrefType::kDynamic}}});
 
   auto constraints = {
       ArgumentConstraint::kResolved, ArgumentConstraint::kResolved,
@@ -545,10 +544,10 @@ static void BenchmarkStatic(benchmark::State& state) {
   auto dtypes = {PrimitiveType::F32, PrimitiveType::S32, PrimitiveType::PRED,
                  PrimitiveType::F32};
 
-  auto type = GetFunctionType(dtypes, {{{MemrefType::kDynamicSize, 4}},
-                                       {{MemrefType::kDynamicSize, 8}},
-                                       {{MemrefType::kDynamicSize, 16}},
-                                       {{MemrefType::kDynamicSize, 32}}});
+  auto type = GetFunctionType(dtypes, {{{MemrefType::kDynamic, 4}},
+                                       {{MemrefType::kDynamic, 8}},
+                                       {{MemrefType::kDynamic, 16}},
+                                       {{MemrefType::kDynamic, 32}}});
 
   auto constraints = {
       ArgumentConstraint::kResolved, ArgumentConstraint::kResolved,
@@ -569,10 +568,10 @@ static void BenchmarkSymbolic(benchmark::State& state) {
   auto dtypes = {PrimitiveType::F32, PrimitiveType::S32, PrimitiveType::PRED,
                  PrimitiveType::F32};
 
-  auto type = GetFunctionType(dtypes, {{{MemrefType::kDynamicSize, 4}},
-                                       {{MemrefType::kDynamicSize, 8}},
-                                       {{MemrefType::kDynamicSize, 16}},
-                                       {{MemrefType::kDynamicSize, 32}}});
+  auto type = GetFunctionType(dtypes, {{{MemrefType::kDynamic, 4}},
+                                       {{MemrefType::kDynamic, 8}},
+                                       {{MemrefType::kDynamic, 16}},
+                                       {{MemrefType::kDynamic, 32}}});
 
   auto constraints = {
       ArgumentConstraint::kResolved, ArgumentConstraint::kResolved,

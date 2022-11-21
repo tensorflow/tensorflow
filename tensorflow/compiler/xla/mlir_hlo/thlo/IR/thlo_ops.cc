@@ -293,10 +293,10 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
   }
 
   // Some shared values.
-  ArrayAttr allDynamicStridesOrOffsetsAttr = builder.getI64ArrayAttr(
-      SmallVector<int64_t>(rank, ShapedType::kDynamicStrideOrOffset));
-  ArrayAttr allDynamicSizesAttr = builder.getI64ArrayAttr(
-      SmallVector<int64_t>(rank, ShapedType::kDynamicSize));
+  ArrayAttr allDynamicStridesOrOffsetsAttr =
+      builder.getI64ArrayAttr(SmallVector<int64_t>(rank, ShapedType::kDynamic));
+  ArrayAttr allDynamicSizesAttr =
+      builder.getI64ArrayAttr(SmallVector<int64_t>(rank, ShapedType::kDynamic));
   Value zeroCst = builder.create<arith::ConstantIndexOp>(loc, 0);
   Value concatDimCst = builder.create<arith::ConstantIndexOp>(loc, concatDim);
   Value maxTileSizeInConcatDim = tileSizes[concatDim];
@@ -377,7 +377,7 @@ Value fuseConcatenateOpThroughPointRecursively(
   if (remainingOperands.size() == 1) {
     // Create operand point.
     SmallVector<int64_t> allDynamicOffsets(rankedTy.getRank(),
-                                           ShapedType::kDynamicStrideOrOffset);
+                                           ShapedType::kDynamic);
 
     auto sizeOrStride = builder.getI64ArrayAttr({1});
     Value operandPoint = builder.create<gml_st::TileOp>(
@@ -585,8 +585,8 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
   operandDims.reserve(operandTy.getRank());
   for (const auto &it : llvm::enumerate(operandTy.getShape())) {
     int64_t d = it.value();
-    Value dim = d == ShapedType::kDynamicSize ? dynamicDims[dynamicDimsIdx++]
-                                              : getIndexConstant(d);
+    Value dim = d == ShapedType::kDynamic ? dynamicDims[dynamicDimsIdx++]
+                                          : getIndexConstant(d);
     operandDims.push_back(dim);
   }
 
@@ -608,7 +608,7 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
       getValueOrCreateConstantIndexOp(b, loc, tile.getMixedOffsets());
   int64_t operandRank = operandTy.getRank();
   auto staticOffsets = b.getI64ArrayAttr(
-      SmallVector<int64_t>(operandRank, ShapedType::kDynamicStrideOrOffset));
+      SmallVector<int64_t>(operandRank, ShapedType::kDynamic));
   SmallVector<Value> operandOffsets;
   Value zero = getIndexConstant(0);
   for (int initId = 0, operandId = 0; initId < initRank; ++initId) {
@@ -621,7 +621,7 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
 
   // Compute operand tile sizes.
   auto staticTileSizes = b.getI64ArrayAttr(
-      SmallVector<int64_t>(operandRank, ShapedType::kDynamicSize));
+      SmallVector<int64_t>(operandRank, ShapedType::kDynamic));
   SmallVector<Value> tileSizes;
   Value one = getIndexConstant(1);
   auto tileOpSizes =
@@ -639,7 +639,7 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
       b.getI64ArrayAttr(SmallVector<int64_t>(operandRank, 1));
   SmallVector<Value> tileStrides = {};
   auto operandTileTy = b.getType<gml_st::TileType>(
-      SmallVector<int64_t>(operandRank, ShapedType::kDynamicSize));
+      SmallVector<int64_t>(operandRank, ShapedType::kDynamic));
   auto operandTile = b.create<gml_st::TileOp>(
       loc, operandTileTy, operandOffsets, tileSizes, tileStrides, staticOffsets,
       staticTileSizes, staticTileStrides);

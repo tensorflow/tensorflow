@@ -455,7 +455,7 @@ bool isUnpairedUnitDimension(
 
 int64_t getShapedTypyDimSize(const SymbolicProduct &symProduct) {
   return symProduct.symbolic.empty() ? symProduct.concrete
-                                     : ShapedType::kDynamicSize;
+                                     : ShapedType::kDynamic;
 }
 
 // Iterate over the operand's and the result's shape dimensions and find
@@ -587,7 +587,7 @@ LogicalResult findExpandingAndCollapsingDimensionGroups(
         int64_t tyDimSize = getShapedTypyDimSize(gcd);
 
         // Allow no more than one dynamic dimension per expansion group.
-        if (tyDimSize == ShapedType::kDynamicSize) {
+        if (tyDimSize == ShapedType::kDynamic) {
           numDynamicDims++;
           if (numDynamicDims > 1) return failure();
         }

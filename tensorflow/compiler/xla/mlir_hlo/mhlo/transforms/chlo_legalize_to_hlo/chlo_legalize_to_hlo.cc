@@ -1397,7 +1397,7 @@ struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
     int64_t operandRank = operandType.getRank();
     int64_t lastDimIndex = operandRank - 1;
     int64_t lastDimSize = operandType.getDimSize(lastDimIndex);
-    assert(lastDimSize != ShapedType::kDynamicSize);
+    assert(lastDimSize != ShapedType::kDynamic);
 
     // Create an Iota op for indices.
     auto i32Type = rewriter.getIntegerType(32);

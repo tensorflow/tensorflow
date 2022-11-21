@@ -173,7 +173,7 @@ mlir::RankedTensorType GetBufferType(mlir::Type ty) {
                       .dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>();
   if (encoding && !encoding.getBounds().empty()) {
     for (int64_t dim = 0; dim < rank; ++dim) {
-      if (dims[dim] == mlir::ShapedType::kDynamicSize) {
+      if (dims[dim] == mlir::ShapedType::kDynamic) {
         dims[dim] = encoding.getBounds()[dim];
       }
     }

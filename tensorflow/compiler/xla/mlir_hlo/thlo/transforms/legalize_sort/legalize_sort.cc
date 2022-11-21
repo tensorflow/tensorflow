@@ -381,10 +381,10 @@ struct Slicer {
 
   Value slice(ImplicitLocOpBuilder& b, Value input) {
     auto ty = input.getType().cast<MemRefType>();
-    auto slicedType = memref::SubViewOp::inferRankReducedResultType(
-                          {ShapedType::kDynamicSize} /*1D output*/, ty, offsets,
-                          sizes, strides)
-                          .cast<MemRefType>();
+    auto slicedType =
+        memref::SubViewOp::inferRankReducedResultType(
+            {ShapedType::kDynamic} /*1D output*/, ty, offsets, sizes, strides)
+            .cast<MemRefType>();
     return b
         .create<memref::SubViewOp>(slicedType, input, offsets, sizes, strides)
         .getResult();

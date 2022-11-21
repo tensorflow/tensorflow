@@ -75,11 +75,11 @@ def GMLST_TileOp : GMLST_Op<"tile", [
   let results = (outs GMLST_TileType:$result);
   let assemblyFormat = [{
     custom<DynamicIndexList>($offsets, $static_offsets,
-                               "ShapedType::kDynamicStrideOrOffset")
+                               "ShapedType::kDynamic")
     custom<DynamicIndexList>($sizes, $static_sizes,
-                               "ShapedType::kDynamicSize")
+                               "ShapedType::kDynamic")
     custom<DynamicIndexList>($strides, $static_strides,
-                               "ShapedType::kDynamicStrideOrOffset")
+                               "ShapedType::kDynamic")
     attr-dict `:` qualified(type($result))
   }];
   let builders = [

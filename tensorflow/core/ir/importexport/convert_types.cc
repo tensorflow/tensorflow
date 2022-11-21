@@ -185,8 +185,8 @@ Status ConvertToMlirShape(const TensorShapeProto& input_shape,
     }
     // This isn't really expected, but Grappler is using such shapes for its
     // symbolic shape analysis and it may spill into here.
-    if (d.size() < ShapedType::kDynamicSize)
-      shape->push_back(ShapedType::kDynamicSize);
+    if (d.size() < ShapedType::kDynamic)
+      shape->push_back(ShapedType::kDynamic);
     else
       shape->push_back(d.size());
   }

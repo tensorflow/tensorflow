@@ -997,14 +997,14 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
     auto odsLoc = rewriter.getFusedLoc({fused_batch_norm->getLoc()});
 
     // We need to make sure input and output shapes are compatible.
-    int64_t last_dim = ShapedType::kDynamicSize;
+    int64_t last_dim = ShapedType::kDynamic;
     {
       auto is_last_dim_compatible = [](const Value &v, int64_t &last_dim) {
         auto v_type = v.getType().dyn_cast_or_null<RankedTensorType>();
         if (!v_type) return true;
         int64_t v_last_dim = v_type.getDimSize(v_type.getRank() - 1);
-        if (v_last_dim == ShapedType::kDynamicSize) return true;
-        if (last_dim != ShapedType::kDynamicSize && v_last_dim != last_dim)
+        if (v_last_dim == ShapedType::kDynamic) return true;
+        if (last_dim != ShapedType::kDynamic && v_last_dim != last_dim)
           return false;
         last_dim = v_last_dim;
         return true;

@@ -53,7 +53,7 @@ void printShapeTypeDimensionsList(AsmPrinter &printer,
   llvm::interleave(
       integers, printer,
       [&](int64_t val) {
-        if (val == ShapedType::kDynamicSize)
+        if (val == ShapedType::kDynamic)
           printer << '?';
         else
           printer << val;
@@ -1504,9 +1504,9 @@ struct FoldConstantsIntoTileType : public OpRewritePattern<TileOp> {
     SmallVector<OpFoldResult> mixedOffsets(op.getMixedOffsets());
     SmallVector<OpFoldResult> mixedSizes(op.getMixedSizes());
     SmallVector<OpFoldResult> mixedStrides(op.getMixedStrides());
-    canonicalizeSubViewPart(mixedOffsets, ShapedType::isDynamicStrideOrOffset);
+    canonicalizeSubViewPart(mixedOffsets, ShapedType::isDynamic);
     canonicalizeSubViewPart(mixedSizes, ShapedType::isDynamic);
-    canonicalizeSubViewPart(mixedStrides, ShapedType::isDynamicStrideOrOffset);
+    canonicalizeSubViewPart(mixedStrides, ShapedType::isDynamic);
 
     // Create the new tile in canonical form.
     TileOp newOp = rewriter.create<TileOp>(op.getLoc(), mixedOffsets,
@@ -1528,11 +1528,11 @@ void TileOp::build(OpBuilder &b, OperationState &result,
   SmallVector<int64_t> staticOffsets, staticSizes, staticStrides;
   SmallVector<Value> dynamicOffsets, dynamicSizes, dynamicStrides;
   dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets,
-                             ShapedType::kDynamicStrideOrOffset);
+                             ShapedType::kDynamic);
   dispatchIndexOpFoldResults(sizes, dynamicSizes, staticSizes,
-                             ShapedType::kDynamicSize);
+                             ShapedType::kDynamic);
   dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides,
-                             ShapedType::kDynamicStrideOrOffset);
+                             ShapedType::kDynamic);
   auto tileType = TileType::get(b.getContext(), staticSizes);
   build(b, result, tileType, dynamicOffsets, dynamicSizes, dynamicStrides,
         b.getI64ArrayAttr(staticOffsets), b.getI64ArrayAttr(staticSizes),
@@ -1577,30 +1577,30 @@ LogicalResult TileOp::verify() {
   }
   if (failed(mlir::verifyListOfOperandsOrIntegers(
           getOperation(), "offset", rank, getStaticOffsets(), getOffsets(),
-          ShapedType::isDynamicStrideOrOffset))) {
+          ShapedType::isDynamic))) {
     return failure();
   }
   if (failed(mlir::verifyListOfOperandsOrIntegers(
           getOperation(), "stride", rank, getStaticStrides(), getStrides(),
-          ShapedType::isDynamicStrideOrOffset))) {
+          ShapedType::isDynamic))) {
     return failure();
   }
   for (auto it : llvm::zip(resultType.getShape(), getStaticOffsets(),
                            getStaticSizes(), getStaticStrides())) {
     auto offset =
         std::get<1>(it).dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
-    if (offset < 0 && offset != ShapedType::kDynamicStrideOrOffset) {
+    if (offset < 0 && offset != ShapedType::kDynamic) {
       return emitOpError("expected offset = ")
              << offset << " to be non-negative";
     }
     auto size =
         std::get<2>(it).dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
-    if (size < 0 && size != ShapedType::kDynamicSize) {
+    if (size < 0 && size != ShapedType::kDynamic) {
       return emitOpError("expected size = ") << size << " to be non-negative";
     }
     auto stride =
         std::get<3>(it).dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
-    if (stride < 0 && stride != ShapedType::kDynamicStrideOrOffset) {
+    if (stride < 0 && stride != ShapedType::kDynamic) {
       return emitOpError("expected stride = ")
              << stride << " to be non-negative";
     }

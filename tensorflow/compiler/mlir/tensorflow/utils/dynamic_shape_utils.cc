@@ -21,7 +21,7 @@ namespace tensorflow {
 llvm::SmallVector<int64_t> ConvertTFShapeToMlir(
     llvm::ArrayRef<int64_t> shapes) {
   return llvm::to_vector(llvm::map_range(shapes, [](int64_t shape) {
-    return shape == kTFDynamicSize ? mlir::ShapedType::kDynamicSize : shape;
+    return shape == kTFDynamicSize ? mlir::ShapedType::kDynamic : shape;
   }));
 }
 

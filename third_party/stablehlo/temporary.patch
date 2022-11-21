@@ -1,3 +1,276 @@
+diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.cpp b/stablehlo/stablehlo/dialect/AssemblyFormat.cpp
+--- stablehlo/stablehlo/dialect/AssemblyFormat.cpp
++++ stablehlo/stablehlo/dialect/AssemblyFormat.cpp
+@@ -318,7 +318,7 @@
+   SmallVector<int64_t> shape;
+   auto parseElt = [&]() -> ParseResult {
+     if (!parser.parseOptionalQuestion()) {
+-      shape.push_back(ShapedType::kDynamicSize);
++      shape.push_back(ShapedType::kDynamic);
+       return success();
+     }
+     return parser.parseInteger(shape.emplace_back());
+diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.h b/stablehlo/stablehlo/dialect/AssemblyFormat.h
+--- stablehlo/stablehlo/dialect/AssemblyFormat.h
++++ stablehlo/stablehlo/dialect/AssemblyFormat.h
+@@ -210,7 +210,7 @@
+ ParseResult parseCustomCallTarget(AsmParser& parser, StringAttr& target);
+ 
+ // IntArray - Print an array of ints with brackets. Unlike DimensionSizes,
+-// doesn't have special handling for kDynamicSize.
++// doesn't have special handling for kDynamic.
+ //
+ //   Generic:
+ //     1, 2
+diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
+--- stablehlo/stablehlo/dialect/Base.cpp
++++ stablehlo/stablehlo/dialect/Base.cpp
+@@ -189,8 +189,8 @@
+                                                          int64_t rightBound) {
+   bool isLeftStaticDim = !isDynamicDimSize(leftSize);
+   bool isRightStaticDim = !isDynamicDimSize(rightSize);
+-  int64_t size = ShapedType::kDynamicSize;
+-  int64_t bound = ShapedType::kDynamicSize;
++  int64_t size = ShapedType::kDynamic;
++  int64_t bound = ShapedType::kDynamic;
+ 
+   if (isLeftStaticDim && isRightStaticDim) {
+     size = leftSize + rightSize;
+@@ -220,8 +220,8 @@
+   bool isRightStaticDim = !isDynamicDimSize(rightSize);
+   bool isLeftStaticBound = !isDynamicDimSize(leftBound);
+   bool isRightStaticBound = !isDynamicDimSize(rightBound);
+-  int64_t size = ShapedType::kDynamicSize;
+-  int64_t bound = ShapedType::kDynamicSize;
++  int64_t size = ShapedType::kDynamic;
++  int64_t bound = ShapedType::kDynamic;
+ 
+   if (isLeftStaticDim || isRightStaticDim) {
+     if (isLeftStaticDim && isRightStaticDim && leftSize != rightSize)
+@@ -259,8 +259,8 @@
+   }
+ 
+   auto rank = rankedTypes[0].getRank();
+-  SmallVector<int64_t> inferredSizes(rank, ShapedType::kDynamicSize);
+-  SmallVector<int64_t> inferredBounds(rank, ShapedType::kDynamicSize);
++  SmallVector<int64_t> inferredSizes(rank, ShapedType::kDynamic);
++  SmallVector<int64_t> inferredBounds(rank, ShapedType::kDynamic);
+   bool anyInputHaveBounds = false;
+ 
+   for (const auto& it : llvm::enumerate(rankedTypes)) {
+@@ -273,8 +273,7 @@
+       int64_t leftSize = inferredSizes[dim];
+       int64_t rightSize = rankedType.getShape()[dim];
+       int64_t leftBound = inferredBounds[dim];
+-      int64_t rightBound =
+-          bounds.empty() ? ShapedType::kDynamicSize : bounds[dim];
++      int64_t rightBound = bounds.empty() ? ShapedType::kDynamic : bounds[dim];
+ 
+       auto inferredDimAndBoundOrErr = inferMergedDimAndBound(
+           location, dim, leftSize, rightSize, leftBound, rightBound);
+diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
+--- stablehlo/stablehlo/dialect/Base.h
++++ stablehlo/stablehlo/dialect/Base.h
+@@ -46,7 +46,7 @@
+ // Check if the dimension size is dynamic.
+ // TODO(zhouxin) add isStaticDimSize() as well.
+ inline static bool isDynamicDimSize(int64_t val) {
+-  return val == ShapedType::kDynamicSize;
++  return val == ShapedType::kDynamic;
+ }
+ 
+ // Returns true if the given types are the same for the purposes of HLO type
+diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
+--- stablehlo/stablehlo/dialect/Base.td
++++ stablehlo/stablehlo/dialect/Base.td
+@@ -200,9 +200,9 @@
+     RankedTensorType::getEncoding.
+     The number of bounds is expected to be the same as the number of dimensions
+     in the accompanying shaped type.
+-    For a static dimension, the corresponding bound is ShapedType::kDynamicSize.
++    For a static dimension, the corresponding bound is ShapedType::kDynamic.
+     For a dynamic dimension, the corresponding bound is either known and is
+-    a non-negative number or unknown and is ShapedType::kDynamicSize.
++    a non-negative number or unknown and is ShapedType::kDynamic.
+   }];
+ 
+   let methods = [InterfaceMethod<
+diff --ruN a/stablehlo/stablehlo/dialect/BroadcastUtils.cpp b/stablehlo/stablehlo/dialect/BroadcastUtils.cpp
+--- stablehlo/stablehlo/dialect/BroadcastUtils.cpp
++++ stablehlo/stablehlo/dialect/BroadcastUtils.cpp
+@@ -65,7 +65,7 @@
+     auto ty = s.getType().cast<RankedTensorType>();
+     assert(ty.getRank() == 1 && "expect extent tensor type");
+     if (ty.isDynamicDim(0)) {
+-      resultRank = ShapedType::kDynamicSize;
++      resultRank = ShapedType::kDynamic;
+       break;
+     }
+     resultRank = std::max(resultRank, ty.getDimSize(0));
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
+--- stablehlo/stablehlo/dialect/ChloOps.cpp
++++ stablehlo/stablehlo/dialect/ChloOps.cpp
+@@ -470,7 +470,7 @@
+     return emitOptionalError(location, "operand's rank must be at least 1");
+   }
+   auto operandLastDim = operandTy.getShape()[operandTy.getRank() - 1];
+-  if (operandLastDim == ShapedType::kDynamicSize) {
++  if (operandLastDim == ShapedType::kDynamic) {
+     return emitOptionalError(location,
+                              "operand's last dimension must be static");
+   }
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -154,7 +154,7 @@
+       inferredReturnShapes.emplace_back(elementType);
+       return success();
+     }
+-    shapeVector.resize(size, ShapedType::kDynamicSize);
++    shapeVector.resize(size, ShapedType::kDynamic);
+     inferredReturnShapes.emplace_back(shapeVector, elementType);
+     return success();
+   }
+@@ -1329,7 +1329,7 @@
+                           errorEmitter)))
+     return failure();
+ 
+-  auto getSliceDim = [](int64_t index) { return ShapedType::kDynamicSize; };
++  auto getSliceDim = [](int64_t index) { return ShapedType::kDynamic; };
+   return inferGatherReturnTypeComponents(operandShape, startIndicesShape,
+                                          getSliceDim, dimensionNumbers,
+                                          inferredReturnShapes, errorEmitter);
+@@ -1699,7 +1699,7 @@
+     const ArrayRef<hlo::WindowDimension> window) {
+   auto lhsType = lhs.getType().cast<RankedTensorType>();
+   SmallVector<int64_t> outputDimensions(lhsType.getShape().size(),
+-                                        ShapedType::kDynamicSize);
++                                        ShapedType::kDynamic);
+ 
+   // Infer the output spatial dimensions.
+   auto numSpatialDims = inputSpatialDimensions.size();
+@@ -1720,7 +1720,7 @@
+       rhsType.getShape()[kernelOutputFeatureDimension];
+ 
+   outputDimensions[outputBatchDimension] = hlo::isDynamicDimSize(inputBatch)
+-                                               ? ShapedType::kDynamicSize
++                                               ? ShapedType::kDynamic
+                                                : inputBatch / batchGroupCount;
+   outputDimensions[outputFeatureDimension] = kernelOutputFeatures;
+ 
+@@ -3341,7 +3341,7 @@
+     for (auto dim : llvm::zip(trueType.getShape(), falseType.getShape())) {
+       dims.push_back(std::get<0>(dim) == std::get<1>(dim)
+                          ? std::get<0>(dim)
+-                         : ShapedType::kDynamicSize);
++                         : ShapedType::kDynamic);
+     }
+     outputType = ShapedTypeComponents(dims, trueType.getElementType());
+   }
+@@ -3394,13 +3394,13 @@
+   }
+ 
+   auto shape = llvm::to_vector<4>(inputType.getShape());
+-  llvm::SmallVector<int64_t, 4> bounds(rank, ShapedType::kDynamicSize);
++  llvm::SmallVector<int64_t, 4> bounds(rank, ShapedType::kDynamic);
+   if (auto encoding =
+           inputType.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>())
+     bounds = llvm::to_vector<4>(encoding.getBounds());
+ 
+-  if (shape[dim] != ShapedType::kDynamicSize) bounds[dim] = shape[dim];
+-  shape[dim] = ShapedType::kDynamicSize;
++  if (shape[dim] != ShapedType::kDynamic) bounds[dim] = shape[dim];
++  shape[dim] = ShapedType::kDynamic;
+ 
+   DenseIntElementsAttr sizeAttr;
+   if (matchPattern(adaptor.getSize(), m_Constant(&sizeAttr))) {
+@@ -3408,14 +3408,13 @@
+         sizeAttr.getSplatValue<IntegerAttr>().getValue().getSExtValue();
+     if (splat == bounds[dim]) {
+       shape[dim] = splat;
+-      bounds[dim] = ShapedType::kDynamicSize;
++      bounds[dim] = ShapedType::kDynamic;
+     }
+   }
+ 
+   auto extensions = TypeExtensionsAttr::get(context, bounds);
+   auto resultType =
+-      llvm::all_of(bounds,
+-                   [](int64_t v) { return v == ShapedType::kDynamicSize; })
++      llvm::all_of(bounds, [](int64_t v) { return v == ShapedType::kDynamic; })
+           ? RankedTensorType::get(shape, inputType.getElementType())
+           : RankedTensorType::get(shape, inputType.getElementType(),
+                                   extensions);
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -279,7 +279,7 @@
+   SmallVector<int64_t> outputDimensions(window.size());
+   for (int64_t i = 0; i < static_cast<int64_t>(window.size()); ++i) {
+     if (isDynamicDimSize(baseShape[i]) || isDynamicDimSize(window[i].size)) {
+-      outputDimensions[i] = ShapedType::kDynamicSize;
++      outputDimensions[i] = ShapedType::kDynamic;
+     } else {
+       const auto& dim = window[i];
+ 
+@@ -431,7 +431,7 @@
+          argShapeIdx < static_cast<int64_t>(argShape.size());
+          outputShapeIdx++)
+       if (allowedDimensions[outputShapeIdx] == argShape[argShapeIdx] ||
+-          argShape[argShapeIdx] == ShapedType::kDynamicSize)
++          argShape[argShapeIdx] == ShapedType::kDynamic)
+         argShapeIdx++;
+ 
+     if (argShapeIdx != static_cast<int64_t>(argShape.size()))
+@@ -579,8 +579,8 @@
+ 
+   // Infer the most specific (size, bound) of all dimensions of the return type
+   auto rank = firstRankedType.getRank();
+-  SmallVector<int64_t> inferredSizes(rank, ShapedType::kDynamicSize);
+-  SmallVector<int64_t> inferredBounds(rank, ShapedType::kDynamicSize);
++  SmallVector<int64_t> inferredSizes(rank, ShapedType::kDynamic);
++  SmallVector<int64_t> inferredBounds(rank, ShapedType::kDynamic);
+   // Note: for the concatenate dimension, 0 should be the identity element:
+   // Any dim size can keep unchanged when concatenated with 0
+   inferredSizes[dimension] = 0;
+@@ -602,10 +602,9 @@
+ 
+       int64_t leftSize = inferredSizes[dim];
+       int64_t rightSize =
+-          rankedType ? rankedType.getShape()[dim] : ShapedType::kDynamicSize;
++          rankedType ? rankedType.getShape()[dim] : ShapedType::kDynamic;
+       int64_t leftBound = inferredBounds[dim];
+-      int64_t rightBound =
+-          bounds.empty() ? ShapedType::kDynamicSize : bounds[dim];
++      int64_t rightBound = bounds.empty() ? ShapedType::kDynamic : bounds[dim];
+       if (dim == dimension) {
+         inferredDimAndBound = inferConcatenatedDimAndBound(
+             leftSize, rightSize, leftBound, rightBound);
+@@ -880,10 +879,9 @@
+                              ") must match operand rank (", rank, ")");
+ 
+   auto inputShape = inputType.getShape();
+-  SmallVector<int64_t> resultShape(rank, ShapedType::kDynamicSize);
++  SmallVector<int64_t> resultShape(rank, ShapedType::kDynamic);
+   ArrayRef<int64_t> inputBounds = encodingToBounds(inputType.getEncoding());
+-  SmallVector<int64_t> resultBounds(inputBounds.size(),
+-                                    ShapedType::kDynamicSize);
++  SmallVector<int64_t> resultBounds(inputBounds.size(), ShapedType::kDynamic);
+ 
+   for (int i = 0, e = inputShape.size(); i < e; i++) {
+     int64_t paddingLowVal = edgePaddingLow.getValues<APInt>()[i].getSExtValue();
+@@ -1153,9 +1151,8 @@
+   SmallVector<int64_t, 4> strideVals(strides.getValues<int64_t>());
+ 
+   ArrayRef<int64_t> inputBounds = encodingToBounds(rankedTy.getEncoding());
+-  SmallVector<int64_t> shape(rank, ShapedType::kDynamicSize);
+-  SmallVector<int64_t> resultBounds(inputBounds.size(),
+-                                    ShapedType::kDynamicSize);
++  SmallVector<int64_t> shape(rank, ShapedType::kDynamic);
++  SmallVector<int64_t> resultBounds(inputBounds.size(), ShapedType::kDynamic);
+ 
+   for (int64_t i = 0, e = rank; i != e; i++) {
+     // P3.
 diff --ruN a/stablehlo/stablehlo/tests/infer_chlo.mlir b/stablehlo/stablehlo/tests/infer_chlo.mlir
 --- stablehlo/stablehlo/tests/infer_chlo.mlir
 +++ stablehlo/stablehlo/tests/infer_chlo.mlir

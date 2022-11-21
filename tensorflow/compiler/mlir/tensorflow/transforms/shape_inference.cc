@@ -646,7 +646,7 @@ Attribute ComputeOutputComponent(const ValuePort& value_port,
     // If the dim is dynamic, the dimension can't be inferred during
     // compilation.
     int64_t dim = operand_ty.getDimSize(port[1]);
-    if (dim == ShapedType::kDynamicSize) return nullptr;
+    if (dim == ShapedType::kDynamic) return nullptr;
 
     // Create an elements attribute for the particular dimension.
     Type element_ty = getElementTypeOrSelf(shape_op.getType());
@@ -1527,7 +1527,7 @@ llvm::Optional<RankedTensorType> InferWindowOutputShape(
     }
 
     if (base_shape.isDynamicDim(i)) {
-      output_dimensions[i] = ShapedType::kDynamicSize;
+      output_dimensions[i] = ShapedType::kDynamic;
     } else {
       const int64_t dilated_base = xla::window_util::DilatedBound(
           base_shape.getDimSize(i), dim.base_dilation());
@@ -2156,7 +2156,7 @@ bool CanWhileTypeBeRefinedWith(TensorType current_type,
     int64_t current_dim = std::get<0>(dim);
     int64_t potential_refined_dim = std::get<1>(dim);
     if (current_dim != potential_refined_dim &&
-        current_dim != ShapedType::kDynamicSize)
+        current_dim != ShapedType::kDynamic)
       return false;
   }
   return true;
@@ -2505,7 +2505,7 @@ RankedTensorType GetCompatibleRankedTensorType(RankedTensorType lhs,
     if (lhs_dim == std::get<1>(dim)) {
       dims.push_back(lhs_dim);
     } else {
-      dims.push_back(ShapedType::kDynamicSize);
+      dims.push_back(ShapedType::kDynamic);
     }
   }
   return tensorflow::GetTypeFromTFTensorShape(

@@ -76,7 +76,12 @@ cc_library(
     name = "quantize_model_cc",
     hdrs = ["quantize_model.h"],
     compatible_with = get_compatible_with_cloud(),
-    deps = if_static([":quantize_model_cc_impl"]),
+    deps = if_static([":quantize_model_cc_impl"]) + [
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
+        "//tensorflow/core:protos_all_cc",
+    ],
 )
 
 # Exports python symbols via pybind11.

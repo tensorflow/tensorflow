@@ -1012,7 +1012,7 @@ static Value EncodeMemRef(ImplicitLocOpBuilder &b, MemRefType memref_ty,
   llvm::SmallVector<int64_t> strides;
   int64_t memref_offset;
   if (failed(getStridesAndOffset(memref_ty, strides, memref_offset)))
-    strides.resize(memref_ty.getRank(), ShapedType::kDynamicStrideOrOffset);
+    strides.resize(memref_ty.getRank(), ShapedType::kDynamic);
 
   // Build encoded memref sizes + strides: !llvm.array<... x i64>
   Value payload = b.create<LLVM::UndefOp>(type.getBody()[3]);
@@ -1024,10 +1024,9 @@ static Value EncodeMemRef(ImplicitLocOpBuilder &b, MemRefType memref_ty,
                     ? desc->size(b, loc, i)
                     : b.create<ConstantOp>(i64(dim_size));
 
-    Value stride =
-        ShapedType::isDynamicStrideOrOffset(stride_size) && desc.has_value()
-            ? desc->stride(b, loc, i)
-            : b.create<ConstantOp>(i64(stride_size));
+    Value stride = ShapedType::isDynamic(stride_size) && desc.has_value()
+                       ? desc->stride(b, loc, i)
+                       : b.create<ConstantOp>(i64(stride_size));
 
     auto stride_pos = memref_ty.getRank() + i;
 

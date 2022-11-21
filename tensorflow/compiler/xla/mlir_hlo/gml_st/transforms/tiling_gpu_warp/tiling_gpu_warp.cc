@@ -131,7 +131,7 @@ struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
           Value laneInit = b.create<gml_st::MaterializeOp>(loc, init, laneTile);
 
           // Create `gml_st.for` loop to iterate over the lane's tile.
-          auto sloopTy = ploopTy.clone({1, ShapedType::kDynamicSize});
+          auto sloopTy = ploopTy.clone({1, ShapedType::kDynamic});
           auto sloop = b.create<gml_st::ForOp>(
               loc, sloopTy, c0, laneTileSize, c1, laneInit,
               [&](OpBuilder& b, Location loc, ValueRange ivs, ValueRange aggr) {

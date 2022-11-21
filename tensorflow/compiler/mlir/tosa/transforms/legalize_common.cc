@@ -44,8 +44,8 @@ namespace mlir {
 namespace tosa {
 
 static int64_t multiply_dims(int64_t a, int64_t b) {
-  if (a == ShapedType::kDynamicSize || b == ShapedType::kDynamicSize) {
-    return ShapedType::kDynamicSize;
+  if (a == ShapedType::kDynamic || b == ShapedType::kDynamic) {
+    return ShapedType::kDynamic;
   }
   return a * b;
 }
@@ -53,7 +53,7 @@ static int64_t multiply_dims(int64_t a, int64_t b) {
 static int64_t multiply_dims(llvm::ArrayRef<int64_t> dims, int64_t res = 1) {
   for (auto dim : dims) {
     if (ShapedType::isDynamic(dim)) {
-      return ShapedType::kDynamicSize;
+      return ShapedType::kDynamic;
     }
     res = res * dim;
   }
@@ -860,7 +860,7 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
     int32_t block_shape_val =
         block_shape_elems.getValues<IntegerAttr>()[i].getInt();
     a2_shape[1 + i * 2 + 0] = padded_shape[1 + i];
-    if (a2_shape[1 + i * 2 + 0] != ShapedType::kDynamicSize) {
+    if (a2_shape[1 + i * 2 + 0] != ShapedType::kDynamic) {
       a2_shape[1 + i * 2 + 0] /= block_shape_val;
     }
 
@@ -933,7 +933,7 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
     int32_t block_shape_val =
         block_shape_elems.getValues<IntegerAttr>()[i].getInt();
     a4_reshape_shape[i + 1] = padded_shape[i + 1];
-    if (a4_reshape_shape[i + 1] != ShapedType::kDynamicSize) {
+    if (a4_reshape_shape[i + 1] != ShapedType::kDynamic) {
       a4_reshape_shape[i + 1] /= block_shape_val;
     }
   }
@@ -1089,8 +1089,8 @@ llvm::Optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
 
   for (int i = 0; i < block_rank; i++) a1_shape[i] = block_shape[i];
 
-  a1_shape[block_rank] = (input_shape[0] == ShapedType::kDynamicSize)
-                             ? ShapedType::kDynamicSize
+  a1_shape[block_rank] = (input_shape[0] == ShapedType::kDynamic)
+                             ? ShapedType::kDynamic
                              : input_shape[0] / block_num_elems;
 
   for (int i = 0; i < input_rank - 1; i++)
@@ -1148,7 +1148,7 @@ llvm::Optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
   SmallVector<int64_t> a4_shape(input_rank);
 
   a4_shape[0] = input_shape[0];
-  if (a4_shape[0] != ShapedType::kDynamicSize) {
+  if (a4_shape[0] != ShapedType::kDynamic) {
     a4_shape[0] /= block_num_elems;
   }
   for (int i = 0; i < block_rank; i++) {

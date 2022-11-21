@@ -365,7 +365,7 @@ void ShapeAttr::print(AsmPrinter &os) const {
   os << "<";
   if (hasRank()) {
     auto print_dim = [&](int64_t dim) {
-      if (dim != ShapedType::kDynamicSize)
+      if (dim != ShapedType::kDynamic)
         os << dim;
       else
         os << "?";
@@ -396,7 +396,7 @@ Attribute ShapeAttr::parse(AsmParser &parser, Type type) {
       shape.emplace_back();
       llvm::SMLoc loc = parser.getCurrentLocation();
       if (succeeded(parser.parseOptionalQuestion())) {
-        shape.back() = ShapedType::kDynamicSize;
+        shape.back() = ShapedType::kDynamic;
       } else if (failed(parser.parseInteger(shape.back()))) {
         parser.emitError(loc)
             << "expected an integer or `?` when parsing a tf.shape attribute";

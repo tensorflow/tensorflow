@@ -133,7 +133,7 @@ bool IsBoundedOrStatic(mlir::Type ty) {
   int64_t rank = ranked_ty.getRank();
   for (int64_t dim = 0; dim < rank; ++dim) {
     if (ranked_ty.isDynamicDim(dim) &&
-        encoding.getBounds()[dim] == mlir::ShapedType::kDynamicSize)
+        encoding.getBounds()[dim] == mlir::ShapedType::kDynamic)
       return false;
   }
   return true;

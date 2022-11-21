@@ -945,10 +945,10 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
     for (auto& dim : shape_ref) {
       // translate dynamic shapes from mlir to tfl values
       shape.push_back(
-          dim == mlir::ShapedType::kDynamicSize ? 1 : static_cast<int>(dim));
+          dim == mlir::ShapedType::kDynamic ? 1 : static_cast<int>(dim));
       shape_signature.push_back(static_cast<int>(
-          dim == mlir::ShapedType::kDynamicSize ? tensorflow::kTFDynamicSize
-                                                : dim));
+          dim == mlir::ShapedType::kDynamic ? tensorflow::kTFDynamicSize
+                                            : dim));
     }
   }
 

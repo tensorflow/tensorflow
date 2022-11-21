@@ -63,16 +63,16 @@ struct BroadcastRemoveSubsumedOperandsPattern
       if (extents.size() > knownExtents.size()) {
         knownExtents.insert(knownExtents.begin(),
                             extents.size() - knownExtents.size(),
-                            ShapedType::kDynamicSize);
+                            ShapedType::kDynamic);
       }
 
       for (size_t i = 0, e = extents.size(); i != e; ++i) {
         int64_t extent = extents[e - i - 1];
-        if (extent != ShapedType::kDynamicSize && extent != 1) {
+        if (extent != ShapedType::kDynamic && extent != 1) {
           int64_t &knownExtent = knownExtents[knownExtents.size() - i - 1];
           // A dynamic dimension is subsumed by a static one, but bail out for
           // known conflicting shapes.
-          if (knownExtent != extent && knownExtent != ShapedType::kDynamicSize)
+          if (knownExtent != extent && knownExtent != ShapedType::kDynamic)
             return failure();
           knownExtent = extent;
         }
@@ -80,7 +80,7 @@ struct BroadcastRemoveSubsumedOperandsPattern
     }
 
     // If we've figured out all shapes to be constants we're done.
-    if (!llvm::is_contained(knownExtents, ShapedType::kDynamicSize)) {
+    if (!llvm::is_contained(knownExtents, ShapedType::kDynamic)) {
       rewriter.replaceOpWithNewOp<ConstShapeOp>(
           op, op->getResultTypes(), rewriter.getIndexTensorAttr(knownExtents));
       return success();
@@ -111,14 +111,14 @@ struct BroadcastRemoveSubsumedOperandsPattern
         //   - a dynamic dim but the result is known to be constant.
         int64_t knownExtent = knownExtents[knownExtents.size() - i - 1];
         assert(knownExtent != 1);
-        if (knownExtent != ShapedType::kDynamicSize &&
-            extent == ShapedType::kDynamicSize)
+        if (knownExtent != ShapedType::kDynamic &&
+            extent == ShapedType::kDynamic)
           continue;
 
         //   - a constant non-1 dimension equal to the "known" dim.
         // In this case we also have to check whether this operand is the only
         // contributor of that constant.
-        if (knownExtent != ShapedType::kDynamicSize && extent == knownExtent &&
+        if (knownExtent != ShapedType::kDynamic && extent == knownExtent &&
             llvm::count_if(operandExtents, [&](ArrayRef<int64_t> operandShape) {
               return i < operandShape.size() &&
                      operandShape[operandShape.size() - i - 1] == knownExtent;

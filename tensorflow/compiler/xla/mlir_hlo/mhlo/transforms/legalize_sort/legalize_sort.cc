@@ -416,8 +416,8 @@ struct Slicer {
 
   MemRefType toSlicedType(MemRefType sourceType) {
     return memref::SubViewOp::inferRankReducedResultType(
-               {ShapedType::kDynamicSize} /*1D output*/, sourceType, offsets,
-               sizes, strides)
+               {ShapedType::kDynamic} /*1D output*/, sourceType, offsets, sizes,
+               strides)
         .cast<MemRefType>();
   }
 

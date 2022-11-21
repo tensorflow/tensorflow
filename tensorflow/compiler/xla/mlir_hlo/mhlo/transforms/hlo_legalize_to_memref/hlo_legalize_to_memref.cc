@@ -421,8 +421,7 @@ FailureOr<Value> insertDynamicMemrefCastOp(
   }
 
   // Type-erased memref type with static rank and dynamic strides.
-  SmallVector<int64_t, 2> dynamicLayout(resultRank,
-                                        ShapedType::kDynamicStrideOrOffset);
+  SmallVector<int64_t, 2> dynamicLayout(resultRank, ShapedType::kDynamic);
   auto typeErasedMemrefType = MemRefType::get(
       resultType.getShape(), operandType.getElementType(),
       makeStridedLinearLayoutMap(dynamicLayout,
