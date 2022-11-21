@@ -37,7 +37,7 @@ def ragged_hash(self):
     return id(self)
 
 
-def ragged_tensor_equals(self, other):
+def ragged_eq(self, other):  # pylint: disable=g-doc-args
   """Returns result of elementwise `==` or False if not broadcast-compatible.
 
   Compares two ragged tensors elemewise for equality if they are
@@ -73,7 +73,6 @@ def ragged_tensor_equals(self, other):
   <tf.RaggedTensor [[True, True], [True, True]]>
 
   Args:
-    self: The left-hand side of the `==` operator.
     other: The right-hand side of the `==` operator.
 
   Returns:
@@ -83,11 +82,48 @@ def ragged_tensor_equals(self, other):
   return math_ops.tensor_equals(self, other)
 
 
+def ragged_abs(self, name=None):  # pylint: disable=g-doc-args
+  r"""Computes the absolute value of a ragged tensor.
+
+  Given a ragged tensor of integer or floating-point values, this operation
+  returns a ragged tensor of the same type, where each element contains the
+  absolute value of the corresponding element in the input.
+
+  Given a ragged tensor `x` of complex numbers, this operation returns a tensor
+  of type `float32` or `float64` that is the absolute value of each element in
+  `x`. For a complex number \\(a + bj\\), its absolute value is computed as
+  \\(\sqrt{a^2 + b^2}\\).
+
+  For example:
+
+  >>> # real number
+  >>> x = tf.ragged.constant([[-2.2, 3.2], [-4.2]])
+  >>> tf.abs(x)
+  <tf.RaggedTensor [[2.2, 3.2], [4.2]]>
+
+  >>> # complex number
+  >>> x = tf.ragged.constant([[-2.2 + 4.7j], [-3.2 + 5.7j], [-4.2 + 6.7j]])
+  >>> tf.abs(x)
+  <tf.RaggedTensor [[5.189412298131649],
+   [6.536818798161687],
+   [7.907591289387685]]>
+
+  Args:
+    name: A name for the operation (optional).
+
+  Returns:
+    A `RaggedTensor` of the same size and type as `x`, with absolute values.
+    Note, for `complex64` or `complex128` input, the returned `RaggedTensor`
+    will be of type `float32` or `float64`, respectively.
+  """
+  return math_ops.abs(self, name=name)
+
+
 # Indexing
 ragged_tensor.RaggedTensor.__getitem__ = ragged_getitem.ragged_tensor_getitem
 
 # Equality
-ragged_tensor.RaggedTensor.__eq__ = ragged_tensor_equals
+ragged_tensor.RaggedTensor.__eq__ = ragged_eq
 ragged_tensor.RaggedTensor.__ne__ = math_ops.tensor_not_equals
 ragged_tensor.RaggedTensor.__hash__ = ragged_hash
 
@@ -107,7 +143,7 @@ ragged_tensor.RaggedTensor.__xor__ = math_ops.logical_xor
 ragged_tensor.RaggedTensor.__rxor__ = _right(math_ops.logical_xor)
 
 # Arithmetic operators
-ragged_tensor.RaggedTensor.__abs__ = math_ops.abs
+ragged_tensor.RaggedTensor.__abs__ = ragged_abs
 ragged_tensor.RaggedTensor.__add__ = math_ops.add
 ragged_tensor.RaggedTensor.__radd__ = _right(math_ops.add)
 ragged_tensor.RaggedTensor.__div__ = math_ops.div
