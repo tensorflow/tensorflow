@@ -858,6 +858,40 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<ForOp> {
     // Exit if none of the loop dimensions perform a single iteration.
     if (newLowerBounds.size() == op.getLowerBound().size()) return failure();
 
+    // All of the loop dimensions perform a single iteration. Inline loop body.
+    if (newLowerBounds.empty()) {
+      mapping.map(op.getRegionOutputArgs(), op.getOutputs());
+      for (auto &bodyOp : op.getBody()->without_terminator()) {
+        rewriter.clone(bodyOp, mapping);
+      }
+      SmallVector<Value> results;
+      results.reserve(op.getResults().size());
+      SetYieldOp terminator = op.getTerminator();
+      for (const auto &[dst, src, set] : llvm::zip(
+               op.getOutputs(), terminator.getSrcs(), terminator.getSets())) {
+        auto tileOp = set.getDefiningOp<TileOp>();
+
+        if (!tileOp) {
+          return op.emitOpError(
+              "expected the SetYieldOp terminator of ForOp loop to have a "
+              "TileOp set");
+        }
+        auto getMappedValues = [&](ValueRange values) {
+          return llvm::to_vector(llvm::map_range(values, [&](Value value) {
+            return mapping.lookupOrDefault(value);
+          }));
+        };
+        results.push_back(rewriter.create<tensor::InsertSliceOp>(
+            op.getLoc(), dst.getType(), mapping.lookupOrDefault(src), dst,
+            getMappedValues(tileOp.getOffsets()),
+            getMappedValues(tileOp.getSizes()),
+            getMappedValues(tileOp.getStrides()), tileOp.getStaticOffsets(),
+            tileOp.getStaticSizes(), tileOp.getStaticStrides()));
+      }
+      rewriter.replaceOp(op, results);
+      return success();
+    }
+
     // Replace the parallel loop by lower-dimensional parallel loop.
     auto newOp = rewriter.create<ForOp>(op.getLoc(), op.getResultTypes(),
                                         newLowerBounds, newUpperBounds,
@@ -1844,6 +1878,7 @@ struct FoldTileCastIntoSetYield : public OpRewritePattern<SetYieldOp> {
     return success();
   }
 };
+
 }  // namespace
 
 void SetYieldOp::getCanonicalizationPatterns(RewritePatternSet &results,
