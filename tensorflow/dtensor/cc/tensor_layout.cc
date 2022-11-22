@@ -53,21 +53,6 @@ constexpr const char* Layout::kMatch;
 constexpr const char* Mesh::kEmptyMeshString;
 
 namespace {
-// Obtain all possible forms of indexing a mesh.
-//
-// e.g. given a mesh with dimensions [x=2, y=3], returns {
-//   [0, 0], [0, 1], [0, 2],
-//   [1, 0], [1, 1], [1, 2]
-// }
-inline std::vector<DeviceLocation> ComputeDeviceLocations(const Mesh* mesh) {
-  std::vector<DeviceLocation> mesh_locs(mesh->size());
-  for (size_t i = 0; i < mesh->size(); ++i)
-    mesh_locs[i] = *(mesh->device_location(i));
-  return mesh_locs;
-}
-}  // namespace
-
-namespace {
 // Expands a ShardVector into the size defined in new_num_shards_per_dim.
 //
 // For example, the inputs:
@@ -126,6 +111,13 @@ ShardVector ExpandShardVector(const ShardVector& shard_vec,
   return expanded_shard_vec;
 }
 }  // namespace
+
+std::vector<DeviceLocation> ComputeDeviceLocations(const Mesh& mesh) {
+  std::vector<DeviceLocation> mesh_locs(mesh.size());
+  for (size_t i = 0; i < mesh.size(); ++i)
+    mesh_locs[i] = *(mesh.device_location(i));
+  return mesh_locs;
+}
 
 bool ShardVector::operator==(const ShardVector& other) const {
   // Check same number of shards.
@@ -797,7 +789,7 @@ Mesh Layout::ReducedMesh() const {
   // Populate reduced mesh with global devices from original mesh.
   std::vector<int64_t> reduced_global_device_ids;
   std::vector<std::string> reduced_global_devs;
-  for (const DeviceLocation& loc : ComputeDeviceLocations(&reduced_mesh)) {
+  for (const DeviceLocation& loc : ComputeDeviceLocations(reduced_mesh)) {
     int64 pos = mesh().GetFlattenedCoordinate(loc);
     reduced_global_device_ids.push_back(mesh().global_device_ids().at(pos));
     if (!mesh().global_devices().empty()) {
@@ -884,7 +876,7 @@ ShardVector Layout::GetShardVector() const {
   };
   // Compute mesh locations and obtain shards from them.
   ShardVector shard_vec;
-  for (const DeviceLocation& mesh_loc : ComputeDeviceLocations(&mesh()))
+  for (const DeviceLocation& mesh_loc : ComputeDeviceLocations(mesh()))
     shard_vec.shards.push_back(GetShardFromDeviceLocation(mesh_loc));
   // Calculate dims.
   shard_vec.num_shards_per_dim = ShardVectorDims();

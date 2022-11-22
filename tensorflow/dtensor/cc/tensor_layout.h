@@ -235,6 +235,14 @@ class Mesh {
   std::vector<std::string> global_devices_;
 };
 
+// Obtain all possible forms of indexing a mesh.
+//
+// e.g. given a mesh with dimensions [x=2, y=3], returns {
+//   [0, 0], [0, 1], [0, 2],
+//   [1, 0], [1, 1], [1, 2]
+// }
+std::vector<DeviceLocation> ComputeDeviceLocations(const Mesh& mesh);
+
 class Layout {
  public:
   static constexpr const char* kUnshardedDim = "unsharded";
