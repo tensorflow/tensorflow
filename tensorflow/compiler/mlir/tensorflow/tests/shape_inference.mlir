@@ -1751,6 +1751,20 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %read : tensor<1xi8>
   }
 
+  // CHECK-LABEL: infer_resource_gather_op_resource_shape_ranked_indices
+  // CHECK-SAME: %arg0: tensor<!tf_type.resource<tensor<?x768xf32>>>
+  func.func @infer_resource_gather_op_resource_shape_ranked_indices(%arg0: tensor<!tf_type.resource>, %arg1: tensor<1024xi32>) {
+    %0 = "tf.ResourceGather"(%arg0, %arg1) {batch_dims = 0 : i64, validate_indices = true} : (tensor<!tf_type.resource>, tensor<1024xi32>) -> tensor<1024x768xf32>
+    return
+  }
+
+  // CHECK-LABEL: infer_resource_gather_op_resource_shape_unranked_indices
+  // CHECK-SAME: %arg0: tensor<!tf_type.resource<tensor<*xf32>>>
+  func.func @infer_resource_gather_op_resource_shape_unranked_indices(%arg0: tensor<!tf_type.resource>, %arg1: tensor<*xi32>) {
+    %0 = "tf.ResourceGather"(%arg0, %arg1) {batch_dims = 0 : i64, validate_indices = true} : (tensor<!tf_type.resource>, tensor<*xi32>) -> tensor<*xf32>
+    return
+  }
+
   // CHECK-LABEL: do_not_infer_var_handle_op_when_custom_op_uses_it
   func.func @do_not_infer_var_handle_op_when_custom_op_uses_it() -> tensor<1xi8> {
     %cst = arith.constant dense<1> : tensor<1xi8>

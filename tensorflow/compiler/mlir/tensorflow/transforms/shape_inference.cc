@@ -805,6 +805,18 @@ class ShapeInference {
   // Infers shape for function return type and returns whether changed.
   LogicalResult InferShapeForFunctionReturnType(func::FuncOp func);
 
+  // Infers the shape of VarHandleOp based on the uses of the VarHandleOp to
+  // update the subtypes of the resource type. Also, infers the shape of
+  // resource argument of ReadVariableOp and AssignVariableOp to update the
+  // subtype of the resource arguments.
+  template <typename ResourceAccessOp>
+  bool InferShapeForResourceAccessOp(ResourceAccessOp op);
+
+  /// Infers the shape of the resource of ResourceGatherOp based on the uses of
+  /// the resource to update the subtypes of the resource type. Returns if the
+  /// resource shape is refined.
+  bool InferShapeForResourceGatherOp(ResourceGatherOp op);
+
   // Enqueues function for processing.
   void enqueue(func::FuncOp fn) {
     LLVM_DEBUG(llvm::dbgs()
@@ -893,10 +905,6 @@ class ShapeInference {
   // refines the element shape if all tensors written to the list across all
   // mutations have identical static shape.
   bool InferShapeForTensorListInitOps(Operation* op);
-
-  // Infers the shape of VarHandleOp based on the uses of the VarHandleOp to
-  // update the subtypes of the resource type.
-  bool InferShapeForVarHandleOp(VarHandleOp op);
 
   // Infers the output shape of XlaConvV2Op based on the input shapes
   bool InferShapeForXlaConvV2Op(XlaConvV2Op op);
@@ -1387,8 +1395,9 @@ bool ShapeInference::InferShapeForTensorListInitOps(Operation* op) {
   return changed;
 }
 
-bool ShapeInference::InferShapeForVarHandleOp(VarHandleOp op) {
-  DCOMMENT_OP(op, "Inferring shape for VarHandleOp");
+template <typename ResourceAccessOp>
+bool ShapeInference::InferShapeForResourceAccessOp(ResourceAccessOp op) {
+  DCOMMENT_OP(op, "Inferring shape for ResourceAccessOp");
 
   Value resource = op.getResource();
   if (!CanBeRefined(resource.getType())) return false;
@@ -1430,6 +1439,68 @@ bool ShapeInference::InferShapeForVarHandleOp(VarHandleOp op) {
   }
 
   return changed;
+}
+
+bool ShapeInference::InferShapeForResourceGatherOp(ResourceGatherOp op) {
+  DCOMMENT_OP(
+      op,
+      "Inferring shape for function resource argument using ResourceGatherOp");
+
+  Value resource = op.getResource();
+  if (!CanBeRefined(resource.getType())) return false;
+
+  // For now do the inference only if this is the only user of resource which is
+  // passed as it's argument resource.
+  if (!resource.hasOneUse()) return false;
+
+  auto index_type = op.getIndices().getType().cast<TensorType>();
+  auto out_type = op.getOutput().getType().cast<TensorType>();
+  llvm::Optional<llvm::ArrayRef<long int>> inferred_params_shape = llvm::None;
+  // Check if both `index` and `output` have ranked types.
+  if (index_type.hasRank() && out_type.hasRank()) {
+    // If we know the shape of the `index` argument and the `output`, then it's
+    // possible to infer the rank of the `params` of ResourceGatherOP based on
+    // the following shape calculation formula: output.shape = indices.shape +
+    // params.shape[1:]. We can do some shape inference too for `params`.
+    // Ref:
+    // https://www.tensorflow.org/mlir/tf_ops#tfresourcegather_mlirtfresourcegatherop
+    int64_t index_rank = index_type.getRank();
+    int64_t out_rank = out_type.getRank();
+    int64_t params_rank = out_rank - index_rank + 1;
+    ArrayRef<int64_t> out_shape = out_type.getShape();
+    SmallVector<int64_t, 4> params_shape(params_rank,
+                                         tensorflow::kTFDynamicSize);
+    // The `out.shape[index_rank:]` is determined solely by `param.shape[1:]`.
+    // So, we just copy `out.shape[index_rank:]` to `param.shape[1:]`.
+    for (int64_t param_dim = 1, out_dim = index_rank; param_dim < params_rank;
+         param_dim++, out_dim++)
+      params_shape[param_dim] = out_shape[out_dim];
+    inferred_params_shape = params_shape;
+  }
+
+  TensorType new_resource_subtype =
+      CreateTensorType(inferred_params_shape, out_type.getElementType());
+  // Compute the new resource type.
+  ResourceType new_resource_type =
+      ResourceType::get({new_resource_subtype}, op.getContext());
+  // Compute the new resource container type.
+  TensorType refined_container_type =
+      UnrankedTensorType::get(new_resource_type);
+  // Resource type is contained insider a tensor. Get the type of this container
+  // tensor.
+  TensorType current_container_type = resource.getType().cast<TensorType>();
+  // Compute the refined resource container type.
+  Type new_container_type =
+      TypeMeet(current_container_type, refined_container_type);
+  // Check if the resource container type is refined.
+  if (new_container_type != current_container_type) {
+    // Change the type of the resource to the newly found type.
+    resource.setType(new_container_type);
+    // Type changed. Return true.
+    return true;
+  }
+  // Type not changed. Return false.
+  return false;
 }
 
 // Helper function for creating a Window proto from user-supplied data.
@@ -2280,7 +2351,7 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   if (IsTensorListInitOp(op) && InferShapeForTensorListInitOps(op)) return true;
 
   if (auto var_handle_op = dyn_cast<VarHandleOp>(op)) {
-    return InferShapeForVarHandleOp(var_handle_op);
+    return InferShapeForResourceAccessOp<VarHandleOp>(var_handle_op);
   }
 
   if (auto xla_reduce_window_op = dyn_cast<XlaReduceWindowOp>(op)) {
@@ -2847,6 +2918,53 @@ FailureOr<bool> ShapeInference::InferShapeUntilFixPoint(
   return !changed;
 }
 
+// Based on the resource access ops like ReadVariableOp, AssignVariableOp and
+// ResourceGatherOp infer the shape of function's resource arguments. Returns
+// true if any function arg type has changed.
+LogicalResult InferShapeForFunctionResourceArguments(ShapeInference& context,
+                                                     func::FuncOp func) {
+  FunctionType func_type = func.getFunctionType();
+  SmallVector<Type> argument_types = llvm::to_vector<4>(func_type.getInputs());
+  bool needs_refinement = false;
+  // Iterate over all the function arguments.
+  for (size_t i = 0, e = func_type.getNumInputs(); i < e; i++) {
+    // Check if the current argument is resource argument.
+    auto resource_type =
+        getElementTypeOrSelf(argument_types[i]).dyn_cast<TF::ResourceType>();
+    if (!resource_type) continue;
+    // Iterate over all the usage of this resource.
+    BlockArgument resource_arg = func.getArgument(i);
+    for (auto& use : make_early_inc_range(resource_arg.getUses())) {
+      Operation* op = use.getOwner();
+      if (auto assign_op = dyn_cast<AssignVariableOp>(op)) {
+        if (context.InferShapeForResourceAccessOp<AssignVariableOp>(
+                assign_op)) {
+          argument_types[i] = assign_op.getResource().getType();
+          needs_refinement = true;
+        }
+      } else if (auto read_op = dyn_cast<ReadVariableOp>(op)) {
+        if (context.InferShapeForResourceAccessOp<ReadVariableOp>(read_op)) {
+          argument_types[i] = read_op.getResource().getType();
+          needs_refinement = true;
+        }
+      } else if (auto resource_gather_op = dyn_cast<TF::ResourceGatherOp>(op)) {
+        // Shape inference of `params` resource subtype based on `indices` and
+        // `result` of `TF::ResourceGatherOp`.
+        if (context.InferShapeForResourceGatherOp(resource_gather_op)) {
+          argument_types[i] = resource_gather_op.getResource().getType();
+          needs_refinement = true;
+        }
+      }
+    }
+  }
+  if (needs_refinement) {
+    // Update the function type.
+    func.setType(FunctionType::get(func.getContext(), argument_types,
+                                   func.getFunctionType().getResults()));
+  }
+  return success();
+}
+
 static FailureOr<bool> InferShapeForFunction(ShapeInference& context,
                                              func::FuncOp func,
                                              int64_t max_iterations) {
@@ -2938,6 +3056,9 @@ FailureOr<bool> InferModuleShape(ModuleOp module, int64_t max_iterations) {
   auto max_iteration = context.QueueSize() * 4;
   while (!context.EmptyQueue()) {
     func::FuncOp func = context.front();
+    // Infer shape for resource arguments.
+    if (failed(InferShapeForFunctionResourceArguments(context, func)))
+      return failure();
     FailureOr<bool> failure_or_converged =
         InferShapeForFunction(context, func, max_iterations);
     if (failed(failure_or_converged) || !failure_or_converged.getValue())
