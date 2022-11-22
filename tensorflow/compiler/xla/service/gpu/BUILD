@@ -1870,6 +1870,12 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/profiler/lib:traceme",
+        "//tensorflow/compiler/xla/service:dot_order_optimizer",  # eXLA
+        "//tensorflow/compiler/xla/service:hlo_mco",  # eXLA
+        "//tensorflow/compiler/xla/service:tensor_splitter",  # eXLA
+        "//tensorflow/compiler/xla/service:rce_optimizer",  # eXLA
+        "//tensorflow/compiler/xla/service:euclidean_distance_rewriter",  # eXLA
+        "//tensorflow/compiler/xla/service:reshape_sinker",  # eXLA
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
         "@llvm-project//llvm:AsmParser",

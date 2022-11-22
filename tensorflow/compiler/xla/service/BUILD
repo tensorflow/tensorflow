@@ -6978,3 +6978,140 @@ tf_cc_binary(
 #     ],
 # )
 # copybara:uncomment_end
+
+cc_library(
+    name = "euclidean_distance_rewriter",
+    srcs = ["euclidean_distance_rewriter.cc"],
+    hdrs = ["euclidean_distance_rewriter.h"],
+    deps = [
+        ":hlo_pass",
+        ":hlo_creation_utils",
+        ":pattern_matcher",
+        "//tensorflow/compiler/xla:status_macros",
+    ],
+)
+
+cc_library(
+    name = "dot_order_optimizer",
+    srcs = ["dot_order_optimizer.cc"],
+    hdrs = ["dot_order_optimizer.h"],
+    deps = [
+        ":hlo_pass",
+        ":hlo_creation_utils",
+        ":pattern_matcher",
+        "//tensorflow/compiler/xla:status_macros",
+    ],
+)
+
+tf_cc_test(
+    name = "dot_order_optimizer_test",
+    srcs = ["dot_order_optimizer_test.cc"],
+    deps = [
+        ":dot_order_optimizer",
+        ":hlo",
+        ":hlo_creation_utils",
+        ":pattern_matcher",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "tensor_splitter",
+    srcs = ["tensor_splitter.cc"],
+    hdrs = ["tensor_splitter.h"],
+    deps = [
+        ":hlo_pass",
+        ":hlo_creation_utils",
+        ":call_inliner",
+        ":pattern_matcher",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+tf_cc_test(
+    name = "tensor_splitter_test",
+    srcs = ["tensor_splitter_test.cc"],
+    deps = [
+        ":tensor_splitter",
+        ":hlo",
+        ":hlo_creation_utils",
+        ":pattern_matcher",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/compiler/jit:xla_cpu_jit",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+    ],
+)
+
+cc_library(
+    name = "rce_optimizer",
+    srcs = ["rce_optimizer.cc"],
+    hdrs = ["rce_optimizer.h"],
+    deps = [
+        ":hlo_pass",
+        ":hlo_creation_utils",
+        ":hlo_dce",
+        ":algebraic_simplifier",
+        ":hlo_pass_pipeline",
+        ":pattern_matcher",
+        "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+cc_library(
+    name = "reshape_sinker",
+    srcs = ["reshape_sinker.cc"],
+    hdrs = ["reshape_sinker.h"],
+    deps = [
+        ":hlo_pass",
+        ":hlo_creation_utils",
+        ":hlo_dce",
+        # ":algebraic_simplifier",
+        ":hlo_pass_pipeline",
+        ":pattern_matcher",
+        "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+cc_library(
+    name = "hlo_mco",
+    srcs = ["hlo_mco.cc"],
+    hdrs = ["hlo_mco.h"],
+    deps = [
+        ":hlo",
+        ":hlo_creation_utils",
+        ":hlo_pass",
+        ":pattern_matcher",
+        ":call_inliner",
+        ":shape_inference",
+        "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_mco_test",
+    srcs = ["hlo_mco_test.cc"],
+    deps = [
+        ":hlo_mco",
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/compiler/jit:xla_cpu_jit",
+        "//tensorflow/core:test",
+    ],
+)

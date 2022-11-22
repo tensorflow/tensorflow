@@ -174,6 +174,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
 #include "tensorflow/compiler/xla/util.h"
+
+#include "tensorflow/compiler/xla/service/euclidean_distance_rewriter.h"  // eXLA
+#include "tensorflow/compiler/xla/service/dot_order_optimizer.h" // eXLA
+#include "tensorflow/compiler/xla/service/hlo_mco.h"  // eXLA
+#include "tensorflow/compiler/xla/service/tensor_splitter.h"  // eXLA
+#include "tensorflow/compiler/xla/service/reshape_sinker.h"  // eXLA
+#include "tensorflow/compiler/xla/service/rce_optimizer.h"  // eXLA
+
 #include "tensorflow/tsl/platform/blocking_counter.h"
 #include "tensorflow/tsl/platform/casts.h"
 #include "tensorflow/tsl/platform/env.h"
@@ -438,6 +446,19 @@ Status GpuCompiler::OptimizeHloModule(
       // Only Scatters unsupported on XLA:GPU are eliminated.
       pipeline.AddPass<GpuScatterExpander>();
     }
+
+    // eXLA optimizations
+    // This might be not the best place for the optimizations
+    pipeline.AddPass<HloPassFix<RceOptimizer>>();
+    pipeline.AddPass<HloPassFix<EuclideanDistanceRewriter>>();
+    pipeline.AddPass<HloMCO>();
+    pipeline.AddPass<HloPassFix<DotOrderOptimizer>>();
+    pipeline.AddPass<HloPassFix<ReshapeSinker>>();
+    // ReshapeSinker may introduce new redundant reshape chain 
+    pipeline.AddPass<HloPassFix<RceOptimizer>>();
+    pipeline.AddPass<TensorSplitter>();
+    pipeline.AddPass<HloDCE>();  // splitter can cut out large chunks of the graph
+
     // TODO(phawkins): replace QR and Eigh decompositions with calls to
     // cuSOLVER.
     pipeline.AddPass<QrExpander>();

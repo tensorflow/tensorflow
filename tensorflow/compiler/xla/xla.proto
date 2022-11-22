@@ -434,8 +434,6 @@ message DebugOptions {
   // available and recommended for Ampere+ GPUs.
   bool xla_gpu_use_runtime_fusion = 181;
 
-  // Next id: 182
-
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
@@ -445,6 +443,17 @@ message DebugOptions {
   // xla_gpu_unsafe_fallback_to_driver_on_ptxas_error,
   // xla_gpu_simplify_scatters, xla_gpu_simplify_gathers
   reserved 5, 117, 133, 139, 176, 178;
+
+  // Threshold size for splitting compatible tensors
+  string xla_tensor_size_threshold = 182;
+
+  // The value in bytes for splitting size of compatible tensors.
+  // This value cannot be larger than xla_tensor_size_threshold option.
+  // By default it is set to 0 and xla_tensor_size_threshold used as
+  // the splitting size.
+  string xla_tensor_split_size = 183;
+
+  // Next id: 184
 }
 
 // These settings control how XLA compiles and/or runs code.  Not all settings

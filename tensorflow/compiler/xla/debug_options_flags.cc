@@ -821,6 +821,17 @@ static void AllocateFlags() {
       "By default, XLA:CPU will run fp16 dot/conv as fp32, as this is "
       "generally (much) faster on our hardware.  Set this flag to true to "
       "disable this behavior."));
+  flag_objects->push_back(tsl::Flag(
+      "xla_tensor_size_threshold",
+      string_setter_for(&DebugOptions::set_xla_tensor_size_threshold),
+      flag_values->xla_tensor_size_threshold(),
+      "Threshold size in bytes for slitting compatible tensors."));
+  flag_objects->push_back(tsl::Flag(
+      "xla_tensor_split_size",
+      string_setter_for(&DebugOptions::set_xla_tensor_split_size),
+      flag_values->xla_tensor_split_size(),
+      "The value in bytes for splitting size of tensors. When the value is 0, "
+      "the value of xla_tensor_size_threshold is be used instead."));
 
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }  // NOLINT(readability/fn_size)

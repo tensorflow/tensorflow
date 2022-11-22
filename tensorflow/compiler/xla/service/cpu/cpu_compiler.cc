@@ -194,6 +194,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+
+#include "tensorflow/compiler/xla/service/euclidean_distance_rewriter.h"  // eXLA
+#include "tensorflow/compiler/xla/service/dot_order_optimizer.h" // eXLA
+#include "tensorflow/compiler/xla/service/hlo_mco.h"  // eXLA
+#include "tensorflow/compiler/xla/service/tensor_splitter.h"  // eXLA
+#include "tensorflow/compiler/xla/service/reshape_sinker.h"  // eXLA
+#include "tensorflow/compiler/xla/service/rce_optimizer.h"  // eXLA
+
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/protobuf/error_codes.pb.h"
@@ -641,6 +649,18 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<SelectAndScatterExpander>();
   pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
+
+  // eXLA optimizations
+  // This might be not the best place for the optimizations
+  pipeline.AddPass<HloPassFix<RceOptimizer>>();
+  pipeline.AddPass<HloPassFix<EuclideanDistanceRewriter>>();
+  pipeline.AddPass<HloMCO>();
+  pipeline.AddPass<HloPassFix<DotOrderOptimizer>>();
+  pipeline.AddPass<HloPassFix<ReshapeSinker>>();
+  // ReshapeSinker may introduce new redundant reshape chain 
+  pipeline.AddPass<HloPassFix<RceOptimizer>>();
+  pipeline.AddPass<TensorSplitter>();
+  pipeline.AddPass<HloDCE>();  // splitter can cut out large chunks of the graph
 
   // Run fp16 dots/convs in fp32 and then downcast the result to fp16.
   // Justification:
