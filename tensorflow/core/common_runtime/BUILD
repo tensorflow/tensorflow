@@ -2,6 +2,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_google",
     "if_libtpu",
+    "if_oss",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -3250,10 +3251,34 @@ tf_cc_test(
 
 cc_library(
     name = "optimized_function_graph_info",
+    srcs = ["optimized_function_graph_info.cc"],
     hdrs = ["optimized_function_graph_info.h"],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":graph_constructor",
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:optimized_function_graph_proto_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "optimized_function_graph_info_test",
+    srcs = ["optimized_function_graph_info_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = if_oss([
+        "no_oss",
+    ]),  # b/169705709, no protobuf matchers in OSS.
+    deps = [
+        ":optimized_function_graph_info",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:function_testlib",
+        "//tensorflow/core/framework:optimized_function_graph_proto_cc",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
     ],
 )

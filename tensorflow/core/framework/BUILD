@@ -1825,6 +1825,7 @@ tf_proto_library(
         ":log_memory_proto",
         ":model_proto",
         ":node_def_proto",
+        ":optimized_function_graph_proto",
         ":op_def_proto",
         ":reader_base_proto",
         ":resource_handle_proto",

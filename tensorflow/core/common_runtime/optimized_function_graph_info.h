@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,8 +20,10 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -29,7 +31,7 @@ namespace tensorflow {
 // converted to and from
 // third_party/tensorflow/core/framework/optimized_function_graph.proto.
 struct OptimizedFunctionGraphInfo {
-  // Functionn name.
+  // Function name.
   string name;
   // Optimized function graph.
   std::unique_ptr<Graph> function_graph;
@@ -41,6 +43,14 @@ struct OptimizedFunctionGraphInfo {
   DataTypeVector ret_types;
   // Number of return nodes.
   size_t num_return_nodes;
+
+  // Converts from the struct to OptimizedFunctionGraph proto.
+  static OptimizedFunctionGraph ToProto(const OptimizedFunctionGraphInfo& info);
+
+  // Converts from the proto to struct OptimizedFunctionGraphInfo. Returns error
+  // if the conversion fails.
+  static StatusOr<OptimizedFunctionGraphInfo> FromProto(
+      const OptimizedFunctionGraph& proto);
 };
 
 }  // namespace tensorflow
