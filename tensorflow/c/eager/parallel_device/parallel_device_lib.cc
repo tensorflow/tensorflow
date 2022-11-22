@@ -66,7 +66,8 @@ using ExecutorPtr = std::unique_ptr<TFE_Executor, ExecutorDeleter>;
 class DeviceThread {
  public:
   // Starts a background thread waiting for `StartExecute`.
-  explicit DeviceThread(const std::string& device, const bool is_async)
+  explicit DeviceThread(const std::string& device, const bool is_async,
+                        const int in_flight_nodes_limit)
       : status_(TF_NewStatus()),
         // If the context's default exector is set to async, re-using that in
         // each thread would cause collectives to deadlock. For consistency we
@@ -75,7 +76,9 @@ class DeviceThread {
         // TODO(allenl): We should have an async API that works with the
         // parallel device.
         device_(device),
-        executor_(TFE_NewExecutor(is_async, /*enable_streaming_enqueue=*/true)),
+        executor_(
+            TFE_NewExecutor(is_async, /*enable_streaming_enqueue=*/true,
+                            /*in_flight_nodes_limit=*/in_flight_nodes_limit)),
         op_(nullptr),
         thread_(tensorflow::Env::Default()->StartThread(
             tensorflow::ThreadOptions(), "parallel_device_execute",
@@ -282,13 +285,13 @@ void DeviceThread::Execute(TFE_Context* context, const char* operation_name,
 }
 
 ParallelDevice::ParallelDevice(const std::vector<std::string>& devices,
-                               const bool is_async)
+                               bool is_async, int in_flight_nodes_limit)
     : underlying_devices_(devices),
       default_cancellation_manager_(absl::make_unique<CancellationManager>()) {
   device_threads_.reserve(devices.size());
   for (int device_index = 0; device_index < devices.size(); ++device_index) {
-    device_threads_.emplace_back(
-        new DeviceThread(devices[device_index].c_str(), is_async));
+    device_threads_.emplace_back(new DeviceThread(
+        devices[device_index].c_str(), is_async, in_flight_nodes_limit));
   }
 }
 

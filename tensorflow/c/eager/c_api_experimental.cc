@@ -572,8 +572,10 @@ void TFE_OpSetCancellationManager(TFE_Op* op,
   status->status = ::tensorflow::OkStatus();
 }
 
-TFE_Executor* TFE_NewExecutor(bool is_async, bool enable_streaming_enqueue) {
-  return new TFE_Executor(is_async, enable_streaming_enqueue);
+TFE_Executor* TFE_NewExecutor(bool is_async, bool enable_streaming_enqueue,
+                              int in_flight_nodes_limit) {
+  return new TFE_Executor(is_async, enable_streaming_enqueue,
+                          in_flight_nodes_limit);
 }
 
 void TFE_DeleteExecutor(TFE_Executor* executor) { delete executor; }

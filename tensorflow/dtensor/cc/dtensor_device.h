@@ -48,8 +48,13 @@ void AllocateDTensorDevice(absl::string_view device_name,
 //
 // `is_host_mesh` indicates this is a CPU mesh used only for sea-of-donuts-style
 // host collectives.
+//
+// in_flight_nodes_limit throttles the number of inflight nodes in the eager
+// async executors used by DTensor. The throttling bounds the memory usage
+// of an eager training loop. Python API sets this value to 8 by default.
 void AddMesh(const std::string& serialized_mesh, void* device_info,
-             bool is_async, bool is_host_mesh, TF_Status* status);
+             bool is_async, bool is_host_mesh, int in_flight_nodes_limit,
+             TF_Status* status);
 
 // Sets a requested layout for outputs of all operations.
 void ExperimentalSetDefaultLayout(const std::string& serialized_layout,

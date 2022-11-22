@@ -1003,8 +1003,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   // TFE_Executor logic
   m.def(
       "TFE_NewExecutor",
-      [](const bool is_async, const bool enable_streaming_enqueue) {
-        TFE_Executor* exc = TFE_NewExecutor(is_async, enable_streaming_enqueue);
+      [](const bool is_async, const bool enable_streaming_enqueue,
+         const int in_flight_nodes_limit) {
+        TFE_Executor* exc = TFE_NewExecutor(is_async, enable_streaming_enqueue,
+                                            in_flight_nodes_limit);
         return exc;
       },
       py::return_value_policy::reference);

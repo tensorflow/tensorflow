@@ -56,7 +56,7 @@ class ParallelDevice {
   // Eager async execution is only supported when remote eager is not in use
   // (b/157523095).
   explicit ParallelDevice(const std::vector<std::string>& devices,
-                          const bool is_async = false);
+                          bool is_async = false, int in_flight_nodes_limit = 0);
 
   ~ParallelDevice();
 

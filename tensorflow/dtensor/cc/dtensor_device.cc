@@ -77,7 +77,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace dtensor {
-
 // TODO(b/189332820): Replace this with a Partitioner stub swapped in by the
 // Copybara workflow.
 StatusOr<ExecutionFunctions> ABSL_ATTRIBUTE_WEAK PipeliningPartitionerRun(
@@ -97,6 +96,7 @@ class DTensorDevice {
       : name_(name),
         same_shape_policy_enabled_(false),
         cancellation_manager_(std::make_unique<CancellationManager>()) {
+    // FIXME(b/258703996): Use tsl.
     if (getenv("DTENSOR_USE_PARALLEL_EXECUTOR") != nullptr) {
       parallel_executor_ = CreateDefaultParallelExecutor();
     }
@@ -2157,7 +2157,8 @@ void AllocateDTensorDevice(absl::string_view device_name,
 }
 
 void AddMesh(const std::string& serialized_mesh, void* device_info,
-             bool is_async, bool is_host_mesh, TF_Status* status) {
+             bool is_async, bool is_host_mesh, int in_flight_nodes_limit,
+             TF_Status* status) {
   auto mesh_config_or_status = Mesh::FromString(serialized_mesh);
   if (!mesh_config_or_status.ok()) {
     TF_SetStatus(status, TF_INTERNAL,
@@ -2174,8 +2175,8 @@ void AddMesh(const std::string& serialized_mesh, void* device_info,
   // DTensor uses multi-client setup which doesn't use remote eager, so we can
   // enable eager async execution in ParallelDevice.
   std::unique_ptr<tensorflow::parallel_device::ParallelDevice> parallel(
-      new tensorflow::parallel_device::ParallelDevice(underlying_devices,
-                                                      is_async));
+      new tensorflow::parallel_device::ParallelDevice(
+          underlying_devices, is_async, in_flight_nodes_limit));
 
   std::string composite_device_name;
   if (absl::StartsWith(mesh_config.name(), kPipelineMeshNamePrefix)) {
