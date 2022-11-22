@@ -342,6 +342,11 @@ py_library(
         "shuffle_ops.py",
     ],
     srcs_version = "PY3",
+    visibility = [
+        # TODO(jsimsa): Remove non-default visibility exception when `index_shuffle` is made public.
+        "//third_party/py/tensorflow_datasets:__subpackages__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":random_access",
         "//tensorflow/python:array_ops",
