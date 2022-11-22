@@ -27,7 +27,6 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 
-inline constexpr absl::string_view kAttrMapAttribute = "attr_map";
 // This attribute will be set for functions created by this pass.
 inline constexpr absl::string_view kFusedFunctionAttr =
     "tf_quant.composite_function";

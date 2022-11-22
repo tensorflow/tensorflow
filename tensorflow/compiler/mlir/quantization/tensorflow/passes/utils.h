@@ -30,6 +30,10 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 
+constexpr char kQuantizeFuncName[] = "quantize_i8";
+constexpr char kDequantizeFuncName[] = "dequantize_i8";
+constexpr char kAttrMapAttribute[] = "attr_map";
+
 // TODO(b/238829558): Populate quantization config based on the
 // QuantizationOptions proto. We might want to clean QuantizationMethod as well
 // as this can be inferred from the proto.
