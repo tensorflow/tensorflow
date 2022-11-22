@@ -972,6 +972,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         PyObject* exception_class =
             tensorflow::PyExceptionRegistry::Lookup(code);
         if (exception_class == nullptr) {
+          Py_DECREF(payloads);
           status->status = tensorflow::errors::Internal(absl::StrCat(
               "Fail to find the corresponding exception class for ", code));
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
@@ -980,7 +981,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         // So we may not raise another exception here when `value` is NULL.
         PyObject* value = Py_BuildValue("sssO", nullptr, nullptr,
                                         TF_Message(&state[i]), payloads);
+        Py_DECREF(payloads);
         PyObject* instance = PyObject_CallObject(exception_class, value);
+        Py_DECREF(value);
+        Py_DECREF(exception_class);
         PyList_SetItem(output, i, instance);
       } else {
         PyList_SetItem(output, i, Py_None);
