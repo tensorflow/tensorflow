@@ -173,7 +173,7 @@ bool ShardVector::ContainsShard(const Shard& shard) const {
 }
 
 bool IsDynamicSize(int64_t size) {
-  return size == mlir::ShapedType::isDynamic(size) || size == -1;
+  return mlir::ShapedType::isDynamic(size) || size == -1;
 }
 
 // static

@@ -13,5 +13,6 @@ tf_cc_test(
         "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/dtensor/proto:layout_proto_cc",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
     ],
 )
