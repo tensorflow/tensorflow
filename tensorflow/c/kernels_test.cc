@@ -259,12 +259,12 @@ TEST(TestKernel, TestRegisterAsyncKernelBuilder) {
       .Output("output1: uint8")
       .Attr("SomeDataTypeAttr: type");
 
-  TF_AsyncKernelBuilder* builder = TF_NewAsyncKernelBuilder(
+  TF_KernelBuilder* builder = TF_NewAsyncKernelBuilder(
       op_name, device_name, &MyCreateFunc, &MyAsyncComputeFunc, &MyDeleteFunc);
 
   {
     TF_Status* status = TF_NewStatus();
-    TF_RegisterAsyncKernelBuilder(node_name, builder, status);
+    TF_RegisterKernelBuilder(node_name, builder, status);
     EXPECT_EQ(TF_OK, TF_GetCode(status));
     TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);
     EXPECT_EQ(TF_OK, TF_GetCode(status));
@@ -893,30 +893,9 @@ TEST(TestKernel, DeleteKernelBuilderIsOkOnNull) {
   TF_DeleteKernelBuilder(nullptr);
 }
 
-TEST(TestKernel, DeleteAsyncKernelBuilderIsOkOnNull) {
-  TF_DeleteAsyncKernelBuilder(nullptr);
-}
-
 std::string ExpectedString(const char* type) {
   const auto format_str = R"str(kernel {
   op: "TypeOp%s"
-  device_type: "FakeDeviceName1"
-  constraint {
-    name: "T"
-    allowed_values {
-      list {
-        type: %s
-      }
-    }
-  }
-}
-)str";
-  return absl::StrFormat(format_str, type, type);
-}
-
-std::string AsyncExpectedString(const char* type) {
-  const auto format_str = R"str(kernel {
-  op: "AsyncTypeOp%s"
   device_type: "FakeDeviceName1"
   constraint {
     name: "T"
@@ -964,38 +943,6 @@ std::string AsyncExpectedString(const char* type) {
     TF_DeleteBuffer(buf);                                                    \
     TF_DeleteStatus(status);                                                 \
     TF_DeleteKernelBuilder(builder);                                         \
-    ASSERT_TRUE(delete_called);                                              \
-  }                                                                          \
-  TEST(TestKernel, TestAsyncTypeConstraint##tf_type) {                       \
-    const char* node_name = "SomeNodeName";                                  \
-    const char* op_name = "AsyncTypeOp" #dtype;                              \
-    const char* device_name = "FakeDeviceName1";                             \
-                                                                             \
-    REGISTER_OP(op_name)                                                     \
-        .Input("input1: double")                                             \
-        .Input("input2: uint8")                                              \
-        .Output("output1: uint8")                                            \
-        .Attr("T: type");                                                    \
-                                                                             \
-    TF_AsyncKernelBuilder* builder =                                         \
-        TF_NewAsyncKernelBuilder(op_name, device_name, &MyCreateFunc,        \
-                                 &MyAsyncComputeFunc, &MyDeleteFunc);        \
-    TF_Status* status = TF_NewStatus();                                      \
-    TF_AsyncKernelBuilder_TypeConstraint(builder, "T", TF_DataType::tf_type, \
-                                         status);                            \
-    EXPECT_EQ(TF_OK, TF_GetCode(status));                                    \
-    TF_RegisterAsyncKernelBuilder(node_name, builder, status);               \
-    EXPECT_EQ(TF_OK, TF_GetCode(status));                                    \
-                                                                             \
-    TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);          \
-    EXPECT_EQ(TF_OK, TF_GetCode(status));                                    \
-    KernelList list;                                                         \
-    list.ParseFromArray(buf->data, buf->length);                             \
-    ASSERT_EQ(AsyncExpectedString(#dtype), list.DebugString());              \
-                                                                             \
-    TF_DeleteBuffer(buf);                                                    \
-    TF_DeleteStatus(status);                                                 \
-    TF_DeleteAsyncKernelBuilder(builder);                                    \
     ASSERT_TRUE(delete_called);                                              \
   }
 
@@ -1096,44 +1043,6 @@ TEST(TestKernel, TestHostMemory) {
   TF_DeleteBuffer(buf);
   TF_DeleteStatus(status);
   TF_DeleteKernelBuilder(builder);
-  ASSERT_TRUE(delete_called);
-}
-
-TEST(TestKernel, TestAsyncHostMemory) {
-  const char* node_name = "SomeNodeName";
-  const char* op_name = "AsyncHostMemoryOp";
-  const char* device_name = "FakeDeviceName1";
-
-  REGISTER_OP(op_name)
-      .Input("input1: double")
-      .Input("input2: uint8")
-      .Output("output1: uint8")
-      .Attr("T: type");
-
-  TF_AsyncKernelBuilder* builder = TF_NewAsyncKernelBuilder(
-      op_name, device_name, &MyCreateFunc, &MyAsyncComputeFunc, &MyDeleteFunc);
-  TF_AsyncKernelBuilder_HostMemory(builder, "input2");
-  TF_AsyncKernelBuilder_HostMemory(builder, "output1");
-  TF_Status* status = TF_NewStatus();
-  TF_RegisterAsyncKernelBuilder(node_name, builder, status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status));
-
-  TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status));
-  KernelList list;
-  list.ParseFromArray(buf->data, buf->length);
-  const auto expected_str = R"str(kernel {
-  op: "AsyncHostMemoryOp"
-  device_type: "FakeDeviceName1"
-  host_memory_arg: "input2"
-  host_memory_arg: "output1"
-}
-)str";
-  ASSERT_EQ(expected_str, list.DebugString());
-
-  TF_DeleteBuffer(buf);
-  TF_DeleteStatus(status);
-  TF_DeleteAsyncKernelBuilder(builder);
   ASSERT_TRUE(delete_called);
 }
 

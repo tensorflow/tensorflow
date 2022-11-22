@@ -41,11 +41,18 @@ using tensorflow::errors::InvalidArgument;
 // implementations. It is crucial that changes to this file are made cautiously
 // and with a focus on maintaining both source and binary compatibility.
 
+typedef std::function<void()> AsyncOpKernelDoneCallback;
+void TF_RunAsyncOpKernelDoneCallback(TF_AsyncOpKernelDoneCallback* done) {
+  (*reinterpret_cast<AsyncOpKernelDoneCallback*>(done))();
+}
+
 struct TF_KernelBuilder {
   ::tensorflow::KernelDefBuilder* cc_builder;
 
   void* (*create_function)(TF_OpKernelConstruction*);
   void (*compute_function)(void*, TF_OpKernelContext*);
+  void (*compute_async_function)(void*, TF_OpKernelContext*,
+                                 TF_AsyncOpKernelDoneCallback* done);
   void (*delete_function)(void*);
 };
 
@@ -59,6 +66,23 @@ TF_KernelBuilder* TF_NewKernelBuilder(
   result->cc_builder->Device(device_name);
   result->create_function = create_func;
   result->compute_function = compute_func;
+  result->compute_async_function = nullptr;
+  result->delete_function = delete_func;
+  return result;
+}
+
+TF_KernelBuilder* TF_NewAsyncKernelBuilder(
+    const char* op_name, const char* device_name,
+    void* (*create_func)(TF_OpKernelConstruction*),
+    void (*compute_async_func)(void*, TF_OpKernelContext*,
+                               TF_AsyncOpKernelDoneCallback* done),
+    void (*delete_func)(void*)) {
+  TF_KernelBuilder* result = new TF_KernelBuilder;
+  result->cc_builder = new ::tensorflow::KernelDefBuilder(op_name);
+  result->cc_builder->Device(device_name);
+  result->create_function = create_func;
+  result->compute_function = nullptr;
+  result->compute_async_function = compute_async_func;
   result->delete_function = delete_func;
   return result;
 }
@@ -70,53 +94,16 @@ void TF_DeleteKernelBuilder(TF_KernelBuilder* builder) {
   }
 }
 
-typedef std::function<void()> AsyncOpKernelDoneCallback;
-void TF_RunAsyncOpKernelDoneCallback(TF_AsyncOpKernelDoneCallback* done) {
-  (*reinterpret_cast<AsyncOpKernelDoneCallback*>(done))();
-}
-
-struct TF_AsyncKernelBuilder {
-  ::tensorflow::KernelDefBuilder* cc_builder;
-
-  void* (*create_function)(TF_OpKernelConstruction*);
-  void (*compute_async_function)(void*, TF_OpKernelContext*,
-                                 TF_AsyncOpKernelDoneCallback* done);
-  void (*delete_function)(void*);
-};
-
-TF_AsyncKernelBuilder* TF_NewAsyncKernelBuilder(
-    const char* op_name, const char* device_name,
-    void* (*create_func)(TF_OpKernelConstruction*),
-    void (*compute_async_func)(void*, TF_OpKernelContext*,
-                               TF_AsyncOpKernelDoneCallback* done),
-    void (*delete_func)(void*)) {
-  TF_AsyncKernelBuilder* result = new TF_AsyncKernelBuilder;
-  result->cc_builder = new ::tensorflow::KernelDefBuilder(op_name);
-  result->cc_builder->Device(device_name);
-  result->create_function = create_func;
-  result->compute_async_function = compute_async_func;
-  result->delete_function = delete_func;
-  return result;
-}
-
-void TF_DeleteAsyncKernelBuilder(TF_AsyncKernelBuilder* builder) {
-  if (builder != nullptr) {
-    delete builder->cc_builder;
-    delete builder;
-  }
-}
-
 namespace tensorflow {
 namespace {
 
-#define CASE(type)                                                        \
-  case DataTypeToEnum<type>::value: {                                     \
-    kernel_builder->cc_builder->template TypeConstraint<type>(attr_name); \
-    break;                                                                \
+#define CASE(type)                                               \
+  case DataTypeToEnum<type>::value: {                            \
+    kernel_builder->cc_builder->TypeConstraint<type>(attr_name); \
+    break;                                                       \
   }
 
-template <typename T>
-void AddTypeConstraint(T* kernel_builder, const char* attr_name,
+void AddTypeConstraint(TF_KernelBuilder* kernel_builder, const char* attr_name,
                        const DataType dtype, TF_Status* status) {
   // This needs to be under tensorflow:: namespace so that
   // TF_CALL_ALL_TYPES macro can find tensorflow::string as string.
@@ -171,29 +158,6 @@ void TF_KernelBuilder_Priority(TF_KernelBuilder* kernel_builder,
 
 void TF_KernelBuilder_Label(TF_KernelBuilder* kernel_builder,
                             const char* label) {
-  kernel_builder->cc_builder->Label(label);
-}
-
-void TF_AsyncKernelBuilder_TypeConstraint(TF_AsyncKernelBuilder* kernel_builder,
-                                          const char* attr_name,
-                                          const TF_DataType type,
-                                          TF_Status* status) {
-  tensorflow::DataType dtype = static_cast<tensorflow::DataType>(type);
-  tensorflow::AddTypeConstraint(kernel_builder, attr_name, dtype, status);
-}
-
-void TF_AsyncKernelBuilder_HostMemory(TF_AsyncKernelBuilder* kernel_builder,
-                                      const char* arg_name) {
-  kernel_builder->cc_builder->HostMemory(arg_name);
-}
-
-void TF_AsyncKernelBuilder_Priority(TF_AsyncKernelBuilder* kernel_builder,
-                                    int32_t priority_number) {
-  kernel_builder->cc_builder->Priority(priority_number);
-}
-
-void TF_AsyncKernelBuilder_Label(TF_AsyncKernelBuilder* kernel_builder,
-                                 const char* label) {
   kernel_builder->cc_builder->Label(label);
 }
 
@@ -285,34 +249,19 @@ class KernelBuilderFactory
       : builder_(builder) {}
   ::tensorflow::OpKernel* Create(
       ::tensorflow::OpKernelConstruction* context) override {
-    return new ::tensorflow::COpKernel(context, builder_->create_function,
-                                       builder_->compute_function,
-                                       builder_->delete_function);
+    if (builder_->compute_function)
+      return new ::tensorflow::COpKernel(context, builder_->create_function,
+                                         builder_->compute_function,
+                                         builder_->delete_function);
+    else
+      return new ::tensorflow::CAsyncOpKernel(
+          context, builder_->create_function, builder_->compute_async_function,
+          builder_->delete_function);
   }
   ~KernelBuilderFactory() override { TF_DeleteKernelBuilder(builder_); }
 
  private:
   TF_KernelBuilder* builder_;
-};
-
-// A AsyncKernelFactory that returns CAsyncOpKernel instances.
-class AsyncKernelBuilderFactory
-    : public ::tensorflow::kernel_factory::OpKernelFactory {
- public:
-  explicit AsyncKernelBuilderFactory(TF_AsyncKernelBuilder* builder)
-      : builder_(builder) {}
-  ::tensorflow::OpKernel* Create(
-      ::tensorflow::OpKernelConstruction* context) override {
-    return new ::tensorflow::CAsyncOpKernel(context, builder_->create_function,
-                                            builder_->compute_async_function,
-                                            builder_->delete_function);
-  }
-  ~AsyncKernelBuilderFactory() override {
-    TF_DeleteAsyncKernelBuilder(builder_);
-  }
-
- private:
-  TF_AsyncKernelBuilder* builder_;
 };
 }  // namespace
 }  // namespace tensorflow
@@ -352,18 +301,6 @@ void TF_RegisterKernelBuilderWithKernelDef(const char* serialized_kernel_def,
   tensorflow::kernel_factory::OpKernelRegistrar(
       kernel_def, name,
       std::make_unique<tensorflow::KernelBuilderFactory>(builder));
-
-  TF_SetStatus(status, TF_OK, "");
-}
-
-void TF_RegisterAsyncKernelBuilder(const char* name,
-                                   TF_AsyncKernelBuilder* builder,
-                                   TF_Status* status) {
-  using tensorflow::register_kernel::Name;
-
-  tensorflow::kernel_factory::OpKernelRegistrar(
-      builder->cc_builder->Build(), name,
-      absl::make_unique<tensorflow::AsyncKernelBuilderFactory>(builder));
 
   TF_SetStatus(status, TF_OK, "");
 }
