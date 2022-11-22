@@ -60,7 +60,6 @@ namespace {
 constexpr char kParallelMapDatasetV1[] = "ParallelMapDataset";
 constexpr char kParallelMapDatasetV2[] = "ParallelMapDatasetV2";
 
-constexpr char kComponent[] = "component";
 constexpr char kInvocationResults[] = "invocation_results";
 constexpr char kSize[] = "size";
 constexpr char kEndOfInput[] = "end_of_input";
@@ -318,7 +317,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           dataset()->captured_func_->CheckExternalState()));
       if (ctx->symbolic_checkpoint()) {
         return writer->WriteScalar(
-            full_name(absl::StrCat(kInvocationResults, "::", kSize)), 0);
+            full_name(absl::StrCat(kInvocationResults, "_", kSize)), 0);
       }
       mutex_lock l(*mu_);
       // Wait for all in-flight calls to complete.
@@ -331,24 +330,25 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       }
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(absl::StrCat(kInvocationResults, "::", kSize)),
+          full_name(absl::StrCat(kInvocationResults, "_", kSize)),
           invocation_results_.size()));
       for (size_t i = 0; i < invocation_results_.size(); i++) {
         const auto& result = *(invocation_results_[i]);
         std::string element_prefix =
-            absl::StrCat(prefix(), "::", kInvocationResults, "::", i);
+            absl::StrCat(kInvocationResults, "[", i, "]");
         TF_RETURN_IF_ERROR(
             WriteStatusLocked(writer, element_prefix, result.status));
-        TF_RETURN_IF_ERROR(writer->WriteScalar(element_prefix, kSize,
-                                               result.return_values.size()));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            full_name(absl::StrCat(element_prefix, "_", kSize)),
+            result.return_values.size()));
         for (size_t j = 0; j < result.return_values.size(); j++) {
           TF_RETURN_IF_ERROR(writer->WriteTensor(
-              element_prefix, absl::StrCat(kComponent, "[", j, "]"),
+              full_name(absl::StrCat(element_prefix, "[", j, "]")),
               result.return_values[j]));
         }
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(element_prefix, kEndOfInput,
-                                static_cast<int64_t>(result.end_of_input)));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            full_name(absl::StrCat(element_prefix, "_", kEndOfInput)),
+            static_cast<int64_t>(result.end_of_input)));
       }
       return OkStatus();
     }
@@ -359,20 +359,21 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       int64_t invocation_results_size;
       TF_RETURN_IF_ERROR(reader->ReadScalar(
-          full_name(absl::StrCat(kInvocationResults, "::", kSize)),
+          full_name(absl::StrCat(kInvocationResults, "_", kSize)),
           &invocation_results_size));
       DCHECK(invocation_results_.empty());
       for (size_t i = 0; i < invocation_results_size; i++) {
         invocation_results_.push_back(std::make_shared<InvocationResult>());
         auto& result = *invocation_results_.back();
         std::string element_prefix =
-            absl::StrCat(prefix(), "::", kInvocationResults, "::", i);
+            absl::StrCat(kInvocationResults, "[", i, "]");
         TF_RETURN_IF_ERROR(
             ReadStatusLocked(reader, element_prefix, &result.status));
         size_t num_return_values;
         {
           int64_t size;
-          TF_RETURN_IF_ERROR(reader->ReadScalar(element_prefix, kSize, &size));
+          TF_RETURN_IF_ERROR(reader->ReadScalar(
+              full_name(absl::StrCat(element_prefix, "_", kSize)), &size));
           num_return_values = static_cast<size_t>(size);
           if (num_return_values != size) {
             return errors::InvalidArgument(
@@ -384,12 +385,13 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         for (size_t j = 0; j < num_return_values; j++) {
           result.return_values.emplace_back();
           TF_RETURN_IF_ERROR(reader->ReadTensor(
-              ctx->flr(), element_prefix, absl::StrCat(kComponent, "[", j, "]"),
+              ctx->flr(), full_name(absl::StrCat(element_prefix, "[", j, "]")),
               &result.return_values.back()));
         }
         int64_t end_of_input;
-        TF_RETURN_IF_ERROR(
-            reader->ReadScalar(element_prefix, kEndOfInput, &end_of_input));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(
+            full_name(absl::StrCat(element_prefix, "_", kEndOfInput)),
+            &end_of_input));
         result.end_of_input = static_cast<bool>(end_of_input);
         RecordBufferEnqueue(ctx, result.return_values);
         result.notification.Notify();
@@ -655,27 +657,32 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     }
 
     Status WriteStatusLocked(IteratorStateWriter* writer,
-                             const std::string& key, const Status& status)
+                             const std::string& prefix, const Status& status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
-      TF_RETURN_IF_ERROR(writer->WriteScalar(
-          key, kErrorCode, static_cast<int64_t>(status.code())));
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(full_name(absl::StrCat(prefix, "_", kErrorCode)),
+                              static_cast<int64_t>(status.code())));
       if (!status.ok()) {
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(key, kErrorMessage, status.error_message()));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            full_name(absl::StrCat(prefix, "_", kErrorMessage)),
+            status.error_message()));
       }
       return OkStatus();
     }
 
-    Status ReadStatusLocked(IteratorStateReader* reader, const std::string& key,
-                            Status* status) TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+    Status ReadStatusLocked(IteratorStateReader* reader,
+                            const std::string& prefix, Status* status)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       int64_t code_int;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(key, kErrorCode, &code_int));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(
+          full_name(absl::StrCat(prefix, "_", kErrorCode)), &code_int));
       error::Code code = static_cast<error::Code>(code_int);
 
       if (code != error::Code::OK) {
         tstring error_message;
-        TF_RETURN_IF_ERROR(
-            reader->ReadScalar(key, kErrorMessage, &error_message));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(
+            full_name(absl::StrCat(prefix, "_", kErrorMessage)),
+            &error_message));
         *status = Status(code, error_message);
       } else {
         *status = OkStatus();
