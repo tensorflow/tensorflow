@@ -731,16 +731,17 @@ __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicAdd(T* ptr, U value) {
   return atomicAdd(detail::ToCudaSupportedPtr(ptr), value);
 }
 
-__device__ inline Eigen::half GpuAtomicAdd(Eigen::half* ptr,
-                                           Eigen::half value) {
-  return detail::GpuAtomicCasHelper(
-      ptr, [value](Eigen::half a) { return a + value; });
-}
 
 __device__ inline Eigen::bfloat16 GpuAtomicAdd(Eigen::bfloat16* ptr,
                                                Eigen::bfloat16 value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](Eigen::bfloat16 a) { return a + value; });
+}
+
+__device__ inline Eigen::half GpuAtomicAdd(Eigen::half* ptr,
+                                           Eigen::half value) {
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](Eigen::half a) { return a + value; });
 }
 
 #if (__CUDA_ARCH__ < 600) || TENSORFLOW_USE_ROCM

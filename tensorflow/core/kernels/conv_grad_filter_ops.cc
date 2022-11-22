@@ -945,8 +945,12 @@ operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
   // Performant bfloat16 operations are supported for Ampere+ GPUs. For
   // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
   auto* stream = ctx->op_device_context()->stream();
+#if GOOGLE_CUDA
   const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
       se::CudaComputeCapability::AMPERE);
+#else
+  const bool cast_to_float = false;
+#endif
   Tensor casted_input = input;
   Tensor casted_out_backprop = out_backprop;
   Tensor casted_filter_backprop = *filter_backprop;
@@ -1005,7 +1009,9 @@ namespace functor {
 
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(Eigen::half);
+// #if GOOGLE_CUDA
 DECLARE_GPU_SPEC(Eigen::bfloat16);
+// #endif
 DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
@@ -1030,7 +1036,6 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
                             .TypeConstraint<Eigen::bfloat16>("T")
                             .HostMemory("filter_sizes"),
                         Conv2DBackpropFilterOp<GPUDevice, Eigen::bfloat16>);
-
 // To be used inside depthwise_conv_grad_op.cc.
 // TODO(reedwm): Move this and the definition to depthwise_conv_grad_op.cc.
 template struct LaunchConv2DBackpropFilterOp<GPUDevice, float>;

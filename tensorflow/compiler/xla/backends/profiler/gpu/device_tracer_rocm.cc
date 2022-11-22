@@ -183,7 +183,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
     uint64_t end_gputime_ns = RocmTracer::GetTimestamp();
     XPlaneBuilder host_plane(FindOrAddMutablePlaneWithName(
         space, tsl::profiler::kRoctracerApiPlaneName));
-    for (int i = 0; i < options_.num_gpus; ++i) {
+    int i = 0;
+    for (auto& device : per_device_collector_) {
       std::string name = GpuPlaneName(i);
       XPlaneBuilder device_plane(FindOrAddMutablePlaneWithName(space, name));
       device_plane.SetId(device.first);
@@ -1093,11 +1094,6 @@ Status GpuTracer::Stop() {
   return OkStatus();
 }
 
-Status GpuTracer::DoCollectData(XSpace* space) {
-  if (rocm_trace_collector_) rocm_trace_collector_->Export(space);
-  return OkStatus();
-}
-
 Status GpuTracer::CollectData(XSpace* space) {
   switch (profiling_state_) {
     case State::kNotStarted:
@@ -1113,7 +1109,7 @@ Status GpuTracer::CollectData(XSpace* space) {
       VLOG(3) << "No trace data collected";
       return OkStatus();
     case State::kStoppedOk: {
-      DoCollectData(space);
+      if (rocm_trace_collector_) rocm_trace_collector_->Export(space);
       return OkStatus();
     }
   }

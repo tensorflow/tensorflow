@@ -54,6 +54,7 @@ typedef AutotuneSingleton<ConvBackwardDataAutotuneGroup, ConvParameters,
                           AutotuneEntry<se::dnn::ConvOp>>
     AutotuneConvBwdData;
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Computes backprop input using Eigen::SpatialConvolutionBackwardInput on GPU
 // for int32 inputs.
 template <>
@@ -70,6 +71,7 @@ struct LaunchConv2DBackpropInputOp<GPUDevice, int32> {
              explicit_paddings, in_backprop, data_format);
   }
 };
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename T>
 void LaunchConv2DBackpropInputOpGpuImpl(
@@ -455,8 +457,12 @@ void LaunchConv2DBackpropInputOp<GPUDevice, Eigen::bfloat16>::operator()(
   // Performant bfloat16 operations are supported for Ampere+ GPUs. For
   // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
   auto* stream = ctx->op_device_context()->stream();
+#if GOOGLE_CUDA
   const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
       se::CudaComputeCapability::AMPERE);
+#else 
+  const bool cast_to_float = false;
+#endif
   Tensor casted_out_backprop = out_backprop;
   Tensor casted_filter = filter;
   Tensor casted_in_backprop = *in_backprop;

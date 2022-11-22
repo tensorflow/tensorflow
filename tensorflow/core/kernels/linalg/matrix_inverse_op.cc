@@ -84,8 +84,6 @@ class MatrixInverseOp : public LinearAlgebraOp<Scalar> {
   TF_DISALLOW_COPY_AND_ASSIGN(MatrixInverseOp);
 };
 
-#if GOOGLE_CUDA || ( TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 50300)
-
 // For Eigen::half, compute inverse via float32 - otherwise precision is
 // too poor for meaningful results.
 template <>
@@ -128,7 +126,8 @@ class MatrixInverseOp<Eigen::half> : public LinearAlgebraOp<Eigen::half> {
   TF_DISALLOW_COPY_AND_ASSIGN(MatrixInverseOp);
 };
 
-#if GOOGLE_CUDA
+
+#if GOOGLE_CUDA || ( TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 50300)
 
 typedef Eigen::GpuDevice GPUDevice;
 

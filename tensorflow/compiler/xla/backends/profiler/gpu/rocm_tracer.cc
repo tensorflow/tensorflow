@@ -173,10 +173,6 @@ inline void DumpApiCallbackData(uint32_t domain, uint32_t cbid,
         DCHECK(false);
         break;
     }
-  } else if (domain == ACTIVITY_DOMAIN_ROCTX) {
-    const roctx_api_data_t* data =
-        reinterpret_cast<const roctx_api_data_t*>(cbdata);
-    oss << ", message=" << data->args.message << ", id=" << data->args.id;
   } else {
     oss << ": " << cbid;
   }

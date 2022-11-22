@@ -1572,8 +1572,12 @@ struct LaunchConvBackpropInputOp<Eigen::bfloat16> {
     // Performant bfloat16 operations are supported for Ampere+ GPUs. For
     // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
     auto* stream = ctx->op_device_context()->stream();
+#if GOOGLE_CUDA    
     const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
         se::CudaComputeCapability::AMPERE);
+#else
+    const bool cast_to_float = false;
+#endif
     Tensor casted_out_backprop = out_backprop;
     Tensor casted_filter = filter;
     Tensor casted_in_backprop = *in_backprop;
@@ -1725,9 +1729,14 @@ void LaunchConvBackpropFilterOpImpl(
   auto* stream = context->op_device_context()->stream();
   OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
+#if GOOGLE_CUDA
   if (DataTypeToEnum<T>::value == DT_BFLOAT16 &&
       !stream->GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
+          se::CudaComputeCapability::AMPERE)) 
+#else
+  if (DataTypeToEnum<T>::value == DT_BFLOAT16 && false)
+#endif
+{
     context->SetStatus(errors::Unimplemented(
         "Conv3DBackpropFilter for GPU with bfloat16 is only supported "
         "with cuDNN on Ampere GPUs or later."));
@@ -2026,8 +2035,12 @@ struct LaunchConvBackpropFilterOp<Eigen::bfloat16> {
       // Performant bfloat16 operations are supported for Ampere+ GPUs. For
       // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
       auto* stream = ctx->op_device_context()->stream();
+#if GOOGLE_CUDA      
       const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
           se::CudaComputeCapability::AMPERE);
+#else 
+      const bool cast_to_float = false;
+#endif
       Tensor casted_input = input;
       Tensor casted_out_backprop = out_backprop;
       Tensor casted_filter_backprop = *filter_backprop;
