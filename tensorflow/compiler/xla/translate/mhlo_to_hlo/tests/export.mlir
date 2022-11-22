@@ -718,6 +718,24 @@ func.func @main(%arg0: tensor<2xi32>) -> tensor<2xf32> {
 // -----
 
 // CHECK:  HloModule
+func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.convert"(%arg0) : (tensor<2xf32>) -> tensor<2xf8E5M2>
+  %1 = "mhlo.convert"(%0) : (tensor<2xf8E5M2>) -> tensor<2xf32>
+  %2 = "mhlo.convert"(%1) : (tensor<2xf32>) -> tensor<2xf8E4M3FN>
+  %3 = "mhlo.convert"(%2) : (tensor<2xf8E4M3FN>) -> tensor<2xf32>
+  func.return %3 : tensor<2xf32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  %[[ARG:.*]] = f32[2] parameter(0)
+// CHECK:  %[[E5M2_VAL:.*]] = f8e5m2[2] convert(f32[2] %[[ARG]])
+// CHECK:  %[[F32_VAL:.*]] = f32[2] convert(f8e5m2[2] %[[E5M2_VAL]])
+// CHECK:  %[[E4M3_VAL:.*]] = f8e4m3fn[2] convert(f32[2] %[[F32_VAL]])
+// CHECK:  ROOT %[[RESULT:.*]] = f32[2] convert(f8e4m3fn[2] %[[E4M3_VAL]])
+
+// -----
+
+// CHECK:  HloModule
 func.func @main(%arg0: tensor<5x5xf32>, %arg1: tensor<5x5xui32>) -> tensor<5x5xi8> {
   %result = "mhlo.stochastic_convert"(%arg0, %arg1) : (tensor<5x5xf32>, tensor<5x5xui32>) -> tensor<5x5xi8>
   func.return %result : tensor<5x5xi8>

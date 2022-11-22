@@ -370,6 +370,23 @@ add {
   ROOT %add.5 = f64[4] add(f64[4] %convert.3, f64[4] %convert.4)
 }
 
+// CHECK-LABEL:  func private @test_f8_convert(%arg0: tensor<4xf32>) -> tensor<4xf32>
+%test_f8_convert (Arg_0.1: f32[4]) -> f32[4] {
+  %Arg_0.1 = f32[4] parameter(0)
+
+  // CHECK-NEXT:  %0 = mhlo.convert %arg0 : (tensor<4xf32>) -> tensor<4xf8E5M2>
+  %convert.3 = f8e5m2[4] convert(f32[4] %Arg_0.1)
+
+  // CHECK-NEXT:  %1 = mhlo.convert %0 : (tensor<4xf8E5M2>) -> tensor<4xf32>
+  %convert.4 = f32[4] convert(f8e5m2[4] %convert.3)
+
+  // CHECK-NEXT:  %2 = mhlo.convert %1 : (tensor<4xf32>) -> tensor<4xf8E4M3FN>
+  %convert.5 = f8e4m3fn[4] convert(f32[4] %convert.4)
+
+  // CHECK-NEXT:  %3 = mhlo.convert %2 : (tensor<4xf8E4M3FN>) -> tensor<4xf32>
+  ROOT %convert.6 = f32[4] convert(f8e4m3fn[4] %convert.5)
+}
+
 // CHECK-LABEL:  func private @test_stochastic_convert(%arg0: tensor<4x3xf32>, %arg1: tensor<4x3xui32>) -> tensor<4x3xi8>
 %test_stochastic_convert (Arg_0.1: f32[4,3], Arg_1.2: u32[4,3]) -> s8[4,3] {
   %Arg_0.1 = f32[4,3] parameter(0)
