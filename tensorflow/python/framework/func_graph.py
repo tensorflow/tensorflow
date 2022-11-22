@@ -281,10 +281,6 @@ class FuncGraph(ops.Graph):
       self.capture_by_value = False
 
     self._building_function = True
-    # Map from resource tensor name to last op (in program order) which uses
-    # this tensor. Used to enforce that execution order matches program order
-    # for resource tensors.
-    self._last_op_using_resource_tensor = {}
 
     graph = self.outer_graph
 
