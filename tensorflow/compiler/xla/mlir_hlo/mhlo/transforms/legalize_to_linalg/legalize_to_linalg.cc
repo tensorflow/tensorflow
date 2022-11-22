@@ -3534,12 +3534,6 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
     ArrayRef<int64_t> startIndexMap =
         gatherOp.getDimensionNumbers().getStartIndexMap();
 
-    auto extractAsIndex = [&](Value input, ArrayRef<Value> index) -> Value {
-      return rewriter.create<arith::IndexCastOp>(
-          loc, rewriter.getIndexType(),
-          rewriter.create<tensor::ExtractOp>(loc, input, index));
-    };
-
     // We'll need these later and creating them on demand we end up with
     // duplicates, which also makes lit tests really hard to write.
     SmallVector<Value> constants;
@@ -3548,25 +3542,8 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
           rewriter.create<arith::ConstantOp>(loc, rewriter.getIndexAttr(i)));
     }
 
-    // Create ops to calculate the dynamic dimensions of the return shape, which
-    // are needed for the init tensor.
-    SmallVector<Value> dynDimSizes;
-    if (!resultType.hasStaticShape()) {
-      SmallVector<Value> returnShapes;
-      if (failed(gatherOp.reifyReturnTypeShapes(rewriter, adaptor.getOperands(),
-                                                returnShapes)))
-        return rewriter.notifyMatchFailure(gatherOp,
-                                           "could not reify return shape");
-      assert(returnShapes.size() == 1);
-      Value returnShape = returnShapes[0];
-
-      for (int i = 0; i < resultRank; ++i)
-        if (resultType.isDynamicDim(i))
-          dynDimSizes.push_back(extractAsIndex(returnShape, constants[i]));
-    }
-
-    Value emptyOp = rewriter.create<tensor::EmptyOp>(
-        loc, resultType.getShape(), resultType.getElementType(), dynDimSizes);
+    auto emptyOp = getEmptyTensorFor(rewriter, loc, resultType, gatherOp,
+                                     adaptor.getOperands());
 
     ValueRange ins;
     SmallVector<AffineMap, 1> indexingMaps(

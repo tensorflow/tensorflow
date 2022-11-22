@@ -131,6 +131,15 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
      inferredReturnShapes.emplace_back(shapeVector, elementType);
      return success();
    }
+@@ -1218,7 +1218,7 @@
+ 
+   Location loc = op->getLoc();
+   int resultRank = resultTy.getRank();
+-  Type shapeElTy = startIndices.getType().cast<ShapedType>().getElementType();
++  Type shapeElTy = builder.getIndexType();
+   auto toShapeElType = [&](Value v) {
+     return maybeCastTo(builder, loc, v, shapeElTy);
+   };
 @@ -1329,7 +1329,7 @@
                            errorEmitter)))
      return failure();
