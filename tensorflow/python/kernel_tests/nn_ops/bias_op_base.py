@@ -26,6 +26,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
@@ -118,13 +119,17 @@ class BiasAddTestBase(test.TestCase):
           np.array([1, 2, 3]).astype(t))
 
   def testFloatTypes(self):
-    for t in [np.float16, np.float32, np.float64]:
+    for t in [
+        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
+    ]:
       self._testAll(
           np.random.rand(4, 3, 3).astype(t),
           np.random.rand(3).astype(t))
 
   def test4DFloatTypes(self):
-    for t in [np.float16, np.float32, np.float64]:
+    for t in [
+        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
+    ]:
       self._testAll(
           np.random.rand(4, 3, 2, 3).astype(t),
           np.random.rand(3).astype(t))
@@ -136,7 +141,9 @@ class BiasAddTestBase(test.TestCase):
           np.random.rand(2048).astype(t))
 
   def test5DFloatTypes(self):
-    for t in [np.float16, np.float32, np.float64]:
+    for t in [
+        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
+    ]:
       self._testAll(
           np.random.rand(4, 3, 2, 3, 4).astype(t),
           np.random.rand(4).astype(t))
@@ -191,6 +198,9 @@ class BiasAddTestBase(test.TestCase):
                                                     output_tensor, output_shape)
       (input_jacob_a, input_jacob_n), (bias_jacob_a, bias_jacob_n) = jacobians
       # Test gradient of BiasAddGrad
+      if dtype == dtypes.bfloat16:
+        # L2Loss is not supported for bfloat16 on CPU.
+        output_tensor = math_ops.cast(output_tensor, dtype=dtypes.float32)
       bias_add_grad = gradients_impl.gradients(
           nn_ops.l2_loss(output_tensor), bias_tensor)[0]
       grad_jacob_a, grad_jacob_n = gradient_checker.compute_gradient(
@@ -208,9 +218,9 @@ class BiasAddTestBase(test.TestCase):
       input_jacob_a, bias_jacob_a, grad_jacob_a = jacob_a
       input_jacob_n, bias_jacob_n, grad_jacob_n = jacob_n
 
-      if dtype == np.float16:
-        # Compare fp16 analytical gradients to fp32 numerical gradients,
-        # since fp16 numerical gradients are too imprecise unless great
+      if dtype in [np.float16, dtypes.bfloat16.as_numpy_dtype]:
+        # Compare fp16/bf16 analytical gradients to fp32 numerical gradients,
+        # since fp16/bf16 numerical gradients are too imprecise unless great
         # care is taken with choosing the inputs and the delta. This is
         # a weaker, but pragmatic, check (in particular, it does not test
         # the op itself, only its gradient).
@@ -232,7 +242,8 @@ class BiasAddTestBase(test.TestCase):
 
   def testGradientTensor2D(self):
     for (data_format, use_gpu) in ("NHWC", False), ("NHWC", True):
-      for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
+      for dtype in (dtypes.float16, dtypes.float32, dtypes.float64,
+                    dtypes.bfloat16):
         np_input = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
                             dtype=dtype.as_numpy_dtype).reshape(3, 2)
         bias = np.array([1.3, 2.4], dtype=dtype.as_numpy_dtype)
@@ -241,7 +252,8 @@ class BiasAddTestBase(test.TestCase):
   def testGradientTensor3D(self):
     for (data_format, use_gpu) in [("NHWC", False), ("NHWC", True),
                                    ("NCHW", False), ("NCHW", True)]:
-      for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
+      for dtype in (dtypes.float16, dtypes.float32, dtypes.float64,
+                    dtypes.bfloat16):
         # pylint: disable=too-many-function-args
         np_input = np.array(
             [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
@@ -251,7 +263,8 @@ class BiasAddTestBase(test.TestCase):
 
   def testGradientTensor4D(self):
     for (data_format, use_gpu) in [("NHWC", False)]:
-      for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
+      for dtype in (dtypes.float16, dtypes.float32, dtypes.float64,
+                    dtypes.bfloat16):
         np_input = np.arange(
             1.0, 49.0,
             dtype=dtype.as_numpy_dtype).reshape([2, 3, 4, 2]).astype(np.float32)
@@ -273,7 +286,8 @@ class BiasAddTestBase(test.TestCase):
   def testGradientTensor5D(self):
     for (data_format, use_gpu) in [("NHWC", False), ("NHWC", True),
                                    ("NCHW", False), ("NCHW", True)]:
-      for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
+      for dtype in (dtypes.float16, dtypes.float32, dtypes.float64,
+                    dtypes.bfloat16):
         np_input = np.arange(
             1.0, 49.0,
             dtype=dtype.as_numpy_dtype).reshape([1, 2, 3, 4,
