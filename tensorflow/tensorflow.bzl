@@ -22,6 +22,7 @@ load(
     "tsl_gpu_library",
     _clean_dep = "clean_dep",
     _if_cuda_or_rocm = "if_cuda_or_rocm",
+    _if_nccl = "if_nccl",
 )
 load(
     "@local_config_tensorrt//:build_defs.bzl",
@@ -294,12 +295,7 @@ def if_override_eigen_strong_inline(a):
         "//conditions:default": [],
     })
 
-def if_nccl(if_true, if_false = []):
-    return select({
-        "//tensorflow:no_nccl_support": if_false,
-        "//tensorflow:windows": if_false,
-        "//conditions:default": if_true,
-    })
+if_nccl = _if_nccl
 
 def if_libtpu(if_true, if_false = []):
     """Shorthand for select()ing whether to build backend support for TPUs when building libtpu.so"""

@@ -56,7 +56,6 @@ cc_library(
     deps = [
         ":c_api_decl",
         ":libtftpu_header",
-        "//tensorflow/c:tf_attrtype",
         "//tensorflow/c:tf_status",
     ],
 )

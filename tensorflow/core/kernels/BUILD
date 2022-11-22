@@ -6,6 +6,7 @@ load(
     "if_cuda_or_rocm",
     "if_google",
     "if_mobile",
+    "if_nccl",
     "if_not_windows",
     "if_oss",
     "tf_cc_binary",
@@ -31,7 +32,7 @@ load(
     "if_mkl",
     "mkl_deps",
 )
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "if_nccl", "tf_cc_shared_library", "tf_cuda_cc_test", "tf_cuda_cc_tests", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tf_cc_shared_library", "tf_cuda_cc_test", "tf_cuda_cc_tests", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",

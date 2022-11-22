@@ -11,7 +11,6 @@ load(
     _get_compatible_with_cloud = "get_compatible_with_cloud",
     _get_compatible_with_portable = "get_compatible_with_portable",
     _if_indexing_source_code = "if_indexing_source_code",
-    _if_nccl = "if_nccl",
     _if_not_mobile_or_arm_or_lgpl_restricted = "if_not_mobile_or_arm_or_lgpl_restricted",
     _if_portable = "if_portable",
     _internal_cuda_deps = "internal_cuda_deps",
@@ -52,7 +51,6 @@ load(
 
 clean_dep = _clean_dep
 if_not_mobile_or_arm_or_lgpl_restricted = _if_not_mobile_or_arm_or_lgpl_restricted
-if_nccl = _if_nccl
 if_portable = _if_portable
 ADDITIONAL_API_INDEXABLE_SETTINGS = _ADDITIONAL_API_INDEXABLE_SETTINGS
 if_indexing_source_code = _if_indexing_source_code

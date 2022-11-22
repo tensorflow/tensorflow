@@ -1,4 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow/tsl:tsl.bzl", "if_libtpu")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
