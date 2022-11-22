@@ -21,6 +21,7 @@ limitations under the License.
 #include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
+#include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -137,6 +138,27 @@ struct ReduceTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     }
 
     setTransformationAttr(rewriter, reduceOp);
+
+    // Peel parallel loops.
+    if (auto loop =
+            dyn_cast_or_null<ParallelOp>(tilingParallelDimsResult->loop)) {
+      auto peelingResult = peelAllLoops(loop, rewriter);
+      // Mark all for loops inside remainder parallel loops as peeled to prevent
+      // downstream peeling pass from peeling them.
+      for (auto *remParLoop : peelingResult) {
+        remParLoop->walk([&](Operation *childOp) {
+          if (isa<ForOp>(childOp)) {
+            setTransformationAttr(rewriter, childOp, kPeeledMarker);
+          }
+        });
+      }
+    }
+
+    // Peel reduction loop inside the main parallel loop.
+    if (auto loop = dyn_cast_or_null<ForOp>(tilingReductionDimsResult->loop)) {
+      peelAllLoops(loop, rewriter);
+    }
+
     return success();
   }
 

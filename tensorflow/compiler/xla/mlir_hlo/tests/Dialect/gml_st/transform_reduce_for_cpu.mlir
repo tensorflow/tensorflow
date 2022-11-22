@@ -1,4 +1,5 @@
-// RUN: mlir-hlo-opt %s -xla-cpu-transform-reduce="tile-sizes=4,2" --split-input-file | FileCheck %s
+// RUN: mlir-hlo-opt %s -xla-cpu-transform-reduce="tile-sizes=4,2" --split-input-file | FileCheck %s --check-prefixes=CHECK,PEELED
+// RUN: mlir-hlo-opt %s -xla-cpu-transform-reduce="tile-sizes=4,2" --split-input-file | FileCheck %s --check-prefixes=MARKED
 
 func.func @reduce_add_static(%input: tensor<100x10xf32>,
                         %output: tensor<10xf32>) -> tensor<10xf32> {
@@ -20,7 +21,6 @@ func.func @reduce_add_static(%input: tensor<100x10xf32>,
 //       CHECK:       %[[C0:.*]] = arith.constant 0 : index
 
 //       CHECK:       gml_st.parallel (%[[I:.*]]) = (%[[C0]])
-//  CHECK-NEXT:         %[[MIN:.*]] = affine.min
 
 //       CHECK:         %[[OUT_DIM:.*]] = tensor.dim %[[TILED_IN:.*]], %[[C1:.*]]
 //       CHECK:         %[[FOR:.*]] = gml_st.for (%[[J:.*]]) = (%[[C0]])
@@ -52,32 +52,48 @@ func.func @reduce_mulf(%input: tensor<?x?xf32>,
   return %res : tensor<?xf32>
 }
 
-// CHECK-LABEL:     func @reduce_mulf(
-//  CHECK-SAME:       %[[IN:.*]]: tensor<?x?xf32>,
-//  CHECK-SAME:       %[[OUT:.*]]: tensor<?xf32>)
-//  CHECK-SAME:       -> tensor<?xf32> {
+// PEELED-LABEL:     func @reduce_mulf(
+//  PEELED-SAME:       %[[IN:.*]]: tensor<?x?xf32>,
+//  PEELED-SAME:       %[[OUT:.*]]: tensor<?xf32>)
+//  PEELED-SAME:       -> tensor<?xf32> {
 
-//   CHECK-DAG:       %[[CST:.*]] = arith.constant 0.000000e+00 : f32
-//   CHECK-DAG:       %[[C0:.*]] = arith.constant 0 : index
-//   CHECK-DAG:       %[[C1:.*]] = arith.constant 1 : index
-//       CHECK:       %[[DIM0:.*]] = tensor.dim %[[IN]], %[[C0]]
+//   PEELED-DAG:       %[[CST:.*]] = arith.constant 0.000000e+00 : f32
+//   PEELED-DAG:       %[[C0:.*]] = arith.constant 0 : index
+//   PEELED-DAG:       %[[C1:.*]] = arith.constant 1 : index
+//       PEELED:       %[[INIT:.*]] = tensor.empty
+//       PEELED:       %[[DIM0:.*]] = tensor.dim %[[IN]], %[[C0]]
 
-//       CHECK:       gml_st.parallel (%[[I:.*]]) = (%[[C0]])
-//  CHECK-NEXT:         %[[MIN1:.*]] = affine.min
+//       PEELED:       %[[MAIN_PAR:.*]] = gml_st.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[IUB:.*]]) step
+//       PEELED:         %[[MAIN_SLICE:.*]] = gml_st.materialize %[[INIT]]
+//       PEELED:         %[[MAIN_FILL:.*]] = linalg.fill{{.*}}outs(%[[MAIN_SLICE]]
+//       PEELED:         %[[MAIN_FOR:.*]] = gml_st.for (%[[J:.*]]) = (%[[C0]]) to (%[[JUB:.*]]) {{.*}} outs ({{.*}} = %[[MAIN_FILL]]:
+//       PEELED:           %[[MAIN_PAR_MAIN_FOR_REDUCE:.*]] = linalg.reduce
+//       PEELED:           gml_st.set_yield %[[MAIN_PAR_MAIN_FOR_REDUCE]]
+//       PEELED:         %[[REM_FOR:.*]] = gml_st.for (%[[J:.*]]) = (%[[JUB]]) {{.*}} outs ({{.*}} = %[[MAIN_FOR]]:
+//       PEELED:           %[[MAIN_PAR_REM_FOR_REDUCE:.*]] = linalg.reduce
+//       PEELED:           gml_st.set_yield %[[MAIN_PAR_REM_FOR_REDUCE]]
+//       PEELED:         gml_st.set_yield %[[REM_FOR]]
 
-//       CHECK:         %[[FILL:.*]] = linalg.fill
-//  CHECK-SAME:           ins(%[[CST]] : f32)
-//  CHECK-SAME:           outs(%[[TILED_OUT:.*]] : tensor<?xf32>)
+//       PEELED:       %[[REM_PAR:.*]] = gml_st.parallel (%[[I:.*]]) = (%[[IUB]])
+//       PEELED:         %[[REM_SLICE:.*]] = gml_st.materialize %[[MAIN_PAR]]
+//       PEELED:         %[[REM_FILL:.*]] = linalg.fill{{.*}}outs(%[[REM_SLICE]]
+//       PEELED:         %[[REM_FOR:.*]] = gml_st.for (%[[J:.*]]) = (%[[C0]]) {{.*}} outs ({{.*}} = %[[REM_FILL]]:
+//       PEELED:           %[[REM_PAR_REDUCE:.*]] = linalg.reduce
+//       PEELED:           gml_st.set_yield %[[REM_PAR_REDUCE]]
+//       PEELED:         gml_st.set_yield %[[REM_FOR]]
 
-//       CHECK:         %[[DIM1:.*]] = tensor.dim %[[TILED_IN:.*]], %[[C0]]
-//       CHECK:         %[[DIM2:.*]] = tensor.dim %[[TILED_IN]], %[[C1]]
-//       CHECK:         %[[FOR:.*]] = gml_st.for (%[[J:.*]]) = (%[[C0]])
-//  CHECK-NEXT:           %[[MIN2:.*]] = affine.min
+// -----
 
-//       CHECK:           %[[REDUCED:.*]] = linalg.reduce
-//  CHECK-NEXT:             ins(%[[IN:.*]] : tensor<?x?xf32>)
-//  CHECK-NEXT:             outs(%[[OUT:.*]] : tensor<?xf32>)
-//  CHECK-NEXT:             dimensions = [1]
+// MARKED-LABEL:     func @reduce_mulf(
+//       MARKED:       %[[C0:.*]] = arith.constant 0 : index
+//       MARKED:       gml_st.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[IUB:.*]]) step
+//       MARKED:         gml_st.for (%[[J:.*]]) = (%[[C0]]) to (%[[JUB:.*]]) step
+//       MARKED:         } {__internal_peeled_marker__ = true}
+//       MARKED:         gml_st.for (%[[J:.*]]) = (%[[JUB]])
+//       MARKED:         } {__internal_peeled_marker__ = true}
+//       MARKED:       } {__internal_peeled_marker__ = true}
 
-//       CHECK:           gml_st.set_yield %[[REDUCED]]
-//       CHECK:         gml_st.set_yield %[[FOR]]
+//       MARKED:       gml_st.parallel (%[[I:.*]]) = (%[[IUB]])
+//       MARKED:         gml_st.for (%[[J:.*]]) = (%[[C0]])
+//       MARKED:         } {__internal_peeled_marker__ = true}
+//       MARKED:       } {__internal_peeled_marker__ = true}
