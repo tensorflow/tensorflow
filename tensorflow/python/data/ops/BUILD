@@ -89,6 +89,7 @@ py_library(
         ":padded_batch_op",
         ":prefetch_op",
         ":ragged_batch_op",
+        ":random_op",
         ":range_op",
         ":rebatch_op",
         ":repeat_op",
@@ -180,6 +181,11 @@ py_library(
 py_library(
     name = "group_by_window_op",
     srcs = ["group_by_window_op.py"],
+)
+
+py_library(
+    name = "random_op",
+    srcs = ["random_op.py"],
 )
 
 py_library(

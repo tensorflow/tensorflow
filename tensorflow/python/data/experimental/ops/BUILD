@@ -282,6 +282,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:random_op",
         "//tensorflow/python/data/util:structure",
     ],
 )

@@ -25,7 +25,6 @@ from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import structured_function
@@ -91,7 +90,7 @@ def_function = lazy_loader.LazyLoader(
 parsing_ops = lazy_loader.LazyLoader(
     "parsing_ops", globals(),
     "tensorflow.python.ops.parsing_ops")
-# TODO(b/254291122): Remove.
+# TODO(b/240947712): Clean up the circular dependencies.
 # Loaded lazily due to a circular dependency (dataset_ops ->
 # prefetch_op -> dataset_ops).
 prefetch_op = lazy_loader.LazyLoader(
@@ -3216,9 +3215,15 @@ name=None))
     Returns:
       Dataset: A `Dataset`.
     """
-    return RandomDataset(seed=seed,
-                         rerandomize_each_iteration=rerandomize_each_iteration,
-                         name=name)
+    # Loaded lazily due to a circular dependency (
+    # dataset_ops -> random_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import random_op
+    return random_op._random(
+        seed=seed,
+        rerandomize_each_iteration=rerandomize_each_iteration,
+        name=name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def snapshot(self,
                path,
@@ -3611,7 +3616,7 @@ name=None))
             axis=[0, 1])
 
       selector_input = map_op._MapDataset(  # pylint: disable=protected-access
-          RandomDataset(seed).batch(2),
+          Dataset.random(seed).batch(2),
           select_dataset_constant_logits,
           use_inter_op_parallelism=False)
 
@@ -3629,7 +3634,7 @@ name=None))
                 logits, 1, seed=seed),
             axis=[0, 1])
 
-      logits_and_seeds = Dataset.zip((logits_ds, RandomDataset(seed).batch(2)))
+      logits_and_seeds = Dataset.zip((logits_ds, Dataset.random(seed).batch(2)))
       selector_input = map_op._MapDataset(  # pylint: disable=protected-access
           logits_and_seeds,
           select_dataset_varying_logits,
@@ -4899,37 +4904,6 @@ class _RestructuredDataset(UnaryDataset):
   @property
   def element_spec(self):
     return self._element_spec
-
-
-class RandomDataset(DatasetSource):
-  """A `Dataset` of pseudorandom values."""
-
-  def __init__(self, seed=None, rerandomize_each_iteration=None, name=None):
-    """A `Dataset` of pseudorandom values."""
-    self._seed, self._seed2 = random_seed.get_seed(seed)
-    self._rerandomize = rerandomize_each_iteration
-    self._name = name
-    if (rerandomize_each_iteration is not None or
-        tf_compat.forward_compatible(2022, 12, 17)):
-      if not tf2.enabled() and rerandomize_each_iteration:
-        warnings.warn("In TF 1, the `rerandomize_each_iteration=True` option "
-                      "is only supported for repeat-based epochs.")
-      variant_tensor = ged_ops.random_dataset_v2(
-          seed=self._seed,
-          seed2=self._seed2,
-          seed_generator=gen_dataset_ops.dummy_seed_generator(),
-          rerandomize_each_iteration=self._rerandomize,
-          **self._common_args)
-    else:
-      variant_tensor = ged_ops.random_dataset(
-          seed=self._seed,
-          seed2=self._seed2,
-          **self._common_args)
-    super(RandomDataset, self).__init__(variant_tensor)
-
-  @property
-  def element_spec(self):
-    return tensor_spec.TensorSpec([], dtypes.int64)
 
 
 def _get_prob_original_static(initial_dist_t, target_dist_t):
