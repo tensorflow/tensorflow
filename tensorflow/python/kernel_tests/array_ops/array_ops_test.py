@@ -1927,7 +1927,7 @@ class QuantizeAndDequantizeV2Test(test_util.TensorFlowTestCase):
 
   def testInvalidArgs(self):
     with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
-                                r".*should be scalar.*"):
+                                r"(.*should be scalar.*|.*Broadcast dimension -1 is out of bound.*)"):
       q, _, _ = array_ops.quantize_and_dequantize_v2(
           input=np.ones((10)),
           input_min=[-1, 1],
