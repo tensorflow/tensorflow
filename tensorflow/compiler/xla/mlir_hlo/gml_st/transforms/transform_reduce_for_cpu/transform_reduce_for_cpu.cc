@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/interfaces/tiling_interface_impl.h"
+#include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
@@ -51,6 +52,12 @@ SmallVector<int64_t> getParallelDimTileSizes(int64_t reductionDim,
                       : SmallVector<int64_t>{0, parallelDimTileSize};
 }
 
+SmallVector<int64_t> getReductionDimTileSizes(int64_t reductionDim,
+                                              int64_t reductionDimTileSize) {
+  return reductionDim ? SmallVector<int64_t>{0, reductionDimTileSize}
+                      : SmallVector<int64_t>{reductionDimTileSize, 0};
+}
+
 LogicalResult validateOp(linalg::ReduceOp reduceOp, PatternRewriter &rewriter) {
   ArrayRef<int64_t> reduceDimensions = reduceOp.getDimensions();
   if (reduceDimensions.size() != 1)
@@ -66,15 +73,18 @@ LogicalResult validateOp(linalg::ReduceOp reduceOp, PatternRewriter &rewriter) {
   return success();
 }
 
-/// Pattern to tile `linalg.reduce` into generated `gml_st.parallel`.
+/// Pattern to tile `linalg.reduce` and fuse `linalg.fill` into generated
+/// `gml_st.parallel`.
 struct ReduceTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
   using OpRewritePattern<linalg::ReduceOp>::OpRewritePattern;
 
   explicit ReduceTransformPattern(MLIRContext *context,
-                                  int64_t parallelDimTileSize = 2,
+                                  int64_t parallelDimTileSize = 4,
+                                  int64_t reductionDimTileSize = 2,
                                   PatternBenefit benefit = 1)
       : OpRewritePattern<linalg::ReduceOp>(context, benefit),
-        parallelDimTileSize(parallelDimTileSize) {}
+        parallelDimTileSize(parallelDimTileSize),
+        reductionDimTileSize(reductionDimTileSize) {}
 
   LogicalResult matchAndRewrite(linalg::ReduceOp reduceOp,
                                 PatternRewriter &rewriter) const override {
@@ -99,12 +109,40 @@ struct ReduceTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       reduceOp = cast<linalg::ReduceOp>(tilingParallelDimsResult->tiledOp);
     }
 
+    // Fusion into the output.
+    OpOperand *reduceOutput = reduceOp.getDpsInitOperand(0);
+    auto materialize = reduceOutput->get().getDefiningOp<MaterializeOp>();
+    if (!materialize) {
+      return rewriter.notifyMatchFailure(
+          reduceOp,
+          "has failed to 'materialize' output during 'linalg.fill' fusion.");
+    }
+    if (materialize.getSource().getDefiningOp<linalg::FillOp>()) {
+      if (failed(fuse(rewriter, materialize))) return failure();
+    }
+
+    // Second level tiling: reduction dimension.
+    auto tilingReductionDimsResult =
+        tileReduce(rewriter, reduceOp,
+                   getReductionDimTileSizes(reduceOp.getDimensions()[0],
+                                            reductionDimTileSize),
+                   /*distribute=*/false);
+    if (failed(tilingReductionDimsResult)) return failure();
+
+    // Update the results if tiling occurred.
+    if (tilingReductionDimsResult->loop != nullptr) {
+      rewriter.replaceOp(reduceOp,
+                         tilingReductionDimsResult->loop->getResults());
+      reduceOp = cast<linalg::ReduceOp>(tilingReductionDimsResult->tiledOp);
+    }
+
     setTransformationAttr(rewriter, reduceOp);
     return success();
   }
 
  private:
   int64_t parallelDimTileSize;
+  int64_t reductionDimTileSize;
 };
 
 struct TransformReduceForCpuPass
@@ -126,11 +164,11 @@ struct TransformReduceForCpuPass
     MLIRContext *ctx = &getContext();
 
     if (tileSizes.empty()) {
-      tileSizes = {2};
+      tileSizes = {4, 2};
     }
 
-    assert(tileSizes.size() == 1 &&
-           "Tiling sizes for Reduce should have 1 element (still under dev).");
+    assert(tileSizes.size() == 2 &&
+           "Tiling sizes for Reduce should have 2 element.");
 
     RewritePatternSet patterns(ctx);
     patterns.add<ReduceTransformPattern>(ctx, tileSizes[0]);

@@ -15,7 +15,7 @@ func.func @matmul_static(%arg0: tensor<128x16xf32>, %arg1: tensor<16x64xf32>,
 // CHECK-SAME:       %[[RHS:.*]]: tensor<16x64xf32>,
 // CHECK-SAME:       %[[OUT:.*]]: tensor<128x64xf32>)
 
-// CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
+// CHECK:      %[[C0:.*]] = arith.constant 0 : index
 
 // CHECK:      gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
 
@@ -46,7 +46,7 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // PEELED-LABEL: func @matmul(
 // PEELED-SAME:      %[[LHS:.*]]: tensor<?x?xf32>, %[[RHS:.*]]: tensor<?x?xf32>)
 
-// PEELED-DAG:     %[[C0:.*]] = arith.constant 0 : index
+// PEELED:         %[[C0:.*]] = arith.constant 0 : index
 // PEELED:         %[[INIT:.*]] = tensor.empty
 
 // PEELED:         %[[MAIN_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]]) to (%[[IUB:.*]], %[[JUB:.*]]) step
