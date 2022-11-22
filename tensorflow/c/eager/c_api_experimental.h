@@ -724,6 +724,11 @@ TF_CAPI_EXPORT extern void TFE_GetTaskStates(TFE_Context* ctx,
                                              const TF_Buffer& tasks,
                                              void* states, TF_Status* status);
 
+TF_CAPI_EXPORT extern void TFE_WaitAtBarrier(TFE_Context* ctx,
+                                             const char* barrier_id,
+                                             int64_t barrier_timeout_in_ms,
+                                             TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

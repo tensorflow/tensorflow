@@ -889,6 +889,7 @@ tf_cuda_library(
     }) + [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_error_util",

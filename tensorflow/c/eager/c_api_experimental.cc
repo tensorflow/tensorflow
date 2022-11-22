@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/match.h"
+#include "absl/time/time.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
@@ -889,4 +890,19 @@ void TFE_GetTaskStates(TFE_Context* ctx, const TF_Buffer& tasks, void* states,
     ++state_iter;
   }
   status->status = tensorflow::OkStatus();
+}
+
+void TFE_WaitAtBarrier(TFE_Context* ctx, const char* barrier_id,
+                       int64_t barrier_timeout_in_ms, TF_Status* status) {
+  tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
+      tensorflow::unwrap(ctx)->GetDistributedManager();
+  tsl::CoordinationServiceAgent* coord_agent =
+      dist_mgr->GetCoordinationServiceAgent();
+  if (coord_agent == nullptr) {
+    status->status = tensorflow::errors::FailedPrecondition(
+        "Coordination service is not enabled.");
+    return;
+  }
+  status->status = coord_agent->WaitAtBarrier(
+      barrier_id, absl::Milliseconds(barrier_timeout_in_ms), {});
 }

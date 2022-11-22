@@ -990,6 +990,16 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     return tensorflow::PyoOrThrow(output);
   });
 
+  m.def("TFE_WaitAtBarrier",
+        [](py::handle& ctx, const char* barrier_id, int64_t timeout_in_ms) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+
+          TFE_WaitAtBarrier(tensorflow::InputTFE_Context(ctx), barrier_id,
+                            timeout_in_ms, status.get());
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        });
+
   // TFE_Executor logic
   m.def(
       "TFE_NewExecutor",
