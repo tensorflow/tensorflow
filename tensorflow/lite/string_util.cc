@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/core/platform/ctstring_internal.h"
 
 namespace tflite {
 
@@ -83,13 +84,15 @@ int DynamicBuffer::WriteToBuffer(char** buffer) {
   *buffer = reinterpret_cast<char*>(malloc(bytes));
 
   // Set num of string
-  memcpy(*buffer, &num_strings, sizeof(int32_t));
+  int32_t num_strings_le = TF_le32toh(num_strings);  // store num_strings in litte-endian
+  memcpy(*buffer, &num_strings_le, sizeof(int32_t));
 
   // Set offset of strings.
   int32_t start = sizeof(int32_t) * (num_strings + 2);
   for (size_t i = 0; i < offset_.size(); i++) {
     int32_t offset = start + offset_[i];
-    memcpy(*buffer + sizeof(int32_t) * (i + 1), &offset, sizeof(int32_t));
+    int32_t offset_le = TF_le32toh(offset);  // store offset in little-endian
+    memcpy(*buffer + sizeof(int32_t) * (i + 1), &offset_le, sizeof(int32_t));
   }
 
   // Copy data of strings.
@@ -122,7 +125,9 @@ void DynamicBuffer::WriteToTensor(TfLiteTensor* tensor,
 
 int GetStringCount(const void* raw_buffer) {
   // The first integers in the raw buffer is the number of strings.
-  return *static_cast<const int32_t*>(raw_buffer);
+  const int32_t* offset =
+      static_cast<const int32_t*>(raw_buffer);
+  return TF_le32toh(*offset); // return count as little-endian
 }
 
 int GetStringCount(const TfLiteTensor* tensor) {
@@ -134,8 +139,8 @@ StringRef GetString(const void* raw_buffer, int string_index) {
   const int32_t* offset =
       static_cast<const int32_t*>(raw_buffer) + (string_index + 1);
   return StringRef{
-      static_cast<const char*>(raw_buffer) + (*offset),
-      (*(offset + 1)) - (*offset),
+      static_cast<const char*>(raw_buffer) + TF_le32toh(*offset),
+      TF_le32toh(*(offset + 1)) - TF_le32toh(*offset), // offsets are stored as little-endian
   };
 }
 

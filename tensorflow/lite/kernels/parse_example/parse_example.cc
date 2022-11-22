@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/parse_example/example_proto_fast_parsing.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/core/platform/ctstring_internal.h"
 
 namespace tflite {
 namespace ops {
@@ -626,10 +627,13 @@ Status FastParseExampleLite(
         result->dense_values[d]->bytes = required_bytes;
       }
       const int32_t start = sizeof(int32_t) * (num_strings + 2);
-      memcpy(tensor_buffer, &num_strings, sizeof(int32_t));
+      // store num_strings as little-endian
+      int32_t num_strings_le = TF_le32toh(num_strings);
+      memcpy(tensor_buffer, &num_strings_le, sizeof(int32_t));
       for (size_t i = 0; i < offsets.size(); i++) {
         int32_t offset_i = start + offsets[i];
-        memcpy(tensor_buffer + sizeof(int32_t) * (i + 1), &offset_i,
+        int32_t offset_le = TF_le32toh(offset_i); // store offset as little-endian
+        memcpy(tensor_buffer + sizeof(int32_t) * (i + 1), &offset_le,
                sizeof(int32_t));
       }
       tf::gtl::ArraySlice<tstring> slice(vec.data(), vec.size());
