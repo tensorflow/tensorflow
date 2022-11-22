@@ -1040,7 +1040,9 @@ Status EinSumReduceSumConverter::HandleReduce(HloInstruction* reduce) {
   return OkStatus();
 }
 
-StatusOr<bool> HloMCO::Run(HloModule* module) {
+StatusOr<bool> HloMCO::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   TF_RET_CHECK(!module->name().empty());
 
@@ -1055,14 +1057,14 @@ StatusOr<bool> HloMCO::Run(HloModule* module) {
     EinSumReduceSumConverter converter;
     TF_RETURN_IF_ERROR(computation->Accept(&converter));
 
-    DebugPrint("HloMCO::Run", "start matriox_chain_detector");
+    DebugPrint("HloMCO::Run", "start matrix_chain_detector");
     MatrixChainDetector matrix_chain_detector;
     // detection matrix chain on the whithin the computation;
     TF_RETURN_IF_ERROR(computation->Accept(&matrix_chain_detector));
-    DebugPrint("HloMCO::Run", "finish matriox_chain_detector");
+    DebugPrint("HloMCO::Run", "finish matrix_chain_detector");
 
     auto chain_map = matrix_chain_detector.GetChainMap();
-    auto reduce_one_vector_to_orig_init_val = converter.GetReduceOneVetorSet();
+    auto reduce_one_vector_to_orig_init_val = converter.GetReduceOneVectorSet();
     DebugPrint("HloMCO::Run",
                "chain_map.size = " + std::to_string(chain_map.size()));
     TF_ASSIGN_OR_RETURN(bool changed_for_computation,

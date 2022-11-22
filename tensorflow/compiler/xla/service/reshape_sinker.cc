@@ -298,11 +298,13 @@ Status ReshapeSinkerVisitor::HandleDot(HloInstruction* dot) {
   return OkStatus();
 }
 
-StatusOr<bool> ReshapeSinker::Run(HloModule* module) {
+StatusOr<bool> ReshapeSinker::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   ReshapeSinkerVisitor visitor;
   LOG(INFO) << "Running ReshapeSinker for " << module->name() << "'";
   bool changed = false;
-  TF_ASSIGN_OR_RETURN(auto change, visitor.RunOnModule(module));
+  TF_ASSIGN_OR_RETURN(auto change, visitor.RunOnModule(module, execution_threads));
   changed |= change;
   return changed;
 }

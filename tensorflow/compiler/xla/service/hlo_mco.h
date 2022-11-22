@@ -24,8 +24,11 @@ class HloMCO : public HloModulePass {
   absl::string_view name() const override { return "mco"; }
 
   // Run MCO on the given module. Returns whether the module was changed
-  // (matrix chains were found and optimizesd).
-  StatusOr<bool> Run(HloModule* module) override;
+  // (matrix chains were found and optimized).
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
   StatusOr<bool> ChainOptimize(
       HloComputation* computation,
       absl::flat_hash_map<HloInstruction*, std::vector<HloInstruction*>>&
@@ -63,9 +66,9 @@ class ChainRecorder : public DfsHloVisitorWithDefault {
  public:
   ChainRecorder(HloInstruction* input_chain_root)
       : chain_root(input_chain_root) {}
-  Status DefaultAction(HloInstruction* hlo) override { return Status::OK(); }
+  Status DefaultAction(HloInstruction* hlo) override { return OkStatus(); }
   Status Preprocess(HloInstruction* hlo) override;
-  Status FinishVisit(HloInstruction* hlo) override { return Status::OK(); }
+  Status FinishVisit(HloInstruction* hlo) override { return OkStatus(); }
   const absl::flat_hash_map<HloInstruction*, std::vector<HloInstruction*>>
   GetChainMap() {
     return chain_map;
@@ -78,7 +81,7 @@ class ChainRecorder : public DfsHloVisitorWithDefault {
   }
   Status RemoveChain(HloInstruction* root) {
     chain_map.erase(root);
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -95,11 +98,11 @@ class MatrixChainDetector : public DfsHloVisitorWithDefault {
   GetChainMap() {
     return chain_map;
   }
-  Status DefaultAction(HloInstruction* hlo) override { return Status::OK(); }
+  Status DefaultAction(HloInstruction* hlo) override { return OkStatus(); }
   Status Preprocess(HloInstruction* hlo) override;
   static bool CheckRealDot(HloInstruction* hlo);
 
-  Status FinishVisit(HloInstruction* hlo) override { return Status::OK(); }
+  Status FinishVisit(HloInstruction* hlo) override { return OkStatus(); }
   Status DetectMatrixChain(HloInstruction* chain_root);
 
  private:
@@ -129,7 +132,7 @@ class EinSumReduceSumConverter : public DfsHloRewriteVisitor {
     return DimsAreIndexes(transpose);
   }
   absl::flat_hash_map<HloInstruction*, HloInstruction*>&
-  GetReduceOneVetorSet() {
+  GetReduceOneVectorSet() {
     return reduce_one_vector_to_orig_init_val;
   }
 

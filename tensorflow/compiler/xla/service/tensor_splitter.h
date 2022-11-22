@@ -30,7 +30,9 @@ class TensorSplitter : public HloModulePass {
  public:
   absl::string_view name() const override { return "tensor-splitter"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Use this to retreive the configured split size in bytes.
   static int64_t TensorBytes(const std::string& option);

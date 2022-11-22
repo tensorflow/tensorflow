@@ -3,13 +3,14 @@
 #include "tensorflow/compiler/xla/service/rce_optimizer.h"
 
 #include <stdlib.h>
+
 #include <istream>
 
-#include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -47,14 +48,15 @@ class RceOptimizerVisitor : public DfsHloRewriteVisitor {
   Status HandleReshape(HloInstruction* reshape) override;
   Status HandleReduce(HloInstruction* dot) override;
   Status HandleConvert(HloInstruction* convert) override;
-  Status HandleGetTupleElement(HloInstruction *get_tuple_element) override;
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
 };
 
 }  // namespace
 
-Status RceOptimizerVisitor::HandleGetTupleElement(HloInstruction* get_tuple_element) {
+Status RceOptimizerVisitor::HandleGetTupleElement(
+    HloInstruction* get_tuple_element) {
   CHECK(Match(get_tuple_element, m::GetTupleElement()));
-  HloInstruction *op;
+  HloInstruction* op;
   if (Match(get_tuple_element, m::GetTupleElement(m::Tuple(m::Op(&op))))) {
     auto tuple = get_tuple_element->operand(0);
     if (tuple->operand_count() == 1 && tuple->user_count() == 1) {
@@ -116,7 +118,7 @@ Status RceOptimizerVisitor::HandleReshape(HloInstruction* reshape) {
     // ss << "\n ... check simple case ??";
     // ss << "\n...!! reshape_op=" << reshape_op->ToString();
     // ss << "\n...>< reshape=" << reshape->ToString();
-    // ss << "\n...<-- replace_simple_case"; 
+    // ss << "\n...<-- replace_simple_case";
     // LOG(INFO) << ss.str();
     return ReplaceInstruction(reshape, reshape_op);
   }
@@ -162,7 +164,8 @@ Status RceOptimizerVisitor::HandleReshape(HloInstruction* reshape) {
   }
 
   // Remove "op (shape) -> reduce (shape - 1) -> reshape (shape)"
-  if (reshape_op->opcode() == HloOpcode::kReduce && reshape_op->user_count() == 1) {
+  if (reshape_op->opcode() == HloOpcode::kReduce &&
+      reshape_op->user_count() == 1) {
     // ss << "\n ... check reshape_reduce ??";
     HloInstruction* reduce_op = reshape_op->mutable_operand(0);
     if (ShapeUtil::Equal(reduce_op->shape(), reshape->shape())) {
@@ -178,7 +181,7 @@ Status RceOptimizerVisitor::HandleReshape(HloInstruction* reshape) {
 
 Status RceOptimizerVisitor::HandleReduce(HloInstruction* reduce) {
   CHECK(Match(reduce, m::Reduce()));
-  HloInstruction* op; 
+  HloInstruction* op;
   HloInstruction* init_value;
 
   std::stringstream ss;
@@ -194,10 +197,12 @@ Status RceOptimizerVisitor::HandleReduce(HloInstruction* reduce) {
     if (ShapeUtil::Equal(reshape->shape(), op->shape())) {
       return OkStatus();
     }
-    // Case 2: op (shape) -> reshape (1, shape, 1) -> reduce whole shape or part of it (1, shape-1)
+    // Case 2: op (shape) -> reshape (1, shape, 1) -> reduce whole shape or part
+    // of it (1, shape-1)
     //         action: 1. remove reshape,
     //                 2. reduce on original indices
-    //                 3. add reshape afterwards to correct output of the new reshape
+    //                 3. add reshape afterwards to correct output of the new
+    //                 reshape
 
     // ss << "\n ===> reduce_op=" << reduce->ToString();
     // ss << "\n ---> reduce_op_operator=" << reduce->operand(0)->ToString();
@@ -210,8 +215,9 @@ Status RceOptimizerVisitor::HandleReduce(HloInstruction* reduce) {
     std::vector<int64_t> input_indices(operand_shape.dimensions_size());
     absl::c_iota(input_indices, 0);
 
-    auto optional_reshaped_indices = ShapeUtil::ReshapeLeavesDimensionsUnmodified(
-        operand_shape, reshape_shape, input_indices);
+    auto optional_reshaped_indices =
+        ShapeUtil::ReshapeLeavesDimensionsUnmodified(
+            operand_shape, reshape_shape, input_indices);
     if (optional_reshaped_indices.has_value()) {
       auto reshaped_indices = *optional_reshaped_indices;
       auto reduce_indices = reduce->dimensions();
@@ -280,35 +286,15 @@ Status RceOptimizerVisitor::HandleConvert(HloInstruction* convert) {
   return OkStatus();
 }
 
-StatusOr<bool> RceOptimizer::Run(HloModule* module) {
+StatusOr<bool> RceOptimizer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   RceOptimizerVisitor visitor;
   LOG(INFO) << "Running RCE optimizer for " << module->name() << "'";
   bool changed = false;
-  TF_ASSIGN_OR_RETURN(auto rce_change, visitor.RunOnModule(module));
+  TF_ASSIGN_OR_RETURN(auto rce_change,
+                      visitor.RunOnModule(module, execution_threads));
   changed |= rce_change;
-  // {
-  //   LOG(INFO) << "Running subpipeline in RCE optimizer for " << module->name() << "'";
-  //   HloPassPipeline subpipeline("before_rce_optimization_pipeline");
-  //   // subpipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/is_layout_sensitive_);
-  //   AlgebraicSimplifierOptions options;
-  //   options.set_enable_dot_strength_reduction(false);
-  //   options.set_enable_dot_to_multiply_rewrite(false);
-  //   options.set_enable_conv_simplification(false);
-  //   options.set_enable_conv_operand_swap(false);
-  //   options.set_enable_scalar_multiply_reduction(false);
-  //   options.set_replace_transpose_with_bitcast(false);
-  //   options.set_enable_dot_strength_reduction(false);
-  //   options.set_enable_floats_are_real(false);
-
-  //   options.set_enable_reduce_of_reshape(true);
-  //   options.set_enable_window_reduce_to_reduce_replacement(true);
-  //   options.set_enable_negative_padding_replacement(true);
-
-  //   subpipeline.AddPass<HloDCE>();
-  //   subpipeline.AddPass<AlgebraicSimplifier>(options);
-  //   TF_ASSIGN_OR_RETURN(auto cleanup_changed_now, subpipeline.Run(module));
-  //   changed |= cleanup_changed_now;
-  // }
   return changed;
 }
 

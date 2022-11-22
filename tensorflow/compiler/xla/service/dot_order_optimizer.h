@@ -14,8 +14,10 @@ class DotOrderOptimizer : public HloModulePass {
  public:
   absl::string_view name() const override { return "dot-order-optimizer"; }
 
-  // Searches for newsted dots and reorders them
-  StatusOr<bool> Run(HloModule* module) override;
+  // Searches for nested dots and reorders them
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
 }  // namespace xla

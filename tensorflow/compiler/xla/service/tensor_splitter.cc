@@ -6177,12 +6177,14 @@ int64_t TensorSplitter::TensorBytes(const std::string& option) {
     return raw;  // interpret as bytes
 }
 
-StatusOr<bool> TensorSplitter::Run(HloModule* module) {
+StatusOr<bool> TensorSplitter::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   int64_t size_threshold;
   int64_t split_size;
   std::tie(size_threshold, split_size) = SplitSettings();
   SplittablePathRecorder recorder(size_threshold, split_size, module);
-  recorder.RunOnModule(module);
+  recorder.RunOnModule(module, execution_threads);
   recorder.AllocateWhileLoops();
   TensorSplitterRewriteVisitor rewriter(
       size_threshold, split_size, module,
@@ -6194,6 +6196,6 @@ StatusOr<bool> TensorSplitter::Run(HloModule* module) {
             << module->name() << "'";
   LOG(INFO) << "[TensorSplitter::Run] split_size_threshold=" << size_threshold
             << " target_split_size=" << split_size;
-  return rewriter.RunOnModule(module);
+  return rewriter.RunOnModule(module, execution_threads);
 }
 }  // namespace xla

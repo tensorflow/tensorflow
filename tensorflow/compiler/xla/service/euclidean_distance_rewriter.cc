@@ -338,10 +338,12 @@ Status EuclideanDistanceRewriterVisitor::HandleReduce(HloInstruction* reduce) {
   return ReplaceInstruction(reduce, replacement);
 }
 
-StatusOr<bool> EuclideanDistanceRewriter::Run(HloModule* module) {
+StatusOr<bool> EuclideanDistanceRewriter::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   LOG(INFO) << "Running algebraic rewriter for '" << module->name() << "'";
   EuclideanDistanceRewriterVisitor visitor;
-  return visitor.RunOnModule(module);
+  return visitor.RunOnModule(module, execution_threads);
 }
 
 }  // namespace xla
