@@ -335,9 +335,17 @@ StatusOr<bool> SoftmaxFusion::Run(
           valid = false;
           break;
         }
+
+        const Shape* current_shape = &current->shape();
+        while (!current_shape->has_layout() &&
+               current_shape->tuple_shapes_size() == 1) {
+          current_shape = &current_shape->tuple_shapes(0);
+        }
+
         // Again, we only allow the default layout for any unary ops on the
         // path.
-        if (!LayoutUtil::IsMonotonicWithDim0Major(current->shape().layout())) {
+        if (!current_shape->has_layout() ||
+            !LayoutUtil::IsMonotonicWithDim0Major(current_shape->layout())) {
           valid = false;
           break;
         }
