@@ -91,6 +91,12 @@ def_function = lazy_loader.LazyLoader(
 parsing_ops = lazy_loader.LazyLoader(
     "parsing_ops", globals(),
     "tensorflow.python.ops.parsing_ops")
+# TODO(b/254291122): Remove.
+# Loaded lazily due to a circular dependency (dataset_ops ->
+# prefetch_op -> dataset_ops).
+prefetch_op = lazy_loader.LazyLoader(
+    "prefetch_op", globals(),
+    "tensorflow.python.data.ops.prefetch_op")
 
 
 ops.NotDifferentiable("ReduceDataset")
@@ -1219,9 +1225,8 @@ class DatasetV2(
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    if DEBUG_MODE:
-      return self
-    return PrefetchDataset(self, buffer_size, name=name)
+    return prefetch_op._prefetch(  # pylint: disable=protected-access
+        self, buffer_size, name=name)
 
   @staticmethod
   def list_files(file_pattern, shuffle=None, seed=None, name=None):
@@ -4773,6 +4778,7 @@ batch_op = lazy_loader.LazyLoader(
     "batch_op", globals(),
     "tensorflow.python.data.ops.batch_op")
 BatchDataset = batch_op._BatchDataset  # pylint: disable=protected-access
+PrefetchDataset = prefetch_op._PrefetchDataset  # pylint: disable=protected-access
 
 
 # TODO(b/254291122): Remove.
@@ -4822,29 +4828,6 @@ class ShuffleDataset(UnaryUnchangedStructureDataset):
           reshuffle_each_iteration=self._reshuffle_each_iteration,
           **self._common_args)
     super(ShuffleDataset, self).__init__(input_dataset, variant_tensor)
-
-
-class PrefetchDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` that asynchronously prefetches its input."""
-
-  def __init__(self, input_dataset, buffer_size, slack_period=None, name=None):
-    """See `Dataset.prefetch()` for details."""
-    self._input_dataset = input_dataset
-    if buffer_size is None:
-      buffer_size = AUTOTUNE
-    self._buffer_size = ops.convert_to_tensor(
-        buffer_size, dtype=dtypes.int64, name="buffer_size")
-    self._name = name
-    # pylint: disable=protected-access
-    # We colocate the prefetch dataset with its input as this collocation only
-    # happens automatically in graph mode.
-    with ops.colocate_with(input_dataset._variant_tensor):
-      variant_tensor = gen_dataset_ops.prefetch_dataset(
-          input_dataset._variant_tensor,
-          buffer_size=self._buffer_size,
-          slack_period=slack_period,
-          **self._common_args)
-    super(PrefetchDataset, self).__init__(input_dataset, variant_tensor)
 
 
 class _OptionsDataset(UnaryUnchangedStructureDataset):

@@ -87,6 +87,7 @@ py_library(
         ":map_op",
         ":options",
         ":padded_batch_op",
+        ":prefetch_op",
         ":ragged_batch_op",
         ":range_op",
         ":rebatch_op",
@@ -241,6 +242,11 @@ py_library(
 )
 
 py_library(
+    name = "prefetch_op",
+    srcs = ["prefetch_op.py"],
+)
+
+py_library(
     name = "ragged_batch_op",
     srcs = ["ragged_batch_op.py"],
     srcs_version = "PY3",
@@ -317,6 +323,7 @@ py_library(
         ":dataset_ops",
         ":iterator_ops",
         ":options",
+        ":prefetch_op",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dataset_ops_gen",
