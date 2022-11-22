@@ -343,7 +343,12 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        ":random_access",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
     ],
 )
 
