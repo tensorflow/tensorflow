@@ -472,16 +472,16 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_google_googletest",
-        sha256 = "bc1cc26d1120f5a7e9eb450751c0b24160734e46a02823a573f3c6b6c0a574a7",
-        strip_prefix = "googletest-e2c06aa2497e330bab1c1a03d02f7c5096eb5b0b",
-        urls = tf_mirror_urls("https://github.com/google/googletest/archive/e2c06aa2497e330bab1c1a03d02f7c5096eb5b0b.zip"),
+        sha256 = "81964fe578e9bd7c94dfdb09c8e4d6e6759e19967e397dbea48d1c10e45d0df2",
+        strip_prefix = "googletest-release-1.12.1",
+        urls = tf_mirror_urls("https://github.com/google/googletest/archive/refs/tags/release-1.12.1.tar.gz"),
     )
 
     tf_http_archive(
         name = "com_google_fuzztest",
-        sha256 = "3fe79ede8e860ba7331987b2c1f84d3eeaf5bea00fd76398d6ff0006635586c6",
-        strip_prefix = "fuzztest-6d79ceb1dc2398e02a39efc23ce40d68baa16a42",
-        urls = tf_mirror_urls("https://github.com/google/fuzztest/archive/6d79ceb1dc2398e02a39efc23ce40d68baa16a42.zip"),
+        sha256 = "0867fae7dce74a62d92b0811b0f735e35f9ea3ba8426a3cb7958ff7b158bed53",
+        strip_prefix = "fuzztest-0fdfd1aa286054cbf42bbf93006404caa2b827b8",
+        urls = tf_mirror_urls("https://github.com/google/fuzztest/archive/0fdfd1aa286054cbf42bbf93006404caa2b827b8.zip"),
     )
 
     tf_http_archive(

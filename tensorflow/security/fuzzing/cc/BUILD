@@ -17,12 +17,11 @@ package(
 tf_cc_test(
     name = "status_fuzz",
     srcs = ["status_fuzz.cc"],
-    tags = ["no_oss"],
     deps = [
         ":fuzz_helpers",
         "//tensorflow/core/platform:status",
         "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
+	"@com_google_fuzztest//fuzztest:fuzztest_gtest_main",
     ],
 )
 

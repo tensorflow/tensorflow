@@ -16,7 +16,7 @@ limitations under the License.
 #include <string>
 #include <string_view>
 
-#include "testing/fuzzing/fuzztest.h"
+#include "fuzztest/fuzztest.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/security/fuzzing/cc/fuzz_helpers.h"
 
