@@ -21,27 +21,16 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import tf_decorator
 
 
-def _right(operator):
-  """Right-handed version of an operator: swap args x and y."""
-  return tf_decorator.make_decorator(operator, lambda y, x: operator(x, y))
-
-
-def ragged_hash(self):
-  """The operation invoked by the `RaggedTensor.__hash__` operator."""
-  g = getattr(self.row_splits, "graph", None)
-  # pylint: disable=protected-access
-  if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
-      (g is None or g.building_function)):
-    raise TypeError("RaggedTensor is unhashable.")
-  else:
-    return id(self)
-
-
+# =============================================================================
+# Equality Docstring
+# =============================================================================
 def ragged_eq(self, other):  # pylint: disable=g-doc-args
   """Returns result of elementwise `==` or False if not broadcast-compatible.
 
   Compares two ragged tensors elemewise for equality if they are
-  broadcast-compatible; or returns False if they are not broadcast-compatible.
+  broadcast-compatible; or returns False if they are not
+  [broadcast-compatible](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+
   Note that this behavior differs from `tf.math.equal`, which raises an
   exception if the two ragged tensors are not broadcast-compatible.
 
@@ -81,7 +70,18 @@ def ragged_eq(self, other):  # pylint: disable=g-doc-args
   """
   return math_ops.tensor_equals(self, other)
 
+# =============================================================================
+# Ordering Docstring
+# =============================================================================
 
+# =============================================================================
+# Logical Docstring
+# =============================================================================
+
+
+# =============================================================================
+# Arithmetic Docstring
+# =============================================================================
 def ragged_abs(self, name=None):  # pylint: disable=g-doc-args
   r"""Computes the absolute value of a ragged tensor.
 
@@ -119,6 +119,94 @@ def ragged_abs(self, name=None):  # pylint: disable=g-doc-args
   return math_ops.abs(self, name=name)
 
 
+# ===========================================================================
+def ragged_and(self, y, name=None):  # pylint: disable=g-doc-args
+  r"""Returns the truth value of elementwise `x & y`.
+
+  Logical AND function.
+
+  Requires that `x` and `y` have the same shape or have
+  [broadcast-compatible](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+  shapes. For example, `y` can be:
+
+    - A single Python boolean, where the result will be calculated by applying
+      logical AND with the single element to each element in `x`.
+    - A `tf.Tensor` object of dtype `tf.bool` of the same shape or
+      [broadcast-compatible](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+      shape. In this case, the result will be the element-wise logical AND of
+      `x` and `y`.
+    - A `tf.RaggedTensor` object of dtype `tf.bool` of the same shape or
+      [broadcast-compatible](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+      shape. In this case, the result will be the element-wise logical AND of
+      `x` and `y`.
+
+  For example:
+
+  >>> # `y` is a Python boolean
+  >>> x = tf.ragged.constant([[True, False], [True]])
+  >>> y = True
+  >>> x & y
+  <tf.RaggedTensor [[True, False], [True]]>
+  >>> tf.math.logical_and(x, y)  # Equivalent of x & y
+  <tf.RaggedTensor [[True, False], [True]]>
+  >>> y & x
+  <tf.RaggedTensor [[True, False], [True]]>
+  >>> tf.math.reduce_all(x & y)  # Reduce to a scalar bool Tensor.
+  <tf.Tensor: shape=(), dtype=bool, numpy=False>
+
+  >>> # `y` is a tf.Tensor of the same shape.
+  >>> x = tf.ragged.constant([[True, False], [True, False]])
+  >>> y = tf.constant([[True, False], [False, True]])
+  >>> x & y
+  <tf.RaggedTensor [[True, False], [False, False]]>
+
+  >>> # `y` is a tf.Tensor of a broadcast-compatible shape.
+  >>> x = tf.ragged.constant([[True, False], [True]])
+  >>> y = tf.constant([[True], [False]])
+  >>> x & y
+  <tf.RaggedTensor [[True, False], [False]]>
+
+  >>> # `y` is a `tf.RaggedTensor` of the same shape.
+  >>> x = tf.ragged.constant([[True, False], [True]])
+  >>> y = tf.ragged.constant([[False, True], [True]])
+  >>> x & y
+  <tf.RaggedTensor [[False, False], [True]]>
+
+  >>> # `y` is a `tf.RaggedTensor` of a broadcast-compatible shape.
+  >>> x = tf.ragged.constant([[[True, True, False]], [[]], [[True, False]]])
+  >>> y = tf.ragged.constant([[[True]], [[True]], [[False]]], ragged_rank=1)
+  >>> x & y
+  <tf.RaggedTensor [[[True, True, False]], [[]], [[False, False]]]>
+
+  Args:
+    y: A Python boolean or a `tf.Tensor` or `tf.RaggedTensor` of dtype
+      `tf.bool`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tf.RaggedTensor` of dtype `tf.bool` with the shape that `x` and `y`
+    broadcast to.
+  """
+  return math_ops.logical_and(self, y, name)
+
+
+# Helper Methods.
+def _right(operator):
+  """Right-handed version of an operator: swap args x and y."""
+  return tf_decorator.make_decorator(operator, lambda y, x: operator(x, y))
+
+
+def ragged_hash(self):
+  """The operation invoked by the `RaggedTensor.__hash__` operator."""
+  g = getattr(self.row_splits, "graph", None)
+  # pylint: disable=protected-access
+  if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
+      (g is None or g.building_function)):
+    raise TypeError("RaggedTensor is unhashable.")
+  else:
+    return id(self)
+
+
 # Indexing
 ragged_tensor.RaggedTensor.__getitem__ = ragged_getitem.ragged_tensor_getitem
 
@@ -134,8 +222,9 @@ ragged_tensor.RaggedTensor.__le__ = math_ops.less_equal
 ragged_tensor.RaggedTensor.__lt__ = math_ops.less
 
 # Logical operators
-ragged_tensor.RaggedTensor.__and__ = math_ops.logical_and
-ragged_tensor.RaggedTensor.__rand__ = _right(math_ops.logical_and)
+ragged_tensor.RaggedTensor.__and__ = ragged_and
+ragged_tensor.RaggedTensor.__rand__ = _right(ragged_and)
+
 ragged_tensor.RaggedTensor.__invert__ = math_ops.logical_not
 ragged_tensor.RaggedTensor.__ror__ = _right(math_ops.logical_or)
 ragged_tensor.RaggedTensor.__or__ = math_ops.logical_or
