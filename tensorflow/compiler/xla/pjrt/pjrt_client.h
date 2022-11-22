@@ -835,6 +835,17 @@ class PjRtBuffer {
   virtual PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
                                            int64_t transfer_size) = 0;
 
+  // As above, but the transfer will not happen until `dst` is fulfilled with a
+  // valid pointer. If `dst` is fulfilled with a non-Ok status, then the
+  // transfer will be cancelled.
+  //
+  // In error cases it is possible for the returned Future to become ready
+  // before `dst` is fulfilled.
+  //
+  // Note that the default implementation will block until `dst` is fulfilled.
+  virtual PjRtFuture<Status> CopyRawToHostFuture(
+      PjRtFuture<StatusOr<void*>> dst, int64_t offset, int64_t transfer_size);
+
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async
   // operations using the buffer have completed, according to the allocation
