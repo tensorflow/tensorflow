@@ -1604,19 +1604,16 @@ LogicalResult TileOp::inferReturnTypes(
 LogicalResult TileOp::verify() {
   auto resultType = getType();
   auto rank = resultType.getRank();
-  if (failed(mlir::verifyListOfOperandsOrIntegers(getOperation(), "size", rank,
-                                                  getStaticSizes(), getSizes(),
-                                                  ShapedType::isDynamic))) {
+  if (failed(mlir::verifyListOfOperandsOrIntegers(
+          getOperation(), "size", rank, getStaticSizes(), getSizes()))) {
     return failure();
   }
   if (failed(mlir::verifyListOfOperandsOrIntegers(
-          getOperation(), "offset", rank, getStaticOffsets(), getOffsets(),
-          ShapedType::isDynamic))) {
+          getOperation(), "offset", rank, getStaticOffsets(), getOffsets()))) {
     return failure();
   }
   if (failed(mlir::verifyListOfOperandsOrIntegers(
-          getOperation(), "stride", rank, getStaticStrides(), getStrides(),
-          ShapedType::isDynamic))) {
+          getOperation(), "stride", rank, getStaticStrides(), getStrides()))) {
     return failure();
   }
   for (auto it : llvm::zip(resultType.getShape(), getStaticOffsets(),

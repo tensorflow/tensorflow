@@ -134,17 +134,18 @@ static auto BindMatmulAttributes(runtime::CustomCallBinding<Ts...> binding) {
 static bool CublasLtMatmul(runtime::ExecutionContext* ctx, void** args,
                            void** attrs, void** rets) {
   static auto* handler =
-      BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul")
-                               .UserData<const ServiceExecutableRunOptions*>()
-                               .UserData<const DebugOptions*>()
-                               .State<GemmConfig>("uid")
-                               .State<cublas_lt::MatmulPlan>("uid")
-                               .Arg<runtime::StridedMemrefView>()  // a
-                               .Arg<runtime::StridedMemrefView>()  // b
-                               .Arg<runtime::StridedMemrefView>()  // c
-                               .Arg<runtime::StridedMemrefView>()  // d
-                               .Value(std::nullopt)                // bias
-                           )
+      BindMatmulAttributes(
+          CustomCall::Bind("xla.gpu.cublas.lt.matmul")
+              .UserData<const ServiceExecutableRunOptions*>()
+              .UserData<const DebugOptions*>()
+              .State<GemmConfig>("uid")
+              .State<cublas_lt::MatmulPlan>("uid")
+              .Arg<runtime::StridedMemrefView>()                   // a
+              .Arg<runtime::StridedMemrefView>()                   // b
+              .Arg<runtime::StridedMemrefView>()                   // c
+              .Arg<runtime::StridedMemrefView>()                   // d
+              .Value(std::optional<runtime::StridedMemrefView>())  // bias
+          )
           .To<checks>(CublasLtMatmul::Handler())
           .release();
 
