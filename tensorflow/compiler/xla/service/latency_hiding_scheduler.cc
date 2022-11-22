@@ -54,26 +54,26 @@ LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
   // These values are empirically derived to obtain an overlap of one output
   // fusion/convolution with 1 async op or 5 loop fusions with an async op.
   static constexpr TimeCost kLowLatency = 1.0;
-  static constexpr TimeCost kHighCost = 5000.0;
+  static constexpr TimeCost kHighLatency = 5000.0;
   switch (from.GetInstr().opcode()) {
     case HloOpcode::kCollectivePermuteStart:
       if (target.GetInstr().opcode() == HloOpcode::kCollectivePermuteDone) {
-        return kHighCost;
+        return kHighLatency;
       }
       break;
     case HloOpcode::kAsyncStart:
       if (target.GetInstr().opcode() == HloOpcode::kAsyncDone) {
-        return kHighCost;
+        return kHighLatency;
       }
       break;
     case HloOpcode::kAllGatherStart:
       if (target.GetInstr().opcode() == HloOpcode::kAllGatherDone) {
-        return kHighCost;
+        return kHighLatency;
       }
       break;
     case HloOpcode::kAllReduceStart:
       if (target.GetInstr().opcode() == HloOpcode::kAllReduceDone) {
-        return kHighCost;
+        return kHighLatency;
       }
       break;
     default:
