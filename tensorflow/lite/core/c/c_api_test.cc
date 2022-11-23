@@ -26,6 +26,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
@@ -530,6 +531,10 @@ TEST_F(TestFP16Delegation,
   g_opaque_delegate_struct = nullptr;
 }
 
+static void error_reporter(void* user_data, const char* format, va_list args) {
+  reinterpret_cast<tflite::TestErrorReporter*>(user_data)->Report(format, args);
+}
+
 TEST(CApiSimple, ErrorReporter) {
   TfLiteModel* model =
       TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
@@ -537,13 +542,7 @@ TEST(CApiSimple, ErrorReporter) {
 
   // Install a custom error reporter into the interpreter by way of options.
   tflite::TestErrorReporter reporter;
-  TfLiteInterpreterOptionsSetErrorReporter(
-      options,
-      [](void* user_data, const char* format, va_list args) {
-        reinterpret_cast<tflite::TestErrorReporter*>(user_data)->Report(format,
-                                                                        args);
-      },
-      &reporter);
+  TfLiteInterpreterOptionsSetErrorReporter(options, error_reporter, &reporter);
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
 
   // The options/model can be deleted immediately after interpreter creation.
@@ -559,6 +558,55 @@ TEST(CApiSimple, ErrorReporter) {
   EXPECT_EQ(reporter.num_calls(), 1);
 
   TfLiteInterpreterDelete(interpreter);
+}
+
+TEST(CApiSimple, ModelCreateWithErrorReporter) {
+  TfLiteModel* model = nullptr;
+  tflite::TestErrorReporter reporter;
+
+  // valid model with error reporter
+  std::ifstream model_file("tensorflow/lite/testdata/add.bin");
+  model_file.seekg(0, std::ios_base::end);
+  std::vector<char> model_buffer(model_file.tellg());
+  model_file.seekg(0, std::ios_base::beg);
+  model_file.read(model_buffer.data(), model_buffer.size());
+  model = TfLiteModelCreateWithErrorReporter(
+      model_buffer.data(), model_buffer.size(), error_reporter, &reporter);
+  ASSERT_NE(model, nullptr);
+  EXPECT_EQ(reporter.error_messages(), "");
+  TfLiteModelDelete(model);
+
+  // invalid model with error reporter
+  std::vector<char> invalid_model(20, 'c');
+  model = TfLiteModelCreateWithErrorReporter(
+      invalid_model.data(), invalid_model.size(), error_reporter, &reporter);
+  ASSERT_EQ(model, nullptr);
+  EXPECT_EQ(reporter.error_messages(),
+            "The model is not a valid Flatbuffer buffer");
+  TfLiteModelDelete(model);
+}
+
+TEST(CApiSimple, ModelCreateFromFileWithErrorReporter) {
+  TfLiteModel* model = nullptr;
+  tflite::TestErrorReporter reporter;
+
+  // valid model file with error reporter
+  model = TfLiteModelCreateFromFileWithErrorReporter(
+      "third_party/tensorflow/lite/testdata/add.bin", error_reporter,
+      &reporter);
+  ASSERT_NE(model, nullptr);
+  EXPECT_EQ(reporter.error_messages(), "");
+  TfLiteModelDelete(model);
+
+  // invalid model file with error reporter
+  std::vector<char> invalid_model(20, 'c');
+  model = TfLiteModelCreateFromFileWithErrorReporter("invalid/path/foo.tflite",
+                                                     error_reporter, &reporter);
+  ASSERT_EQ(model, nullptr);
+  ASSERT_THAT(
+      reporter.error_messages(),
+      testing::ContainsRegex("Could not open 'invalid/path/foo.tflite'."));
+  TfLiteModelDelete(model);
 }
 
 TEST(CApiSimple, OpaqueDelegate_TfLiteOpaqueTensorGet) {

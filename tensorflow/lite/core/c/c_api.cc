@@ -61,8 +61,33 @@ TfLiteModel* TfLiteModelCreate(const void* model_data, size_t model_size) {
   return shared_model ? new TfLiteModel{std::move(shared_model)} : nullptr;
 }
 
+TfLiteModel* TfLiteModelCreateWithErrorReporter(
+    const void* model_data, size_t model_size,
+    void (*reporter)(void* user_data, const char* format, va_list args),
+    void* user_data) {
+  struct TfLiteErrorReporterCallback er_cb = {user_data, reporter};
+  auto error_reporter = std::make_unique<CallbackErrorReporter>(er_cb);
+  auto model = tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
+      static_cast<const char*>(model_data), model_size, nullptr,
+      error_reporter.get());
+  std::shared_ptr<const tflite::FlatBufferModel> shared_model(model.release());
+  return shared_model ? new TfLiteModel{std::move(shared_model)} : nullptr;
+}
+
 TfLiteModel* TfLiteModelCreateFromFile(const char* model_path) {
   auto model = tflite::FlatBufferModel::VerifyAndBuildFromFile(model_path);
+  std::shared_ptr<const tflite::FlatBufferModel> shared_model(model.release());
+  return shared_model ? new TfLiteModel{std::move(shared_model)} : nullptr;
+}
+
+TfLiteModel* TfLiteModelCreateFromFileWithErrorReporter(
+    const char* model_path,
+    void (*reporter)(void* user_data, const char* format, va_list args),
+    void* user_data) {
+  struct TfLiteErrorReporterCallback er_cb = {user_data, reporter};
+  auto error_reporter = std::make_unique<CallbackErrorReporter>(er_cb);
+  auto model = tflite::FlatBufferModel::VerifyAndBuildFromFile(
+      model_path, nullptr, error_reporter.get());
   std::shared_ptr<const tflite::FlatBufferModel> shared_model(model.release());
   return shared_model ? new TfLiteModel{std::move(shared_model)} : nullptr;
 }
