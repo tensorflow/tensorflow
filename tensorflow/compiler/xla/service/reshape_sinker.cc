@@ -1,7 +1,7 @@
 // License TODO ....
 
 // The role of reshape-sinker is to sink the reshape operations in a
-// computational graph below dot operations, allowing the tensor-splitter to
+// computational graph before dot operations, allowing the tensor-splitter to
 // split more subgraphs. Currently only reshape operations which are direct
 // operands of dot are sunk. The basic log is once we encounter a dot whose
 // lhs/rhs is a reshape, let reshape's operand is x. We first establish a
