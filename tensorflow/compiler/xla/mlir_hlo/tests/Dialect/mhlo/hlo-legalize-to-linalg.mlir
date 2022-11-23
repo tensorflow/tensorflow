@@ -5749,3 +5749,18 @@ func.func @convolution_without_reversing_and_stride(%arg0: tensor<2x14x12x2xf64>
     : (tensor<2x14x12x2xf64>, tensor<7x7x1x2xf64>) -> tensor<2x12x16x2xf64>
   return %0 : tensor<2x12x16x2xf64>
 }
+
+// -----
+
+// CHECK-LABEL: set_dimension_size
+// CHECK-SAME: %[[VALUE:.*]]: tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>
+func.func @set_dimension_size(
+  %value: tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>,
+  %dimension: tensor<i32>)
+  -> tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>> {
+  // CHECK: tensor.extract_slice %[[VALUE]][0, 0] [2, %{{.*}}] [1, 1] : tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>> to tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
+  %0 = "mhlo.set_dimension_size"(%value, %dimension) { dimension = 1 }
+    : (tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>, tensor<i32>)
+    -> tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
+  func.return %0 : tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
+}

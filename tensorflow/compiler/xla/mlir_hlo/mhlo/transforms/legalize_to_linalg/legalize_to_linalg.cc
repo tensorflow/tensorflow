@@ -3925,6 +3925,43 @@ class PointwiseToLinalgMapConverter : public OpConversionPattern<OpTy> {
   }
 };
 
+class SetDimensionSizeConverter
+    : public OpConversionPattern<mhlo::SetDimensionSizeOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::SetDimensionSizeOp setDimensionSizeOp, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    // We can lower SetDimensionSize to tensor extract. This turns into a
+    // regular dynamic shape. Note that the bounds annotation is still around
+    // but may be no longer valid depending on choices made by bufferization.
+    Location loc = setDimensionSizeOp.getLoc();
+    auto resultType = setDimensionSizeOp.getType().cast<RankedTensorType>();
+
+    SmallVector<OpFoldResult> offsets(resultType.getRank(),
+                                      rewriter.getIndexAttr(0));
+    SmallVector<OpFoldResult> strides(resultType.getRank(),
+                                      rewriter.getIndexAttr(1));
+    SmallVector<OpFoldResult> sizes(llvm::map_range(
+        resultType.getShape(), [&](int64_t dim) -> OpFoldResult {
+          return rewriter.getIndexAttr(dim);
+        }));
+    Value dimensionSize =
+        rewriter.create<tensor::ExtractOp>(loc, setDimensionSizeOp.getSize());
+    sizes[setDimensionSizeOp.getDimension()] =
+        rewriter
+            .create<arith::IndexCastOp>(loc, rewriter.getIndexType(),
+                                        dimensionSize)
+            .getResult();
+
+    rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(
+        setDimensionSizeOp, resultType, adaptor.getOperand(), offsets, sizes,
+        strides);
+    return success();
+  }
+};
+
 struct HloLegalizeToLinalgPass
     : public impl::HloLegalizeToLinalgPassBase<HloLegalizeToLinalgPass> {
   using HloLegalizeToLinalgPassBase::HloLegalizeToLinalgPassBase;
@@ -3974,6 +4011,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       RealDynamicSliceConverter,
       ReshapeOpConverter,
       ReverseConverter,
+      SetDimensionSizeConverter,
       SliceConverter,
       DynamicSliceConverter,
       DynamicUpdateSliceConverter,
