@@ -207,14 +207,6 @@ namespace xla {
 
 namespace {
 
-bool UseMlirHloLowering(bool use_mlir, HloModule* module) {
-  // TODO(tpopp): The prototype currently does not properly handle constant
-  // buffers that are handled by the runtime's buffer assignmen.
-  return use_mlir &&
-         module->entry_computation()->root_instruction()->opcode() !=
-             HloOpcode::kConstant;
-}
-
 // For each computation in the module, determines whether that computation
 // calls a custom-call function, either directly or indirectly (e.g. because it
 // calls another computation that does).
@@ -807,9 +799,8 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
   TF_RETURN_IF_ERROR(RunHloPassesThroughLayoutAssn(
       module, is_aot_compile, &target_machine_features, is_mlir_compile));
 
-  return RunHloPassesAfterLayoutAssn(
-      module, is_aot_compile, &target_machine_features,
-      UseMlirHloLowering(is_mlir_compile, module));
+  return RunHloPassesAfterLayoutAssn(module, is_aot_compile,
+                                     &target_machine_features, is_mlir_compile);
 }
 
 namespace {
@@ -1234,9 +1225,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   // before a caller computation.
 
   std::string function_name;
-  if (UseMlirHloLowering(
-          module->config().debug_options().xla_cpu_enable_mlir_lowering(),
-          module.get())) {
+  if (module->config().debug_options().xla_cpu_enable_mlir_lowering()) {
     TF_ASSIGN_OR_RETURN(
         auto mlir_module,
         createMLIRModule(module.get(), mlir_context, assignment.get()));
@@ -1582,7 +1571,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         CreateBufferInfosFromBufferAssignment(*assignment);
     HloComputation* computation = module->entry_computation();
 
-    if (UseMlirHloLowering(options.use_mlir_hlo_lowering(), module)) {
+    if (options.use_mlir_hlo_lowering()) {
       TF_ASSIGN_OR_RETURN(
           auto mlir_module,
           createMLIRModule(module, mlir_context, assignment.get()));
