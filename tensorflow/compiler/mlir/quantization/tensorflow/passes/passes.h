@@ -79,7 +79,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass();
 
 // Overloading of CreateQuantizePass which takes QuantizationSpecs.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
-    QuantizationSpecs quant_specs);
+    QuantizationSpecs quant_specs, OpSet target_opset);
 
 // Creates an instance of the PrepareQuantize pass, which will perfrom similar
 // transformations as TFL::PrepareQuantizePass.

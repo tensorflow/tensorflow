@@ -867,7 +867,8 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
     pm.addNestedPass<func::FuncOp>(
         CreatePrepareQuantizePass(quantization_method_));
   }
-  pm.addNestedPass<func::FuncOp>(CreateQuantizePass(quant_specs));
+  pm.addNestedPass<func::FuncOp>(
+      CreateQuantizePass(quant_specs, target_opset_));
 
   pm.addNestedPass<func::FuncOp>(CreatePostQuantizePass());
   if (failed(pm.run(module))) {
