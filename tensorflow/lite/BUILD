@@ -771,6 +771,7 @@ cc_library(
     deps = [
         ":string",
         "//tensorflow/lite/c:common",
+        "//tensorflow/core/platform:tstring",
     ],
 )
 
