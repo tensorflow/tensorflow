@@ -170,6 +170,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "//tensorflow/tsl/util:stats_calculator_portable",
+        "@FP16",
     ],
 )
 
