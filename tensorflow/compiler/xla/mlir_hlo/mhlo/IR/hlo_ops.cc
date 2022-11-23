@@ -2756,7 +2756,33 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   AllToAllOp::Adaptor adaptor(operands, attributes, regions);
-  Type operandType = adaptor.getOperand().getType();
+
+  bool isArrayAllToAll = adaptor.getSplitDimension() &&
+                         adaptor.getConcatDimension() &&
+                         adaptor.getSplitCount();
+  if (!isArrayAllToAll) {
+    if (adaptor.getSplitDimension() || adaptor.getConcatDimension() ||
+        adaptor.getSplitCount()) {
+      return emitOptionalError(location,
+                               "TupleAllToAll should not have split_dimension, "
+                               "concat_dimension or split_count attributes");
+    }
+
+    // TupleAllToAll has identical result and operand shapes.
+    for (int64_t i = 0; i < operands.size(); ++i) {
+      inferredReturnShapes.emplace_back(
+          operands[i].getType().cast<ShapedType>());
+    }
+
+    return success();
+  }
+
+  if (adaptor.getOperand().size() != 1) {
+    return emitOptionalError(location,
+                             "ArrayAllToAll should have exactly one operand");
+  }
+
+  Type operandType = adaptor.getOperand()[0].getType();
   RankedTensorType operandRankedType = operandType.dyn_cast<RankedTensorType>();
   if (!operandRankedType) {
     inferredReturnShapes.emplace_back(
@@ -2765,8 +2791,8 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
   }
 
   int64_t inputRank = operandRankedType.getRank();
-  int64_t splitDimension = static_cast<int64_t>(adaptor.getSplitDimension());
-  int64_t concatDimension = static_cast<int64_t>(adaptor.getConcatDimension());
+  int64_t splitDimension = static_cast<int64_t>(*adaptor.getSplitDimension());
+  int64_t concatDimension = static_cast<int64_t>(*adaptor.getConcatDimension());
   if (splitDimension >= inputRank || splitDimension < 0) {
     return emitOptionalError(location, "AllToAll split_dimension ",
                              splitDimension,
@@ -2780,7 +2806,7 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
 
   // If operand is ranked, size of split dimension should be a multiple of split
   // count.
-  int64_t splitCount = adaptor.getSplitCount();
+  int64_t splitCount = *adaptor.getSplitCount();
   auto splitDimSize = operandRankedType.getDimSize(splitDimension);
   if (splitDimSize != ShapedType::kDynamic &&
       (splitDimSize % splitCount != 0)) {

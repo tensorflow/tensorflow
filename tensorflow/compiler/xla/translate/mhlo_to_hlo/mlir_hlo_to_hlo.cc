@@ -804,6 +804,35 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(AllToAllOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+
+  SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op.getOperation(), op.getOperands(), ctx, operands))) {
+    return failure();
+  }
+
+  auto shape = ExtractXlaShape(op.getOperation());
+  if (shape.IsTuple()) {
+    std::optional<xla::Layout> layout = std::nullopt;
+    if (shape.has_layout()) {
+      layout = shape.layout();
+    }
+    auto tuple = xla::AllToAllTuple(
+        operands, Convert_replica_groups(op.getReplicaGroups()), layout);
+    for (auto [index, result] : llvm::enumerate(op.getResults())) {
+      value_map[result] = xla::GetTupleElement(tuple, index);
+    }
+  } else {
+    // ArrayAllToAll always has exactly one operand (checked in the verifier).
+    value_map[op->getResults()[0]] = xla::AllToAll(
+        operands[0], *op.getSplitDimension(), *op.getConcatDimension(),
+        *op.getSplitCount(), Convert_replica_groups(op.getReplicaGroups()));
+  }
+
+  return success();
+}
+
 LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp operand;

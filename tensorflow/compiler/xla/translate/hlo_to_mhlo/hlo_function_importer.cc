@@ -1299,37 +1299,49 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                                      func_builder);
     }
     case HloOpcode::kAllToAll: {
-      // TODO(b/207152612): all-to-all HLO can either have pre-split operands
-      // (and returns a tuple) or a single operand that is split across
-      // `split_dimension` into the number of replicas in a group. Only the
-      // latter case (array all-to-all) is supported in importer right now and
-      // the former (tuple all-to-all) is not supported yet.
       auto all_to_all = Cast<HloAllToAllInstruction>(instruction);
-      if (all_to_all->shape().IsTuple())
-        return Unimplemented(
-            "Importing tuple all-to-all HLO is not supported yet");
+      auto result_tuple_ty = result_type.dyn_cast<mlir::TupleType>();
 
       // Check invariants of array all-to-all. This is a sanity check and is
       // verified by the HLO verifier.
-      if (!all_to_all->split_dimension().has_value() || operands.size() != 1 ||
-          all_to_all->replica_groups().empty())
-        return InvalidArgument(
-            "Array all-to-all should have a split dimension, one operand and "
-            "non-empty replica groups");
+      if (result_tuple_ty) {
+        if (all_to_all->split_dimension().has_value()) {
+          return InvalidArgument(
+              "Tuple all-to-all should not have a split dimension");
+        }
+      } else {
+        if (!all_to_all->split_dimension().has_value() ||
+            operands.size() != 1 || all_to_all->replica_groups().empty()) {
+          return InvalidArgument(
+              "Array all-to-all should have a split dimension, one operand and "
+              "non-empty replica groups");
+        }
+      }
 
       auto replica_groups_attr =
           ConvertReplicaGroups(all_to_all->replica_groups(), builder_)
               .getValue()
               .cast<DenseIntElementsAttr>();
-      uint64_t split_dim = all_to_all->split_dimension().value();
-      uint64_t concat_dim = split_dim;
-      uint64_t split_count = all_to_all->replica_groups()[0].replica_ids_size();
 
-      return func_builder
-          ->create<mlir::mhlo::AllToAllOp>(loc, result_type, operands[0],
-                                           split_dim, concat_dim, split_count,
-                                           replica_groups_attr)
-          .getOperation();
+      llvm::SmallVector<Type, 4> return_types = {result_type};
+      if (result_tuple_ty) {
+        return_types = llvm::to_vector<4>(result_tuple_ty.getTypes());
+      }
+
+      auto result = func_builder->create<mlir::mhlo::AllToAllOp>(
+          loc, return_types, operands, nullptr, nullptr, nullptr,
+          replica_groups_attr);
+
+      if (result_tuple_ty) {
+        return func_builder
+            ->create<mlir::mhlo::TupleOp>(loc, result_type, result.getResults())
+            .getOperation();
+      }
+
+      result.setSplitDimension(all_to_all->split_dimension().value());
+      result.setConcatDimension(all_to_all->split_dimension().value());
+      result.setSplitCount(all_to_all->replica_groups()[0].replica_ids_size());
+      return result.getOperation();
     }
     case HloOpcode::kReduce: {
       // Operands in the first half are reduction inputs and the remaining

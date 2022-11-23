@@ -171,19 +171,25 @@ class AllToAllLowering : public OpRewritePattern<mhlo::AllToAllOp> {
 
   LogicalResult matchAndRewrite(mhlo::AllToAllOp op,
                                 PatternRewriter& rewriter) const override {
+    // TODO(jreiffers): Support the variadic case.
+    if (op.getNumOperands() != 1) {
+      return failure();
+    }
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    auto sizes = getAsValues(
-        b, b.getLoc(), tensor::getMixedSizes(b, op.getLoc(), op.getOperand()));
-    uint64_t split_dimension = op.getSplitDimension();
-    Value split_count = b.create<arith::ConstantIndexOp>(op.getSplitCount());
+    auto sizes =
+        getAsValues(b, b.getLoc(),
+                    tensor::getMixedSizes(b, op.getLoc(), op->getOperand(0)));
+    uint64_t split_dimension = *op.getSplitDimension();
+    Value split_count = b.create<arith::ConstantIndexOp>(*op.getSplitCount());
     sizes[split_dimension] = b.createOrFold<arith::DivUIOp>(
         b.getIndexType(), sizes[split_dimension], split_count);
-    uint64_t concat_dimension = op.getConcatDimension();
+    uint64_t concat_dimension = *op.getConcatDimension();
     sizes[concat_dimension] =
         b.createOrFold<arith::MulIOp>(sizes[concat_dimension], split_count);
 
     Value dst = rewriter.create<tensor::EmptyOp>(
-        op.getLoc(), getAsOpFoldResult(sizes), op.getType().getElementType());
+        op.getLoc(), getAsOpFoldResult(sizes),
+        op->getResultTypes()[0].cast<ShapedType>().getElementType());
     rewriter.replaceOpWithNewOp<xla_cpu::AllToAllOp>(
         op, op->getResultTypes(), op->getOperand(0), dst,
         op.getReplicaGroupsAttr(), op.getSplitDimensionAttr(),
