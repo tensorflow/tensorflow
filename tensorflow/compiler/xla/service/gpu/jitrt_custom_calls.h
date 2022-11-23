@@ -19,20 +19,11 @@
 #include <memory>
 #include <tuple>
 
-#include "llvm/ExecutionEngine/Orc/Core.h"
-#include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
-#include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
-#include "tensorflow/compiler/xla/runtime/type_id.h"
-#include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
-#include "tensorflow/compiler/xla/service/gpu/runtime/tracing.h"
-#include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 
 namespace xla {
 namespace gpu {
-class JitRtKernelsCache;
 
 // Populate custom calls implementing XLA GPU runtime API.
 void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry);
@@ -43,9 +34,6 @@ void PopulateXlaGpuTypeIdNames(runtime::TypeIDNameRegistry& registry);
 // Populate encoding from LMHLO attributes to XLA(SE) enums and structs.
 void PopulateLmhloToXlaAttrEncoding(
     runtime::CustomCallAttrEncodingSet& encoding);
-
-
-
 
 }  // namespace gpu
 }  // namespace xla
