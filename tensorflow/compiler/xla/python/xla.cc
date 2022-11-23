@@ -19,6 +19,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+// clang-format off
+// Must be included first
+#include "tensorflow/tsl/python/lib/core/numpy.h"  //NOLINT
+// clang-format on
+
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -52,7 +57,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/mlir.h"
-#include "tensorflow/compiler/xla/python/numpy.h"
 #include "tensorflow/compiler/xla/python/ops.h"
 #include "tensorflow/compiler/xla/python/outfeed_receiver_py.h"
 #include "tensorflow/compiler/xla/python/pjit.h"
@@ -96,7 +100,7 @@ bool IsOptimizedBuild() {
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
-  ImportNumpy();
+  tsl::ImportNumpy();
   CHECK(tensorflow::RegisterNumpyBfloat16());
 
   // Exceptions

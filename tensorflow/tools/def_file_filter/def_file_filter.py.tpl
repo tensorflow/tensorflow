@@ -141,7 +141,7 @@ def get_symbols(path_to_lib, re_filter):
   # Example symbol line:
   # 954 00000000 SECT2BD notype ()    External    | ?IsSequence@swig@tensorflow@@YA_NPEAU_object@@@Z (bool __cdecl tensorflow::swig::IsSequence(struct _object *))
   # Anomaly symbol line:
-  # 00B 00000000 SECT4  notype       External     | _tensorflow_numpy_api.
+  # 00B 00000000 SECT4  notype       External     | _tsl_numpy_api.
   sym_filtered = []
   re_filter_comp = re.compile(r"{}".format(re_filter))
 

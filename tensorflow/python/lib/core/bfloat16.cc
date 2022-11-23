@@ -12,13 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// Must be included first
+// clang-format off
+#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+// clang-format on
 
 #include "tensorflow/python/lib/core/bfloat16.h"
 
-#include <array>
-#include <cmath>
-#include <limits>
-#include <locale>
+#include <array>   // NOLINT
+#include <cmath>   // NOLINT
+#include <limits>  // NOLINT
+#include <locale>  // NOLINT
 
 // Place `<locale>` before <Python.h> to avoid a build failure in macOS.
 #include <Python.h>
@@ -29,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/custom_float.h"
 #include "tensorflow/python/lib/core/float8_e4m3b11.h"
-#include "tensorflow/python/lib/core/numpy.h"
 
 namespace tensorflow {
 namespace custom_float_internal {
@@ -170,7 +173,7 @@ namespace {
 
 // Initializes the module.
 bool Initialize() {
-  ImportNumpy();
+  tsl::ImportNumpy();
   import_umath1(false);
 
   custom_float_internal::Safe_PyObjectPtr numpy_str =

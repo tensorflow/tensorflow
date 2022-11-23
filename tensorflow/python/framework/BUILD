@@ -645,9 +645,9 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
-        "//tensorflow/python/lib/core:numpy_hdr",
         "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
+        "//tensorflow/tsl/python/lib/core:numpy_hdr",
     ],
     deps = [
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
@@ -731,9 +731,9 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
-        "//tensorflow/python/lib/core:numpy_hdr",
         "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
+        "//tensorflow/tsl/python/lib/core:numpy_hdr",
     ],
     deps = [
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
@@ -856,9 +856,9 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
-        "//tensorflow/python/lib/core:numpy_hdr",
         "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
+        "//tensorflow/tsl/python/lib/core:numpy_hdr",
     ],
     deps = [
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",

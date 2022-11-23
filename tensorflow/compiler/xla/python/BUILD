@@ -257,16 +257,6 @@ cc_library(
 )
 
 cc_library(
-    name = "numpy",
-    srcs = ["numpy.cc"],
-    hdrs = ["numpy.h"],
-    deps = [
-        "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",
-    ],
-)
-
-cc_library(
     name = "py_client",
     srcs = [
         "callback.cc",
@@ -301,7 +291,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":exceptions",
-        ":numpy",
+        "//tensorflow/tsl/python/lib/core:numpy",
         ":pprof_profile_builder",
         ":python_ref_manager",
         ":python_utils",
@@ -864,7 +854,7 @@ pybind_extension(
         ":custom_call_sharding",
         ":jax_jit",
         ":mlir",
-        ":numpy",
+        "//tensorflow/tsl/python/lib/core:numpy",
         ":ops",
         ":util",
         ":pmap_lib",

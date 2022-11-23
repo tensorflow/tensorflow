@@ -17,12 +17,12 @@ limitations under the License.
 // ImportNumpy function to populate it.
 #define XLA_IMPORT_NUMPY
 
-#include "tensorflow/compiler/xla/python/numpy.h"
+#include "tensorflow/tsl/python/lib/core/numpy.h"
 
-namespace xla {
+namespace tsl {
 
 void ImportNumpy() {
   import_array1();
 }
 
-}  // namespace xla
+}  // namespace tsl

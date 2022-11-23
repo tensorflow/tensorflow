@@ -3337,7 +3337,6 @@ pywrap_tensorflow_macro(
     win_def_file = ":pywrap_tensorflow_filtered_def_file",
     deps = [
         ":bfloat16_lib",
-        ":numpy_lib",
         ":safe_ptr",
         "//tensorflow/python/grappler:cost_analyzer_lib",
         "//tensorflow/python/grappler:model_analyzer_lib",
@@ -3395,6 +3394,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/profiler/convert:hlo_to_tools_data_impl",
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
         "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
+        "//tensorflow/tsl/python/lib/core:numpy",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/core/profiler/backends/cpu:python_tracer",
         "//tensorflow/dtensor/cc:dtensor_device_cc",
@@ -3459,7 +3459,7 @@ filegroup(
         "//tensorflow/python/util:kernel_registry",
         "//tensorflow/python/grappler:model_analyzer_lib",  # model_analyzer
         ":ndarray_tensor",  # checkpoint_reader
-        ":numpy_lib",  # checkpoint_reader
+        "//tensorflow/tsl/python/lib/core:numpy",  # checkpoint_reader
         ":py_exception_registry",  # py_exception_registry
         "//tensorflow/python/lib/core:py_func_lib",
         "//tensorflow/python/framework:op_def_util_cc",  # op_def_util
@@ -4099,6 +4099,7 @@ cc_library(
     name = "unified_api_pywrap_required_headers",
     textual_hdrs = [
         "//tensorflow/python/lib/core:basic_hdrs",
+        "//tensorflow/tsl/python/lib/core:basic_hdrs",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
@@ -4145,12 +4146,12 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
-        "//tensorflow/python/lib/core:numpy_hdr",
         "//tensorflow/python/lib/core:py_exception_registry_hdr",
         "//tensorflow/python/lib/core:safe_ptr_hdr",
         "//tensorflow/python/util:util_hdr",
         "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
+        "//tensorflow/tsl/python/lib/core:numpy_hdr",
     ],
     # Only include TensorFlow header-only targets here.
     # If a cc_library needs to depend on TensorFlow .cc files through srcs or
@@ -4319,11 +4320,6 @@ alias(
 alias(
     name = "py_util",
     actual = "//tensorflow/python/lib/core:py_util",
-)
-
-alias(
-    name = "numpy_lib",
-    actual = "//tensorflow/python/lib/core:numpy_lib",
 )
 
 alias(

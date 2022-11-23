@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PYTHON_LIB_CORE_NUMPY_H_
-#define TENSORFLOW_PYTHON_LIB_CORE_NUMPY_H_
+#ifndef TENSORFLOW_TSL_PYTHON_LIB_CORE_NUMPY_H_
+#define TENSORFLOW_TSL_PYTHON_LIB_CORE_NUMPY_H_
 
 #ifdef PyArray_Type
 #error "Numpy cannot be included before numpy.h."
@@ -23,9 +23,9 @@ limitations under the License.
 // Disallow Numpy 1.7 deprecated symbols.
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 
-// We import_array in the tensorflow init function only.
-#define PY_ARRAY_UNIQUE_SYMBOL _tensorflow_numpy_api
-#ifndef TF_IMPORT_NUMPY
+// We import_array in the XLA init function only.
+#define PY_ARRAY_UNIQUE_SYMBOL _xla_numpy_api
+#ifndef XLA_IMPORT_NUMPY
 #define NO_IMPORT_ARRAY
 #endif
 
@@ -37,7 +37,7 @@ limitations under the License.
 #include "numpy/arrayobject.h"
 #include "numpy/ufuncobject.h"
 
-namespace tensorflow {
+namespace tsl {
 
 // Import numpy.  This wrapper function exists so that the
 // PY_ARRAY_UNIQUE_SYMBOL can be safely defined in a .cc file to
@@ -45,6 +45,6 @@ namespace tensorflow {
 // module initialization function.
 void ImportNumpy();
 
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_PYTHON_LIB_CORE_NUMPY_H_
+#endif  // TENSORFLOW_TSL_PYTHON_LIB_CORE_NUMPY_H_
