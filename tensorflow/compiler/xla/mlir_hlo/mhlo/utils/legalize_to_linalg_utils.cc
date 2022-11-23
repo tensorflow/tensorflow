@@ -63,7 +63,8 @@ Value getEmptySparseTensor(OpBuilder& b, Location loc, ShapedType type,
 Value getEmptyTensor(OpBuilder& b, Location loc, ShapedType type,
                      ArrayRef<Value> dynSizes) {
   return b.create<tensor::EmptyOp>(loc, type.getShape(), type.getElementType(),
-                                   dynSizes);
+                                   dynSizes,
+                                   type.cast<RankedTensorType>().getEncoding());
 }
 
 Value getEmptyTensorFor(OpBuilder& b, Location loc, ShapedType resultType,
