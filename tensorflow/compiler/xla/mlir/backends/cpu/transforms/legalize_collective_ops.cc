@@ -199,8 +199,8 @@ class FftLowering : public OpRewritePattern<mhlo::FftOp> {
                                 PatternRewriter& rewriter) const override {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
-    auto sizes = tensor::getMixedSizes(b, op.getLoc(), op.getOperand());
-    auto dst = b.create<tensor::EmptyOp>(op.getLoc(), sizes,
+    // TODO(jreiffers): Support dynamic sizes.
+    auto dst = b.create<tensor::EmptyOp>(op.getLoc(), op.getType().getShape(),
                                          op.getType().getElementType());
 
     auto lengths =

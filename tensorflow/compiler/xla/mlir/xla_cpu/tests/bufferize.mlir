@@ -62,3 +62,18 @@ func.func @all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
 //  CHECK-SAME:   split_count = 4
 //       CHECK: %[[RESULT:.*]] = bufferization.to_tensor %[[OUT]]
 //       CHECK: return %[[RESULT]]
+
+func.func @fft(%arg0: tensor<3x5x4x8x256xf32>) -> tensor<3x5x4x8x129xcomplex<f32>> {
+  %0 = tensor.empty() : tensor<3x5x4x8x129xcomplex<f32>>
+  %1 = "xla_cpu.fft"(%arg0, %0) {
+    fft_length = [4, 8, 256],
+    fft_type = 2 : i32
+   } : (tensor<3x5x4x8x256xf32>,tensor<3x5x4x8x129xcomplex<f32>>) -> tensor<3x5x4x8x129xcomplex<f32>>
+  return %1 : tensor<3x5x4x8x129xcomplex<f32>>
+}
+
+// CHECK-LABEL: @fft
+//  CHECK-SAME:   %[[ARG0:.*]]: tensor<3x5x4x8x256xf32>
+//       CHECK: %[[ARG0_MEMREF:.*]] = bufferization.to_memref %[[ARG0]]
+//       CHECK: %[[OUT:.*]] = memref.alloc() {{.*}}
+//       CHECK: "xla_cpu.fft"(%[[ARG0_MEMREF]], %[[OUT]])
