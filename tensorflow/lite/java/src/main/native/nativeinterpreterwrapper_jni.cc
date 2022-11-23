@@ -150,7 +150,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allocateTensors(
     ThrowException(env, tflite::jni::kIllegalStateException,
                    "Internal error: Unexpected failure when preparing tensor "
                    "allocations: %s",
-                   error_reporter->CachedErrorMessage());
+                   error_reporter->CachedErrorMessage(),
+                   " See https://github.com/tensorflow/tensorflow/issues/40031");
   }
 }
 
