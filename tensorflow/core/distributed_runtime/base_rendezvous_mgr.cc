@@ -502,12 +502,13 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
       if (!already_cancelled) {
         it = calls_
                  .emplace(cm,
-                          std::make_unique<PendingCalls>(token, 1, num_shards_))
+                          std::make_unique<PendingCalls>(token, 0, num_shards_))
                  .first;
       }
     }
     DCHECK(it != calls_.end());
     if (!already_cancelled) {
+      it->second->num_calls.fetch_add(1);
       auto& bucket = it->second->buckets[hash];
       mutex_lock bucket_lock(bucket.mu);
       bool emplaced = bucket.calls.emplace(call).second;
@@ -536,7 +537,9 @@ void BaseRemoteRendezvous::DeregisterCall(BaseRecvTensorCall* call,
         removed = bucket.calls.erase(call);
       }
       if (removed) {
-        is_last_call = it->second->num_calls.fetch_sub(1) == 1;
+        int num_calls_before_remove = it->second->num_calls.fetch_sub(1);
+        CHECK_GE(num_calls_before_remove, 1);  // Crash OK
+        is_last_call = num_calls_before_remove == 1;
       }
     }
   }
@@ -545,7 +548,9 @@ void BaseRemoteRendezvous::DeregisterCall(BaseRecvTensorCall* call,
     // num_calls is accurate.
     mutex_lock l(calls_mu_);
     auto it = calls_.find(cm);
-    if (it != calls_.end() && it->second->num_calls == 0) {
+    int num_calls = it->second->num_calls;
+    CHECK_GE(num_calls, 0);  // Crash OK
+    if (it != calls_.end() && num_calls == 0) {
       if (cm != nullptr) {
         cm->TryDeregisterCallback(it->second->token);
       }
