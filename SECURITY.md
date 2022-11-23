@@ -273,12 +273,6 @@ TensorFlow uses the following disclosure process:
 * An advisory is prepared (but not published) which details the problem and
   steps for mitigation.
 * The vulnerability is fixed and potential workarounds are identified.
-* We will attempt to cherry-pick the fix to the release branches used for all
-  releases of TensorFlow that are at most one year old (though sometimes we
-  might not patch all of them). The cherry-picks will occur as soon as possible
-  and the patch releases will come at the same time as the next quarterly
-  release.
-* Whenever patch releases are finalized, we will notify discuss@tensorflow.org.
 * We will publish a security advisory for all fixed vulnerabilities.
 
 For each vulnerability, we try to ingress it as soon as possible, given the size
