@@ -338,6 +338,26 @@ class CollectivePermuteLowering
 
 //===----------------------------------------------------------------------===//
 
+class FftLowering : public OpRewritePattern<xla_cpu::FftOp> {
+ public:
+  FftLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(xla_cpu::FftOp op,
+                                PatternRewriter& rewriter) const override {
+    CreateCallForDpsCollectiveOp(op.getOperation(), custom_calls_, kCallTarget,
+                                 rewriter);
+    return success();
+  }
+
+ private:
+  static constexpr const char kCallTarget[] = "xla.cpu.fft";
+
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
 void ConvertLmhloToCpuRuntimePass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext* ctx = module.getContext();
@@ -349,8 +369,8 @@ void ConvertLmhloToCpuRuntimePass::runOnOperation() {
   // Convert lmhlo operations to XLA cpu runtime custom calls.
   RewritePatternSet patterns(ctx);
   patterns.insert<InfeedOpLowering, OutfeedOpLowering, CustomCallOpLowering,
-                  AllReduceLowering, CollectivePermuteLowering>(ctx,
-                                                                custom_calls);
+                  AllReduceLowering, CollectivePermuteLowering, FftLowering>(
+      ctx, custom_calls);
   patterns.insert<IdOpLowering<PartitionIdOp>>(ctx, "xla.cpu.partition_id",
                                                custom_calls);
   patterns.insert<IdOpLowering<ReplicaIdOp>>(ctx, "xla.cpu.replica_id",
