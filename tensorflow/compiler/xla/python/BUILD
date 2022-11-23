@@ -486,6 +486,7 @@ cc_library(
         ":jax_jit",
         ":py_client",
         ":status_casters",
+        "//tensorflow/compiler/xla/pjrt:lru_cache",
         "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/synchronization",
         "@pybind11",
