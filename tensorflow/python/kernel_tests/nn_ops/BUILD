@@ -515,7 +515,7 @@ cuda_py_test(
     srcs = ["pooling_ops_test.py"],
     shard_count = 10,
     # Some operations in this test can only be checked on sm61+.
-    tags = ["prefer-sm70"],
+    tags = ["prefer-sm70", "no_rocm"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
