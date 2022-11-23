@@ -16,12 +16,48 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_opaque.h"
 
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/c/c_api_opaque_internal.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+
+namespace {
+
+const TfLiteTensor* Convert(const TfLiteOpaqueTensor* opaque_tensor) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueTensor and TfLiteTensor being equivalent.
+  return reinterpret_cast<const TfLiteTensor*>(opaque_tensor);
+}
+
+const TfLiteNode* Convert(const TfLiteOpaqueNode* opaque_node) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueNode and TfLiteNode being equivalent.
+  return reinterpret_cast<const TfLiteNode*>(opaque_node);
+}
+
+const TfLiteContext* Convert(const TfLiteOpaqueContext* opaque_context) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent.
+  return reinterpret_cast<const TfLiteContext*>(opaque_context);
+}
+
+const ::tflite::Subgraph* GetSubgraph(
+    const TfLiteOpaqueContext* opaque_context) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteContext::impl_ having type ::tflite::Subgraph*.
+  return reinterpret_cast<const ::tflite::Subgraph*>(
+      Convert(opaque_context)->impl_);
+}
+
+}  // namespace
 
 TfLiteType TfLiteOpaqueTensorType(const TfLiteOpaqueTensor* opaque_tensor) {
   return TfLiteTensorType(reinterpret_cast<const TfLiteTensor*>(opaque_tensor));
@@ -38,6 +74,35 @@ int32_t TfLiteOpaqueTensorDim(const TfLiteOpaqueTensor* opaque_tensor,
                          dim_index);
 }
 
+int32_t TfLiteOpaqueTensorNumDimsSignature(
+    const TfLiteOpaqueTensor* opaque_tensor) {
+  const TfLiteTensor* tensor = Convert(opaque_tensor);
+  if (!tensor->dims_signature) {
+    return -1;
+  }
+
+  return tensor->dims_signature->size;
+}
+
+int32_t TfLiteOpaqueTensorDimSignature(const TfLiteOpaqueTensor* opaque_tensor,
+                                       int32_t dim_index) {
+  return Convert(opaque_tensor)->dims_signature->data[dim_index];
+}
+
+const TfLiteIntArray* TfLiteOpaqueTensorDims(
+    const TfLiteOpaqueTensor* opaque_tensor) {
+  return Convert(opaque_tensor)->dims;
+}
+
+const TfLiteIntArray* TfLiteOpaqueTensorDimsSignature(
+    const TfLiteOpaqueTensor* opaque_tensor) {
+  return Convert(opaque_tensor)->dims_signature;
+}
+
+int TfLiteOpaqueTensorIsVariable(const TfLiteOpaqueTensor* opaque_tensor) {
+  return Convert(opaque_tensor)->is_variable ? 1 : 0;
+}
+
 size_t TfLiteOpaqueTensorByteSize(const TfLiteOpaqueTensor* opaque_tensor) {
   return TfLiteTensorByteSize(
       reinterpret_cast<const TfLiteTensor*>(opaque_tensor));
@@ -47,8 +112,23 @@ void* TfLiteOpaqueTensorData(const TfLiteOpaqueTensor* opaque_tensor) {
   return TfLiteTensorData(reinterpret_cast<const TfLiteTensor*>(opaque_tensor));
 }
 
+TfLiteAllocationType TfLiteOpaqueTensorGetAllocationType(
+    const TfLiteOpaqueTensor* opaque_tensor) {
+  return Convert(opaque_tensor)->allocation_type;
+}
+
 const char* TfLiteOpaqueTensorName(const TfLiteOpaqueTensor* opaque_tensor) {
   return TfLiteTensorName(reinterpret_cast<const TfLiteTensor*>(opaque_tensor));
+}
+
+TfLiteQuantization TfLiteOpaqueTensorGetQuantization(
+    const TfLiteOpaqueTensor* opaque_tensor) {
+  return Convert(opaque_tensor)->quantization;
+}
+
+TfLiteQuantizationParams TfLiteOpaqueTensorGetQuantizationParams(
+    const TfLiteOpaqueTensor* opaque_tensor) {
+  return Convert(opaque_tensor)->params;
 }
 
 TfLiteStatus TfLiteOpaqueTensorCopyFromBuffer(TfLiteOpaqueTensor* opaque_tensor,
@@ -95,6 +175,42 @@ int TfLiteOpaqueNodeNumberOfOutputs(const TfLiteOpaqueNode* opaque_node) {
 
 void* TfLiteOpaqueNodeGetUserData(const TfLiteOpaqueNode* opaque_node) {
   return reinterpret_cast<const TfLiteNode*>(opaque_node)->user_data;
+}
+
+void* TfLiteOpaqueNodeGetBuiltinData(const TfLiteOpaqueNode* opaque_node) {
+  return Convert(opaque_node)->builtin_data;
+}
+
+TfLiteStatus TfLiteOpaqueNodeGetCustomInitialData(
+    const TfLiteOpaqueNode* opaque_node, const void** init_data, int* size) {
+  *init_data = Convert(opaque_node)->custom_initial_data;
+  *size = Convert(opaque_node)->custom_initial_data_size;
+  return kTfLiteOk;
+}
+
+TfLiteStatus TfLiteOpaqueNodeInputs(const TfLiteOpaqueNode* opaque_node,
+                                    const int** inputs, int* num_inputs) {
+  const TfLiteNode* node = Convert(opaque_node);
+  *inputs = node->inputs->data;
+  *num_inputs = node->inputs->size;
+  return kTfLiteOk;
+}
+
+TfLiteStatus TfLiteOpaqueNodeOutputs(const TfLiteOpaqueNode* opaque_node,
+                                     const int** outputs, int* num_outputs) {
+  const TfLiteNode* node = Convert(opaque_node);
+  *outputs = node->outputs->data;
+  *num_outputs = node->outputs->size;
+  return kTfLiteOk;
+}
+
+TfLiteStatus TfLiteOpaqueNodeTemporaries(const TfLiteOpaqueNode* opaque_node,
+                                         const int** temporaries,
+                                         int* num_temporaries) {
+  const TfLiteNode* node = Convert(opaque_node);
+  *temporaries = node->temporaries->data;
+  *num_temporaries = node->temporaries->size;
+  return kTfLiteOk;
 }
 
 TfLiteStatus TfLiteOpaqueContextGetExecutionPlan(
@@ -174,4 +290,54 @@ TfLiteOpaqueTensor* TfLiteOpaqueContextGetOpaqueTensor(
   // TfLiteTensor and TfLiteOpaqueTensor being equivalent.
   auto context = reinterpret_cast<const TfLiteContext*>(opaque_context);
   return reinterpret_cast<TfLiteOpaqueTensor*>(&context->tensors[index]);
+}
+
+TfLiteStatus TfLiteOpaqueContextGetInputs(
+    const struct TfLiteOpaqueContext* opaque_context, const int** inputs,
+    int* num_inputs) {
+  auto* subgraph = GetSubgraph(opaque_context);
+  const std::vector<int>& subgraph_inputs = subgraph->inputs();
+
+  *inputs = subgraph_inputs.data();
+  *num_inputs = subgraph_inputs.size();
+  return kTfLiteOk;
+}
+
+TfLiteStatus TfLiteOpaqueContextGetOutputs(
+    const struct TfLiteOpaqueContext* opaque_context, const int** outputs,
+    int* num_outputs) {
+  auto* subgraph = GetSubgraph(opaque_context);
+  const std::vector<int>& subgraph_outputs = subgraph->outputs();
+  *outputs = subgraph_outputs.data();
+  *num_outputs = subgraph_outputs.size();
+  return kTfLiteOk;
+}
+
+TfLiteStatus TfLiteOpaqueContextGetVariables(
+    const struct TfLiteOpaqueContext* opaque_context, const int** variables,
+    int* num_variables) {
+  auto* subgraph = GetSubgraph(opaque_context);
+
+  const std::vector<int>& subgraph_variables = subgraph->variables();
+  *variables = subgraph_variables.data();
+  *num_variables = subgraph_variables.size();
+  return kTfLiteOk;
+}
+
+size_t TfLiteOpaqueContextGetNumNodes(
+    const struct TfLiteOpaqueContext* opaque_context) {
+  auto* subgraph = GetSubgraph(opaque_context);
+  return subgraph->nodes_size();
+}
+
+size_t TfLiteOpaqueContextGetNumTensors(
+    const struct TfLiteOpaqueContext* opaque_context) {
+  auto* subgraph = GetSubgraph(opaque_context);
+  return subgraph->tensors_size();
+}
+
+const char* TfLiteOpaqueContextGetName(
+    const struct TfLiteOpaqueContext* opaque_context) {
+  auto* subgraph = GetSubgraph(opaque_context);
+  return subgraph->GetName().c_str();
 }

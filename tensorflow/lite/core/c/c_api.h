@@ -419,7 +419,8 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterCancel(
 // Returns the type of a tensor element.
 TFL_CAPI_EXPORT extern TfLiteType TfLiteTensorType(const TfLiteTensor* tensor);
 
-// Returns the number of dimensions that the tensor has.
+// Returns the number of dimensions that the tensor has.  Returns -1 in case
+// the 'opaque_tensor' does not have its dimensions property set.
 TFL_CAPI_EXPORT extern int32_t TfLiteTensorNumDims(const TfLiteTensor* tensor);
 
 // Returns the length of the tensor in the "dim_index" dimension.
@@ -474,6 +475,13 @@ TfLiteRegistrationExternalCreate(TfLiteBuiltinOperator builtin_code,
 // WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern TfLiteBuiltinOperator
 TfLiteRegistrationExternalGetBuiltInCode(
+    const TfLiteRegistrationExternal* registration);
+
+// Returns the custom name of the provided 'registration'.  The returned pointer
+// will be non-null iff the op is a custom op.
+//
+// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern const char* TfLiteRegistrationExternalGetCustomName(
     const TfLiteRegistrationExternal* registration);
 
 // Destroys the TfLiteRegistrationExternal instance.

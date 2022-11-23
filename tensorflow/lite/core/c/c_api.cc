@@ -227,6 +227,9 @@ TfLiteStatus TfLiteInterpreterCancel(const TfLiteInterpreter* interpreter) {
 TfLiteType TfLiteTensorType(const TfLiteTensor* tensor) { return tensor->type; }
 
 int32_t TfLiteTensorNumDims(const TfLiteTensor* tensor) {
+  if (!tensor->dims) {
+    return -1;
+  }
   return tensor->dims->size;
 }
 
@@ -339,6 +342,11 @@ void TfLiteRegistrationExternalSetInvoke(
 TfLiteBuiltinOperator TfLiteRegistrationExternalGetBuiltInCode(
     const TfLiteRegistrationExternal* registration) {
   return static_cast<TfLiteBuiltinOperator>(registration->builtin_code);
+}
+
+const char* TfLiteRegistrationExternalGetCustomName(
+    const TfLiteRegistrationExternal* registration) {
+  return registration->custom_name;
 }
 // LINT.ThenChange(//tensorflow/lite/experimental/examples/unity/TensorFlowLitePlugin/Assets/TensorFlowLite/SDK/Scripts/Interpreter.cs)
 
