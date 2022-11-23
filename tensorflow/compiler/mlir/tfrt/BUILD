@@ -806,3 +806,27 @@ cc_library(
         "@tf_runtime//:core_runtime_opdefs",
     ],
 )
+
+cc_library(
+    name = "transform_utils",
+    srcs = [
+        "transforms/utils.cc",
+    ],
+    hdrs = [
+        "transforms/utils.h",
+    ],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
+        "@tf_runtime//:basic_kernels_opdefs",
+        "@tf_runtime//:core_runtime_opdefs",
+        "@tf_runtime//:support",
+    ],
+)
