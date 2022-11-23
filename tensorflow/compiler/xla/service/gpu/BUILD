@@ -575,6 +575,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu/runtime:cholesky",
         "//tensorflow/compiler/xla/service/gpu/runtime:collectives",
         "//tensorflow/compiler/xla/service/gpu/runtime:conv",
+        "//tensorflow/compiler/xla/service/gpu/runtime:custom_call",
         "//tensorflow/compiler/xla/service/gpu/runtime:io_feed",
         "//tensorflow/compiler/xla/service/gpu/runtime:memcpy",
         "//tensorflow/compiler/xla/service/gpu/runtime:memset",
