@@ -759,6 +759,30 @@ ENTRY main {
                   m::Broadcast(m::Reduce(m::Parameter(0), m::Constant())))));
 }
 
+TEST_F(SoftmaxFusionTest, SingleSoftmaxPatternWithOneElementTupleResult) {
+  const std::string& hlo_string = R"(
+HloModule softmax
+
+add_computation {
+  arg0 = f32[] parameter(0)
+  arg1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg0, arg1)
+}
+
+ENTRY main.19 {
+  param_0 = f32[13,1,5]{2,1,0} parameter(0)
+  constant_zero = f32[] constant(0)
+  reduction = f32[13,1]{1,0} reduce(param_0, constant_zero), dimensions={2}, to_apply=add_computation
+  broadcast = f32[13,1,5]{2,1,0} broadcast(reduction), dimensions={0,1}
+  root_add = f32[13,1,5]{2,1,0} add(param_0, broadcast)
+  ROOT tuple = (f32[13,1,5]{2,1,0}) tuple(root_add)
+})";
+
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  SoftmaxFusion fusion;
+  EXPECT_TRUE(fusion.Run(module.get()).value());
+}
+
 class SoftmaxFusionEnd2EndTest
     : public HloTestBase,
       public ::testing::WithParamInterface<::testing::tuple<int, int>> {

@@ -122,6 +122,10 @@ class ClOperation {
 
   int3 GetWorkGroupSize() const { return operation_->work_group_size_; }
 
+  bool HasEqualScalarArguments(const ClOperation& op) const {
+    return cl_args_.HasEqualScalarArguments(op.cl_args_);
+  }
+
  private:
   std::unique_ptr<GPUOperation> operation_;
   CLKernel kernel_;

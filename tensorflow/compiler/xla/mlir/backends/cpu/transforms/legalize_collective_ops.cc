@@ -192,6 +192,27 @@ class AllToAllLowering : public OpRewritePattern<mhlo::AllToAllOp> {
   };
 };
 
+class FftLowering : public OpRewritePattern<mhlo::FftOp> {
+  using OpRewritePattern<mhlo::FftOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::FftOp op,
+                                PatternRewriter& rewriter) const override {
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    // TODO(jreiffers): Support dynamic sizes.
+    auto dst = b.create<tensor::EmptyOp>(op.getLoc(), op.getType().getShape(),
+                                         op.getType().getElementType());
+
+    auto lengths =
+        llvm::to_vector<3>(op.getFftLengthAttr().getValues<int64_t>());
+    rewriter.replaceOpWithNewOp<xla_cpu::FftOp>(
+        op, op->getResultTypes(), op->getOperand(0), dst,
+        static_cast<int32_t>(op.getFftType()),
+        rewriter.getI64ArrayAttr(lengths));
+    return success();
+  };
+};
+
 void LegalizeCollectiveOpsPass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
@@ -201,7 +222,8 @@ void LegalizeCollectiveOpsPass::runOnOperation() {
   patterns
       .insert<AllReduceLowering, CollectivePermuteLowering, AllToAllLowering,
               IdLowering<mhlo::PartitionIdOp, xla_cpu::PartitionIdOp>,
-              IdLowering<mhlo::ReplicaIdOp, xla_cpu::ReplicaIdOp>>(ctx);
+              IdLowering<mhlo::ReplicaIdOp, xla_cpu::ReplicaIdOp>, FftLowering>(
+          ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     return signalPassFailure();

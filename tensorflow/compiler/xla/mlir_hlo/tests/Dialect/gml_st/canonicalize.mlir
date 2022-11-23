@@ -425,3 +425,27 @@ func.func @fold_cast_to_materialize_source(%in: tensor<4xf32>) ->
 // CHECK-NOT:     tensor.cast
 // CHECK:         %[[MAT:.*]] = gml_st.materialize %[[IN]][%[[TILE]]] : tensor<4xf32>[!gml_st.tile<2>]
 // CHECK:         return %[[MAT]]
+
+// -----
+
+func.func @collapse_empty_for(%in: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  %c8 = arith.constant 8 : index
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %cst = arith.constant 0.000000e+00 : f32
+  %0 = tensor.empty() : tensor<8x8xf32>
+  %13 = gml_st.for (%arg4) = (%c0) to (%c1) step (%c8)
+        outs (%arg5 = %0: tensor<8x8xf32>) {
+    %14 = affine.apply affine_map<(d0) -> (-d0 + 100)>(%arg4)
+    %19 = gml_st.tile [0, 0] [8, 8] [1, 1] : !gml_st.tile<8x8>
+    %11 = linalg.fill ins(%cst : f32) outs(%arg5 : tensor<8x8xf32>)
+          -> tensor<8x8xf32>
+    gml_st.set_yield %11 into %arg5[%19] : tensor<8x8xf32>
+          into tensor<8x8xf32>[!gml_st.tile<8x8>]
+  } : tensor<8x8xf32>
+  return %13 : tensor<8x8xf32>
+}
+
+// CHECK-LABEL: @collapse_empty_for
+// CHECK-NOT:     gml_st.for
+// CHECK:         linalg.fill

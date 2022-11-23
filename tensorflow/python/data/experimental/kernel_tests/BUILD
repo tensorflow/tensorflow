@@ -226,6 +226,23 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "index_shuffle_test",
+    size = "medium",
+    srcs = ["index_shuffle_test.py"],
+    shard_count = 12,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/data/experimental/ops:shuffle_ops",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
     name = "io_test",
     size = "medium",
     srcs = ["io_test.py"],

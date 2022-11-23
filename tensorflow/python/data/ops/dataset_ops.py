@@ -25,7 +25,6 @@ from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import structured_function
@@ -91,6 +90,12 @@ def_function = lazy_loader.LazyLoader(
 parsing_ops = lazy_loader.LazyLoader(
     "parsing_ops", globals(),
     "tensorflow.python.ops.parsing_ops")
+# TODO(b/240947712): Clean up the circular dependencies.
+# Loaded lazily due to a circular dependency (dataset_ops ->
+# prefetch_op -> dataset_ops).
+prefetch_op = lazy_loader.LazyLoader(
+    "prefetch_op", globals(),
+    "tensorflow.python.data.ops.prefetch_op")
 
 
 ops.NotDifferentiable("ReduceDataset")
@@ -1219,9 +1224,8 @@ class DatasetV2(
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    if DEBUG_MODE:
-      return self
-    return PrefetchDataset(self, buffer_size, name=name)
+    return prefetch_op._prefetch(  # pylint: disable=protected-access
+        self, buffer_size, name=name)
 
   @staticmethod
   def list_files(file_pattern, shuffle=None, seed=None, name=None):
@@ -3211,9 +3215,15 @@ name=None))
     Returns:
       Dataset: A `Dataset`.
     """
-    return RandomDataset(seed=seed,
-                         rerandomize_each_iteration=rerandomize_each_iteration,
-                         name=name)
+    # Loaded lazily due to a circular dependency (
+    # dataset_ops -> random_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import random_op
+    return random_op._random(
+        seed=seed,
+        rerandomize_each_iteration=rerandomize_each_iteration,
+        name=name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def snapshot(self,
                path,
@@ -3606,7 +3616,7 @@ name=None))
             axis=[0, 1])
 
       selector_input = map_op._MapDataset(  # pylint: disable=protected-access
-          RandomDataset(seed).batch(2),
+          Dataset.random(seed).batch(2),
           select_dataset_constant_logits,
           use_inter_op_parallelism=False)
 
@@ -3624,7 +3634,7 @@ name=None))
                 logits, 1, seed=seed),
             axis=[0, 1])
 
-      logits_and_seeds = Dataset.zip((logits_ds, RandomDataset(seed).batch(2)))
+      logits_and_seeds = Dataset.zip((logits_ds, Dataset.random(seed).batch(2)))
       selector_input = map_op._MapDataset(  # pylint: disable=protected-access
           logits_and_seeds,
           select_dataset_varying_logits,
@@ -4773,6 +4783,7 @@ batch_op = lazy_loader.LazyLoader(
     "batch_op", globals(),
     "tensorflow.python.data.ops.batch_op")
 BatchDataset = batch_op._BatchDataset  # pylint: disable=protected-access
+PrefetchDataset = prefetch_op._PrefetchDataset  # pylint: disable=protected-access
 
 
 # TODO(b/254291122): Remove.
@@ -4822,29 +4833,6 @@ class ShuffleDataset(UnaryUnchangedStructureDataset):
           reshuffle_each_iteration=self._reshuffle_each_iteration,
           **self._common_args)
     super(ShuffleDataset, self).__init__(input_dataset, variant_tensor)
-
-
-class PrefetchDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` that asynchronously prefetches its input."""
-
-  def __init__(self, input_dataset, buffer_size, slack_period=None, name=None):
-    """See `Dataset.prefetch()` for details."""
-    self._input_dataset = input_dataset
-    if buffer_size is None:
-      buffer_size = AUTOTUNE
-    self._buffer_size = ops.convert_to_tensor(
-        buffer_size, dtype=dtypes.int64, name="buffer_size")
-    self._name = name
-    # pylint: disable=protected-access
-    # We colocate the prefetch dataset with its input as this collocation only
-    # happens automatically in graph mode.
-    with ops.colocate_with(input_dataset._variant_tensor):
-      variant_tensor = gen_dataset_ops.prefetch_dataset(
-          input_dataset._variant_tensor,
-          buffer_size=self._buffer_size,
-          slack_period=slack_period,
-          **self._common_args)
-    super(PrefetchDataset, self).__init__(input_dataset, variant_tensor)
 
 
 class _OptionsDataset(UnaryUnchangedStructureDataset):
@@ -4916,37 +4904,6 @@ class _RestructuredDataset(UnaryDataset):
   @property
   def element_spec(self):
     return self._element_spec
-
-
-class RandomDataset(DatasetSource):
-  """A `Dataset` of pseudorandom values."""
-
-  def __init__(self, seed=None, rerandomize_each_iteration=None, name=None):
-    """A `Dataset` of pseudorandom values."""
-    self._seed, self._seed2 = random_seed.get_seed(seed)
-    self._rerandomize = rerandomize_each_iteration
-    self._name = name
-    if (rerandomize_each_iteration is not None or
-        tf_compat.forward_compatible(2022, 12, 17)):
-      if not tf2.enabled() and rerandomize_each_iteration:
-        warnings.warn("In TF 1, the `rerandomize_each_iteration=True` option "
-                      "is only supported for repeat-based epochs.")
-      variant_tensor = ged_ops.random_dataset_v2(
-          seed=self._seed,
-          seed2=self._seed2,
-          seed_generator=gen_dataset_ops.dummy_seed_generator(),
-          rerandomize_each_iteration=self._rerandomize,
-          **self._common_args)
-    else:
-      variant_tensor = ged_ops.random_dataset(
-          seed=self._seed,
-          seed2=self._seed2,
-          **self._common_args)
-    super(RandomDataset, self).__init__(variant_tensor)
-
-  @property
-  def element_spec(self):
-    return tensor_spec.TensorSpec([], dtypes.int64)
 
 
 def _get_prob_original_static(initial_dist_t, target_dist_t):

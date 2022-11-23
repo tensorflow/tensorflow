@@ -82,10 +82,13 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     }
 
     // Fusion into the output.
-    OpOperand *matmulOutput =
-        cast<linalg::MatmulOp>(matmulOp.getOperation()).getDpsInitOperand(0);
+    OpOperand *matmulOutput = matmulOp.getDpsInitOperand(0);
     auto materialize = matmulOutput->get().getDefiningOp<MaterializeOp>();
-    if (!materialize) return failure();
+    if (!materialize) {
+      return rewriter.notifyMatchFailure(
+          matmulOp,
+          "has failed to 'materialize' output during 'linalg.fill' fusion.");
+    }
     if (materialize.getSource().getDefiningOp<linalg::FillOp>()) {
       if (failed(fuse(rewriter, materialize))) return failure();
     }
@@ -96,7 +99,7 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
         rewriter, matmulOp, reductionDimsTileSizes, /*distribute=*/false);
     if (failed(tilingReductionDimsResult)) return failure();
 
-    // Update the results if tiling succeeded.
+    // Update the results if tiling occurred.
     if (tilingReductionDimsResult->loop != nullptr) {
       rewriter.replaceOp(matmulOp,
                          tilingReductionDimsResult->loop->getResults());

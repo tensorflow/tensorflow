@@ -1,4 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow/tsl:tsl.bzl", "if_libtpu")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
@@ -17,7 +18,10 @@ tf_cuda_library(
         "//tensorflow/compiler/xla/backends/profiler/gpu:device_tracer",
     ],
     visibility = ["//tensorflow:internal"],
-    deps = if_libtpu([
+    deps = [
+        "//tensorflow/compiler/xla/backends/profiler/cpu:host_tracer",
+        "//tensorflow/compiler/xla/backends/profiler/cpu:metadata_collector",
+    ] + if_libtpu([
         "//tensorflow/compiler/xla/backends/profiler/tpu:tpu_tracer",
     ]),
     alwayslink = True,

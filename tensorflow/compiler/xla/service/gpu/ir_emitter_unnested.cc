@@ -4336,7 +4336,8 @@ int64_t NumInputsWithMoreElementsThan(mlir::lmhlo::FusionOp fusion,
 bool IsUnrollingColumnReductionBeneficial(mlir::lmhlo::FusionOp fusion,
                                           HloComputation* fused_computation,
                                           const Shape& input_shape,
-                                          int64_t num_kept_minor) {
+                                          int64_t num_kept_minor,
+                                          bool reduction_is_race_free) {
   if (num_kept_minor % (WarpSize() * 2) != 0) {
     return false;
   }
@@ -4352,11 +4353,11 @@ bool IsUnrollingColumnReductionBeneficial(mlir::lmhlo::FusionOp fusion,
   std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fused_computation);
 
   for (int i = 0; i < fusion_roots.size(); i++) {
-    if (IsReductionFromOrToContiguousDimensions(*hlo_roots[i])) {
-      // Atomic.add of the reduction result can't be vectorized.
+    if (!reduction_is_race_free &&
+        IsReductionFromOrToContiguousDimensions(*hlo_roots[i])) {
+      // Atomics cannot be vectorized.
       cannot_be_vectorized++;
     } else {
-      // Write of the non-reduction result can be vectorized.
       can_be_vectorized++;
     }
     use_chain_endings.insert(fusion_roots[i]);
@@ -4470,7 +4471,8 @@ static bool CanVectorizeReduction(
     se::CudaComputeCapability cc, mlir::lmhlo::FusionOp fusion,
     HloComputation* fused_computation,
     const ReductionDimensions& reduction_dimensions, int num_threads_x,
-    Vector3 reduction_tiling, const Shape& input_shape, int64_t shmem_usage) {
+    Vector3 reduction_tiling, const Shape& input_shape, int64_t shmem_usage,
+    bool reduction_is_race_free) {
   // Vectorization might cause us to run out of budget.
   if (shmem_usage * 2 > kSharedMemoryBudgetInBytes) {
     return false;
@@ -4478,7 +4480,7 @@ static bool CanVectorizeReduction(
   if (!reduction_dimensions.is_row_reduction) {
     return IsUnrollingColumnReductionBeneficial(
         fusion, fused_computation, input_shape,
-        reduction_dimensions.dimensions[kDimX]);
+        reduction_dimensions.dimensions[kDimX], reduction_is_race_free);
   }
 
   if (reduction_dimensions.dimensions[kDimX] % 2 != 0 ||
@@ -4578,9 +4580,10 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
                                             : kLinearIndexingX;
   int64_t shmem_usage =
       ProjectedShmemUsageBytes(reduction_dimensions, instr_index_groups);
+  bool reduction_is_race_free = ReductionIsRaceFree(reduction_dimensions);
   bool vectorize = CanVectorizeReduction(
       cc, fusion, fused_computation, reduction_dimensions, num_threads_x,
-      reduction_tiling, input_shape, shmem_usage);
+      reduction_tiling, input_shape, shmem_usage, reduction_is_race_free);
   int vector_size = vectorize ? 2 : 1;
 
   int num_partial_results = 1;
@@ -4626,7 +4629,7 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
                              virtual_thread_scaling_factor);
   return ReductionCodegenInfo(tiling_scheme, num_partial_results,
                               reduction_dimensions.is_row_reduction,
-                              ReductionIsRaceFree(reduction_dimensions));
+                              reduction_is_race_free);
 }
 
 // Generate a single element of the tile (update the accumulator state) for a

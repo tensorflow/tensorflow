@@ -104,6 +104,8 @@ class QuantileAccumulator():
                num_quantiles,
                name=None,
                max_elements=None):
+    del max_elements  # Unused.
+
     self._eps = epsilon
     self._num_streams = num_streams
     self._num_quantiles = num_quantiles

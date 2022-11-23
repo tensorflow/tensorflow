@@ -15,7 +15,7 @@ load(
     "tf_cc_test",
     "tf_cuda_library",
 )
-load("//tensorflow/tsl:tsl.bzl", "if_google", "tsl_copts")
+load("//tensorflow/tsl:tsl.bzl", "if_google", "if_nccl", "tsl_copts")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
@@ -28,7 +28,6 @@ load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//tensorflow:tensorflow.default.bzl", "if_nccl")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_cloud")
 
 package(
@@ -576,6 +575,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu/runtime:cholesky",
         "//tensorflow/compiler/xla/service/gpu/runtime:collectives",
         "//tensorflow/compiler/xla/service/gpu/runtime:conv",
+        "//tensorflow/compiler/xla/service/gpu/runtime:custom_call",
         "//tensorflow/compiler/xla/service/gpu/runtime:io_feed",
         "//tensorflow/compiler/xla/service/gpu/runtime:memcpy",
         "//tensorflow/compiler/xla/service/gpu/runtime:memset",

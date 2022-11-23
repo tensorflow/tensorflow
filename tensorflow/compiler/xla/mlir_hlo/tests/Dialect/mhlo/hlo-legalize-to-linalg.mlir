@@ -29,6 +29,28 @@ func.func @float_add(%lhs: tensor<2x2xf32>,
 
 // -----
 
+// CHECK-LABEL: func @float_add_dynamic_encoding
+// CHECK-PRIMITIVE-LABEL: func @float_add_dynamic_encoding
+func.func @float_add_dynamic_encoding(
+  %lhs: tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>,
+  %rhs: tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>)
+    -> tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>> {
+  // CHECK: linalg.generic
+  // CHECK: arith.addf
+  // CHECK: linalg.yield
+
+  // CHECK-PRIMITIVE: linalg.map
+  // CHECK-PRIMITIVE: arith.addf
+  // CHECK-PRIMITIVE: linalg.yield
+  %0 = "mhlo.add"(%lhs, %rhs) {someattr}
+      : (tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>,
+         tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>)
+      -> tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
+  func.return %0 : tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
+}
+
+// -----
+
 // CHECK-LABEL: integer_add
 // CHECK-PRIMITIVE-LABEL: integer_add
 func.func @integer_add(%lhs: tensor<2x2xi32>,
@@ -5726,4 +5748,19 @@ func.func @convolution_without_reversing_and_stride(%arg0: tensor<2x14x12x2xf64>
     {batch_group_count = 1 : i64, feature_group_count = 2 : i64, precision_config = [#mhlo<precision HIGHEST>, #mhlo<precision HIGHEST>]}
     : (tensor<2x14x12x2xf64>, tensor<7x7x1x2xf64>) -> tensor<2x12x16x2xf64>
   return %0 : tensor<2x12x16x2xf64>
+}
+
+// -----
+
+// CHECK-LABEL: set_dimension_size
+// CHECK-SAME: %[[VALUE:.*]]: tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>
+func.func @set_dimension_size(
+  %value: tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>,
+  %dimension: tensor<i32>)
+  -> tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>> {
+  // CHECK: tensor.extract_slice %[[VALUE]][0, 0] [2, %{{.*}}] [1, 1] : tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>> to tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
+  %0 = "mhlo.set_dimension_size"(%value, %dimension) { dimension = 1 }
+    : (tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>, tensor<i32>)
+    -> tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
+  func.return %0 : tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
 }

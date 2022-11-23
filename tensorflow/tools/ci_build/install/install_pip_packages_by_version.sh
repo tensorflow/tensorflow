@@ -27,6 +27,8 @@ rm "get-pip.py"
 PYTHON_VERSION=$(echo ${PIP##*.})  # only the last number, eg. 10
 
 JAX_PACKAGES=(
+  # https://github.com/numpy/numpy/issues/22623
+  "setuptools<=65.5.1"
   "wheel"
   "cloudpickle"
   "colorama>=0.4.4"
@@ -40,6 +42,7 @@ JAX_PACKAGES=(
   "opt-einsum"
   "auditwheel"
   "msgpack"
+  "typing_extensions"
 )
 
 PACKAGES=(

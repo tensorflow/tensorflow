@@ -167,4 +167,43 @@ def AllToAllOp : XlaCpu_Op<"all_to_all", [BufferizableOpInterface]> {
   }];
 }
 
+def FftOp : XlaCpu_Op<"fft", [BufferizableOpInterface]> {
+  let summary = "CPU-specific version of FFT";
+  let description = [{
+    The major differences between this and HLO's fft are:
+    - It bufferizes to itself.
+    - It uses destination passing style.
+  }];
+
+  let arguments = (ins
+      TensorOrMemref:$operand,
+      TensorOrMemref:$dst,
+      I32Attr:$fft_type,
+      I64ArrayAttr:$fft_length
+  );
+  let results = (outs Variadic<TensorOrMemref>);
+  let extraClassDeclaration = [{
+    // Declarations for BufferizableOpInterface:
+    bool bufferizesToMemoryRead(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return opOperand.getOperandNumber() == 0;
+    }
+    bool bufferizesToMemoryWrite(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return opOperand.getOperandNumber() == 1;
+    }
+    SmallVector<OpResult> getAliasingOpResult(
+        OpOperand &opOperand, const bufferization::AnalysisState &state) {
+      if (opOperand.getOperandNumber() == 0) return {};
+      return {getOperation()->getOpResult(0)};
+    }
+    LogicalResult bufferize(RewriterBase &rewriter,
+        const bufferization::BufferizationOptions &options);
+    bufferization::BufferRelation bufferRelation(OpResult opResult,
+        const bufferization::AnalysisState &state) {
+      return bufferization::BufferRelation::Equivalent;
+    }
+  }];
+}
+
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_XLA_CPU_OPS_TD_

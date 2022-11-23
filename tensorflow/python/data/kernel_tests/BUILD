@@ -766,6 +766,7 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/data/ops:prefetch_op",
         "@absl_py//absl/testing:parameterized",
     ],
 )

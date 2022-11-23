@@ -20,15 +20,13 @@ load("//tensorflow:tensorflow.bzl", "clean_dep")
 load("build_defs.bzl", "embedded_binary")
 load("special_rules.bzl", "jpeg_copts", "libjpeg_deps", "minibenchmark_visibility_allowlist")
 
-default_visibility_group = [
-    "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
-    "//tensorflow/lite/tools/benchmark:__subpackages__",
-    "@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__",
-] + minibenchmark_visibility_allowlist()
-
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = default_visibility_group,
+    default_visibility = [
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
+        "//tensorflow/lite/tools/benchmark:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__",
+    ] + minibenchmark_visibility_allowlist(),
     licenses = ["notice"],
 )
 

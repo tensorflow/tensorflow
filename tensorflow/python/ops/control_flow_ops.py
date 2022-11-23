@@ -2984,28 +2984,41 @@ def tuple_v2(tensors, control_inputs=None, name=None):
   See also `tf.group` and `tf.control_dependencies`.
 
   Example:
+  >>> with tf.Graph().as_default():
+  ...   with tf.compat.v1.Session() as sess:
+  ...     v = tf.Variable(0.0)
+  ...     a = tf.constant(1.0)
+  ...     sess.run(tf.compat.v1.global_variables_initializer())
+  ...     for i in range(5):
+  ...       update_op = v.assign_add(1.0)
+  ...       b = a + v
+  ...       res_b = sess.run(b)
+  ...       res_v = sess.run(v)
+  ...       print(res_v)
+  0.0
+  0.0
+  0.0
+  0.0
+  0.0
 
   >>> with tf.Graph().as_default():
   ...   with tf.compat.v1.Session() as sess:
-  ...     v = tf.Variable(1.0)
-  ...     update_op = v.assign_add(2.0).read_value()
+  ...     v = tf.Variable(0.0)
   ...     a = tf.constant(1.0)
-  ...     b = [a + v]
   ...     sess.run(tf.compat.v1.global_variables_initializer())
-  ...     # `update_op` not run before the evaluation of `b`
-  ...     print(sess.run(b))
-  [2.0]
-
-  >>> with tf.Graph().as_default():
-  ...   with tf.compat.v1.Session() as sess:
-  ...     v = tf.Variable(1.0)
-  ...     update_op = v.assign_add(2.0).read_value()
-  ...     a = tf.constant(1.0)
-  ...     b = tf.tuple([a + v], [update_op])
-  ...     sess.run(tf.compat.v1.global_variables_initializer())
-  ...     # `tf.tuple` ensures `update_op` is run before `b`
-  ...     print(sess.run(b))
-  [4.0]
+  ...     for i in range(5):
+  ...       update_op = v.assign_add(1.0)
+  ...       calc = [a + v]
+  ...       # `tf.tuple` ensures `update_op` is run before `b`
+  ...       b = tf.tuple(calc, [tf.group(update_op)])
+  ...       res_b = sess.run(b)
+  ...       res_v = sess.run(v)
+  ...       print(res_v)
+  1.0
+  2.0
+  3.0
+  4.0
+  5.0
 
 
   Args:
