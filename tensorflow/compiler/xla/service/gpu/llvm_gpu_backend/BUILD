@@ -45,6 +45,7 @@ cc_library(
         "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Linker",
+        "@llvm-project//llvm:Passes",
         "@llvm-project//llvm:NVPTXCodeGen",  # buildcleaner: keep
         "@llvm-project//llvm:ObjCARC",  # buildcleaner: keep
         "@llvm-project//llvm:Scalar",

@@ -40,6 +40,8 @@ limitations under the License.
 #include "llvm/Linker/Linker.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/PassRegistry.h"
+#include "llvm/Passes/PassBuilder.h"
+#include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormattedStream.h"
@@ -176,37 +178,6 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
       llvm_ir::AsStringRef(feature_str), target_options,
       llvm::codegen::getExplicitRelocModel(),
       llvm::codegen::getExplicitCodeModel(), codegen_opt_level));
-}
-
-// Adds the standard LLVM optimization passes, based on the speed optimization
-// level (opt_level) and size optimization level (size_level). Both module
-// and function-level passes are added, so two pass managers are passed in and
-// modified by this function.
-void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
-                           llvm::TargetMachine* target_machine,
-                           llvm::legacy::PassManagerBase* module_passes,
-                           llvm::legacy::FunctionPassManager* function_passes,
-                           int inline_threshold) {
-  llvm::PassManagerBuilder builder;
-  builder.OptLevel = opt_level;
-  builder.SizeLevel = size_level;
-
-  if (opt_level > 1) {
-    builder.Inliner = llvm::createFunctionInliningPass(inline_threshold);
-  } else {
-    // Only inline functions marked with "alwaysinline".
-    builder.Inliner = llvm::createAlwaysInlinerLegacyPass();
-  }
-
-  builder.DisableUnrollLoops = opt_level == 0;
-  builder.LoopVectorize = opt_level > 0;
-  builder.SLPVectorize = opt_level > 1 && size_level < 2;
-
-  // NVPTX's early-as-possible passes include NVVM reflect.
-  target_machine->adjustPassManager(builder);
-
-  builder.populateFunctionPassManager(*function_passes);
-  builder.populateModulePassManager(*module_passes);
 }
 
 // Emits the given module to a bit code file.
@@ -375,37 +346,28 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
   TF_RETURN_IF_ERROR(module_linker(module, gpu_version, hlo_module_config,
                                    device_bitcode_dir_path));
 
-  bool dump_ir = hlo_module_config.debug_options().xla_gpu_dump_llvmir();
-  std::string outputs_dir;
-  tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir);
-  IrDumpingPassManager module_passes(module->getModuleIdentifier(), outputs_dir,
-                                     dump_ir);
+  llvm::LoopAnalysisManager lam;
+  llvm::FunctionAnalysisManager fam;
+  llvm::CGSCCAnalysisManager cgam;
+  llvm::ModuleAnalysisManager mam;
 
-  // Add an appropriate TargetLibraryInfo pass for the module's triple.
-  llvm::TargetLibraryInfoWrapperPass* tliwp =
-      new llvm::TargetLibraryInfoWrapperPass(
-          llvm::Triple(module->getTargetTriple()));
-  module_passes.add(tliwp);
+  fam.registerPass([&] { return target_machine->getTargetIRAnalysis(); });
 
-  // Try to fetch the target triple from the module. If not present, set a
-  // default target triple.
-  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
-  if (target_triple.getArch() == llvm::Triple::UnknownArch) {
-    LOG(WARNING) << "target triple not found in the module";
-    target_triple = default_target_triple;
-  }
+  llvm::PipelineTuningOptions pto;
+  pto.SLPVectorization = true;
+  pto.InlinerThreshold = inline_threshold;
 
-  module_passes.add(llvm::createTargetTransformInfoWrapperPass(
-      target_machine->getTargetIRAnalysis()));
+  llvm::PassInstrumentationCallbacks pic;
 
-  // The LLVM IR verifier performs sanity checking on the IR. This helps
-  // discover problems and report them in a meaningful manner, rather than let
-  // later passes report obscure assertions because of unfulfilled invariants.
-  module_passes.add(llvm::createVerifierPass());
+  llvm::StandardInstrumentations si(false);
+  si.registerCallbacks(pic, &fam);
 
-  // Create the function-level pass manager. It needs data layout information
-  // too.
-  llvm::legacy::FunctionPassManager function_passes(module);
+  llvm::PassBuilder pb(target_machine, pto, llvm::None, &pic);
+  pb.registerModuleAnalyses(mam);
+  pb.registerCGSCCAnalyses(cgam);
+  pb.registerFunctionAnalyses(fam);
+  pb.registerLoopAnalyses(lam);
+  pb.crossRegisterProxies(lam, fam, cgam, mam);
 
   int32_t opt_level =
       hlo_module_config.debug_options().xla_backend_optimization_level();
@@ -420,36 +382,32 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
                   "--xla_backend_optimization_level >= 2.)";
     LOG(ERROR) << std::string(80, '*');
   }
-
-  // Add optimization passes, and set inliner threshold.
-  AddOptimizationPasses(opt_level,
-                        /*size_level=*/0, target_machine, &module_passes,
-                        &function_passes, inline_threshold);
-
-  // Loop unrolling exposes more opportunities for SROA. Therefore, we run SROA
-  // again after the standard optimization passes [http://b/13329423].
-  // TODO(jingyue): SROA may further expose more optimization opportunities such
-  // as more precise alias analysis and more function inlining (SROA may change
-  // the inlining cost of a function). For now, running SROA already emits good
-  // enough code for the evaluated benchmarks. We may want to run more
-  // optimizations later.
-  if (opt_level > 0) {
-    // LLVM's optimizer turns on SROA when the optimization level is greater
-    // than 0. We mimic this behavior here.
-    module_passes.add(llvm::createSROAPass());
+  llvm::OptimizationLevel ol;
+  switch (opt_level) {
+    case 0:
+      ol = llvm::OptimizationLevel::O0;
+      break;
+    case 1:
+      ol = llvm::OptimizationLevel::O1;
+      break;
+    case 2:
+      ol = llvm::OptimizationLevel::O2;
+      break;
+    case 3:
+      ol = llvm::OptimizationLevel::O3;
+      break;
   }
 
-  // Verify that the module is well formed after optimizations ran.
-  module_passes.add(llvm::createVerifierPass());
-
-  // Done populating the pass managers. Now run them.
-
-  function_passes.doInitialization();
-  for (auto func = module->begin(); func != module->end(); ++func) {
-    function_passes.run(*func);
+  llvm::ModulePassManager mpm;
+  mpm.addPass(llvm::VerifierPass());
+  if (ol == llvm::OptimizationLevel::O0) {
+    mpm.addPass(pb.buildO0DefaultPipeline(ol));
+  } else {
+    mpm.addPass(pb.buildPerModuleDefaultPipeline(ol));
   }
-  function_passes.doFinalization();
-  module_passes.run(*module);
+  mpm.addPass(llvm::VerifierPass());
+
+  mpm.run(*module, mam);
 
   return OkStatus();
 }
