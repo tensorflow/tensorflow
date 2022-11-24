@@ -118,6 +118,7 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/core/c:c_api_experimental",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
@@ -143,6 +144,7 @@ tflite_cc_library_with_c_headers_test(
         ":common",
         "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver",
         "//tensorflow/lite/core/c:c_api_without_op_resolver",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
@@ -169,6 +171,7 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver_without_alwayslink",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:c_api_without_op_resolver_without_alwayslink",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
     ],
 )
@@ -199,6 +202,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -297,6 +301,7 @@ cc_library(
     deps = [
         ":common",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -314,6 +319,7 @@ cc_library(
         ":common",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -333,6 +339,7 @@ cc_library(
         ":common",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -396,6 +403,7 @@ cc_test(
         "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/core/c:c_api_experimental",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 

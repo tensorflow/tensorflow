@@ -64,6 +64,7 @@ cc_library(
         ":nnapi_implementation_headers",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 

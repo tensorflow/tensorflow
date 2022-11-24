@@ -16,6 +16,7 @@ cc_library(
     linkopts = task_linkopts(),
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",

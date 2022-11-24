@@ -254,6 +254,18 @@ tflite_cc_library_with_c_headers_test(
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
+# This is a private target, its visibility is set to public only to be
+# used by "tflite_custom_c_library".
+# Do not use this target directly and don't consider it as a part of the public API.
+alias(
+    name = "private_common",
+    actual = ":common",
+    tags = ["avoid_dep"],
+    visibility = [
+        "//visibility:public",
+    ],
+)
+
 tflite_cc_library_with_c_headers_test(
     name = "c_api_experimental",
     srcs = [

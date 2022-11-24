@@ -32,6 +32,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
     ],
 )

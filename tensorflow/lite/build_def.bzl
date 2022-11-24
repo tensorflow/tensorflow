@@ -663,6 +663,7 @@ def tflite_custom_c_library(
             # TODO(bekzhan): Remove this dependency after we move c_api_opaque.h to tflite/core/.
             "//tensorflow/lite/core/c:private_c_api_types",
             "//tensorflow/lite/core/c:private_c_api_without_op_resolver_without_alwayslink",
+            "//tensorflow/lite/core/c:private_common",
             "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         ] + experimental_deps,
         **kwargs

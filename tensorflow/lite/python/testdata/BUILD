@@ -83,6 +83,7 @@ cc_library(
     visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
     alwayslink = 1,
 )

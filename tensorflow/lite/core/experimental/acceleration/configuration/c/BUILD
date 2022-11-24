@@ -64,6 +64,7 @@ cc_test(
     }) + [
         "@com_google_googletest//:gtest_main",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
     ],
 )
