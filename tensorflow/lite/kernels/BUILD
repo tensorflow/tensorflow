@@ -728,7 +728,6 @@ BUILTIN_KERNEL_DEPS = [
     "//tensorflow/lite/kernels/internal:tensor",
     "//tensorflow/lite/kernels/internal:tensor_utils",
     "//tensorflow/lite/kernels/internal:types",
-    "@XNNPACK//:xnnpack_for_tflite",
 ] + select({
     ":tflite_with_ruy_explicit_true": [],
     # Eigen multi-therading optimizations are only used when ruy is disabled.
@@ -736,6 +735,11 @@ BUILTIN_KERNEL_DEPS = [
         ":eigen_support",
         "//tensorflow/lite/kernels/internal:optimized_eigen",
     ],
+}) + select({
+     "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
+     "//conditions:default": [
+       "@XNNPACK//:xnnpack_for_tflite",
+     ],
 })
 
 cc_library(
