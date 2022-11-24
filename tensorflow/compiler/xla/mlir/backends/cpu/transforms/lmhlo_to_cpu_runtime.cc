@@ -312,6 +312,30 @@ class AllReduceLowering : public OpRewritePattern<xla_cpu::AllReduceOp> {
 
 //===----------------------------------------------------------------------===//
 
+class AllToAllLowering : public OpRewritePattern<xla_cpu::AllToAllOp> {
+ public:
+  AllToAllLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(xla_cpu::AllToAllOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getSplitDimensionAttr()) {
+      op.emitOpError("ArrayAllToAll is not supported");
+      return failure();
+    }
+    CreateCallForDpsCollectiveOp(op.getOperation(), custom_calls_, kCallTarget,
+                                 rewriter);
+    return success();
+  }
+
+ private:
+  static constexpr const char kCallTarget[] = "xla.cpu.tuple_all_to_all";
+
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
 class CollectivePermuteLowering
     : public OpRewritePattern<xla_cpu::CollectivePermuteOp> {
  public:
@@ -369,8 +393,8 @@ void ConvertLmhloToCpuRuntimePass::runOnOperation() {
   // Convert lmhlo operations to XLA cpu runtime custom calls.
   RewritePatternSet patterns(ctx);
   patterns.insert<InfeedOpLowering, OutfeedOpLowering, CustomCallOpLowering,
-                  AllReduceLowering, CollectivePermuteLowering, FftLowering>(
-      ctx, custom_calls);
+                  AllReduceLowering, AllToAllLowering,
+                  CollectivePermuteLowering, FftLowering>(ctx, custom_calls);
   patterns.insert<IdOpLowering<PartitionIdOp>>(ctx, "xla.cpu.partition_id",
                                                custom_calls);
   patterns.insert<IdOpLowering<ReplicaIdOp>>(ctx, "xla.cpu.replica_id",
