@@ -170,6 +170,11 @@ int main(int argc, char* argv[]) {
 
   xla::Status result = xla::xla_compile::XlaCompileMain(
       mhlo_path, output_path, platform, gpu_target_config_path);
-  CHECK(result.ok());
+  if (!result.ok()) {
+    LOG(ERROR) << "Compilation failed: " << result.error_message();
+    return 1;
+  }
+
+  LOG(INFO) << "Compilation succeeded";
   return 0;
 }
