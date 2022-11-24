@@ -22,6 +22,7 @@ limitations under the License.
 #include "gml_st/transforms/transforms.h"
 #include "gml_st/utils/vector_utils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
@@ -149,6 +150,97 @@ struct SetYieldOfScalarToVectorPattern : public OpRewritePattern<SetYieldOp> {
     }
 
     return success();
+  }
+};
+
+/// Update tensor operand of vector.transfer_write that uses MaterializeOp.
+struct MaterializeUpdateTransferWriteTensorOperand
+    : public OpRewritePattern<vector::TransferWriteOp> {
+  using OpRewritePattern<vector::TransferWriteOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::TransferWriteOp op,
+                                PatternRewriter &rewriter) const override {
+    // Sanity checks of TransferWriteOp.
+    if (op.hasOutOfBoundsDim()) return failure();
+    if (op.getVectorType().getRank() != op.getShapedType().getRank())
+      return failure();
+    if (op.getMask()) return failure();
+    // Fold only if the TransferWriteOp completely overwrites the `source`
+    // with a vector, i.e. the result of the TransferWriteOp is a new tensor
+    // whose content is the data of the vector.
+    if (!llvm::equal(op.getVectorType().getShape(),
+                     op.getShapedType().getShape()))
+      return failure();
+    if (!op.getPermutationMap().isIdentity()) return failure();
+
+    auto src = op.getSource().getDefiningOp<MaterializeOp>();
+    if (!src) return failure();
+
+    auto tileOp = src.getSet().getDefiningOp<TileOp>();
+    if (!tileOp) return failure();
+
+    SmallVector<Value> indices = getValueOrCreateConstantIndexOp(
+        rewriter, op.getLoc(), tileOp.getMixedOffsets());
+    SmallVector<bool> inBounds(op.getTransferRank(), true);
+    rewriter.setInsertionPointAfter(op);
+    auto newOp = rewriter.create<vector::TransferWriteOp>(
+        op.getLoc(), op.getVector(), src.getSource(), indices,
+        ArrayRef<bool>{inBounds});
+    rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(
+        op, op.getResult().getType().cast<RankedTensorType>(),
+        newOp.getResult(), tileOp.getOffsets(), tileOp.getSizes(),
+        tileOp.getStrides(), tileOp.getStaticOffsets(), tileOp.getStaticSizes(),
+        tileOp.getStaticStrides());
+
+    return success();
+  }
+};
+
+/// Update tensor operand of vector.transfer_write used by SetYieldOp.
+struct SetYieldUpdateTransferWriteTensorOperand
+    : public OpRewritePattern<SetYieldOp> {
+  using OpRewritePattern<SetYieldOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(SetYieldOp op,
+                                PatternRewriter &rewriter) const override {
+    bool changed = false;
+    for (const auto &[src, dst, set] :
+         llvm::zip(op.getSrcs(), op.getDsts(), op.getSets())) {
+      auto xferOp = src.getDefiningOp<vector::TransferWriteOp>();
+
+      // Sanity checks of TransferWriteOp.
+      if (!xferOp) continue;
+      if (xferOp.getSource() == dst) continue;
+      if (xferOp.hasOutOfBoundsDim()) continue;
+      if (xferOp.getVectorType().getRank() != xferOp.getShapedType().getRank())
+        continue;
+      if (xferOp.getMask()) continue;
+      // Fold only if the TransferWriteOp completely overwrites the `source`
+      // with a vector, i.e. the result of the TransferWriteOp is a new tensor
+      // whose content is the data of the vector.
+      if (!llvm::equal(xferOp.getVectorType().getShape(),
+                       xferOp.getShapedType().getShape()))
+        continue;
+      if (!xferOp.getPermutationMap().isIdentity()) continue;
+
+      auto tileOp = set.getDefiningOp<TileOp>();
+
+      if (!tileOp) continue;
+
+      SmallVector<Value> indices = getValueOrCreateConstantIndexOp(
+          rewriter, op.getLoc(), tileOp.getMixedOffsets());
+      SmallVector<bool> inBounds(xferOp.getTransferRank(), true);
+      auto newOp = rewriter.create<vector::TransferWriteOp>(
+          xferOp.getLoc(), xferOp.getVector(), dst, indices,
+          ArrayRef<bool>{inBounds});
+      rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(
+          xferOp, xferOp.getResult().getType().cast<RankedTensorType>(),
+          newOp.getResult(), tileOp.getOffsets(), tileOp.getSizes(),
+          tileOp.getStrides(), tileOp.getStaticOffsets(),
+          tileOp.getStaticSizes(), tileOp.getStaticStrides());
+      changed = true;
+    }
+    return success(changed);
   }
 };
 
@@ -594,21 +686,32 @@ struct VectorizeGmlStLoopsPass
              !hasTransformationAttr(op, kVectorizedMarker);
     };
 
-    RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
-    patterns.add<TransferReadOfOneDimExpandShape,
-                 MaterializeFromSingleElementToExtractPattern,
-                 SetYieldOfScalarToVectorPattern>(ctx);
-    patterns.add<VectorizationPattern<FillOp>>(ctx, fillOpFilter);
-    patterns.add<VectorizationPattern<GenericOp>>(ctx, genericOpFilter);
-    patterns.add<VectorizationPattern<MatmulOp>>(ctx, matmulOpFilter);
-    patterns.add<TensorToElementVectorizationPattern,
-                 TensorEmptyToVectorBroadcastPattern>(ctx, isValidDistribution);
-    if (vectorizeGmlStOps) {
-      patterns.add<MaterializeOpVectorizationPattern>(ctx, materializeOpFilter);
-      patterns.add<LoopLikeOpVectorizationPattern<ParallelOp>,
-                   LoopLikeOpVectorizationPattern<ForOp>>(ctx, loopOpFilter);
+    {
+      RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
+      patterns.add<TransferReadOfOneDimExpandShape,
+                   MaterializeFromSingleElementToExtractPattern,
+                   SetYieldOfScalarToVectorPattern>(ctx);
+      patterns.add<VectorizationPattern<FillOp>>(ctx, fillOpFilter);
+      patterns.add<VectorizationPattern<GenericOp>>(ctx, genericOpFilter);
+      patterns.add<VectorizationPattern<MatmulOp>>(ctx, matmulOpFilter);
+      patterns.add<TensorToElementVectorizationPattern,
+                   TensorEmptyToVectorBroadcastPattern>(ctx,
+                                                        isValidDistribution);
+      if (vectorizeGmlStOps) {
+        patterns.add<MaterializeOpVectorizationPattern>(ctx,
+                                                        materializeOpFilter);
+        patterns.add<LoopLikeOpVectorizationPattern<ParallelOp>,
+                     LoopLikeOpVectorizationPattern<ForOp>>(ctx, loopOpFilter);
+      }
+      (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
-    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+
+    {
+      RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
+      patterns.add<MaterializeUpdateTransferWriteTensorOperand,
+                   SetYieldUpdateTransferWriteTensorOperand>(ctx);
+      (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+    }
   }
 };
 

@@ -1877,7 +1877,6 @@ struct FoldTileCastIntoSetYield : public OpRewritePattern<SetYieldOp> {
     return success();
   }
 };
-
 }  // namespace
 
 void SetYieldOp::getCanonicalizationPatterns(RewritePatternSet &results,
