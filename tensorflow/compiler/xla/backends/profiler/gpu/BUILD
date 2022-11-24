@@ -9,7 +9,6 @@ load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_additional_device_tracer_srcs",
-    "tf_kernel_tests_linkstatic",
 )
 load(
     "//tensorflow/tsl/platform:build_config_root.bzl",
@@ -112,7 +111,6 @@ tf_cuda_cc_test(
     name = "cupti_error_manager_test",
     size = "small",
     srcs = ["cupti_error_manager_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
         "nomac",
         "gpu_cupti",

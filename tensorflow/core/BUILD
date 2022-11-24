@@ -89,7 +89,6 @@ load(
     "tf_additional_test_deps",
     "tf_dtensor_tpu_dependencies",
     "tf_jspb_proto_library",
-    "tf_kernel_tests_linkstatic",
     "tf_lib_proto_parsing_deps",
     "tf_portable_deps_no_runtime",
     "tf_portable_proto_lib",
@@ -1956,7 +1955,6 @@ tf_cc_tests(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":core",
         ":core_cpu",

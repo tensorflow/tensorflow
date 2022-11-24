@@ -17,7 +17,6 @@ load(
     "tf_additional_lib_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_google_mobile_srcs_only_runtime",
-    "tf_kernel_tests_linkstatic",
     "tf_platform_alias",
     "tf_platform_deps",
     "tf_windows_aware_platform_deps",
@@ -1307,7 +1306,6 @@ tf_cuda_cc_test(
     name = "rocm_rocdl_path_test",
     size = "small",
     srcs = ["rocm_rocdl_path_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_gpu_tests_tags(),
     deps = [
         ":rocm_rocdl_path",
