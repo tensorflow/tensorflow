@@ -52,7 +52,7 @@ class UnfreezeConstantsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(UnfreezeConstantsPass)
 
-  explicit UnfreezeConstantsPass() {}
+  explicit UnfreezeConstantsPass() = default;
 
   StringRef getArgument() const override { return "quant-unfreeze-constants"; }
 

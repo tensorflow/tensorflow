@@ -52,7 +52,7 @@ class LiftQuantizableSpotsAsFunctionsPass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
       LiftQuantizableSpotsAsFunctionsPass)
 
-  LiftQuantizableSpotsAsFunctionsPass() {}
+  LiftQuantizableSpotsAsFunctionsPass() = default;
 
   explicit LiftQuantizableSpotsAsFunctionsPass(OpSet op_set) {
     op_set_ = op_set;

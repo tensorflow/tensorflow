@@ -65,7 +65,7 @@ class QuantizeCompositeFunctionsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizeCompositeFunctionsPass)
 
-  explicit QuantizeCompositeFunctionsPass() {}
+  explicit QuantizeCompositeFunctionsPass() = default;
 
   explicit QuantizeCompositeFunctionsPass(
       QuantizationMethod quantization_method, OpSet target_opset,

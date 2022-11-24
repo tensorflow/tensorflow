@@ -51,7 +51,7 @@ class InsertMainFunctionPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertMainFunctionPass)
 
-  explicit InsertMainFunctionPass() {}
+  explicit InsertMainFunctionPass() = default;
 
   StringRef getArgument() const override { return "quant-add-main-function"; }
 

@@ -43,7 +43,7 @@ class PostQuantizePass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PostQuantizePass)
 
   // Constructor used by the PassRegistration. This will remove the adaptor ops.
-  explicit PostQuantizePass() {}
+  explicit PostQuantizePass() = default;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
