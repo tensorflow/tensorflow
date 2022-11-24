@@ -716,7 +716,7 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
   // among: L0,...,Ln R0,...,Rn or C0,...,Cn.
   if (const auto dnums_or =
           GetEinsumDimensionNumbers(op.getEquation(), lhs, rhs))
-    return rewriteToBatchMatmul(op, dnums_or.getValue(), rewriter);
+    return rewriteToBatchMatmul(op, *dnums_or, rewriter);
   return rewriter.notifyMatchFailure(op, "unsupported einsum lowering");
 }
 

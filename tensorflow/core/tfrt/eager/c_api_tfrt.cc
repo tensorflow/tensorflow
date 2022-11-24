@@ -369,7 +369,7 @@ tensorflow::DataType TensorHandleInterface::DataType() const {
   // If dtype_ field is set, use it instead of waiting for the underlying
   // TensorHandle's metadata to be available.
   if (dtype_) {
-    return dtype_.getValue();
+    return *dtype_;
   }
   auto metadata = Metadata();
   if (!metadata.hasValue()) {

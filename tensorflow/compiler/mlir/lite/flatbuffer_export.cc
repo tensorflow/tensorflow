@@ -993,7 +993,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
         tflite::QuantizationDetails_NONE, /*details=*/0,
         qtype.getQuantizedDimension());
   } else if (quant_parameters.has_value()) {
-    q_params = quant_parameters.getValue();
+    q_params = *quant_parameters;
   } else {
     q_params = tflite::CreateQuantizationParameters(builder_);
   }

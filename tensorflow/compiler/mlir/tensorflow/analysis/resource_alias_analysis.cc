@@ -556,7 +556,7 @@ void ResourceAliasAnalysisInfo::AnalyzeFunctionalCaseOrIfOp(
         });
     if (all_passthrough_args_known) {
       for (const auto& passthrough_arg : passthrough_args) {
-        Value operand = case_or_if_op.getInput()[passthrough_arg.getValue()];
+        Value operand = case_or_if_op.getInput()[*passthrough_arg];
         PropagateInputToOutput(operand, result);
       }
     } else {

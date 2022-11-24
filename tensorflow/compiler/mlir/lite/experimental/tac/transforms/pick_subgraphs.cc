@@ -428,8 +428,7 @@ void PickSubgraphsPass::RewireSubgraphs(
     for (auto impl : collected_impl_funcs.find(interface_name)->second) {
       const auto& impl_inference_device_type =
           GetInferenceDeviceTypeForOp(impl);
-      if (impl_inference_device_type.getValue() ==
-          preferred_inference_device_type) {
+      if (*impl_inference_device_type == preferred_inference_device_type) {
         if (call.getCallee() != impl.getName()) {
           // We need to rebuild the call op. :(
           builder->setInsertionPoint(call);
