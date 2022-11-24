@@ -2433,6 +2433,13 @@ struct NormalConvolutionOpConversion
         typeConverter->convertType(op.getResult().getType()).cast<ShapedType>();
     int64_t rank = resultType.getRank();
 
+    // Immediately emit an EmptyOp for output tensors with zero dimension.
+    if (llvm::is_contained(resultType.getShape(), 0)) {
+      rewriter.replaceOpWithNewOp<tensor::EmptyOp>(op, resultType.getShape(),
+                                                   resultType.getElementType());
+      return success();
+    }
+
     // The output shape is N spatial_dims F.
     SmallVector<Value, 8> dynSizes;
     if (resultType.isDynamicDim(0)) {
@@ -2534,6 +2541,13 @@ struct ConvolutionOpGeneralConversion
         typeConverter->convertType(op.getResult().getType()).cast<ShapedType>();
     auto reshapedResultShape = resultType.getShape().vec();
     if (!resultType.hasStaticShape()) return failure();
+
+    // Immediately emit an EmptyOp for output tensors with zero dimension.
+    if (llvm::is_contained(reshapedResultShape, 0)) {
+      rewriter.replaceOpWithNewOp<tensor::EmptyOp>(op, reshapedResultShape,
+                                                   resultType.getElementType());
+      return success();
+    }
 
     auto dimensionNumbers = op.getDimensionNumbers();
     auto inputBatchDimension = dimensionNumbers.getInputBatchDimension();
@@ -2857,6 +2871,13 @@ struct DepthwiseConvolutionOpConversion
     if (!resultType.hasStaticShape()) {
       return rewriter.notifyMatchFailure(op,
                                          "expected output has static shapes");
+    }
+
+    // Immediately emit an EmptyOp for output tensors with zero dimension.
+    if (llvm::is_contained(resultType.getShape(), 0)) {
+      rewriter.replaceOpWithNewOp<tensor::EmptyOp>(op, resultType.getShape(),
+                                                   resultType.getElementType());
+      return success();
     }
 
     // Apply padding and input dilation.

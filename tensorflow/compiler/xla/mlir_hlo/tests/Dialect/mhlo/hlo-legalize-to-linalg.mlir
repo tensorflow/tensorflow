@@ -5764,3 +5764,46 @@ func.func @set_dimension_size(
     -> tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
   func.return %0 : tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
 }
+
+// -----
+// The following test checks that an EmptyOp is emitted for mhlo.convolution
+// when the output shape has a zero-sized dimension. This goes through
+// ConvolutionOpGeneralConversion rewrite pattern.
+
+// CHECK-LABEL: @general_convolution_with_zero_sized_dimension_in_output
+//  CHECK-SAME: %[[LHS:.*]]: tensor<2x4x9x0xi64>
+//  CHECK-SAME: %[[RHS:.*]]: tensor<4x5x2x4xi64>
+//  CHECK-SAME: -> tensor<2x5x0x4xi64>
+//  CHECK-NEXT: %[[RES:.*]] = tensor.empty
+//  CHECK-NEXT: return %[[RES]]
+
+func.func @general_convolution_with_zero_sized_dimension_in_output(%arg0: tensor<2x4x9x0xi64> {bufferization.writable = false, xla_framework.input_mapping = 2 : i32},
+%arg1: tensor<4x5x2x4xi64> {bufferization.writable = false, xla_framework.input_mapping = 0 : i32})
+-> tensor<2x5x0x4xi64> attributes {xla_framework.result_mapping = 1 : i32} {
+  %0 = mhlo.convolution(%arg0, %arg1) dim_numbers = [b, f, 0, 1]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {stride = [2, 1], pad = [[1, 2], [2, 0]], lhs_dilate = [1, 4], rhs_dilate = [1, 1], reverse = [0, 0]}
+    {batch_group_count = 1 : i64, feature_group_count = 2 : i64, precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}
+    : (tensor<2x4x9x0xi64>, tensor<4x5x2x4xi64>) -> tensor<2x5x0x4xi64>
+  return %0 : tensor<2x5x0x4xi64>
+}
+
+// -----
+// This test is similar to the previous one, but runs through a different
+// rewrite pattern (NormalConvolutionOpConversion).
+
+// CHECK-LABEL: @normal_convolution_with_zero_sized_dimension_in_output
+//  CHECK-SAME: %[[LHS:.*]]: tensor<3x9x0x2xi16>
+//  CHECK-SAME: %[[RHS:.*]]: tensor<4x5x2x2xi16>
+//  CHECK-SAME: -> tensor<3x9x0x2xi16>
+//  CHECK-NEXT: %[[RES:.*]] = tensor.empty
+//  CHECK-NEXT: return %[[RES]]
+
+func.func @normal_convolution_with_zero_sized_dimension_in_output(%arg0: tensor<3x9x0x2xi16> {bufferization.writable = false, xla_framework.input_mapping = 2 : i16},
+%arg1: tensor<4x5x2x2xi16> {bufferization.writable = false, xla_framework.input_mapping = 0 : i16})
+-> tensor<3x9x0x2xi16> attributes {xla_framework.result_mapping = 1 : i16} {
+  %0 = mhlo.convolution(%arg0, %arg1) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {stride = [1, 1], pad = [[1, 2], [2, 0]], lhs_dilate = [1, 2], rhs_dilate = [1, 4], reverse = [0, 0]}
+    {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}
+    : (tensor<3x9x0x2xi16>, tensor<4x5x2x2xi16>) -> tensor<3x9x0x2xi16>
+  return %0 : tensor<3x9x0x2xi16>
+}
