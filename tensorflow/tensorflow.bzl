@@ -733,7 +733,7 @@ def tf_cc_shared_object(
             name + longsuffix,
         )]
 
-    testonly = kwargs.pop("testonly", default = False)
+    testonly = kwargs.pop("testonly", False)
 
     for name_os, name_os_major, name_os_full in names:
         # Windows DLLs cant be versioned

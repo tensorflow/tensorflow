@@ -467,7 +467,7 @@ def tflite_custom_cc_library(
         gen_selected_ops(
             name = "%s_registration" % name,
             model = models,
-            testonly = kwargs.get("testonly", default = False),
+            testonly = kwargs.get("testonly", False),
         )
         real_srcs.append(":%s_registration" % name)
         real_srcs.append("//tensorflow/lite:create_op_resolver_with_selected_ops.cc")
@@ -603,7 +603,7 @@ def tflite_custom_c_library(
         gen_selected_ops(
             name = "%s_registration" % name,
             model = models,
-            testonly = kwargs.get("testonly", default = False),
+            testonly = kwargs.get("testonly", False),
         )
 
         if experimental:
