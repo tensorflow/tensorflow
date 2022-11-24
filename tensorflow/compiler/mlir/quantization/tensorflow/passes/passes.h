@@ -124,6 +124,11 @@ CreateMergeInitializerFunctionOpsToMainPass();
 // AssignVariableOps.
 std::unique_ptr<OperationPass<ModuleOp>> CreateUnfreezeConstantsPass();
 
+// Creates a plass that duplicates constants that affect the shape of a tensor
+// after some computation.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateDuplicateShapeDeterminingConstantsPass();
+
 }  // namespace quant
 }  // namespace mlir
 

@@ -65,9 +65,15 @@ namespace {
 // back to GraphDef. Roughly, this consists of:
 //   1) Inserting the @main function, which will become the main Graph.
 //   2) [Experimental] Unfreezing constants into variables.
-//   3) Converting TF dialect -> tf_executor dialect.
-//   4) Adding initializer function's ops into @main function for correct
+//   3) Duplicates shape-determining constants.
+//   4) Converting TF dialect -> tf_executor dialect.
+//   5) Adding initializer function's ops into @main function for correct
 //      resource initialization when loading the exported model.
+//
+// Duplicating shape-determining constants is required to place constants that
+// affect the shape of a tensor to be placed in the TPU graph instead of in the
+// CPU graph, when the graph gets converted for TPU inference. This allows these
+// constants to be known at XLA compilation time.
 //
 // Setting `freeze_all_variables` to `false` is an experimental feature that has
 // no stability guarantees.
@@ -78,6 +84,8 @@ void AddExportPasses(const bool freeze_all_variables, mlir::PassManager &pm) {
     pm.addPass(mlir::quant::CreateUnfreezeConstantsPass());
   }
 
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreateDuplicateShapeDeterminingConstantsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(mlir::CreateBreakUpIslandsPass());
