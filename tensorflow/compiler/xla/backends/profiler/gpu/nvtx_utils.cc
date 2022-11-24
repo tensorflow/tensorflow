@@ -27,14 +27,4 @@ namespace profiler {
 }
 
 }  // namespace profiler
-
-namespace nvtx {
-void MakeAttributes(const char* msg, nvtxEventAttributes_t* result) {
-  *result = {0};
-  result->version = NVTX_VERSION;
-  result->size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
-  result->messageType = NVTX_MESSAGE_TYPE_ASCII;
-  result->message.ascii = msg;
-}
-}  // namespace nvtx
 }  // namespace xla

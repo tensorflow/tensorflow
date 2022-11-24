@@ -23,9 +23,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/backends/profiler/gpu/nvtx_utils.h"
 #include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/profiler/lib/nvtx_utils.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/tsl/profiler/backends/cpu/annotation_stack.h"
@@ -48,11 +48,11 @@ class ScopedAnnotation {
   explicit ScopedAnnotation(absl::string_view name) {
 #if !defined(IS_MOBILE_PLATFORM)
     std::optional<nvtxDomainHandle_t> domain =
-        xla::nvtx::GetNVTXDomain();
+        tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
       nvtxEventAttributes_t attrs;
       std::string name_str(name);
-      xla::nvtx::MakeAttributes(name_str.c_str(), &attrs);
+      tsl::profiler::nvtx::MakeAttributes(name_str.c_str(), &attrs);
       ::nvtxDomainRangePushEx(domain.value(), &attrs);
     }
     else if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
@@ -67,10 +67,10 @@ class ScopedAnnotation {
   explicit ScopedAnnotation(const string& name) {
 #if !defined(IS_MOBILE_PLATFORM)
     std::optional<nvtxDomainHandle_t> domain =
-        xla::nvtx::GetNVTXDomain();
+        tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
       nvtxEventAttributes_t attrs;
-      xla::nvtx::MakeAttributes(name.c_str(), &attrs);
+      tsl::profiler::nvtx::MakeAttributes(name.c_str(), &attrs);
       ::nvtxDomainRangePushEx(domain.value(), &attrs);
     }
     else if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
@@ -82,10 +82,10 @@ class ScopedAnnotation {
   explicit ScopedAnnotation(string&& name) {
 #if !defined(IS_MOBILE_PLATFORM)
     std::optional<nvtxDomainHandle_t> domain =
-        xla::nvtx::GetNVTXDomain();
+        tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
       nvtxEventAttributes_t attrs;
-      xla::nvtx::MakeAttributes(name.c_str(), &attrs);
+      tsl::profiler::nvtx::MakeAttributes(name.c_str(), &attrs);
       ::nvtxDomainRangePushEx(domain.value(), &attrs);
     }
     else if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
@@ -98,11 +98,11 @@ class ScopedAnnotation {
   explicit ScopedAnnotation(NameGeneratorT name_generator) {
 #if !defined(IS_MOBILE_PLATFORM)
     std::optional<nvtxDomainHandle_t> domain =
-        xla::nvtx::GetNVTXDomain();
+        tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
       auto name = name_generator();
       nvtxEventAttributes_t attrs;
-      xla::nvtx::MakeAttributes(name.c_str(), &attrs);
+      tsl::profiler::nvtx::MakeAttributes(name.c_str(), &attrs);
       ::nvtxDomainRangePushEx(domain.value(), &attrs);
     }
     else if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
@@ -119,7 +119,7 @@ class ScopedAnnotation {
     std::atomic_thread_fence(std::memory_order_acquire);
 #if !defined(IS_MOBILE_PLATFORM)
     std::optional<nvtxDomainHandle_t> domain =
-        xla::nvtx::GetNVTXDomain();
+        tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
       ::nvtxDomainRangePop(domain.value());
     }
