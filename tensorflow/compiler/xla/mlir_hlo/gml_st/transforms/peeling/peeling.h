@@ -28,8 +28,6 @@ namespace gml_st {
 
 using PeelingResult = SmallVector<Operation *>;
 
-constexpr llvm::StringRef kPeeledMarker = "__internal_peeled_marker__";
-
 /// Rewrite a gml_st::LoopOp/ParallelOp/ForOp with bounds/step that potentially
 /// do not divide evenly into a gml_st::LoopOp/ParallelOp/ForOp where the step
 /// divides the iteration space evenly, followed by another

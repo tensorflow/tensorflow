@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/passes.h"
+#include "gml_st/transforms/transforms.h"
 #include "gml_st/utils/vector_utils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -588,6 +589,10 @@ struct VectorizeGmlStLoopsPass
       Operation *sourceOp = op.getSource().getDefiningOp();
       return sourceOp && isValidDistribution(sourceOp);
     };
+    auto loopOpFilter = [&](Operation *op) {
+      return isValidDistribution(op) &&
+             !hasTransformationAttr(op, kVectorizedMarker);
+    };
 
     RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
     patterns.add<TransferReadOfOneDimExpandShape,
@@ -601,8 +606,7 @@ struct VectorizeGmlStLoopsPass
     if (vectorizeGmlStOps) {
       patterns.add<MaterializeOpVectorizationPattern>(ctx, materializeOpFilter);
       patterns.add<LoopLikeOpVectorizationPattern<ParallelOp>,
-                   LoopLikeOpVectorizationPattern<ForOp>>(ctx,
-                                                          isValidDistribution);
+                   LoopLikeOpVectorizationPattern<ForOp>>(ctx, loopOpFilter);
     }
     (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
   }

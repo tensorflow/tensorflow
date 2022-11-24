@@ -933,6 +933,8 @@ struct RefineForOpShape : public OpRewritePattern<ForOp> {
     auto newFor = rewriter.create<ForOp>(loc, newTypes, op.getLowerBound(),
                                          op.getUpperBound(), op.getStep(),
                                          newOutputs, nullptr);
+    // The new loop needs to keep all attributes from the old one.
+    newFor->setAttrs(op->getAttrs());
 
     // Map outputs, insert `tensor.cast` if necessary.
     BlockAndValueMapping bvm;
