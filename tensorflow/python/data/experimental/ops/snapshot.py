@@ -97,7 +97,7 @@ class _LegacySnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
 
 @deprecation.deprecated(
-    None, "Use `tf.data.experimental.snapshot(...)` instead.")
+    None, "Use `tf.data.Dataset.shapshot(...)` instead.")
 def legacy_snapshot(path,
                     compression=None,
                     reader_path_prefix=None,
@@ -218,7 +218,7 @@ def snapshot(path, compression="AUTO", reader_func=None, shard_func=None):
   ```python
   dataset = ...
   dataset = dataset.enumerate()
-  dataset = dataset.apply(tf.data.experimental.snapshot("/path/to/snapshot/dir",
+  dataset = dataset.apply(tf.data.Dataset.shapshot("/path/to/snapshot/dir",
       shard_func=lambda x, y: x % NUM_SHARDS, ...))
   dataset = dataset.map(lambda x, y: y)
   ```
@@ -242,7 +242,7 @@ def snapshot(path, compression="AUTO", reader_func=None, shard_func=None):
     # read datasets in parallel and interleave their elements
     return datasets.interleave(lambda x: x, num_parallel_calls=AUTOTUNE)
 
-  dataset = dataset.apply(tf.data.experimental.snapshot("/path/to/snapshot/dir",
+  dataset = dataset.apply(tf.data.Dataset.shapshot("/path/to/snapshot/dir",
       reader_func=user_reader_func))
   ```
 
