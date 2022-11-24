@@ -38,6 +38,10 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
+#undef copysign  // TODO(ddunleavy): temporary fix for Windows bazel build
+                 // Possible this has to do with numpy.h being included before
+                 // system headers and in bfloat16.{cc,h}?
+
 namespace tensorflow {
 namespace custom_float_internal {
 
