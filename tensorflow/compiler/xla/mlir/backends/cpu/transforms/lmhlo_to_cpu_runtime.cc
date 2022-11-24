@@ -67,19 +67,21 @@ class ConvertLmhloToCpuRuntimePass
 
 // Copies memrefs with non-identity layouts (e.g. results of memref.subviews)
 // to newly allocated memrefs, ensuring all outputs have flat layouts.
-SmallVector<Value> EnsureFlatMemrefs(OperandRange memrefs,
+// TODO(jreiffers): If the memref just as an offset, but its layout is otherwise
+// default, the copy is overkill.
+SmallVector<Value> EnsureFlatMemrefs(ValueRange values,
                                      ImplicitLocOpBuilder& b) {
   SmallVector<Value> out;
-  for (Value memref : memrefs) {
-    auto ty = memref.getType().cast<MemRefType>();
-    if (ty.getLayout().isIdentity()) {
-      out.push_back(memref);
+  for (Value value : values) {
+    auto ty = value.getType().dyn_cast<MemRefType>();
+    if (!ty || ty.getLayout().isIdentity()) {
+      out.push_back(value);
     } else {
       auto default_layout_ty =
           MemRefType::get(ty.getShape(), ty.getElementType());
       auto alloc =
           out.emplace_back(b.create<memref::AllocOp>(default_layout_ty));
-      b.create<memref::CopyOp>(memref, alloc);
+      b.create<memref::CopyOp>(value, alloc);
     }
   }
   return out;
@@ -161,6 +163,8 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
         operands[num_args + indexed.value()] = op.getOutput()[indexed.index()];
     }
 
+    // TODO(jreiffers): This will break if an output has a non-default layout.
+    operands = EnsureFlatMemrefs(operands, b);
     // Create a custom call function declaration.
     func::FuncOp callee = custom_calls_.GetOrCreate(
         b, kCustomCallTarget, TypeRange(ValueRange(operands)), TypeRange());
