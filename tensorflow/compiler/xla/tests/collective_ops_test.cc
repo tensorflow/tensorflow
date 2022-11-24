@@ -66,10 +66,10 @@ class CollectiveOpsTest : public HloTestBase {
 
       ENTRY test_computation {
         p = SHAPE parameter(0)
-        p2 = SHAPE bitcast(p)
+        p2 = SHAPE reshape(p)
         crs = SHAPE all-reduce(p2), replica_groups=REPLICA_GROUPS, to_apply=apply_op
         copy = SHAPE copy(crs)
-        ROOT out = SHAPE bitcast(copy)
+        ROOT out = SHAPE reshape(copy)
       }
     )";
     std::vector<std::string> replica_group_strs;
@@ -83,7 +83,7 @@ class CollectiveOpsTest : public HloTestBase {
       // Exercise the scalar codepath.
       hlo_template = absl::StrReplaceAll(
           hlo_template,
-          {{"DATATYPE[SHAPE] bitcast(p)", "DATATYPE[] bitcast(p)"},
+          {{"DATATYPE[SHAPE] reshape(p)", "DATATYPE[] reshape(p)"},
            {"DATATYPE[SHAPE] all-reduce", "DATATYPE[] all-reduce"},
            {"DATATYPE[SHAPE] copy", "DATATYPE[] copy"}});
     }
@@ -268,10 +268,10 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceAnd_Pred) {
       id = u32[] replica-id()
       c = u32[] constant(0)
       p = pred[] compare(id, c), direction=EQ
-      p2 = pred[1] bitcast(p)
+      p2 = pred[1] reshape(p)
       crs = pred[1] all-reduce(p2), replica_groups={}, to_apply=apply_op
       copy = pred[1] copy(crs)
-      ROOT out = pred[1] bitcast(copy)
+      ROOT out = pred[1] reshape(copy)
     }
   )";
 
@@ -308,10 +308,10 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceOr_Pred) {
       id = u32[] replica-id()
       c = u32[] constant(0)
       p = pred[] compare(id, c), direction=EQ
-      p2 = pred[1] bitcast(p)
+      p2 = pred[1] reshape(p)
       crs = pred[1] all-reduce(p2), replica_groups={}, to_apply=apply_op
       copy = pred[1] copy(crs)
-      ROOT out = pred[1] bitcast(copy)
+      ROOT out = pred[1] reshape(copy)
     }
   )";
 
