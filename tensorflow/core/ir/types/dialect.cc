@@ -266,7 +266,7 @@ Attribute FullTypeAttr::parse(AsmParser &parser, Type odsType) {
   if (failed(parser.parseLess())) return {};
   FailureOr<tf_type::FullTypeAttr> ret = RawFullTypeAttrParser(parser);
   if (succeeded(ret) && failed(parser.parseGreater())) return {};
-  return ret.getValueOr(FullTypeAttr());
+  return ret.value_or(FullTypeAttr());
 }
 
 static void RawFullTypeAttrPrint(FullTypeAttr tfattr, AsmPrinter &printer) {
