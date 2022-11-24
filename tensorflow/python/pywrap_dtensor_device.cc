@@ -337,5 +337,8 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       .def("contains_dim", &Mesh::IsMeshDim, py::arg("dim_name"),
            "Returns True if a Mesh contains the given dimension name.")
       .def("device_type", &Mesh::device_type,
-           "Returns the device_type of a Mesh.");
+           "Returns the device_type of a Mesh.")
+      .def("use_xla_spmd", &Mesh::use_xla_spmd,
+           "Returns True if Mesh will use XLA for SPMD instead of DTensor "
+           "SPMD.");
 }

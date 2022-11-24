@@ -667,10 +667,11 @@ Mesh Mesh::CreateMesh(
     const std::vector<std::int64_t>& global_device_ids_flatten,
     const std::vector<std::string>& global_devices_str,
     const std::vector<std::int64_t>& local_device_ids,
-    const std::vector<std::string>& local_devices_str) {
+    const std::vector<std::string>& local_devices_str,
+    const bool use_xla_spmd) {
   Mesh mesh;
   mesh.name_ = mesh_name;
-
+  mesh.use_xla_spmd_ = use_xla_spmd;
   mesh.mesh_dims_.resize(dim_names.size());
 
   for (int i = 0; i < dim_names.size(); ++i) {
