@@ -116,13 +116,12 @@ flatbuffers::Offset<SubgraphMetadata> CreateSubgraphMetadata(
       flatbuffers::Offset<flatbuffers::Vector<float>> per_device_cost_offset;
 
       if (per_device_cost.has_value()) {
-        per_device_cost_offset =
-            builder->CreateVector(per_device_cost.getValue());
+        per_device_cost_offset = builder->CreateVector(*per_device_cost);
       }
 
       OpMetadataBuilder op_builder(*builder);
       op_builder.add_index(index);
-      uint8_t hardware = hardware_map.at(device_name.getValue());
+      uint8_t hardware = hardware_map.at(*device_name);
       op_builder.add_hardware(hardware);
 
       if (per_device_cost.has_value()) {
@@ -147,9 +146,9 @@ CreateHardwareMetadataAndPopulateLookupTable(
       auto device_name = GetDeviceName(op);
       if (!device_name.has_value()) return;
 
-      auto iter = hardware_names->find(device_name.getValue());
+      auto iter = hardware_names->find(*device_name);
       if (iter == hardware_names->end()) {
-        hardware_names->insert({device_name.getValue(), index++});
+        hardware_names->insert({*device_name, index++});
       }
     });
   }

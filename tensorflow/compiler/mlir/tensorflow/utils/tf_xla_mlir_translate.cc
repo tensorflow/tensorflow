@@ -143,7 +143,7 @@ Status ParseArgumentShapes(
       continue;
     }
     TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
-        shape.value().getValue(), &arg_shapes[shape.index()].shape));
+        *shape.value(), &arg_shapes[shape.index()].shape));
   }
 
   return OkStatus();
@@ -233,8 +233,7 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
     TensorShape shape;
     auto input_shapes = std::get<1>(arg_components);
     if (input_shapes.has_value()) {
-      TF_RETURN_IF_ERROR(
-          TensorShapeUtils::MakeShape(input_shapes.getValue(), &shape));
+      TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(*input_shapes, &shape));
     } else {
       TF_RETURN_IF_ERROR(
           TensorShapeUtils::MakeShape(static_cast<int*>(nullptr), 0, &shape));
