@@ -92,7 +92,7 @@ Status PreprocessAndFreezeGraph(const absl::string_view mlir_dump_file_prefix,
   }
 
   if (session.has_value() && failed(mlir::tf_saved_model::FreezeVariables(
-                                 module_op, session.getValue()))) {
+                                 module_op, session.value()))) {
     return statusHandler.ConsumeStatus();
   }
 

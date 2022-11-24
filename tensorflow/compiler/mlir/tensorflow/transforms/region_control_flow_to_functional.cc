@@ -286,13 +286,12 @@ struct TrivialTransformInfo {
                        ArgMatcherFn arg_matcher) {
     if (!first_call || !second_call) return;
 
-    if (!MatchCallArgs(first_call.getValue(), second_call.getValue(),
-                       arg_matcher))
+    if (!MatchCallArgs(first_call.value(), second_call.value(), arg_matcher))
       return;
 
     can_transform = true;
-    callee_names = {first_call.getValue().getCallee(),
-                    second_call.getValue().getCallee()};
+    callee_names = {first_call.value().getCallee(),
+                    second_call.value().getCallee()};
   }
 };
 

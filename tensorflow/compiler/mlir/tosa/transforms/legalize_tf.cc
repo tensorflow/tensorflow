@@ -321,7 +321,7 @@ LogicalResult ConvertTFMulOp::matchAndRewrite(Operation* op,
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
   return success();
 }
 
@@ -335,7 +335,7 @@ LogicalResult ConvertTFSquareOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
   return success();
 }
 
@@ -349,7 +349,7 @@ LogicalResult ConvertTFSquaredDifferenceOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
   return success();
 }
 
@@ -368,7 +368,7 @@ LogicalResult ConvertTFRoundOp::matchAndRewrite(
 
     if (!result) return failure();
 
-    rewriter.replaceOp(op, {result.getValue()});
+    rewriter.replaceOp(op, {result.value()});
     return success();
 
   } else {
@@ -387,7 +387,7 @@ LogicalResult ConvertTFFloorDivOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -402,7 +402,7 @@ LogicalResult ConvertTFFloorModOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -659,7 +659,7 @@ LogicalResult ConvertTFConcatV2Op::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -749,7 +749,7 @@ LogicalResult ConvertTFExpandDimsOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -771,7 +771,7 @@ LogicalResult ConvertTFSqueezeOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -849,7 +849,7 @@ LogicalResult ConvertTFConv2DOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1003,7 +1003,7 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(ArrayRef<int64_t>(a1_transpose_dims),
                                            filter_type.getElementType()),
-      tf_conv_op.getFilter(), a1_filter_transpose_perm.getValue());
+      tf_conv_op.getFilter(), a1_filter_transpose_perm.value());
 
   ArrayAttr stride;
   ArrayAttr outpad;
@@ -1074,7 +1074,7 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
 
   CreateReplaceOpAndInfer<tosa::TransposeConv2DOp>(
       rewriter, op, output_type, tf_conv_op.getOutBackprop(),
-      a1_filter_transpose_op.getResult(), zero_bias.getValue(), outpad, stride,
+      a1_filter_transpose_op.getResult(), zero_bias.value(), outpad, stride,
       output_shape);
 
   return success();
@@ -1097,7 +1097,7 @@ LogicalResult ConvertTFAllOp::matchAndRewrite(Operation* op,
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1119,7 +1119,7 @@ LogicalResult ConvertTFAnyOp::matchAndRewrite(Operation* op,
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1141,7 +1141,7 @@ LogicalResult ConvertTFMaxOp::matchAndRewrite(Operation* op,
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1163,7 +1163,7 @@ LogicalResult ConvertTFMinOp::matchAndRewrite(Operation* op,
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1185,7 +1185,7 @@ LogicalResult ConvertTFMeanOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1207,7 +1207,7 @@ LogicalResult ConvertTFProdOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1229,7 +1229,7 @@ LogicalResult ConvertTFSumOp::matchAndRewrite(Operation* op,
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1243,7 +1243,7 @@ LogicalResult ConvertTFEluOp::matchAndRewrite(Operation* op,
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1258,7 +1258,7 @@ LogicalResult ConvertTFSoftmaxOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1272,7 +1272,7 @@ LogicalResult ConvertTFLogSoftmaxOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1554,7 +1554,7 @@ LogicalResult ConvertTFPackOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1576,7 +1576,7 @@ LogicalResult ConvertTFUnpackOp::matchAndRewrite(
 
   if (!results) return failure();
 
-  rewriter.replaceOp(op, results.getValue());
+  rewriter.replaceOp(op, results.value());
 
   return success();
 }
@@ -1605,7 +1605,7 @@ LogicalResult ConvertTFSplitOp::matchAndRewrite(
 
   if (!results) return failure();
 
-  rewriter.replaceOp(op, results.getValue());
+  rewriter.replaceOp(op, results.value());
 
   return success();
 }
@@ -1641,7 +1641,7 @@ LogicalResult ConvertTFSplitVOp::matchAndRewrite(
 
   if (!results) return failure();
 
-  rewriter.replaceOp(op, results.getValue());
+  rewriter.replaceOp(op, results.value());
 
   return success();
 }
@@ -1729,7 +1729,7 @@ LogicalResult ConvertTFMirrorPadOp::matchAndRewrite(
       rewriter, op, output_type, tf_mirrorpad_op.getInput(),
       tf_mirrorpad_op.getPaddings(), mode);
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1750,7 +1750,7 @@ LogicalResult ConvertTFResizeBilinearOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1772,7 +1772,7 @@ LogicalResult ConvertTFResizeNearestNeighborOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1853,7 +1853,7 @@ LogicalResult ConvertTFGatherOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1877,7 +1877,7 @@ LogicalResult ConvertTFGatherV2Op::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1892,7 +1892,7 @@ LogicalResult ConvertTFGatherNdOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1907,7 +1907,7 @@ LogicalResult ConvertTFSelectV2Op::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1922,7 +1922,7 @@ LogicalResult ConvertTFSpaceToDepthOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1937,7 +1937,7 @@ LogicalResult ConvertTFDepthToSpaceOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1951,7 +1951,7 @@ LogicalResult ConvertTFSpaceToBatchNDOp::matchAndRewrite(
       tf_s2b_op.getBlockShape(), tf_s2b_op.getPaddings());
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1966,7 +1966,7 @@ LogicalResult ConvertTFBatchToSpaceNDOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1985,7 +1985,7 @@ LogicalResult ConvertTFStridedSliceOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -1999,7 +1999,7 @@ LogicalResult ConvertTFZerosLikeOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -2166,7 +2166,7 @@ LogicalResult ConvertTFFakeQuantWithMinMaxArgsOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -2201,7 +2201,7 @@ LogicalResult ConvertTFFakeQuantWithMinMaxVarsOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -2267,7 +2267,7 @@ LogicalResult ConvertTFOneHotOp::matchAndRewrite(
 
   if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }

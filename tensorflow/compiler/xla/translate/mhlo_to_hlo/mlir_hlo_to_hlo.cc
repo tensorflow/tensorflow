@@ -340,7 +340,7 @@ static std::unique_ptr<xla::PrecisionConfig> Convert_precision_config(
   if (!optional_precision_config_attr.has_value()) return nullptr;
 
   auto precision_config = std::make_unique<xla::PrecisionConfig>();
-  for (auto attr : optional_precision_config_attr.getValue()) {
+  for (auto attr : optional_precision_config_attr.value()) {
     xla::PrecisionConfig::Precision p;
     auto operand_precision =
         mlir::mhlo::stringifyPrecision(
@@ -407,7 +407,7 @@ xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandleAttr attr) {
 std::optional<xla::ChannelHandle> Convert_channel_handle(
     llvm::Optional<mlir::mhlo::ChannelHandleAttr> attr) {
   if (!attr.has_value()) return std::nullopt;
-  return Convert_channel_handle(attr.getValue());
+  return Convert_channel_handle(attr.value());
 }
 
 // Converts the comparison_direction string attribute into the XLA enum. The
@@ -1520,9 +1520,9 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
 
   if (op.getOperandLayouts() && op.getResultLayouts()) {
     auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
-        op.getOperandTypes(), op.getOperandLayouts().getValue());
+        op.getOperandTypes(), op.getOperandLayouts().value());
     xla::Shape result_shape_with_layout = GetCustomCallResultShapeWithLayout(
-        result.getType(), op.getResultLayouts().getValue());
+        result.getType(), op.getResultLayouts().value());
     value_map[result] = xla::CustomCallWithLayout(
         ctx.builder, std::string(op.getCallTargetName()), args,
         result_shape_with_layout, operand_shapes_with_layout,
@@ -2108,7 +2108,7 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
   for (auto operand : op.getInputs()) operands.push_back(values[operand]);
 
   auto fusion_kind_string =
-      mlir::mhlo::stringifyFusionKind(op.getFusionKind().getValue());
+      mlir::mhlo::stringifyFusionKind(op.getFusionKind().value());
   xla::XlaOp fusion = xla::internal::XlaBuilderFriend::BuildFusion(
       ctx.builder, operands,
       absl::string_view(fusion_kind_string.data(), fusion_kind_string.size()),

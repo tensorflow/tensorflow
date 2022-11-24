@@ -2393,7 +2393,7 @@ mlir::LogicalResult SplitOp::verify() {
   auto input_type = op.getValue().getType().dyn_cast<RankedTensorType>();
   if (!input_type) return success();
 
-  int64_t split_dim = split_dim_opt.getValue();
+  int64_t split_dim = split_dim_opt.value();
   const int64_t rank = input_type.getRank();
   if (split_dim < 0) split_dim += rank;
   if (split_dim < 0 || split_dim >= rank)
@@ -2430,7 +2430,7 @@ mlir::LogicalResult SplitVOp::verify() {
   auto input_type = op.getValue().getType().dyn_cast<RankedTensorType>();
   if (!input_type) return success();
 
-  int64_t split_dim = split_dim_opt.getValue();
+  int64_t split_dim = split_dim_opt.value();
   const int64_t rank = input_type.getRank();
   if (split_dim < 0) split_dim += rank;
   if (split_dim < 0 || split_dim >= rank)

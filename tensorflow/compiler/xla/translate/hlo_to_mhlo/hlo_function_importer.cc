@@ -1486,7 +1486,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           mlir::mhlo::symbolizeTranspose(
               TriangularSolveOptions::Transpose_Name(
                   instruction->triangular_solve_options().transpose_a()))
-              .getValue());
+              .value());
 
       attributes.push_back(builder_->getNamedAttr("transpose_a", transpose_a));
       return func_builder
@@ -1610,7 +1610,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto fft_type = mlir::mhlo::FftTypeAttr::get(
           builder_->getContext(),
           mlir::mhlo::symbolizeFftType(FftType_Name(instruction->fft_type()))
-              .getValue());
+              .value());
 
       std::vector<int64_t> fft_length(instruction->fft_length().begin(),
                                       instruction->fft_length().end());
@@ -1812,7 +1812,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto fusion = func_builder->create<mlir::mhlo::FusionOp>(
           loc, flattened_ret_types, flattened_operands,
           mlir::mhlo::FusionKindAttr::get(func_builder->getContext(),
-                                          fusion_kind.getValue()));
+                                          fusion_kind.value()));
       TF_RETURN_IF_ERROR(ImportAsRegion(
           *instruction->fused_instructions_computation(),
           &fusion.getFusedComputation(), /*flatten_region_arg_tuple=*/true));
@@ -1926,7 +1926,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertComparisonDirection(
       mlir::mhlo::ComparisonDirectionAttr::get(
           builder_->getContext(), mlir::mhlo::symbolizeComparisonDirection(
                                       ComparisonDirectionToString(direction))
-                                      .getValue()));
+                                      .value()));
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertComparisonType(
@@ -1936,7 +1936,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertComparisonType(
       mlir::mhlo::ComparisonTypeAttr::get(
           builder_->getContext(),
           mlir::mhlo::symbolizeComparisonType(ComparisonTypeToString(type))
-              .getValue()));
+              .value()));
 }
 
 mlir::DenseIntElementsAttr HloFunctionImporter::ConvertDimensions(

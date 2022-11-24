@@ -2502,8 +2502,8 @@ OpFoldResult EnsureShapeOp::fold(llvm::ArrayRef<mlir::Attribute>) {
   if (shape_constraint.has_value() &&
       shape_constraint->size() == type.getShape().size()) {
     for (int i = 0; i < shape_constraint->size(); ++i) {
-      if (!ShapedType::isDynamic(shape_constraint.getValue()[i]) &&
-          type.getDimSize(i) != shape_constraint.getValue()[i]) {
+      if (!ShapedType::isDynamic(shape_constraint.value()[i]) &&
+          type.getDimSize(i) != shape_constraint.value()[i]) {
         return {};
       }
     }

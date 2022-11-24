@@ -2176,7 +2176,7 @@ class ConvertFFTOp : public OpRewritePattern<OpTy> {
     rewriter.replaceOpWithNewOp<FftOp>(
         op, op.getType(), reshaped,
         FftTypeAttr::get(rewriter.getContext(),
-                         symbolizeFftType(fft_string).getValue()),
+                         symbolizeFftType(fft_string).value()),
         rewriter.getI64TensorAttr(fft_length));
     return success();
   }
@@ -4361,7 +4361,7 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
         GetIntegerHLOAxisFromTFAxis(op.getDimension(), input_type.getRank());
     if (!optional_axis.has_value())
       return rewriter.notifyMatchFailure(op, "required axis");
-    int64_t axis = optional_axis.getValue();
+    int64_t axis = optional_axis.value();
 
     IntegerAttr iota_dimension =
         IntegerAttr::get(rewriter.getIntegerType(64), axis);
@@ -5409,8 +5409,7 @@ class ConvertInfeedDequeueTupleOp
       // _XlaSharding attribute in TF is a serialized string of the OpSharding
       // proto, so convert to a text form here.
       ::xla::OpSharding sharding_proto;
-      if (!sharding_proto.ParseFromString(
-              op.get_XlaSharding().getValue().str()))
+      if (!sharding_proto.ParseFromString(op.get_XlaSharding().value().str()))
         return failure();
 
       // Token is a control signal and not a real data, so arbitrarily assign
@@ -7194,7 +7193,7 @@ class ConvertXlaRngBitGeneratorOp
 
     auto algorithm_attr = mlir::mhlo::RngAlgorithmAttr::get(
         rewriter.getContext(),
-        *mlir::mhlo::symbolizeRngAlgorithm(xla_alg.getValue()));
+        *mlir::mhlo::symbolizeRngAlgorithm(xla_alg.value()));
     auto rng_bit_generator_op = rewriter.create<mhlo::RngBitGeneratorOp>(
         loc, op.getResultTypes(), algorithm_attr, op.getInitialState());
 

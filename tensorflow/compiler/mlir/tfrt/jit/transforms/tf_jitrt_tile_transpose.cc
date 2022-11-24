@@ -98,11 +98,11 @@ struct TileTransposePattern : public mlir::OpRewritePattern<GenericOp> {
 
     auto tiled_linalg_op =
         mlir::gml_st::tileLinalgOp(rewriter, linalg_op, options);
-    if (failed(tiled_linalg_op) || tiled_linalg_op.getValue().loops.empty())
+    if (failed(tiled_linalg_op) || tiled_linalg_op.value().loops.empty())
       return failure();
 
     auto tiled_loop =
-        mlir::dyn_cast<LoopOp>(*tiled_linalg_op.getValue().loops.front());
+        mlir::dyn_cast<LoopOp>(*tiled_linalg_op.value().loops.front());
     if (!tiled_loop) return failure();
 
     tiled_loop->walk(

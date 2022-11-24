@@ -1587,8 +1587,8 @@ struct OptimizeTopK : public OpRewritePattern<TFL::TopKV2Op> {
     auto k_values_or = ComputeSliceK(values);
     auto k_indices_or = ComputeSliceK(indices);
     if (!k_values_or.has_value() || !k_indices_or.has_value()) return failure();
-    int32_t k_values = k_values_or.getValue();
-    int32_t k_indices = k_indices_or.getValue();
+    int32_t k_values = k_values_or.value();
+    int32_t k_indices = k_indices_or.value();
     // We don't match two SliceOp with different sizes.
     if (k_values != k_indices && !values.use_empty() && !indices.use_empty())
       return failure();

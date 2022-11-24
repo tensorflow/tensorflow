@@ -248,14 +248,12 @@ StatusOr<llvm::ArrayRef<int64_t>> GetGlobalShapeOfValueFromDTensorLayout(
   if (value.isa<mlir::OpResult>() &&
       mlir::isa<mlir::TF::DTensorLayout>(value.getDefiningOp())) {
     auto layout_op = mlir::cast<mlir::TF::DTensorLayout>(value.getDefiningOp());
-    if (layout_op.getGlobalShape())
-      return layout_op.getGlobalShape().getValue();
+    if (layout_op.getGlobalShape()) return layout_op.getGlobalShape().value();
   } else if (value.hasOneUse() &&
              mlir::isa<mlir::TF::DTensorLayout>(*value.getUsers().begin())) {
     auto layout_op =
         mlir::cast<mlir::TF::DTensorLayout>(*value.getUsers().begin());
-    if (layout_op.getGlobalShape())
-      return layout_op.getGlobalShape().getValue();
+    if (layout_op.getGlobalShape()) return layout_op.getGlobalShape().value();
   }
   return errors::InvalidArgument(
       "consumer or producer of value is not a DTensorLayout");

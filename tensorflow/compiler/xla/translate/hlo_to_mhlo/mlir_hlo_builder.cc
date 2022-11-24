@@ -133,7 +133,7 @@ StatusOr<XlaOp> MlirHloBuilder::FftInternal(
   auto op = builder_.create<mlir::mhlo::FftOp>(
       loc_, ty, GetValue(operand),
       mlir::mhlo::FftTypeAttr::get(builder_.getContext(),
-                                   fft_type_attr.getValue()),
+                                   fft_type_attr.value()),
       GetI64ElementsAttr(fft_length, &builder_));
   return MakeXlaOp(op);
 }
@@ -534,11 +534,11 @@ StatusOr<XlaOp> MlirHloBuilder::Compare(const Shape& shape, XlaOp lhs,
       mlir::mhlo::ComparisonDirectionAttr::get(
           builder_.getContext(), mlir::mhlo::symbolizeComparisonDirection(
                                      ComparisonDirectionToString(direction))
-                                     .getValue()),
+                                     .value()),
       mlir::mhlo::ComparisonTypeAttr::get(
           builder_.getContext(),
           mlir::mhlo::symbolizeComparisonType(ComparisonTypeToString(type))
-              .getValue()));
+              .value()));
   return MakeXlaOp(op.getResult());
 }
 
@@ -576,7 +576,7 @@ StatusOr<XlaOp> MlirHloBuilder::TriangularSolveInternal(
           builder_.getContext(),
           ::mlir::mhlo::symbolizeTranspose(
               TriangularSolveOptions::Transpose_Name(options.transpose_a()))
-              .getValue()));
+              .value()));
   return MakeXlaOp(op);
 }
 

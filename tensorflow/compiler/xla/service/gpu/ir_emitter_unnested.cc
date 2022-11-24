@@ -942,12 +942,11 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
         GetShape(conv_result), op.getBackendConfig().getResultLayout());
     descriptor.dnums = ConvertConvDimensionNumbers(op.getDimensionNumbers());
     descriptor.scratch_size = scratch_slice.size();
-    mlir::DenseIntElementsAttr window_strides =
-        op.getWindowStrides().getValue();
-    mlir::DenseIntElementsAttr padding = op.getPadding().getValue();
-    mlir::DenseIntElementsAttr lhs_dilation = op.getLhsDilation().getValue();
-    mlir::DenseIntElementsAttr rhs_dilation = op.getRhsDilation().getValue();
-    mlir::DenseElementsAttr window_reversal = op.getWindowReversal().getValue();
+    mlir::DenseIntElementsAttr window_strides = op.getWindowStrides().value();
+    mlir::DenseIntElementsAttr padding = op.getPadding().value();
+    mlir::DenseIntElementsAttr lhs_dilation = op.getLhsDilation().value();
+    mlir::DenseIntElementsAttr rhs_dilation = op.getRhsDilation().value();
+    mlir::DenseElementsAttr window_reversal = op.getWindowReversal().value();
     for (auto index : llvm::seq<int>(0, window_strides.getNumElements())) {
       WindowDimension* dim = descriptor.window.add_dimensions();
       // Window size for a convolution is the same as the kernel size.
@@ -1927,7 +1926,7 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
 
     DimensionVector window_size;
     mlir::DenseIntElementsAttr window_dimensions =
-        select_and_scatter_op.getWindowDimensions().getValue();
+        select_and_scatter_op.getWindowDimensions().value();
     for (const auto& dim : window_dimensions) {
       window_size.push_back(dim.getSExtValue());
       CHECK_GT(dim.getSExtValue(), 0);
@@ -3153,7 +3152,7 @@ IrEmitterUnnested::TryBuildConstantInitializerThunk(mlir::Operation* op,
       // If the initial value happens to be a constant, generate a specialized
       // thunk.
       const_init = global_memref.getInitialValue()
-                       .getValue()
+                       .value()
                        .cast<mlir::DenseElementsAttr>();
     }
   } else if (auto constant = mlir::dyn_cast_or_null<mlir::mhlo::ConstantOp>(

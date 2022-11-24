@@ -234,7 +234,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
     auto horizontal_reduction_or = ReduceVectorIntoOutput(
         rewriter, linalg_op, perfectly_tiled_loop.getResult(0));
     if (failed(horizontal_reduction_or)) return failure();
-    auto horizontal_reduction = horizontal_reduction_or.getValue();
+    auto horizontal_reduction = horizontal_reduction_or.value();
     Value result = horizontal_reduction->getResult(0);
 
     // If the loop was not perfectly tiled, then we have to combine
@@ -348,7 +348,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
 
     auto combiner_or = DetectCombiner(linalg_op);
     if (failed(combiner_or)) return failure();
-    Operation *combiner = combiner_or.getValue();
+    Operation *combiner = combiner_or.value();
 
     auto accumulator = rewriter.create<GenericOp>(
         linalg_op.getLoc(), linalg_op->getResultTypes(),
