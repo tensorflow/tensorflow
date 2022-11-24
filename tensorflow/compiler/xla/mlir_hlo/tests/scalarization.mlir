@@ -462,3 +462,91 @@ func.func @concatenate(
 // CHECK-NEXT:  }
 
 // CHECK-NEXT:  return %[[RESULT]] : tensor<?x1x?xf32>
+
+// -----
+
+func.func @linalg_map(%lhs : tensor<1x1xf32>,
+                      %rhs: tensor<1x1xf32>,
+                      %init: tensor<1x1xf32>)
+                                    -> tensor<1x1xf32>  {
+      %add = linalg.map
+          ins(%lhs, %rhs : tensor<1x1xf32>, tensor<1x1xf32>)
+          outs(%init: tensor<1x1xf32>)
+          (%lhs_elem: f32, %rhs_elem: f32) {
+            %0 = arith.addf %lhs_elem, %rhs_elem: f32
+            linalg.yield %0: f32
+          }
+      func.return %add : tensor<1x1xf32>
+}
+
+// CHECK-LABEL: @linalg_map(
+// CHECK-SAME:      %[[LHS:.*]]: tensor<1x1xf32>, %[[RHS:.*]]: tensor<1x1xf32>, %[[INIT:.*]]: tensor<1x1xf32>)
+// CHECK:           %[[C0:.*]] = arith.constant 0 : index
+// CHECK-NEXT:      %[[L_ELEM:.*]] = tensor.extract %[[LHS]][%[[C0]], %[[C0]]]
+// CHECK-NEXT:      %[[R_ELEM:.*]] = tensor.extract %[[RHS]][%[[C0]], %[[C0]]]
+// CHECK-NEXT:      %[[ADD:.*]] = arith.addf %[[L_ELEM]], %[[R_ELEM]]
+// CHECK-NEXT:      tensor.from_elements %[[ADD]]
+
+// -----
+
+func.func @linalg_reduce(%ins: tensor<1x1x1xf32>,
+                         %outs: tensor<1x1xf32>)
+                                    -> tensor<1x1xf32>  {
+      %reduce = linalg.reduce
+          ins(%ins: tensor<1x1x1xf32>)
+          outs(%outs: tensor<1x1xf32>)
+          dimensions = [1]
+          (%in: f32, %out: f32) {
+            %0 = arith.addf %in, %out: f32
+            linalg.yield %0: f32
+          }
+      func.return %reduce : tensor<1x1xf32>
+}
+
+// CHECK-LABEL: @linalg_reduce(
+// CHECK-SAME:      %[[INS:.*]]: tensor<1x1x1xf32>, %[[OUTS:.*]]: tensor<1x1xf32>)
+// CHECK:           %[[C0:.*]] = arith.constant 0 : index
+// CHECK-NEXT:      %[[L_ELEM:.*]] = tensor.extract %[[INS]][%[[C0]], %[[C0]], %[[C0]]]
+// CHECK-NEXT:      %[[R_ELEM:.*]] = tensor.extract %[[OUTS]][%[[C0]], %[[C0]]]
+// CHECK-NEXT:      %[[ADD:.*]] = arith.addf %[[L_ELEM]], %[[R_ELEM]]
+// CHECK-NEXT:      tensor.from_elements %[[ADD]]
+
+// -----
+
+func.func @linalg_transpose(%ins: tensor<1x1xf32>,
+                            %outs: tensor<1x1xf32>)
+                                    -> tensor<1x1xf32>  {
+      %transpose = linalg.transpose
+          ins(%ins: tensor<1x1xf32>)
+          outs(%outs: tensor<1x1xf32>)
+          permutation = [1, 0]
+      func.return %transpose : tensor<1x1xf32>
+}
+
+// CHECK-LABEL: @linalg_transpose(
+// CHECK-SAME:      %[[INS:.*]]: tensor<1x1xf32>, %[[OUTS:.*]]: tensor<1x1xf32>)
+// CHECK:           %[[C0:.*]] = arith.constant 0 : index
+// CHECK-NEXT:      %[[EXTRACTED:.*]] = tensor.extract %[[INS]][%[[C0]], %[[C0]]]
+// CHECK-NEXT:      tensor.from_elements %[[EXTRACTED]]
+
+// -----
+
+func.func @linalg_matmul(%lhs: tensor<1x1xf32>,
+                         %rhs: tensor<1x1xf32>,
+                         %out : tensor<1x1xf32>) -> tensor<1x1xf32> {
+  %0 = linalg.matmul
+      ins(%lhs, %rhs : tensor<1x1xf32>, tensor<1x1xf32>)
+      outs(%out : tensor<1x1xf32>) -> tensor<1x1xf32>
+  return %0 : tensor<1x1xf32>
+}
+
+// CHECK-LABEL: @linalg_matmul(
+// CHECK-SAME:      %[[LHS:.*]]: tensor<1x1xf32>, %[[RHS:.*]]: tensor<1x1xf32>, %[[OUT:.*]]: tensor<1x1xf32>)
+// CHECK:           %[[C0:.*]] = arith.constant 0 : index
+// CHECK-NEXT:      %[[LHS_ELEM:.*]] = tensor.extract %[[LHS]][%[[C0]], %[[C0]]]
+// CHECK-NEXT:      %[[RHS_ELEM:.*]] = tensor.extract %[[RHS]][%[[C0]], %[[C0]]]
+// CHECK-NEXT:      %[[OUT_ELEM:.*]] = tensor.extract %[[OUT]][%[[C0]], %[[C0]]]
+// CHECK-NEXT:      %[[MUL:.*]] = arith.mulf %[[LHS_ELEM]], %[[RHS_ELEM]]
+// CHECK-NEXT:      %[[ADD:.*]] = arith.addf %[[OUT_ELEM]], %[[MUL]]
+// CHECK-NEXT:       tensor.from_elements %[[ADD]]
+

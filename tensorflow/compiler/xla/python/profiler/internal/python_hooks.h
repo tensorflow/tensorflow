@@ -25,7 +25,6 @@ limitations under the License.
 #include "pybind11/cast.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"

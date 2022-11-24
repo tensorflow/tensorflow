@@ -6,6 +6,7 @@ load(
 load("//tensorflow:tensorflow.bzl", "if_google", "workspace_root")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )

@@ -251,6 +251,10 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       if (deregister_fn_) deregister_fn_();
     }
 
+    bool SymbolicCheckpointCompatible() const override {
+      return deterministic_;
+    }
+
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
       interleave_depth_ = ctx->interleave_depth();
@@ -264,8 +268,10 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
       IteratorContext::Params params(ctx);
       params.cancellation_manager = cancellation_manager_.get();
+      IteratorContext iter_ctx(std::move(params));
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
-          IteratorContext(params), this, prefix(), &input_impl_));
+          &iter_ctx, this, prefix(), &input_impl_));
+      ctx->MergeCheckpoint(iter_ctx.checkpoint());
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
@@ -310,6 +316,10 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                         IteratorStateWriter* writer) override {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
+      if (ctx->symbolic_checkpoint()) {
+        return writer->WriteScalar(
+            full_name(absl::StrCat(kInvocationResults, "::", kSize)), 0);
+      }
       mutex_lock l(*mu_);
       // Wait for all in-flight calls to complete.
       while (num_calls_ > 0) {
@@ -320,9 +330,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
             "Unexpected outstanding calls encountered.");
       }
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-      TF_RETURN_IF_ERROR(
-          writer->WriteScalar(absl::StrCat(prefix(), "::", kInvocationResults),
-                              kSize, invocation_results_.size()));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(
+          full_name(absl::StrCat(kInvocationResults, "::", kSize)),
+          invocation_results_.size()));
       for (size_t i = 0; i < invocation_results_.size(); i++) {
         const auto& result = *(invocation_results_[i]);
         std::string element_prefix =
@@ -336,10 +346,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
               element_prefix, absl::StrCat(kComponent, "[", j, "]"),
               result.return_values[j]));
         }
-        if (result.end_of_input) {
-          TF_RETURN_IF_ERROR(
-              writer->WriteScalar(element_prefix, kEndOfInput, ""));
-        }
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(element_prefix, kEndOfInput,
+                                static_cast<int64_t>(result.end_of_input)));
       }
       return OkStatus();
     }
@@ -349,9 +358,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(*mu_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       int64_t invocation_results_size;
-      TF_RETURN_IF_ERROR(
-          reader->ReadScalar(absl::StrCat(prefix(), "::", kInvocationResults),
-                             kSize, &invocation_results_size));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(
+          full_name(absl::StrCat(kInvocationResults, "::", kSize)),
+          &invocation_results_size));
       DCHECK(invocation_results_.empty());
       for (size_t i = 0; i < invocation_results_size; i++) {
         invocation_results_.push_back(std::make_shared<InvocationResult>());
@@ -378,7 +387,10 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
               ctx->flr(), element_prefix, absl::StrCat(kComponent, "[", j, "]"),
               &result.return_values.back()));
         }
-        result.end_of_input = reader->Contains(element_prefix, kEndOfInput);
+        int64_t end_of_input;
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(element_prefix, kEndOfInput, &end_of_input));
+        result.end_of_input = static_cast<bool>(end_of_input);
         RecordBufferEnqueue(ctx, result.return_values);
         result.notification.Notify();
       }
@@ -417,6 +429,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       Status status;
       std::vector<Tensor> return_values;
       bool end_of_input = false;
+      MemoryCheckpoint checkpoint;
       const int64_t uid;
     };
 
@@ -466,6 +479,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       std::vector<Tensor> input_element;
       result->status = input_impl_->GetNext(ctx.get(), &input_element,
                                             &result->end_of_input);
+      result->checkpoint = ctx->checkpoint();
       if (result->end_of_input || !result->status.ok()) {
         CallCompleted(ctx, result);
         return;
@@ -515,6 +529,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                          const std::shared_ptr<InvocationResult>& result,
                          std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) TF_LOCKS_EXCLUDED(*mu_) {
+      ctx->MergeCheckpoint(result->checkpoint);
       if (!result->end_of_input && result->status.ok()) {
         *out_tensors = std::move(result->return_values);
         RecordBufferDequeue(ctx, *out_tensors);

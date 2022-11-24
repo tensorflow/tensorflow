@@ -63,7 +63,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
@@ -449,6 +448,8 @@ struct ValuePort {
     return producer == other.producer && port == other.port;
   }
 
+  ValuePort() = default;
+
   // Convert output value to ValuePort.
   explicit ValuePort(Value v) {
     OpResult opr = v.dyn_cast<OpResult>();
@@ -472,6 +473,8 @@ struct ValuePort {
     os << formatv(" [{0}]", llvm::make_range(port.begin(), port.end()));
     return os;
   }
+
+  bool IsValid() const { return !producer.isNull(); }
 };
 
 struct ValuePortHasher {
@@ -487,6 +490,86 @@ using ComputedQueryFn = function_ref<bool(ValuePort)>;
 using ValueQueryFn = function_ref<Attribute(const ValuePort&)>;
 using ValuePortInputs = SmallVectorImpl<ValuePort>;
 
+// Note: Following implements the rank 1 pack op case so could be
+// generalized.
+//
+// Maps the specified component in the `port` of the given op's result to one of
+// the element in the input.
+ValuePort ComputeInputComponentFor(PackOp op, ArrayRef<unsigned int> port) {
+  auto type = op.getType().cast<TensorType>();
+  if (!type.hasRank() || type.getRank() != 1) return {};
+  if (port.size() != 2) return {};
+  assert(port[0] == 0);
+  return ValuePort(op.getOperand(port[1]));
+}
+
+ValuePort ComputeInputComponentFor(ConcatV2Op op, ArrayRef<unsigned int> port) {
+  if (port.size() != 2) return {};
+  assert(port[0] == 0);
+
+  int64_t element_idx = port[1];
+  for (Value val : op.getValues()) {
+    auto val_ty = val.getType().cast<TensorType>();
+    if (!val_ty.hasStaticShape() || val_ty.getRank() != 1) return {};
+
+    int64_t dim_size = val_ty.getNumElements();
+    if (element_idx >= dim_size) {
+      element_idx -= dim_size;
+      continue;
+    }
+
+    ValuePort req(val);
+    req.port.push_back(element_idx);
+    return req;
+  }
+  return {};
+}
+
+ValuePort ComputeInputComponentFor(GatherV2Op op, ArrayRef<unsigned int> port) {
+  if (port.size() != 2) return {};
+  assert(port[0] == 0);
+
+  auto params = op.getParams();
+  auto params_ty = params.getType().dyn_cast<RankedTensorType>();
+  if (!params_ty || !params_ty.hasStaticShape() || params_ty.getRank() != 1 ||
+      op.getBatchDims() != 0) {
+    return {};
+  }
+
+  DenseIntElementsAttr axis;
+  if (!matchPattern(op.getAxis(), m_Constant(&axis)) ||
+      axis.getNumElements() != 1 ||
+      !axis.getSplatValue<llvm::APInt>().isZero()) {
+    return {};
+  }
+
+  DenseIntElementsAttr indices;
+  if (!matchPattern(op.getIndices(), m_Constant(&indices)) ||
+      indices.getType().getRank() != 1 || port[1] >= indices.getNumElements()) {
+    return {};
+  }
+
+  int64_t input_idx = indices.getValues<IntegerAttr>()[port[1]].getInt();
+  if (input_idx >= params_ty.getDimSize(0)) return {};
+
+  ValuePort req(params);
+  req.port.push_back(input_idx);
+  return req;
+}
+
+ValuePort ComputeInputComponentFor(Operation* op, ArrayRef<unsigned int> port) {
+  if (auto pack_op = llvm::dyn_cast<PackOp>(op)) {
+    return ComputeInputComponentFor(pack_op, port);
+  }
+  if (auto concat_op = llvm::dyn_cast<ConcatV2Op>(op)) {
+    return ComputeInputComponentFor(concat_op, port);
+  }
+  if (auto gather_op = llvm::dyn_cast<GatherV2Op>(op)) {
+    return ComputeInputComponentFor(gather_op, port);
+  }
+  return {};
+}
+
 // TODO(jpienaar): ComputeInputsRequiredForOutput and ComputeOutputComponent are
 // intended to be switched to op interfaces once more refined.
 LogicalResult ComputeInputsRequiredForOutput(ValuePort value_port,
@@ -499,14 +582,8 @@ LogicalResult ComputeInputsRequiredForOutput(ValuePort value_port,
   // No inputs required for constants and ShapeOp.
   if (matchPattern(op, m_Constant()) || isa<TF::ShapeOp>(op)) return success();
 
-  // Note: this focusses only on the trivial pack op case and this could be
-  // generalized.
-  if (auto pack_op = dyn_cast<TF::PackOp>(op)) {
-    auto type = pack_op.getType().cast<TensorType>();
-    if (!type.hasRank() || type.getRank() != 1) return failure();
-    if (port.size() != 2) return failure();
-    assert(port[0] == 0);
-    ValuePort req(pack_op.getOperand(port[1]));
+  ValuePort req = ComputeInputComponentFor(op, port);
+  if (req.IsValid()) {
     if (!has_been_computed(req)) inputs->push_back(req);
     return success();
   }
@@ -533,6 +610,18 @@ Attribute ComputeOutputComponent(const ValuePort& value_port,
   ElementsAttr attr;
   if (matchPattern(op, m_Constant(&attr))) {
     if (port.size() == 1 && port[0] == 0) return attr;
+    if (port.size() == 2) {
+      assert(port[0] == 0);
+      DenseIntElementsAttr value;
+      if (!matchPattern(op, m_Constant(&value)) ||
+          value.getType().getRank() != 1 || port[1] >= value.getNumElements()) {
+        return nullptr;
+      }
+
+      auto range = value.getValues<Attribute>();
+      auto component_ty = RankedTensorType::get({1}, value.getElementType());
+      return DenseElementsAttr::get(component_ty, range[port[1]]);
+    }
     return nullptr;
   }
 
@@ -540,16 +629,6 @@ Attribute ComputeOutputComponent(const ValuePort& value_port,
     if (port.size() == 1 && port[0] == 0)
       return ComputeOutputComponent(ValuePort(id.getInput()), values);
     return nullptr;
-  }
-
-  // Note: this focusses only on the trivial pack op case and this could be
-  // generalized.
-  if (auto pack_op = dyn_cast<TF::PackOp>(op)) {
-    TensorType type = pack_op.getType().cast<TensorType>();
-    if (!type.hasRank() || type.getRank() != 1) return nullptr;
-    if (port.size() != 2 || port[0] != 0) return nullptr;
-    ValuePort op_port(op->getOperand(port[1]));
-    return values(op_port);
   }
 
   if (auto shape_op = dyn_cast<TF::ShapeOp>(op)) {
@@ -589,6 +668,9 @@ Attribute ComputeOutputComponent(const ValuePort& value_port,
           ValuePort(island.GetYield().getFetches()[port[0]]), values);
     return nullptr;
   }
+
+  ValuePort req = ComputeInputComponentFor(op, port);
+  if (req.IsValid()) return values(req);
 
   return nullptr;
 }
@@ -2254,8 +2336,8 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
     ShapedTypeComponents inferred = std::get<1>(result);
     TensorType inferred_type;
     if (inferred.hasRank()) {
-      inferred_type = tensorflow::GetTypeFromTFTensorShape(
-          inferred.getDims(), inferred.getElementType());
+      inferred_type =
+          RankedTensorType::get(inferred.getDims(), inferred.getElementType());
 
     } else {
       inferred_type = UnrankedTensorType::get(inferred.getElementType());

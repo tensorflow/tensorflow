@@ -442,6 +442,16 @@ void CreateConvertMlirToXlaHloPipeline(
   // inference was originally missing in a TF op but the corresponding HLO op
   // had static shape after lowering.
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+
+  // Legalize any StableHLO ops to MHLO. Bridge still doesn't use StableHLO but
+  // such ops might be present in the input from upstream like TFRT compilation.
+  // Later on, this could be merged in the legalization pass when we migrate
+  // bridge to StableHLO.
+  //
+  // TODO(b/259459405): Avoid this peculiar use through some refactoring in
+  // the the caller.
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+
   // Run LegalizeTFPass again because the previous legalization passes can
   // expose more graph pruning and canonicalization opportunities that are
   // necessary for the second LegalizeTFPass(allow_partial_conversion=false)

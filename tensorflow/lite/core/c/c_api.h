@@ -25,7 +25,7 @@ limitations under the License.
 #include <stdlib.h>
 
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/c_api_types.h"  // IWYU pragma: export
+#include "tensorflow/lite/core/c/c_api_types.h"  // IWYU pragma: export
 
 // --------------------------------------------------------------------------
 /// C API for TensorFlow Lite.

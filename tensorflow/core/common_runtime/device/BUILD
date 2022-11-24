@@ -21,6 +21,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
@@ -86,7 +87,6 @@ filegroup(
         "device_host_allocator.h",
         "device_id.h",
         "device_id_manager.h",
-        "device_id_utils.h",
         "device_mem_allocator.h",
         "//tensorflow/tsl/framework:device_runtime_headers",
     ],
@@ -175,5 +175,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/tsl/framework:device_id",
     ],
 )

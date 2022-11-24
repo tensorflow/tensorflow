@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_RUNTIME_TYPES_H_
 
 #include <functional>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -174,7 +175,7 @@ class TupleType : public llvm::RTTIExtends<TupleType, Type> {
 class RankedTensorType : public llvm::RTTIExtends<RankedTensorType, Type> {
  public:
   static constexpr char ID = 0;  // NOLINT
-  static constexpr int64_t kDynamicSize = -1;
+  static constexpr int64_t kDynamicSize = std::numeric_limits<int64_t>::min();
 
   static constexpr bool IsDynamic(int64_t dim) { return dim == kDynamicSize; }
 
@@ -218,7 +219,7 @@ class UnrankedTensorType : public llvm::RTTIExtends<UnrankedTensorType, Type> {
 class MemrefType : public llvm::RTTIExtends<MemrefType, Type> {
  public:
   static constexpr char ID = 0;  // NOLINT
-  static constexpr int64_t kDynamicSize = -1;
+  static constexpr int64_t kDynamicSize = std::numeric_limits<int64_t>::min();
 
   static constexpr bool IsDynamic(int64_t dim) { return dim == kDynamicSize; }
 

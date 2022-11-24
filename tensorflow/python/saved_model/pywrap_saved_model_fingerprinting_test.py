@@ -47,5 +47,16 @@ class FingerprintingTest(test.TestCase):
     # check its value here.
     self.assertGreater(fingerprint_def.checkpoint_hash, 0)
 
+  def test_read_fingerprint_from_file(self):
+    export_dir = test.test_src_dir_path(
+        "cc/saved_model/testdata/VarsAndArithmeticObjectGraph")
+    self.assertEqual(
+        fingerprinting.MaybeReadSavedModelChecksum(export_dir),
+        15788619162413586750)
+
+  def test_read_nonexistent_fingerprint_from_file(self):
+    export_dir = test.test_src_dir_path("cc/saved_model/testdata/AssetModule")
+    self.assertEqual(fingerprinting.MaybeReadSavedModelChecksum(export_dir), 0)
+
 if __name__ == "__main__":
   test.main()

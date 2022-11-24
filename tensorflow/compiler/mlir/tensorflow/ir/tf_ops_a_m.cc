@@ -243,6 +243,24 @@ void AssertOp::getCanonicalizationPatterns(RewritePatternSet &results,
 }
 
 //===----------------------------------------------------------------------===//
+// BatchFunctionOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BatchFunctionOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
+  StringAttr func_attr = getFAttr().getRootReference();
+  func::FuncOp func =
+      symbolTable.lookupNearestSymbolFrom<func::FuncOp>(*this, func_attr);
+
+  if (!func) {
+    return emitError("'f' attribute refers to an undefined function: ")
+           << func_attr.getValue();
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BatchMatMulV2Op & BatchMatMulOp
 //===----------------------------------------------------------------------===//
 
@@ -3102,7 +3120,7 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
 
 LogicalResult LegacyCallOp::verifySymbolUses(
     SymbolTableCollection &symbolTable) {
-  StringAttr func_attr = cast<SymbolRefAttr>(getFAttr()).getRootReference();
+  StringAttr func_attr = getFAttr().getAttr();
   StringRef func_name = func_attr.getValue();
   func::FuncOp func =
       symbolTable.lookupNearestSymbolFrom<func::FuncOp>(*this, func_attr);

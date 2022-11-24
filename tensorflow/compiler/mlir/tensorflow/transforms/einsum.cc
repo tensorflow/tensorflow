@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
@@ -99,7 +100,8 @@ TF::TransposeOp createTransposeOp(Value value, Location loc,
 TF::ReshapeOp createReshapeOp(Value value, ArrayRef<int64_t> shape,
                               Type element_type, Location loc,
                               PatternRewriter* rewriter) {
-  auto shape_tensor = createI64ConstantOp(shape, loc, rewriter);
+  auto shape_tensor = createI64ConstantOp(
+      tensorflow::ConvertMlirShapeToTF(shape), loc, rewriter);
   Type resultType = RankedTensorType::get(shape, element_type);
   return rewriter->create<TF::ReshapeOp>(loc, resultType, /*tensor=*/value,
                                          /*shape=*/shape_tensor);

@@ -120,6 +120,9 @@ func.func @sort(%input1: tensor<?x?xf32>, %input2: tensor<?x?xi32>,
   func.return %sorted1, %sorted2 : tensor<?x?xf32>, tensor<?x?xi32>
 }
 // CHECK-LABEL: func @sort
+// CHECK:         %[[RES1:sorted0]], %[[RES2:sorted1]] = thlo.sort
+// CHECK:         %[[LHS0:lhs0: f32]], %[[RHS0:rhs0: f32]],
+// CHECK-SAME:    %[[LHS1:lhs1: i32]], %[[RHS1:rhs1: i32]]
 
 // -----
 

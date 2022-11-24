@@ -33,8 +33,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/delegates/gpu/common/custom_parsers.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/lstm_parser.h"
@@ -2687,7 +2687,7 @@ class UnpackOperationParser : public TFLiteOperationParser {
       // Adding Identity reshape that will be removed.
       Node* node = graph->NewNode();
       node->operation.type = ToString(OperationType::RESHAPE);
-      RETURN_IF_ERROR(reader->AddInput(node, 1));
+      RETURN_IF_ERROR(reader->AddInput(node, 0));
       RETURN_IF_ERROR(reader->AddOutputs(node));
       // New shape comes from output shape.
       ReshapeAttributes attr;

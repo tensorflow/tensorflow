@@ -3743,8 +3743,8 @@ TEST_F(SpmdPartitioningTest, Conditional) {
 HloModule module
 
 Negate {
-  x = f32[4,5] parameter(0), sharding={replicated}
-  ROOT negate = f32[4,5] negate(x), sharding={replicated}
+  x = f32[4,5] parameter(0), sharding={devices=[2,1]0,1}
+  ROOT negate = f32[4,5] negate(x), sharding={devices=[2,1]0,1}
 }
 
 Identity {
@@ -3780,8 +3780,8 @@ ENTRY entry {
 
   auto then_branch_root = root->branch_computation(0)->root_instruction();
   EXPECT_THAT(then_branch_root,
-              AllOf(op::DynamicSlice(op::Negate(op::Parameter()), op::Reshape(),
-                                     op::Constant()),
+              AllOf(op::Negate(op::DynamicSlice(op::Parameter(), op::Reshape(),
+                                                op::Constant())),
                     op::Shape("f32[2,5]")));
 
   auto else_branch_root = root->branch_computation(1)->root_instruction();

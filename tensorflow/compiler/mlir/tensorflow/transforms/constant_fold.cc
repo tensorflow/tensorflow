@@ -89,7 +89,7 @@ LogicalResult ConstantFoldFallbackHook(
   // TensorFlow folding hook.
   if (inst->getNumResults() == 0 ||
       inst->hasTrait<OpTrait::TF::NoConstantFold>() ||
-      inst->getNumRegions() != 0 || !MemoryEffectOpInterface::hasNoEffect(inst))
+      inst->getNumRegions() != 0 || !isMemoryEffectFree(inst))
     return failure();
 
   // If any of the result types are variants, don't try to constant fold them.

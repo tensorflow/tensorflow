@@ -1414,6 +1414,18 @@ Status TfrtCpuExecutable::CheckBufferCompatibilities(
   return OkStatus();
 }
 
+// Create a descriptor table for XLA Runtime from a buffer table.
+static std::vector<xla::cpu::BufferDesc> MakeXLARuntimeDescriptorTable(
+    absl::Span<const std::shared_ptr<MaybeOwningCpuMemory>> buffer_table) {
+  std::vector<xla::cpu::BufferDesc> descriptor_table;
+  descriptor_table.reserve(descriptor_table.size());
+  for (const auto& buf : buffer_table) {
+    descriptor_table.emplace_back(
+        xla::cpu::BufferDesc{buf->data(), buf->size()});
+  }
+  return descriptor_table;
+}
+
 StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     const RunId& run_id, const ExecuteOptions& options,
@@ -1611,14 +1623,8 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
     // Call generated function.
     if (cpu_executable->IsXlaRuntime()) {
-      std::vector<xla::cpu::BufferDesc> descriptor_table;
-      descriptor_table.reserve(descriptor_table.size());
-      for (const auto& buf : buffer_table) {
-        descriptor_table.emplace_back(
-            xla::cpu::BufferDesc{buf->data(), buf->size()});
-      }
-      Status status =
-          cpu_executable->ExecuteXlaRuntime(descriptor_table, &run_options);
+      Status status = cpu_executable->ExecuteXlaRuntime(
+          MakeXLARuntimeDescriptorTable(buffer_table), &run_options);
       if (!status.ok()) return status;
     } else {
       cpu_executable->compute_function()(result_buffer, &run_options, nullptr,
@@ -1675,15 +1681,22 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           tsl::port::ScopedFlushDenormal flush;
           tsl::port::ScopedSetRound round(FE_TONEAREST);
 
-          XlaCustomCallStatus status;
-
           // Call generated function.
-          cpu_executable->compute_function()(result_buffer, &run_options,
-                                             nullptr, buffer_pointers.data(),
-                                             &status, nullptr);
-
-          std::optional<absl::string_view> error_message =
-              xla::CustomCallStatusGetMessage(&status);
+          std::optional<absl::string_view> error_message;
+          if (cpu_executable->IsXlaRuntime()) {
+            Status s = cpu_executable->ExecuteXlaRuntime(
+                MakeXLARuntimeDescriptorTable(buffer_table), &run_options);
+            if (!s.ok()) {
+              // TODO(kramerb): Propagate custom call error messages.
+              error_message = "XLA Runtime execution failed";
+            }
+          } else {
+            XlaCustomCallStatus status;
+            cpu_executable->compute_function()(result_buffer, &run_options,
+                                               nullptr, buffer_pointers.data(),
+                                               &status, nullptr);
+            error_message = xla::CustomCallStatusGetMessage(&status);
+          }
 
           for (auto& donation_transaction : donation_transactions) {
             std::move(donation_transaction).Commit();

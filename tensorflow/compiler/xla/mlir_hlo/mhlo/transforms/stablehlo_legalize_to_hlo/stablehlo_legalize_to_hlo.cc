@@ -85,6 +85,11 @@ Attribute convertAttr(Attribute stablehloAttr) {
         attr.getContext(), attr.getOffsetDims(), attr.getCollapsedSliceDims(),
         attr.getStartIndexMap(), attr.getIndexVectorDim());
   }
+  if (auto attr = stablehloAttr.dyn_cast<stablehlo::OutputOperandAliasAttr>()) {
+    return mhlo::OutputOperandAliasAttr::get(
+        attr.getContext(), attr.getOutputTupleIndices(), attr.getOperandIndex(),
+        attr.getOperandTupleIndices());
+  }
   if (auto attr = stablehloAttr.dyn_cast<stablehlo::PrecisionAttr>()) {
     RETURN_CONVERTED_ENUM_ATTR(Precision);
   }

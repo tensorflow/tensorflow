@@ -18,6 +18,7 @@ limitations under the License.
 
 include "gml_st/interfaces/tiling_interface.td"
 include "mlir/Dialect/Linalg/IR/LinalgInterfaces.td"
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/DestinationStyleOpInterface.td"
@@ -172,6 +173,8 @@ def THLO_ScatterOp : THLO_DstStyleOp<"scatter", [
 }
 
 def THLO_SortOp : THLO_DstStyleOp<"sort", [
+        DeclareOpInterfaceMethods<OpAsmOpInterface,
+          ["getAsmResultNames", "getAsmBlockArgumentNames"]>,
         DeclareOpInterfaceMethods<TilingInterface>, SameVariadicOperandSize,
         SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "Destination-style twin for the `mhlo.sort`";

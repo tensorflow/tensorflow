@@ -1,9 +1,10 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
 load("//tensorflow/tsl/platform:build_config.bzl", "tf_platform_deps")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
         "@tf_runtime//:friends",
@@ -93,6 +94,7 @@ cc_library(
         ":errors",
         ":logical_result",
         ":map_by_type",
+        ":state",
         ":type_id",
         "//tensorflow/compiler/xla:shape_util",
         "//third_party/eigen3",
@@ -114,6 +116,7 @@ tf_cc_test(
         ":diagnostics",
         ":executable",
         ":jit_executable",
+        ":state",
         "//tensorflow/compiler/xla/mlir/runtime/ir/tests:testlib",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:custom_call_encoding",
@@ -241,6 +244,42 @@ cc_library(
 )
 
 cc_library(
+    name = "ffi",
+    srcs = ["ffi.cc"],
+    hdrs = ["ffi.h"],
+    deps = [
+        ":custom_call",
+        ":custom_call_registry",
+        "//tensorflow/compiler/xla/runtime/ffi:ffi_c_api_hdrs",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+tf_cc_test(
+    name = "ffi_test",
+    srcs = ["ffi_test.cc"],
+    deps = [
+        ":arguments",
+        ":async_runtime",
+        ":custom_call",
+        ":custom_call_registry",
+        ":diagnostics",
+        ":executable",
+        ":ffi",
+        ":jit_executable",
+        ":results",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
+        "//tensorflow/compiler/xla/runtime/ffi:ffi_api_hdrs",
+        "//tensorflow/compiler/xla/runtime/ffi:ffi_c_api_hdrs",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
     name = "jit_executable",
     srcs = ["jit_executable.cc"],
     hdrs = ["jit_executable.h"],
@@ -331,6 +370,27 @@ cc_library(
     name = "runtime",
     hdrs = ["runtime.h"],
     compatible_with = get_compatible_with_cloud(),
+)
+
+cc_library(
+    name = "state",
+    hdrs = ["state.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cc_test(
+    name = "state_test",
+    srcs = ["state_test.cc"],
+    deps = [
+        ":state",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
+    ],
 )
 
 cc_library(

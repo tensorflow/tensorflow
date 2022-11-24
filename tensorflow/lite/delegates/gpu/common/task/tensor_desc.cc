@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -109,7 +110,7 @@ std::string GetConversion(const GpuInfo& gpu_info,
   }
 }
 
-void MayBeAddConversion(const std::string& conversion, std::string* result) {
+void MayBeAddConversion(absl::string_view conversion, std::string* result) {
   *result = absl::Substitute(conversion, *result);
 }
 
@@ -382,7 +383,7 @@ void TensorDescriptor::GetGpuResources(
 }
 
 absl::Status TensorDescriptor::PerformConstExpr(const GpuInfo& gpu_info,
-                                                const std::string& const_expr,
+                                                absl::string_view const_expr,
                                                 std::string* result) const {
   if (const_expr == "type" || const_expr == "scalar_type") {
     const int vec_size = const_expr == "scalar_type" ? 1 : 4;
@@ -399,7 +400,7 @@ absl::Status TensorDescriptor::PerformConstExpr(const GpuInfo& gpu_info,
 }
 
 absl::Status TensorDescriptor::PerformSelector(
-    const GpuInfo& gpu_info, const std::string& selector,
+    const GpuInfo& gpu_info, absl::string_view selector,
     const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) const {
   if (selector == "Width") {
@@ -847,7 +848,7 @@ std::string TensorDescriptor::Read(
 }
 
 std::string TensorDescriptor::Write(
-    const GpuInfo& gpu_info, const std::string& var_name,
+    const GpuInfo& gpu_info, absl::string_view var_name,
     const std::vector<std::string>& coords) const {
   bool is_texture_write = storage_type_ == TensorStorageType::IMAGE_BUFFER ||
                           storage_type_ == TensorStorageType::TEXTURE_2D ||
@@ -861,7 +862,7 @@ std::string TensorDescriptor::Write(
       use_buffer_for_write_only_2d_texture_) {
     is_texture_write = false;
   }
-  std::string write_expr = var_name;
+  std::string write_expr(var_name);
   DataType write_required_type = data_type_;
   if (data_type_ == DataType::BOOL) {
     // DataType::BOOL stored as DataType::UINT8
@@ -1035,7 +1036,7 @@ std::string TensorDescriptor::StorageTypeToAddressType() const {
 }
 
 std::vector<std::string> TensorDescriptor::GetPhysicalCoordsLinear(
-    const std::string& x) const {
+    absl::string_view x) const {
   switch (storage_type_) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
@@ -1054,7 +1055,7 @@ std::vector<std::string> TensorDescriptor::GetPhysicalCoordsLinear(
 }
 
 std::vector<std::string> TensorDescriptor::GetPhysicalCoordsHW(
-    const std::string& x, const std::string& y) const {
+    absl::string_view x, absl::string_view y) const {
   switch (storage_type_) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
@@ -1073,7 +1074,7 @@ std::vector<std::string> TensorDescriptor::GetPhysicalCoordsHW(
 }
 
 std::vector<std::string> TensorDescriptor::GetPhysicalCoordsWHS(
-    const std::string& x, const std::string& y, const std::string& s) const {
+    absl::string_view x, absl::string_view y, absl::string_view s) const {
   switch (storage_type_) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
@@ -1096,8 +1097,8 @@ std::vector<std::string> TensorDescriptor::GetPhysicalCoordsWHS(
 }
 
 std::vector<std::string> TensorDescriptor::GetPhysicalCoordsWHSB(
-    const std::string& x, const std::string& y, const std::string& s,
-    const std::string& b) const {
+    absl::string_view x, absl::string_view y, absl::string_view s,
+    absl::string_view b) const {
   switch (storage_type_) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
@@ -1122,8 +1123,8 @@ std::vector<std::string> TensorDescriptor::GetPhysicalCoordsWHSB(
 }
 
 std::vector<std::string> TensorDescriptor::GetPhysicalCoordsWHDS(
-    const std::string& x, const std::string& y, const std::string& z,
-    const std::string& s) const {
+    absl::string_view x, absl::string_view y, absl::string_view z,
+    absl::string_view s) const {
   switch (storage_type_) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
@@ -1148,8 +1149,8 @@ std::vector<std::string> TensorDescriptor::GetPhysicalCoordsWHDS(
 }
 
 std::vector<std::string> TensorDescriptor::GetPhysicalCoordsWHDSB(
-    const std::string& x, const std::string& y, const std::string& z,
-    const std::string& s, const std::string& b) const {
+    absl::string_view x, absl::string_view y, absl::string_view z,
+    absl::string_view s, absl::string_view b) const {
   switch (storage_type_) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
@@ -1176,8 +1177,8 @@ std::vector<std::string> TensorDescriptor::GetPhysicalCoordsWHDSB(
 }
 
 std::string TensorDescriptor::GetGlobalAddressNoDeclaration(
-    const std::string& xc, const std::string& yc, const std::string& zc,
-    const std::string& sc, const std::string& bc) const {
+    absl::string_view xc, absl::string_view yc, absl::string_view zc,
+    absl::string_view sc, absl::string_view bc) const {
   auto coords = GetPhysicalCoords(xc, yc, zc, sc, bc);
   switch (storage_type_) {
     case TensorStorageType::BUFFER:
@@ -1197,8 +1198,8 @@ std::string TensorDescriptor::GetGlobalAddressNoDeclaration(
 }
 
 std::vector<std::string> TensorDescriptor::GetPhysicalCoords(
-    const std::string& xc, const std::string& yc, const std::string& zc,
-    const std::string& sc, const std::string& bc) const {
+    absl::string_view xc, absl::string_view yc, absl::string_view zc,
+    absl::string_view sc, absl::string_view bc) const {
   if (layout_ == Layout::HWC) {
     return GetPhysicalCoordsWHS(xc, yc, sc);
   } else if (layout_ == Layout::BHWC) {

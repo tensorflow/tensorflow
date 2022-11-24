@@ -34,7 +34,7 @@ FailureOr<Operation *> fuse(PatternRewriter &rewriter,
 
 /// Populate fusion patterns.
 void populateFusionPatterns(MLIRContext *ctx,
-                            function_ref<LogicalResult(Operation *)> filterFn,
+                            function_ref<LogicalResult(MaterializeOp)> filterFn,
                             RewritePatternSet *patterns);
 
 }  // namespace gml_st

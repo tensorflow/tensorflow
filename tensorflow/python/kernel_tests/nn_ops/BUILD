@@ -3,6 +3,7 @@
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -514,7 +515,7 @@ cuda_py_test(
     srcs = ["pooling_ops_test.py"],
     shard_count = 10,
     # Some operations in this test can only be checked on sm61+.
-    tags = ["prefer-sm70"],
+    tags = ["prefer-sm70", "no_rocm"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

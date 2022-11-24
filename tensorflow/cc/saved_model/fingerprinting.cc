@@ -149,4 +149,21 @@ FingerprintDef CreateFingerprintDef(const SavedModel& saved_model,
   return fingerprint_def;
 }
 
+StatusOr<FingerprintDef> ReadSavedModelFingerprint(
+    absl::string_view export_dir) {
+  const string fingerprint_pb_path =
+      io::JoinPath(export_dir, kFingerprintFilenamePb);
+  Status found_pb = Env::Default()->FileExists(fingerprint_pb_path);
+  if (found_pb.ok()) {
+    FingerprintDef fingerprint_proto;
+    Status result = ReadBinaryProto(Env::Default(), fingerprint_pb_path,
+                                    &fingerprint_proto);
+    if (result.ok()) {
+      return fingerprint_proto;
+    }
+    return result;
+  }
+  return found_pb;
+}
+
 }  // namespace tensorflow::saved_model::fingerprinting

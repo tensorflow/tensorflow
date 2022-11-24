@@ -119,11 +119,11 @@ class GpuRuntimeExecutable {
 
   const DebugOptions debug_options_;
 
-  // Keep a cache of kernels instantiated by this executable.
-  GpuExecutableKernelsCache kernels_cache_;
+  // Keep gpu kernels loaded by this executable.
+  GpuExecutableKernels gpu_kernels_;
 
-  // Keep a cache of gemm configs for all gemm operation in the program.
-  GemmConfigCache gemm_configs_cache_;
+  // Keep gemm configs for all gemm operation in the program.
+  GemmConfigs gemm_configs_;
 
   // Keep a cache for conv configs for all conv operations in the program.
   ConvRunnerCache conv_runners_cache_;
@@ -132,8 +132,8 @@ class GpuRuntimeExecutable {
   JitRtCollectiveSupport collectives_;
 
 #if GOOGLE_CUDA
-  // Keep a cache of mamtul execution plans (only if cuBLASLt is available).
-  MatmulPlanCache cublas_lt_matmul_plans_;
+  // Keep matmul execution plans (only if cuBLASLt is available).
+  MatmulPlans cublas_lt_matmul_plans_;
 #endif  // GOOGLE_CUDA
 };
 

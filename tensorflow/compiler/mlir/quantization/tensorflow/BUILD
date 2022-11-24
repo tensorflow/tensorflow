@@ -15,6 +15,7 @@ package_group(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":internal_visibility_allowlist_package",
     ],
@@ -381,28 +382,24 @@ cc_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        ":quantization_options_proto_cc",
-        "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/debugging:mlir_dump",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
-        "//tensorflow/compiler/mlir/tensorflow:mlir_import_options",
-        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_freeze_variables",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:path",
-        "//tensorflow/core/platform:statusor",
-        "@llvm-project//mlir:ArithDialect",
+        "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Transforms",
     ],
 )

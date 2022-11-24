@@ -1,6 +1,8 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 cc_library(
     name = "host_tracer",
     srcs = ["host_tracer_factory.cc"],
@@ -10,8 +12,8 @@ cc_library(
     ],
     deps = [
         ":host_tracer_impl",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/tsl/profiler/lib:profiler_factory",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
     ],
     alwayslink = True,
 )
@@ -46,8 +48,8 @@ cc_library(
     ],
     deps = [
         ":python_tracer_impl",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/tsl/profiler/lib:profiler_factory",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
     ],
     alwayslink = True,
 )
@@ -81,11 +83,11 @@ cc_library(
         ":metadata_utils",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:xla_debug_info_manager",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/profiler/lib:profiler_factory",
         "//tensorflow/tsl/profiler/lib:profiler_interface",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/profiler/utils:xplane_schema",
         "//tensorflow/tsl/profiler/utils:xplane_utils",

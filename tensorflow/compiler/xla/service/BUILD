@@ -10,7 +10,8 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow/tsl:tsl.bzl", "if_libtpu")
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable", "internal_cuda_deps", "internal_hlo_deps")
+load("//tensorflow:tensorflow.default.bzl", "internal_cuda_deps", "internal_hlo_deps")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -24,6 +25,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//tensorflow/compiler/xla/service:xla_compile.bzl", "xla_aot_compile")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -7001,9 +7003,8 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/cpu:cpu_executable",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/util:command_line_flags",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",

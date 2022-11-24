@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
+#include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/SCF/Transforms/Passes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -59,7 +60,7 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
   pm.addPass(createCanonicalizerPass());  // Clean up shape.assuming ops.
   pm.addNestedPass<FuncOp>(mhlo::createLegalizeHloToLinalgPass());
 
-  // Perform tiling either for softmax or for element-wise.
+  // Tiling either for softmax or for elementwise
   if (experimentalSoftmax) {
     // Simplify unit dimension.
     pm.addPass(mlir::createLinalgFoldUnitExtentDimsPass());
@@ -86,26 +87,22 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
         /*vectorizeGmlStOps=*/true, /*distributionLabels=*/{
             kWarpDistributionLabel, kThreadDistributionLabel}));
   } else {
-    // TODO(b/244313563): This is a workaround to avoid temporary allocs within
-    // threads. It works for as long as all of our operations are cwise.
-    // Vectorize the inner loops instead.
-    // TODO(frgossen): We should not have to skip this pass for softmax.
-    pm.addNestedPass<FuncOp>(createLinalgElementwiseOpFusionPass());
-
-    // Tiling
     pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
         /*distribute=*/true, blockTileDim, kBlockDistributionLabel));
     pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
         /*distribute=*/true, warpTileDim, kWarpDistributionLabel));
     pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
         /*distribute=*/true, threadTileDim, kThreadDistributionLabel));
+    // Convert the inner dimension into a sequential loop over all elements.
+    pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
+        /*distribute=*/false, /*tileSizes=*/1));
     pm.addNestedPass<FuncOp>(createScalarizationPass());
   }
 
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
 
-  // Bufferization-related passes.
+  // Bufferization-related passes
   pm.addNestedPass<FuncOp>(bufferization::createEmptyTensorToAllocTensorPass());
   pm.addPass(hlo::createOneShotBufferizePass());
   // We do not deallocate buffers, since grid-level buffers get converted into
@@ -113,17 +110,16 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
   // memory. None of which have to be deallocated.
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
-  // Canonicalize away memory copies into itself
+  // Canonicalize away memory copies into itself.
   pm.addPass(createCanonicalizerPass());
 
-  // Linalg + GmlSt -> GPU
+  // GmlSt -> GPU
   pm.addNestedPass<FuncOp>(
       gml_st::createGmlStSimtfyPass(kBlockDistributionLabel));
   pm.addNestedPass<FuncOp>(
       gml_st::createGmlStToGpuPass(kWarpDistributionLabel));
   pm.addNestedPass<FuncOp>(gml_st::createGmlStToScfPass());
   pm.addNestedPass<FuncOp>(arith::createArithExpandOpsPass());
-  pm.addNestedPass<FuncOp>(createConvertLinalgToLoopsPass());
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
   pm.addPass(createGpuLauchSinkIndexComputationsPass());
   constexpr llvm::StringRef kGpuDataLayoutSpec =
@@ -131,6 +127,8 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
   pm.addPass(createGpuKernelOutliningPass(kGpuDataLayoutSpec));
   pm.addNestedPass<GPUModuleOp>(createForLoopSpecializationPass());
   pm.addNestedPass<GPUModuleOp>(hlo::createUnrollLoopsPass());
+  // Fold loads from subviews to optimize index computations.
+  pm.addNestedPass<GPUModuleOp>(memref::createFoldMemRefAliasOpsPass());
   pm.addNestedPass<GPUModuleOp>(createLowerAffinePass());
   pm.addNestedPass<GPUModuleOp>(createCanonicalizerPass());
   pm.addNestedPass<GPUModuleOp>(createConvertSCFToCFPass());
@@ -142,8 +140,8 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
   pm.addNestedPass<GPUModuleOp>(createGpuKernelToNvvmPass());
 #endif
   pm.addPass(createPropagateStaticShapesToKernelPass());
-  // We do not do this as a nested pass in order to properly clean the host
-  // side of the generated code.
+  // This is added as a global (instead of nested) pass to also remove duplicate
+  // constants on the host side of the code.
   pm.addPass(createCSEPass());
   // Some instructions crash ptxas down the line if they have debug info
   // attached.

@@ -21,7 +21,6 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_ROCTRACER_WRAPPER_H_
 
 #include "rocm/include/roctracer/roctracer.h"
-#include "rocm/include/roctracer/roctracer_hcc.h"
 #include "rocm/include/roctracer/roctracer_hip.h"
 #include "rocm/include/roctracer/roctracer_roctx.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/env.h"
@@ -98,7 +97,6 @@ namespace wrap {
   DO_FUNC(roctracer_open_pool_expl)              \
   DO_FUNC(roctracer_set_properties)
 #endif
-
 FOREACH_ROCTRACER_API(ROCTRACER_API_WRAPPER)
 
 #undef FOREACH_ROCTRACER_API

@@ -74,7 +74,6 @@ Status CompileTFMLIRToBEF(const TfrtFunctionCompileOptions& options,
   pass_options.tpu_fuse_ops = options.tpu_fuse_ops;
   pass_options.tpu_transfer_result_to_host =
       options.tpu_transfer_result_to_host;
-  pass_options.enable_native_ops = options.enable_native_ops;
   tensorflow::CreateTfExecutorToTfrtPipeline(pm, pass_options);
 
   if (mlir::failed(pm.run(module)))

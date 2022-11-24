@@ -135,7 +135,7 @@ Type TFTypeDialect::parseType(DialectAsmParser &parser) const {
 
   Type genType;
   auto parse_result = generatedTypeParser(parser, &type_tag, genType);
-  if (parse_result.hasValue()) return genType;
+  if (parse_result.has_value()) return genType;
 
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
   if (type_tag == name) return tftype##Type::get(getContext());

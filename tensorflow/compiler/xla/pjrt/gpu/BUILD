@@ -5,6 +5,7 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -23,7 +24,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
         "//tensorflow/compiler/xla/stream_executor:kernel",
-        "//tensorflow/core:gpu_runtime",
+        "//tensorflow/tsl/framework:bfc_allocator",
+        "//tensorflow/tsl/framework:device_id_impl",
         "//tensorflow/tsl/util:env_var",
         "@com_google_absl//absl/types:span",
     ],

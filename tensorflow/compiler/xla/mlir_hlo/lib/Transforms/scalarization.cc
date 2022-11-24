@@ -34,7 +34,7 @@ namespace {
 #define GEN_PASS_DEF_SCALARIZATIONPASS
 #include "mlir-hlo/Transforms/passes.h.inc"
 
-using linalg::GenericOp;
+using linalg::LinalgOp;
 using tensor::ExtractOp;
 using tensor::FromElementsOp;
 using tensor::InsertOp;
@@ -44,14 +44,13 @@ bool hasSingleElement(ShapedTy type) {
   return type.hasStaticShape() && type.getNumElements() == 1;
 }
 
-struct ScalarizeGenericOp : public OpRewritePattern<GenericOp> {
-  using OpRewritePattern::OpRewritePattern;
+struct ScalarizeLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
+  using OpInterfaceRewritePattern<LinalgOp>::OpInterfaceRewritePattern;
 
   static LogicalResult inlinePayload(PatternRewriter &rewriter, Location loc,
-                                     GenericOp genericOp,
-                                     ValueRange argValues) {
+                                     LinalgOp linalgOp, ValueRange argValues) {
     // Clone everything but terminator.
-    Block *body = genericOp.getBlock();
+    Block *body = linalgOp.getBlock();
     BlockAndValueMapping map;
     map.map(body->getArguments(), argValues);
     for (auto &op : body->without_terminator()) {
@@ -66,39 +65,43 @@ struct ScalarizeGenericOp : public OpRewritePattern<GenericOp> {
     // Wrap every scalar result into a tensor using `tensor.from_elements`.
     SmallVector<Value> newResults;
     for (auto [resultType, yieldOperand] :
-         llvm::zip(genericOp->getResultTypes(),
+         llvm::zip(linalgOp->getResultTypes(),
                    body->getTerminator()->getOperands())) {
       auto scalarValue = map.lookupOrDefault(yieldOperand);
       newResults.push_back(
           rewriter.create<FromElementsOp>(loc, resultType, scalarValue));
     }
-    rewriter.replaceOp(genericOp, newResults);
+    rewriter.replaceOp(linalgOp, newResults);
     return success();
   }
 
-  LogicalResult matchAndRewrite(GenericOp genericOp,
+  LogicalResult matchAndRewrite(LinalgOp linalgOp,
                                 PatternRewriter &rewriter) const override {
     // Fail if not every argument is a scalar or a single-element tensor.
     auto isNonScalar = [](Type type) {
-      return type.isa<TensorType>() &&
-             !hasSingleElement(type.cast<TensorType>());
+      return type.isa<mlir::ShapedType>() &&
+             !(type.isa<TensorType>() &&
+               hasSingleElement(type.cast<TensorType>()));
     };
-    if (llvm::any_of(genericOp.getOperandTypes(), isNonScalar) ||
-        llvm::any_of(genericOp.getResultTypes(), isNonScalar))
+
+    if (llvm::any_of(linalgOp->getOperandTypes(), isNonScalar) ||
+        llvm::any_of(linalgOp->getResultTypes(), isNonScalar))
       return failure();
+    // TODO(aliia): fix scalarization of FillOp.
+    if (auto *fillOp = dyn_cast<linalg::FillOp>(&linalgOp)) return failure();
 
     // Load the data corresponding to the block arguments that
     // represent input operands.
     SmallVector<Value> indexedValues;
-    indexedValues.reserve(genericOp->getNumOperands());
-    Location loc = genericOp->getLoc();
+    indexedValues.reserve(linalgOp->getNumOperands());
+    Location loc = linalgOp->getLoc();
     auto zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
-    for (OpOperand &operand : genericOp->getOpOperands()) {
-      if (!genericOp.payloadUsesValueFromOperand(&operand)) {
+    for (OpOperand &operand : linalgOp->getOpOperands()) {
+      if (!linalgOp.payloadUsesValueFromOperand(&operand)) {
         indexedValues.push_back(nullptr);
         continue;
       }
-      if (genericOp.isScalar(&operand)) {
+      if (linalgOp.isScalar(&operand)) {
         indexedValues.push_back(operand.get());
         continue;
       }
@@ -111,7 +114,7 @@ struct ScalarizeGenericOp : public OpRewritePattern<GenericOp> {
     }
 
     // Inline the op payload and rewrite the operation.
-    return inlinePayload(rewriter, loc, genericOp, indexedValues);
+    return inlinePayload(rewriter, loc, linalgOp, indexedValues);
   }
 };
 
@@ -522,7 +525,7 @@ struct ScalarizationPass
         ScalarizeConcatenateOp,
         ScalarizeDynamicBroadcastInDimOp,
         ScalarizeGatherOp,
-        ScalarizeGenericOp,
+        ScalarizeLinalgOp,
         ScalarizeScatterOp
     >(context);
     // clang-format on

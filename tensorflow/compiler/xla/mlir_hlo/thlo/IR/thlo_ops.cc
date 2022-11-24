@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <utility>
 
@@ -65,17 +66,20 @@ void printDstStyleOp(
     function_ref<SmallVector<StringRef>(DstOpTy op, OpAsmPrinter &)>
         printAttrsFn = nullptr) {
   if (op.getNumDpsInputs() != 0) {
+    p.printNewline();
     p << " ins(";
     llvm::interleaveComma(
         op.getOperands().take_front(op.getNumDpsInputs()), p,
         [&](Value input) { p << input << " : " << input.getType(); });
     p << ")";
   }
+  p.printNewline();
   p << " outs(";
   llvm::interleaveComma(
       op.getOperands().take_back(op.getNumDpsInits()), p,
       [&](Value output) { p << output << " : " << output.getType(); });
   p << ")";
+  p.printNewline();
 
   // Print attributes with custom printing logic.
   SmallVector<StringRef> elidedAttrs;
@@ -880,6 +884,21 @@ FailureOr<Value> GatherOp::generateResultTileValue(
 //===----------------------------------------------------------------------===//
 // SortOp
 //===----------------------------------------------------------------------===//
+
+void SortOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+  ResultRange results = getResults();
+  for (int i = 0; i < results.size(); i++) {
+    setNameFn(results[i], "sorted" + std::to_string(i));
+  }
+}
+
+void SortOp::getAsmBlockArgumentNames(Region &region,
+                                      OpAsmSetValueNameFn setNameFn) {
+  for (int i = 0, e = region.getNumArguments(); i < e; i += 2) {
+    setNameFn(region.getArgument(i), "lhs" + std::to_string(i / 2));
+    setNameFn(region.getArgument(i + 1), "rhs" + std::to_string(i / 2));
+  }
+}
 
 ParseResult SortOp::parse(OpAsmParser &parser, OperationState &result) {
   if (parseDstStyleOp(parser, result)) return failure();

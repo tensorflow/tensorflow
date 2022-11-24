@@ -43,7 +43,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 105
+_version = 108
 
 # Version number for MLIR:Python components.
 mlir_api_version = 37
@@ -59,10 +59,8 @@ def make_interpreter_client():
 
 
 def make_cpu_client(*, use_tfrt: bool = True) -> ...:
-  if use_tfrt:
-    return _xla.get_tfrt_cpu_client(asynchronous=True)
-  else:
-    return _xla.get_cpu_client(asynchronous=True)
+  assert use_tfrt
+  return _xla.get_tfrt_cpu_client(asynchronous=True)
 
 
 def make_gpu_client(distributed_client=None, node_id=0, platform_name=None,
@@ -423,7 +421,7 @@ OpSharding = _xla.OpSharding
 HloSharding = _xla.HloSharding
 Sharding = _xla.Sharding
 XLACompatibleSharding = _xla.XLACompatibleSharding
-MeshPspecSharding = _xla.MeshPspecSharding
+NamedSharding = _xla.NamedSharding
 SingleDeviceSharding = _xla.SingleDeviceSharding
 PmapSharding = _xla.PmapSharding
 OpShardingSharding = _xla.OpShardingSharding

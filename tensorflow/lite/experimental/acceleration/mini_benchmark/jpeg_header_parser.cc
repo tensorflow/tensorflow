@@ -18,8 +18,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/string_util.h"

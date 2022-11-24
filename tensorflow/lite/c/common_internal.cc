@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common_internal.h"
 
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 
 TfLiteStatus TfLiteDelegatePrepareInternal(TfLiteContext* context,
                                            TfLiteDelegate* delegate) {

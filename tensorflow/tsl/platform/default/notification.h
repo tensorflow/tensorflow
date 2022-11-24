@@ -29,7 +29,8 @@ namespace tsl {
 
 class Notification {
  public:
-  Notification() : notified_(0) {}
+  Notification() : notified_(false) {}
+  explicit Notification(bool prenotify) : notified_(prenotify) {}
   ~Notification() {
     // In case the notification is being used to synchronize its own deletion,
     // force any prior notifier to leave its critical section before the object

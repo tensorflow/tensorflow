@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -90,7 +91,7 @@ Optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
     tensorflow::PartialTensorShape shape;
     const tensorflow::Status status =
         tensorflow::PartialTensorShape::BuildPartialTensorShape(
-            ranked_type.getShape(), &shape);
+            ConvertMlirShapeToTF(ranked_type.getShape()), &shape);
     if (status.ok()) return shape;
   }
   return None;
@@ -189,27 +190,12 @@ ShapedTypeComponents CreateShapedTypeComponents(InferenceContext& context,
                                                 Type element_type) {
   auto shape = GetShapeFromHandle(context, sh);
   if (shape.has_value())
-    return ShapedTypeComponents(shape.getValue(), element_type);
+    return ShapedTypeComponents(ConvertTFShapeToMlir(shape.value()),
+                                element_type);
   return ShapedTypeComponents(element_type);
 }
 
-llvm::SmallVector<int64_t> ConvertTFShapeToMlir(
-    llvm::ArrayRef<int64_t> shapes) {
-  return llvm::to_vector(llvm::map_range(shapes, [](int64_t shape) {
-    return shape == InferenceContext::kUnknownDim
-               ? mlir::ShapedType::kDynamicSize
-               : shape;
-  }));
-}
-
 }  // namespace
-
-mlir::RankedTensorType GetTypeFromTFTensorShape(llvm::ArrayRef<int64_t> shape,
-                                                mlir::Type elementType,
-                                                mlir::Attribute encoding) {
-  return mlir::RankedTensorType::get(ConvertTFShapeToMlir(shape), elementType,
-                                     encoding);
-}
 
 LogicalResult InferReturnTypeComponentsForTFOp(
     Optional<Location> location, Operation* op, ValueRange operands,

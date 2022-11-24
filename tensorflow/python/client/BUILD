@@ -5,6 +5,7 @@ load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test", "tf_py
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],

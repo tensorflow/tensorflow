@@ -7,6 +7,8 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 cc_library(
     name = "cc_op_fuzz_gen_main",
     srcs = [

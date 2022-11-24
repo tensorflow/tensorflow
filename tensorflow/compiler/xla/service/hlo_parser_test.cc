@@ -965,6 +965,28 @@ ENTRY %fusion.v3 () -> f32[3,2,1,1] {
 
 )"
 },
+// FusionWithAliasing
+{
+"FusionWithAliasing",
+R"(HloModule FusionWithAliasing, entry_computation_layout={((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}),f32[123,4]{0,1})->(f32[123,4]{0,1}, f32[2,2]{0,1}, f32[1,2,3]{0,1,2})}
+
+%FusedComp (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4]) -> (f32[123,4], f32[2,2], f32[1,2,3]) {
+  %p1 = f32[123,4]{0,1} parameter(1)
+  %p0 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
+  %elem1 = f32[2,2]{0,1} get-tuple-element((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) %p0), index=0
+  %constant0 = f32[] constant(1)
+  %broadcast0 = f32[1,2,3]{0,1,2} broadcast(f32[] %constant0), dimensions={}
+  ROOT %tuple = (f32[123,4]{0,1}, f32[2,2]{0,1}, f32[1,2,3]{0,1,2}) tuple(f32[123,4]{0,1} %p1, f32[2,2]{0,1} %elem1, f32[1,2,3]{0,1,2} %broadcast0)
+}
+
+ENTRY %FusionWithAliasing (p0.1: (f32[2,2], f32[42,2,3]), p1.1: f32[123,4]) -> (f32[123,4], f32[2,2], f32[1,2,3]) {
+  %p0.1 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
+  %p1.1 = f32[123,4]{0,1} parameter(1)
+  ROOT %fusion = (f32[123,4]{0,1}, f32[2,2]{0,1}, f32[1,2,3]{0,1,2}) fusion((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) %p0.1, f32[123,4]{0,1} %p1.1), kind=kLoop, output_to_operand_aliasing={{0}: (1, {}), {1}: (0, {0})}, calls=%FusedComp
+}
+
+)"
+},
 {
 "Gather",
 R"(HloModule StringifyGather, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0},s64[10,9,8,7,5]{4,3,2,1,0})->f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0}}

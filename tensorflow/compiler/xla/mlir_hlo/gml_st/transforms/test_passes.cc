@@ -181,7 +181,7 @@ struct TestGmlStBufferizationPass
     opts.allowReturnAllocs = true;
     opts.bufferizeFunctionBoundaries = true;
     opts.functionBoundaryTypeConversion =
-        bufferization::BufferizationOptions::LayoutMapOption::IdentityLayoutMap;
+        bufferization::LayoutMapOption::IdentityLayoutMap;
 
     ModuleOp module = getOperation();
     if (failed(bufferization::runOneShotModuleBufferize(module, opts))) {

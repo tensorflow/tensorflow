@@ -25,22 +25,22 @@ include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.td"
 
 // TODO(pulkitb): Both TFL_ConstOp and ConstantOp seem to work. Decide which
 // one is more apropos.
-def LegalizeConst : Pat<(HLO_ConstantOp $value),
+def LegalizeConst : Pat<(MHLO_ConstantOp $value),
                         (Arith_ConstantOp $value)>;
 
-def LegalizeMul : Pat<(HLO_MulOp $lhs, $rhs),
+def LegalizeMul : Pat<(MHLO_MulOp $lhs, $rhs),
                       (TFL_MulOp  $lhs, $rhs, TFL_AF_None)>;
 
-def LegalizeDiv : Pat<(HLO_DivOp $lhs, $rhs),
+def LegalizeDiv : Pat<(MHLO_DivOp $lhs, $rhs),
                       (TFL_DivOp  $lhs, $rhs, TFL_AF_None)>;
 
-def LegalizeAdd : Pat<(HLO_AddOp $lhs, $rhs),
+def LegalizeAdd : Pat<(MHLO_AddOp $lhs, $rhs),
                       (TFL_AddOp $lhs, $rhs, TFL_AF_None)>;
 
-def LegalizeSub : Pat<(HLO_SubtractOp $lhs, $rhs),
+def LegalizeSub : Pat<(MHLO_SubtractOp $lhs, $rhs),
                       (TFL_SubOp $lhs, $rhs, TFL_AF_None)>;
 
-def LegalizeSqrt : Pat<(HLO_SqrtOp $arg), (TFL_SqrtOp $arg)>;
+def LegalizeSqrt : Pat<(MHLO_SqrtOp $arg), (TFL_SqrtOp $arg)>;
 
-def LegalizeSelect : Pat<(HLO_SelectOp $cond, $x, $y),
+def LegalizeSelect : Pat<(MHLO_SelectOp $cond, $x, $y),
                          (TFL_SelectOp $cond, $x, $y)>;

@@ -190,3 +190,15 @@ def TransformTransposeForCpuPass :
                "Tile sizes for a `linalg.transpose`">,
   ];
 }
+
+def TransformReduceForCpuPass :
+    Pass<"xla-cpu-transform-reduce", "mlir::func::FuncOp"> {
+  let summary = "Transform reduce ops for running on CPU";
+
+  let constructor = "createTransformReduceForCpuPass()";
+
+  let options = [
+    ListOption<"tileSizes", "tile-sizes", "int64_t",
+               "Tile sizes for a `linalg.reduce`">,
+  ];
+}

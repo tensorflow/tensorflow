@@ -152,6 +152,9 @@ void AsyncBundleType::getFlattenedTypes(SmallVectorImpl<Type>& types) {
 }
 
 namespace {
+
+static constexpr int64_t kDynamicSizePrintValue = -1;
+
 void createArgs(ArrayRef<OpAsmParser::UnresolvedOperand> operands,
                 ArrayRef<Type> types,
                 SmallVector<OpAsmParser::Argument>& args) {
@@ -1761,7 +1764,9 @@ LogicalResult GatherOp::inferReturnTypeComponents(
     return failure();
 
   auto getSliceDim = [&sliceSizesAttr](int64_t index) -> int64_t {
-    return sliceSizesAttr.getValues<int64_t>()[index];
+    return sliceSizesAttr.getValues<int64_t>()[index] == kDynamicSizePrintValue
+               ? ShapedType::kDynamicSize
+               : sliceSizesAttr.getValues<int64_t>()[index];
   };
 
   return inferGatherReturnTypeComponents(operandShape, startIndicesShape,
@@ -2777,15 +2782,20 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
   // count.
   int64_t splitCount = adaptor.getSplitCount();
   auto splitDimSize = operandRankedType.getDimSize(splitDimension);
-  if (splitDimSize % splitCount != 0) {
+  if (splitDimSize != ShapedType::kDynamicSize &&
+      (splitDimSize % splitCount != 0)) {
     return emitOptionalError(
         location, "split dimension has size ", splitDimSize,
         ", expected to be a multiple of split_count ", splitCount);
   }
   SmallVector<int64_t> resultShape(operandRankedType.getShape().begin(),
                                    operandRankedType.getShape().end());
-  resultShape[splitDimension] /= splitCount;
-  resultShape[concatDimension] *= splitCount;
+  if (resultShape[splitDimension] != ShapedType::kDynamicSize) {
+    resultShape[splitDimension] /= splitCount;
+  }
+  if (resultShape[concatDimension] != ShapedType::kDynamicSize) {
+    resultShape[concatDimension] *= splitCount;
+  }
   inferredReturnShapes.emplace_back(resultShape,
                                     operandRankedType.getElementType());
   return success();
@@ -2855,12 +2865,17 @@ LogicalResult verifyBatchNorm(Location loc, Value operand,
       scale.getType().cast<RankedTensorType>().getDimSize(0);
   // As ODS enforces `scale`, `mean`, `variance`, `offset` are AllShapesMatch,
   // this also infers that featureCount is aligned with them.
-  if (scaleShape != featureCount)
+  if (scaleShape != featureCount) {
+    auto dimToStr = [](int64_t dim) {
+      return ShapedType::isDynamic(dim) ? "?" : std::to_string(dim);
+    };
     return emitError(loc) << "expects the size of scale factor to be "
                              "same as the feature count,"
                              " but the size of scale factor is "
-                          << scaleShape << " and the feature count is "
-                          << featureCount << ".";
+                          << dimToStr(scaleShape)
+                          << " and the feature count is "
+                          << dimToStr(featureCount) << ".";
+  }
 
   return success();
 }
@@ -2928,6 +2943,27 @@ LogicalResult BatchNormInferenceOp::inferReturnTypeComponents(
   return hlo::inferBatchNormInferenceOp(
       location, adaptor.getOperand(), adaptor.getScale(),
       adaptor.getFeatureIndex(), inferredReturnShapes);
+}
+
+//===----------------------------------------------------------------------===//
+// BitcastOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult BitcastOp::fold(ArrayRef<Attribute>) {
+  if (getResult().getType() != getOperand().getType()) {
+    return {};
+  }
+
+  auto sourceLayout =
+      getOperation()->getAttrOfType<DenseIntElementsAttr>("source_layout");
+  auto resultLayout =
+      getOperation()->getAttrOfType<DenseIntElementsAttr>("result_layout");
+
+  if (sourceLayout == resultLayout) {
+    return getOperand();
+  }
+
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -6061,6 +6097,15 @@ struct Sign {
   Optional<FloatOrInt> operator()(const FloatOrInt& fi) { return compute(fi); }
 };
 
+template <typename FloatOrInt>
+struct Abs {
+  APFloat compute(const APFloat& f) { return abs(f); }
+
+  APInt compute(const APInt& i) { return i.abs(); }
+
+  Optional<FloatOrInt> operator()(const FloatOrInt& fi) { return compute(fi); }
+};
+
 double rsqrt(double d) { return 1.0 / std::sqrt(d); }
 
 double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
@@ -6068,6 +6113,11 @@ double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
 // NOLINTBEGIN(bugprone-macro-parentheses)
 #define UNARY_FOLDER(Op, Func)                                                \
   OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                          \
+    /* AbsOp could take complex but return float */                           \
+    if (getElementTypeOrSelf(getOperation()->getOperand(0).getType()) !=      \
+        getElementTypeOrSelf(getType())) {                                    \
+      return {};                                                              \
+    }                                                                         \
     if (getElementTypeOrSelf(getType()).isa<FloatType>())                     \
       return UnaryFolder<Op, FloatType, APFloat, Func<APFloat>>(this, attrs); \
     if (getElementTypeOrSelf(getType()).isa<IntegerType>())                   \
@@ -6115,6 +6165,7 @@ double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
 
 UNARY_FOLDER(NegOp, std::negate)
 UNARY_FOLDER(SignOp, Sign)
+UNARY_FOLDER(AbsOp, Abs)
 UNARY_FOLDER_INT(NotOp, std::bit_not)
 UNARY_FOLDER_FLOAT(RoundNearestEvenOp, RoundNearestEven)
 UNARY_FOLDER_FLOAT(RoundOp, Round)
@@ -6122,6 +6173,7 @@ UNARY_FOLDER_FLOAT(RoundOp, Round)
 UNARY_FOLDER_UPCAST_TO_F64(CosineOp, std::cos, AnyValue)
 UNARY_FOLDER_UPCAST_TO_F64(ExpOp, std::exp, AnyValue)
 UNARY_FOLDER_UPCAST_TO_F64(LogisticOp, logistic, AnyValue)
+UNARY_FOLDER_UPCAST_TO_F64(LogOp, std::log, PositiveValue)
 UNARY_FOLDER_UPCAST_TO_F64(RsqrtOp, rsqrt, PositiveValue)
 UNARY_FOLDER_UPCAST_TO_F64(SineOp, std::sin, AnyValue)
 UNARY_FOLDER_UPCAST_TO_F64(SqrtOp, std::sqrt, NonNegativeValue)
@@ -8280,6 +8332,57 @@ Attribute GatherDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
   return GatherDimensionNumbersAttr::get(parser.getContext(), offsetDims,
                                          collapsedSliceDims, startIndexMap,
                                          indexVectorDim);
+}
+
+namespace {
+
+void printCommaSeparatedDynamicShapes(AsmPrinter& printer,
+                                      llvm::ArrayRef<int64_t> shape) {
+  printer << '[';
+  auto printIntOrQuestion = [&](int64_t value) {
+    if (ShapedType::isDynamic(value))
+      printer << '?';
+    else
+      printer << value;
+  };
+  llvm::interleaveComma(shape, printer, printIntOrQuestion);
+  printer << ']';
+}
+
+ParseResult parseCommaSeparatedDynamicShapes(AsmParser& parser,
+                                             SmallVectorImpl<int64_t>& shape) {
+  auto parseElt = [&]() -> ParseResult {
+    if (!parser.parseOptionalQuestion()) {
+      shape.push_back(ShapedType::kDynamicSize);
+      return success();
+    }
+    return parser.parseInteger(shape.emplace_back());
+  };
+  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseElt);
+}
+
+}  // namespace
+
+void TypeExtensionsAttr::print(AsmPrinter& printer) const {
+  printer << "<bounds = ";
+  printCommaSeparatedDynamicShapes(printer, getBounds());
+  printer << ">";
+}
+
+Attribute TypeExtensionsAttr::parse(AsmParser& parser, mlir::Type) {
+  if (parser.parseLess() || parser.parseKeyword("bounds") ||
+      parser.parseEqual())
+    return {};
+
+  SmallVector<int64_t> resultBounds;
+  if (parseCommaSeparatedDynamicShapes(parser, resultBounds)) {
+    parser.emitError(parser.getCurrentLocation(),
+                     "failed to parse TypeExtensions parameter 'bounds' which "
+                     "is to be a `::llvm::ArrayRef<int64_t>`");
+    return {};
+  }
+  if (parser.parseGreater()) return {};
+  return TypeExtensionsAttr::get(parser.getContext(), resultBounds);
 }
 
 // Custom printer and parser for DotDimensionNumbersAttr.

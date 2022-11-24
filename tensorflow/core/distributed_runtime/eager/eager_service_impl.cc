@@ -217,7 +217,7 @@ Status ResetAgentAndConnectToCoordinationService(
     }
   }
   // In the scenario of PS strategy, the setup is single client and the error
-  // cannot not be propagated. As a result, Coordination Service agent can still
+  // cannot be propagated. As a result, Coordination Service agent can still
   // have the status of being connected. We should not let it connect again.
   if (!coord_agent->IsConnected()) {
     const Status s = coord_agent->Connect();
@@ -600,7 +600,10 @@ Status EagerServiceImpl::ExecuteOp(CallOptions* call_opts,
   TF_RETURN_IF_ERROR(GetEagerOperationAndNumRetvals(
       operation, eager_context, eager_executor, &op, &num_retvals));
 
-  auto cm = std::make_shared<CancellationManager>();
+  // Shard the CancellationManager so that it won't become a bottleneck in
+  // rendezvous.
+  auto cm =
+      std::make_shared<CancellationManager>(env_->experimental_num_shards);
   if (call_opts) {
     op.SetCancellationManager(cm.get());
     call_opts->SetCancelCallback([cm] { cm->StartCancel(); });

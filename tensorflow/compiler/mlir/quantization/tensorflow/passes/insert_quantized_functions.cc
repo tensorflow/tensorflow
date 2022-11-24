@@ -44,7 +44,7 @@ class InsertQuantizedFunctionsPass
 
   explicit InsertQuantizedFunctionsPass() {}
   explicit InsertQuantizedFunctionsPass(QuantizationMethod quantization_method,
-                                        const OpSet& op_set) {
+                                        OpSet op_set) {
     quantization_method_ = quantization_method;
     op_set_ = op_set;
   }
@@ -177,9 +177,9 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
 
 // Creates an instance of the pass for inserting quantized functions.
 std::unique_ptr<OperationPass<ModuleOp>> CreateInsertQuantizedFunctionsPass(
-    QuantizationMethod quantization_method, const OpSet& op_set) {
+    QuantizationMethod quantization_method, OpSet target_opset) {
   return std::make_unique<InsertQuantizedFunctionsPass>(quantization_method,
-                                                        op_set);
+                                                        target_opset);
 }
 
 }  // namespace quant

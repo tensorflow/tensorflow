@@ -59,7 +59,7 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
 /// Populate tiling patterns.
 void populateTilingPatterns(
     MLIRContext *context,
-    llvm::function_ref<LogicalResult(Operation *)> filterFn,
+    llvm::function_ref<LogicalResult(TilingInterface)> filterFn,
     const TilingOptions &opts, RewritePatternSet *patterns);
 
 }  // namespace gml_st

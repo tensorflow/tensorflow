@@ -2,6 +2,8 @@
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 tf_cc_test(
     name = "tensor_layout_test",
     srcs = ["tensor_layout_test.cc"],

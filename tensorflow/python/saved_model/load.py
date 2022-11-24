@@ -47,6 +47,7 @@ from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
+from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import autotrackable
@@ -976,6 +977,11 @@ def load_partial(export_dir, filters, tags=None, options=None):
     with ops.init_scope():
       root = load_v1_in_v2.load(export_dir, tags)
       root.graph_debug_info = debug_info
+
+  # Read and log SavedModel checksum, if it is nonzero.
+  saved_model_checksum = fingerprinting.MaybeReadSavedModelChecksum(export_dir)
+  if saved_model_checksum != 0:
+    metrics.SetReadFingerprint(saved_model_checksum=str(saved_model_checksum))
 
   if filters:
     return {node_id: loader.get(node_id) for node_id in filters}

@@ -6,6 +6,7 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -575,7 +576,6 @@ cc_library(
         ":type_to_tflitetype",
         ":util",
         ":version",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:cc_api_stable",
@@ -583,6 +583,7 @@ cc_library(
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/delegates:telemetry",
         "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qs8",
         "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qu8",
@@ -606,9 +607,9 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//tensorflow/lite/core:__subpackages__"],
     deps = [
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/internal:signature_def",
     ],
 )
@@ -651,12 +652,12 @@ cc_library(
         ":string",
         ":type_to_tflitetype",
         ":util",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:cc_api_experimental",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/profiling:root_profiler",
@@ -835,11 +836,9 @@ cc_library(
     # Note: adding ":tflite_with_xnnpack_enabled" to the values of following
     # configuration conditions will make TFLite interpreter to apply XNNPACK
     # delegate by default.
-    deps = select({
-        "//tensorflow:macos": [],
-        "//tensorflow:fuchsia": [],
-        "//conditions:default": [":tflite_with_xnnpack_enabled"],
-    }),
+    deps = [
+        ":tflite_with_xnnpack_enabled",
+    ],
 )
 
 cc_library(
@@ -925,9 +924,9 @@ cc_test(
         ":string",
         ":string_util",
         ":util",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/delegates/utils:simple_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
@@ -1167,8 +1166,8 @@ cc_test(
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     deps = [
         ":util",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1225,7 +1224,7 @@ cc_test(
     srcs = ["type_to_tflitetype_test.cc"],
     deps = [
         ":type_to_tflitetype",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "@com_google_googletest//:gtest_main",
     ],
 )

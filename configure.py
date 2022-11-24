@@ -718,7 +718,8 @@ def create_android_sdk_rule(environ_cp):
 
 
 def get_ndk_api_level(environ_cp, android_ndk_home_path):
-  """Gets the appropriate NDK API level to use for the provided Android NDK path."""
+  """Gets the appropriate NDK API level to use for the provided Android NDK path.
+  """
 
   # First check to see if we're using a blessed version of the NDK.
   properties_path = '%s/source.properties' % android_ndk_home_path

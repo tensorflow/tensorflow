@@ -144,6 +144,11 @@ LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
                                        "expected warp-level operation");
 
   auto inType = reductionOp.getSourceVectorType();
+  auto elementType = inType.getElementType();
+  if (!elementType.isIntOrFloat() || elementType.getIntOrFloatBitWidth() > 32) {
+    return rewriter.notifyMatchFailure(
+        reductionOp, "expected int or float element type <= 32b");
+  }
   int64_t width = inType.getNumElements();
   std::initializer_list<int64_t> supportedWidths = {1, 2, 4, 8, 16, 32};
   if (!llvm::is_contained(supportedWidths, width)) {
@@ -165,15 +170,16 @@ LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
   // Even if this value was not written into the tile corresponding to the
   // current thread's lane id, this is fine, since it doesn't matter which
   // thread processes which element within a reduction.
-  TypedValue<VectorType> lhsVector = distribute.getSource();
-  if (!hasOneElement(lhsVector.getType())) {
+  TypedValue<VectorType> distributeSource = distribute.getSource();
+  if (!hasOneElement(distributeSource.getType())) {
     return rewriter.notifyMatchFailure(distribute, "expected 1-vector input");
   }
 
-  // Preamble: extract element from input
+  // Preamble: extract element from input.
   Location loc = reductionOp->getLoc();
-  Value lhs = rewriter.create<ExtractOp>(
-      loc, lhsVector, SmallVector<int64_t>(lhsVector.getType().getRank(), 0));
+  Value result = rewriter.create<ExtractOp>(
+      loc, distributeSource,
+      SmallVector<int64_t>(distributeSource.getType().getRank(), 0));
 
   auto createConstant = [&](int32_t value) {
     return rewriter.create<arith::ConstantOp>(
@@ -184,17 +190,34 @@ LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
   Value cWarpWidth = createConstant(32);
   // Create warp shuffles of increasing offset and interleave with a clone of
   // the accumulate block.
+  unsigned bitWidth = elementType.getIntOrFloatBitWidth();
   for (int64_t i = 1; i < width; i *= 2) {
-    auto shuffleOp = rewriter.create<gpu::ShuffleOp>(
-        loc, lhs, createConstant(i), cWarpWidth, gpu::ShuffleMode::XOR);
-    lhs = createCombineOp(loc, lhs, shuffleOp.getShuffleResult(),
-                          reductionOp.getKind(), rewriter);
+    Value shuffle = result;
+    if (bitWidth < 32) {
+      shuffle = rewriter.create<arith::ExtUIOp>(
+          loc, rewriter.getI32Type(),
+          rewriter.create<arith::BitcastOp>(
+              loc, rewriter.getIntegerType(bitWidth), shuffle));
+    }
+    shuffle = rewriter
+                  .create<gpu::ShuffleOp>(loc, shuffle, createConstant(i),
+                                          cWarpWidth, gpu::ShuffleMode::XOR)
+                  .getShuffleResult();
+    if (bitWidth < 32) {
+      shuffle = rewriter.create<arith::BitcastOp>(
+          loc, elementType,
+          rewriter.create<arith::TruncIOp>(
+              loc, rewriter.getIntegerType(bitWidth), shuffle));
+    }
+    result =
+        createCombineOp(loc, result, shuffle, reductionOp.getKind(), rewriter);
   }
 
   // Combine with init element and broadcast result back to vector.
   Value acc = rewriter.create<ExtractOp>(loc, reductionOp.getAcc(), 0);
-  lhs = createCombineOp(loc, lhs, acc, reductionOp.getKind(), rewriter);
-  rewriter.replaceOpWithNewOp<vector::BroadcastOp>(reductionOp, outType, lhs);
+  result = createCombineOp(loc, acc, result, reductionOp.getKind(), rewriter);
+  rewriter.replaceOpWithNewOp<vector::BroadcastOp>(reductionOp, outType,
+                                                   result);
 
   return success();
 }

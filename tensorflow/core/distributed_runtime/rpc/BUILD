@@ -24,6 +24,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = if_google(
         ["//tensorflow:internal"],
         ["//visibility:public"],

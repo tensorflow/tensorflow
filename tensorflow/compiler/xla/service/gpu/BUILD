@@ -28,9 +28,11 @@ load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_cloud", "if_nccl")
+load("//tensorflow:tensorflow.default.bzl", "if_nccl")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_cloud")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -55,6 +57,7 @@ tf_proto_library(
     name = "backend_configs",
     srcs = ["backend_configs.proto"],
     cc_api_version = 2,
+    make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/stream_executor:dnn_proto",
@@ -212,7 +215,10 @@ cc_library(
     srcs = ["gpu_device_info.cc"],
     hdrs = ["gpu_device_info.h"],
     compatible_with = get_compatible_with_cloud(),
-    deps = ["//tensorflow/compiler/xla/stream_executor:stream_executor_headers"],
+    deps = [
+        "//tensorflow/compiler/xla/stream_executor:device_description_proto_cc",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
+    ],
 )
 
 cc_library(
@@ -562,6 +568,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/runtime:jit_executable",
+        "//tensorflow/compiler/xla/service/gpu/runtime:triangular_solve",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:custom_call_status_internal",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
@@ -928,24 +935,50 @@ cc_library(
         ":ir_emission_utils",
         ":matmul_utils",
         ":stream_executor_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:autotune_results_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/tsl/util/proto:proto_utils",
         "//tensorflow/compiler/xla/stream_executor:blas",
-        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
-        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/tsl/platform:logger",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:autotuning_proto_cc",
+        "//tensorflow/tsl/util/proto:proto_utils",
     ]),
+)
+
+tf_cc_test(
+    name = "gemm_algorithm_picker_test",
+    srcs = ["gemm_algorithm_picker_test.cc"],
+    tags = [
+        "gpu",
+        "no_oss",
+        "noasan",
+        "nomsan",
+        "requires-gpu-sm70",
+    ],
+    deps = [
+        ":gemm_algorithm_picker",
+        ":gemm_rewriter",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc",
+    ],
 )
 
 cc_library(
@@ -1009,6 +1042,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
+        "//tensorflow/compiler/xla:autotune_results_proto_cc",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -1031,6 +1065,31 @@ cc_library(
         "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
     ]),
+)
+
+tf_cc_test(
+    name = "gpu_conv_algorithm_picker_test",
+    srcs = ["gpu_conv_algorithm_picker_test.cc"],
+    tags = [
+        "gpu",
+        "no_oss",
+        "noasan",
+        "nomsan",
+        "requires-gpu-sm70",
+    ],
+    deps = [
+        ":gpu_conv_algorithm_picker",
+        ":gpu_conv_rewriter",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
+        "//tensorflow/compiler/xla/service:tuple_simplifier",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+    ],
 )
 
 cc_library(
@@ -1121,7 +1180,6 @@ tf_cc_test(
     deps = [
         ":cublas_cudnn",
         ":gpu_conv_rewriter",
-        "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
@@ -1790,6 +1848,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:stochastic_convert_decomposer",
         "//tensorflow/compiler/xla/service:transpose_folding",
         "//tensorflow/compiler/xla/service:tuple_simplifier",
+        "//tensorflow/compiler/xla/service:while_loop_all_reduce_code_motion",
         "//tensorflow/compiler/xla/service:while_loop_constant_sinking",
         "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/compiler/xla/service:while_loop_trip_count_annotator",
@@ -1798,6 +1857,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/spmd:collective_permute_motion",
         "//tensorflow/compiler/xla/service/spmd:stateful_rng_spmd_partitioner",
         "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:device_description_proto_cc",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_platform_id",
@@ -1922,6 +1982,7 @@ cc_library(
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/util:env_var",
         ":triangular_solve_rewriter",
     ]),
 )
@@ -2607,7 +2668,6 @@ tf_cc_test(
         ":horizontal_loop_fusion",
         ":instruction_fusion",
         ":multi_output_fusion",
-        "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
@@ -2651,7 +2711,6 @@ tf_cc_test(
     deps = [
         ":horizontal_input_fusion",
         ":multi_output_fusion",
-        "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
@@ -2913,11 +2972,6 @@ test_suite(
         "//tensorflow/compiler/xla/tests:dynamic_ops_test_gpu",
         "//tensorflow/compiler/xla/tests:execution_profile_test_gpu",
         "//tensorflow/compiler/xla/tests:execution_profile_test_with_xla_hlo_profile_gpu",
-        "//tensorflow/compiler/xla/tests:exhaustive_binary_16_bit_test_gpu",
-        "//tensorflow/compiler/xla/tests:exhaustive_binary_test_f32_f64_gpu",
-        "//tensorflow/compiler/xla/tests:exhaustive_unary_test_complex_gpu",
-        "//tensorflow/compiler/xla/tests:exhaustive_unary_test_f32_or_smaller_gpu",
-        "//tensorflow/compiler/xla/tests:exhaustive_unary_test_f64_gpu",
         "//tensorflow/compiler/xla/tests:floor_ceil_test_gpu",
         "//tensorflow/compiler/xla/tests:fmax_fmin_test_gpu",
         "//tensorflow/compiler/xla/tests:gather_operation_test_gpu",

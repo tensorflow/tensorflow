@@ -8,6 +8,8 @@ load(
     "tf_cc_test",
 )
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 # A trivial fuzzer with no pre-specified corpus.
 tf_cc_test(
     name = "identity_fuzz",

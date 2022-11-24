@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
+#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamallocasync_allocator.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/framework/device_id.h"
 
 namespace tensorflow {
 namespace {
@@ -35,10 +36,10 @@ using ::testing::SizeIs;
 
 const char* kDeviceNamePrefix = "/job:localhost/replica:0/task:0";
 
-int64_t GetTotalGPUMemory(PlatformDeviceId gpu_id) {
-  se::StreamExecutor* se =
-      DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
-          .value();
+int64_t GetTotalGPUMemory(tsl::PlatformDeviceId gpu_id) {
+  se::StreamExecutor* se = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
+                               se::GPUMachineManager(), gpu_id)
+                               .value();
 
   int64_t total_memory, available_memory;
   CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
@@ -46,8 +47,8 @@ int64_t GetTotalGPUMemory(PlatformDeviceId gpu_id) {
 }
 
 se::CudaComputeCapability GetComputeCapability() {
-  return DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
-                                                   PlatformDeviceId(0))
+  return se::DeviceIdUtil::ExecutorForPlatformDeviceId(se::GPUMachineManager(),
+                                                       tsl::PlatformDeviceId(0))
       .value()
       ->GetDeviceDescription()
       .cuda_compute_capability();
@@ -267,7 +268,7 @@ TEST_F(GPUDeviceTest, NotEnoughGpuInVisibleDeviceList) {
 
 TEST_F(GPUDeviceTest, VirtualDeviceConfigConflictsWithVisibleDeviceList) {
   // This test requires at least two visible GPU hardware.
-  if (GPUMachineManager()->VisibleDeviceCount() < 2) return;
+  if (se::GPUMachineManager()->VisibleDeviceCount() < 2) return;
   // Three entries in visible_device_list with two (empty) VirtualDevices
   // messages.
   SessionOptions opts = MakeSessionOptions("0,1", 0, 8, {{}});
@@ -448,7 +449,7 @@ TEST_F(GPUDeviceTest, MultipleVirtualDevicesWithDeviceOrdinal) {
 TEST_F(GPUDeviceTest,
        MultipleVirtualDevicesWithDeviceOrdinalOnMultipleDevices) {
   // This test requires at least two visible GPU hardware.
-  if (GPUMachineManager()->VisibleDeviceCount() < 2) return;
+  if (se::GPUMachineManager()->VisibleDeviceCount() < 2) return;
 
   SessionOptions opts =
       MakeSessionOptions("0,1", 0, 2, {{1, 2}, {3, 4}}, {}, {{1, 2}, {1, 2}});
@@ -484,7 +485,7 @@ TEST_F(GPUDeviceTest, UnifiedMemoryUnavailableOnPrePascalGpus) {
 // more memory than what is available on the device.
 TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
   static constexpr double kGpuMemoryFraction = 1.2;
-  static constexpr PlatformDeviceId kPlatformDeviceId(0);
+  static constexpr tsl::PlatformDeviceId kPlatformDeviceId(0);
 
   // Exit early if running on pre-Pascal GPUs.
   if (!GetComputeCapability().IsAtLeast(se::CudaComputeCapability::PASCAL_)) {

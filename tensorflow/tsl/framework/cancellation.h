@@ -18,9 +18,12 @@ limitations under the License.
 
 #include <atomic>
 #include <functional>
+#include <optional>
+#include <string>
+#include <vector>
 
-#include "tensorflow/tsl/lib/gtl/flatmap.h"
-#include "tensorflow/tsl/platform/hash.h"
+#include "absl/container/flat_hash_map.h"
+#include "tensorflow/tsl/framework/lazy.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/notification.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -51,13 +54,17 @@ class CancellationManager {
   // A value that won't be returned by get_cancellation_token().
   static const CancellationToken kInvalidToken;
 
-  CancellationManager();
+  CancellationManager() : CancellationManager(/* num_shards= */ 1) {}
+
+  explicit CancellationManager(int num_shards);
 
   // Constructs a new CancellationManager that is a "child" of `*parent`.
   //
   // If `*parent` is cancelled, `*this` will be cancelled. `*parent` must
   // outlive the created CancellationManager.
-  explicit CancellationManager(CancellationManager* parent);
+  explicit CancellationManager(CancellationManager* parent)
+      : CancellationManager(parent, /* num_shards= */ 1) {}
+  CancellationManager(CancellationManager* parent, int num_shards);
 
   ~CancellationManager();
 
@@ -70,7 +77,7 @@ class CancellationManager {
   void StartCancelWithStatus(const Status& status);
 
   // Returns true iff StartCancel() has been called.
-  bool IsCancelled() { return is_cancelled_.load(std::memory_order_acquire); }
+  bool IsCancelled() { return is_cancelled_.load(); }
 
   // Returns a token that must be used in calls to RegisterCallback
   // and DeregisterCallback.
@@ -157,8 +164,8 @@ class CancellationManager {
   // called.
   bool TryDeregisterCallback(CancellationToken token);
 
-  // Returns true iff cancellation is in progress.
-  bool IsCancelling();
+  // Returns true iff cancellation is in progress or is done.
+  bool IsCancelRequested() const { return is_cancel_requested_.load(); }
 
  private:
   struct CallbackConfiguration {
@@ -167,12 +174,26 @@ class CancellationManager {
     bool log_error = false;
   };
 
+  struct CallbackBucket {
+    mutex mu;
+
+    absl::flat_hash_map<CancellationToken, CallbackConfiguration> callbacks
+        TF_GUARDED_BY(mu);
+  };
+
   struct State {
+    explicit State(CancellationManager* cm, int num_shards)
+        : cancelled_notification(cm->is_cancelled_),
+          callback_buckets(num_shards) {}
+
     Notification cancelled_notification;
-    gtl::FlatMap<CancellationToken, CallbackConfiguration> callbacks;
+
+    // Immutable.
+    std::vector<CallbackBucket> callback_buckets;
 
     // If this CancellationManager has any children, this member points to the
     // head of a doubly-linked list of its children.
+    // Guarded by children_mu_.
     CancellationManager* first_child = nullptr;  // Not owned.
   };
 
@@ -182,27 +203,32 @@ class CancellationManager {
   bool RegisterChild(CancellationManager* child);
   void DeregisterChild(CancellationManager* child);
 
-  bool is_cancelling_;
+  CallbackBucket& GetCallbackBucket(CancellationToken token);
+
+  // True iff the cancellation is started. Callbacks may or may not be invoked.
+  std::atomic_bool is_cancel_requested_;
+  // True iff cancellation is done and all callbacks are invoked.
   std::atomic_bool is_cancelled_;
   std::atomic<CancellationToken> next_cancellation_token_;
 
   CancellationManager* const parent_ = nullptr;  // Not owned.
 
+  mutex children_mu_;
+
   // If this CancellationManager is associated with a parent, this member will
   // be set to `true` after this is removed from the parent's list of children.
-  bool is_removed_from_parent_ TF_GUARDED_BY(parent_->mu_) = false;
+  bool is_removed_from_parent_ TF_GUARDED_BY(parent_->children_mu_) = false;
 
   // If this CancellationManager is associated with a parent, these members form
   // a doubly-linked list of that parent's children.
   //
   // These fields are valid only when `this->is_removed_from_parent_` is false.
-  CancellationManager* prev_sibling_ TF_GUARDED_BY(parent_->mu_) =
+  CancellationManager* prev_sibling_ TF_GUARDED_BY(parent_->children_mu_) =
       nullptr;  // Not owned.
-  CancellationManager* next_sibling_ TF_GUARDED_BY(parent_->mu_) =
+  CancellationManager* next_sibling_ TF_GUARDED_BY(parent_->children_mu_) =
       nullptr;  // Not owned.
 
-  mutex mu_;
-  std::unique_ptr<State> state_ TF_GUARDED_BY(mu_);
+  Lazy<State> state_;
 };
 
 // Registers the given cancellation callback, returning a function that can be

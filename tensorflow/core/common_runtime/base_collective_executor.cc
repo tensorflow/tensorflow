@@ -47,8 +47,7 @@ namespace tensorflow {
 
 namespace {
 bool IsCancelled(CancellationManager* cancel_mgr) {
-  return cancel_mgr != nullptr &&
-         (cancel_mgr->IsCancelled() || cancel_mgr->IsCancelling());
+  return cancel_mgr != nullptr && cancel_mgr->IsCancelRequested();
 }
 }  // namespace
 

@@ -2,7 +2,10 @@
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
-package(default_visibility = [":friends"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
+)
 
 package_group(
     name = "friends",

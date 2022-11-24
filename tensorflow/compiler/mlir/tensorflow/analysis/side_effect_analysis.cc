@@ -128,7 +128,7 @@ bool MayHaveSideEffect(Operation* op) {
   if (isa_and_nonnull<TF::TensorFlowDialect>(op->getDialect()))
     return TensorFlowDialect::CanHaveSideEffects(op);
 
-  if (mlir::MemoryEffectOpInterface::hasNoEffect(op)) return false;
+  if (mlir::isMemoryEffectFree(op)) return false;
   // Conservatively assume that there can be side effects.
   return true;
 }

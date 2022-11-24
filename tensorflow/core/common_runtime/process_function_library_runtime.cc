@@ -755,7 +755,7 @@ Status GetGraphAndArgRets(
   return OkStatus();
 }
 
-StatusOr<ProcessFunctionLibraryRuntime::OptimizedFunctionGraphInfo>
+StatusOr<OptimizedFunctionGraphInfo>
 ProcessFunctionLibraryRuntime::OptimizeFunctionGraph(
     const string& function_name, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options,
@@ -928,9 +928,12 @@ ProcessFunctionLibraryRuntime::OptimizeFunctionGraph(
 
   graph->mutable_flib_def()->set_default_registry(nullptr);
   graph->mutable_flib_def()->Clear();
-  return OptimizedFunctionGraphInfo{
-      std::move(graph), std::move(reachable_lib_def), node_name_to_control_ret,
-      std::move(ret_types), ret_nodes.size()};
+  return OptimizedFunctionGraphInfo{function_name,
+                                    std::move(graph),
+                                    std::move(reachable_lib_def),
+                                    node_name_to_control_ret,
+                                    std::move(ret_types),
+                                    ret_nodes.size()};
 }
 
 Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
@@ -971,7 +974,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       auto optimized_graph_info,
       OptimizeFunctionGraph(function_name, attrs, options, dev_set));
 
-  auto& graph = optimized_graph_info.graph;
+  auto& graph = optimized_graph_info.function_graph;
   graph->mutable_flib_def()->set_default_registry(
       &(optimized_graph_info.lib_def));
 

@@ -2,6 +2,7 @@ load("//tensorflow/lite:special_rules.bzl", "verifier_internal_visibility_allowl
 load("//tensorflow/lite:build_def.bzl", "tflite_self_contained_libs_test_suite")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 

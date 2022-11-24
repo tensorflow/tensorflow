@@ -86,7 +86,6 @@ namespace gpuprim = ::hipcub;
 // Required for sorting Eigen::half and bfloat16.
 namespace rocprim {
 namespace detail {
-
 #if (TF_ROCM_VERSION >= 50200)
 template <>
 struct float_bit_mask<Eigen::half> {
@@ -104,7 +103,6 @@ struct float_bit_mask<Eigen::bfloat16> {
   using bit_type = uint16_t;
 };
 #endif
-
 template <>
 struct radix_key_codec_base<Eigen::half>
     : radix_key_codec_floating<Eigen::half, uint16_t> {};

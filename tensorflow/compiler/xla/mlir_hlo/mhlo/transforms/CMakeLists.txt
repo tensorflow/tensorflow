@@ -85,6 +85,7 @@ add_mlir_library(MhloPasses
   MLIRIR
   MLIRMhloUtils
   MLIRPass
+  MLIRSideEffectInterfaces
   MLIRTransformUtils
   StablehloBroadcastUtils
 )
@@ -240,6 +241,7 @@ add_mlir_library(MhloToLinalg
   MLIRBufferizationDialect
   MLIRComplexDialect
   MLIRIR
+  MLIRLinalgTransforms
   MLIRLinalgUtils
   MLIRPass
   MLIRRewrite

@@ -263,10 +263,8 @@ TEST(ExecutableTest, AsyncExecuteAndAwait) {
 // Performance benchmarks are below.
 //===----------------------------------------------------------------------===//
 
-using benchmark::State;
-
 static void CompileAndBenchmark(
-    State& state, std::string_view module, ArgumentsRef args,
+    benchmark::State& state, std::string_view module, ArgumentsRef args,
     ResultConverter& results, AsyncTaskRunner* async_task_runner = NoRunner()) {
   JitExecutable::Options opts;
   opts.specialization = JitExecutable::Specialization::kDisabled;
@@ -296,7 +294,7 @@ static void CompileAndBenchmark(
   }
 }
 
-void BM_AsyncExecuteAndAwait(State& state) {
+void BM_AsyncExecuteAndAwait(benchmark::State& state) {
   absl::string_view module = R"(
     func.func @test(%arg0: i32, %arg1: i32) -> i32 {
       %token, %result = async.execute -> !async.value<i32> {

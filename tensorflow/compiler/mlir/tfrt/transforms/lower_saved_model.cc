@@ -177,7 +177,7 @@ bool CanHoist(const llvm::DenseSet<mlir::TF::ResourceHandle> &read_only_vars,
   if (op->mightHaveTrait<mlir::OpTrait::IsTerminator>()) return false;
 
   // Non-side-effecting ops can be hoisted.
-  if (mlir::MemoryEffectOpInterface::hasNoEffect(op)) return true;
+  if (mlir::isMemoryEffectFree(op)) return true;
 
   // ResourceHandle ops can be hoisted.
   if (llvm::isa<mlir::TF::VarHandleOp, mlir::TF::HashTableV2Op>(op))
@@ -585,7 +585,7 @@ mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
         assign_ops.push_back(assign);
         continue;
       }
-    } else if (mlir::MemoryEffectOpInterface::hasNoEffect(user)) {
+    } else if (mlir::isMemoryEffectFree(user)) {
       side_effect_free_ops.push_back({user, use.getOperandNumber()});
       continue;
     }

@@ -101,7 +101,8 @@ class RecvTPUEmbeddingActivationsOp : public XlaOpKernel {
       }
     });
 
-    tpu::OpsApiFn()->TpuEmbeddingEngine_RecvActivationsComputationFn(&params);
+    stream_executor::tpu::OpsApiFn()
+        ->TpuEmbeddingEngine_RecvActivationsComputationFn(&params);
     OP_REQUIRES_OK(ctx, status.status());
     auto xla_computation =
         stream_executor::tpu::DeserializeProto<xla::HloModuleProto>(
@@ -196,7 +197,7 @@ class RecvTPUEmbeddingDeduplicationDataOp : public XlaOpKernel {
       }
     });
 
-    tpu::OpsApiFn()
+    stream_executor::tpu::OpsApiFn()
         ->TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputationFn(
             &params);
     OP_REQUIRES_OK(ctx, status.status());
@@ -330,8 +331,8 @@ class SendTPUEmbeddingGradientsOp : public XlaOpKernel {
       }
     });
 
-    tpu::OpsApiFn()->TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputationFn(
-        &params);
+    stream_executor::tpu::OpsApiFn()
+        ->TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputationFn(&params);
     OP_REQUIRES_OK(ctx, status.status());
 
     auto xla_computation =

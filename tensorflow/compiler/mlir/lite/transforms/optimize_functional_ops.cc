@@ -67,7 +67,7 @@ void UpdateFuncType(func::FuncOp func) {
 bool IsSideEffectFree(func::FuncOp func) {
   return !func.getBody()
               .walk([&](Operation* op) {
-                if (!MemoryEffectOpInterface::hasNoEffect(op) &&
+                if (!isMemoryEffectFree(op) &&
                     !op->hasTrait<OpTrait::IsTerminator>())
                   return WalkResult::interrupt();
                 return WalkResult::advance();

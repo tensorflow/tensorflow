@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/optimized_function_graph_info.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -382,20 +383,6 @@ class ProcessFunctionLibraryRuntime {
                bool skip_flib_def = false) const;
 
   Status ReleaseMultiDeviceHandle(FunctionLibraryRuntime::Handle handle);
-
-  // Function graph related information after optimizations.
-  struct OptimizedFunctionGraphInfo {
-    // Optimized graph.
-    std::unique_ptr<Graph> graph;
-    // Optimized function library.
-    FunctionLibraryDefinition lib_def;
-    // Map from original node names to control return names.
-    std::unordered_map<string, string> node_name_to_control_ret;
-    // Return node types of the function.
-    DataTypeVector ret_types;
-    // Number of return nodes.
-    size_t num_return_nodes;
-  };
 
   // Outputs graph optimization result after all the graph optimization (up till
   // before graph partitioning); returns error if optimization fails.

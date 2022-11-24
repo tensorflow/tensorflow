@@ -237,7 +237,7 @@ Status CpuExecutable::ExecuteComputeFunction(
       BufferDesc desc(const_cast<void*>(base.opaque()), base.size());
       descriptor_table.push_back(std::move(desc));
     }
-    Status status = ExecuteXlaRuntime(descriptor_table);
+    Status status = ExecuteXlaRuntime(descriptor_table, run_options);
     record_profile();
     if (!status.ok()) {
       return status;

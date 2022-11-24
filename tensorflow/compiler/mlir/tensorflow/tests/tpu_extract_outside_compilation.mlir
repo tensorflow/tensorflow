@@ -1967,3 +1967,25 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 }
 
+// -----
+
+// Tests that an error is reported when an op with _xla_outside_compilation has
+// an ancestor with _xla_outside_compilation.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func.func @outside_comp_ancestor() {
+    "tf_device.cluster"() ({
+      "tf.WhileRegion"() ({
+      ^bb0():
+        // expected-error @+1 {{has an ancestor marked for outside compilation}}
+        %1 = "tf.A"() {_xla_outside_compilation = "cluster1"} : () -> tensor<i1>
+	"tf.Yield"(%1) : (tensor<i1>) -> ()
+      }, {
+      ^bb0():
+        "tf.Yield"() : () -> ()
+      }) {_xla_outside_compilation = "cluster1", is_stateless = true} : () -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
+    func.return
+  }
+}

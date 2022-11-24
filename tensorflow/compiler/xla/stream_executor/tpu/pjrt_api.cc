@@ -15,14 +15,44 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/pjrt_api.h"
 
-namespace tensorflow {
+#include <string>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
+
+namespace stream_executor {
 namespace tpu {
 
-static const PJRT_Api* pjrt_api;
+static auto* pjrt_apis =
+    new absl::flat_hash_map<std::string, const PJRT_Api*>{};
 
-const PJRT_Api* PjrtApi() { return pjrt_api; }
+static std::string CanonicalizeDeviceType(absl::string_view device_type) {
+  return absl::AsciiStrToLower(device_type);
+}
 
-void SetPjrtApi(const PJRT_Api* api) { pjrt_api = api; }
+xla::StatusOr<const PJRT_Api*> PjrtApi(absl::string_view device_type) {
+  std::string canonicalize_device_type = CanonicalizeDeviceType(device_type);
+  auto iter = pjrt_apis->find(canonicalize_device_type);
+  if (iter == pjrt_apis->end()) {
+    return tsl::errors::NotFound("PJRT_Api not found for device type ",
+                                 canonicalize_device_type);
+  }
+  return iter->second;
+}
+
+xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api) {
+  std::string canonicalize_device_type = CanonicalizeDeviceType(device_type);
+  if (auto iter = pjrt_apis->find(canonicalize_device_type);
+      iter != pjrt_apis->end()) {
+    return tsl::errors::AlreadyExists(
+        "PJRT_Api already exists for device type ", canonicalize_device_type);
+  }
+  (*pjrt_apis)[canonicalize_device_type] = api;
+  LOG(INFO) << "PJRT_Api is set for device type " << canonicalize_device_type;
+  return tsl::OkStatus();
+}
 
 }  // namespace tpu
-}  // namespace tensorflow
+}  // namespace stream_executor

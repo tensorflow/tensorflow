@@ -53,7 +53,7 @@ bool FunctionHasSideEffect(
     // ops' callee functions contain them, we treat them as non-side-effecting.
     if (llvm::isa<mlir::TF::AssertOp, mlir::TF::TimestampOp>(op)) return false;
 
-    return !mlir::MemoryEffectOpInterface::hasNoEffect(op);
+    return !mlir::isMemoryEffectFree(op);
   };
 
   // Speculatively setting the function to have no side effect to avoid infinite

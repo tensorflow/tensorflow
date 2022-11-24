@@ -11,6 +11,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
         "//tensorflow/python:__subpackages__",
@@ -30,19 +31,6 @@ cc_library(
         "//tensorflow/python:__pkg__",
     ],
     deps = [
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:Transforms",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/quantization/tensorflow:constants",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
@@ -50,8 +38,8 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
-        # Required for CustomAggregator op registration.
-        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op",  # Required for CustomAggregator op registration.
+        "//tensorflow/compiler/mlir/quantization/tensorflow/debugging:mlir_dump",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
@@ -66,6 +54,17 @@ cc_library(
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/tsl/platform:path",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -141,7 +140,7 @@ tf_py_test(
     name = "quantize_model_test",
     size = "medium",
     srcs = ["integration_test/quantize_model_test.py"],
-    shard_count = 10,  # Parallelize the test to avoid timeouts.
+    shard_count = 50,  # Parallelize the test to avoid timeouts.
     tags = ["no_pip"],
     deps = [
         ":quantize_model",

@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <numeric>
+#include <queue>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -177,28 +178,79 @@ HloInstruction* SoftmaxProducer(HloInstruction* softmax_root) {
   return reduce_or_reshape->mutable_operand(0)->mutable_operand(0);
 }
 
+bool IsSupportedBroadcast(HloInstruction* hlo) {
+  if (hlo->opcode() != HloOpcode::kBroadcast) {
+    return false;
+  }
+  int64_t rank = hlo->shape().rank();
+  if (rank <= 2) {
+    return true;
+  }
+  // TODO(akuegel): Remove this logic once we do not rely on collapsing shapes
+  // to 2D.
+  // For rank > 2, we need to collapse the shape to 2D. This only works if the
+  // dimensions that are to be collapsed have the same state regarding whether
+  // they are broadcasted or not.
+  if (!hlo->dimensions().empty()) {
+    // Make sure that the broadcast dimensions are sorted.
+    if (!std::is_sorted(hlo->dimensions().begin(), hlo->dimensions().end())) {
+      return false;
+    }
+    // If there is a broadcast dimension in the part of dimensions that are
+    // collapsed into 1 dimension, then all those rank - 1 dimensions need to be
+    // broadcast dimensions.
+    if (hlo->dimensions(0) < rank - 1 &&
+        (hlo->dimensions().size() < rank - 1 ||
+         hlo->dimensions()[rank - 1] != rank - 1)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 Status ReplaceSoftmaxWithCustomCall(HloInstruction* root,
                                     HloInstruction* producer) {
   absl::flat_hash_map<const HloInstruction*, HloInstruction*>
       old_to_new_mapping;
   auto builder = HloComputation::Builder("softmax_computation");
   std::vector<HloInstruction*> custom_call_operands;
-  if (producer->IsElementwise()) {
-    int64_t operand_idx = 0;
-    for (HloInstruction* operand : producer->operands()) {
-      if (!old_to_new_mapping.contains(operand)) {
-        custom_call_operands.push_back(operand);
-        old_to_new_mapping[operand] =
-            builder.AddInstruction(HloInstruction::CreateParameter(
-                operand_idx, operand->shape(),
-                absl::StrCat("parameter_", operand_idx)));
-        ++operand_idx;
+  absl::flat_hash_set<HloInstruction*> visited;
+  std::queue<HloInstruction*> worklist;
+  worklist.push(producer);
+  visited.insert(producer);
+  int64_t operand_idx = 0;
+  // Fuse all elementwise and broadcast ops into the softmax fusion computation,
+  // provided each of them (except the softmax root) has exactly one user. We do
+  // this by searching for unfusable ops which become the parameters of the
+  // computation. Everything that was fused will be reconstructed in the new
+  // computation by remapping the ops to their new operands.
+  while (!worklist.empty()) {
+    HloInstruction* current = worklist.front();
+    worklist.pop();
+    // TODO(akuegel): Currently our MLIR lowering doesn't work if we fuse
+    // constants in. This results in an error like:
+    // 'memref.get_global' op '__constant_150xf32' does not reference a valid
+    // global memref
+    if ((current->user_count() == 1 ||
+         (current == producer && current->user_count() == 2)) &&
+        ((current->IsElementwise() &&
+          current->opcode() != HloOpcode::kConstant) ||
+         IsSupportedBroadcast(current))) {
+      for (HloInstruction* operand : current->operands()) {
+        if (!visited.contains(operand)) {
+          visited.insert(operand);
+          worklist.push(operand);
+        }
       }
+    } else {
+      // The op is unfusable. Create a parameter for the softmax computation.
+      custom_call_operands.push_back(current);
+      old_to_new_mapping[current] =
+          builder.AddInstruction(HloInstruction::CreateParameter(
+              operand_idx, current->shape(),
+              absl::StrCat("parameter_", operand_idx)));
+      ++operand_idx;
     }
-  } else {
-    custom_call_operands.push_back(producer);
-    old_to_new_mapping[producer] = builder.AddInstruction(
-        HloInstruction::CreateParameter(0, producer->shape(), "parameter_0"));
   }
   std::function<void(const HloInstruction*)> create_computation =
       [&](const HloInstruction* instr) {
@@ -242,6 +294,9 @@ StatusOr<bool> SoftmaxFusion::Run(
       softmax_producer_to_root_mapping;
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
+    if (comp->IsCustomCallComputation()) {
+      continue;
+    }
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
       if (MatchesSoftmaxPattern(instr)) {
         softmax_roots.push_back(instr);

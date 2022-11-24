@@ -19,7 +19,7 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.ops import gen_dataset_ops
 
 
-def zip(datasets, name):  # pylint: disable=redefined-builtin
+def _zip(datasets, name):  # pylint: disable=redefined-builtin
   return _ZipDataset(datasets, name)
 
 

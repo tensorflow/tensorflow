@@ -266,12 +266,7 @@ mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type) {
   }
 
   if (auto tensor_type = type.dyn_cast<mlir::RankedTensorType>()) {
-    llvm::SmallVector<int64_t, 4> shape;
-    for (int64_t d : tensor_type.getShape()) {
-      shape.push_back(ShapedType::isDynamic(d) ? kTFDynamicSize : d);
-    }
-    return mlir::TF::ShapeAttr::get(type.getContext(),
-                                    llvm::makeArrayRef(shape));
+    return mlir::TF::ShapeAttr::get(type.getContext(), tensor_type.getShape());
   }
 
   // If type is not a RankedTensor or UnrankedTensor, it must be a scalar.

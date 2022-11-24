@@ -25,6 +25,7 @@ limitations under the License.
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/python/python_utils.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
+#include "tensorflow/compiler/xla/python/util.h"
 
 namespace xla {
 namespace {
@@ -262,14 +263,7 @@ Status PyArray::set_arrays(py::object obj) {
 
 Status PyArray::BlockUntilReady() const {
   pybind11::gil_scoped_release gil_release;
-  Status status;
-  for (const auto& pjrt_buffer : pjrt_buffers()) {
-    // PjRtBuffer::BlockHostUntilReady() fix up the error message because some
-    // clients rely on it.
-    auto s = pjrt_buffer->BlockHostUntilReady();
-    if (!s.ok()) status = std::move(s);
-  }
-  return status;
+  return AwaitBuffersReady(pjrt_buffers());
 }
 
 bool PyArray::IsDeleted() const {

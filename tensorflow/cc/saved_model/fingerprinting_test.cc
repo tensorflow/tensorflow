@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/fingerprint.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 
@@ -121,6 +122,21 @@ TEST(FingerprintingTest, TestHashCheckpointForModelWithNoVariables) {
   FingerprintDef fingerprint_def =
       CreateFingerprintDef(saved_model_pb, export_dir);
   EXPECT_EQ(fingerprint_def.checkpoint_hash(), 0);
+}
+
+TEST(FingerprintingTest, TestReadValidFingerprint) {
+  const std::string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), "cc/saved_model/testdata",
+                   "VarsAndArithmeticObjectGraph");
+  TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_pb,
+                          ReadSavedModelFingerprint(export_dir));
+  EXPECT_EQ(fingerprint_pb.saved_model_checksum(), 15788619162413586750u);
+}
+
+TEST(FingerprintingTest, TestReadNonexistentFingerprint) {
+  const std::string export_dir = io::JoinPath(
+      testing::TensorFlowSrcRoot(), "cc/saved_model/testdata", "AssetModule");
+  EXPECT_FALSE(ReadSavedModelFingerprint(export_dir).ok());
 }
 
 }  // namespace

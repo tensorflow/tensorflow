@@ -54,15 +54,18 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
-
   HloComputation* comp = module->entry_computation();
   const HloInstruction* conv1 = comp->GetInstructionWithName("conv1");
-  EXPECT_EQ(analysis_.operand_bytes_accessed(*conv1, 0),
-            sizeof(int8_t) * 128 * 12 * 24 * 24 * 4);
-  EXPECT_EQ(analysis_.operand_bytes_accessed(*conv1, 1),
-            sizeof(int8_t) * 16 * 12 * 5 * 5 * 4);
-  EXPECT_EQ(analysis_.output_bytes_accessed(*conv1),
-            sizeof(int8_t) * 128 * 4 * 24 * 24 * 4);
+  int op0_size = sizeof(int8_t) * 128 * 12 * 24 * 24 * 4;
+  int op1_size = sizeof(int8_t) * 16 * 12 * 5 * 5 * 4;
+  int op2_size = sizeof(float) * 16;
+  int out_size = sizeof(int8_t) * 128 * 4 * 24 * 24 * 4;
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*conv1, 0), op0_size);
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*conv1, 1), op1_size);
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*conv1, 2), op2_size);
+  EXPECT_EQ(analysis_.output_bytes_accessed(*conv1), out_size);
+  EXPECT_EQ(analysis_.bytes_accessed(*conv1),
+            op0_size + op1_size + op2_size + out_size);
   EXPECT_EQ(analysis_.flop_count(*conv1), 159694848);
 }
 

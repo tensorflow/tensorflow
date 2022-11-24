@@ -84,7 +84,6 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(_TFLITE_ENABLE_RUY "${TFLITE_ENABLE_RUY}")
-set(THREADS_PREFER_PTHREAD_FLAG ON)
 if("${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
   set(_TFLITE_ENABLE_RUY ON)
 endif()
@@ -149,7 +148,26 @@ find_package(gemmlowp REQUIRED)
 find_package(NEON_2_SSE REQUIRED)
 find_package(cpuinfo REQUIRED)  #CPUINFO is used by XNNPACK and RUY library
 find_package(ruy REQUIRED)
-find_package(Threads REQUIRED)
+# Download necessary dependencies.
+# Download pthreadpool source package if it doesn't exist.
+if(NOT DEFINED PTHREADPOOL_SOURCE_DIR)
+    message(STATUS "Downloading pthreadpool to ${CMAKE_BINARY_DIR}/pthreadpool-source (define PTHREADPOOL_SOURCE_DIR to avoid it)")
+    configure_file(cmake/DownloadPThreadPool.cmake "${CMAKE_BINARY_DIR}/pthreadpool-download/CMakeLists.txt")
+    execute_process(COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" .
+      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pthreadpool-download")
+    execute_process(COMMAND "${CMAKE_COMMAND}" --build .
+      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pthreadpool-download")
+    set(PTHREADPOOL_SOURCE_DIR "${CMAKE_BINARY_DIR}/pthreadpool-source" CACHE STRING "pthreadpool source directory")
+endif()
+# Configure pthreadpool
+if(NOT TARGET pthreadpool)
+  set(PTHREADPOOL_BUILD_TESTS OFF CACHE BOOL "")
+  set(PTHREADPOOL_BUILD_BENCHMARKS OFF CACHE BOOL "")
+  set(PTHREADPOOL_ALLOW_DEPRECATED_API OFF CACHE BOOL "")
+  add_subdirectory(
+    "${PTHREADPOOL_SOURCE_DIR}"
+    "${CMAKE_BINARY_DIR}/pthreadpool")
+endif()
 set(TF_TARGET_PRIVATE_OPTIONS "")
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang$")
   # TensorFlow uses a heap of deprecated proto fields so surpress these
@@ -544,7 +562,7 @@ target_link_libraries(tensorflow-lite
     flatbuffers::flatbuffers
     gemmlowp
     ruy::ruy
-    Threads::Threads
+    pthreadpool
     ${CMAKE_DL_LIBS}
     ${TFLITE_TARGET_DEPENDENCIES}
 )
