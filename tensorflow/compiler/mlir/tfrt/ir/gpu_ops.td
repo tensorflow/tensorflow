@@ -30,8 +30,6 @@ def TFRT_GPU_Dialect : Dialect {
   }];
 
   let cppNamespace = "::tfrt::gpu";
-
-  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 class Gpu_Op<string mnemonic, list<Trait> traits = []> :
