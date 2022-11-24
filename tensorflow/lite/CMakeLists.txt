@@ -560,7 +560,6 @@ target_link_libraries(tensorflow-lite
     farmhash
     fft2d_fftsg2d
     flatbuffers::flatbuffers
-    gemmlowp
     ruy::ruy
     pthreadpool
     ${CMAKE_DL_LIBS}
