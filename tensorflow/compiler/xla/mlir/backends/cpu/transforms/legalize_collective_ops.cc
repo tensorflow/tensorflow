@@ -171,27 +171,34 @@ class AllToAllLowering : public OpRewritePattern<mhlo::AllToAllOp> {
 
   LogicalResult matchAndRewrite(mhlo::AllToAllOp op,
                                 PatternRewriter& rewriter) const override {
-    // TODO(jreiffers): Support the variadic case.
-    if (op.getNumOperands() != 1) {
-      return failure();
-    }
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    auto sizes =
-        getAsValues(b, b.getLoc(),
-                    tensor::getMixedSizes(b, op.getLoc(), op->getOperand(0)));
-    uint64_t split_dimension = *op.getSplitDimension();
-    Value split_count = b.create<arith::ConstantIndexOp>(*op.getSplitCount());
-    sizes[split_dimension] = b.createOrFold<arith::DivUIOp>(
-        b.getIndexType(), sizes[split_dimension], split_count);
-    uint64_t concat_dimension = *op.getConcatDimension();
-    sizes[concat_dimension] =
-        b.createOrFold<arith::MulIOp>(sizes[concat_dimension], split_count);
 
-    Value dst = rewriter.create<tensor::EmptyOp>(
-        op.getLoc(), getAsOpFoldResult(sizes),
-        op->getResultTypes()[0].cast<ShapedType>().getElementType());
+    SmallVector<Value> dsts;
+
+    if (!op.getConcatDimensionAttr()) {
+      for (auto operand : op->getOperands()) {
+        // The operands and results of TupleAllToAll the same shapes.
+        dsts.push_back(CreateEmptyLike(rewriter, op.getLoc(), operand));
+      }
+    } else {
+      auto sizes =
+          getAsValues(b, b.getLoc(),
+                      tensor::getMixedSizes(b, op.getLoc(), op->getOperand(0)));
+      uint64_t split_dimension = *op.getSplitDimension();
+      Value split_count = b.create<arith::ConstantIndexOp>(*op.getSplitCount());
+      sizes[split_dimension] = b.createOrFold<arith::DivUIOp>(
+          b.getIndexType(), sizes[split_dimension], split_count);
+      uint64_t concat_dimension = *op.getConcatDimension();
+      sizes[concat_dimension] =
+          b.createOrFold<arith::MulIOp>(sizes[concat_dimension], split_count);
+
+      dsts.push_back(rewriter.create<tensor::EmptyOp>(
+          op.getLoc(), getAsOpFoldResult(sizes),
+          op->getResultTypes()[0].cast<ShapedType>().getElementType()));
+    }
+
     rewriter.replaceOpWithNewOp<xla_cpu::AllToAllOp>(
-        op, op->getResultTypes(), op->getOperand(0), dst,
+        op, op->getResultTypes(), op->getOperands(), dsts,
         op.getReplicaGroupsAttr(), op.getSplitDimensionAttr(),
         op.getConcatDimensionAttr(), op.getSplitCountAttr());
     return success();

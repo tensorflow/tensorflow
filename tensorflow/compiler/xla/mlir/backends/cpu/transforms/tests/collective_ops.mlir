@@ -193,3 +193,18 @@ func.func @all_to_all_dynamic_split_dim(%arg0: tensor<4x?xf32>)
 //       CHECK: %[[CONCAT_DIM:.*]] = arith.divui %[[DIM]], %[[C4]]
 //       CHECK: %[[DST:.*]] = tensor.empty(%[[CONCAT_DIM]]) : tensor<16x?xf32>
 //       CHECK: "xla_cpu.all_to_all"(%[[ARG0]], %[[DST]]) {
+
+func.func @all_to_all_tuple(%arg0: tensor<128x4xf32>, %arg1: tensor<128x4xf32>)
+    -> (tensor<128x4xf32>, tensor<128x4xf32>) {
+  %0:2 = "mhlo.all_to_all"(%arg0, %arg1) {
+    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+  } : (tensor<128x4xf32>, tensor<128x4xf32>) -> (tensor<128x4xf32>, tensor<128x4xf32>)
+  return %0#0, %0#1 : tensor<128x4xf32>, tensor<128x4xf32>
+}
+
+// CHECK-LABEL: @all_to_all_tuple
+//  CHECK-SAME: %[[ARG0:.*]]: tensor<128x4xf32>,
+//  CHECK-SAME: %[[ARG1:.*]]: tensor<128x4xf32>
+//       CHECK: %[[DST0:.*]] = tensor.empty() : tensor<128x4xf32>
+//       CHECK: %[[DST1:.*]] = tensor.empty() : tensor<128x4xf32>
+//       CHECK: "xla_cpu.all_to_all"(%[[ARG0]], %[[ARG1]], %[[DST0]], %[[DST1]])

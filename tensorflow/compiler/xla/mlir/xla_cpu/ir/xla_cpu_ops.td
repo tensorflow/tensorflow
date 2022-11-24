@@ -126,7 +126,10 @@ def CollectivePermuteOp : XlaCpu_Op<"collective_permute", [BufferizableOpInterfa
   }];
 }
 
-def AllToAllOp : XlaCpu_Op<"all_to_all", [BufferizableOpInterface]> {
+def AllToAllOp : XlaCpu_Op<"all_to_all",
+  [SameOperandsElementType,
+   SameVariadicOperandSize,
+   BufferizableOpInterface]> {
   let summary = "CPU-specific version of AllToAll";
   let description = [{
     The major differences between this and HLO's all_to_all are:
@@ -135,28 +138,28 @@ def AllToAllOp : XlaCpu_Op<"all_to_all", [BufferizableOpInterface]> {
   }];
 
   let arguments = (ins
-      TensorOrMemref:$operand,
-      TensorOrMemref:$dst,
+      Variadic<TensorOrMemref>:$operand,
+      Variadic<TensorOrMemref>:$dst,
       I64ElementsAttr:$replica_groups,
-      I64Attr:$split_dimension,
-      I64Attr:$concat_dimension,
-      I64Attr:$split_count
+      OptionalAttr<I64Attr>:$split_dimension,
+      OptionalAttr<I64Attr>:$concat_dimension,
+      OptionalAttr<I64Attr>:$split_count
   );
   let results = (outs Variadic<TensorOrMemref>);
   let extraClassDeclaration = [{
     // Declarations for BufferizableOpInterface:
     bool bufferizesToMemoryRead(OpOperand &opOperand,
         const bufferization::AnalysisState &state) {
-      return opOperand.getOperandNumber() == 0;
+      return opOperand.getOperandNumber() < getNumOperands() / 2;
     }
     bool bufferizesToMemoryWrite(OpOperand &opOperand,
         const bufferization::AnalysisState &state) {
-      return opOperand.getOperandNumber() == 1;
+      return opOperand.getOperandNumber() >= getNumOperands() / 2;
     }
     SmallVector<OpResult> getAliasingOpResult(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
-      if (opOperand.getOperandNumber() == 0) return {};
-      return {getOperation()->getOpResult(0)};
+      if (bufferizesToMemoryRead(opOperand, state)) return {};
+      return {getOperation()->getOpResult(opOperand.getOperandNumber() - getNumOperands() / 2)};
     }
     LogicalResult bufferize(RewriterBase &rewriter,
         const bufferization::BufferizationOptions &options);
