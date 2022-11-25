@@ -1571,8 +1571,9 @@ void TileOp::build(OpBuilder &b, OperationState &result,
                              ShapedType::kDynamic);
   auto tileType = TileType::get(b.getContext(), staticSizes);
   build(b, result, tileType, dynamicOffsets, dynamicSizes, dynamicStrides,
-        b.getI64ArrayAttr(staticOffsets), b.getI64ArrayAttr(staticSizes),
-        b.getI64ArrayAttr(staticStrides));
+        b.getDenseI64ArrayAttr(staticOffsets),
+        b.getDenseI64ArrayAttr(staticSizes),
+        b.getDenseI64ArrayAttr(staticStrides));
   result.addAttributes(attrs);
 }
 
@@ -1591,12 +1592,7 @@ LogicalResult TileOp::inferReturnTypes(
     SmallVectorImpl<Type> &inferredReturnTypes) {
   // Derive result shape.
   TileOp::Adaptor adaptor(operands, attributes, regions);
-  SmallVector<int64_t> shape = llvm::to_vector(
-      llvm::map_range(adaptor.getStaticSizes(), [&](const auto &size) {
-        return size.template dyn_cast<mlir::IntegerAttr>()
-            .getValue()
-            .getSExtValue();
-      }));
+  SmallVector<int64_t> shape = llvm::to_vector(adaptor.getStaticSizes());
 
   auto resultTy = TileType::get(ctx, shape);
   inferredReturnTypes.push_back(resultTy);
@@ -1618,26 +1614,20 @@ LogicalResult TileOp::verify() {
           getOperation(), "stride", rank, getStaticStrides(), getStrides()))) {
     return failure();
   }
-  for (auto it : llvm::zip(resultType.getShape(), getStaticOffsets(),
-                           getStaticSizes(), getStaticStrides())) {
-    auto offset =
-        std::get<1>(it).dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
+  for (auto [tileSize, offset, size, stride] :
+       llvm::zip(resultType.getShape(), getStaticOffsets(), getStaticSizes(),
+                 getStaticStrides())) {
     if (offset < 0 && offset != ShapedType::kDynamic) {
       return emitOpError("expected offset = ")
              << offset << " to be non-negative";
     }
-    auto size =
-        std::get<2>(it).dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
     if (size < 0 && size != ShapedType::kDynamic) {
       return emitOpError("expected size = ") << size << " to be non-negative";
     }
-    auto stride =
-        std::get<3>(it).dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
     if (stride < 0 && stride != ShapedType::kDynamic) {
       return emitOpError("expected stride = ")
              << stride << " to be non-negative";
     }
-    auto tileSize = std::get<0>(it);
     if (tileSize != size) {
       return emitOpError("size arg = ")
              << size << " does not match tile size = " << tileSize;

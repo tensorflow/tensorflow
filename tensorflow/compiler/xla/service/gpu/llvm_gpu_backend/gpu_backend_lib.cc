@@ -359,7 +359,7 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
 
   llvm::PassInstrumentationCallbacks pic;
 
-  llvm::StandardInstrumentations si(false);
+  llvm::StandardInstrumentations si(module->getContext(), false);
   si.registerCallbacks(pic, &fam);
 
   llvm::PassBuilder pb(target_machine, pto, llvm::None, &pic);
