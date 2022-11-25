@@ -336,8 +336,6 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
     /// Return the destinations for a gml_st.parallel op.
     ValueRange getLoopLikeOpInits();
   }];
-
-  let hasCanonicalizer = 1;
 }
 
 def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
