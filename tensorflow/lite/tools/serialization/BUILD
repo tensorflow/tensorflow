@@ -33,7 +33,6 @@ cc_library(
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -71,7 +70,6 @@ cc_test(
     deps = [
         ":writer_lib",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",

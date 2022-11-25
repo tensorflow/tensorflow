@@ -147,7 +147,6 @@ ios_static_framework(
 ios_static_framework(
     name = "TensorFlowLiteSelectTfOps_framework",
     avoid_deps = [
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
     bundle_name = "TensorFlowLiteSelectTfOps",
@@ -213,7 +212,6 @@ cc_library(
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
     ],

@@ -657,7 +657,6 @@ def tflite_custom_c_library(
         deps = [
             op_resolver_deps,
             "//tensorflow/lite:builtin_ops",
-            "//tensorflow/lite/c:common",
             "//tensorflow/lite/c:c_api_without_op_resolver_without_alwayslink",
             "//tensorflow/lite/core:private_headers",
             # TODO(bekzhan): Remove this dependency after we move c_api_opaque.h to tflite/core/.

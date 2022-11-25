@@ -4,6 +4,7 @@ load(
     "tflite_copts",
 )
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite/core/c:special_rules.bzl", "common_header_visibility_allowlist")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -79,7 +80,6 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/delegates:interpreter_utils",
@@ -120,7 +120,6 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/delegates:interpreter_utils",
@@ -181,7 +180,6 @@ cc_test(
         ":c_api_without_op_resolver_without_alwayslink",
         ":common",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:selectively_built_c_api_test_lib",
         "//tensorflow/lite/delegates:delegate_test_util",
         "//tensorflow/lite/schema:schema_fbs",
@@ -241,6 +239,10 @@ tflite_cc_library_with_c_headers_test(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support/custom_ops:__subpackages__",
+    ] + common_header_visibility_allowlist(),
     deps = [
         ":c_api_types",
         "//tensorflow/lite:tflite_kernel_use_xnnpack_optional",

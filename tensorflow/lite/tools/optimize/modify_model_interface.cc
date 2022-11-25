@@ -23,7 +23,7 @@ limitations under the License.
 #include "flatbuffers/flexbuffers.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/model.h"

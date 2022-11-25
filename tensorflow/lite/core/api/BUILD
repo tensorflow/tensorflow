@@ -28,7 +28,6 @@ cc_library(
         ":error_reporter",
         ":op_resolver",
         "@flatbuffers//:runtime_cc",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         # TODO(b/158301698): consider moving internal:compatibility to a more
         # central location.
@@ -55,7 +54,6 @@ cc_library(
     ],
     deps = [
         ":error_reporter",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
@@ -140,7 +138,6 @@ cc_test(
     deps = [
         ":api",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",
     ],

@@ -17,7 +17,6 @@ cc_library(
     hdrs = ["util.h"],
     deps = [
         ":input_generator",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:split",
         "//tensorflow/lite/testing:tflite_driver",
@@ -71,7 +70,6 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
@@ -101,7 +99,6 @@ cc_library(
     hdrs = ["diff_analyzer.h"],
     deps = [
         "//tensorflow/lite:string",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:split",
