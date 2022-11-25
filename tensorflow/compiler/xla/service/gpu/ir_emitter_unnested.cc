@@ -130,6 +130,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/human_readable_json.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/profiler/lib/nvtx_utils.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/cublas_lt_matmul_thunk.h"
@@ -5426,10 +5427,16 @@ Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(mlir::Operation* op) {
                                     unique_id_attr.getValue().getZExtValue());
   }
   Thunk::ThunkInfo thunk_info(op);
-  thunk_info.profile_annotation = absl::StrFormat(
-      "Thunk:#hlo_op=%s,hlo_module=%s%s#",
-      mlir::mhlo::GetDebugNameFromLocation(op->getLoc()),
-      mlir::mhlo::GetDebugNameFromLocation(module->getLoc()), unique_id_str);
+  if (tsl::profiler::nvtx::RangesEnabled()) {
+    thunk_info.profile_annotation = absl::StrFormat(
+        "hlo_op=%s",
+        mlir::mhlo::GetDebugNameFromLocation(op->getLoc()));
+  } else {
+    thunk_info.profile_annotation = absl::StrFormat(
+        "Thunk:#hlo_op=%s,hlo_module=%s%s#",
+        mlir::mhlo::GetDebugNameFromLocation(op->getLoc()),
+        mlir::mhlo::GetDebugNameFromLocation(module->getLoc()), unique_id_str);
+  }
   return thunk_info;
 }
 
