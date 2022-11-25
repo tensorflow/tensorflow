@@ -6,12 +6,14 @@ load(
     "tf_dtensor_tpu_dependencies",
 )
 load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.bzl", "if_google")
 
 default_visibility = [
     "//tensorflow/dtensor:dtensor-internal",
 ]
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = default_visibility,
     licenses = ["notice"],
 )
@@ -60,6 +62,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -234,11 +237,40 @@ cc_library(
         "//tensorflow/dtensor/mlir:dtensor_mlir_passes",
         "//tensorflow/dtensor/mlir:tf_dtensor_dialect",
         "//tensorflow/dtensor/mlir/dtensor_dialect:Dialect",
+        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "default_parallel_executor",
+    srcs = if_google(
+        ["google/default_parallel_executor.cc"],
+        ["default_parallel_executor.cc"],
+    ),
+    hdrs = ["default_parallel_executor.h"],
+    deps = [
+        ":parallel_executor_interface",
+        "//tensorflow/c:tf_status_helper",
+    ] + if_google([
+        # All new dependencies go here as the OSS part has no valid implementation.
+        ":dtensor_device_util",
+        "//learning/infra/mira/distributed/pathways:pathways_parallel_executor",
+    ]),
+)
+
+cc_library(
+    name = "parallel_executor_interface",
+    hdrs = ["parallel_executor.h"],
+    deps = [
+        ":dtensor_device_util",
+        "//tensorflow/compiler/xla/pjrt:pjrt_future",
+        "//tensorflow/tsl/platform:statusor",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -257,6 +289,7 @@ cc_library(
         ":small_constant_optimization",
         ":tensor_layout",
         ":tpu_system_interface",
+        ":default_parallel_executor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -286,4 +319,18 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_platform_interface",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_topology_external",
     ] + tf_dtensor_tpu_dependencies(),
+)
+
+cc_library(
+    name = "layout_to_xla_sharding",
+    srcs = ["xla_spmd/layout_to_xla_sharding.cc"],
+    hdrs = ["xla_spmd/layout_to_xla_sharding.h"],
+    deps = [
+        ":constants",
+        ":dstatus",
+        ":tensor_layout",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+    ],
 )

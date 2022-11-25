@@ -38,6 +38,8 @@ class LayoutUtil {
   static Layout MakeLayout(
       absl::Span<const int64_t> minor_to_major,
       absl::Span<const DimLevelType> dim_level_types = {},
+      absl::Span<const bool> dim_unique = {},
+      absl::Span<const bool> dim_ordered = {},
       absl::Span<const Tile> tiles = {},
       PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
       PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID,
@@ -236,6 +238,15 @@ class LayoutUtil {
   // If the shape has a layout, returns the contained memory space.  Otherwise,
   // returns Layout::kDefaultMemorySpace.
   static int64_t MemorySpace(const Shape& shape);
+
+  static xla::DimLevelType GetDimLevelType(const Layout& layout, int64_t dim);
+  static bool DimUnique(const Layout& layout, int64_t dim);
+  static bool DimOrdered(const Layout& layout, int64_t dim);
+
+  // Return true iff the given DimLevelType and dim_unique/dim_ordered values
+  // represent a valid encoding.
+  static bool ValidateDimLevel(xla::DimLevelType dim_level_type,
+                               bool dim_unique, bool dim_ordered);
 
  private:
   LayoutUtil(const LayoutUtil&) = delete;

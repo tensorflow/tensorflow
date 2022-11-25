@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 
+#include <iostream>
+#include <memory>
 #include <string>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "llvm/Support/raw_ostream.h"
@@ -243,9 +246,23 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
     return statusHandler.ConsumeStatus();
   }
 
-  // TODO(b/242328935): Add outputing a TFLite Flatbuffer for a stablehlo.
-  return tensorflow::errors::Unknown(
-      "No output mlir specified, please specify output_mlir");
+  // Convert MHLO MLIR to TFLite Custom Op MLIR
+  // TODO(b/260112687): will be switching to StableHLO dialect in the future
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::TFL::mhlo::CreateMhloToTflPass());
+  if (failed(pass_manager.run(module))) {
+    return statusHandler.ConsumeStatus();
+  }
+
+  // Write TFLite Custom Op MLIR to Flatbuffer
+  // TODO(b/260112687): will serialize StableHLO to Flatbuffer directly
+  tflite::FlatbufferExportOptions options;
+  options.toco_flags.set_allow_custom_ops(true);
+  if (!tflite::MlirToFlatBufferTranslateFunction(module, options, result)) {
+    return statusHandler.ConsumeStatus();
+  }
+
+  return OkStatus();
 }
 
 Status ConvertTFExecutorToTFLOrFlatbuffer(
@@ -297,8 +314,8 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   // Freeze variables if a session is provided.
   if (session.has_value()) {
     mlir::TFL::ErrorCollectorInstrumentation collector(module.getContext());
-    if (failed(mlir::tf_saved_model::FreezeVariables(module,
-                                                     session.getValue()))) {
+    if (failed(
+            mlir::tf_saved_model::FreezeVariables(module, session.value()))) {
       auto status = statusHandler.ConsumeStatus();
       mlir::TFL::ErrorCollector* collector =
           mlir::TFL::ErrorCollector::GetErrorCollector();

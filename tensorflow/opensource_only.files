@@ -9,9 +9,11 @@ tensorflow/compiler/mlir/quantization/tensorflow/internal_visibility_allowlist.b
 tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
 tensorflow/compiler/xla/mlir_hlo/WORKSPACE:
 tensorflow/compiler/xla/stream_executor/build_defs.bzl:
+tensorflow/core/platform/default/build_config/BUILD:
 tensorflow/core/platform/distribute:.bzl
 tensorflow/core/tfrt/mla/mla_test_utils.h:
 tensorflow/core/tfrt/mla/mla_utils.h:
+tensorflow/core/tfrt/saved_model/saved_model_mira_impl.h:
 tensorflow/core/tfrt/tpu/tpu_resources.h:
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h:
 tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal.cc:
@@ -67,7 +69,7 @@ tensorflow/lite/delegates/gpu/common/gpu_model_generated.h:
 tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h:
 tensorflow/lite/delegates/hexagon/hexagon_nn/BUILD:
 tensorflow/lite/experimental/acceleration/configuration/c/BUILD:
-tensorflow/lite/experimental/acceleration/configuration/c/vendor_delegate.h:
+tensorflow/lite/experimental/acceleration/configuration/c/stable_delegate.h:
 tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h:
 tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg.h:
 tensorflow/lite/experimental/acceleration/mini_benchmark/special_rules.bzl:

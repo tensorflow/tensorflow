@@ -5,6 +5,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility =
         [
             "//tensorflow/cc/experimental/libtf:__subpackages__",

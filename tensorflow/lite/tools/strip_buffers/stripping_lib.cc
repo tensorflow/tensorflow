@@ -25,8 +25,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/model.h"
 
 #define TFLITE_SCHEMA_VERSION 3

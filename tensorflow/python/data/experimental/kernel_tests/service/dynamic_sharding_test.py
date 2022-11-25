@@ -265,7 +265,7 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     ds = ds.take(num_samples)
 
     freqs = np.zeros([classes])
-    for v in self.getDatasetOutput(ds):
+    for v in self.getDatasetOutput(ds, requires_initialization=True):
       freqs[v] += 1
 
     self.assertGreater(freqs[0], freqs[1])

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_C_BUILTIN_OP_DATA_H_
 #define TENSORFLOW_LITE_C_BUILTIN_OP_DATA_H_
 
+<<<<<<< HEAD
 #include <stdint.h>
 
 #include "tensorflow/lite/c/common.h"
@@ -531,5 +532,10 @@ typedef struct {
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
+=======
+/// For documentation, see
+/// third_party/tensorflow/lite/core/c/builtin_op_data.h.
+#include "tensorflow/lite/core/c/builtin_op_data.h"  // IWYU pragma: export
+>>>>>>> origin/master
 
 #endif  // TENSORFLOW_LITE_C_BUILTIN_OP_DATA_H_

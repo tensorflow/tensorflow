@@ -239,6 +239,19 @@ message GPUOptions {
     // hopes that another thread will free up memory in the meantime.  Setting
     // this to true disables the sleep; instead we'll OOM immediately.
     bool disallow_retry_on_allocation_failure = 12;
+
+    // Memory limit for "GPU host allocator", aka pinned memory allocator.  This
+    // can also be set via the envvar TF_GPU_HOST_MEM_LIMIT_IN_MB.
+    float gpu_host_mem_limit_in_mb = 13;
+
+    // If true, then the host allocator allocates its max memory all upfront and
+    // never grows.  This can be useful for latency-sensitive systems, because
+    // growing the GPU host memory pool can be expensive.
+    //
+    // You probably only want to use this in combination with
+    // gpu_host_mem_limit_in_mb, because the default GPU host memory limit is
+    // quite high.
+    bool gpu_host_mem_disallow_growth = 14;
   }
 
   // Everything inside experimental is subject to change and is not subject

@@ -725,6 +725,7 @@ Status DatasetBase::MakeIterator(
   Status s = (*iterator)->InitializeBase(ctx, parent);
   if (s.ok()) {
     s.Update((*iterator)->Initialize(ctx));
+    ctx->SaveCheckpoint(iterator->get());
   }
   if (!s.ok()) {
     // Reset the iterator to avoid returning an uninitialized iterator.
@@ -934,6 +935,13 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   }
   out_tensors->clear();
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
+  ctx->SaveCheckpoint(this);
+  if (!SymbolicCheckpointCompatible()) {
+    ctx->UpdateCheckpointStatus([this]() {
+      return errors::Unimplemented(dataset()->type_string(),
+                                   " does not support symbolic checkpointing.");
+    });
+  }
   if (TF_PREDICT_TRUE(s.ok())) {
     if (TF_PREDICT_TRUE(!*end_of_sequence)) {
       DCHECK_EQ(out_tensors->size(), dataset()->output_dtypes().size());

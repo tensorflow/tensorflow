@@ -788,7 +788,7 @@ class FunctionTest(xla_test.XLATestCase):
       a = array_ops.ones([3, 4, 3], dtype=dtypes.float32)
       b = constant_op.constant([0, 2, 1], dtype=dtypes.int32)
 
-      self.assertIn('{1,2,0}',
+      self.assertIn('{2,1,0}',
                     f.experimental_get_compiler_ir(a, b)(stage='optimized_hlo'))
 
   @test_util.disable_mlir_bridge('TODO(b/168732524): MLIR bridge does not '

@@ -27,6 +27,9 @@ filegroup = _filegroup
 if_not_mobile_or_arm_or_lgpl_restricted = _if_not_mobile_or_arm_or_lgpl_restricted
 tsl_grpc_cc_dependencies = _tsl_grpc_cc_dependencies
 
+def get_compatible_with_cloud():
+    return []
+
 def tsl_gpu_cc_test(
         name,
         srcs = [],

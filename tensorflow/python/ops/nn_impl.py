@@ -1687,11 +1687,6 @@ def fused_batch_norm(
   if variance is None:
     variance = constant_op.constant([])
 
-  # Set a minimum epsilon to 1.001e-5, which is a requirement by CUDNN to
-  # prevent exception (see cudnn.h).
-  min_epsilon = 1.001e-5
-  epsilon = epsilon if epsilon > min_epsilon else min_epsilon
-
   y, running_mean, running_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
       x,
       scale,

@@ -175,8 +175,11 @@ class TfExportAwareVisitor(doc_generator_visitor.DocGeneratorVisitor):
                    tf_export.ESTIMATOR_API_NAME]
 
     for api_name in all_exports:
-      canonical = tf_export.get_canonical_name_for_symbol(
-          self._index[name], api_name=api_name)
+      try:
+        canonical = tf_export.get_canonical_name_for_symbol(
+            self._index[name], api_name=api_name)
+      except AttributeError:
+        canonical = None
       if canonical is not None:
         break
 
@@ -220,6 +223,7 @@ def build_docs(output_dir, code_url_prefix, search_hints):
 
   do_not_document = ["tf.__internal__",
                      "tf.keras.__internal__",
+                     "tf.keras.wrappers",
                      "tf.__operators__",
                      "tf.tools",
                      "tf.compat.v1.pywrap_tensorflow",

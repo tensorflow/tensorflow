@@ -34,7 +34,8 @@ class GPUDevice : public BaseGPUDevice {
             Allocator* gpu_allocator, Allocator* cpu_allocator)
       : BaseGPUDevice(options, name, memory_limit, locality, tf_device_id,
                       physical_device_desc, gpu_allocator, cpu_allocator,
-                      false /* sync every op */) {
+                      false /* sync every op */),
+        gpu_options_(options.config.gpu_options()) {
     if (options.config.has_gpu_options()) {
       force_gpu_compatible_ =
           options.config.gpu_options().force_gpu_compatible();
@@ -46,7 +47,7 @@ class GPUDevice : public BaseGPUDevice {
     if (attr.on_host()) {
       if (attr.gpu_compatible() || force_gpu_compatible_) {
         GPUProcessState* ps = GPUProcessState::singleton();
-        return ps->GetGpuHostAllocator(0);
+        return ps->GetGpuHostAllocator(gpu_options_, 0);
       } else {
         return cpu_allocator_;
       }
@@ -56,6 +57,7 @@ class GPUDevice : public BaseGPUDevice {
   }
 
  private:
+  GPUOptions gpu_options_;
   bool force_gpu_compatible_ = false;
 };
 
@@ -84,7 +86,8 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
                          Bytes memory_limit, const DeviceLocality& locality,
                          Allocator* allocator)
       : ThreadPoolDevice(options, name, memory_limit, locality, allocator),
-        numa_node_(locality.numa_node()) {
+        numa_node_(locality.numa_node()),
+        gpu_options_(options.config.gpu_options()) {
     if (options.config.has_gpu_options()) {
       force_gpu_compatible_ =
           options.config.gpu_options().force_gpu_compatible();
@@ -95,7 +98,7 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
   Allocator* GetAllocator(AllocatorAttributes attr) override {
     GPUProcessState* ps = GPUProcessState::singleton();
     if (attr.gpu_compatible() || force_gpu_compatible_) {
-      return ps->GetGpuHostAllocator(numa_node_);
+      return ps->GetGpuHostAllocator(gpu_options_, numa_node_);
     } else {
       // Call the parent's implementation.
       return ThreadPoolDevice::GetAllocator(attr);
@@ -104,7 +107,8 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
 
  private:
   bool force_gpu_compatible_ = false;
-  int numa_node_ = port::kNUMANoAffinity;
+  int numa_node_;
+  GPUOptions gpu_options_;
 };
 
 // The associated factory.

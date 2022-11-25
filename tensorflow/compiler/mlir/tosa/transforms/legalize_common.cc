@@ -44,8 +44,8 @@ namespace mlir {
 namespace tosa {
 
 static int64_t multiply_dims(int64_t a, int64_t b) {
-  if (a == ShapedType::kDynamicSize || b == ShapedType::kDynamicSize) {
-    return ShapedType::kDynamicSize;
+  if (a == ShapedType::kDynamic || b == ShapedType::kDynamic) {
+    return ShapedType::kDynamic;
   }
   return a * b;
 }
@@ -53,7 +53,7 @@ static int64_t multiply_dims(int64_t a, int64_t b) {
 static int64_t multiply_dims(llvm::ArrayRef<int64_t> dims, int64_t res = 1) {
   for (auto dim : dims) {
     if (ShapedType::isDynamic(dim)) {
-      return ShapedType::kDynamicSize;
+      return ShapedType::kDynamic;
     }
     res = res * dim;
   }
@@ -300,7 +300,7 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
 
     return CreateOpAndInfer<tosa::TransposeOp>(
                rewriter, op->getLoc(), result_type, a2_reshape_op.getResult(),
-               a3_transpose_perm.getValue())
+               a3_transpose_perm.value())
         .getResult();
   }
 
@@ -353,7 +353,7 @@ llvm::Optional<SmallVector<Value>> convertUnpackOp(PatternRewriter& rewriter,
         rewriter, op->getLoc(),
         tensorflow::GetTypeFromTFTensorShape(a1_transpose_shape,
                                              input_type.getElementType()),
-        input_value, a1_transpose_perm.getValue());
+        input_value, a1_transpose_perm.value());
 
     transposed_input_value = a1_transpose_op.getResult();
   } else {
@@ -860,7 +860,7 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
     int32_t block_shape_val =
         block_shape_elems.getValues<IntegerAttr>()[i].getInt();
     a2_shape[1 + i * 2 + 0] = padded_shape[1 + i];
-    if (a2_shape[1 + i * 2 + 0] != ShapedType::kDynamicSize) {
+    if (a2_shape[1 + i * 2 + 0] != ShapedType::kDynamic) {
       a2_shape[1 + i * 2 + 0] /= block_shape_val;
     }
 
@@ -914,7 +914,7 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(a3_transpose_shape,
                                            result_type.getElementType()),
-      a2_reshape_a1_op.getResult(), a3_transpose_const.getValue());
+      a2_reshape_a1_op.getResult(), a3_transpose_const.value());
 
   // 4. Reshape the transposed tensor to flatten block_shape
   // into the batch dimension with the following shape:
@@ -933,7 +933,7 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
     int32_t block_shape_val =
         block_shape_elems.getValues<IntegerAttr>()[i].getInt();
     a4_reshape_shape[i + 1] = padded_shape[i + 1];
-    if (a4_reshape_shape[i + 1] != ShapedType::kDynamicSize) {
+    if (a4_reshape_shape[i + 1] != ShapedType::kDynamic) {
       a4_reshape_shape[i + 1] /= block_shape_val;
     }
   }
@@ -1089,8 +1089,8 @@ llvm::Optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
 
   for (int i = 0; i < block_rank; i++) a1_shape[i] = block_shape[i];
 
-  a1_shape[block_rank] = (input_shape[0] == ShapedType::kDynamicSize)
-                             ? ShapedType::kDynamicSize
+  a1_shape[block_rank] = (input_shape[0] == ShapedType::kDynamic)
+                             ? ShapedType::kDynamic
                              : input_shape[0] / block_num_elems;
 
   for (int i = 0; i < input_rank - 1; i++)
@@ -1137,7 +1137,7 @@ llvm::Optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(a2_transpose_shape,
                                            result_type.getElementType()),
-      a1_reshape_input_op.getResult(), a2_transpose_perm.getValue());
+      a1_reshape_input_op.getResult(), a2_transpose_perm.value());
 
   // Step 3. Reshape to:
   // [ batch / prod(block_shape) ],
@@ -1148,7 +1148,7 @@ llvm::Optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
   SmallVector<int64_t> a4_shape(input_rank);
 
   a4_shape[0] = input_shape[0];
-  if (a4_shape[0] != ShapedType::kDynamicSize) {
+  if (a4_shape[0] != ShapedType::kDynamic) {
     a4_shape[0] /= block_num_elems;
   }
   for (int i = 0; i < block_rank; i++) {
@@ -1924,7 +1924,7 @@ llvm::Optional<Value> convertSpaceToDepthOp(PatternRewriter& rewriter,
 
   auto a3_transpose_a2_op = CreateOpAndInfer<tosa::TransposeOp>(
       rewriter, op->getLoc(), a_reshape_output_type,
-      a2_reshape_a_op.getResult(), a3_transpose_perm.getValue());
+      a2_reshape_a_op.getResult(), a3_transpose_perm.value());
 
   SmallVector<int64_t, 4> a3_reshape_dims;
   a3_reshape_dims.push_back(input_shape[0]);
@@ -2012,7 +2012,7 @@ llvm::Optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
 
   auto a3_transpose_a2_op = CreateOpAndInfer<tosa::TransposeOp>(
       rewriter, op->getLoc(), a_reshape_output_type,
-      a2_reshape_a_op.getResult(), a3_transpose_perm.getValue());
+      a2_reshape_a_op.getResult(), a3_transpose_perm.value());
 
   SmallVector<int64_t, 4> a3_reshape_dims;
   a3_reshape_dims.push_back(input_shape[0]);
@@ -2667,7 +2667,7 @@ static Value convertGenericReduceOp(PatternRewriter& rewriter, Operation* op,
   Value perms_value =
       getConstTensor<int32_t>(rewriter, op, perms,
                               {static_cast<int64_t>(perms.size())})
-          .getValue();
+          .value();
 
   auto transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
       rewriter, loc, UnrankedTensorType::get(rewriter.getI32Type()), input,
@@ -2967,7 +2967,7 @@ llvm::Optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
   if (!input_is_qtype) {
     Value div_const = getTosaConstTensorSingleF32(rewriter, op, div_scale);
     return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
-                                         val.getValue(), div_const, 0)
+                                         val.value(), div_const, 0)
         .getResult();
   }
 
@@ -3288,11 +3288,11 @@ llvm::Optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
 
   auto op2_sub_op1 =
       CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), output_type,
-                                    op1_cast_in.getResult(), zp_val.getValue());
+                                    op1_cast_in.getResult(), zp_val.value());
 
   return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
                                        op2_sub_op1.getResult(),
-                                       scale_val.getValue(), 0)
+                                       scale_val.value(), 0)
       .getResult();
 }
 
@@ -3505,7 +3505,7 @@ llvm::Optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
     if (!result) return llvm::None;
 
     // Update to the padded tensor
-    current_tensor = result.getValue();
+    current_tensor = result.value();
   }
 
   return result;
@@ -3538,7 +3538,7 @@ llvm::Optional<Value> convertTFConv2DCommon(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(a1_transpose_dims,
                                            filter_type.getElementType()),
-      filter, a1_filter_transpose_perm.getValue());
+      filter, a1_filter_transpose_perm.value());
 
   // Only support NHWC now.
   if (data_format_ref.str() != "NHWC") {
@@ -3914,7 +3914,7 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(params_transpose_shape,
                                            params_type.getElementType()),
-      params_value, params_transpose_perm_val.getValue());
+      params_value, params_transpose_perm_val.value());
 
   if (count_dynamic_dims(tosa_values_shape) > 1) {
     return (void)rewriter.notifyMatchFailure(
@@ -3965,10 +3965,10 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
       tosa_gather_op.getResult(),
       rewriter.getI64ArrayAttr(result_reshape_shape));
 
-  return CreateOpAndInfer<tosa::TransposeOp>(
-             rewriter, op->getLoc(), result_type,
-             tosa_result_reshape_op.getResult(),
-             result_transpose_perm_val.getValue())
+  return CreateOpAndInfer<tosa::TransposeOp>(rewriter, op->getLoc(),
+                                             result_type,
+                                             tosa_result_reshape_op.getResult(),
+                                             result_transpose_perm_val.value())
       .getResult();
 }
 
@@ -4112,8 +4112,7 @@ llvm::Optional<Value> convertGatherNdOp(PatternRewriter& rewriter,
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(indices_matrix_shape,
                                            indices_type.getElementType()),
-      indices_matrix_reshape_op.getResult(), flattened_coeff_value.getValue(),
-      0);
+      indices_matrix_reshape_op.getResult(), flattened_coeff_value.value(), 0);
 
   // Sum up the products of the coefficients and coordinates
   auto flattened_indices_reduce_op = CreateOpAndInfer<tosa::ReduceSumOp>(
@@ -4282,7 +4281,7 @@ llvm::Optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape({left_dim, K, right_dim},
                                            result_type.getElementType()),
-      op7_reshape_op6.getResult(), perm_const.getValue());
+      op7_reshape_op6.getResult(), perm_const.value());
 
   // Reshaped to result.shape.
   return CreateOpAndInfer<tosa::ReshapeOp>(

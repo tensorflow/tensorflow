@@ -1,6 +1,5 @@
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
     "tf_proto_library",
 )
 load(
@@ -34,6 +33,7 @@ default_package_visibility = [
 ]
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = default_package_visibility,
     features = [
         "-layering_check",
@@ -66,6 +66,7 @@ filegroup(
         "padding.h",
         "tensor_format.cc",
         "tensor_format.h",
+        "//tensorflow/tsl/util:mobile_srcs_no_runtime",
     ],
 )
 
@@ -470,7 +471,7 @@ cc_library(
         "//tensorflow/core:__subpackages__",
     ],
     deps = [
-        ":test_log_proto_impl_cc",
+        ":test_log_proto_cc",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform:errors",
@@ -731,6 +732,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_wrapper",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_gpu_executor",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
+        "//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
     ] + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
@@ -753,6 +755,7 @@ tf_kernel_library(
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
         "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
+        "//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
         "//tensorflow/compiler/xla/stream_executor/rocm:hipsparse_wrapper",
     ]),
 )
@@ -861,7 +864,6 @@ tf_cc_tests(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    linkstatic = tf_kernel_tests_linkstatic(),
     visibility = [
         "//tensorflow/core:__pkg__",
     ],
@@ -905,7 +907,6 @@ tf_cc_test(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -933,15 +934,13 @@ tf_cc_test(
 
 # Proto libraries.
 tf_proto_library(
-    name = "test_log_proto_impl",
+    name = "test_log_proto",
     srcs = ["test_log.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = ["//tensorflow/tsl/protobuf:test_log_proto"],
     # Not to be used outside of tensorflow/core.
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/tsl/util:__pkg__",
-    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+    exports = ["//tensorflow/tsl/protobuf:test_log_proto"],
 )
 
 tf_proto_library(

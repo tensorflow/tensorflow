@@ -19,6 +19,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -159,7 +160,6 @@ cc_library(
     deps = [
         ":numeric_types",
         ":type_traits",
-        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/tsl/lib/gtl:inlined_vector",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
@@ -169,6 +169,7 @@ cc_library(
         "//tensorflow/tsl/platform:stringprintf",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -190,7 +191,6 @@ cc_library(
         ":allocator",
         ":metrics",
         ":shared_counter",
-        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/tsl/lib/core:bits",
         "//tensorflow/tsl/lib/monitoring:counter",
         "//tensorflow/tsl/lib/monitoring:gauge",
@@ -204,6 +204,7 @@ cc_library(
         "//tensorflow/tsl/platform:strcat",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/tsl/profiler/lib:traceme",
         "//tensorflow/tsl/protobuf:bfc_memory_map_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",

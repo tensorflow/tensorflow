@@ -73,11 +73,11 @@ std::string CreateMissingAttributeMsg(llvm::StringRef attribute) {
 llvm::Optional<llvm::StringRef> GetXlaShardingFromOperand(Value value) {
   Value value_to_visit = value;
   if (auto read_var = value_to_visit.getDefiningOp<TF::ReadVariableOp>())
-    value_to_visit = read_var.resource();
+    value_to_visit = read_var.getResource();
 
   if (auto partitioned_input =
           value_to_visit.getDefiningOp<TF::TPUPartitionedInputOp>())
-    return partitioned_input._XlaSharding();
+    return partitioned_input.get_XlaSharding();
 
   return llvm::None;
 }
@@ -180,7 +180,7 @@ llvm::Optional<llvm::StringRef> GetXlaShardingFromArg(
       for (auto& use : value_to_visit.getUses()) {
         Operation* owner = use.getOwner();
         if (auto sharding = llvm::dyn_cast<TF::XlaShardingOp>(owner))
-          return sharding._XlaSharding();
+          return sharding.get_XlaSharding();
 
         if (auto logical_device = AssignLogicalDeviceFromTPUReplicatedCoreAttr(
                 owner, logical_device_vec)) {
@@ -246,14 +246,14 @@ void IdentifyXlaShardingForComputationInputs(
     BlockArgument arg = std::get<1>(operand_and_arg);
 
     if (auto operand_sharding = GetXlaShardingFromOperand(operand)) {
-      sharding_for_args.push_back(operand_sharding.getValue());
+      sharding_for_args.push_back(operand_sharding.value());
       continue;
     }
 
     if (infer_from_computation) {
       auto arg_sharding = GetXlaShardingFromArg(arg, logical_device_vec);
       if (arg_sharding) {
-        sharding_for_args.push_back(arg_sharding.getValue());
+        sharding_for_args.push_back(arg_sharding.value());
         continue;
       }
     }
@@ -281,12 +281,12 @@ llvm::Optional<llvm::StringRef> GetXlaShardingFromResult(Value value) {
   Operation* user = *value.getUsers().begin();
   if (auto partitioned_output =
           llvm::dyn_cast<TF::TPUPartitionedOutputOp>(user))
-    return partitioned_output._XlaSharding();
+    return partitioned_output.get_XlaSharding();
 
   if (auto assign_var = llvm::dyn_cast<TF::AssignVariableOp>(user))
     if (auto partitioned_input =
-            assign_var.resource().getDefiningOp<TF::TPUPartitionedInputOp>())
-      return partitioned_input._XlaSharding();
+            assign_var.getResource().getDefiningOp<TF::TPUPartitionedInputOp>())
+      return partitioned_input.get_XlaSharding();
 
   return llvm::None;
 }
@@ -346,7 +346,7 @@ llvm::Optional<StringRef> GetXlaShardingFromRetval(
     }
 
     if (auto sharding = llvm::dyn_cast_or_null<TF::XlaShardingOp>(def))
-      return sharding._XlaSharding();
+      return sharding.get_XlaSharding();
 
     if (auto sharding = def->getAttrOfType<StringAttr>("_XlaSharding")) {
       return sharding.strref();
@@ -418,20 +418,20 @@ void IdentifyXlaShardingForComputationOutputs(
     OpOperand& retval = std::get<1>(result_and_retval);
 
     if (auto result_sharding = GetXlaShardingFromResult(result)) {
-      sharding_for_rets.push_back(result_sharding.getValue());
+      sharding_for_rets.push_back(result_sharding.value());
       continue;
     }
 
     if (auto from_alias =
             GetXlaShardingFromAlias(result, aliases, sharding_for_args)) {
-      sharding_for_rets.push_back(from_alias.getValue());
+      sharding_for_rets.push_back(from_alias.value());
       continue;
     }
 
     if (infer_from_computation) {
       if (auto retval_sharding =
               GetXlaShardingFromRetval(retval.get(), logical_device_vec)) {
-        sharding_for_rets.push_back(retval_sharding.getValue());
+        sharding_for_rets.push_back(retval_sharding.value());
         continue;
       }
     }

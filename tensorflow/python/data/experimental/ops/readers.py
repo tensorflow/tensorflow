@@ -24,6 +24,7 @@ from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import parsing_ops
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import map_op
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import convert
@@ -619,7 +620,7 @@ def make_csv_dataset_v2(
   # indefinitely, and all batches will be full-sized.
   dataset = dataset.batch(batch_size=batch_size,
                           drop_remainder=num_epochs is None)
-  dataset = dataset_ops.MapDataset(
+  dataset = map_op._MapDataset(  # pylint: disable=protected-access
       dataset, map_fn, use_inter_op_parallelism=False)
   dataset = dataset.prefetch(prefetch_buffer_size)
 
@@ -1066,7 +1067,7 @@ def make_batched_features_dataset_v2(file_pattern,
   # Extract values if the `Example` tensors are stored as key-value tuples.
   if dataset_ops.get_legacy_output_types(dataset) == (
       dtypes.string, dtypes.string):
-    dataset = dataset_ops.MapDataset(
+    dataset = map_op._MapDataset(  # pylint: disable=protected-access
         dataset, lambda _, v: v, use_inter_op_parallelism=False)
 
   # Apply dataset repeat and shuffle transformations.

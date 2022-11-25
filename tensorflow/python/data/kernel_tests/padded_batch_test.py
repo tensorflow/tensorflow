@@ -20,6 +20,7 @@ import numpy as np
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -349,14 +350,20 @@ class PaddedBatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                 parameterized.TestCase):
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def test(self, verify_fn):
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, symbolic_checkpoint):
 
     def build_dataset(seq_lens):
-      return dataset_ops.Dataset.from_tensor_slices(seq_lens).map(
+      dataset = dataset_ops.Dataset.from_tensor_slices(seq_lens).map(
           lambda x: array_ops.fill([x], x)).padded_batch(
               batch_size=4, padded_shapes=[-1])
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      dataset = dataset.with_options(options)
+      return dataset
 
     seq_lens = np.random.randint(1, 20, size=(32,)).astype(np.int32)
     verify_fn(self, lambda: build_dataset(seq_lens), num_outputs=8)

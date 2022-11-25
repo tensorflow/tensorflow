@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/match.h"
+#include "absl/time/time.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 
 using tensorflow::string;
 
@@ -571,8 +572,10 @@ void TFE_OpSetCancellationManager(TFE_Op* op,
   status->status = ::tensorflow::OkStatus();
 }
 
-TFE_Executor* TFE_NewExecutor(bool is_async, bool enable_streaming_enqueue) {
-  return new TFE_Executor(is_async, enable_streaming_enqueue);
+TFE_Executor* TFE_NewExecutor(bool is_async, bool enable_streaming_enqueue,
+                              int in_flight_nodes_limit) {
+  return new TFE_Executor(is_async, enable_streaming_enqueue,
+                          in_flight_nodes_limit);
 }
 
 void TFE_DeleteExecutor(TFE_Executor* executor) { delete executor; }
@@ -785,7 +788,7 @@ void TFE_InsertConfigKeyValue(TFE_Context* ctx, const char* key,
                               const char* value, TF_Status* status) {
   tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
       tensorflow::unwrap(ctx)->GetDistributedManager();
-  tensorflow::CoordinationServiceAgent* coord_agent =
+  tsl::CoordinationServiceAgent* coord_agent =
       dist_mgr->GetCoordinationServiceAgent();
   if (coord_agent == nullptr) {
     status->status = tensorflow::errors::FailedPrecondition(
@@ -799,7 +802,7 @@ void TFE_GetConfigKeyValue(TFE_Context* ctx, const char* key,
                            TF_Buffer* value_buf, TF_Status* status) {
   tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
       tensorflow::unwrap(ctx)->GetDistributedManager();
-  tensorflow::CoordinationServiceAgent* coord_agent =
+  tsl::CoordinationServiceAgent* coord_agent =
       dist_mgr->GetCoordinationServiceAgent();
   if (coord_agent == nullptr) {
     status->status = tensorflow::errors::FailedPrecondition(
@@ -824,7 +827,7 @@ void TFE_DeleteConfigKeyValue(TFE_Context* ctx, const char* key,
                               TF_Status* status) {
   tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
       tensorflow::unwrap(ctx)->GetDistributedManager();
-  tensorflow::CoordinationServiceAgent* coord_agent =
+  tsl::CoordinationServiceAgent* coord_agent =
       dist_mgr->GetCoordinationServiceAgent();
   if (coord_agent == nullptr) {
     status->status = tensorflow::errors::FailedPrecondition(
@@ -838,7 +841,7 @@ void TFE_ReportErrorToCluster(TFE_Context* ctx, int error_code,
                               const char* error_message, TF_Status* status) {
   tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
       tensorflow::unwrap(ctx)->GetDistributedManager();
-  tensorflow::CoordinationServiceAgent* coord_agent =
+  tsl::CoordinationServiceAgent* coord_agent =
       dist_mgr->GetCoordinationServiceAgent();
   if (coord_agent == nullptr) {
     status->status = tensorflow::errors::FailedPrecondition(
@@ -854,7 +857,7 @@ void TFE_GetTaskStates(TFE_Context* ctx, const TF_Buffer& tasks, void* states,
                        TF_Status* status) {
   tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
       tensorflow::unwrap(ctx)->GetDistributedManager();
-  tensorflow::CoordinationServiceAgent* coord_agent =
+  tsl::CoordinationServiceAgent* coord_agent =
       dist_mgr->GetCoordinationServiceAgent();
   if (coord_agent == nullptr) {
     status->status = tensorflow::errors::FailedPrecondition(
@@ -889,4 +892,19 @@ void TFE_GetTaskStates(TFE_Context* ctx, const TF_Buffer& tasks, void* states,
     ++state_iter;
   }
   status->status = tensorflow::OkStatus();
+}
+
+void TFE_WaitAtBarrier(TFE_Context* ctx, const char* barrier_id,
+                       int64_t barrier_timeout_in_ms, TF_Status* status) {
+  tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
+      tensorflow::unwrap(ctx)->GetDistributedManager();
+  tsl::CoordinationServiceAgent* coord_agent =
+      dist_mgr->GetCoordinationServiceAgent();
+  if (coord_agent == nullptr) {
+    status->status = tensorflow::errors::FailedPrecondition(
+        "Coordination service is not enabled.");
+    return;
+  }
+  status->status = coord_agent->WaitAtBarrier(
+      barrier_id, absl::Milliseconds(barrier_timeout_in_ms), {});
 }

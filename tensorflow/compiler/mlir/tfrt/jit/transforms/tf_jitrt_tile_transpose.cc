@@ -18,8 +18,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
+#include "gml_st/IR/gml_st_ops.h"
+#include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -63,11 +63,11 @@ bool IsTransposeGenericOp(Operation *op) {
   if (!yield_op || (yield_op.getNumOperands() != 1)) return false;
 
   // Check input and output.
-  if ((generic_op.getNumInputs() != 1) || (generic_op.getNumOutputs() != 1))
+  if ((generic_op.getNumDpsInputs() != 1) || (generic_op.getNumDpsInits() != 1))
     return false;
 
   // Check that input is yielded.
-  if (generic_op.getMatchingBlockArgument(generic_op.getInputOperand(0)) !=
+  if (generic_op.getMatchingBlockArgument(generic_op.getDpsInputOperand(0)) !=
       yield_op.getOperand(0))
     return false;
 
@@ -98,11 +98,11 @@ struct TileTransposePattern : public mlir::OpRewritePattern<GenericOp> {
 
     auto tiled_linalg_op =
         mlir::gml_st::tileLinalgOp(rewriter, linalg_op, options);
-    if (failed(tiled_linalg_op) || tiled_linalg_op.getValue().loops.empty())
+    if (failed(tiled_linalg_op) || tiled_linalg_op.value().loops.empty())
       return failure();
 
     auto tiled_loop =
-        mlir::dyn_cast<LoopOp>(*tiled_linalg_op.getValue().loops.front());
+        mlir::dyn_cast<LoopOp>(*tiled_linalg_op.value().loops.front());
     if (!tiled_loop) return failure();
 
     tiled_loop->walk(

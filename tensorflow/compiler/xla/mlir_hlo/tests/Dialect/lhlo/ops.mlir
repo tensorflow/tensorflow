@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file | mlir-hlo-opt | FileCheck %s
+// RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file | mlir-hlo-opt -split-input-file | FileCheck %s
 
 // -----
 

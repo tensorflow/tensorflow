@@ -39,7 +39,7 @@ mlir::ArrayAttr ConvertPrecisionConfig(const PrecisionConfig* config,
     operand_precision_attrs.push_back(mlir::mhlo::PrecisionAttr::get(
         builder->getContext(),
         mlir::mhlo::symbolizePrecision(PrecisionConfig_Precision_Name(prec))
-            .getValue()));
+            .value()));
   }
   return builder->getArrayAttr(operand_precision_attrs);
 }

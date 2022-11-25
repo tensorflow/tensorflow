@@ -15,7 +15,6 @@ load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_
 # For platform specific build config
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
     "tf_protos_profiler_service",
 )
 load(
@@ -24,6 +23,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = if_google(
         ["//tensorflow:internal"],
         ["//visibility:public"],
@@ -60,9 +60,8 @@ cc_library(
     srcs = [],
     hdrs = ["grpc_client_cq_tag.h"],
     deps = [
-        ":grpc_util",
-        "//tensorflow/core:lib",
-    ] + tf_grpc_cc_dependencies(),
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_client_cq_tag",
+    ],
 )
 
 cc_library(
@@ -77,6 +76,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:tensor_coding",
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_state",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -102,29 +102,11 @@ cc_library(
 )
 
 cc_library(
-    name = "grpc_channel_common",
-    hdrs = ["grpc_channel_common.h"],
-    deps = [
-        ":grpc_util",
-        "//tensorflow/core:framework_lite",
-        "//tensorflow/core:tflite_portable_logging",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
-)
-
-cc_library(
     name = "grpc_channel",
-    srcs = ["grpc_channel.cc"],
     hdrs = ["grpc_channel.h"],
     deps = [
-        ":grpc_channel_common",
-        ":grpc_util",
-        "@com_google_absl//absl/strings",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/tsl/protobuf:rpc_options_proto_cc",
-    ] + tf_grpc_cc_dependencies(),
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_channel",
+    ],
 )
 
 cc_library(
@@ -447,14 +429,12 @@ tf_cuda_cc_tests(
     name = "rpc_tests",
     size = "small",
     srcs = [
-        "grpc_channel_test.cc",
         "rpc_rendezvous_mgr_test.cc",
     ],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [],
     deps = [
         ":grpc_channel",
@@ -500,30 +480,12 @@ tf_cc_test(
     ] + tf_grpc_cc_dependencies(),
 )
 
-tf_cc_test(
-    name = "grpc_util_test",
-    size = "small",
-    srcs = ["grpc_util_test.cc"],
-    tags = [
-        "no_mac",
-    ],
-    deps = [
-        ":grpc_util",
-        "//tensorflow/core/distributed_runtime:error_payloads",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/protobuf:worker_proto_cc",
-    ] + tf_grpc_dependencies() + tf_grpc_cc_dependencies(),
-)
-
 tf_cuda_cc_test(
     name = "grpc_session_test",
     size = "medium",
     # highly variable test time. Typically ~2m, but can spike to 5+min.
     timeout = "long",
     srcs = ["grpc_session_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/176448181
         "no_oss",  # b/62956105: port conflicts.

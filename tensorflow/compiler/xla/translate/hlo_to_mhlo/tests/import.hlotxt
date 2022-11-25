@@ -1,5 +1,5 @@
-// RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
-// RUN: xla-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s -check-prefix=NO_DEAD_FUNCTION
+// RUN: xla-translate --print-sugar=false -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
+// RUN: xla-translate --print-sugar=false -hlo-text-to-mlir-hlo %s -o - | FileCheck %s -check-prefix=NO_DEAD_FUNCTION
 
 // NO_DEAD_FUNCTION-NOT: @test
 
@@ -84,6 +84,17 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %all-to-all = s32[2,2]{1,0} all-to-all(s32[2,2]{1,0} %parameter), replica_groups={{1,2}, {3,0}}, dimensions={1}
 }
 
+// CHECK-LABEL:  func private @test_tuple_all_to_all
+// CHECK-SAME:   ([[ARG0:%.*]]: tensor<128x4xf32>,
+// CHECK-SAME:    [[ARG1:%.*]]: tensor<128x4xf32>)
+%test_tuple_all_to_all {
+  %p0 = f32[128,4]{0,1} parameter(0)
+  %p1 = f32[128,4]{1,0} parameter(1)
+  // CHECK-NEXT: "mhlo.all_to_all"([[ARG0]], [[ARG1]])
+  // CHECK-SAME: (tensor<128x4xf32>, tensor<128x4xf32>) -> (tensor<128x4xf32>, tensor<128x4xf32>)
+  ROOT %all-to-all = (f32[128,4]{0,1}, f32[128,4]{1,0}) all-to-all(%p0, %p1), replica_groups={{0,1}}
+}
+
 // Test all-reduce
 add {
   lhs = f32[] parameter(0)
@@ -123,6 +134,14 @@ add {
   ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2,3}, {5,6,7,8}}, use_global_device_ids=true, to_apply=add
 }
 
+// CHECK-LABEL:  func private @test_all_reduce_heterogeneous
+// CHECK-SAME:  ([[INPUT:%.*]]: tensor<8xf32>)
+%test_all_reduce_heterogeneous {
+  input = f32[8] parameter(0)
+  // CHECK-NEXT:  "mhlo.all_reduce"([[INPUT]])
+  // CHECK{LITERAL}:  replica_groups = dense<[[0, -1], [1, 2], [3, -1]]> : tensor<3x2xi64>
+  ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0}, {1,2}, {3}}, use_global_device_ids=true, to_apply=add
+}
 
 // CHECK-LABEL:  func private @test_and
 %test_and (Arg_0.1: pred[4], Arg_1.2: pred[4]) -> pred[4] {
@@ -360,6 +379,23 @@ add {
 
   // CHECK-NEXT:  mhlo.add %0, %1
   ROOT %add.5 = f64[4] add(f64[4] %convert.3, f64[4] %convert.4)
+}
+
+// CHECK-LABEL:  func private @test_f8_convert(%arg0: tensor<4xf32>) -> tensor<4xf32>
+%test_f8_convert (Arg_0.1: f32[4]) -> f32[4] {
+  %Arg_0.1 = f32[4] parameter(0)
+
+  // CHECK-NEXT:  %0 = mhlo.convert %arg0 : (tensor<4xf32>) -> tensor<4xf8E5M2>
+  %convert.3 = f8e5m2[4] convert(f32[4] %Arg_0.1)
+
+  // CHECK-NEXT:  %1 = mhlo.convert %0 : (tensor<4xf8E5M2>) -> tensor<4xf32>
+  %convert.4 = f32[4] convert(f8e5m2[4] %convert.3)
+
+  // CHECK-NEXT:  %2 = mhlo.convert %1 : (tensor<4xf32>) -> tensor<4xf8E4M3FN>
+  %convert.5 = f8e4m3fn[4] convert(f32[4] %convert.4)
+
+  // CHECK-NEXT:  %3 = mhlo.convert %2 : (tensor<4xf8E4M3FN>) -> tensor<4xf32>
+  ROOT %convert.6 = f32[4] convert(f8e4m3fn[4] %convert.5)
 }
 
 // CHECK-LABEL:  func private @test_stochastic_convert(%arg0: tensor<4x3xf32>, %arg1: tensor<4x3xui32>) -> tensor<4x3xi8>
@@ -1318,7 +1354,7 @@ add {
   %Arg_0.1 = f32[4,4] parameter(0)
   %Arg_1.2 = s32[] parameter(1)
   // CHECK-NEXT:  "mhlo.set_dimension_size"([[ARG]], [[SIZE]]) {dimension = 1 : i64} : (tensor<4x4xf32>, tensor<i32>)
-  // CHECK-SAME: tensor<4x?xf32, #mhlo.type_extensions<bounds = [-1, 4]>>
+  // CHECK-SAME: tensor<4x?xf32, #mhlo.type_extensions<bounds = [?, 4]>>
   ROOT %set-dimension-size.2 = f32[4,<=4] set-dimension-size(f32[4,4] %Arg_0.1, s32[] %Arg_1.2), dimensions={1}
 }
 
@@ -1531,7 +1567,7 @@ add {
 // CHECK-SAME:    (%[[ARG0:.*]]: tensor<3x4xf32>)
 %reduce_precision (Arg_0.1: f32[3,4]) -> f32[3,4] {
   %Arg_0.1 = f32[3,4] parameter(0)
-  // CHECK: "mhlo.reduce_precision"(%[[ARG0]]) {exponent_bits = 8 : i32, mantissa_bits = 10 : i32} : (tensor<3x4xf32>) -> tensor<3x4xf32>
+  // CHECK: mhlo.reduce_precision %[[ARG0]], format = e8m10 : tensor<3x4xf32>
   ROOT %reduce_precision = f32[3,4] reduce-precision(f32[3,4] %Arg_0.1), exponent_bits=8, mantissa_bits=10
 }
 

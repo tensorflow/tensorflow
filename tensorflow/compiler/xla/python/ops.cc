@@ -209,6 +209,26 @@ void BuildOpsSubmodule(py::module* m) {
       py::arg("output_operand_aliasing"), py::arg("literal") = nullptr,
       py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE,
       py::arg("api_version") = CustomCallApiVersion::API_VERSION_ORIGINAL);
+  ops.def(
+      "CustomCallWithComputation",
+      [](XlaBuilder* builder, const std::string& call_target_name,
+         absl::Span<const XlaOp> operands, const XlaComputation& computation,
+         const Shape& shape, const std::string& opaque, bool has_side_effect,
+         absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+             output_operand_aliasing,
+         const Literal* literal, CustomCallSchedule schedule,
+         CustomCallApiVersion api_version) -> XlaOp {
+        return CustomCallWithComputation(
+            builder, call_target_name, operands, computation, shape, opaque,
+            has_side_effect, output_operand_aliasing, literal, schedule,
+            api_version);
+      },
+      py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
+      py::arg("computation"), py::arg("shape"),
+      py::arg("opaque") = py::bytes(""), py::arg("has_side_effect") = false,
+      py::arg("output_operand_aliasing"), py::arg("literal") = nullptr,
+      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE,
+      py::arg("api_version") = CustomCallApiVersion::API_VERSION_ORIGINAL);
   ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
           py::arg("precision_config") = nullptr,
           py::arg("preferred_element_type") = std::nullopt);

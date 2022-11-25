@@ -1,6 +1,7 @@
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core/function/capture:__subpackages__",
         "//tensorflow/python/eager/polymorphic_function:__subpackages__",

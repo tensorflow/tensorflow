@@ -64,7 +64,7 @@ T ConstAttrToTypeAttr(ElementsAttr value_attr) {
 template <typename T>
 LogicalResult ReplaceConst(TF::ConstOp &op, ConversionPatternRewriter &rewriter,
                            Type type) {
-  IntegerAttr newAttr = ConstAttrToTypeAttr<IntegerAttr>(op.value());
+  IntegerAttr newAttr = ConstAttrToTypeAttr<IntegerAttr>(op.getValue());
 
   if (!newAttr) {
     return failure();
@@ -141,14 +141,14 @@ class RangeDatasetOpConversion
   LogicalResult matchAndRewrite(
       TF::RangeDatasetOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    if (op.output_types().size() != 1) {
+    if (op.getOutputTypes().size() != 1) {
       // Range dataset should only have one output type.
       return failure();
     }
-    if (auto output_type = op.output_types().begin()->cast<TypeAttr>()) {
+    if (auto output_type = op.getOutputTypes().begin()->cast<TypeAttr>()) {
       rewriter.replaceOpWithNewOp<tfrt::data::RangeDatasetOp>(
-          op, dataset_type_, adaptor.start(), adaptor.stop(), adaptor.step(),
-          output_type);
+          op, dataset_type_, adaptor.getStart(), adaptor.getStop(),
+          adaptor.getStep(), output_type);
       return success();
     }
     return failure();
@@ -173,41 +173,41 @@ class BatchDatasetV2OpConversion
     // Since TFRT's BatchDataset doesn't have a drop_remainder=True option,
     // we only convert this op if its drop_remainder input is statically known
     // to be false.
-    auto drop_remainder_op = op.drop_remainder().getDefiningOp<TF::ConstOp>();
+    auto drop_remainder_op = op.getDropRemainder().getDefiningOp<TF::ConstOp>();
     if (!drop_remainder_op) return failure();
     BoolAttr drop_remainder_val =
-        ConstAttrToTypeAttr<BoolAttr>(drop_remainder_op.value());
+        ConstAttrToTypeAttr<BoolAttr>(drop_remainder_op.getValue());
     if (!drop_remainder_val || drop_remainder_val.getValue()) {
       return failure();
     }
 
     // TODO(b/155892156): Support converting non-unary BatchDataset
-    if (op.output_types().size() != 1) return failure();
+    if (op.getOutputTypes().size() != 1) return failure();
 
     // TODO(b/155892156): Support converting BatchDataset with unknown rank
-    auto output_shape = op.output_shapes()[0].cast<TF::ShapeAttr>();
+    auto output_shape = op.getOutputShapes()[0].cast<TF::ShapeAttr>();
     if (!output_shape.hasRank()) {
       return failure();
     }
 
     if (output_shape.getRank() >= 2) {  // Input is a tensor
       rewriter.replaceOpWithNewOp<tfrt::data::BatchDatasetTensorOp>(
-          op, dataset_type_, adaptor.input_dataset(), adaptor.batch_size(),
+          op, dataset_type_, adaptor.getInputDataset(), adaptor.getBatchSize(),
           /*same_input_metadata=*/rewriter.getBoolAttr(false));
       return success();
     }
 
-    auto output_type = op.output_types()[0].cast<TypeAttr>().getValue();
+    auto output_type = op.getOutputTypes()[0].cast<TypeAttr>().getValue();
 
     if (output_type.isInteger(32)) {
       rewriter.replaceOpWithNewOp<tfrt::data::BatchDatasetI32Op>(
-          op, dataset_type_, adaptor.input_dataset(), adaptor.batch_size(),
+          op, dataset_type_, adaptor.getInputDataset(), adaptor.getBatchSize(),
           /*same_input_metadata=*/rewriter.getBoolAttr(false));
       return success();
     }
     if (output_type.isInteger(64)) {
       rewriter.replaceOpWithNewOp<tfrt::data::BatchDatasetI64Op>(
-          op, dataset_type_, adaptor.input_dataset(), adaptor.batch_size(),
+          op, dataset_type_, adaptor.getInputDataset(), adaptor.getBatchSize(),
           /*same_input_metadata=*/rewriter.getBoolAttr(false));
       return success();
     }

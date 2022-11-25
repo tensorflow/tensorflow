@@ -847,6 +847,8 @@ void BuildPmapSubmodule(py::module& m) {
 
   py::class_<NoSharding> no_sharding(pmap_lib, "NoSharding");
   no_sharding.def(py::init<>())
+      .def(py::pickle([](const NoSharding& self) { return py::make_tuple(); },
+                      [](py::tuple t) { return NoSharding{}; }))
       .def("__repr__",
            [](const NoSharding& chuncked) { return "NoSharding()"; })
       .def("__eq__",
@@ -860,6 +862,9 @@ void BuildPmapSubmodule(py::module& m) {
 
   py::class_<Chunked> chunked(pmap_lib, "Chunked");
   chunked.def(py::init<std::vector<int>>())
+      .def(py::pickle(
+          [](const Chunked& self) { return py::make_tuple(self.chunks); },
+          [](py::tuple t) { return Chunked{t[0].cast<std::vector<int>>()}; }))
       .def_readonly("chunks", &Chunked::chunks)
       .def("__repr__",
            [](const Chunked& chuncked) {
@@ -875,6 +880,9 @@ void BuildPmapSubmodule(py::module& m) {
 
   py::class_<Unstacked> unstacked(pmap_lib, "Unstacked");
   unstacked.def(py::init<int>())
+      .def(py::pickle(
+          [](const Unstacked& self) { return py::make_tuple(self.size); },
+          [](py::tuple t) { return Unstacked{t[0].cast<int>()}; }))
       .def_readonly("size", &Unstacked::size)
       .def("__repr__",
            [](const Unstacked& x) {
@@ -888,8 +896,11 @@ void BuildPmapSubmodule(py::module& m) {
       });
 
   py::class_<ShardedAxis> sharded_axis(pmap_lib, "ShardedAxis");
-  sharded_axis.def(py::init<int>()).def_readonly("axis", &ShardedAxis::axis);
-  sharded_axis
+  sharded_axis.def(py::init<int>())
+      .def(py::pickle(
+          [](const ShardedAxis& self) { return py::make_tuple(self.axis); },
+          [](py::tuple t) { return ShardedAxis{t[0].cast<int>()}; }))
+      .def_readonly("axis", &ShardedAxis::axis)
       .def("__repr__",
            [](const ShardedAxis& x) {
              return absl::StrCat("ShardedAxis(axis=", x.axis, ")");
@@ -900,6 +911,9 @@ void BuildPmapSubmodule(py::module& m) {
 
   py::class_<Replicated> replicated(pmap_lib, "Replicated");
   replicated.def(py::init<int>())
+      .def(py::pickle(
+          [](const Replicated& self) { return py::make_tuple(self.replicas); },
+          [](py::tuple t) { return Replicated{t[0].cast<int>()}; }))
       .def_readonly("replicas", &Replicated::replicas)
       .def("__repr__",
            [](const Replicated& x) {
@@ -913,6 +927,18 @@ void BuildPmapSubmodule(py::module& m) {
   sharding_spec
       .def(py::init<py::iterable, py::iterable>(), py::arg("sharding"),
            py::arg("mesh_mapping"))
+      .def(py::pickle(
+          [](const ShardingSpec& self) {
+            auto sharding =
+                xla::SpanToTuple(absl::MakeConstSpan(self.GetSharding()));
+            auto mesh_mapping =
+                xla::SpanToTuple(absl::MakeConstSpan(self.GetMeshMapping()));
+            return py::make_tuple(sharding, mesh_mapping);
+          },
+          [](py::tuple t) {
+            return ShardingSpec{t[0].cast<std::vector<AvalDimSharding>>(),
+                                t[1].cast<std::vector<MeshDimAssignment>>()};
+          }))
       .def_property_readonly(
           "sharding",
           [](const ShardingSpec& self) {

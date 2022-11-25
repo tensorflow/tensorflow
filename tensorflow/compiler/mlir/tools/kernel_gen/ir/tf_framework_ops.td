@@ -40,7 +40,6 @@ def TFFramework_Dialect : Dialect {
   }];
 
   let useDefaultTypePrinterParser = 1;
-  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 def TFFramework_OpKernelContextType : DialectType<TFFramework_Dialect,

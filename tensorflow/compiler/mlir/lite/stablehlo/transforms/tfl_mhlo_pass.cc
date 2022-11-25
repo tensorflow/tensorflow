@@ -39,8 +39,8 @@ limitations under the License.
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
 
 namespace mlir {
 namespace TFL {
@@ -116,7 +116,7 @@ class TflToMhloPass
               auto conf_attr = mlir::mhlo::PrecisionAttr::get(
                   builder->getContext(),
                   mlir::mhlo::symbolizePrecision(vector[i].AsString().str())
-                      .getValue());
+                      .value());
               precision_attrs.push_back(conf_attr);
             }
             auto named_attr = builder->getNamedAttr(

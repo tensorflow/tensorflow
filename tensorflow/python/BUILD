@@ -3,7 +3,7 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_mlir", "if_oss", "if_windows", "if_xla_available", "py_test", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps")
+load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_mlir", "if_oss", "if_windows", "if_xla_available", "py_test", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "get_compatible_with_portable", "pywrap_tensorflow_macro", "tf_external_workspace_visible", "tf_monitoring_python_deps", "tf_py_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -31,6 +31,7 @@ visibility = [
     "//third_party/py/cleverhans:__subpackages__",
     "//third_party/courier:__subpackages__",
     "//third_party/py/courier:__subpackages__",
+    "//third_party/py/lingvo:__subpackages__",
     "//third_party/py/reverb:__subpackages__",
     "//third_party/py/tensorfn:__subpackages__",
     "//third_party/py/neural_structured_learning:__subpackages__",
@@ -49,6 +50,7 @@ visibility = [
 ]
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = visibility,
     licenses = ["notice"],
 )
@@ -3331,18 +3333,17 @@ pywrap_tensorflow_macro(
         "@upb//:__subpackages__",
         "@XNNPACK//:__subpackages__",
         "@zlib//:__subpackages__",
-    ],
+    ] + tsl_async_value_deps(),
     win_def_file = ":pywrap_tensorflow_filtered_def_file",
     deps = [
         ":bfloat16_lib",
+        ":safe_ptr",
         "//tensorflow/python/grappler:cost_analyzer_lib",
         "//tensorflow/python/grappler:model_analyzer_lib",
         "//tensorflow/python/util:cpp_nest",
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:function_parameter_canonicalizer",
         "//tensorflow/python/util:kernel_registry",
-        ":numpy_lib",
-        ":safe_ptr",
         "//tensorflow/python/lib/core:py_func_lib",
         "//tensorflow/python/lib/core:pybind11_absl",
         "//tensorflow/python/lib/core:pybind11_lib",
@@ -3370,6 +3371,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/c/experimental/gradients/tape",
         "//tensorflow/cc/saved_model:fingerprinting_impl",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",
         "//tensorflow/core/data/service:dispatcher_client",
         "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/data/service:server_lib",
@@ -3390,8 +3392,9 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/profiler/convert:hlo_to_tools_data_impl",
-        "//tensorflow/core/profiler/rpc:profiler_server_impl",
-        "//tensorflow/core/profiler/rpc/client:profiler_client_impl",
+        "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
+        "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
+        "//tensorflow/tsl/python/lib/core:numpy",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/core/profiler/backends/cpu:python_tracer",
         "//tensorflow/dtensor/cc:dtensor_device_cc",
@@ -3404,7 +3407,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/python/client:tf_session_helper",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/compiler/mlir/python:mlir",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
@@ -3457,7 +3459,7 @@ filegroup(
         "//tensorflow/python/util:kernel_registry",
         "//tensorflow/python/grappler:model_analyzer_lib",  # model_analyzer
         ":ndarray_tensor",  # checkpoint_reader
-        ":numpy_lib",  # checkpoint_reader
+        "//tensorflow/tsl/python/lib/core:numpy",  # checkpoint_reader
         ":py_exception_registry",  # py_exception_registry
         "//tensorflow/python/lib/core:py_func_lib",
         "//tensorflow/python/framework:op_def_util_cc",  # op_def_util
@@ -3474,6 +3476,7 @@ filegroup(
         "//tensorflow/core/platform:statusor",  # tfe
         "//tensorflow/compiler/jit:flags",  # tfe
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",  # quantization
         "//tensorflow/core/common_runtime:graph_constructor",  # tf_session
         "//tensorflow/core/common_runtime:quantize_training",  # quantize_training
         "//tensorflow/core/common_runtime:session_options",  # device_lib, tfe, tf_session
@@ -3513,9 +3516,10 @@ filegroup(
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "//tensorflow/core/profiler/convert:hlo_to_tools_data_impl",  # profiler
-        "//tensorflow/core/profiler/lib:profiler_session_impl",  # profiler
-        "//tensorflow/core/profiler/rpc:profiler_server_impl",  # profiler
+        "//tensorflow/tsl/profiler/lib:profiler_session_impl",  # profiler
+        "//tensorflow/tsl/profiler/rpc:profiler_server_impl",  # profiler
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler
+        "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
         "//tensorflow/python/framework:python_api_info",  # python_api_info
         "//tensorflow/python/framework:python_api_parameter_converter",  # python_api_parameter_converter
         "//tensorflow/core/util:port",  # util_port
@@ -3527,13 +3531,12 @@ filegroup(
         "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
         "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc",  # quantization
         "//tensorflow/dtensor/cc:dtensor_device_cc",  # DTensor
         "//tensorflow/dtensor/cc:tensor_layout",  # DTensor
     ] + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
         "//tensorflow/compiler/xla:status_macros",  # tfcompile
-        "//tensorflow/compiler/xla/service:hlo",  # tfcompile
+        "//tensorflow/compiler/xla/hlo/ir:hlo",  # tfcompile
     ]),
     visibility = ["//visibility:private"],
 )
@@ -4096,6 +4099,7 @@ cc_library(
     name = "unified_api_pywrap_required_headers",
     textual_hdrs = [
         "//tensorflow/python/lib/core:basic_hdrs",
+        "//tensorflow/tsl/python/lib/core:basic_hdrs",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
@@ -4142,11 +4146,12 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
-        "//tensorflow/python/lib/core:numpy_hdr",
         "//tensorflow/python/lib/core:py_exception_registry_hdr",
         "//tensorflow/python/lib/core:safe_ptr_hdr",
         "//tensorflow/python/util:util_hdr",
         "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
+        "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
+        "//tensorflow/tsl/python/lib/core:numpy_hdr",
     ],
     # Only include TensorFlow header-only targets here.
     # If a cc_library needs to depend on TensorFlow .cc files through srcs or
@@ -4315,11 +4320,6 @@ alias(
 alias(
     name = "py_util",
     actual = "//tensorflow/python/lib/core:py_util",
-)
-
-alias(
-    name = "numpy_lib",
-    actual = "//tensorflow/python/lib/core:numpy_lib",
 )
 
 alias(
@@ -4766,5 +4766,17 @@ py_library(
 #     has_services = 0,
 #     api_version = 2,
 #     deps = [":protos_all"],
+# )
+#
+# # Special build rule for jax2tf.
+# # TODO(b/239052279): remove once TF->TFLite dependency cycle is resolved
+# py_library(
+#     name = "jax2tf_support",
+#     visibility = ["//third_party/py/jax/experimental/jax2tf:__subpackages__"],
+#     deps = [
+#         "//tensorflow/python/dlpack",
+#         "//tensorflow/python/ops/ragged:ragged_array_ops",
+#         "//tensorflow/python/saved_model",
+#     ],
 # )
 # copybara:uncomment_end

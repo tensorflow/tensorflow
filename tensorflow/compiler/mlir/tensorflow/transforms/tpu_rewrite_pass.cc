@@ -301,7 +301,7 @@ LogicalResult SetMetadataProtoFromClusterFuncOp(
 
   if (xla_device_assignment.has_value())
     *metadata->mutable_device_assignment() =
-        std::move(xla_device_assignment.getValue());
+        std::move(xla_device_assignment.value());
   auto use_spmd_attr = op->getAttrOfType<BoolAttr>(kUseXlaSpmdAttr);
   if (!use_spmd_attr)
     return op.emitOpError(CreateMissingAttributeMsg(kUseXlaSpmdAttr));
@@ -840,7 +840,7 @@ LogicalResult Rewrite(
     } else if (compile_device_op) {
       result_id->setAttr("device", compile_device_op);
     }
-    res.output().replaceAllUsesWith(compile_op->getResult(0));
+    res.getOutput().replaceAllUsesWith(compile_op->getResult(0));
   }
 
   BuildTPUCompileSucceededAssertOp(

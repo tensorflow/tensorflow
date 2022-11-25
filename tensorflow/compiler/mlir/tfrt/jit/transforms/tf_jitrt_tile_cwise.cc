@@ -16,8 +16,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
+#include "gml_st/IR/gml_st_ops.h"
+#include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
@@ -41,7 +41,9 @@ using mlir::SmallVector;
 using mlir::success;
 using mlir::Value;
 using mlir::arith::ConstantIndexOp;
+using mlir::gml_st::ForOp;
 using mlir::gml_st::LoopOp;
+using mlir::gml_st::ParallelOp;
 using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
 using mlir::linalg::LinalgOp;
@@ -62,11 +64,11 @@ struct TileCWisePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
 
     auto tiled_linalg_op =
         mlir::gml_st::tileLinalgOp(rewriter, linalg_op, options);
-    if (failed(tiled_linalg_op) || tiled_linalg_op.getValue().loops.empty())
+    if (failed(tiled_linalg_op) || tiled_linalg_op.value().loops.empty())
       return failure();
 
     LoopOp tiled_loop =
-        mlir::dyn_cast<LoopOp>(*tiled_linalg_op.getValue().loops.front());
+        mlir::dyn_cast<LoopOp>(*tiled_linalg_op.value().loops.front());
     if (!tiled_loop) return failure();
 
     tiled_loop->walk(
@@ -84,7 +86,9 @@ struct TileCWisePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
 // Return true if the generic has only parallel iterations. This disallows
 // windowed and reduction iteration.
 bool isNonTiledCwiseGeneric(Operation *op) {
-  if (op->getParentOfType<LoopOp>()) return false;
+  if (op->getParentOfType<LoopOp>() || op->getParentOfType<ForOp>() ||
+      op->getParentOfType<ParallelOp>())
+    return false;
   auto linalg_op = mlir::dyn_cast<GenericOp>(op);
   if (linalg_op) {
     if (!linalg_op.hasTensorSemantics()) return false;
@@ -100,7 +104,9 @@ bool isNonTiledCwiseGeneric(Operation *op) {
 // Return true if the generic has only parallel iterations. This disallows
 // windowed and reduction iteration.
 bool isNonTiledFill(Operation *op) {
-  if (op->getParentOfType<LoopOp>()) return false;
+  if (op->getParentOfType<LoopOp>() || op->getParentOfType<ForOp>() ||
+      op->getParentOfType<ParallelOp>())
+    return false;
   if (auto fill_op = mlir::dyn_cast<FillOp>(op)) {
     return fill_op.hasTensorSemantics();
   }

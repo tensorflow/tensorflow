@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/errors.h"
@@ -50,21 +51,6 @@ constexpr const char* Layout::kAny;
 constexpr const char* Layout::kEmptyLayoutString;
 constexpr const char* Layout::kMatch;
 constexpr const char* Mesh::kEmptyMeshString;
-
-namespace {
-// Obtain all possible forms of indexing a mesh.
-//
-// e.g. given a mesh with dimensions [x=2, y=3], returns {
-//   [0, 0], [0, 1], [0, 2],
-//   [1, 0], [1, 1], [1, 2]
-// }
-inline std::vector<DeviceLocation> ComputeDeviceLocations(const Mesh* mesh) {
-  std::vector<DeviceLocation> mesh_locs(mesh->size());
-  for (size_t i = 0; i < mesh->size(); ++i)
-    mesh_locs[i] = *(mesh->device_location(i));
-  return mesh_locs;
-}
-}  // namespace
 
 namespace {
 // Expands a ShardVector into the size defined in new_num_shards_per_dim.
@@ -126,6 +112,13 @@ ShardVector ExpandShardVector(const ShardVector& shard_vec,
 }
 }  // namespace
 
+std::vector<DeviceLocation> ComputeDeviceLocations(const Mesh& mesh) {
+  std::vector<DeviceLocation> mesh_locs(mesh.size());
+  for (size_t i = 0; i < mesh.size(); ++i)
+    mesh_locs[i] = *(mesh.device_location(i));
+  return mesh_locs;
+}
+
 bool ShardVector::operator==(const ShardVector& other) const {
   // Check same number of shards.
   if (this->shards.empty() && other.shards.empty()) return true;
@@ -169,6 +162,10 @@ bool ShardVector::ContainsShard(const Shard& shard) const {
   for (const auto& shard_in_vec : shards)
     if (shard_in_vec == shard) return true;
   return false;
+}
+
+bool IsDynamicSize(int64_t size) {
+  return mlir::ShapedType::isDynamic(size) || size == -1;
 }
 
 // static
@@ -670,10 +667,11 @@ Mesh Mesh::CreateMesh(
     const std::vector<std::int64_t>& global_device_ids_flatten,
     const std::vector<std::string>& global_devices_str,
     const std::vector<std::int64_t>& local_device_ids,
-    const std::vector<std::string>& local_devices_str) {
+    const std::vector<std::string>& local_devices_str,
+    const bool use_xla_spmd) {
   Mesh mesh;
   mesh.name_ = mesh_name;
-
+  mesh.use_xla_spmd_ = use_xla_spmd;
   mesh.mesh_dims_.resize(dim_names.size());
 
   for (int i = 0; i < dim_names.size(); ++i) {
@@ -792,7 +790,7 @@ Mesh Layout::ReducedMesh() const {
   // Populate reduced mesh with global devices from original mesh.
   std::vector<int64_t> reduced_global_device_ids;
   std::vector<std::string> reduced_global_devs;
-  for (const DeviceLocation& loc : ComputeDeviceLocations(&reduced_mesh)) {
+  for (const DeviceLocation& loc : ComputeDeviceLocations(reduced_mesh)) {
     int64 pos = mesh().GetFlattenedCoordinate(loc);
     reduced_global_device_ids.push_back(mesh().global_device_ids().at(pos));
     if (!mesh().global_devices().empty()) {
@@ -879,7 +877,7 @@ ShardVector Layout::GetShardVector() const {
   };
   // Compute mesh locations and obtain shards from them.
   ShardVector shard_vec;
-  for (const DeviceLocation& mesh_loc : ComputeDeviceLocations(&mesh()))
+  for (const DeviceLocation& mesh_loc : ComputeDeviceLocations(mesh()))
     shard_vec.shards.push_back(GetShardFromDeviceLocation(mesh_loc));
   // Calculate dims.
   shard_vec.num_shards_per_dim = ShardVectorDims();
@@ -1018,7 +1016,9 @@ std::vector<int64_t> Layout::GlobalShapeFromLocalShape(
   for (int i = 0; i < sharding_specs().size(); ++i) {
     int64_t l_shape = local_shape.empty() ? 1 : local_shape[i];
     int64_t dim_shards = num_shards()[i];
-    global_shape.emplace_back(l_shape * dim_shards);
+    int64_t global_size =
+        IsDynamicSize(l_shape) ? l_shape : l_shape * dim_shards;
+    global_shape.emplace_back(global_size);
   }
   return global_shape;
 }
@@ -1033,7 +1033,10 @@ std::vector<int64_t> Layout::LocalShapeFromGlobalShape(
   for (int i = 0; i < sharding_specs().size(); ++i) {
     int64_t dim_shards = shards[i];
     // TODO(hthu): Shape might not be always divisible.
-    local_shape.emplace_back(global_shape[i] / dim_shards);
+    int64_t local_size = IsDynamicSize(global_shape[i])
+                             ? global_shape[i]
+                             : global_shape[i] / dim_shards;
+    local_shape.emplace_back(local_size);
   }
   return local_shape;
 }
@@ -1047,7 +1050,9 @@ PartialTensorShape Layout::LocalShapeFromGlobalShape(
   PartialTensorShape local_shape({});
   for (int spec_index = 0; spec_index < sharding_specs().size(); ++spec_index) {
     int64_t dim_size = global_shape.dim_size(spec_index);
-    local_shape.AddDim(dim_size == -1 ? -1 : dim_size / shards[spec_index]);
+    int64_t local_size =
+        IsDynamicSize(dim_size) ? dim_size : dim_size / shards[spec_index];
+    local_shape.AddDim(local_size);
   }
   return local_shape;
 }

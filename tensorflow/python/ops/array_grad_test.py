@@ -125,6 +125,16 @@ class ArrayGradTest(test.TestCase):
 
     self._testGrad(f, x)
 
+  def test_slice_int64(self):
+    x = constant_op.constant([1., 2., 3.], dtype=dtypes.float64)
+    begin = constant_op.constant([1], dtype=dtypes.int64)
+    size = constant_op.constant([1], dtype=dtypes.int64)
+
+    def f(x):
+      return array_ops.slice(x, begin, size)
+
+    self._testGrad(f, x)
+
 
 if __name__ == "__main__":
   test.main()

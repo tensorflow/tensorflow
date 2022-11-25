@@ -718,16 +718,29 @@ assert len(_ANY_TO_TF) == sum(
 
 @tf_export("dtypes.as_dtype", "as_dtype")
 def as_dtype(type_value):
-  """Converts the given `type_value` to a `DType`.
+  """Converts the given `type_value` to a `tf.DType`.
 
-  Note: `DType` values are interned. When passed a new `DType` object,
-  `as_dtype` always returns the interned value.
+  Inputs can be existing `tf.DType` objects, a [`DataType`
+  enum](https://www.tensorflow.org/code/tensorflow/core/framework/types.proto),
+  a string type name, or a
+  [`numpy.dtype`](https://numpy.org/doc/stable/reference/generated/numpy.dtype.html).
+
+  Examples:
+  >>> tf.as_dtype(2)  # Enum value for float64.
+  tf.float64
+
+  >>> tf.as_dtype('float')
+  tf.float32
+
+  >>> tf.as_dtype(np.int32)
+  tf.int32
+
+  Note: `DType` values are interned (i.e. a single instance of each dtype is
+  stored in a map). When passed a new `DType` object, `as_dtype` always returns
+  the interned value.
 
   Args:
-    type_value: A value that can be converted to a `tf.DType` object. This may
-      currently be a `tf.DType` object, a [`DataType`
-      enum](https://www.tensorflow.org/code/tensorflow/core/framework/types.proto),
-        a string type name, or a [`numpy.dtype`](https://numpy.org/doc/stable/reference/generated/numpy.dtype.html).
+    type_value: A value that can be converted to a `tf.DType` object.
 
   Returns:
     A `DType` corresponding to `type_value`.

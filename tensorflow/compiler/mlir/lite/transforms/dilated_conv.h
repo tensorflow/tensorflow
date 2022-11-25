@@ -99,8 +99,8 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     return rewriter.notifyMatchFailure(op, "dilations should be all 1");
   }
 
-  if (!TFL::TFTypeIsFloat32Tensor(op.input()) &&
-      !TFL::TFTypeIsBFloat16OrHalfTensor(op.input())) {
+  if (!TFL::TFTypeIsFloat32Tensor(op.getInput()) &&
+      !TFL::TFTypeIsBFloat16OrHalfTensor(op.getInput())) {
     return rewriter.notifyMatchFailure(
         op, "op's input is not float or half or bfloat16");
   }
@@ -185,8 +185,8 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     }
     // Make sure that the axis in `expand_op` is constant.
     if (auto const_op =
-            llvm::dyn_cast<TF::ConstOp>(expand_op.dim().getDefiningOp())) {
-      expand_axis = (*const_op.value()
+            llvm::dyn_cast<TF::ConstOp>(expand_op.getDim().getDefiningOp())) {
+      expand_axis = (*const_op.getValue()
                           .cast<DenseElementsAttr>()
                           .getValues<APInt>()
                           .begin())
@@ -202,7 +202,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
           expand_op, "ExpandDimsOp doesn't have a constant axis");
     }
     // Make sure that the `squeeze_dims` is equal to `expand_axis`.
-    auto squeeze_dims = squeeze_op.squeeze_dims();
+    auto squeeze_dims = squeeze_op.getSqueezeDims();
     if (squeeze_dims.size() != 1) {
       return rewriter.notifyMatchFailure(
           squeeze_op, "squeeze dims should have exactly 1 dimension specified");
@@ -218,7 +218,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     }
 
     // Update previous/next op pointer.
-    Operation* tmp = expand_op.input().getDefiningOp();
+    Operation* tmp = expand_op.getInput().getDefiningOp();
     if (!tmp || tmp->getNumResults() != 1) {
       return rewriter.notifyMatchFailure(
           producer_op,
@@ -264,7 +264,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
       return maybeConsumer.first;
     }
     consumer_op = maybeConsumer.second;
-    if (!matchPattern(pad_op.paddings(), m_Constant(&pad_attr))) {
+    if (!matchPattern(pad_op.getPaddings(), m_Constant(&pad_attr))) {
       // If the padding value isn't constant, we can't determine the padding
       // scheme for Conv2D below, in this case just reject the pattern.
       return rewriter.notifyMatchFailure(
@@ -311,13 +311,13 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   }
 
   llvm::Optional<ArrayAttr> dilations_attr = ExtractDilationsAttrFromBlockShape(
-      stb_op.block_shape(), bts_op.block_shape(), expand_axis, rewriter);
+      stb_op.getBlockShape(), bts_op.getBlockShape(), expand_axis, rewriter);
   if (!dilations_attr.has_value()) {
     return rewriter.notifyMatchFailure(op, "failed to extract dilation rate");
   }
 
   if (expand_op) {
-    if (stb_op.input().getType().dyn_cast<RankedTensorType>() == nullptr) {
+    if (stb_op.getInput().getType().dyn_cast<RankedTensorType>() == nullptr) {
       return rewriter.notifyMatchFailure(
           stb_op, "SpaceToBatchND op's input should have RankedTensorType");
     }
@@ -351,8 +351,8 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   // dilated conv, hence we shouldn't pattern match here. Instead, we need to
   // check values of `paddings` and `crops` to make sure it really stands for
   // a dilated conv.
-  auto stb_paddings = stb_op.paddings();
-  auto bts_crops = bts_op.crops();
+  auto stb_paddings = stb_op.getPaddings();
+  auto bts_crops = bts_op.getCrops();
   ElementsAttr stb_paddings_attr, bts_crops_attr;
   if (!matchPattern(stb_paddings, m_Constant(&stb_paddings_attr)) ||
       !matchPattern(bts_crops, m_Constant(&bts_crops_attr))) {
@@ -388,7 +388,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   }
 
   // Set dilations
-  op->setAttr("dilations", dilations_attr.getValue());
+  op->setAttr("dilations", dilations_attr.value());
 
   if (expand_op) {
     // If there is `expand_op`, we need to rewire the inputs to bypass the
@@ -397,45 +397,46 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     // BiasAdd' to 'Expand -> Conv2D ->Squeeze -> BiasAdd'.
 
     // Connect `expand_op` with the input of `stb_op`.
-    expand_op.setOperand(0, stb_op.input());
+    expand_op.setOperand(0, stb_op.getInput());
     // Calculate the shape for expand.
-    auto input_shape = stb_op.input().getType().cast<ShapedType>().getShape();
+    auto input_shape =
+        stb_op.getInput().getType().cast<ShapedType>().getShape();
     SmallVector<int64_t, 4> expand_shape(input_shape.begin(),
                                          input_shape.end());
     expand_shape.insert(expand_shape.begin() + expand_axis, 1);
 
     auto expand_result_type = RankedTensorType::get(
-        expand_shape, getElementTypeOrSelf(stb_op.input()));
+        expand_shape, getElementTypeOrSelf(stb_op.getInput()));
     expand_op.getResult().setType(expand_result_type);
 
     // Update the conv op's output shape.
     auto bts_output_shape =
-        bts_op.output().getType().cast<ShapedType>().getShape();
+        bts_op.getOutput().getType().cast<ShapedType>().getShape();
     SmallVector<int64_t, 4> conv_result_shape(bts_output_shape.begin(),
                                               bts_output_shape.end());
     conv_result_shape.insert(conv_result_shape.begin() + expand_axis, 1);
     auto conv_result_type = RankedTensorType::get(
-        conv_result_shape, getElementTypeOrSelf(stb_op.input()));
+        conv_result_shape, getElementTypeOrSelf(stb_op.getInput()));
     op.getResult().setType(conv_result_type);
 
-    squeeze_op.getResult().setType(bts_op.output().getType());
+    squeeze_op.getResult().setType(bts_op.getOutput().getType());
 
     // Connect `biasadd_op` with the output of `squeeze_op`.
     if (biasadd_op) {
-      biasadd_op.setOperand(0, squeeze_op.output());
-      biasadd_op.output().setType(squeeze_op.output().getType());
+      biasadd_op.setOperand(0, squeeze_op.getOutput());
+      biasadd_op.getOutput().setType(squeeze_op.getOutput().getType());
     }
   } else {
-    if (biasadd_op) biasadd_op.setOperand(0, op.output());
-    op.setOperand(0, stb_op.input());
+    if (biasadd_op) biasadd_op.setOperand(0, op.getOutput());
+    op.setOperand(0, stb_op.getInput());
     op.getResult().setType(bts_op.getResult().getType());
   }
 
   if (final_op_is_bts) {
-    if (bts_op.input().getDefiningOp<TF::PadOp>()) {
-      bts_op.getResult().replaceAllUsesWith(pad_op.input());
+    if (bts_op.getInput().getDefiningOp<TF::PadOp>()) {
+      bts_op.getResult().replaceAllUsesWith(pad_op.getInput());
     } else {
-      bts_op.getResult().replaceAllUsesWith(bts_op.input());
+      bts_op.getResult().replaceAllUsesWith(bts_op.getInput());
     }
   }
 

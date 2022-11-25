@@ -44,19 +44,10 @@ else:
 class Delegate:
   """Python wrapper class to manage TfLiteDelegate objects.
 
-  The shared library is expected to have two functions:
-    TfLiteDelegate* tflite_plugin_create_delegate(
-        char**, char**, size_t, void (*report_error)(const char *))
-    void tflite_plugin_destroy_delegate(TfLiteDelegate*)
-
-  The first one creates a delegate object. It may return NULL to indicate an
-  error (with a suitable error message reported by calling report_error()).
-  The second one destroys delegate object and must be called for every
-  created delegate object. Passing NULL as argument value is allowed, i.e.
-
-    tflite_plugin_destroy_delegate(tflite_plugin_create_delegate(...))
-
-  always works.
+  The shared library is expected to have two functions,
+  tflite_plugin_create_delegate and tflite_plugin_destroy_delegate,
+  which should implement the API specified in
+  tensorflow/lite/delegates/external/external_delegate_interface.h.
   """
 
   def __init__(self, library, options=None):
@@ -85,6 +76,7 @@ class Delegate:
         ctypes.POINTER(ctypes.c_char_p), ctypes.c_int,
         ctypes.CFUNCTYPE(None, ctypes.c_char_p)
     ]
+    # The return type is really 'TfLiteDelegate*', but 'void*' is close enough.
     self._library.tflite_plugin_create_delegate.restype = ctypes.c_void_p
 
     # Convert the options from a dictionary to lists of char pointers.

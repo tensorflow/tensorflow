@@ -181,7 +181,7 @@ bool IsValueUsedByAssignVariableOp(
             llvm::dyn_cast_or_null<mlir::TF::AssignVariableOp>(
                 NextTFOp(user))) {
       *resource_argument_index_for_assign_variable =
-          GetForwardedDTensorLayoutInput(assign_variable_op.resource())
+          GetForwardedDTensorLayoutInput(assign_variable_op.getResource())
               .cast<mlir::BlockArgument>()
               .getArgNumber();
       return true;
@@ -329,7 +329,7 @@ mlir::LogicalResult ConductSPMDExpansion(mlir::ModuleOp module) {
     const bool is_terminator_op =
         llvm::isa<mlir::func::ReturnOp, mlir::tf_device::ReturnOp>(op);
     if (auto layout_op = llvm::dyn_cast<mlir::TF::DTensorLayout>(op))
-      layout_op.output().setType(layout_op.input().getType());
+      layout_op.getOutput().setType(layout_op.getInput().getType());
 
     mlir::Operation* expanded_op = nullptr;
     auto status = RunSPMDExpansion(op, &expanded_op);

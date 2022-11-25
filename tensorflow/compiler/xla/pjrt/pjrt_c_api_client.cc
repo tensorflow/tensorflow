@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 // TODO(skyewm): remove when everything goes through C API
@@ -208,7 +209,6 @@ StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
   return GetCppDevice(args.device);
 }
 
-
 // Initializes `PJRT_Client_Compile_Args`, which will be used to call
 // API PJRT_Client_Compile().
 static StatusOr<std::unique_ptr<PjRtLoadedExecutable>> InitializeArgsAndCompile(
@@ -327,11 +327,14 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
     HostBufferSemantics host_buffer_semantics,
     std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
   if (host_buffer_semantics != HostBufferSemantics::kImmutableOnlyDuringCall &&
-      host_buffer_semantics != HostBufferSemantics::kZeroCopy) {
+      host_buffer_semantics != HostBufferSemantics::kZeroCopy &&
+      host_buffer_semantics !=
+          HostBufferSemantics::kImmutableUntilTransferCompletes) {
     return Unimplemented(
         "PJRT C API does not support HostBufferSemantics other than "
-        "HostBufferSemantics::kImmutableOnlyDuringCall and "
-        "HostBufferSemantics::kZeroCopy.");
+        "HostBufferSemantics::kImmutableOnlyDuringCall, "
+        "HostBufferSemantics::kZeroCopy and "
+        "HostBufferSemantics::kImmutableUntilTransferCompletes.");
   }
 
   PJRT_Client_BufferFromHostBuffer_Args args;
@@ -1080,11 +1083,13 @@ PjRtFuture<Status> PjRtCApiBuffer::GetReadyFuture() {
 
 // -------------------------------- API access ---------------------------------
 
-StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient() {
+StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
+    absl::string_view device_type) {
 #if !defined(PLATFORM_GOOGLE) || defined(LIBTPU_STATIC)
   TF_RETURN_IF_ERROR(tensorflow::tpu::FindAndLoadTpuLibrary());
 #endif
-  const PJRT_Api* c_api = tensorflow::tpu::PjrtApi();
+  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api,
+                      stream_executor::tpu::PjrtApi(device_type));
   if (c_api == nullptr) {
     return InternalError("PJRT C API is nullptr");
   }

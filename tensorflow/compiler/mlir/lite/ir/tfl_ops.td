@@ -508,9 +508,9 @@ value of each element in `x`. For example, if x is an input element and y is
 an output element, this operation computes \\(y = |x|\\).
   }];
 
-  let arguments = (ins TFL_TensorOf<[I16, F32, QI8, QI16]>:$x);
+  let arguments = (ins TFL_TensorOf<[I16, I32, F32, QI8, QI16]>:$x);
 
-  let results = (outs TFL_TensorOf<[I16, F32, QI8, QI16]>:$y);
+  let results = (outs TFL_TensorOf<[I16, I32, F32, QI8, QI16]>:$y);
 
   let hasFolder = 1;
 }
@@ -996,7 +996,7 @@ def TFL_DepthwiseConv2DOp :
                  DynamicRangeQuantizedOpInterface]> {
   let arguments = (
     ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
-    TFL_TensorOf<[F32, QI8, QUI8]>:$filter,
+    TFL_TensorOf<[F32, QI4, QI8, QUI8]>:$filter,
     TFL_1DTensorOfOrNone<[F32, I32, I64]>:$bias,
     I32Attr:$dilation_h_factor,
     I32Attr:$dilation_w_factor,
@@ -1036,7 +1036,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
 
   let arguments = (ins
     TFL_TensorOf<[F32, QI8, QUI8, QI16, QUI16]>:$input,
-    TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$filter,
+    TFL_TensorOf<[F32, QI4, QI8, QUI8, QI16]>:$filter,
     TFL_TensorOfOrNone<[F32, QI32, QUI32]>:$bias,
 
     TFL_AFAttr:$fused_activation_function,
@@ -3439,7 +3439,7 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [
 def TFL_TransposeOp : TFL_Op<"transpose", [
     Pure,
     QuantizableResult,
-    TFL_OperandHasRankAtMost<0, 5>,
+    TFL_OperandHasRankAtMost<0, 6>,
     TFL_OperandHasRank<1, 1>,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
@@ -4995,7 +4995,7 @@ def TFL_Atan2Op: TFL_Op<"atan2", [
 
   let summary = "Atan2 operation";
   let description = [{
-    The "atan2" operation computes the arctangent of y/x element-wise, 
+    The "atan2" operation computes the arctangent of y/x element-wise,
     respecting signs of the arguments.
   }];
 
@@ -5014,18 +5014,18 @@ def TFL_SignOp: TFL_Op<"sign", [
   SameOperandsAndResultShape,
   SameOperandsAndResultElementType
   ]> {
-  
+
   let summary = "Sign operation";
   let description = [{
     Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, F64]>:$x
+    TFL_TensorOf<[F32, F64, I32]>:$x
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, F64]>:$output
+    TFL_TensorOf<[F32, F64, I32]>:$output
   );
 }
 

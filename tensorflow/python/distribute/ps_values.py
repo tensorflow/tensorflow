@@ -224,13 +224,15 @@ class AggregatingVariable(resource_variable_ops.BaseResourceVariable,
       return self._v._gather_saveables_for_checkpoint()  # pylint:disable=protected-access
     return {trackable.VARIABLE_VALUE_KEY: self._v}
 
-  def _map_resources(self, save_options):
+  def _export_to_saved_model_graph(self, object_map, tensor_map,
+                                   options, **kwargs):
     """For implementing `Trackable`."""
     # By delegating this method to the wrapped variable, SavedModel with
     # AggregatingVariable are identical to SavedModel with normal variables.
-    obj_map, resource_map = self._v._map_resources(save_options)  # pylint:disable=protected-access
-    obj_map[self] = obj_map[self._v]
-    return obj_map, resource_map
+    resource_list = self._v._export_to_saved_model_graph(object_map, tensor_map,  # pylint:disable=protected-access
+                                                         options, **kwargs)
+    object_map[self] = object_map[self._v]
+    return resource_list
 
   # pylint: disable=multiple-statements
   def __add__(self, o):
@@ -513,13 +515,15 @@ class CachingVariable(resource_variable_ops.BaseResourceVariable, core.Tensor):
   def _gather_saveables_for_checkpoint(self):
     return {trackable.VARIABLE_VALUE_KEY: self._v}
 
-  def _map_resources(self, save_options):
+  def _export_to_saved_model_graph(self, object_map, tensor_map,
+                                   options, **kwargs):
     """For implementing `Trackable`."""
     # By delegating this method to the wrapped variable, SavedModel with
     # AggregatingVariable are identical to SavedModel with normal variables.
-    obj_map, resource_map = self._v._map_resources(save_options)  # pylint:disable=protected-access
-    obj_map[self] = obj_map[self._v]
-    return obj_map, resource_map
+    resource_list = self._v._export_to_saved_model_graph(object_map, tensor_map,  # pylint:disable=protected-access
+                                                         options, **kwargs)
+    object_map[self] = object_map[self._v]
+    return resource_list
 
 
 # Register a conversion function which reads the value of the variable,

@@ -23,15 +23,17 @@ limitations under the License.
 
 namespace tensorflow {
 
-enum class TfrtTpuInfraTarget {
-  kNoTpu,           // No TPU support.
+enum class TfrtDeviceInfraTarget {
+  kCpu,             // CPU only, no device support.
   kTpurt,           // Target TPURT dialect and kernels.
   kTfFallback,      // Target TPU kernels in TF Fallback.
   kBridgeFallback,  // TPU support but choose kTpurt or kTfFallback depending on
-                    // whether the graph has unsupported feature in Bridge
+                    // whether the graph has unsupported feature in Bridge.
+  kGpu,             // Target GPU specific compiler passes and runtime
+                    // initializations.
 };
 
-std::ostream& operator<<(std::ostream& os, TfrtTpuInfraTarget tpu_target);
+std::ostream& operator<<(std::ostream& os, TfrtDeviceInfraTarget device_target);
 
 struct TfrtCompileOptions {
   // TODO(tfrt-devs): Ideally, compiler should make the decision where
@@ -42,11 +44,7 @@ struct TfrtCompileOptions {
   // Enable compiler optimization in TFRT dialect.
   bool enable_optimizer = true;
 
-  // If true, native ops will be used if they are implemented in TFRT. If
-  // false, all ops are using fallback.
-  //
-  // This option is experimental. Native ops are still under development and
-  // likely to cause performance issue when enabled.
+  // This is deprecated and has no effect.
   bool enable_native_ops = false;
 
   // If true, run grappler passes before compiling.
@@ -61,9 +59,9 @@ struct TfrtCompileOptions {
   // data format should be changed, instead of controlled by users.
   std::string force_data_format;
 
-  // The target TPU infrastructure to use. This will trigger TPU target specific
+  // The target device infrastructure to use. This will trigger target specific
   // compiler passes and runtime initialization.
-  TfrtTpuInfraTarget tpu_target = TfrtTpuInfraTarget::kNoTpu;
+  TfrtDeviceInfraTarget device_target = TfrtDeviceInfraTarget::kCpu;
 
   // If true, use the fused TPU compile_and_execute kernel, which performs all
   // TPU inference related operations, e.g. core selection, h2d/d2h transfers,
@@ -123,7 +121,7 @@ struct TfrtCompileOptions {
 
   // If true, streams with inter data depenedencies will be preferred to be
   // merged for inline execution.
-  bool merge_inter_dependent_streams = false;
+  bool merge_inter_dependent_streams = true;
 
   // Whether to enable the DecomposeResourceOpsPass.
   bool decompose_resource_ops = true;

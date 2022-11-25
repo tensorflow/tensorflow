@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 
+#include <fstream>
 #include <map>
 #include <optional>
 #include <set>
@@ -24,9 +25,11 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/ascii.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/tsl/framework/bfc_allocator.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 #ifdef GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -234,6 +237,28 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
   return devices;
 }
 
+// Exists on Linux systems. Unique per OS kernel restart.
+static constexpr char kBootIdPath[] = "/proc/sys/kernel/random/boot_id";
+
+// Retrieve content of /proc/sys/kernel/random/boot_id as a string.
+// Note that procfs file may have file size 0 which throws off generic file
+// readers such as tsl::ReadFileToString.
+StatusOr<std::string> GetBootIdString() {
+  std::string boot_id_str;
+#ifdef __linux__
+  std::ifstream file(kBootIdPath);
+  if (!file) {
+    return NotFound("%s not found.", kBootIdPath);
+  }
+  std::string line;
+  while (std::getline(file, line)) {
+    absl::StripAsciiWhitespace(&line);
+    absl::StrAppend(&boot_id_str, line);
+  }
+#endif
+  return boot_id_str;
+}
+
 Status BuildDistributedDevices(
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id,
@@ -241,6 +266,14 @@ Status BuildDistributedDevices(
     gpu::GpuExecutableRunOptions* gpu_executable_run_options) {
   LocalTopologyProto local_topology;
   local_topology.set_node_id(node_id);
+  std::string boot_id_str;
+  auto boot_id_str_or_status = GetBootIdString();
+  if (!boot_id_str_or_status.ok()) {
+    LOG(INFO) << boot_id_str_or_status.status();
+  } else {
+    boot_id_str = boot_id_str_or_status.value();
+  }
+  local_topology.set_boot_id(boot_id_str);
   for (const auto& ordinal_and_device : local_device_states) {
     const se::Platform* platform =
         ordinal_and_device.second->executor()->platform();
@@ -276,7 +309,8 @@ Status BuildDistributedDevices(
       }
       auto device = std::make_unique<StreamExecutorGpuDevice>(
           device_proto.global_device_id(), std::move(local_device),
-          device_proto.name(), device_proto.vendor(), node.node_id());
+          device_proto.name(), device_proto.vendor(), node.node_id(),
+          device_proto.slice_index());
       devices->push_back(std::move(device));
     }
   }
@@ -300,16 +334,21 @@ Status BuildDistributedDevices(
 
 StreamExecutorGpuDevice::StreamExecutorGpuDevice(
     int id, std::unique_ptr<LocalDeviceState> local_device_state,
-    std::string device_kind, std::string device_vendor, int node_id)
+    std::string device_kind, std::string device_vendor, int node_id,
+    int slice_index)
     : PjRtStreamExecutorDevice(id, std::move(local_device_state),
                                std::move(device_kind), node_id),
-      device_vendor_(std::move(device_vendor)) {
+      device_vendor_(std::move(device_vendor)),
+      slice_index_(slice_index) {
   attributes_ = {
       {"device_vendor", PjRtDeviceAttribute(device_vendor_)},
   };
   to_string_ = absl::StrFormat(
-      "StreamExecutorGpuDevice(id=%i, process_index=%i)", id, process_index());
+      "StreamExecutorGpuDevice(id=%i, process_index=%i, slice_index=%i)", id,
+      process_index(), slice_index);
 }
+
+int StreamExecutorGpuDevice::slice_index() const { return slice_index_; }
 
 absl::string_view StreamExecutorGpuDevice::device_vendor() const {
   return device_vendor_;

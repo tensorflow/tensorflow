@@ -49,7 +49,7 @@ mlir::Value GetForwardedInput(mlir::Value value) {
       // TODO(bfontain): Add cases for identity and control flow return values.
       if (mlir::TF::DTensorLayout layout_op =
               mlir::dyn_cast<mlir::TF::DTensorLayout>(op)) {
-        value = layout_op.input();
+        value = layout_op.getInput();
         value_updated = true;
       }
     }
@@ -236,7 +236,7 @@ StatusOr<mlir::Value> SelectScalarValueFromArray(mlir::OpBuilder& builder,
       scalar_size_type.getShape(), builder, location);
   mlir::Value scalar_sliced_value = builder.create<mlir::TF::ReshapeOp>(
       location, mlir::ArrayRef<mlir::Type>{scalar_size_type},
-      mlir::ArrayRef<mlir::Value>{sliced_value.output(), scalar_shape},
+      mlir::ArrayRef<mlir::Value>{sliced_value.getOutput(), scalar_shape},
       mlir::ArrayRef<mlir::NamedAttribute>{});
   return scalar_sliced_value;
 }

@@ -3,6 +3,7 @@ load("//tensorflow/tsl/platform:build_config.bzl", "tf_stream_executor_deps")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )

@@ -203,13 +203,6 @@ def _get_compression_proto(compression):
                    f"Must be one of {[COMPRESSION_AUTO, COMPRESSION_NONE]}.")
 
 
-def _decide_compression(compression, data_transfer_protocol):
-  if (compression == COMPRESSION_AUTO and data_transfer_protocol != "grpc" and
-      data_transfer_protocol is not None):
-    return COMPRESSION_NONE
-  return compression
-
-
 def _to_tensor(dataset_id):
   """Converts `dataset_id` to Tensor."""
 
@@ -520,7 +513,6 @@ def _distribute(processing_mode,
   """
   processing_mode = _get_validated_sharding_policy(processing_mode)
   _validate_compression(compression)
-  compression = _decide_compression(compression, data_transfer_protocol)
 
   def _apply_fn(dataset):  # pylint: disable=missing-docstring
     dataset_id = _register_dataset(service, dataset, compression=compression)
