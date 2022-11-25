@@ -97,7 +97,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
 
 /// Pass to transform a linalg.matmul op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForCpuPass(
-    ArrayRef<int64_t> tileSizes = llvm::None);
+    ArrayRef<int64_t> matmulTileSizes = llvm::None,
+    bool lowerToMmt4DOp = false);
 
 /// Pass to transform a linalg.map op for CPU backend.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>

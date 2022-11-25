@@ -185,6 +185,8 @@ def TransformMatmulForCpuPass :
   let constructor = "createTransformMatmulForCpuPass()";
 
   let options = [
+    Option<"lowerToMmt4D", "lower-to-mmt4d", "bool", "false",
+           "If true, lower linalg.matmul into linalg.mmt4d">,
     ListOption<"tileSizes", "tile-sizes", "int64_t",
                "Tile sizes for a `linalg.matmul`">,
   ];

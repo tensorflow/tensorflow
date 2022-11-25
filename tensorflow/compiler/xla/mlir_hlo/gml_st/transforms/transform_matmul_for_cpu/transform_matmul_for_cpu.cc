@@ -476,8 +476,10 @@ struct TransformMatmulForCpuPass
     : public impl::TransformMatmulForCpuPassBase<TransformMatmulForCpuPass> {
   TransformMatmulForCpuPass() = default;
 
-  explicit TransformMatmulForCpuPass(llvm::ArrayRef<int64_t> matmulTileSizes) {
+  explicit TransformMatmulForCpuPass(llvm::ArrayRef<int64_t> matmulTileSizes,
+                                     bool lowerToMmt4DOp) {
     tileSizes = matmulTileSizes;
+    lowerToMmt4D = lowerToMmt4DOp;
   }
 
   void getDependentDialects(DialectRegistry &registry) const final {
@@ -490,23 +492,28 @@ struct TransformMatmulForCpuPass
     func::FuncOp f = getOperation();
     MLIRContext *ctx = &getContext();
 
-    if (tileSizes.empty()) {
-      tileSizes = {2, 4, 8};
-    }
-
-    assert(tileSizes.size() == 3 &&
-           "Tiling sizes for MatMul should have 3 elements");
-
+    // Convert linalg.matmul to linalg.mmt4d (packed matmul) if required.
     RewritePatternSet patterns(ctx);
-    patterns.add<MatmulTransformPattern>(ctx, tileSizes[0], tileSizes[1],
-                                         tileSizes[2]);
+    if (lowerToMmt4D) {
+      patterns.add<MatmulToMmt4dPattern>(ctx);
+    } else {
+      if (tileSizes.empty()) {
+        tileSizes = {2, 4, 8};
+      }
+      assert(tileSizes.size() == 3 &&
+             "Tiling sizes for MatMul should have 3 elements");
+      patterns.add<MatmulTransformPattern>(ctx, tileSizes[0], tileSizes[1],
+                                           tileSizes[2]);
+    }
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();
     }
-
     // Ensure we drop the marker in the end.
-    f.walk([](linalg::MatmulOp op) { gml_st::removeTransformationAttr(op); });
+    f.walk([](Operation *op) {
+      if (isa<linalg::MatmulOp>(op) || isa<linalg::Mmt4DOp>(op))
+        gml_st::removeTransformationAttr(op);
+    });
   }
 };
 
@@ -518,9 +525,10 @@ createTransformMatmulForCpuPass() {
 }
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createTransformMatmulForCpuPass(llvm::ArrayRef<int64_t> matmulTileSizes) {
+createTransformMatmulForCpuPass(llvm::ArrayRef<int64_t> matmulTileSizes,
+                                bool lowerToMmt4DOp) {
   return std::make_unique<mlir::gml_st::TransformMatmulForCpuPass>(
-      matmulTileSizes);
+      matmulTileSizes, lowerToMmt4DOp);
 }
 
 }  // namespace mlir::gml_st

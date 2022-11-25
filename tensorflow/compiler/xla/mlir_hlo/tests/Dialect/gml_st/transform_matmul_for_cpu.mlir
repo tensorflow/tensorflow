@@ -1,5 +1,6 @@
 // RUN: mlir-hlo-opt %s -xla-cpu-transform-matmul="tile-sizes=8,4,2" | FileCheck %s --check-prefixes=CHECK,TRANSFORMED
 // RUN: mlir-hlo-opt %s -xla-cpu-transform-matmul="tile-sizes=8,4,2" | FileCheck %s --check-prefixes=MARKED
+// RUN: mlir-hlo-opt %s -xla-cpu-transform-matmul="lower-to-mmt4d=true" | FileCheck %s --check-prefixes=MMT4D
 
 #id_map = affine_map<(d0, d1) -> (d0, d1)>
 
@@ -16,16 +17,19 @@ func.func @matmul_static(%arg0: tensor<128x16xf32>, %arg1: tensor<16x64xf32>,
 // CHECK-SAME:       %[[OUT:.*]]: tensor<128x64xf32>)
 
 // CHECK:      %[[C0:.*]] = arith.constant 0 : index
-
 // CHECK:      gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
-
 // CHECK:        %[[FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]])
-
 // CHECK:          %[[MATMUL:.*]] = linalg.matmul
 // CHECK-SAME:       -> tensor<8x4xf32>
-
 // CHECK:          gml_st.set_yield %[[MATMUL]]
 // CHECK:        gml_st.set_yield %[[FOR]]
+
+// -----
+
+// MMT4D-LABEL:    func @matmul_static(
+
+// MMT4D-NOT:        linalg.matmul
+// MMT4D:            linalg.mmt4d
 
 // -----
 
@@ -97,3 +101,10 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // MARKED:           gml_st.for (%[[K:.*]]) = (%[[C0]])
 // MARKED:           } {__internal_peeled_marker__ = true, __internal_vectorized_marker__ = true
 // MARKED:         } {__internal_peeled_marker__ = true, __internal_vectorized_marker__ = true
+
+// -----
+
+// MMT4D-LABEL:    func @matmul(
+
+// MMT4D-NOT:        linalg.matmul
+// MMT4D:            linalg.mmt4d
