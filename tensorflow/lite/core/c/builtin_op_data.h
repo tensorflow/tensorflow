@@ -89,6 +89,10 @@ typedef struct {
   // Note: Version 2 supports dilation values not equal to 1.
   int dilation_width_factor;
   int dilation_height_factor;
+
+  // Parameters for CONV_2D version 7 or above.
+  // Ensures that quantized_bias_type defaults to correct value.
+  TfLiteType quantized_bias_type;
 } TfLiteConvParams;
 
 typedef struct {
@@ -192,6 +196,9 @@ typedef struct {
   // If set to true and the weights are quantized, then non constant inputs
   // are quantized at evaluation time with asymmetric quantization.
   bool asymmetric_quantize_inputs;
+  // Parameters for FullyConnected version 10 or above.
+  // Ensures that quantized_bias_type defaults to correct value.
+  TfLiteType quantized_bias_type;
 } TfLiteFullyConnectedParams;
 
 typedef enum {
@@ -418,6 +425,9 @@ typedef struct {
   TfLitePadding padding;
   int stride_width;
   int stride_height;
+  // Parameters for TransposeConv version 4 or above.
+  // Ensures that quantized_bias_type defaults to correct value.
+  TfLiteType quantized_bias_type;
 } TfLiteTransposeConvParams;
 
 typedef struct {
