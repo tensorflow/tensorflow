@@ -107,8 +107,7 @@ struct ExternalLinalgOpTilingInterface
           return tiledOperands[opOperand->getOperandNumber()].getType();
         }));
 
-    Operation *tiledOp =
-        linalgOp.clone(b, loc, resultTensorTypes, tiledOperands);
+    Operation *tiledOp = clone(b, linalgOp, resultTensorTypes, tiledOperands);
     offsetIndices(b, cast<linalg::LinalgOp>(tiledOp), offsets);
 
     return {tiledOp};

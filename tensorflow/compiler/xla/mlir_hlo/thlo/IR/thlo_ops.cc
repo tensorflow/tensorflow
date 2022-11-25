@@ -30,7 +30,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
-#include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
@@ -811,9 +810,8 @@ mlir::gml_st::TilingInterface ScatterOp::getTiledImplementation(
   Value init = this->getInit();
   Value initSlice = getFullSpace(b, loc, init);
 
-  auto dpsInterface = cast<DestinationStyleOpInterface>(this->getOperation());
-  return dpsInterface.clone(b, loc, TypeRange{initSlice.getType()},
-                            ValueRange{indicesSlice, updateSlice, initSlice});
+  return mlir::clone(b, this->getOperation(), TypeRange{initSlice.getType()},
+                     ValueRange{indicesSlice, updateSlice, initSlice});
 }
 
 FailureOr<Value> ScatterOp::generateResultTileValue(
@@ -1128,8 +1126,8 @@ mlir::gml_st::TilingInterface SortOp::getTiledImplementation(
         b.create<gml_st::MaterializeOp>(loc, init, tile));
   }
 
-  auto dpsInterface = cast<DestinationStyleOpInterface>(this->getOperation());
-  return dpsInterface.clone(b, loc, tiledResultTypes, tiledInputsAndInits);
+  return mlir::clone(b, this->getOperation(), tiledResultTypes,
+                     tiledInputsAndInits);
 }
 
 FailureOr<Value> SortOp::generateResultTileValue(OpBuilder &b,

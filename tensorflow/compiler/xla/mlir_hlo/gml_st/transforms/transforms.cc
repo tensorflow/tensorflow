@@ -147,7 +147,7 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
       resultTensorTypes.push_back(
           tiledOperands[opOperand->getOperandNumber()].getType());
 
-    res = op.clone(b, loc, resultTensorTypes, tiledOperands);
+    res = clone(b, op, resultTensorTypes, tiledOperands);
 
     // Insert a insert_slice for each output tensor.
     unsigned resultIdx = 0;
