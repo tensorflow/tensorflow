@@ -1,12 +1,6 @@
 # Tensorflow protobuf utility package
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-
-# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")  # @unused
 
 visibility = [
@@ -29,6 +23,7 @@ visibility = [
 ]
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = visibility,
     licenses = ["notice"],
 )

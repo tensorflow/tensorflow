@@ -47,6 +47,7 @@ message Node {
     // Describes the physical memory layout of the instruction's primary input.
     // e.g. for a convolution, this analyzes the image and ignores the kernel.
     LayoutAnalysis layout = 5;
+    uint32 computation_primitive_size = 6;
     message LayoutAnalysis {
       // The physical data layout, from most-minor to most-major dimensions.
       repeated Dimension dimensions = 1;

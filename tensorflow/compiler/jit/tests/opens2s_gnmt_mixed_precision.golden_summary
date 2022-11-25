@@ -1,8 +1,8 @@
-Clustered nodes: 2472
-Unclustered nodes: 3874
+Clustered nodes: 2452
+Unclustered nodes: 3894
 Number of clusters: 31
 
-unclustered size 3874
+unclustered size 3894
  Add 17
  AddN 1
  All 1
@@ -12,12 +12,14 @@ unclustered size 3874
  AssignAdd 2
  AssignSub 2
  BroadcastGradientArgs 44
- Const 653
+ ConcatV2 3
+ Const 662
  ControlTrigger 5
  Enter 874
  Equal 4
  Exit 69
- ExpandDims 6
+ ExpandDims 9
+ Fill 5
  FloorMod 1
  GreaterEqual 7
  Identity 113
@@ -107,12 +109,11 @@ cluster 1 size 86
  Tile 1
  Transpose 2
  Unpack 1
-cluster 2 size 46
+cluster 2 size 44
  Cast 2
  ConcatV2 2
  Const 18
  ExpandDims 1
- Fill 2
  GatherV2 2
  Less 1
  MatMul 1
@@ -137,14 +138,12 @@ cluster 4 size 11
  ReverseSequence 1
  Slice 2
  Transpose 3
-cluster 5 size 44
+cluster 5 size 32
  All 2
  Cast 1
- ConcatV2 2
- Const 22
+ Const 16
  Equal 2
- ExpandDims 4
- Fill 2
+ ExpandDims 2
  GatherV2 1
  Identity 1
  ReverseSequence 1
@@ -271,13 +270,12 @@ cluster 16 size 60
  Slice 2
  Sum 9
  TanhGrad 2
-cluster 17 size 26
+cluster 17 size 20
  All 1
- ConcatV2 2
- Const 13
+ ConcatV2 1
+ Const 10
  Equal 1
- ExpandDims 2
- Fill 1
+ ExpandDims 1
  ReverseSequence 1
  Shape 1
  StridedSlice 1

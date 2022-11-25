@@ -19,48 +19,10 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/retrying_utils.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/platform/cloud/compute_engine_metadata_client.h"
 
 namespace tensorflow {
-
-/// \brief A client that accesses to the metadata server running on GCE hosts.
-///
-/// Uses the provided HttpRequest::Factory to make requests to the local
-/// metadata service
-/// (https://cloud.google.com/compute/docs/storing-retrieving-metadata).
-/// Retries on recoverable failures using exponential backoff with the initial
-/// retry wait configurable via initial_retry_delay_usec.
-class ComputeEngineMetadataClient {
- public:
-  explicit ComputeEngineMetadataClient(
-      std::shared_ptr<HttpRequest::Factory> http_request_factory,
-      const RetryConfig& config = RetryConfig(
-          10000,  /* init_delay_time_us = 1 ms */
-          1000000 /* max_delay_time_us = 1 s */
-          ));
-  virtual ~ComputeEngineMetadataClient() {}
-
-  /// \brief Get the metadata value for a given attribute of the metadata
-  /// service.
-  ///
-  /// Given a metadata path relative
-  /// to http://metadata.google.internal/computeMetadata/v1/,
-  /// fills response_buffer with the metadata. Returns OK if the server returns
-  /// the response for the given metadata path successfully.
-  ///
-  /// Example usage:
-  /// To get the zone of an instance:
-  ///   compute_engine_metadata_client.GetMetadata(
-  ///       "instance/zone", response_buffer);
-  virtual Status GetMetadata(const string& path,
-                             std::vector<char>* response_buffer);
-
- private:
-  std::shared_ptr<HttpRequest::Factory> http_request_factory_;
-  const RetryConfig retry_config_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(ComputeEngineMetadataClient);
-};
-
+using tsl::ComputeEngineMetadataClient;  // NOLINT(misc-unused-using-decls)
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_CLOUD_COMPUTE_ENGINE_METADATA_CLIENT_H_

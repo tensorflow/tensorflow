@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -54,8 +55,8 @@ TEST(DumpMlirModuleTest, Valid) {
   std::string expected_txt_module;
   {
     llvm::raw_string_ostream os(expected_txt_module);
-    module_ref->getOperation()->print(
-        os, mlir::OpPrintingFlags().useLocalScope().printGenericOpForm());
+    module_ref->getOperation()->print(os,
+                                      mlir::OpPrintingFlags().useLocalScope());
     os.flush();
   }
 
@@ -103,10 +104,10 @@ TEST(DumpCrashReproducerTest, Valid) {
   std::string expected_txt_module;
   {
     llvm::raw_string_ostream os(expected_txt_module);
-    os << "// configuration: -pass-pipeline='' -mlir-disable-threading "
-          "-verify-each\n";
-    module_ref->getOperation()->print(
-        os, mlir::OpPrintingFlags().useLocalScope().printGenericOpForm());
+    os << "{-# external_resources: { mlir_reproducer: { pipeline: \"\", "
+          "disable_threading: true, verify_each: true } } #-}\n\n";
+    module_ref->getOperation()->print(os,
+                                      mlir::OpPrintingFlags().useLocalScope());
     os.flush();
   }
 

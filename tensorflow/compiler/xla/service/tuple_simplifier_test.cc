@@ -18,16 +18,16 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -37,16 +37,14 @@ namespace {
 class TupleSimplifierTest : public HloTestBase {
  protected:
   void Run(HloModule* module, bool change_expected) {
-    TupleSimplifier simplifier;
-    auto changed_status = simplifier.Run(module);
+    auto changed_status = RunHloPass(TupleSimplifier(), module);
     TF_ASSERT_OK(changed_status.status());
-    EXPECT_EQ(change_expected, changed_status.ValueOrDie());
+    EXPECT_EQ(change_expected, changed_status.value());
   }
   void Run(HloModule* module, bool change_expected, bool exclude_entry) {
-    TupleSimplifier simplifier(exclude_entry);
-    auto changed_status = simplifier.Run(module);
+    auto changed_status = RunHloPass(TupleSimplifier(exclude_entry), module);
     TF_ASSERT_OK(changed_status.status());
-    EXPECT_EQ(change_expected, changed_status.ValueOrDie());
+    EXPECT_EQ(change_expected, changed_status.value());
   }
 
   const Shape scalar_shape_ = ShapeUtil::MakeShape(F32, {});
@@ -286,40 +284,6 @@ TEST_F(TupleSimplifierTest, CanExcludeEntryComputation) {
   EXPECT_THAT(c0->root_instruction(), p0);
   EXPECT_THAT(c1->root_instruction(), p1);
   EXPECT_THAT(entry->instruction_count(), 9);
-}
-
-TEST_F(TupleSimplifierTest, NoRootWithSideEffects) {
-  auto module = CreateNewVerifiedModule();
-
-  HloComputation::Builder builder(TestName() + "_1");
-  HloInstruction* p0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape_, "param"));
-  HloInstruction* gte0 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, p0, 0));
-  HloInstruction* gte1 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, p0, 1));
-  HloInstruction* gte2 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, p0, 2));
-  HloInstruction* after_all =
-      builder.AddInstruction(HloInstruction::CreateToken());
-  builder.AddInstruction(
-      HloInstruction::CreateOutfeed(gte0->shape(), gte0, after_all, "config"));
-
-  builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte1, gte2}));
-
-  HloComputation* c0 = module->AddEmbeddedComputation(builder.Build());
-
-  {
-    HloComputation::Builder builder(TestName() + "_Entry");
-    HloInstruction* tuple_param = builder.AddInstruction(
-        HloInstruction::CreateParameter(0, tuple_shape_, "param"));
-    builder.AddInstruction(
-        HloInstruction::CreateCall(tuple_shape_, {tuple_param}, c0));
-
-    module->AddEntryComputation(builder.Build());
-  }
-
-  Run(module.get(), /*change_expected=*/false);
 }
 
 TEST_F(TupleSimplifierTest, ShardingLoss) {

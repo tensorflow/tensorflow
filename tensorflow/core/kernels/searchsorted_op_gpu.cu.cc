@@ -68,7 +68,7 @@ struct UpperBoundFunctor<GPUDevice, T, OutType> {
     const GPUDevice& device = context->eigen_device<GPUDevice>();
     if (values.size() == 0) {
       // GetGpuLaunchConfig requires work_element_count > 0
-      return Status::OK();
+      return OkStatus();
     }
     GpuLaunchConfig config = GetGpuLaunchConfig(values.size(), device);
 
@@ -77,7 +77,7 @@ struct UpperBoundFunctor<GPUDevice, T, OutType> {
         config.thread_per_block, 0, device.stream(), sorted_inputs.data(),
         batch_size, num_inputs, num_values, values.data(), output->data()));
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -91,7 +91,7 @@ struct LowerBoundFunctor<GPUDevice, T, OutType> {
     const GPUDevice& device = context->eigen_device<GPUDevice>();
     if (values.size() == 0) {
       // GetGpuLaunchConfig requires work_element_count > 0
-      return Status::OK();
+      return OkStatus();
     }
     GpuLaunchConfig config = GetGpuLaunchConfig(values.size(), device);
 
@@ -100,7 +100,7 @@ struct LowerBoundFunctor<GPUDevice, T, OutType> {
         config.thread_per_block, 0, device.stream(), sorted_inputs.data(),
         batch_size, num_inputs, num_values, values.data(), output->data()));
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 }  // namespace functor

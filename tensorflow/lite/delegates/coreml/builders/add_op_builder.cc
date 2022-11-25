@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/coreml/builders/add_op_builder.h"
 
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include <memory>
+#include <string>
+
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/delegates/coreml/builders/activation_layer_builder.h"
 #include "tensorflow/lite/delegates/coreml/builders/op_factory.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -31,7 +34,7 @@ const std::string& AddOpBuilder::DebugName() {
 
 CoreML::Specification::NeuralNetworkLayer* AddOpBuilder::Build() {
   if (layer_ == nullptr) {
-    layer_.reset(new CoreML::Specification::NeuralNetworkLayer);
+    layer_ = std::make_unique<CoreML::Specification::NeuralNetworkLayer>();
   }
   layer_->set_name(DebugName());
   layer_->mutable_add();

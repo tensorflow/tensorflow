@@ -28,7 +28,7 @@ struct LocalDescriptorPool {
     if (*desc_pool == nullptr) {
       return errors::InvalidArgument("Problem loading protobuf generated_pool");
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 

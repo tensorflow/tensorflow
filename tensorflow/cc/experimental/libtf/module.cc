@@ -30,7 +30,7 @@ using tf::libtf::runtime::Runtime;
 // Builds a vector of runtime representations of `SavedObject`s from a
 // SavedModel. These are returned as a flat list.  The full hierarchy building
 // and initialization should be done in a later pass.
-tensorflow::StatusOr<std::vector<Handle>> BuildObjects(TFPackage tf_package) {
+tensorflow::StatusOr<std::vector<Handle>> BuildObjects(TFPackage& tf_package) {
   std::vector<Handle> objects;
   const tensorflow::SavedObjectGraph object_graph = tf_package.GetObjectGraph();
   for (auto& node : object_graph.nodes()) {
@@ -111,7 +111,7 @@ tensorflow::StatusOr<Handle> BuildObjectHierarchy(TFPackage tf_package,
 }
 
 tensorflow::StatusOr<Handle> BuildProgram(Runtime runtime,
-                                          TFPackage tf_package) {
+                                          TFPackage& tf_package) {
   return tensorflow::errors::Unimplemented("Not implemented.");
 }
 

@@ -68,7 +68,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                             GetTensorData<float>(output));
       break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Neg only currently supports int64, int32, and float32, got %d.",
           input->type);

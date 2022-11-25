@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/no_op_cost_measurement.h"
 
+#include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
 
 TEST(NoOpCostMeasurementTest, Basic) {
-  NoOpCostMeasurement measurement;
+  CostMeasurement::Context context;
+  NoOpCostMeasurement measurement(context);
   EXPECT_EQ(measurement.GetTotalCost(), absl::ZeroDuration());
   EXPECT_EQ(measurement.GetCostType(), "no_op");
 }

@@ -523,7 +523,7 @@ class AvgPooling3dGradOp : public OpKernel {
     TensorShape output_shape;
     auto shape_vec = tensor_in_shape.vec<int32>();
     for (int64_t i = 0; i < tensor_in_shape.NumElements(); ++i) {
-      output_shape.AddDim(shape_vec(i));
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
     }
 
     Tensor* output;

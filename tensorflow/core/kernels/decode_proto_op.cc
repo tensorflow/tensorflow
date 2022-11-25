@@ -125,7 +125,7 @@ Status InitDefaultValue(DataType dtype, const T value, DefaultValue* result) {
           "Cannot initialize default value for unsupported type: ",
           DataTypeString(dtype));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
@@ -142,7 +142,7 @@ Status InitDefaultValue(DataType dtype, const char* value,
   }
   result->dtype = DT_STRING;
   result->value.v_string = value;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Initializes a default value from the output data type and the field
@@ -192,7 +192,7 @@ Status InitDefaultValueFromFieldDescriptor(DataType dtype,
       return InitDefaultValue(dtype, "", result);
       // default: intentionally omitted in order to enable static checking.
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // A FieldInfo holds a handful of information from the FieldDescriptor
@@ -265,14 +265,14 @@ class CountCollector {
     if (!SkipValue(input, field)) {
       return errors::DataLoss("ReadValue: Failed skipping field when counting");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Reads (in this case counts) a length-delimited list of values.
   Status ReadPackedValues(CodedInputStream* input, const FieldInfo& field,
                           size_t buf_size) {
     if (buf_size == 0) {
-      return Status::OK();
+      return OkStatus();
     }
 
     const void* tmpbuf;
@@ -358,7 +358,7 @@ class CountCollector {
     if (!field.is_repeated && *count_ptr_ > 1) {
       *count_ptr_ = 1;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -397,7 +397,7 @@ class CountCollector {
     }
 
     *count_ptr_ += count;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Counts the number of fixed-size values in a packed field. This can be done
@@ -410,7 +410,7 @@ class CountCollector {
           "Illegal data length for packed fixed-size type: ", len);
     }
     *count_ptr_ += len / sizeof(T);
-    return Status::OK();
+    return OkStatus();
   }
 
   // Skips a single value in the input stream. Dispatches to the appropriately
@@ -580,7 +580,7 @@ class DenseCollector {
     for (int i = next_repeat_index_; i < max_repeat_count_; i++) {
       reinterpret_cast<T*>(datap_)[i] = default_value;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   int32 next_repeat_index_ = 0;
@@ -1034,7 +1034,7 @@ class DecodeProtoOp : public OpKernel {
           *field_info, WireFormatLite::GetTagWireType(tag), input,
           &collectors[expected_field_info_iter - fields_.begin()]));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Collects values for a single field.
@@ -1074,7 +1074,7 @@ class DecodeProtoOp : public OpKernel {
         return errors::DataLoss(
             "CollectField: Failed skipping malformed field");
       }
-      return Status::OK();
+      return OkStatus();
     }
     return collector->ReadValue(input, field);
   }

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/optimized_function_graph_info.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -382,6 +383,13 @@ class ProcessFunctionLibraryRuntime {
                bool skip_flib_def = false) const;
 
   Status ReleaseMultiDeviceHandle(FunctionLibraryRuntime::Handle handle);
+
+  // Outputs graph optimization result after all the graph optimization (up till
+  // before graph partitioning); returns error if optimization fails.
+  StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
+      const string& function_name, AttrSlice attrs,
+      const FunctionLibraryRuntime::InstantiateOptions& options,
+      const std::shared_ptr<DeviceSet>& dev_set);
 
   Status InstantiateMultiDevice(
       const string& function_name, AttrSlice attrs,

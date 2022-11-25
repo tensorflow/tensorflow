@@ -1257,24 +1257,6 @@ INSTANTIATE_TEST_SUITE_P(
     TestParam::TestNameSuffix);
 
 #if defined(USE_NEON)
-// Intrinsics tests are run in emulation mode (such as for dot-product
-// instructions) unless the tests are built specifically with dot-product
-// instructions enabled.
-INSTANTIATE_TEST_SUITE_P(
-    Intrinsics, DepthwiseConvTest,
-    testing::Combine(
-        Values(DepthwiseConvImplementation::
-                   kUseIntrinsics3x3DotProduct),        // forced_invocation
-        Values(200),                                    // tests_to_run
-        Values(QuantizationType::kNonPerChannelUint8),  // quantization_type
-        Bool(),                                         // test_stride
-        Bool(),                                         // test_pad
-        Bool(),                                         // test_depth_multiplier
-        Values(DepthwiseConvOutputRounding::kUpward),   // output_rounding
-        Values(1),                                      // num_threads
-        Values(kLooseIntrinsicsTolerance)               // loose_tolerance
-        ),
-    TestParam::TestNameSuffix);
 
 // TODO(b/148145875): Remove this extra guard after checking that code runs
 // without lax vector conversions.

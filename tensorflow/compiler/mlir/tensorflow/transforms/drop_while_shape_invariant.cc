@@ -17,7 +17,6 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -26,13 +25,20 @@ namespace {
 
 constexpr char kShapeInvariantAttr[] = "shape_invariant";
 
+#define GEN_PASS_DEF_DROPWHILESHAPEINVARIANTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class DropWhileShapeInvariantPass
-    : public DropWhileShapeInvariantPassBase<DropWhileShapeInvariantPass> {
+    : public impl::DropWhileShapeInvariantPassBase<
+          DropWhileShapeInvariantPass> {
   void runOnOperation() override;
 };
 
+#define GEN_PASS_DEF_DROPWHILESHAPEINVARIANTINDEVICECLUSTERPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class DropWhileShapeInvariantInDeviceClusterPass
-    : public DropWhileShapeInvariantInDeviceClusterPassBase<
+    : public impl::DropWhileShapeInvariantInDeviceClusterPassBase<
           DropWhileShapeInvariantInDeviceClusterPass> {
   void runOnOperation() override;
 };
@@ -52,11 +58,12 @@ void DropWhileShapeInvariantInDeviceClusterPass::runOnOperation() {
 }
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateDropWhileShapeInvariantPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateDropWhileShapeInvariantPass() {
   return std::make_unique<DropWhileShapeInvariantPass>();
 }
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateDropWhileShapeInvariantInDeviceClusterPass() {
   return std::make_unique<DropWhileShapeInvariantInDeviceClusterPass>();
 }

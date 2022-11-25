@@ -15,19 +15,19 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_test_c_caller.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 TEST(XlaCustomCallStatusTest, DefaultIsSuccess) {
   XlaCustomCallStatus status;
 
-  ASSERT_EQ(xla::CustomCallStatusGetMessage(&status), absl::nullopt);
+  ASSERT_EQ(xla::CustomCallStatusGetMessage(&status), std::nullopt);
 }
 
 TEST(XlaCustomCallStatusTest, SetSuccess) {
   XlaCustomCallStatus status;
   XlaCustomCallStatusSetSuccess(&status);
 
-  ASSERT_EQ(xla::CustomCallStatusGetMessage(&status), absl::nullopt);
+  ASSERT_EQ(xla::CustomCallStatusGetMessage(&status), std::nullopt);
 }
 
 TEST(XlaCustomCallStatusTest, SetSuccessAfterFailure) {
@@ -35,7 +35,7 @@ TEST(XlaCustomCallStatusTest, SetSuccessAfterFailure) {
   XlaCustomCallStatusSetFailure(&status, "error", 5);
   XlaCustomCallStatusSetSuccess(&status);
 
-  ASSERT_EQ(xla::CustomCallStatusGetMessage(&status), absl::nullopt);
+  ASSERT_EQ(xla::CustomCallStatusGetMessage(&status), std::nullopt);
 }
 
 TEST(XlaCustomCallStatusTest, SetFailure) {
@@ -73,7 +73,7 @@ TEST(XlaCustomCallStatusTest, CSetSuccess) {
   XlaCustomCallStatus status;
   CSetSuccess(&status);
 
-  ASSERT_EQ(xla::CustomCallStatusGetMessage(&status), absl::nullopt);
+  ASSERT_EQ(xla::CustomCallStatusGetMessage(&status), std::nullopt);
 }
 
 TEST(XlaCustomCallStatusTest, CSetFailure) {

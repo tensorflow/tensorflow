@@ -197,7 +197,8 @@ class EagerOperation : public ImmediateExecutionOperation {
       if (eager_func_params_.has_value()) {
         eager_func_params_->step_id = step_id;
       } else {
-        eager_func_params_ = EagerFunctionParams{kInvalidOpId, step_id};
+        eager_func_params_ = EagerFunctionParams{
+            kInvalidOpId, /*is_component_function=*/false, step_id};
       }
     } else {
       LOG(WARNING) << "SetStepId() should not receive a gloabl rendezvous id.";

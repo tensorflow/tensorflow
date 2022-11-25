@@ -62,7 +62,7 @@ Status RenameNode(const GraphDef& input_graph_def,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("rename_node", RenameNode);

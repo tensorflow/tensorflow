@@ -16,7 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 
 #include <functional>
+#include <memory>
+#include <string>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "pybind11/pybind11.h"
@@ -25,7 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
+#include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/util.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -96,7 +102,8 @@ bool PyBuffer::IsPyBuffer(py::handle handle) {
 
 /*static*/ StatusOr<PyBuffer*> PyBuffer::AsPyBuffer(pybind11::handle handle) {
   if (!IsPyBuffer(handle)) {
-    return InvalidArgument("Expected a DeviceArray");
+    return InvalidArgument("Expected a DeviceArray, got object of type %s",
+                           py::cast<std::string>(py::str(handle.get_type())));
   }
   return AsPyBufferUnchecked(handle);
 }
@@ -167,7 +174,7 @@ pybind11::tuple PyBuffer::python_shape() const {
 
 pybind11::dtype PyBuffer::python_dtype() const {
   PrimitiveType primitive = buffer()->on_device_shape().element_type();
-  return PrimitiveTypeToDtype(primitive).ValueOrDie();
+  return PrimitiveTypeToDtype(primitive).value();
 }
 
 ClientAndPtr<PjRtDevice> PyBuffer::device() const {
@@ -184,6 +191,16 @@ PyBuffer::object PyBuffer::Clone() const {
 StatusOr<py::object> PyBuffer::CopyToDevice(
     const ClientAndPtr<PjRtDevice>& dst_device) const {
   CHECK(dst_device.get() != nullptr);
+  auto transfer_guard_formatter = [this, &dst_device] {
+    auto shape = py::cast<std::string>(py::str(python_shape()));
+    auto dtype = py::cast<std::string>(py::str(python_dtype()));
+    return absl::StrCat("shape=", shape, ", dtype=", dtype,
+                        ", device=", device()->DebugString(),
+                        ", dst_device=", dst_device->DebugString());
+  };
+  TF_RETURN_IF_ERROR(
+      jax::ApplyTransferGuardToDeviceToDevice(transfer_guard_formatter));
+
   GlobalPyRefManager()->CollectGarbage();
   std::unique_ptr<PjRtBuffer> out;
   {
@@ -194,6 +211,29 @@ StatusOr<py::object> PyBuffer::CopyToDevice(
   return Make(dst_device.client, std::move(out), std::move(traceback));
 }
 
+std::pair<Status, bool> PyBuffer::CopyToRemoteDevice(
+    absl::string_view serialized_descriptor) const {
+  absl::Mutex mu;
+  bool done = false;
+  Status status;
+  bool sends_were_enqueued;
+  buffer_->CopyToRemoteDevice(
+      PjRtFuture<StatusOr<std::string>>(std::string(serialized_descriptor)),
+      [&done, &status, &sends_were_enqueued, &mu](Status s, bool dispatched) {
+        absl::MutexLock l(&mu);
+        done = true;
+        status = s;
+        sends_were_enqueued = dispatched;
+      });
+  {
+    py::gil_scoped_release gil_release;
+    absl::MutexLock l(&mu);
+    mu.Await(absl::Condition(
+        +[](bool* done) { return *done; }, &done));
+  }
+  return std::make_pair(status, sends_were_enqueued);
+}
+
 Status PyBuffer::BlockHostUntilReady() {
   GlobalPyRefManager()->CollectGarbage();
   py::gil_scoped_release gil_release;
@@ -202,6 +242,15 @@ Status PyBuffer::BlockHostUntilReady() {
 
 Status PyBuffer::CopyToHostAsync() {
   if (!buffer_->IsOnCpu() && !host_value_) {
+    auto transfer_guard_formatter = [this] {
+      auto shape = py::cast<std::string>(py::str(python_shape()));
+      auto dtype = py::cast<std::string>(py::str(python_dtype()));
+      return absl::StrCat("shape=", shape, ", dtype=", dtype,
+                          ", device=", device()->DebugString());
+    };
+    TF_RETURN_IF_ERROR(
+        jax::ApplyTransferGuardToDeviceToHost(transfer_guard_formatter));
+
     std::shared_ptr<HostValue> host_value = std::make_shared<HostValue>();
     host_value_ = host_value;
     // TODO(b/182461453): This is a blocking call. If we further implemented
@@ -219,7 +268,7 @@ Status PyBuffer::CopyToHostAsync() {
                          host_value->ready.Notify();
                        });
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
@@ -306,6 +355,36 @@ StatusOr<py::dict> PyBuffer::CudaArrayInterface() {
   return result;
 }
 
+PyShardedBuffer PyShardedBuffer::CreateFromPyBuffers(
+    absl::Span<const PyBuffer::object> py_buffers) {
+  PyBuffer* first_py_buffer = py_buffers.at(0).buf();
+  auto client = first_py_buffer->client();
+  auto traceback = first_py_buffer->traceback();
+  bool sticky = first_py_buffer->sticky_device() != nullptr;
+
+  auto check_sticky = [&](const PyBuffer::object& buf) {
+    if (sticky) return buf.buf()->sticky_device() != nullptr;
+    return buf.buf()->sticky_device() == nullptr;
+  };
+
+  std::vector<std::shared_ptr<PjRtBuffer>> results;
+  results.reserve(py_buffers.size());
+  for (const auto& py_buffer : py_buffers) {
+    // Either all device buffers are sticky or none of them are sticky.
+    DCHECK(check_sticky(py_buffer));
+    results.push_back(py_buffer.buf()->shared_ptr_buffer());
+  }
+
+  return PyShardedBuffer(std::move(client), std::move(results),
+                         std::move(traceback), sticky);
+}
+
+Status PyShardedBuffer::BlockHostUntilReady() {
+  GlobalPyRefManager()->CollectGarbage();
+  py::gil_scoped_release gil_release;
+  return AwaitBuffersReady(buffers_);
+}
+
 // PEP 3118 buffer protocol implementation.
 
 namespace {
@@ -377,7 +456,7 @@ int PyBuffer_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
         external_reference_hold->OpaqueDeviceMemoryDataPointer();
     view->buf = const_cast<void*>(root_ptr);
     auto extra =
-        absl::make_unique<ExtraBufferInfo>(std::move(external_reference_hold));
+        std::make_unique<ExtraBufferInfo>(std::move(external_reference_hold));
     view->itemsize = ShapeUtil::ByteSizeOfPrimitiveType(shape->element_type());
     view->len = ShapeUtil::ByteSizeOf(*shape);
     view->readonly = 1;
@@ -401,7 +480,7 @@ int PyBuffer_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
     }
     TF_RETURN_IF_ERROR(buffer.BlockHostUntilReady());
     view->internal = extra.release();
-    return Status::OK();
+    return OkStatus();
   }();
   if (!status.ok()) {
     // numpy.asarray(...) silents the PyExc_BufferError. Adding a log here helps
@@ -511,6 +590,16 @@ Status PyBuffer::RegisterTypes(py::module& m) {
   // critical.
   using jax::property;
   using jax::property_readonly;
+  type.attr("__array__") = py::cpp_function(
+      [](PyBuffer::object self, py::object dtype, py::object context) {
+        py::object array = ValueOrThrow(self.buf()->AsNumPyArray(self));
+        if (!dtype.is_none()) {
+          return array.attr("astype")(dtype);
+        }
+        return array;
+      },
+      py::is_method(type), py::arg("dtype") = py::none(),
+      py::arg("context") = py::none());
   type.attr("__array_priority__") =
       property_readonly([](py::object self) -> int { return 100; });
   type.attr("_device") = property(
@@ -527,14 +616,12 @@ Status PyBuffer::RegisterTypes(py::module& m) {
         return self.buf()->SetAval(std::move(aval));
       });
   type.attr("weak_type") = property(
-      [](PyBuffer::object self) -> absl::optional<bool> {
+      [](PyBuffer::object self) -> std::optional<bool> {
         return self.buf()->weak_type();
       },
-      [](PyBuffer::object self, absl::optional<bool> weak_type) {
+      [](PyBuffer::object self, std::optional<bool> weak_type) {
         return self.buf()->set_weak_type(weak_type);
       });
-  type.attr("_lazy_expr") =
-      property_readonly([](py::handle self) { return py::none(); });
   type.attr("device_buffer") =
       property_readonly([](py::object self) { return self; });
   type.attr(
@@ -544,7 +631,7 @@ Status PyBuffer::RegisterTypes(py::module& m) {
   type.attr("dtype") = property_readonly([](PyBuffer::object self) {
     PrimitiveType primitive =
         self.buf()->buffer()->on_device_shape().element_type();
-    return PrimitiveTypeToDtype(primitive).ValueOrDie();
+    return PrimitiveTypeToDtype(primitive).value();
   });
   type.attr("size") =
       property_readonly([](PyBuffer::object self) -> StatusOr<int64_t> {
@@ -562,6 +649,16 @@ Status PyBuffer::RegisterTypes(py::module& m) {
         return self.buf()->CopyToDevice(dst_device);
       },
       py::is_method(type));
+  type.attr("copy_to_remote_device") = py::cpp_function(
+      [](PyBuffer::object self, const py::bytes serialized_descriptor) {
+        // TODO(phawkins): remove the std::string cast after C++17 is required.
+        // py::bytes has a std::string_view cast, but not an absl::string_view
+        // cast.
+        return self.buf()->CopyToRemoteDevice(
+            static_cast<std::string>(serialized_descriptor));
+      },
+      py::is_method(type));
+
   type.attr("on_device_size_in_bytes") = py::cpp_function(
       [](PyBuffer::object self) -> StatusOr<size_t> {
         return self.buf()->OnDeviceSizeInBytes();
@@ -570,7 +667,19 @@ Status PyBuffer::RegisterTypes(py::module& m) {
   type.attr("delete") = py::cpp_function(
       [](PyBuffer::object self) { self.buf()->Delete(); }, py::is_method(type));
   type.attr("block_host_until_ready") = py::cpp_function(
-      [](PyBuffer::object self) { return self.buf()->BlockHostUntilReady(); },
+      [](PyBuffer::object self) {
+        // TODO(phawkins): remove 3 months after the release of jaxlib >= 0.3.2.
+        PythonDeprecationWarning(
+            "block_host_until_ready() on a JAX array object is deprecated, use "
+            "block_until_ready() instead.");
+        return self.buf()->BlockHostUntilReady();
+      },
+      py::is_method(type));
+  type.attr("is_ready") = py::cpp_function(
+      [](PyBuffer::object self) { return self.buf()->IsReady(); },
+      py::is_method(type));
+  type.attr("is_known_ready") = py::cpp_function(
+      [](PyBuffer::object self) { return self.buf()->IsKnownReady(); },
       py::is_method(type));
   type.attr("block_until_ready") = py::cpp_function(
       [](PyBuffer::object self) -> StatusOr<PyBuffer::object> {
@@ -580,9 +689,6 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       py::is_method(type));
   type.attr("copy_to_host_async") = py::cpp_function(
       [](PyBuffer::object self) { return self.buf()->CopyToHostAsync(); },
-      py::is_method(type));
-  type.attr("to_py") = py::cpp_function(
-      [](PyBuffer::object self) { return self.buf()->AsNumPyArray(self); },
       py::is_method(type));
   type.attr("xla_shape") = py::cpp_function(
       [](PyBuffer::object self) { return self.buf()->shape(); },
@@ -612,7 +718,23 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       [](PyBuffer::object self) { return self.buf()->Clone(); },
       py::is_method(type));
   type.attr("__module__") = m.attr("__name__");
-  return Status::OK();
+
+  py::class_<PyShardedBuffer>(m, "ShardedBuffer")
+      .def(py::init(&PyShardedBuffer::CreateFromPyBuffers))
+      .def("get_device_buffers", &PyShardedBuffer::GetPyBuffers)
+      .def("get_device_buffer", &PyShardedBuffer::GetPyBuffer)
+      .def("__len__", &PyShardedBuffer::num_devices)
+      .def("block_until_ready", &PyShardedBuffer::BlockHostUntilReady)
+      .def("delete", &PyShardedBuffer::Delete)
+      .def_static("create_sharded_buffer",
+                  &PyShardedBuffer::CreateFromPyBuffers)
+      .def_property_readonly("dtype", [](const PyShardedBuffer& self) {
+        return PrimitiveTypeToDtype(self.dtype()).value();
+      });
+
+  py::implicitly_convertible<std::vector<PyBuffer::object>, PyShardedBuffer>();
+
+  return OkStatus();
 }
 
 }  // namespace xla

@@ -1,6 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -14,8 +15,7 @@ py_library(
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
-        "//tensorflow/python/training/tracking",
-        "@six_archive//:six",
+        "//tensorflow/python/trackable:autotrackable",
     ],
 )
 

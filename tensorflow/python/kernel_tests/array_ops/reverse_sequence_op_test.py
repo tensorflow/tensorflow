@@ -24,6 +24,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.platform import test
+from tensorflow.python.util import nest
 
 
 @test_util.with_eager_op_as_function
@@ -42,7 +43,10 @@ class ReverseSequenceTest(test.TestCase):
           x, batch_axis=batch_axis, seq_axis=seq_axis, seq_lengths=seq_lengths)
       if expected_err_re is None:
         tf_ans = self.evaluate(ans)
-        self.assertAllClose(tf_ans, truth, atol=1e-10)
+        if ans.dtype == dtypes.string:
+          self.assertAllEqual(tf_ans, truth)
+        else:
+          self.assertAllClose(tf_ans, truth, atol=1e-10)
         self.assertShapeEqual(truth, ans)
       else:
         with self.assertRaisesOpError(expected_err_re):
@@ -61,23 +65,29 @@ class ReverseSequenceTest(test.TestCase):
                               False, expected_err_re)
 
   def _testBasic(self, dtype, len_dtype=np.int64):
-    x = np.asarray(
-        [[[1, 2, 3, 4], [5, 6, 7, 8]], [[9, 10, 11, 12], [13, 14, 15, 16]],
-         [[17, 18, 19, 20], [21, 22, 23, 24]]],
-        dtype=dtype)
+    x_values = [
+        [[1, 2, 3, 4], [5, 6, 7, 8]],
+        [[9, 10, 11, 12], [13, 14, 15, 16]],
+        [[17, 18, 19, 20], [21, 22, 23, 24]]
+    ]
+    truth_values = [
+        [[3, 2, 1, 4], [7, 6, 5, 8]],  # reverse 0:3
+        [[9, 10, 11, 12], [13, 14, 15, 16]],  # reverse none
+        [[20, 19, 18, 17], [24, 23, 22, 21]]  # reverse 0:4 (all)
+    ]
+    if np.dtype(dtype).kind == "S":
+      def int_to_utf8(i):
+        return chr(i).encode("utf8")
+      x_values = nest.map_structure(int_to_utf8, x_values)
+      truth_values = nest.map_structure(int_to_utf8, truth_values)
+    x = np.asarray(x_values, dtype=dtype)
     x = x.reshape(3, 2, 4, 1, 1)
     x = x.transpose([2, 1, 0, 3, 4])  # permute axes 0 <=> 2
 
     # reverse dim 2 up to (0:3, none, 0:4) along dim=0
     seq_lengths = np.asarray([3, 0, 4], dtype=len_dtype)
 
-    truth_orig = np.asarray(
-        [
-            [[3, 2, 1, 4], [7, 6, 5, 8]],  # reverse 0:3
-            [[9, 10, 11, 12], [13, 14, 15, 16]],  # reverse none
-            [[20, 19, 18, 17], [24, 23, 22, 21]]
-        ],  # reverse 0:4 (all)
-        dtype=dtype)
+    truth_orig = np.asarray(truth_values, dtype=dtype)
     truth_orig = truth_orig.reshape(3, 2, 4, 1, 1)
     truth = truth_orig.transpose([2, 1, 0, 3, 4])  # permute axes 0 <=> 2
 
@@ -105,6 +115,9 @@ class ReverseSequenceTest(test.TestCase):
 
   def testComplex128Basic(self):
     self._testBasic(np.complex128)
+
+  def testStringBasic(self):
+    self._testBasic(np.dtype("S1"))
 
   def testFloatReverseSequenceGrad(self):
     x = np.asarray(

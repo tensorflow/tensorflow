@@ -19,8 +19,8 @@ limitations under the License.
 #include <limits>
 
 #include "hexagon/hexagon_nn_ops.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/delegates/hexagon/hexagon_nn/hexagon_nn.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -158,7 +158,7 @@ TfLiteStatus MatMulWithConstWeightsOpBuilder::PopulateSubGraph(
   int weights_tensor_id = inputs->data[1];
   const auto& weights_tensor = context->tensors[weights_tensor_id];
   if (weights_tensor.allocation_type != kTfLiteMmapRo) {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context, "Weights tensor doesn't have correct allocation type: %s",
         weights_tensor.name);
     return kTfLiteError;

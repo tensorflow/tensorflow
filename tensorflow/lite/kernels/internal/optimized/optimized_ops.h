@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/im2col_utils.h"
+#include "tensorflow/lite/kernels/internal/optimized/optimized_ops_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
@@ -93,9 +94,9 @@ using reference_ops::Less;
 using reference_ops::LessEqual;
 using reference_ops::LessEqualWithScaling;
 using reference_ops::LessWithScaling;
-using reference_ops::Mean;
 using reference_ops::ProcessBroadcastShapes;
 using reference_ops::RankOneSelect;
+using reference_ops::Relu0To1;  // NOLINT
 using reference_ops::Relu1;
 using reference_ops::Relu6;
 using reference_ops::ReluX;
@@ -111,69 +112,6 @@ using reference_ops::Sub16;
 //
 // Used to convert from old-style shifts (right) to new-style (left).
 static constexpr int kReverseShift = -1;
-
-// Make a local VectorMap typedef allowing to map a float array
-// as a Eigen vector expression. The std::conditional here is to
-// construct the suitable Eigen type for the constness of the
-// data. Indeed, for const data, we need to produce
-//    Eigen::Map<const Eigen::Matrix<float, ...>>
-// and not the more straightforward
-//    Eigen::Map<Eigen::Matrix<const float, ...>>
-template <typename Scalar>
-using VectorMap = typename std::conditional<
-    std::is_const<Scalar>::value,
-    Eigen::Map<const Eigen::Matrix<typename std::remove_const<Scalar>::type,
-                                   Eigen::Dynamic, 1>>,
-    Eigen::Map<Eigen::Matrix<Scalar, Eigen::Dynamic, 1>>>::type;
-
-template <typename Scalar>
-VectorMap<Scalar> MapAsVector(Scalar* data, const RuntimeShape& shape) {
-  const int size = shape.FlatSize();
-  return VectorMap<Scalar>(data, size, 1);
-}
-
-// Make a local VectorMap typedef allowing to map a float array
-// as a Eigen matrix expression. The same explanation as for VectorMap
-// above also applies here.
-template <typename Scalar>
-using MatrixMap = typename std::conditional<
-    std::is_const<Scalar>::value,
-    Eigen::Map<const Eigen::Matrix<typename std::remove_const<Scalar>::type,
-                                   Eigen::Dynamic, Eigen::Dynamic>>,
-    Eigen::Map<Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>>>::type;
-
-template <typename Scalar>
-MatrixMap<Scalar> MapAsMatrixWithLastDimAsRows(Scalar* data,
-                                               const RuntimeShape& shape) {
-  const int dims_count = shape.DimensionsCount();
-  const int rows = shape.Dims(dims_count - 1);
-  const int cols = FlatSizeSkipDim(shape, dims_count - 1);
-  return MatrixMap<Scalar>(data, rows, cols);
-}
-
-template <typename Scalar>
-MatrixMap<Scalar> MapAsMatrixWithFirstDimAsCols(Scalar* data,
-                                                const RuntimeShape& shape) {
-  const int cols = shape.Dims(0);
-  const int rows = FlatSizeSkipDim(shape, 0);
-  return MatrixMap<Scalar>(data, rows, cols);
-}
-
-template <typename Scalar>
-using ArrayMap = typename std::conditional<
-    std::is_const<Scalar>::value,
-    Eigen::Map<const Eigen::Array<typename std::remove_const<Scalar>::type,
-                                  Eigen::Dynamic, Eigen::Dynamic>>,
-    Eigen::Map<Eigen::Array<Scalar, Eigen::Dynamic, Eigen::Dynamic>>>::type;
-
-template <typename Scalar>
-ArrayMap<Scalar> MapAsArrayWithLastDimAsRows(Scalar* data,
-                                             const RuntimeShape& shape) {
-  const int dims_count = shape.DimensionsCount();
-  const int rows = shape.Dims(dims_count - 1);
-  const int cols = FlatSizeSkipDim(shape, dims_count - 1);
-  return ArrayMap<Scalar>(data, rows, cols);
-}
 
 // Copied from tensorflow/core/framework/tensor_types.h
 template <typename T, int NDIMS = 1, typename IndexType = Eigen::DenseIndex>
@@ -965,273 +903,6 @@ inline uint32x4_t RoundToNearestUnsigned(const float32x4_t input) {
 }
 
 #endif  // USE_NEON
-
-inline void MeanImpl(const tflite::MeanParams& op_params,
-                     const RuntimeShape& input_shape, const uint8_t* input_data,
-                     int32 multiplier, int32 shift, int32 bias,
-                     const RuntimeShape& output_shape, uint8_t* output_data,
-                     int start_depth, int end_depth) {
-  ruy::profiler::ScopeLabel label("Mean4D/Uint8/MeanImpl");
-
-  // Current implementation only supports dimension equals 4 and simultaneous
-  // reduction over width and height.
-  const int output_batch = output_shape.Dims(0);
-  const int output_height = output_shape.Dims(2);
-  const int output_width = output_shape.Dims(2);
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-
-  TFLITE_CHECK_EQ(op_params.axis_count, 2);
-  TFLITE_CHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-               (op_params.axis[0] == 2 && op_params.axis[1] == 1));
-  TFLITE_CHECK_EQ(output_height, 1);
-  TFLITE_CHECK_EQ(output_width, 1);
-
-  constexpr int32_t kMinValue = std::numeric_limits<uint8_t>::min();
-  constexpr int32_t kMaxValue = std::numeric_limits<uint8_t>::max();
-
-#ifdef USE_NEON
-  const int32x4_t bias_dup = vdupq_n_s32(bias);
-  const int32x4_t min_dup = vdupq_n_s32(kMinValue);
-  const int32x4_t max_dup = vdupq_n_s32(kMaxValue);
-#endif  // USE_NEON
-
-  for (int out_b = 0; out_b < output_batch; ++out_b) {
-    int out_d = start_depth;
-#ifdef USE_NEON
-
-    for (; out_d <= end_depth - 16; out_d += 16) {
-      int32x4x4_t temp_sum;
-      temp_sum.val[0] = vdupq_n_s32(0);
-      temp_sum.val[1] = vdupq_n_s32(0);
-      temp_sum.val[2] = vdupq_n_s32(0);
-      temp_sum.val[3] = vdupq_n_s32(0);
-      for (int in_h = 0; in_h < input_height; ++in_h) {
-        for (int in_w = 0; in_w < input_width; ++in_w) {
-          const uint8_t* input_data_ptr =
-              input_data + Offset(input_shape, out_b, in_h, in_w, out_d);
-          uint8x16_t input_data_val = vld1q_u8(input_data_ptr);
-
-          int16x8_t input_data_low_shift =
-              vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(input_data_val)));
-          int16x8_t input_data_high_shift =
-              vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(input_data_val)));
-
-          int32x4_t input_low_low =
-              vmovl_s16(vget_low_s16(input_data_low_shift));
-          int32x4_t input_high_low =
-              vmovl_s16(vget_high_s16(input_data_low_shift));
-          int32x4_t input_low_high =
-              vmovl_s16(vget_low_s16(input_data_high_shift));
-          int32x4_t input_high_high =
-              vmovl_s16(vget_high_s16(input_data_high_shift));
-
-          temp_sum.val[0] = vaddq_s32(temp_sum.val[0], input_low_low);
-          temp_sum.val[1] = vaddq_s32(temp_sum.val[1], input_high_low);
-          temp_sum.val[2] = vaddq_s32(temp_sum.val[2], input_low_high);
-          temp_sum.val[3] = vaddq_s32(temp_sum.val[3], input_high_high);
-        }
-      }
-
-      temp_sum =
-          MultiplyByQuantizedMultiplier4Rows(temp_sum, multiplier, shift);
-
-      temp_sum.val[0] = vaddq_s32(temp_sum.val[0], bias_dup);
-      temp_sum.val[1] = vaddq_s32(temp_sum.val[1], bias_dup);
-      temp_sum.val[2] = vaddq_s32(temp_sum.val[2], bias_dup);
-      temp_sum.val[3] = vaddq_s32(temp_sum.val[3], bias_dup);
-
-      temp_sum.val[0] = vminq_s32(vmaxq_s32(temp_sum.val[0], min_dup), max_dup);
-      temp_sum.val[1] = vminq_s32(vmaxq_s32(temp_sum.val[1], min_dup), max_dup);
-      temp_sum.val[2] = vminq_s32(vmaxq_s32(temp_sum.val[2], min_dup), max_dup);
-      temp_sum.val[3] = vminq_s32(vmaxq_s32(temp_sum.val[3], min_dup), max_dup);
-
-      uint16x4_t narrowed_low_low =
-          vmovn_u32(vreinterpretq_u32_s32(temp_sum.val[0]));
-      uint16x4_t narrowed_high_low =
-          vmovn_u32(vreinterpretq_u32_s32(temp_sum.val[1]));
-      uint16x4_t narrowed_low_high =
-          vmovn_u32(vreinterpretq_u32_s32(temp_sum.val[2]));
-      uint16x4_t narrowed_high_high =
-          vmovn_u32(vreinterpretq_u32_s32(temp_sum.val[3]));
-
-      uint16x8_t combined_low =
-          vcombine_u16(narrowed_low_low, narrowed_high_low);
-      uint16x8_t combined_high =
-          vcombine_u16(narrowed_low_high, narrowed_high_high);
-
-      uint8x8_t narrowed_low = vmovn_u16(combined_low);
-      uint8x8_t narrowed_high = vmovn_u16(combined_high);
-
-      uint8x16_t combined_output = vcombine_u8(narrowed_low, narrowed_high);
-
-      uint8_t* output_data_ptr =
-          output_data + Offset(output_shape, out_b, 0, 0, out_d);
-      vst1q_u8(output_data_ptr, combined_output);
-    }
-#endif  // USE_NEON
-
-    for (; out_d < end_depth; ++out_d) {
-      int acc = 0;
-      for (int in_h = 0; in_h < input_height; ++in_h) {
-        for (int in_w = 0; in_w < input_width; ++in_w) {
-          acc += input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
-        }
-      }
-
-      acc = MultiplyByQuantizedMultiplier(acc, multiplier, shift);
-      acc += bias;
-      acc = std::min(std::max(acc, kMinValue), kMaxValue);
-      output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
-          static_cast<uint8_t>(acc);
-    }
-  }
-}
-
-struct MeanWorkerTask : cpu_backend_threadpool::Task {
-  MeanWorkerTask(const tflite::MeanParams& op_params,
-                 const RuntimeShape& input_shape, const uint8_t* input_data,
-                 int32 multiplier, int32 shift, int32 bias,
-                 const RuntimeShape& output_shape, uint8_t* output_data,
-                 int start_height, int end_height)
-      : op_params(op_params),
-        input_shape(input_shape),
-        input_data(input_data),
-        multiplier(multiplier),
-        shift(shift),
-        bias(bias),
-        output_shape(output_shape),
-        output_data(output_data),
-        start_height(start_height),
-        end_height(end_height) {}
-
-  void Run() override {
-    MeanImpl(op_params, input_shape, input_data, multiplier, shift, bias,
-             output_shape, output_data, start_height, end_height);
-  }
-
- private:
-  const tflite::MeanParams& op_params;
-  const RuntimeShape& input_shape;
-  const uint8_t* input_data;
-  int32 multiplier;
-  int32 shift;
-  int32 bias;
-  const RuntimeShape& output_shape;
-  uint8_t* output_data;
-  int start_height;
-  int end_height;
-};
-
-inline void Mean(const tflite::MeanParams& op_params,
-                 const RuntimeShape& unextended_input_shape,
-                 const uint8_t* input_data, int32 input_zero_point,
-                 float input_scale, const RuntimeShape& unextended_output_shape,
-                 uint8_t* output_data, int32 output_zero_point,
-                 float output_scale, CpuBackendContext* cpu_backend_context) {
-  ruy::profiler::ScopeLabel label("Mean4D/Uint8");
-  // Current implementation only supports dimension equals 4 and simultaneous
-  // reduction over width and height.
-  TFLITE_CHECK_EQ(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_CHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
-  const int output_depth = output_shape.Dims(3);
-
-  TFLITE_CHECK_EQ(op_params.axis_count, 2);
-  TFLITE_CHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-               (op_params.axis[0] == 2 && op_params.axis[1] == 1));
-  TFLITE_CHECK_EQ(output_height, 1);
-  TFLITE_CHECK_EQ(output_width, 1);
-
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-  const float num_elements_in_axis = input_width * input_height;
-
-  float temp = input_zero_point * input_scale / output_scale;
-  temp = temp > 0 ? temp + 0.5f : temp - 0.5f;
-  int32_t bias = output_zero_point - static_cast<int32_t>(temp);
-  float real_scale = input_scale / (num_elements_in_axis * output_scale);
-
-  int32 multiplier, shift;
-  QuantizeMultiplier(real_scale, &multiplier, &shift);
-
-  constexpr int kMinDepthPerThread = 8;
-  int thread_count = output_depth / kMinDepthPerThread;
-  thread_count = thread_count > 0 ? thread_count : 1;
-  const int capped_thread_count =
-      std::min(thread_count, cpu_backend_context->max_num_threads());
-
-  if (capped_thread_count == 1) {
-    MeanImpl(op_params, input_shape, input_data, multiplier, shift, bias,
-             output_shape, output_data, 0, output_depth);
-  } else {
-    // Instead parallel for batch, we loop for the output_depth since batch
-    // is typical 1.
-    std::vector<MeanWorkerTask> tasks;
-    // TODO(b/131746020) don't create new heap allocations every time.
-    // At least we make it a single heap allocation by using reserve().
-    tasks.reserve(capped_thread_count);
-    int depth_start = 0;
-    for (int i = 0; i < capped_thread_count; ++i) {
-      // Try to distribute the tasks as even as possible.
-      int depth_end = depth_start +
-                      (output_depth - depth_start) / (capped_thread_count - i);
-      tasks.emplace_back(op_params, input_shape, input_data, multiplier, shift,
-                         bias, output_shape, output_data, depth_start,
-                         depth_end);
-      depth_start = depth_end;
-    }
-    cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),
-                                    cpu_backend_context);
-  }
-}
-
-template <typename T, typename U>
-inline bool MeanGeneral(const T* input_data, const int* input_dims,
-                        const int input_num_dims, T* output_data,
-                        const int* output_dims, const int output_num_dims,
-                        const int* axis, const int num_axis_dimensions,
-                        bool keep_dims, int* temp_index, int* resolved_axis,
-                        U* temp_sum) {
-  return reference_ops::Mean(input_data, input_dims, input_num_dims,
-                             output_data, output_dims, output_num_dims, axis,
-                             num_axis_dimensions, keep_dims, temp_index,
-                             resolved_axis, temp_sum);
-}
-
-template <>
-inline bool MeanGeneral<float, float>(
-    const float* input_data, const int* input_dims, const int input_num_dims,
-    float* output_data, const int* output_dims, const int output_num_dims,
-    const int* axis, const int num_axis_dimensions, bool keep_dims,
-    int* temp_index, int* resolved_axis, float* temp_sum) {
-  // Handle reduce_mean for the last dimensions.
-  if (num_axis_dimensions == 1 && axis[0] == (input_num_dims - 1)) {
-    ruy::profiler::ScopeLabel label("MeanLastDim/Float");
-    int output_size = 1;
-    for (int i = 0; i < input_num_dims - 1; ++i) {
-      output_size *= input_dims[i];
-    }
-    const int last_input_dim = input_dims[axis[0]];
-
-    // TODO(b/152563685): Consider use eigen to cover more general cases.
-    const MatrixMap<const float> in_mat(input_data, last_input_dim,
-                                        output_size);
-    VectorMap<float> out(output_data, output_size, 1);
-    out = (in_mat.array().colwise().sum()) / static_cast<float>(last_input_dim);
-    return true;
-  }
-
-  return reference_ops::Mean(input_data, input_dims, input_num_dims,
-                             output_data, output_dims, output_num_dims, axis,
-                             num_axis_dimensions, keep_dims, temp_index,
-                             resolved_axis, temp_sum);
-}
 
 inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                  const float* input_data, const RuntimeShape& filter_shape,
@@ -3918,6 +3589,8 @@ inline void SoftmaxInt8LUT(const SoftmaxParams& params,
                            const RuntimeShape& input_shape,
                            const In* input_data,
                            const RuntimeShape& output_shape, Out* output_data) {
+  ruy::profiler::ScopeLabel label("SoftmaxInt8LUT");
+
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int excluding_last_dim =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
@@ -4998,108 +4671,6 @@ inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& output_shape, TfLiteTensor* output) {
   SequentialTensorWriter<T> writer(input, output);
   return Slice(op_params, input_shape, output_shape, &writer);
-}
-
-// Note: This implementation is only optimized for the case where the inner
-// stride == 1.
-template <typename T>
-inline void StridedSlice(const tflite::StridedSliceParams& op_params,
-                         const RuntimeShape& unextended_input_shape,
-                         const RuntimeShape& unextended_output_shape,
-                         SequentialTensorWriter<T>* writer) {
-  using strided_slice::LoopCondition;
-  using strided_slice::StartForAxis;
-  using strided_slice::StopForAxis;
-
-  ruy::profiler::ScopeLabel label("StridedSlice");
-
-  // Note that the output_shape is not used herein.
-  tflite::StridedSliceParams params_copy = op_params;
-
-  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 5);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 5);
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(5, unextended_input_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(5, unextended_output_shape);
-
-  // Reverse and pad to 5 dimensions because that is what the runtime code
-  // requires (ie. all shapes must be 5D and are given backwards).
-  strided_slice::StridedSlicePadIndices(&params_copy, 5);
-
-  const int start_0 = StartForAxis(params_copy, input_shape, 0);
-  const int stop_0 = StopForAxis(params_copy, input_shape, 0, start_0);
-  const int start_1 = StartForAxis(params_copy, input_shape, 1);
-  const int stop_1 = StopForAxis(params_copy, input_shape, 1, start_1);
-  const int start_2 = StartForAxis(params_copy, input_shape, 2);
-  const int stop_2 = StopForAxis(params_copy, input_shape, 2, start_2);
-  const int start_3 = StartForAxis(params_copy, input_shape, 3);
-  const int stop_3 = StopForAxis(params_copy, input_shape, 3, start_3);
-  const int start_4 = StartForAxis(params_copy, input_shape, 4);
-  const int stop_4 = StopForAxis(params_copy, input_shape, 4, start_4);
-  const bool inner_stride_is_1 = params_copy.strides[4] == 1;
-
-  for (int offset_0 = start_0 * input_shape.Dims(1),
-           end_0 = stop_0 * input_shape.Dims(1),
-           step_0 = params_copy.strides[0] * input_shape.Dims(1);
-       !LoopCondition(offset_0, end_0, params_copy.strides[0]);
-       offset_0 += step_0) {
-    for (int offset_1 = (offset_0 + start_1) * input_shape.Dims(2),
-             end_1 = (offset_0 + stop_1) * input_shape.Dims(2),
-             step_1 = params_copy.strides[1] * input_shape.Dims(2);
-         !LoopCondition(offset_1, end_1, params_copy.strides[1]);
-         offset_1 += step_1) {
-      for (int offset_2 = (offset_1 + start_2) * input_shape.Dims(3),
-               end_2 = (offset_1 + stop_2) * input_shape.Dims(3),
-               step_2 = params_copy.strides[2] * input_shape.Dims(3);
-           !LoopCondition(offset_2, end_2, params_copy.strides[2]);
-           offset_2 += step_2) {
-        for (int offset_3 = (offset_2 + start_3) * input_shape.Dims(4),
-                 end_3 = (offset_2 + stop_3) * input_shape.Dims(4),
-                 step_3 = params_copy.strides[3] * input_shape.Dims(4);
-             !LoopCondition(offset_3, end_3, params_copy.strides[3]);
-             offset_3 += step_3) {
-          // When the stride is 1, the inner loop is equivalent to the
-          // optimized slice inner loop. Otherwise, it is identical to the
-          // strided_slice reference implementation inner loop.
-          if (inner_stride_is_1) {
-            const int len = stop_4 - start_4;
-            if (len > 0) {
-              writer->WriteN(offset_3 + start_4, len);
-            }
-          } else {
-            for (int offset_4 = offset_3 + start_4, end_4 = offset_3 + stop_4;
-                 !LoopCondition(offset_4, end_4, params_copy.strides[4]);
-                 offset_4 += params_copy.strides[4]) {
-              writer->Write(offset_4);
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-template <typename T>
-inline void StridedSlice(const tflite::StridedSliceParams& op_params,
-                         const RuntimeShape& unextended_input_shape,
-                         const T* input_data,
-                         const RuntimeShape& unextended_output_shape,
-                         T* output_data) {
-  SequentialTensorWriter<T> writer(input_data, output_data);
-  StridedSlice<T>(op_params, unextended_input_shape, unextended_output_shape,
-                  &writer);
-}
-
-template <typename T>
-inline void StridedSlice(const tflite::StridedSliceParams& op_params,
-                         const RuntimeShape& unextended_input_shape,
-                         const TfLiteTensor* input,
-                         const RuntimeShape& unextended_output_shape,
-                         TfLiteTensor* output) {
-  SequentialTensorWriter<T> writer(input, output);
-  StridedSlice<T>(op_params, unextended_input_shape, unextended_output_shape,
-                  &writer);
 }
 
 template <typename T>
@@ -7659,7 +7230,7 @@ inline void Transpose3D(const TransposeParams& params,
   }
 }
 
-template <typename T, int N>
+template <typename T>
 void TransposeImpl(const TransposeParams& params,
                    const RuntimeShape& input_shape, const T* input_data,
                    const RuntimeShape& output_shape, T* output_data) {
@@ -7690,19 +7261,17 @@ void TransposeImpl(const TransposeParams& params,
 
   // Reroute to the reference version if an optimized method for the given data
   // is not available.
-  reference_ops::Transpose<T, N>(params, input_shape, input_data, output_shape,
-                                 output_data);
+  reference_ops::Transpose<T>(params, input_shape, input_data, output_shape,
+                              output_data);
 }
 
-template <typename T, int N = 5>
+template <typename T, int N = 6>
 void Transpose(const TransposeParams& unshrinked_params,
                const RuntimeShape& unshrinked_input_shape, const T* input_data,
                const RuntimeShape& unshrinked_output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("Transpose");
 
   const int output_size = unshrinked_output_shape.DimensionsCount();
-  TFLITE_DCHECK_LE(unshrinked_input_shape.DimensionsCount(), N);
-  TFLITE_DCHECK_LE(output_size, N);
   TFLITE_DCHECK_EQ(output_size, unshrinked_params.perm_count);
 
   RuntimeShape shrinked_input_shape = RuntimeShape(unshrinked_input_shape);
@@ -7743,16 +7312,16 @@ void Transpose(const TransposeParams& unshrinked_params,
     TFLITE_DCHECK_NE(non_flatten_params.perm[0], 0);
 
     for (int i = 0; i < total_size; i += non_flatten_size) {
-      TransposeImpl<T, N>(non_flatten_params, non_flatten_input_shape,
-                          input_data + i, non_flatten_output_shape,
-                          output_data + i);
+      TransposeImpl<T>(non_flatten_params, non_flatten_input_shape,
+                       input_data + i, non_flatten_output_shape,
+                       output_data + i);
     }
     return;
   }
 
   // Call non-flattened case.
-  TransposeImpl<T, N>(shrinked_params, shrinked_input_shape, input_data,
-                      shrinked_output_shape, output_data);
+  TransposeImpl<T>(shrinked_params, shrinked_input_shape, input_data,
+                   shrinked_output_shape, output_data);
 }
 
 // Assume input1 & input2 have the same scale & zero point.

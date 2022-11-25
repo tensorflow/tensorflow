@@ -75,3 +75,8 @@ enum DataType {
 //    https://www.tensorflow.org/code/tensorflow/core/framework/types.cc,
 //    https://www.tensorflow.org/code/tensorflow/python/framework/dtypes.py,
 //    https://www.tensorflow.org/code/tensorflow/python/framework/function.py)
+
+// Represents a serialized tf.dtypes.Dtype
+message SerializedDType {
+  DataType datatype = 1;
+}

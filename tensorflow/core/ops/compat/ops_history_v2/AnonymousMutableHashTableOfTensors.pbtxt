@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "AnonymousMutableHashTableOfTensors"
   output_arg {
     name: "table_handle"

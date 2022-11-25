@@ -1,0 +1,2 @@
+REPOSITORY                                            TAG                 DIGEST                                                                    IMAGE ID            CREATED             SIZE
+gcr.io/tensorflow-testing/tf-win2019-docker-staging   latest              sha256:20f147af5bdaae7af15c08d02cf1b6924b54a86c1d1a82c9bd1b07aba27c2e84   a5d679185eff        6 minutes ago       17.1GB

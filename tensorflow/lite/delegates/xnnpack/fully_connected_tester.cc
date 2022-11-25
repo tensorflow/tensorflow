@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <numeric>
 #include <random>
 #include <vector>
@@ -88,6 +89,10 @@ void FullyConnectedTester::Test(TfLiteDelegate* delegate) const {
   ASSERT_EQ(default_interpreter->AllocateTensors(), kTfLiteOk);
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
+
+  if (weights_cache_ != nullptr) {
+    TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache_);
+  }
 
   float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
   std::generate(default_input_data, default_input_data + InputSize(),

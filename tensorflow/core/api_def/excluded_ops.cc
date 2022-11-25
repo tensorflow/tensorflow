@@ -37,8 +37,8 @@ const std::unordered_set<std::string>* GetExcludedOps() {
           "QuantizedConv2DWithBiasSumAndRelu",
           "QuantizedConv2DWithBiasSumAndReluAndRequantize",
           "QuantizedConv2DWithBiasSignedSumAndReluAndRequantize",
-          "QuantizedMatMulWithBias"
-          "QuantizedMatMulWithBiasAndRelu"
+          "QuantizedMatMulWithBias",
+          "QuantizedMatMulWithBiasAndRelu",
           "QuantizedMatMulWithBiasAndReluAndRequantize",
 #endif  // INTEL_MKL
 #ifdef GOOGLE_TENSORRT

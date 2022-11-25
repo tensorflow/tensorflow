@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -40,7 +41,7 @@ Status ValidateNonRefOutput(const Node* node, int idx) {
   return IsRefType(dt)
              ? InvalidArgument("Output ", idx, " of node '", node->name(),
                                "' has a reference type ", DataTypeString(dt))
-             : Status::OK();
+             : OkStatus();
 }
 
 // Converts `ninputs` and `inputs` into `inputs_tensors` and `input_nodes` and
@@ -79,7 +80,7 @@ Status ProcessInputs(
       indices.push_back(idx);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Converts `noutputs` and `outputs` into `outputs_tensors` and does various
@@ -101,7 +102,7 @@ Status ProcessOutputs(const TF_Graph* fn_body, const char* fn_name,
                                     fn_name, "'");
     output_tensors->emplace_back(node, idx);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Populates `body_nodes` with the nodes that will become function's body.
@@ -138,7 +139,7 @@ Status ComputeBodyNodes(
       body_nodes->push_back(node);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -281,7 +282,7 @@ int TF_GraphGetFunctions(TF_Graph* g, TF_Function** funcs, int max_func,
     func->fdef = lib.function(i);
     funcs[i] = func;
   }
-  status->status = tensorflow::Status::OK();
+  status->status = ::tensorflow::OkStatus();
   return len;
 }
 
@@ -299,7 +300,7 @@ TF_Function* TF_FunctionImportFunctionDef(const void* proto, size_t proto_len,
     TF_DeleteFunction(func);
     return nullptr;
   }
-  status->status = tensorflow::Status::OK();
+  status->status = ::tensorflow::OkStatus();
   return func;
 }
 
@@ -314,7 +315,7 @@ void TF_FunctionSetAttrValueProto(TF_Function* func, const char* attr_name,
     return;
   }
   (*func->fdef.mutable_attr())[string(attr_name)] = attr_value;
-  status->status = tensorflow::Status::OK();
+  status->status = ::tensorflow::OkStatus();
 }
 
 void TF_FunctionGetAttrValueProto(TF_Function* func, const char* attr_name,

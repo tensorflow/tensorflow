@@ -14,21 +14,52 @@
 # ==============================================================================
 """A TensorSpec class."""
 
+from typing import Type
+
 import numpy as np
 
+from tensorflow.core.function import trace_type
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
+# TODO(b/249802365): Sanitize all TensorSpec names.
+def sanitize_spec_name(name: str) -> str:
+  """Sanitizes Spec names. Matches Graph Node and Python naming conventions.
+
+  Without sanitization, names that are not legal Python parameter names can be
+  set which makes it challenging to represent callables supporting the named
+  calling capability.
+
+  Args:
+    name: The name to sanitize.
+
+  Returns:
+    A string that meets Python parameter conventions.
+  """
+  if not name:
+    return "unknown"
+
+  # Lower case and replace non-alphanumeric chars with '_'
+  swapped = "".join([c if c.isalnum() else "_" for c in name.lower()])
+
+  if swapped[0].isalpha():
+    return swapped
+  else:
+    return "tensor_" + swapped
+
+
 class DenseSpec(type_spec.TypeSpec):
   """Describes a dense object with shape, dtype, and name."""
 
-  __slots__ = ["_shape", "_shape_tuple", "_dtype", "_name"]
+  __slots__ = ["_shape", "_dtype", "_name"]
 
   _component_specs = property(lambda self: self)
 
@@ -45,10 +76,6 @@ class DenseSpec(type_spec.TypeSpec):
         not convertible to a `tf.DType`.
     """
     self._shape = tensor_shape.TensorShape(shape)
-    try:
-      self._shape_tuple = tuple(self.shape.as_list())
-    except ValueError:
-      self._shape_tuple = None
     self._dtype = dtypes.as_dtype(dtype)
     self._name = name
 
@@ -77,25 +104,15 @@ class DenseSpec(type_spec.TypeSpec):
         type(self).__name__, self.shape, repr(self.dtype), repr(self.name))
 
   def __hash__(self):
-    return hash((self._shape_tuple, self.dtype))
+    return hash((self._shape, self.dtype))
 
   def __eq__(self, other):
     # pylint: disable=protected-access
-    return (type(self) is type(other) and
-            self._shape_tuple == other._shape_tuple
-            and self._dtype == other._dtype
-            and self._name == other._name)
+    return (type(self) is type(other) and self._shape == other._shape and
+            self._dtype == other._dtype and self._name == other._name)
 
   def __ne__(self, other):
     return not self == other
-
-  def most_specific_compatible_type(self, other):
-    if (type(self) is not type(other)) or (self._dtype != other.dtype):
-      raise ValueError(f"Types are not compatible: {self!r} with type of "
-                       f"{type(self)} vs {other!r} with type of {type(other)}.")
-    shape = self._shape.most_specific_compatible_shape(other.shape)
-    name = self._name if self._name == other.name else None
-    return type(self)(shape, self._dtype, name)
 
   def _serialize(self):
     return (self._shape, self._dtype, self._name)
@@ -112,14 +129,70 @@ class DenseSpec(type_spec.TypeSpec):
 
 @tf_export("TensorSpec")
 @type_spec.register("tf.TensorSpec")
-class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
-  """Describes a tf.Tensor.
+class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
+                 trace_type.Serializable):
+  """Describes the type of a tf.Tensor.
 
-  Metadata for describing the `tf.Tensor` objects accepted or returned
-  by some TensorFlow APIs.
+  >>> t = tf.constant([[1,2,3],[4,5,6]])
+  >>> tf.TensorSpec.from_tensor(t)
+  TensorSpec(shape=(2, 3), dtype=tf.int32, name=None)
+
+  Contains metadata for describing the the nature of `tf.Tensor` objects
+  accepted or returned by some TensorFlow APIs.
+
+  For example, it can be used to constrain the type of inputs accepted by
+  a tf.function:
+
+  >>> @tf.function(input_signature=[tf.TensorSpec([1, None])])
+  ... def constrained_foo(t):
+  ...   print("tracing...")
+  ...   return t
+
+  Now the `tf.function` is able to assume that `t` is always of the type
+  `tf.TensorSpec([1, None])` which will avoid retracing as well as enforce the
+  type restriction on inputs.
+
+  As a result, the following call with tensor of type `tf.TensorSpec([1, 2])`
+  triggers a trace and succeeds:
+  >>> constrained_foo(tf.constant([[1., 2]])).numpy()
+  tracing...
+  array([[1., 2.]], dtype=float32)
+
+  The following subsequent call with tensor of type `tf.TensorSpec([1, 4])`
+  does not trigger a trace and succeeds:
+  >>> constrained_foo(tf.constant([[1., 2, 3, 4]])).numpy()
+  array([[1., 2., 3., 4.], dtype=float32)
+
+  But the following call with tensor of type `tf.TensorSpec([2, 2])` fails:
+  >>> constrained_foo(tf.constant([[1., 2], [3, 4]])).numpy()
+  Traceback (most recent call last):
+  ...
+  ValueError: Python inputs incompatible with input_signature
+
   """
 
   __slots__ = []
+
+  @classmethod
+  def experimental_type_proto(cls) -> Type[struct_pb2.TensorSpecProto]:
+    """Returns the type of proto associated with TensorSpec serialization."""
+    return struct_pb2.TensorSpecProto
+
+  @classmethod
+  def experimental_from_proto(
+      cls, proto: struct_pb2.TensorSpecProto) -> "TensorSpec":
+    """Returns a TensorSpec instance based on the serialized proto."""
+    return TensorSpec(
+        shape=tensor_shape.TensorShape.experimental_from_proto(proto.shape),
+        dtype=proto.dtype,
+        name=proto.name if proto.name else None)
+
+  def experimental_as_proto(self) -> struct_pb2.TensorSpecProto:
+    """Returns a proto representation of the TensorSpec instance."""
+    return struct_pb2.TensorSpecProto(
+        shape=self.shape.experimental_as_proto(),
+        dtype=self.dtype.experimental_as_proto().datatype,
+        name=self.name)
 
   def is_compatible_with(self, spec_or_tensor):  # pylint:disable=useless-super-delegation
     """Returns True if spec_or_tensor is compatible with this TensorSpec.
@@ -166,6 +239,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
     if isinstance(tensor, ops.EagerTensor):
       return TensorSpec(tensor.shape, tensor.dtype, name)
     elif isinstance(tensor, ops.Tensor):
+      # TODO(b/249802365): Return a sanitized version of op name or no name.
       return TensorSpec(tensor.shape, tensor.dtype, name or tensor.op.name)
     else:
       raise ValueError(
@@ -226,13 +300,22 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
   def _to_batched_tensor_list(self, value):
     return self._to_tensor_list(value)
 
-  def __tf_tracing_type__(self, signature_context):
-    return ops.TensorType(signature_context, self.shape, self.dtype, self.name)
+  # TODO(b/206014848): Helper function to support logic that does not consider
+  # Tensor name. Will be removed once load-bearing usages of Tensor name are
+  # fixed.
+  def _without_tensor_names(self) -> "TensorSpec":
+    """Returns a version of `TensorSpec` with the name removed."""
+    if self.name is None:
+      return self
+    else:
+      return TensorSpec(self.shape, self.dtype)
+
+trace_type.register_serializable(TensorSpec)
 
 
 # TODO(b/133606651): Should is_compatible_with should check min/max bounds?
 @type_spec.register("tf.BoundedTensorSpec")
-class BoundedTensorSpec(TensorSpec):
+class BoundedTensorSpec(TensorSpec, trace_type.Serializable):
   """A `TensorSpec` that specifies minimum and maximum values.
 
   Example usage:
@@ -301,6 +384,31 @@ class BoundedTensorSpec(TensorSpec):
     self._maximum.setflags(write=False)
 
   @classmethod
+  def experimental_type_proto(cls) -> Type[struct_pb2.BoundedTensorSpecProto]:
+    """Returns the type of proto associated with BoundedTensorSpec serialization."""
+    return struct_pb2.BoundedTensorSpecProto
+
+  @classmethod
+  def experimental_from_proto(
+      cls, proto: struct_pb2.BoundedTensorSpecProto) -> "BoundedTensorSpec":
+    """Returns a BoundedTensorSpec instance based on the serialized proto."""
+    return BoundedTensorSpec(
+        shape=tensor_shape.TensorShape.experimental_from_proto(proto.shape),
+        dtype=proto.dtype,
+        minimum=tensor_util.MakeNdarray(proto.minimum),
+        maximum=tensor_util.MakeNdarray(proto.maximum),
+        name=proto.name if proto.name else None)
+
+  def experimental_as_proto(self) -> struct_pb2.BoundedTensorSpecProto:
+    """Returns a proto representation of the BoundedTensorSpec instance."""
+    return struct_pb2.BoundedTensorSpecProto(
+        shape=self.shape.experimental_as_proto(),
+        dtype=self.dtype.experimental_as_proto().datatype,
+        minimum=tensor_util.make_tensor_proto(self._minimum),
+        maximum=tensor_util.make_tensor_proto(self._maximum),
+        name=self.name)
+
+  @classmethod
   def from_spec(cls, spec):
     """Returns a `TensorSpec` with the same shape and dtype as `spec`.
 
@@ -343,7 +451,7 @@ class BoundedTensorSpec(TensorSpec):
             np.allclose(self.maximum, other.maximum))
 
   def __hash__(self):
-    return hash((self._shape_tuple, self.dtype))
+    return hash((self._shape, self.dtype))
 
   def __reduce__(self):
     return BoundedTensorSpec, (self._shape, self._dtype, self._minimum,
@@ -352,15 +460,12 @@ class BoundedTensorSpec(TensorSpec):
   def _serialize(self):
     return (self._shape, self._dtype, self._minimum, self._maximum, self._name)
 
-
+trace_type.register_serializable(BoundedTensorSpec)
 _pywrap_utils.RegisterType("TensorSpec", TensorSpec)
-
 
 # Note: we do not include Tensor names when constructing TypeSpecs.
 type_spec.register_type_spec_from_value_converter(
-    ops.Tensor,
-    lambda tensor: TensorSpec(tensor.shape, tensor.dtype))
+    ops.Tensor, lambda tensor: TensorSpec(tensor.shape, tensor.dtype))
 
 type_spec.register_type_spec_from_value_converter(
-    np.ndarray,
-    lambda array: TensorSpec(array.shape, array.dtype))
+    np.ndarray, lambda array: TensorSpec(array.shape, array.dtype))

@@ -602,6 +602,11 @@ TEST(CAPI, TensorHandleDevices) {
 }
 
 void ExecuteAdd(bool async, bool forward_input, bool tfrt) {
+#ifdef PLATFORM_WINDOWS
+  // On windows, we flakily get a failure due to pointer instability.
+  // Disable the 4 tests using this helper until we fix the issue.
+  return;
+#else
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_ContextOptionsSetTfrt(opts, tfrt);
@@ -643,7 +648,7 @@ void ExecuteAdd(bool async, bool forward_input, bool tfrt) {
     // Enqueue dummy ops so we backlog async execution & actually test async.
     // This is usually unnecessary, but we've experienced the occasional test
     // failure when testing async mode with no explicit forwarding.
-    for (int i = 0; i < 10000; ++i) {
+    for (int i = 0; i < 100000; ++i) {
       TFE_Op* add_op_dummy = AddOp(ctx, m, m);
       TFE_OpSetDevice(add_op_dummy, cpu_device_name.c_str(), status);
       ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -702,6 +707,7 @@ void ExecuteAdd(bool async, bool forward_input, bool tfrt) {
   }
   TFE_DeleteContext(ctx);
   TF_DeleteStatus(status);
+#endif  // PLATFORM_WINDOWS
 }
 TEST(CAPI, ExecuteAdd) {
   ExecuteAdd(
@@ -709,7 +715,8 @@ TEST(CAPI, ExecuteAdd) {
       /*forward_input*/ false,
       /*tfrt*/ false);
 }
-TEST(CAPI, ExecuteAddAsync) {
+// TODO(b/234067483): Investigate flakiness and re-enable.
+TEST(CAPI, DISABLED_ExecuteAddAsync) {
   ExecuteAdd(
       /*async=*/true,
       /*forward_input*/ false,

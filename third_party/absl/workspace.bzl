@@ -7,8 +7,8 @@ def repo():
 
     # Attention: tools parse and update these lines.
     # LINT.IfChange
-    ABSL_COMMIT = "215105818dfde3174fe799600bb0f3cae233d0bf"
-    ABSL_SHA256 = "237e2e6aec7571ae90d961d02de19f56861a7417acbbc15713b8926e39d461ed"
+    ABSL_COMMIT = "273292d1cfc0a94a65082ee350509af1d113344d"
+    ABSL_SHA256 = "94aef187f688665dc299d09286bfa0d22c4ecb86a80b156dff6aabadc5a5c26d"
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/abseil-cpp.cmake)
 
     SYS_DIRS = [
@@ -42,7 +42,7 @@ def repo():
         build_file = "//third_party/absl:com_google_absl.BUILD",
         system_build_file = "//third_party/absl:system.BUILD",
         system_link_files = SYS_LINKS,
-        # TODO(mihaimaruseac): Remove the patch when https://github.com/abseil/abseil-cpp/issues/326 is resolved
+        # TODO(b/234139015): Remove the patch when https://github.com/abseil/abseil-cpp/issues/326 is resolved
         patch_file = ["//third_party/absl:com_google_absl_fix_mac_and_nvcc_build.patch"],
         strip_prefix = "abseil-cpp-{commit}".format(commit = ABSL_COMMIT),
         urls = tf_mirror_urls("https://github.com/abseil/abseil-cpp/archive/{commit}.tar.gz".format(commit = ABSL_COMMIT)),

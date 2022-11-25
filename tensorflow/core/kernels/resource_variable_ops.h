@@ -67,6 +67,12 @@ class DestroyResourceOp : public OpKernel {
   bool ignore_lookup_error_;
 };
 
+class DisableCopyOnReadOp : public OpKernel {
+ public:
+  explicit DisableCopyOnReadOp(OpKernelConstruction* c) : OpKernel(c) {}
+  void Compute(OpKernelContext* ctx) override;
+};
+
 template <typename T>
 class VariableShapeOp : public OpKernel {
  public:

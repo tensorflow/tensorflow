@@ -21,16 +21,16 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/status.h"
 
 namespace xla {
 namespace sharding_op_util {
 
-// Encodes the attributes string for Sharding and auto/manual covnersion custom
+// Encodes the attributes string for Sharding and auto/manual conversion custom
 // ops. This will be used in the opaque field.
 std::string EncodeAttributes(absl::Span<const int64_t> unspecified_dims);
 
-// Parses the opaque string of Sharding and auto/manual covnersion custom ops.
+// Parses the opaque string of Sharding and auto/manual conversion custom ops.
 Status ParseAttributes(absl::string_view opaque,
                        std::vector<int64_t>* unspecified_dims);
 

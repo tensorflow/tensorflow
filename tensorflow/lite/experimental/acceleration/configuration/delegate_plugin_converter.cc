@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/configuration/delegate_plugin_converter.h"
 
 #include <functional>
+#include <memory>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/core/shims/c/common.h"
@@ -51,7 +52,7 @@ std::function<
 DelegatePluginConverter(const TfLiteOpaqueDelegatePlugin& plugin_c_api) {
   return [plugin_c_api](const ::tflite::TFLiteSettings& settings)
              -> std::unique_ptr<DelegatePluginInterface> {
-    return absl::make_unique<DelegatePluginViaCApi>(plugin_c_api, settings);
+    return std::make_unique<DelegatePluginViaCApi>(plugin_c_api, settings);
   };
 }
 

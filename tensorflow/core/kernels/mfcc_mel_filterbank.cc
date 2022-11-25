@@ -32,6 +32,8 @@ limitations under the License.
 
 #include <math.h>
 
+#include <limits>
+
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -74,7 +76,17 @@ bool MfccMelFilterbank::Initialize(int input_length, double input_sample_rate,
 
   // An extra center frequency is computed at the top to get the upper
   // limit on the high side of the final triangular filter.
-  center_frequencies_.resize(num_channels_ + 1);
+  std::size_t center_frequencies_size = std::size_t(num_channels_) + 1;
+  if (center_frequencies_size >= std::numeric_limits<int>::max() ||
+      center_frequencies_size > center_frequencies_.max_size()) {
+    LOG(ERROR) << "Number of filterbank channels must be less than "
+               << std::numeric_limits<int>::max()
+               << " and less than or equal to "
+               << center_frequencies_.max_size();
+    return false;
+  }
+  center_frequencies_.resize(center_frequencies_size);
+
   const double mel_low = FreqToMel(lower_frequency_limit);
   const double mel_hi = FreqToMel(upper_frequency_limit);
   const double mel_span = mel_hi - mel_low;

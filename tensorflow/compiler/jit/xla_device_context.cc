@@ -25,12 +25,12 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/platform/mem.h"
-#include "tensorflow/stream_executor/platform/port.h"
 
 namespace tensorflow {
 
@@ -57,11 +57,11 @@ void XlaDeviceAllocator::DeallocateRaw(void* ptr) {
   delete XlaTensor::FromOpaquePointer(ptr);
 }
 
-absl::optional<AllocatorStats> XlaDeviceAllocator::GetStats() {
-  absl::optional<stream_executor::AllocatorStats> se_stats =
+std::optional<AllocatorStats> XlaDeviceAllocator::GetStats() {
+  std::optional<stream_executor::AllocatorStats> se_stats =
       stream_executor_->GetAllocatorStats();
   if (!se_stats) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   tensorflow::AllocatorStats tf_stats;
@@ -118,7 +118,7 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
                                              bool sync_dst_compute) const {
   if (cpu_tensor->NumElements() == 0) {
     VLOG(2) << "CopyCPUTensorToDevice empty tensor";
-    done(Status::OK());
+    done(OkStatus());
     return;
   }
 
@@ -135,7 +135,7 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
 
   XlaLayoutPreference layout_preference =
       shape_determination_fns_.layout_preference_fn(
-          device_tensor->shape(), device_tensor->dtype(), absl::nullopt);
+          device_tensor->shape(), device_tensor->dtype(), std::nullopt);
   Status status = [&]() -> Status {
     TF_ASSIGN_OR_RETURN(xla::Shape shape,
                         shape_determination_fns_.shape_representation_fn(
@@ -179,7 +179,7 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
                                        host_to_device_stream_.get());
     }
 
-    return Status::OK();
+    return OkStatus();
   }();
   if (!status.ok()) {
     done(status);
@@ -201,7 +201,7 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
   } else {
     host_to_device_stream_->ThenDoHostCallback([ref, done]() {
       ref.Unref();
-      done(Status::OK());
+      done(OkStatus());
     });
   }
 }
@@ -212,7 +212,7 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
                                              StatusCallback done) {
   if (device_tensor->NumElements() == 0) {
     VLOG(2) << "CopyDeviceTensorToCPU empty tensor";
-    done(Status::OK());
+    done(OkStatus());
     return;
   }
   VLOG(2) << "CopyDeviceTensorToCPU "
@@ -235,7 +235,7 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
       return;
     }
     device_to_host_stream =
-        std::shared_ptr<se::Stream>(std::move(ptr_or_status.ValueOrDie()));
+        std::shared_ptr<se::Stream>(std::move(ptr_or_status.value()));
   }
 
   XlaTensor* xla_tensor = XlaTensor::FromTensor(device_tensor);
@@ -281,7 +281,7 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
           auto status_or_new_stream = client_->mutable_backend()->BorrowStream(
               stream_->parent()->device_ordinal());
           if (status_or_new_stream.ok()) {
-            status_or_new_stream.ValueOrDie()->ThenDoHostCallback(
+            status_or_new_stream.value()->ThenDoHostCallback(
                 [device_to_host_stream] {});
           }
         }
@@ -301,7 +301,7 @@ Status XlaDeviceContext::ThenExecute(Device* device,
                                      std::function<void()> func) {
   VLOG(2) << "XlaDeviceContext::ThenExecute";
   stream->ThenDoHostCallback(std::move(func));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

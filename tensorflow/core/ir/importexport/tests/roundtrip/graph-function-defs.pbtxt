@@ -400,6 +400,9 @@ library {
       input_arg {
         name: "cond_true"
         type: DT_INT32
+        experimental_full_type {
+          type_id: TFT_TENSOR
+        }
       }
       input_arg {
         name: "cond_true1"
@@ -408,6 +411,9 @@ library {
       output_arg {
         name: "cond_true2"
         type: DT_INT32
+        experimental_full_type {
+          type_id: TFT_TENSOR
+        }
       }
       output_arg {
         name: "cond_true3"
@@ -451,6 +457,9 @@ library {
       input_arg {
         name: "cond_false"
         type: DT_INT32
+        experimental_full_type {
+          type_id: TFT_TENSOR
+        }
       }
       input_arg {
         name: "cond_false1"
@@ -459,6 +468,9 @@ library {
       output_arg {
         name: "cond_false2"
         type: DT_INT32
+        experimental_full_type {
+          type_id: TFT_TENSOR
+        }
       }
       output_arg {
         name: "cond_false3"
@@ -466,7 +478,7 @@ library {
       }
     }
     node_def {
-      name: "Identity"
+      name: "IdentityFull"
       op: "Identity"
       input: "cond_false"
       attr {
@@ -474,6 +486,9 @@ library {
         value {
           type: DT_INT32
         }
+      }
+      experimental_type {
+        type_id: TFT_TENSOR
       }
     }
     node_def {
@@ -493,7 +508,7 @@ library {
     }
     ret {
       key: "cond_false3"
-      value: "Identity:output:0"
+      value: "IdentityFull:output:0"
     }
   }
 }

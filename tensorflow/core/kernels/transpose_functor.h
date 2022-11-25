@@ -233,14 +233,14 @@ Status DoTransposeImpl(const Device& d, const Tensor& in,
     default:
       return errors::Unimplemented("Unsupported dtype on CPU: ", in.dtype());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Device>
 inline Status DoMatrixTransposeImpl(const Device& device, const Tensor& in,
                                     bool conjugate, Tensor* out) {
   const int ndims = in.dims();
-  if (ndims == 0) return Status::OK();
+  if (ndims == 0) return OkStatus();
   TransposePermsVec perm(ndims);
   std::iota(perm.begin(), perm.end(), 0);
   std::swap(perm[ndims - 2], perm[ndims - 1]);

@@ -50,6 +50,7 @@ ASYNC_STATEFUL_OPS = frozenset((
     # in order to avoid being pruned.
     "Recv",
     "CollectiveInitializeCommunicator",
+    "CollectiveAssignGroupV2",
 ))
 
 LEGACY_RANDOM_OPS = frozenset((
@@ -101,6 +102,12 @@ LEGACY_RANDOM_OPS = frozenset((
 MUST_RUN_ORDER_INSENSITIVE_STATEFUL_OPS = frozenset((
     "InfeedEnqueue",
     "InfeedEnqueueTuple",
+    "EnqueueTPUEmbeddingSparseBatch",
+    "EnqueueTPUEmbeddingIntegerBatch",
+    "EnqueueTPUEmbeddingSparseTensorBatch",
+    "EnqueueTPUEmbeddingRaggedTensorBatch",
+    "EnqueueTPUEmbeddingArbitraryTensorBatch",
+    "DynamicEnqueueTPUEmbeddingArbitraryTensorBatch",
 ))
 
 # These ops are order-insensitive ans should in theory run, but at the moment
@@ -115,11 +122,6 @@ SKIPPED_ORDER_INSENSITIVE_STATEFUL_OPS = frozenset((
     "CudnnRNNV3",
     "CudnnRNNBackpropV2",
     "CudnnRNNBackpropV3",
-    "EnqueueTPUEmbeddingSparseBatch",
-    "EnqueueTPUEmbeddingIntegerBatch",
-    "EnqueueTPUEmbeddingSparseTensorBatch",
-    "EnqueueTPUEmbeddingRaggedTensorBatch",
-    "EnqueueTPUEmbeddingArbitraryTensorBatch",
     "RestoreV2",
     "SaveV2",
 ))

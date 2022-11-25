@@ -16,7 +16,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 namespace mlir {
@@ -38,9 +37,12 @@ namespace TFDevice {
 
 namespace {
 
+#define GEN_PASS_DEF_CONVERTLAUNCHFUNCTOTFCALLPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Rewrites tf_device::LaunchFuncOp into TF::PartitionedCallOp.
 struct ConvertLaunchFuncToTFCallPass
-    : public TF::ConvertLaunchFuncToTFCallPassBase<
+    : public impl::ConvertLaunchFuncToTFCallPassBase<
           ConvertLaunchFuncToTFCallPass> {
   void runOnOperation() override;
 };
@@ -51,7 +53,7 @@ void ConvertLaunchFuncToTFCallPass::runOnOperation() {
     OpBuilder builder(launch);
     auto call_op = builder.create<TF::PartitionedCallOp>(
         module.getLoc(), launch.getResultTypes(), launch.operands(),
-        SymbolRefAttr::get(builder.getContext(), launch.func()),
+        SymbolRefAttr::get(builder.getContext(), launch.getFunc()),
         /*config=*/builder.getStringAttr(""),
         /*config_proto=*/builder.getStringAttr(""),
         /*executor_type=*/builder.getStringAttr(""));

@@ -1268,6 +1268,13 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
         ShapeFromFormat(data_format_, params.tensor_in_batch, params.out_height,
                         params.out_width, params.depth);
 
+    // Degenerate pooling output should return an empty tensor.
+    if (out_shape.num_elements() == 0) {
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
+      return;
+    }
+
     // Assuming qint8 <--> NCHW_VECT_C (int8x4) here.
     constexpr bool is_int8x4 = std::is_same<T, qint8>::value;
     OP_REQUIRES(context, (is_int8x4 == (data_format_ == FORMAT_NCHW_VECT_C)),

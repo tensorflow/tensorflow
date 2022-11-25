@@ -63,9 +63,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_EXP(reference_ops, float);
         break;
       default:
-        context->ReportError(context,
-                             "Type %d is currently not supported by Exp.",
-                             op_context.input->type);
+        TF_LITE_KERNEL_LOG(context,
+                           "Type %d is currently not supported by Exp.",
+                           op_context.input->type);
         return kTfLiteError;
     }
   }

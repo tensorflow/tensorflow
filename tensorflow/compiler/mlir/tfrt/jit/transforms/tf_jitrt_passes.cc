@@ -37,4 +37,21 @@ mlir::FailureOr<Operation *> DetectCombiner(LinalgOp linalg_op) {
   return combiners.front();
 }
 
+constexpr llvm::StringLiteral kTransformMarker =
+    "__internal_transformation_marker__";
+
+void setTransformationAttr(mlir::OpBuilder &b, Operation *op) {
+  op->setAttr(kTransformMarker, b.getBoolAttr(true));
+}
+
+void removeTransformationAttr(Operation *op) {
+  op->removeAttr(kTransformMarker);
+}
+
+bool hasTransformationAttr(Operation *op) {
+  auto marker = op->getAttr(kTransformMarker);
+  if (!marker) return false;
+  return marker && marker.cast<mlir::BoolAttr>().getValue();
+}
+
 }  // namespace tensorflow

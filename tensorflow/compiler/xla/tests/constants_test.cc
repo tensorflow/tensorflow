@@ -30,8 +30,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -165,7 +165,7 @@ TEST_F(ConstantsTest, DISABLED_TupleConstant) {
                                 {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}),
                                  LiteralUtil::CreateR1<float>({2.0, 42})}));
 
-  Literal result = ExecuteAndTransfer(&builder, {}).ConsumeValueOrDie();
+  Literal result = ExecuteAndTransfer(&builder, {}).value();
 
   LiteralTestUtil::ExpectR2Near<float>({{1.0}, {2.0}},
                                        LiteralSlice(result, {0}), error_spec_);
@@ -224,7 +224,7 @@ XLA_TEST_F(ConstantsHloTest, DISABLED_ON_GPU(BitcastOfConstant)) {
       ROOT result = s32[] call(parameter.0, constant-as-scalar), to_apply=func
     }
   )";
-  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(testcase).value();
   auto param = LiteralUtil::CreateR0<int32_t>(1);
   auto result = ExecuteNoHloPasses(std::move(module), {&param});
   EXPECT_TRUE(LiteralTestUtil::Equal(param, result));

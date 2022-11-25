@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdlib>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -56,7 +57,7 @@ class ImagenetClassification : public TaskExecutor {
   std::vector<Flag> GetFlags() final;
 
   // If the run is successful, the latest metrics will be returned.
-  absl::optional<EvaluationStageMetrics> RunImpl() final;
+  std::optional<EvaluationStageMetrics> RunImpl() final;
 
  private:
   void OutputResult(const EvaluationStageMetrics& latest_metrics) const;
@@ -110,20 +111,20 @@ std::vector<Flag> ImagenetClassification::GetFlags() {
   return flag_list;
 }
 
-absl::optional<EvaluationStageMetrics> ImagenetClassification::RunImpl() {
+std::optional<EvaluationStageMetrics> ImagenetClassification::RunImpl() {
   // Process images in filename-sorted order.
   std::vector<std::string> image_files, ground_truth_image_labels;
   if (GetSortedFileNames(StripTrailingSlashes(ground_truth_images_path_),
                          &image_files) != kTfLiteOk) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   if (!ReadFileLines(ground_truth_labels_path_, &ground_truth_image_labels)) {
     TFLITE_LOG(ERROR) << "Could not read ground truth labels file";
-    return absl::nullopt;
+    return std::nullopt;
   }
   if (image_files.size() != ground_truth_image_labels.size()) {
     TFLITE_LOG(ERROR) << "Number of images and ground truth labels is not same";
-    return absl::nullopt;
+    return std::nullopt;
   }
   std::vector<ImageLabel> image_labels;
   image_labels.reserve(image_files.size());
@@ -133,7 +134,7 @@ absl::optional<EvaluationStageMetrics> ImagenetClassification::RunImpl() {
 
   // Filter out denylisted/unwanted images.
   if (FilterDenyListedImages(denylist_file_path_, &image_labels) != kTfLiteOk) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   if (num_images_ > 0) {
     image_labels = GetFirstN(image_labels, num_images_);
@@ -142,7 +143,7 @@ absl::optional<EvaluationStageMetrics> ImagenetClassification::RunImpl() {
   std::vector<std::string> model_labels;
   if (!ReadFileLines(model_output_labels_path_, &model_labels)) {
     TFLITE_LOG(ERROR) << "Could not read model output labels file";
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   EvaluationStageConfig eval_config;
@@ -158,7 +159,7 @@ absl::optional<EvaluationStageMetrics> ImagenetClassification::RunImpl() {
   ImageClassificationStage eval(eval_config);
 
   eval.SetAllLabels(model_labels);
-  if (eval.Init(&delegate_providers_) != kTfLiteOk) return absl::nullopt;
+  if (eval.Init(&delegate_providers_) != kTfLiteOk) return std::nullopt;
 
   const int step = image_labels.size() / 100;
   for (int i = 0; i < image_labels.size(); ++i) {
@@ -166,12 +167,12 @@ absl::optional<EvaluationStageMetrics> ImagenetClassification::RunImpl() {
       TFLITE_LOG(INFO) << "Evaluated: " << i / step << "%";
     }
     eval.SetInputs(image_labels[i].image, image_labels[i].label);
-    if (eval.Run() != kTfLiteOk) return absl::nullopt;
+    if (eval.Run() != kTfLiteOk) return std::nullopt;
   }
 
   const auto latest_metrics = eval.LatestMetrics();
   OutputResult(latest_metrics);
-  return absl::make_optional(latest_metrics);
+  return std::make_optional(latest_metrics);
 }
 
 void ImagenetClassification::OutputResult(

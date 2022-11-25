@@ -36,7 +36,7 @@ Status GetVariantInput(InferenceContext* c, int index,
         "Unable to access shape and type info from variant input ", index);
   }
   *shape_and_type = shapes_and_types->at(0);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Validates that a shape represents a (rank-2) square matrix or a (rank-3)
@@ -53,7 +53,7 @@ Status ValidateSquareMatrixShape(InferenceContext* c,
 
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(matrix_shape, -2),
                               c->Dim(matrix_shape, -1), matrix_dimension));
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_OP("SparseTensorToCSRSparseMatrix")
@@ -81,7 +81,7 @@ REGISTER_OP("SparseTensorToCSRSparseMatrix")
       c->set_output(0, c->Scalar());
       c->set_output_handle_shapes_and_types(0,
                                             {ShapeAndType{dense_shape, dtype}});
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CSRSparseMatrixToSparseTensor")
@@ -105,7 +105,7 @@ REGISTER_OP("CSRSparseMatrixToSparseTensor")
       c->set_output(0, indices);
       c->set_output(1, values);
       c->set_output(2, dense_shape);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("DenseToCSRSparseMatrix")
@@ -145,7 +145,7 @@ REGISTER_OP("DenseToCSRSparseMatrix")
       c->set_output_handle_shapes_and_types(0,
                                             {ShapeAndType{dense_shape, dtype}});
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CSRSparseMatrixToDense")
@@ -161,7 +161,7 @@ REGISTER_OP("CSRSparseMatrixToDense")
         return errors::InvalidArgument("sparse_matrix has an unknown rank.");
       }
       c->set_output(0, sparse_matrix);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CSRSparseMatrixComponents")
@@ -193,7 +193,7 @@ REGISTER_OP("CSRSparseMatrixComponents")
       c->set_output(0, row_ptrs);
       c->set_output(1, c->Vector(c->UnknownDim()));
       c->set_output(2, c->Vector(c->UnknownDim()));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseMatrixNNZ")
@@ -215,7 +215,7 @@ REGISTER_OP("SparseMatrixNNZ")
         out = c->Scalar();
       }
       c->set_output(0, out);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseMatrixMatMul")
@@ -292,7 +292,7 @@ REGISTER_OP("SparseMatrixMatMul")
           batch_dims, c->Matrix(output_rows, output_cols), &out));
 
       c->set_output(0, out);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseMatrixMul")
@@ -338,7 +338,7 @@ REGISTER_OP("SparseMatrixMul")
       c->set_output_handle_shapes_and_types(
           0, {ShapeAndType{out, sparse_matrix_shape_and_type.dtype}});
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseMatrixAdd")
@@ -375,7 +375,7 @@ REGISTER_OP("SparseMatrixAdd")
       c->set_output_handle_shapes_and_types(
           0, {ShapeAndType{out, sparse_matrix_shape_and_type.dtype}});
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseMatrixSparseMatMul")
@@ -447,7 +447,7 @@ REGISTER_OP("SparseMatrixSparseMatMul")
       c->set_output_handle_shapes_and_types(
           0, {ShapeAndType{out, sparse_matrix_shape_and_type.dtype}});
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseMatrixZeros")
@@ -471,7 +471,7 @@ REGISTER_OP("SparseMatrixZeros")
       c->set_output_handle_shapes_and_types(0,
                                             {ShapeAndType{dense_shape, dtype}});
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseMatrixTranspose")
@@ -499,7 +499,7 @@ REGISTER_OP("SparseMatrixTranspose")
           0, {ShapeAndType{output, sparse_matrix_shape_and_type.dtype}});
       c->set_output(0, c->Scalar());
 
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseMatrixSoftmax")
@@ -518,7 +518,7 @@ REGISTER_OP("SparseMatrixSoftmax")
       c->set_output_handle_shapes_and_types(
           0, {ShapeAndType{logits, sparse_matrix_shape_and_type.dtype}});
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseMatrixSoftmaxGrad")
@@ -546,7 +546,7 @@ REGISTER_OP("SparseMatrixSoftmaxGrad")
       c->set_output_handle_shapes_and_types(
           0, {ShapeAndType{softmax, sparse_matrix_shape_and_type.dtype}});
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseMatrixOrderingAMD")
@@ -566,7 +566,7 @@ REGISTER_OP("SparseMatrixOrderingAMD")
         output = c->Matrix(c->Dim(matrix_shape, 0), c->Dim(matrix_shape, 1));
       }
       c->set_output(0, output);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseMatrixSparseCholesky")
@@ -607,7 +607,7 @@ REGISTER_OP("SparseMatrixSparseCholesky")
           0, {ShapeAndType{out, sparse_matrix_shape_and_type.dtype}});
       c->set_output(0, c->Scalar());
 
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

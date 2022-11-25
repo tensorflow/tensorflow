@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/ToolUtilities.h"  // from @llvm-project
-#include "mlir/Translation.h"  // from @llvm-project
+#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
@@ -66,7 +66,7 @@ static llvm::cl::opt<bool> import_saved_model_signature_defs(
 // NOLINTNEXTLINE
 static llvm::cl::opt<bool> import_saved_model_signature_defs_lite(
     "savedmodel-signaturedefs-to-mlir-lite",
-    llvm::cl::desc("Import a saved model's SignatureDefs to to their MLIR "
+    llvm::cl::desc("Import a saved model's SignatureDefs to their MLIR "
                    "representation without any graph transformation"),
     llvm::cl::value_desc("dir"));
 
@@ -88,7 +88,7 @@ int main(int argc, char** argv) {
   tensorflow::InitMlir y(&argc, &argv);
 
   // Add flags for all the registered translations.
-  llvm::cl::opt<const mlir::TranslateFunction*, false, mlir::TranslationParser>
+  llvm::cl::opt<const mlir::Translation*, false, mlir::TranslationParser>
       requested_translation("", llvm::cl::desc("Translation to perform"));
   mlir::registerAsmPrinterCLOptions();
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF MLIR translation driver\n");
@@ -125,7 +125,7 @@ int main(int argc, char** argv) {
         input_filename, tags, exported_names, &context);
     if (!module_or.status().ok()) return 1;
 
-    module_or.ConsumeValueOrDie()->print(output->os());
+    module_or.value()->print(output->os());
   } else if (import_saved_model_signature_defs) {
     mlir::MLIRContext context;
     tensorflow::MLIRImportOptions import_options;
@@ -134,7 +134,7 @@ int main(int argc, char** argv) {
         input_filename, tags, exported_names, &context, import_options);
     if (!module_or.status().ok()) return 1;
 
-    module_or.ConsumeValueOrDie()->print(output->os());
+    module_or.value()->print(output->os());
   } else if (import_saved_model_signature_defs_lite) {
     mlir::MLIRContext context;
     tensorflow::MLIRImportOptions import_options;
@@ -143,7 +143,7 @@ int main(int argc, char** argv) {
         input_filename, tags, exported_names, &context, import_options);
     if (!module_or.status().ok()) return 1;
 
-    module_or.ConsumeValueOrDie()->print(output->os());
+    module_or.value()->print(output->os());
   } else {
     auto input = mlir::openInputFile(input_filename, &error_message);
 

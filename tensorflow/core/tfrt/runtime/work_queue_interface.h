@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_RUNTIME_WORK_QUEUE_INTERFACE_H_
 #define TENSORFLOW_CORE_TFRT_RUNTIME_WORK_QUEUE_INTERFACE_H_
 
+#include <cstdint>
+
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
@@ -31,7 +33,18 @@ namespace tfrt_stub {
 // methods (eg. create an intra op thread pool) without changing TFRT core.
 class WorkQueueInterface : public tfrt::ConcurrentWorkQueue {
  public:
+  WorkQueueInterface() = default;
+  explicit WorkQueueInterface(int64_t id) : id_(id) {}
+  explicit WorkQueueInterface(int64_t id,
+                              thread::ThreadPoolInterface* intra_op_threadpool)
+      : id_(id), intra_op_threadpool_(intra_op_threadpool) {}
   ~WorkQueueInterface() override = 0;
+
+  int64_t id() const { return id_; }
+
+  thread::ThreadPoolInterface* GetIntraOpThreadPool() const {
+    return intra_op_threadpool_;
+  }
 
   // Returns per-request work queue if possible. A nullptr should be returned if
   // the implementation does not implement the per-request work queue.
@@ -41,11 +54,13 @@ class WorkQueueInterface : public tfrt::ConcurrentWorkQueue {
   // should be handled separately.
   ABSL_DEPRECATED("Create the instance directly instead.")
   virtual StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
-      tfrt::RequestContextBuilder* request_context_builder,
-      thread::ThreadPoolInterface** intra_op_threadpool) const {
-    *intra_op_threadpool = nullptr;
+      int64_t request_id) const {
     return {nullptr};
   }
+
+ private:
+  int64_t id_ = 0;
+  thread::ThreadPoolInterface* intra_op_threadpool_ = nullptr;
 };
 
 inline WorkQueueInterface::~WorkQueueInterface() = default;

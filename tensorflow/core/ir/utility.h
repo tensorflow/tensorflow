@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_IR_UTILITY_H_
 #define TENSORFLOW_CORE_IR_UTILITY_H_
 
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/core/ir/dialect.h"
 
 namespace mlir {
 namespace tfg {
@@ -27,6 +30,9 @@ namespace tfg {
 // functions which store them as pairs. This is required by
 // RegionBranchOpInterface's API which requires MutableOperandRange, i.e. the
 // data operands need to be stored contiguously.
+
+// TODO(jeffniu): These functions aren't just for "loop regions" any more, but
+// any region-based ops (if/case have explicit capture forms).
 
 // Given a region belonging to a region-based loop operation (e.g. a while
 // loop), return the subrange of block arguments that are data values.
@@ -54,6 +60,24 @@ Value LookupControlDependency(Value data);
 // if the only result is a control token, return None. Otherwise, returns the
 // first result.
 Optional<Value> LookupDataValue(Value ctl);
+
+// Given a range of values, operands, or results, that contains data and control
+// values, where all control tokens come after the data values, split the range
+// between the two.
+template <typename RangeT>
+std::pair<RangeT, RangeT> SplitDataAndControlValues(RangeT values,
+                                                    ControlType ctl_type) {
+  unsigned num_ctl = 0;
+  for (Value value : llvm::reverse(values)) {
+    if (value.getType() == ctl_type)
+      ++num_ctl;
+    else
+      break;
+  }
+  unsigned split_idx = llvm::size(values) - num_ctl;
+  return std::make_pair(values.slice(0, split_idx),
+                        values.slice(split_idx, num_ctl));
+}
 
 }  // namespace tfg
 }  // namespace mlir

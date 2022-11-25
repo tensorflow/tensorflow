@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -26,15 +28,15 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
-ABSL_CONST_INIT extern const char kImportModelDefaultGraphFuncName[];
+inline constexpr absl::string_view kImportModelDefaultGraphFuncName = "main";
 
 // Given a GraphDef, returns a MLIR module containing the graph, expressed with
 // tf_executor dialect.
@@ -80,7 +82,7 @@ ConvertSavedModelV1ToMlir(const SavedModelBundle& saved_model,
 // Given a V1 SavedModel, returns a MLIR module containing the functions,
 // expressed with tf_executor dialect. It does not require a session to be
 // created and it does not perform any graph transformation. If `exported_names`
-// is absl::nullopt, all signatures will be imported. Otherwise, only names
+// is std::nullopt, all signatures will be imported. Otherwise, only names
 // in `exported_names` are imported.
 //
 // Note that the word `Lite` means it is a lighter version compared to
@@ -90,7 +92,7 @@ ConvertSavedModelV1ToMlir(const SavedModelBundle& saved_model,
 stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 ConvertSavedModelV1ToMlirLite(
     const MetaGraphDef& meta_graph_def, const GraphDebugInfo& debug_info,
-    absl::optional<absl::Span<const std::string>> exported_names,
+    std::optional<absl::Span<const std::string>> exported_names,
     mlir::MLIRContext* context, MLIRImportOptions options);
 
 // SavedModelMLIRImportInput is an adapter class for users to inject custom
@@ -116,11 +118,13 @@ class SavedModelMLIRImportInput {
   // GetSubGraph() is expected to return a tensorflow::Graph that contains the
   // node set specified in `specs`. The implementation is free to transform the
   // graph in the original savedmodel as needed, as long as it produces the same
-  // results and effects. `name` is a unique identifier for this subgraph, so
-  // the implementation can use it for eg. debugging or caching compilation
-  // results.
+  // results and effects. If the transformation requires some configs in `spec`
+  // (e.g., control_outputs) to be changed, they should be updated accordingly
+  // and remain valid for the graph.
+  // `name` is a unique identifier for this subgraph, so the implementation can
+  // use it for eg. debugging or caching compilation results.
   virtual stream_executor::port::StatusOr<const Graph*> GetSubGraph(
-      absl::string_view name, const GraphImportConfig& specs) = 0;
+      absl::string_view name, GraphImportConfig& specs) = 0;
 
  private:
   const MetaGraphDef* meta_graph_def_ = nullptr;
@@ -129,7 +133,7 @@ class SavedModelMLIRImportInput {
 
 // Given the SavedModelMLIRImportInput for a saved model, returns a MLIR module
 // containing the functions, expressed with tf_executor dialect. It does not
-// require a session to be created. If `exported_names` is absl::nullopt, all
+// require a session to be created. If `exported_names` is std::nullopt, all
 // signatures will be imported. Otherwise, only names in `exported_names` are
 // imported.
 
@@ -141,7 +145,7 @@ class SavedModelMLIRImportInput {
 stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 ConvertSavedModelV1ToMlirLite(
     SavedModelMLIRImportInput& input,
-    absl::optional<absl::Span<const std::string>> exported_names,
+    std::optional<absl::Span<const std::string>> exported_names,
     mlir::MLIRContext* context,
     bool unconditionally_use_set_output_shapes = false);
 

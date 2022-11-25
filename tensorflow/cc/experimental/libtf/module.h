@@ -48,11 +48,11 @@ tensorflow::StatusOr<Handle> BuildSavedUserObject(
 // "Build" all SavedObjects, ie convert from proto to their runtime
 // representation, in the tf_package.
 tensorflow::StatusOr<std::vector<Handle>> BuildObjects(
-    tensorflow::libexport::TFPackage tf_package);
+    tensorflow::libexport::TFPackage& tf_package);
 
 // Convert tf_package to a program in the runtime.
 tensorflow::StatusOr<Handle> BuildProgram(
-    runtime::Runtime runtime, tensorflow::libexport::TFPackage tf_package);
+    runtime::Runtime runtime, tensorflow::libexport::TFPackage& tf_package);
 
 }  // namespace impl
 }  // namespace libtf

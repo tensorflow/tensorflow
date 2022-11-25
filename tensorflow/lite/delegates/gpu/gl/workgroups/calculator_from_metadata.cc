@@ -87,8 +87,8 @@ std::unique_ptr<WorkgroupsCalculator> NewWorkgroupsCalculatorFromMetadata(
   const data::HardcodedWorkgroups* workgroups =
       FindWorkgroups(*flow_metadata->workgroups(), gpu_info);
   if (!workgroups) return nullptr;
-  return absl::make_unique<WorkgroupsCalculatorFromMetadata>(*workgroups,
-                                                             gpu_info);
+  return std::make_unique<WorkgroupsCalculatorFromMetadata>(*workgroups,
+                                                            gpu_info);
 }
 
 #else  // TFLITE_GPU_BINARY_RELEASE

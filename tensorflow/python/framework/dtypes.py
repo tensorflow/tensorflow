@@ -13,8 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 """Library of dtypes (Tensor element types)."""
+import abc
+import builtins
+from typing import Type, Sequence, Optional
+
 import numpy as np
-from six.moves import builtins
 
 from tensorflow.core.framework import types_pb2
 # We need to import pywrap_tensorflow prior to the bfloat wrapper to avoid
@@ -25,12 +28,22 @@ from tensorflow.python.framework import _dtypes
 from tensorflow.python.types import doc_typealias
 from tensorflow.python.lib.core import _pywrap_bfloat16
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.types import trace
+from tensorflow.core.function import trace_type
 
 _np_bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
 
 
+class DTypeMeta(type(_dtypes.DType), abc.ABCMeta):
+  pass
+
+
 @tf_export("dtypes.DType", "DType")
-class DType(_dtypes.DType):
+class DType(
+    _dtypes.DType,
+    trace.TraceType,
+    trace_type.Serializable,
+    metaclass=DTypeMeta):
   """Represents the type of the elements in a `Tensor`.
 
   `DType`'s are used to specify the output data type for operations which
@@ -147,7 +160,11 @@ class DType(_dtypes.DType):
         values. Returns
       min, max : tuple Lower and upper intensity limits.
     """
-    min, max = dtype_range[self.as_numpy_dtype]  # pylint: disable=redefined-builtin
+    if self.as_numpy_dtype in dtype_range:
+      min, max = dtype_range[self.as_numpy_dtype]  # pylint: disable=redefined-builtin
+    else:
+      raise ValueError(str(self) + " does not have defined limits.")
+
     if clip_negative:
       min = 0  # pylint: disable=redefined-builtin
     return min, max
@@ -171,6 +188,29 @@ class DType(_dtypes.DType):
     other = as_dtype(other)
     return self._type_enum in (other.as_datatype_enum,
                                other.base_dtype.as_datatype_enum)
+
+  def is_subtype_of(self, other: trace.TraceType) -> bool:
+    """See tf.types.experimental.TraceType base class."""
+    return self == other
+
+  def most_specific_common_supertype(
+      self, types: Sequence[trace.TraceType]) -> Optional["DType"]:
+    """See tf.types.experimental.TraceType base class."""
+    return self if all(self == other for other in types) else None
+
+  @classmethod
+  def experimental_type_proto(cls) -> Type[types_pb2.SerializedDType]:
+    """Returns the type of proto associated with DType serialization."""
+    return types_pb2.SerializedDType
+
+  @classmethod
+  def experimental_from_proto(cls, proto: types_pb2.SerializedDType) -> "DType":
+    """Returns a Dtype instance based on the serialized proto."""
+    return DType(proto.datatype)
+
+  def experimental_as_proto(self) -> types_pb2.SerializedDType:
+    """Returns a proto representation of the Dtype instance."""
+    return types_pb2.SerializedDType(datatype=self._type_enum)
 
   def __eq__(self, other):
     """Returns True iff this DType refers to the same type as `other`."""
@@ -198,6 +238,7 @@ class DType(_dtypes.DType):
   def __reduce__(self):
     return as_dtype, (self.name,)
 
+trace_type.register_serializable(DType)
 
 # Define data type range of numpy dtype
 dtype_range = {
@@ -677,16 +718,29 @@ assert len(_ANY_TO_TF) == sum(
 
 @tf_export("dtypes.as_dtype", "as_dtype")
 def as_dtype(type_value):
-  """Converts the given `type_value` to a `DType`.
+  """Converts the given `type_value` to a `tf.DType`.
 
-  Note: `DType` values are interned. When passed a new `DType` object,
-  `as_dtype` always returns the interned value.
+  Inputs can be existing `tf.DType` objects, a [`DataType`
+  enum](https://www.tensorflow.org/code/tensorflow/core/framework/types.proto),
+  a string type name, or a
+  [`numpy.dtype`](https://numpy.org/doc/stable/reference/generated/numpy.dtype.html).
+
+  Examples:
+  >>> tf.as_dtype(2)  # Enum value for float64.
+  tf.float64
+
+  >>> tf.as_dtype('float')
+  tf.float32
+
+  >>> tf.as_dtype(np.int32)
+  tf.int32
+
+  Note: `DType` values are interned (i.e. a single instance of each dtype is
+  stored in a map). When passed a new `DType` object, `as_dtype` always returns
+  the interned value.
 
   Args:
-    type_value: A value that can be converted to a `tf.DType` object. This may
-      currently be a `tf.DType` object, a [`DataType`
-      enum](https://www.tensorflow.org/code/tensorflow/core/framework/types.proto),
-        a string type name, or a [`numpy.dtype`](https://numpy.org/doc/stable/reference/generated/numpy.dtype.html).
+    type_value: A value that can be converted to a `tf.DType` object.
 
   Returns:
     A `DType` corresponding to `type_value`.

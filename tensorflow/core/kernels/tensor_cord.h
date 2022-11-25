@@ -51,7 +51,7 @@ class TensorCord {
   //   delete static_cast<TensorProto*>(ptr);
   // }
   //
-  // auto p = absl::MakeUnique<TensorProto>(...);
+  // auto p = std::make_unique<TensorProto>(...);
   // absl::string_view content(p->tensor_content());
   // TensorCord tc(content, TensorProtoDeleter, p.release());
   //

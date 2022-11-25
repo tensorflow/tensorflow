@@ -57,7 +57,7 @@ Status ReadOpListFromFile(const string& filename,
     s = input_buffer->ReadLine(&line_contents);
   }
   if (!errors::IsOutOfRange(s)) return s;
-  return Status::OK();
+  return OkStatus();
 }
 
 // The argument parsing is deliberately simplistic to support our only
@@ -73,14 +73,14 @@ Status ReadOpListFromFile(const string& filename,
 Status ParseOpListCommandLine(const char* arg, std::vector<string>* op_list) {
   std::vector<string> op_names = str_util::Split(arg, ',');
   if (op_names.size() == 1 && op_names[0].empty()) {
-    return Status::OK();
+    return OkStatus();
   } else if (op_names.size() == 1 && op_names[0].substr(0, 1) == "@") {
     const string filename = op_names[0].substr(1);
     return tensorflow::ReadOpListFromFile(filename, op_list);
   } else {
     *op_list = std::move(op_names);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Use the name of the current executable to infer the C++ source file

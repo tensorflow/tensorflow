@@ -1,4 +1,4 @@
-// Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+// Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 48.
+// Next ID to use: 51.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -290,4 +290,14 @@ message TocoFlags {
   // Enable using num bits set in fake quant attributes for quantization.
   // Note: This is an experimental feature
   optional bool use_fake_quant_num_bits = 47 [default = false];
+
+  // Enable converting to DynamicUpdateSlice op (for ops like TensorListSetItem)
+  // Note: This is an experimental feature
+  optional bool enable_dynamic_update_slice = 48 [default = false];
+
+  // Whether to preserve `TF::AssertOp`.
+  optional bool preserve_assert_op = 49 [default = false];
+
+  // Whether to ensure each function has a single use.
+  optional bool guarantee_all_funcs_one_use = 50 [default = false];
 }

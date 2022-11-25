@@ -70,7 +70,7 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* start,
       break;
     }
     default: {
-      context->ReportError(context, "Unknown data type: %d", start->type);
+      TF_LITE_KERNEL_LOG(context, "Unknown data type: %d", start->type);
       return kTfLiteError;
     }
   }
@@ -98,8 +98,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // TODO(b/117912892): Support quantization as well.
   const auto dtype = start->type;
   if (dtype != kTfLiteFloat32 && dtype != kTfLiteInt32) {
-    context->ReportError(context, "Unknown index output data type: %s",
-                         TfLiteTypeGetName(dtype));
+    TF_LITE_KERNEL_LOG(context, "Unknown index output data type: %s",
+                       TfLiteTypeGetName(dtype));
     return kTfLiteError;
   }
 
@@ -161,7 +161,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     default: {
-      context->ReportError(context, "Unsupported data type: %d", output->type);
+      TF_LITE_KERNEL_LOG(context, "Unsupported data type: %d", output->type);
       return kTfLiteError;
     }
   }

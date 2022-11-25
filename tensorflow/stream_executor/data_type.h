@@ -16,58 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_DATA_TYPE_H_
 #define TENSORFLOW_STREAM_EXECUTOR_DATA_TYPE_H_
 
-#include <complex>
-
-#include "tensorflow/stream_executor/dnn.pb.h"
-#include "tensorflow/stream_executor/platform/port.h"
-
-namespace Eigen {
-struct half;
-}  // namespace Eigen
-
-namespace stream_executor {
-namespace dnn {
-
-// A helper class to convert C/C++ types to the proper enums.
-template <typename T>
-struct ToDataType;
-
-// Note: If you add a new specialization below, make sure to add the
-// corresponding definition in stream_executor/dnn.cc.
-template <>
-struct ToDataType<float> {
-  static constexpr DataType value = DataType::kFloat;
-};
-template <>
-struct ToDataType<double> {
-  static constexpr DataType value = DataType::kDouble;
-};
-template <>
-struct ToDataType<Eigen::half> {
-  static constexpr DataType value = DataType::kHalf;
-};
-template <>
-struct ToDataType<Eigen::bfloat16> {
-  static constexpr DataType value = DataType::kBF16;
-};
-template <>
-struct ToDataType<tensorflow::int8> {
-  static constexpr DataType value = DataType::kInt8;
-};
-template <>
-struct ToDataType<tensorflow::int32> {
-  static constexpr DataType value = DataType::kInt32;
-};
-template <>
-struct ToDataType<std::complex<float>> {
-  static constexpr DataType value = DataType::kComplexFloat;
-};
-template <>
-struct ToDataType<std::complex<double>> {
-  static constexpr DataType value = DataType::kComplexDouble;
-};
-
-}  // namespace dnn
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/data_type.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_DATA_TYPE_H_

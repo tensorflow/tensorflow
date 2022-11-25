@@ -15,18 +15,22 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 #define DEBUG_TYPE "tf-device-mark-input-output-aliases"
 
 namespace mlir {
 namespace TFDevice {
 
+#define GEN_PASS_DEF_MARKINPUTOUTPUTALIASESPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 namespace {
 struct MarkInputOutputAliasesPass
-    : public TF::MarkInputOutputAliasesPassBase<MarkInputOutputAliasesPass> {
+    : public impl::MarkInputOutputAliasesPassBase<MarkInputOutputAliasesPass> {
   void runOnOperation() override;
 };
 
@@ -39,47 +43,7 @@ struct AliasInfo {
   int output_index;
 };
 
-// Returns the consuming `AssignVariableOp` user of `result`, if there is one
-// and if it is unique.
-// TODO(b/184420848) Generalize this to work in more situations, e.g.:
-// - consider more pass-through ops (like `tf_device::ReturnOp`)
-// - consider multiple uses
-absl::optional<TF::AssignVariableOp> FindConsumingAssignVariableOp(
-    OpResult& result) {
-  // We currently don't handle multiple uses.
-  if (!result.hasOneUse()) return absl::nullopt;
-
-  OpOperand& use = *(result.use_begin());
-  Operation* user = use.getOwner();
-  if (!user) return absl::nullopt;
-
-  // Follow the value through `tf_device::ReturnOp` inside of a parallel execute
-  // region.
-  auto parent_op = user->getParentOp();
-  if (llvm::isa<tf_device::ReturnOp>(user) && parent_op &&
-      llvm::isa<tf_device::ParallelExecuteOp>(parent_op)) {
-    Region* parent_region = user->getParentRegion();
-    auto parallel_execute = llvm::cast<tf_device::ParallelExecuteOp>(parent_op);
-
-    // Get the parallel execute result that corresponds to `use`.
-    int operand_num = use.getOperandNumber();
-    auto region_outputs =
-        parallel_execute.GetRegionOutputs(parent_region->getRegionNumber());
-    if (operand_num >= region_outputs.size()) return absl::nullopt;
-    OpResult parallel_execute_result = region_outputs[operand_num];
-
-    // We currently don't handle multiple uses.
-    if (!parallel_execute_result.hasOneUse()) return absl::nullopt;
-
-    user = parallel_execute_result.use_begin()->getOwner();
-    if (!user) return absl::nullopt;
-  }
-  auto assign_op = llvm::dyn_cast_or_null<TF::AssignVariableOp>(user);
-  if (!assign_op) return absl::nullopt;
-  return assign_op;
-}
-
-// Identify tf_device.cluster_func input-output alias pairs.
+// Idenitfy tf_device.cluster_func input-output alias pairs.
 // This is currently conservative, and handles the following simple case:
 // ```
 // %value = tf.ReadVariableOp(%resource_var)
@@ -93,11 +57,12 @@ absl::optional<TF::AssignVariableOp> FindConsumingAssignVariableOp(
 LogicalResult BuildAliasingInfo(
     tf_device::ClusterFuncOp cluster_func,
     llvm::DenseMap<Value, AliasInfo>& resource_alias_info_map) {
-  for (OpResult result : cluster_func.getResults()) {
-    auto assign_op_optional = FindConsumingAssignVariableOp(result);
-    if (!assign_op_optional.has_value()) continue;
-    TF::AssignVariableOp assign_op = assign_op_optional.value();
-    AliasInfo& alias_info = resource_alias_info_map[assign_op.resource()];
+  for (auto result : cluster_func.getResults()) {
+    if (!result.hasOneUse()) continue;
+    auto assign_op = llvm::dyn_cast_or_null<TF::AssignVariableOp>(
+        result.use_begin()->getOwner());
+    if (!assign_op) continue;
+    AliasInfo& alias_info = resource_alias_info_map[assign_op.getResource()];
     // TODO(b/184420848): We may not need to skip aliasing for entire function
     // in case of multiple assigns.
     if (alias_info.output_index != kUnassigned) {
@@ -117,7 +82,7 @@ LogicalResult BuildAliasingInfo(
         operand.get().getDefiningOp());
     if (!read_op) continue;
     if (!read_op->hasOneUse()) continue;
-    auto it = resource_alias_info_map.find(read_op.resource());
+    auto it = resource_alias_info_map.find(read_op.getResource());
     if (it == resource_alias_info_map.end()) continue;
     AliasInfo& alias_info = it->getSecond();
     // TODO(b/184420848): We may not need to skip aliasing for entire function
@@ -137,7 +102,7 @@ LogicalResult BuildAliasingInfo(
 }
 
 void AddAliasingAttributeToDeviceFunc(
-    FuncOp device_func,
+    func::FuncOp device_func,
     llvm::DenseMap<Value, AliasInfo>& resource_alias_info_map) {
   OpBuilder builder(device_func.getContext());
   for (const auto& resource_alias_entry : resource_alias_info_map) {
@@ -171,8 +136,9 @@ void MarkInputOutputAliasesPass::runOnOperation() {
       return;
     }
 
-    FlatSymbolRefAttr func_attr = cluster_func.funcAttr();
-    FuncOp device_func = module.lookupSymbol<FuncOp>(func_attr.getValue());
+    FlatSymbolRefAttr func_attr = cluster_func.getFuncAttr();
+    func::FuncOp device_func =
+        module.lookupSymbol<func::FuncOp>(func_attr.getValue());
     AddAliasingAttributeToDeviceFunc(device_func, resource_alias_info_map);
   });
 }

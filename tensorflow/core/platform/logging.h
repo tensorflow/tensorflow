@@ -16,26 +16,26 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_LOGGING_H_
 #define TENSORFLOW_CORE_PLATFORM_LOGGING_H_
 
-#include "tensorflow/core/platform/platform.h"  // To pick up PLATFORM_define
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/platform/types.h"   // IWYU pragma: export
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: export
 
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
-    defined(PLATFORM_GOOGLE_IOS) || defined(GOOGLE_LOGGING) ||      \
-    defined(__EMSCRIPTEN__) || defined(PLATFORM_CHROMIUMOS)
-#include "tensorflow/core/platform/google/logging.h"  // IWYU pragma: export
-#else
-#include "tensorflow/core/platform/default/logging.h"  // IWYU pragma: export
-#endif
-
+// NOLINTBEGIN(misc-unused-using-decls)
 namespace tensorflow {
-
 namespace internal {
-// Emit "message" as a log message to the log for the specified
-// "severity" as if it came from a LOG call at "fname:line"
-void LogString(const char* fname, int line, int severity,
-               const std::string& message);
+using tsl::internal::LogString;
 }  // namespace internal
-
+using tsl::ERROR;
+using tsl::FATAL;
+using tsl::INFO;
+using tsl::NUM_SEVERITIES;
+using tsl::TFAddLogSink;
+using tsl::TFGetLogSinks;
+using tsl::TFLogEntry;
+using tsl::TFLogSink;
+using tsl::TFRemoveLogSink;
+using tsl::UpdateLogVerbosityIfDefined;
+using tsl::WARNING;
 }  // namespace tensorflow
+// NOLINTEND(misc-unused-using-decls)
 
 #endif  // TENSORFLOW_CORE_PLATFORM_LOGGING_H_

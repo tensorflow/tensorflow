@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/cc/tools/freeze_saved_model.h"
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -57,7 +58,7 @@ Status NewCluster(grappler::Cluster** cluster) {
   (*cluster)->AllowSoftPlacement(true);
   (*cluster)->SetNumWarmupSteps(10);
   TF_RETURN_IF_ERROR((*cluster)->Provision());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RunGrappler(const MetaGraphDef& meta_graph_def,
@@ -86,7 +87,7 @@ Status RunGrappler(const MetaGraphDef& meta_graph_def,
   TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(
       std::move(*item), config_proto, cpu_device, cluster, out_graph_def));
   VLOG(2) << "Grappler finished\n";
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ImportGraphDefToSession(Session* session, const GraphDef& graph_def,
@@ -98,7 +99,7 @@ Status ImportGraphDefToSession(Session* session, const GraphDef& graph_def,
   GraphDef new_graph_def;
   graph.ToGraphDef(&new_graph_def);
   TF_RETURN_IF_ERROR(session->Extend(new_graph_def));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetTrtRewriterConfig(const TfTrtConversionParams& params,
@@ -147,7 +148,7 @@ Status GetTrtRewriterConfig(const TfTrtConversionParams& params,
   (*trt_parameter_map)["use_implicit_batch"].set_b(!params.use_dynamic_shape);
   (*trt_parameter_map)["_allow_build_at_runtime"].set_b(
       params.allow_build_at_runtime);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Runs TRTOptimizer grappler pass.
@@ -171,7 +172,7 @@ Status RunTfTrt(const MetaGraphDef& meta_graph_def,
                                  config_proto, cluster.get(),
                                  segmented_graph_def));
   TF_RETURN_IF_ERROR(cluster->Shutdown());
-  return Status::OK();
+  return OkStatus();
 }
 
 // Sets the _profile_generation mode attribute of all TRTEngineOp nodes in the
@@ -187,7 +188,7 @@ Status SetProfileGenerationMode(GraphDef* graph_def, bool mode) {
       (*attr)["_profile_generation_mode"] = profile_generation_mode;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RunSession(Session* session, const std::vector<std::string>& input_names,
@@ -217,7 +218,7 @@ Status RunSession(Session* session, const std::vector<std::string>& input_names,
   VLOG(3) << "TF-TRT Build mode: running inference\n";
   TF_RETURN_IF_ERROR(
       session->Run(input_pairs, prefixed_output_names, {}, &output_tensors));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Runs the model to create the engines. In dynamic shape mode, before creating
@@ -246,7 +247,7 @@ Status Build(GraphDef& segmented_graph_def,
   }
   TF_RETURN_IF_ERROR(
       RunSession(session, input_names, output_names, *inputs.begin(), prefix));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns the resource manager associated with the node.
@@ -260,7 +261,7 @@ Status GetResourceManager(const NodeDef& node, Session* session,
                            : node.device();
   TF_RETURN_IF_ERROR(device_mgr->LookupDevice(device_name, &device));
   *rm = device->resource_manager();
-  return Status::OK();
+  return OkStatus();
 }
 
 // Looks up the cache resurce associated with the TRT node.
@@ -281,7 +282,7 @@ Status GetEngineCacheResource(const NodeDef& node, Session* session,
   if (resource == nullptr || (*resource)->cache_.size() == 0) {
     return errors::Internal("Engine cache not found for", resource_name);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Looks up the engine from the engine cache, and serializes the engine.
@@ -301,14 +302,14 @@ Status ReadSerializedEngine(
     return errors::Internal("Engine not found for", node.name());
   }
 
-  if (engine->cuda_engine) {
+  if (engine->GetCudaEngine()) {
     // Serialize the engine.
-    engine_data->reset(engine->cuda_engine->serialize());
+    engine_data->reset(engine->GetCudaEngine()->serialize());
   } else {
     LOG(WARNING) << "Engine cache contains nullptr";
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Saves the TRT engines as attributes of the TRTEngineOp nodes.
@@ -334,7 +335,7 @@ Status ConvertToStaticEngine(const GraphDef graph_def,
       (*attr)["serialized_segment"] = engine_string;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ValidateConversionParams(const TfTrtConversionParams& p, int n_inputs) {
@@ -365,7 +366,7 @@ Status ValidateConversionParams(const TfTrtConversionParams& p, int n_inputs) {
         << "TRT will not be used since allow_build_at_runtime is disabled and "
            "no inputs are provided to build during conversion.";
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns configuration used during the build step session run.
@@ -423,6 +424,82 @@ StatusOr<GraphDef> ConvertAndBuild(
   }
   VLOG(1) << "TF-TRT conversion finished";
   return output;
+}
+
+Status InlineFunctions(const MetaGraphDef& meta_graph_def,
+                       GraphDef* out_graph_def) {
+  ConfigProto config_proto;
+  auto opt_config =
+      config_proto.mutable_graph_options()->mutable_rewrite_options();
+
+  opt_config->set_meta_optimizer_iterations(tensorflow::RewriterConfig::ONE);
+  opt_config->set_min_graph_nodes(-1);  // do not skip small graphs
+  opt_config->add_optimizers("function");
+
+  TF_RETURN_IF_ERROR(RunGrappler(meta_graph_def, {}, {}, config_proto, nullptr,
+                                 out_graph_def));
+
+  VLOG(2) << "Graph is inlined";
+  return OkStatus();
+}
+
+// Freezes the graph. It is assumed that the functions are inlined and the
+// variables are initialized.
+Status FreezeGraph(SavedModelBundle& bundle, MetaGraphDef* frozen_meta_graph) {
+  std::unordered_set<std::string> inputs;
+  std::unordered_set<std::string> outputs;
+  GraphDef frozen_graph_def;
+  TF_RETURN_IF_ERROR(
+      FreezeSavedModel(bundle, &frozen_graph_def, &inputs, &outputs));
+
+  frozen_meta_graph->CopyFrom(bundle.meta_graph_def);
+  GraphDef* gdef = frozen_meta_graph->mutable_graph_def();
+  gdef->CopyFrom(frozen_graph_def);
+
+  VLOG(2) << "Graph frozen";
+  return OkStatus();
+}
+
+// Returns the name of nodes listed in the signature definition.
+std::vector<std::string> GetNodeNames(
+    const google::protobuf::Map<std::string, tensorflow::TensorInfo>& signature) {
+  std::vector<std::string> names;
+  for (auto const& item : signature) {
+    absl::string_view name = item.second.name();
+    // Remove tensor suffix like ":0".
+    size_t last_colon = name.find_last_of(':');
+    if (last_colon != absl::string_view::npos) {
+      name.remove_suffix(name.size() - last_colon);
+    }
+    names.push_back(std::string(name));
+  }
+  return names;
+}
+
+StatusOr<GraphDef> ConvertAndBuild(
+    SavedModelBundle* bundle, const std::string& signature_key,
+    const std::vector<std::vector<tensorflow::Tensor>>& inputs,
+    const TfTrtConversionParams& conversion_params) {
+  // Inline the functions.
+  GraphDef inlined_graph_def;
+  TF_RETURN_IF_ERROR(
+      InlineFunctions(bundle->meta_graph_def, &inlined_graph_def));
+
+  // Replace the graph_def with the inlined graph. Note that bundle->session
+  // still has the original graph.
+  bundle->meta_graph_def.mutable_graph_def()->CopyFrom(inlined_graph_def);
+
+  // Freeze variables.
+  MetaGraphDef frozen_meta_graph;
+  TF_RETURN_IF_ERROR(FreezeGraph(*bundle, &frozen_meta_graph));
+
+  // Convert.
+  auto signature_map = bundle->GetSignatures();
+  const tensorflow::SignatureDef& signature = signature_map[signature_key];
+  std::vector<std::string> input_names = GetNodeNames(signature.inputs());
+  std::vector<std::string> output_names = GetNodeNames(signature.outputs());
+  return ConvertAndBuild(frozen_meta_graph.graph_def(), input_names,
+                         output_names, inputs, conversion_params);
 }
 
 }  // namespace tensorrt

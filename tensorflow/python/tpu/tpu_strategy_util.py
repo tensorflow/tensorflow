@@ -91,7 +91,7 @@ def initialize_tpu_system(cluster_resolver=None):
     job = "{}/replica:0/task:0".format(cluster_resolver.get_job_name())
 
   if context.executing_eagerly():
-    @function.defun
+    @function.defun_with_attributes
     def _tpu_init_fn():
       # In TF1, we usually close chips when compilation fails to clear the data
       # in infeed. In TF2, we don't need to do this because infeed is no longer
@@ -141,6 +141,7 @@ def initialize_tpu_system(cluster_resolver=None):
 
   logging.info("Finished initializing TPU system.")
   tpu_topology = topology.Topology(serialized=serialized_topology)
+  cluster_resolver.set_tpu_topology(serialized_topology)
   _INITIALIZED_TPU_SYSTEMS[tpu_name] = tpu_topology
 
   return tpu_topology
@@ -201,7 +202,7 @@ def shutdown_tpu_system(cluster_resolver=None):
       # avoid the output node match multiple devices error.
       job = "{}/replica:0/task:0".format(cluster_resolver.get_job_name())
 
-    @function.defun
+    @function.defun_with_attributes
     def _tpu_shutdown_fn():
       tpu.shutdown_system(job=job)
 

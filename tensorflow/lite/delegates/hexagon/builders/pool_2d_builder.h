@@ -34,7 +34,7 @@ class Pool2dOpBuilder : public OpBuilder {
   TfLiteStatus RegisterOutputs(const TfLiteIntArray* outputs,
                                TfLiteContext* context) override;
 
-  ~Pool2dOpBuilder();
+  ~Pool2dOpBuilder() override;
 
  private:
   TensorID node_output_;

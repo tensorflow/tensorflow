@@ -4,6 +4,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # To suppress build cleaner error about inclusion of schema_generate.h.
     features = ["-layering_check"],
     licenses = ["notice"],

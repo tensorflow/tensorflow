@@ -42,7 +42,7 @@ struct TestOptions {
   string kernel_type;
 };
 
-TestOptions ParseTfliteKernelTestFlags(int* argc, char** argv) {
+inline TestOptions ParseTfliteKernelTestFlags(int* argc, char** argv) {
   TestOptions options;
   std::vector<tensorflow::Flag> flags = {
       tensorflow::Flag("tflite_model", &options.tflite_model,
@@ -64,8 +64,8 @@ TestOptions ParseTfliteKernelTestFlags(int* argc, char** argv) {
   return options;
 }
 
-TfLiteStatus RunKernelTest(const kernel_test::TestOptions& options,
-                           TestRunner* runner) {
+inline TfLiteStatus RunKernelTest(const kernel_test::TestOptions& options,
+                                  TestRunner* runner) {
   InputGenerator input_generator;
 
   if (options.read_input_from_file.empty()) {

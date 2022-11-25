@@ -24,7 +24,7 @@ REGISTER_OP("TPUOrdinalSelector")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
       c->set_output(0,
                     c->Vector(shape_inference::InferenceContext::kUnknownDim));
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

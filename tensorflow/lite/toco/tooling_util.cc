@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/tooling_util.h"
 
+#include <algorithm>
 #include <functional>
 #include <iterator>
 #include <set>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -2308,6 +2310,8 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
     case INT16:
     case QUANTIZED_INT16:
       return ArrayDataType::kInt16;
+    case UINT16:
+      return ArrayDataType::kUint16;
     case INT32:
       return ArrayDataType::kInt32;
     case UINT32:

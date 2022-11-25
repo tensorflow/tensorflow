@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/fake_session.h"
 
@@ -23,9 +22,11 @@ namespace mlir {
 namespace tf_test {
 namespace {
 
+#define GEN_PASS_DEF_FREEZEVARIABLESTESTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h.inc"
+
 struct FreezeVariableTestPass
-    : public ::mlir::tf_test::FreezeVariablesTestPassBase<
-          FreezeVariableTestPass> {
+    : public impl::FreezeVariablesTestPassBase<FreezeVariableTestPass> {
   void runOnOperation() override {
     TF::test_util::FakeSession session;
     if (tf_saved_model::FreezeVariables(getOperation(), &session).failed())

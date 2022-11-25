@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/xnnpack/quantized_binary_elementwise_tester.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <random>
 #include <vector>

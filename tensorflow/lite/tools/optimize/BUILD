@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load(
@@ -7,6 +7,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -59,6 +60,7 @@ cc_library(
         ":model_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
@@ -179,6 +181,7 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:tensor_utils",
@@ -269,7 +272,8 @@ tf_cc_test(
 cc_library(
     name = "quantize_weights",
     srcs = select({
-        "//tensorflow:android": ["quantize_weights_android.cc"],
+        "//tensorflow:ios": ["quantize_weights_portable.cc"],
+        "//tensorflow:android": ["quantize_weights_portable.cc"],
         "//conditions:default": ["quantize_weights.cc"],
     }),
     hdrs = ["quantize_weights.h"],
@@ -290,6 +294,7 @@ cc_library(
         "//tensorflow/core:tflite_portable_logging",
     ] + select({
         "//tensorflow:android": [],
+        "//tensorflow:ios": [],
         "//conditions:default": [
             "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_weights",
         ],

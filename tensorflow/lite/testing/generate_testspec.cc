@@ -68,7 +68,7 @@ std::vector<std::pair<string, string>> GenerateInputValues(
         break;
       case tensorflow::DT_UINT8:
         GenerateCsv<uint8_t>(name, shape, engine,
-                             std::uniform_int_distribution<uint8_t>(0, 255),
+                             std::uniform_int_distribution<uint32_t>(0, 255),
                              &input_values[i]);
         break;
       case tensorflow::DT_INT32:

@@ -20,22 +20,21 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
 /* static */ absl::Mutex Compiler::platform_compiler_mutex_(absl::kConstInit);
 
-std::vector<std::unique_ptr<tensorflow::protobuf::Message>>
+std::vector<std::unique_ptr<tsl::protobuf::Message>>
 Compiler::ComputeBackendConfigs(const HloInstruction& hlo,
                                 se::StreamExecutor* executor) const {
   CHECK(executor != nullptr);
   return {};
 }
 
-std::unique_ptr<tensorflow::protobuf::Message>
-Compiler::ComputeDefaultBackendConfig(const HloInstruction& hlo,
-                                      se::StreamExecutor* executor) const {
+std::unique_ptr<tsl::protobuf::Message> Compiler::ComputeDefaultBackendConfig(
+    const HloInstruction& hlo, se::StreamExecutor* executor) const {
   CHECK(executor != nullptr);
   return nullptr;
 }
@@ -96,21 +95,10 @@ Compiler::GetPlatformCompilers() {
   auto* factories = GetPlatformCompilerFactories();
   auto it = factories->find(platform->id());
   if (it == factories->end()) {
-    std::string hint;
-    if (platform->Name() == "Host") {
-      hint =
-          " (hint: try adding tensorflow/compiler/jit:xla_cpu_jit as a "
-          "dependency)";
-    } else if (platform->Name() == "CUDA") {
-      hint =
-          " (hint: try adding tensorflow/compiler/jit:xla_gpu_jit as a "
-          "dependency)";
-    }
-
     return NotFound(
-        "could not find registered compiler for platform %s -- check "
-        "target linkage%s",
-        platform->Name(), hint);
+        "could not find registered compiler for platform %s -- was support for "
+        "that platform linked in?",
+        platform->Name());
   }
 
   // And then we invoke the factory, placing the result into the mapping.

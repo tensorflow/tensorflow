@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>

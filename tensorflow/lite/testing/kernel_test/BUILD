@@ -5,6 +5,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -17,6 +18,7 @@ cc_library(
     deps = [
         ":input_generator",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:split",
         "//tensorflow/lite/testing:tflite_driver",
     ] + select({
@@ -69,8 +71,10 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/testing:join",
         "//tensorflow/lite/testing:split",
@@ -97,8 +101,9 @@ cc_library(
     hdrs = ["diff_analyzer.h"],
     deps = [
         "//tensorflow/lite:string",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:split",
     ],
 )

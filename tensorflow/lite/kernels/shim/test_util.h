@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_KERNELS_SHIM_TEST_UTILS_H_
-#define TENSORFLOW_LITE_KERNELS_SHIM_TEST_UTILS_H_
+#ifndef TENSORFLOW_LITE_KERNELS_SHIM_TEST_UTIL_H_
+#define TENSORFLOW_LITE_KERNELS_SHIM_TEST_UTIL_H_
 
 #include <initializer_list>
 #include <string>
@@ -108,4 +108,4 @@ void PopulateTfLiteTensor(const std::initializer_list<T> values,
 
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_KERNELS_SHIM_TEST_UTILS_H_
+#endif  // TENSORFLOW_LITE_KERNELS_SHIM_TEST_UTIL_H_

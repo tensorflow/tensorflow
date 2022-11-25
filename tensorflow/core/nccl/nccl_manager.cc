@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
@@ -318,7 +318,7 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
         }
         if (i == collective->num_local_devices) {
           *communicator = comm.get();
-          return Status::OK();
+          return OkStatus();
         }
       }
     }
@@ -338,7 +338,7 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
     for (auto& comm : communicators_) {
       if (comm->key == collective->communicator_key) {
         *communicator = comm.get();
-        return Status::OK();
+        return OkStatus();
       }
     }
   }
@@ -388,6 +388,14 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
   }
 
   std::vector<ncclComm_t> nccl_comms(collective->num_local_devices);
+  VLOG(2) << "Created nccl Communicator with "
+          << "num_global_devices = " << collective->num_global_devices
+          << " num_local_devices = " << collective->num_local_devices
+          << " communicator_key ="
+          << absl::StrJoin(
+                 std::vector<int>{collective->communicator_key.begin(),
+                                  collective->communicator_key.end()},
+                 " ");
 #if NCCL_MAJOR >= 2
   // For NCCL 2, we always initialize using ncclCommInitRank guarded by NCCL
   // group primitives.
@@ -426,7 +434,7 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
   communicators_.emplace_back(
       new Communicator(std::move(members), collective->communicator_key));
   *communicator = communicators_.back().get();
-  return Status::OK();
+  return OkStatus();
 }
 
 void NcclManager::AddToAllReduce(std::unique_ptr<Participant> participant,
@@ -836,7 +844,7 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
               << collective->collective_key << " participant " << p_idx
               << " ncclResult " << nccl_result;
       if (nccl_result == ncclSuccess) {
-        collective->participants[p_idx]->done_callback(Status::OK());
+        collective->participants[p_idx]->done_callback(OkStatus());
       } else {
         // Propagate the error, but note that if other members of the collective
         // did launch their kernels, then they are hanging.

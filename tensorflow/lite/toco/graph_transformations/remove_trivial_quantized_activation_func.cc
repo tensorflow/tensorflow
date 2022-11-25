@@ -100,7 +100,7 @@ bool IsTrivialFusedActivationFunc(
   const auto it = model->operators.begin() + op_index;
   auto* op = it->get();
   if (op->inputs.empty()) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (IsTrivialUnfusedActivationFunc(this, *model, op->type, op->inputs[0])) {
@@ -109,7 +109,7 @@ bool IsTrivialFusedActivationFunc(
         "minmax imply at least as tight a clamp anyway.",
         LogName(*op));
     *modified = RemoveTrivialPassthroughOp(this, model, op_index);
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (IsTrivialFusedActivationFunc(this, *model, op->fused_activation_function,
                                    op->outputs[0])) {
@@ -120,9 +120,9 @@ bool IsTrivialFusedActivationFunc(
         "a clamp anyway.",
         LogName(*op));
     *modified = true;
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

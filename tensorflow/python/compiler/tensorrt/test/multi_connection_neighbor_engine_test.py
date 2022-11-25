@@ -66,7 +66,7 @@ class MultiConnectionNeighborEngineTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["TRTEngineOp_0", "TRTEngineOp_1"]
+    return ["TRTEngineOp_000", "TRTEngineOp_001"]
 
 
 if __name__ == "__main__":

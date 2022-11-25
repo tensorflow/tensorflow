@@ -113,7 +113,7 @@ TEST(UnsignedQuantizedMean, DISABLED_4DReduceHeightKeepDims) {
       .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
 }
 
-TEST(UnsignedQuantizedMean, DISABLED_4DReduceWidthSqueezeDims) {
+TEST(UnsignedQuantizedMean, 4DReduceWidthSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -135,7 +135,7 @@ TEST(UnsignedQuantizedMean, DISABLED_4DReduceWidthSqueezeDims) {
       .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
 }
 
-TEST(UnsignedQuantizedMean, DISABLED_4DReduceWidthKeepDims) {
+TEST(UnsignedQuantizedMean, 4DReduceWidthKeepDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);

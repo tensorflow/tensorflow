@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_H_
 
+#include <string>
 #include <utility>
 
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
+#include "absl/time/time.h"
+#include "absl/types/optional.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/PointerUnion.h"
@@ -26,10 +29,14 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/runtime_fallback/util/type_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 
 namespace tensorflow {
+
+// Record JitRt kernel compilation time for a given session name.
+void RecordCompileTime(const std::string& model_name, const std::string& kernel,
+                       std::optional<size_t> specialization,
+                       absl::Duration compile_time);
 
 // A set of helper classes to convert results returned from the compiled
 // functions (memrefs or async memrefs) to the Tensorflow Tensors that can be
@@ -61,10 +68,7 @@ class MemrefTensorBuffer : public TensorBuffer {
   bool owner_;
 };
 
-// Reuse conversion context as a kernel context for convenience, can be a
-// separate allocation if needed.
-struct TensorflowConversionContext
-    : public tfrt::jitrt::Executable::KernelContext {
+struct TensorflowConversionContext {
   // Keep track of compiled kernel operands to detect input to output
   // forwarding, and tensors returned multiple times.
   using TensorOrBuffer = llvm::PointerUnion<const Tensor*, TensorBuffer*>;
@@ -77,12 +81,6 @@ struct TensorflowConversionContext
   // Ensure that the context is always moved around instead of copying.
   TensorflowConversionContext(const TensorflowConversionContext&) = delete;
   TensorflowConversionContext(TensorflowConversionContext&&) = default;
-
-  void* forward(size_t size, size_t alignment,
-                llvm::ArrayRef<unsigned> candidates) override {
-    // TODO(ecg): Do the real buffer forwarding here.
-    return nullptr;
-  }
 
   // Memrefs that are already materialized as runtime tensors:
   //   1. Tensor operands that we got from the caller.
@@ -127,11 +125,8 @@ struct ConvertTensor {
     // Convert TFRT data type into Tensorflow data type.
     auto dtype = tfd::GetTfDataType(tfrt::GetDType<T>());
 
-    // Build a Tensorflow TensorShape from memref sizes. It should never fail.
-    TensorShape shape;
-    auto st = TensorShapeUtils::MakeShape(memref_sizes, &shape);
-    assert(st.ok() && "failed to build a TensorShape from memref sizes");
-    (void)st;
+    // Build a Tensorflow TensorShape from memref sizes.
+    TensorShape shape(memref_sizes);
 
     // Check if returned memref already has corresponding runtime tensor.
     auto it = ctx.runtime_tensors.find(memref->data);
@@ -157,7 +152,7 @@ struct ConvertTensor {
     // This is a newly allocated memref, and we need to wrap it into the runtime
     // tensor buffer to pass it back to the caller as a Tensor.
     size_t size = sizeof(T);
-    for (int i = 0; i < rank; ++i) size *= memref_sizes[i];
+    for (int64_t dim : memref_sizes) size *= dim;
 
     // Create a TensorBuffer from the returned memref.
     TF_ANNOTATE_MEMORY_IS_INITIALIZED(memref->data, size);
@@ -171,14 +166,14 @@ struct ConvertTensor {
 
     // Keep track of memrefs already used to construct runtime tensors.
     if (--ctx.num_pending_results > 0)
-      ctx.runtime_tensors.insert({memref->data, buffer});
+      ctx.runtime_tensors.try_emplace(memref->data, buffer);
 
     // Incorrect alignment will lead to a segfault in the downstream Tensorflow
     // kernels, check it before returning to the runtime.
     if (internal::IsStaticStorageDuration(memref)) {
-      CHECK(tensor.IsAligned()) << "global memref is not aligned";
+      DCHECK(tensor.IsAligned()) << "global memref is not aligned";
     } else {
-      CHECK(tensor.IsAligned()) << "allocated memref is not aligned";
+      DCHECK(tensor.IsAligned()) << "allocated memref is not aligned";
     }
 
     return tensor;

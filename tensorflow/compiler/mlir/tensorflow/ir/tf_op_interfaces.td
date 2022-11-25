@@ -40,8 +40,14 @@ def TF_LayoutSensitiveInterface : OpInterface<"LayoutSensitiveInterface"> {
   let methods = [
     InterfaceMethod<
       [{Returns current operation data format (data layout).}],
-      "StringRef", "data_format", (ins)
+      "StringRef", "getDataFormat", (ins)
     >,
+    InterfaceMethod<
+      [{Deprecated method that returns current operation data format (data layout).}],
+      "StringRef", "data_format", (ins),
+      /*methodBody=*/[{
+        return $_op.getDataFormat();
+    }]>,
     InterfaceMethod<
       [{Returns indices of layout dependent arguments.}],
       "SmallVector<unsigned, 4>", "GetLayoutDependentArgs", (ins)

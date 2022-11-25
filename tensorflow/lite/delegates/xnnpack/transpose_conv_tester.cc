@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/xnnpack/transpose_conv_tester.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <numeric>
 #include <random>
 #include <vector>
@@ -25,7 +27,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "fp16.h"  // from @FP16
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -73,6 +75,10 @@ void TransposeConvTester::Test(TfLiteDelegate* delegate) const {
   ASSERT_EQ(default_interpreter->AllocateTensors(), kTfLiteOk);
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
+
+  if (weights_cache_ != nullptr) {
+    TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache_);
+  }
 
   const int input_data_size =
       BatchSize() * InputHeight() * InputWidth() * InputChannels();

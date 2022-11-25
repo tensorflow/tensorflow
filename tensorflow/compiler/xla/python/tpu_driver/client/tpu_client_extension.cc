@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/client/tpu_client.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/util.h"
 #include "tensorflow/python/lib/core/bfloat16.h"
 
 namespace xla {
@@ -176,13 +177,24 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("delete", &PyTpuBuffer::Delete)
       .def("block_host_until_ready",
            [](PyTpuBuffer* buffer) {
+             // TODO(phawkins): remove 3 months after the release of jaxlib >=
+             // 0.3.2.
+             PythonDeprecationWarning(
+                 "block_host_until_ready() on a JAX array object is "
+                 "deprecated, use block_until_ready() instead.");
+             GlobalPyRefManager()->CollectGarbage();
+             py::gil_scoped_release gil_release;
+             return buffer->BlockHostUntilReady();
+           })
+      .def("block_until_ready",
+           [](PyTpuBuffer* buffer) {
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
              return buffer->BlockHostUntilReady();
            })
       .def("copy_to_host_async", &PyTpuBuffer::CopyToHostAsync,
            py::call_guard<py::gil_scoped_release>())
-      .def("to_py",
+      .def("__array__",
            [](PyTpuBuffer* buffer) -> StatusOr<py::object> {
              GlobalPyRefManager()->CollectGarbage();
              std::shared_ptr<Literal> literal;
@@ -212,6 +224,12 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def_property_readonly("traceback",
                              [](PyTpuBuffer*) { return py::none(); });
 
+  py::class_<PyTpuToken> token(m, "Token");
+  token.def("block_until_ready", &PyTpuToken::Await);
+  py::class_<PyShardedTpuToken> sharded_token(m, "ShardedToken");
+  sharded_token.def("block_until_ready", &PyShardedTpuToken::Await);
+  sharded_token.def("get_token", &PyShardedTpuToken::GetPyToken);
+
   py::class_<PyTpuExecutable>(m, "TpuExecutable")
       .def("local_logical_device_ids",
            &PyTpuExecutable::local_logical_device_ids)
@@ -227,10 +245,15 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("delete", &PyTpuExecutable::Delete)
       .def("execute", &PyTpuExecutable::Execute,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
+      .def("execute_with_token", &PyTpuExecutable::ExecuteWithToken,
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("execute_on_local_devices", &PyTpuExecutable::ExecuteOnLocalDevices,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("execute_sharded_on_local_devices",
            &PyTpuExecutable::ExecuteShardedOnLocalDevices,
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
+      .def("execute_sharded_on_local_devices_with_tokens",
+           &PyTpuExecutable::ExecuteShardedOnLocalDevicesWithTokens,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       // TODO(phawkins): implement traceback support.
       .def_property_readonly("traceback",

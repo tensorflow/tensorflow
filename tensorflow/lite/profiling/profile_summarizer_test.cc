@@ -113,7 +113,7 @@ TEST(ProfileSummarizerTest, Interpreter) {
   interpreter->SetProfiler(&profiler);
   profiler.StartProfiling();
   m.SetInputs(1, 2);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // 3 = 1 + 2
   EXPECT_EQ(m.GetOutput(), 3);
   profiler.StopProfiling();
@@ -135,7 +135,7 @@ TEST(ProfileSummarizerTest, InterpreterPlusProfilingDetails) {
   interpreter->SetProfiler(&profiler);
   profiler.StartProfiling();
   m.SetInputs(1, 2);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // 3 = 1 + 2
   EXPECT_EQ(m.GetOutput(), 3);
   profiler.StopProfiling();

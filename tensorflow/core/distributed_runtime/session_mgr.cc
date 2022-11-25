@@ -18,29 +18,73 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/error_payloads.h"
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 #include "tensorflow/core/distributed_runtime/remote_device.h"
 #include "tensorflow/core/distributed_runtime/worker_cache_wrapper.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
-#include "tensorflow/core/protobuf/coordination_service.pb.h"
-#include "tensorflow/core/protobuf/distributed_runtime_payloads.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
+#include "tensorflow/tsl/protobuf/coordination_service.pb.h"
+#include "tensorflow/tsl/protobuf/distributed_runtime_payloads.pb.h"
 
 namespace tensorflow {
+namespace {
+// Check if current task is the leader as specified by coordination service.
+bool IsMultiClientLeader(const ServerDef& server_def,
+                         const CoordinationServiceConfig& config) {
+  DeviceNameUtils::ParsedName leader_pn;
+  DeviceNameUtils::ParseFullName(config.service_leader(), &leader_pn);
+  return server_def.job_name() == leader_pn.job &&
+         server_def.task_index() == leader_pn.task;
+}
+
+// Set coordination service leader based on `server_def`.
+void SetCoordinationServiceLeader(const ServerDef& server_def,
+                                  CoordinationServiceConfig* config) {
+  const std::string& collective_leader = server_def.default_session_config()
+                                             .experimental()
+                                             .collective_group_leader();
+  if (!collective_leader.empty()) {
+    config->set_service_leader(collective_leader);
+    LOG(INFO) << "No coordination leader is set, using the collective leader "
+              << collective_leader;
+  } else {
+    const std::string& default_leader =
+        strings::StrCat("/job:", server_def.job_name(), "/replica:0/task:0");
+    config->set_service_leader(default_leader);
+    LOG(INFO) << "No coordination leader is set, using the default leader "
+              << default_leader;
+  }
+}
+
+// Set coordinated jobs based on `server_def`.
+void SetCoordinatedJobList(const ServerDef& server_def,
+                           CoordinationServiceConfig* config) {
+  for (const auto& job : server_def.cluster().job()) {
+    tensorflow::CoordinatedJob* coordinated_job =
+        config->mutable_coordinated_job_list()->Add();
+    coordinated_job->set_name(job.name());
+    coordinated_job->set_num_tasks(job.tasks().size());
+  }
+}
+}  // namespace
 
 SessionMgr::SessionMgr(
     WorkerEnv* worker_env, const std::string& default_worker_name,
     std::unique_ptr<WorkerCacheInterface> default_worker_cache,
-    WorkerCacheFactory worker_cache_factory)
+    WorkerCacheFactory worker_cache_factory,
+    tsl::CoordinationServiceRpcHandler* coordination_handler)
     : worker_env_(worker_env),
       default_worker_cache_(std::move(default_worker_cache)),
       legacy_session_(WorkerSession::CreateWithBorrowedDeviceMgr(
@@ -51,7 +95,8 @@ SessionMgr::SessionMgr(
           std::unique_ptr<GraphMgr>(
               new GraphMgr(worker_env, worker_env->device_mgr)),
           nullptr)),
-      worker_cache_factory_(std::move(worker_cache_factory)) {}
+      worker_cache_factory_(std::move(worker_cache_factory)),
+      coordination_handler_(coordination_handler) {}
 
 /* static */
 std::string SessionMgr::WorkerNameFromServerDef(const ServerDef& server_def) {
@@ -61,8 +106,11 @@ std::string SessionMgr::WorkerNameFromServerDef(const ServerDef& server_def) {
 
 Status SessionMgr::CreateSession(const std::string& session,
                                  const ServerDef& server_def,
-                                 bool isolate_session_state) {
-  return CreateSession(session, server_def, {}, isolate_session_state);
+                                 bool isolate_session_state,
+                                 StatusCallback coordination_error_callback) {
+  return CreateSession(session, server_def, {}, isolate_session_state,
+                       /*master_task=*/"",
+                       /*master_incarnation=*/0, coordination_error_callback);
 }
 
 Status SessionMgr::CreateSession(
@@ -70,10 +118,10 @@ Status SessionMgr::CreateSession(
     const protobuf::RepeatedPtrField<DeviceAttributes>&
         cluster_device_attributes,
     bool isolate_session_state) {
-  return CreateSession(
-      session, server_def, cluster_device_attributes, isolate_session_state,
-      /*master_task=*/"",
-      /*master_incarnation=*/0, /*coordination_service_config=*/{});
+  return CreateSession(session, server_def, cluster_device_attributes,
+                       isolate_session_state,
+                       /*master_task=*/"",
+                       /*master_incarnation=*/0);
 }
 
 Status SessionMgr::CreateSession(
@@ -81,8 +129,7 @@ Status SessionMgr::CreateSession(
     const protobuf::RepeatedPtrField<DeviceAttributes>&
         cluster_device_attributes,
     bool isolate_session_state, std::string master_task,
-    int64_t master_incarnation,
-    const CoordinationServiceConfig& coordination_service_config) {
+    int64_t master_incarnation, StatusCallback coordination_error_callback) {
   mutex_lock l(mu_);
   if (session.empty()) {
     return errors::InvalidArgument("Session must be non-empty.");
@@ -194,28 +241,47 @@ Status SessionMgr::CreateSession(
 
   // If configured, enable coordination service and agent in the first worker
   // session.
-  if (!coordination_service_config.service_type().empty() &&
+  CoordinationServiceConfig coordination_config =
+      server_def.default_session_config().experimental().coordination_config();
+  if (!coordination_config.service_type().empty() &&
       coordination_service_agent_ == nullptr) {
     std::unique_ptr<CoordinationClientCache> client_cache;
     TF_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&client_cache));
-    // Note: If this worker is not the leader, no service instance will be
-    // returned. Hence, only the worker leader in the cluster would hold the
-    // coordination service instance.
-    coordination_service_ =
-        CoordinationServiceInterface::EnableCoordinationService(
-            coordination_service_config.service_type(), worker_env_->env,
-            server_def, std::move(client_cache));
 
+    // Set service leader if unspecified.
+    if (coordination_config.service_leader().empty()) {
+      SetCoordinationServiceLeader(server_def, &coordination_config);
+    }
+
+    // Set coordinated jobs if unspecified.
+    if (coordination_config.coordinated_job_list().empty()) {
+      SetCoordinatedJobList(server_def, &coordination_config);
+    }
+
+    // Initialize coordination service if it is the leader.
+    if (IsMultiClientLeader(server_def, coordination_config)) {
+      coordination_service_ =
+          tsl::CoordinationServiceInterface::EnableCoordinationService(
+              worker_env_->env, coordination_config, std::move(client_cache));
+      if (coordination_handler_ != nullptr) {
+        coordination_handler_->SetServiceInstance(coordination_service_.get());
+      }
+    }
+
+    // Initialize coordination service agent.
     std::unique_ptr<CoordinationClientCache> agent_cache;
     TF_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&agent_cache));
-    coordination_service_agent_ = CreateCoordinationServiceAgent();
+    coordination_service_agent_ = tsl::CreateCoordinationServiceAgent();
     TF_RETURN_IF_ERROR(coordination_service_agent_->Initialize(
-        worker_env_->env, server_def, std::move(agent_cache),
-        /*error_fn=*/[](Status s) {
-          LOG(ERROR) << "Coordination agent is set to error: " << s;
-        }));
+        worker_env_->env, server_def.job_name(), server_def.task_index(),
+        coordination_config,
+        agent_cache->GetOwnedClient(coordination_config.service_leader()),
+        std::move(coordination_error_callback)));
+
+    activity_watcher::MaybeEnableMultiWorkersWatching(
+        coordination_service_agent_.get());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void SessionMgr::ResetDefaultWorkerCache(WorkerCacheInterface* worker_cache) {
@@ -282,7 +348,7 @@ Status SessionMgr::UpdateSession(
   TF_RETURN_IF_ERROR(worker_session->UpdateWorkerCacheAndDevices(
       std::unique_ptr<WorkerCacheInterface>(worker_cache),
       std::move(added_remote_devices), removed_remote_devices));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SessionMgr::DeleteSession(const std::string& session) {
@@ -291,7 +357,7 @@ Status SessionMgr::DeleteSession(const std::string& session) {
   if (it != sessions_.end()) {
     sessions_.erase(it);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SessionMgr::WorkerSessionForSessionLocked(
@@ -314,7 +380,7 @@ Status SessionMgr::WorkerSessionForSessionLocked(
       *out_session = it->second;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SessionMgr::WorkerSessionForSession(
@@ -328,7 +394,7 @@ std::shared_ptr<WorkerSession> SessionMgr::LegacySession() {
   return legacy_session_;
 }
 
-CoordinationServiceAgent* SessionMgr::GetCoordinationServiceAgent() {
+tsl::CoordinationServiceAgent* SessionMgr::GetCoordinationServiceAgent() {
   return coordination_service_agent_.get();
 }
 
@@ -403,5 +469,13 @@ void SessionMgr::ClearLogs() {
       }
     }
   }
+}
+
+void SessionMgr::TeardownCoordinationService() {
+  coordination_service_ = nullptr;
+}
+
+void SessionMgr::TeardownCoordinationServiceAgent() {
+  coordination_service_agent_ = nullptr;
 }
 }  // namespace tensorflow

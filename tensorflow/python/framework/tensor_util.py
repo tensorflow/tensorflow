@@ -14,10 +14,10 @@
 # ==============================================================================
 """Utilities to create TensorProtos."""
 import numpy as np
-import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -182,7 +182,7 @@ else:
 
 def GetFromNumpyDTypeDict(dtype_dict, dtype):
   # NOTE: dtype_dict.get(dtype) always returns None.
-  for key, val in six.iteritems(dtype_dict):
+  for key, val in dtype_dict.items():
     if key == dtype:
       return val
   return None
@@ -831,7 +831,7 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   values that cannot be evaluated will be `None`. For example:
 
   ```python
-  class Foo(object):
+  class Foo:
     def __init__(self):
       self.a = tf.Variable(1)
       self.b = tf.constant(2)
@@ -1116,3 +1116,18 @@ def maybe_set_static_shape(tensor, shape):  # pylint: disable=invalid-name
     shape = shape_tensor(shape)
     const_shape = constant_value_as_shape(shape)
     tensor.set_shape(const_shape)
+
+
+def try_evaluate_constant(tensor):  # pylint: disable=invalid-name
+  """Evaluates a symbolic tensor as a constant.
+
+  Args:
+    tensor: a symbolic Tensor.
+
+  Returns:
+    ndarray if the evaluation succeeds, or None if it fails.
+  """
+  # pylint: disable=protected-access
+  with tensor.graph._c_graph.get() as c_graph:
+    return c_api.TF_TryEvaluateConstant_wrapper(c_graph, tensor._as_tf_output())
+  # pylint: enable=protected-access

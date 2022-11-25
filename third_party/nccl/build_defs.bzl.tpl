@@ -7,8 +7,9 @@ load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 _cuda_version = %{cuda_version}
 
 def _gen_device_srcs_impl(ctx):
-    ops = ["sum", "prod", "min", "max"]
-    types = ["i8", "u8", "i32", "u32", "i64", "u64", "f16", "f32", "f64"]
+    ops = ["sum", "prod", "min", "max", "premulsum", "sumpostdiv"]
+    # TF uses CUDA version > 11.0, so enable bf16 type unconditionally.
+    types = ["i8", "u8", "i32", "u32", "i64", "u64", "f16", "bf16", "f32", "f64"]
     hdr_tail = "****************************************/"
     defines = "\n\n#define NCCL_OP %d\n#define NCCL_TYPE %d"
 
@@ -51,6 +52,8 @@ def _rdc_copts():
             "relocatable-device-code=true",
             "-nvcc_options",
             "ptxas-options=" + maxrregcount,
+            "-nvcc_options",
+            "extended-lambda",
         ],
         "@local_config_cuda//:is_cuda_compiler_clang": [
             "-fcuda-rdc",

@@ -37,6 +37,7 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 "${BAZEL_WRAPPER_PATH}" \
   test \
   --profile="${KOKORO_ARTIFACTS_DIR}/profile.json.gz" \
+  --build_event_binary_file="${KOKORO_ARTIFACTS_DIR}/build_events.pb" \
   --config=rbe_linux_cuda_nvcc_py39 \
   --config=tensorflow_testing_rbe_linux \
   --test_tag_filters="${tag_filters}" \

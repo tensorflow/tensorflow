@@ -40,7 +40,7 @@ Status GradForUnaryCwise(FunctionDef* g, std::vector<FDH::Node> nodes) {
       {{"T: {half, float, double}"}},
       // Nodes
       nodes);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AbsGrad(const AttrSlice& attrs, FunctionDef* g) {
@@ -386,7 +386,7 @@ Status CastGrad(const AttrSlice& attrs, FunctionDef* g) {
       {{"SrcT: type"}, {"DstT: type"}},
       // Nodes
       {{{"dx"}, "Cast", {"dy"}, {{"SrcT", "$DstT"}, {"DstT", "$SrcT"}}}});
-  return Status::OK();
+  return OkStatus();
   // clang-format on
 }
 REGISTER_OP_GRADIENT("Cast", CastGrad);
@@ -427,7 +427,7 @@ Status GradForBinaryCwise(FunctionDef* g, std::vector<FDH::Node> body) {
       {{"T: {half, float, double}"}},
       // Nodes
       nodes);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddGrad(const AttrSlice& attrs, FunctionDef* g) {
@@ -676,7 +676,7 @@ Status SelectGrad(const AttrSlice& attrs, FunctionDef* g) {
         {{"dy"}, "Select", {"c", "zeros", "dz"}, {{"T", "$T"}}},
       });
   // clang-format on
-  return Status::OK();
+  return OkStatus();
 }
 REGISTER_OP_GRADIENT("Select", SelectGrad);
 
@@ -731,7 +731,7 @@ Status GradForReductionOp(FunctionDef* g, std::vector<FDH::Node> body) {
                    nodes,
                    // Return values
                    {{"dx", "dx:output:0"}, {"di", "di:y:0"}});
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SumGrad(const AttrSlice& attrs, FunctionDef* g) {
@@ -794,7 +794,7 @@ Status MinMaxGradHelper(const string& op, const AttrSlice& attrs,
         {{"di"}, "ZerosLike", {"i"}, {{"T", DT_INT32}}}
       });
   // clang-format on
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MaxGrad(const AttrSlice& attrs, FunctionDef* g) {
@@ -862,7 +862,7 @@ static Status MatMulGradHelper(FunctionDef* g, const string& opname,
       {{"T: {half, float, double}"}},
       // Nodes
       nodes);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MatMulGradCommon(const string& opname, const string& attr_adj_x,

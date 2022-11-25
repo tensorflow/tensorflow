@@ -29,12 +29,12 @@ namespace {
 class DummyRendezvous : public Rendezvous {
   Status Send(const ParsedKey& key, const Args& args, const Tensor& val,
               const bool is_dead) override {
-    return Status::OK();
+    return OkStatus();
   }
   void RecvAsync(const ParsedKey& key, const Args& args,
                  DoneCallback done) override {
     static Tensor* t = new Tensor(DT_FLOAT, TensorShape({0}));
-    done(Status::OK(), args, args, *t, false);
+    done(OkStatus(), args, args, *t, false);
   }
   void StartAbort(const Status& status) override {}
 };

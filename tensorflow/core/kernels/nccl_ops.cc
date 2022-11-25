@@ -20,7 +20,11 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/nccl/nccl.h"
 #elif TENSORFLOW_USE_ROCM
+#if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/rccl/rccl.h"
+#else
+#include "rocm/include/rccl.h"
+#endif
 #endif
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/nccl/nccl_manager.h"
@@ -106,8 +110,8 @@ class NcclAllReduceOpKernel : public NcclReduceOpBase {
     };
 
     auto* compute_stream = c->op_device_context()->stream();
-    auto* gpu_info = c->device()->tensorflow_gpu_device_info();
-    auto participant = absl::make_unique<NcclManager::Participant>(
+    auto* gpu_info = c->device()->tensorflow_accelerator_device_info();
+    auto participant = std::make_unique<NcclManager::Participant>(
         compute_stream->parent(), compute_stream, gpu_info, input, output,
         /*global_rank=*/-1, std::move(actual_done));
     NcclManager::instance()->AddToAllReduce(
@@ -137,8 +141,8 @@ class NcclReduceSendKernel : public NcclReduceOpBase {
     };
 
     auto* compute_stream = c->op_device_context()->stream();
-    auto* gpu_info = c->device()->tensorflow_gpu_device_info();
-    auto participant = absl::make_unique<NcclManager::Participant>(
+    auto* gpu_info = c->device()->tensorflow_accelerator_device_info();
+    auto participant = std::make_unique<NcclManager::Participant>(
         compute_stream->parent(), compute_stream, gpu_info, &c->input(0),
         /*output=*/nullptr, /*global_rank=*/-1, std::move(actual_done));
     NcclManager::instance()->AddReduceSend(
@@ -173,8 +177,8 @@ class NcclReduceRecvKernel : public NcclReduceOpBase {
     };
 
     auto* compute_stream = c->op_device_context()->stream();
-    auto* gpu_info = c->device()->tensorflow_gpu_device_info();
-    auto participant = absl::make_unique<NcclManager::Participant>(
+    auto* gpu_info = c->device()->tensorflow_accelerator_device_info();
+    auto participant = std::make_unique<NcclManager::Participant>(
         compute_stream->parent(), compute_stream, gpu_info, input, output,
         /*global_rank=*/-1, std::move(actual_done));
     NcclManager::instance()->AddReduceRecv(
@@ -207,8 +211,8 @@ class NcclBroadcastSendKernel : public NcclAsyncOpBase {
     };
 
     auto* compute_stream = c->op_device_context()->stream();
-    auto* gpu_info = c->device()->tensorflow_gpu_device_info();
-    auto participant = absl::make_unique<NcclManager::Participant>(
+    auto* gpu_info = c->device()->tensorflow_accelerator_device_info();
+    auto participant = std::make_unique<NcclManager::Participant>(
         compute_stream->parent(), compute_stream, gpu_info, &c->input(0),
         /*output=*/nullptr, /*global_rank=*/-1, std::move(actual_done));
     NcclManager::instance()->AddBroadcastSend(
@@ -243,8 +247,8 @@ class NcclBroadcastRecvKernel : public NcclAsyncOpBase {
     };
 
     auto* compute_stream = c->op_device_context()->stream();
-    auto* gpu_info = c->device()->tensorflow_gpu_device_info();
-    auto participant = absl::make_unique<NcclManager::Participant>(
+    auto* gpu_info = c->device()->tensorflow_accelerator_device_info();
+    auto participant = std::make_unique<NcclManager::Participant>(
         compute_stream->parent(), compute_stream, gpu_info,
         /*input=*/nullptr, output, /*global_rank=*/-1, std::move(actual_done));
     NcclManager::instance()->AddBroadcastRecv(

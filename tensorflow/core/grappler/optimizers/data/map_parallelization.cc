@@ -62,15 +62,14 @@ Status MapParallelization::OptimizeAndCollectStats(Cluster* cluster,
   if (!autotune_) {
     VLOG(1) << "The optimization map_parallelization is not applied if "
                "autotune is off.";
-    return Status::OK();
+    return OkStatus();
   }
   MutableGraphView graph(output);
 
   // If the GrapplerItem is derived from a FunctionDef, we don't optimize it,
   // because we only want to enable extra map parallelism on the main dataset
   // pipeline.
-  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph))
-    return Status::OK();
+  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph)) return OkStatus();
 
   absl::flat_hash_set<string> nodes_to_delete;
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
@@ -98,7 +97,7 @@ Status MapParallelization::OptimizeAndCollectStats(Cluster* cluster,
   }
 
   TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(MapParallelization, "map_parallelization");

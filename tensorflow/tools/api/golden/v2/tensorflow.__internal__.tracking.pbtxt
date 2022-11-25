@@ -32,10 +32,6 @@ tf_module {
     name: "TrackableReference"
     mtype: "<type \'type\'>"
   }
-  member {
-    name: "TrackableSaver"
-    mtype: "<type \'type\'>"
-  }
   member_method {
     name: "no_automatic_dependency_tracking"
     argspec: "args=[\'method\'], varargs=None, keywords=None, defaults=None"
@@ -43,6 +39,10 @@ tf_module {
   member_method {
     name: "register_session_provider"
     argspec: "args=[\'session_provider\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "saveable_objects_from_trackable"
+    argspec: "args=[\'obj\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "sticky_attribute_assignment"

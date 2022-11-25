@@ -1,9 +1,12 @@
-load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
-load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_copts_warnings")
-load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tflite_portable_test_suite")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_not_windows", "if_oss", "tf_cc_test")
+load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_copts_warnings", "tflite_self_contained_libs_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "SPECIAL_RULES_DEPS", "internal_visibility_allowlist", "tflite_portable_test_suite")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -72,10 +75,36 @@ config_setting(
     },
 )
 
+# Flag to disable mmap: Fuchsia's minfs does not support mmap (blobfs
+# does, which is why we don't always disable mmap on Fuchsia).
+# TODO(b/227339138): dynamically decide depending on the filesystem.
+bool_flag(
+    name = "enable_fuchsia_mmap",
+    build_setting_default = True,
+)
+
+config_setting(
+    name = "fuchsia_mmap_disabled",
+    flag_values = if_google(
+        {
+            ":enable_fuchsia_mmap": "False",
+            "//tools/cpp:cc_target_os": "fuchsia",
+        },
+        {
+            ":enable_fuchsia_mmap": "False",
+        },
+    ),
+    values = if_oss(
+        # TODO(b/149248802) When we have a Fuchsia Bazel SDK update to use the values it sets.
+        {"cpu": "fuchsia"},
+        {},
+    ),
+)
+
 STABLE_FRAMEWORK_LIB_HDRS = [
     "allocation.h",
     "context_util.h",
-    "core/macros.h",
+    "//tensorflow/lite/core:macros.h",
     "error_reporter.h",
     "interpreter.h",
     "model.h",
@@ -88,14 +117,22 @@ STABLE_FRAMEWORK_LIB_HDRS = [
 
 FRAMEWORK_LIB_HDRS = STABLE_FRAMEWORK_LIB_HDRS + [
     "context.h",
-    "core/subgraph.h",
+    "//tensorflow/lite/core:subgraph.h",
     "graph_info.h",
+    "interpreter_options.h",
+    "logger.h",
     "optional_debug_tools.h",
     "signature_runner.h",
 ]
 
+# Private header files that are included from the public API header files.
+STABLE_FRAMEWORK_LIB_IMPL_HDRS = [
+    "//tensorflow/lite/core:subgraph.h",
+    "signature_runner.h",
+]
+
 exports_files(
-    FRAMEWORK_LIB_HDRS,
+    [hdr for hdr in FRAMEWORK_LIB_HDRS if hdr[0] != "/"],
     visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
 )
 
@@ -123,10 +160,30 @@ cc_library(
     copts = tflite_copts_warnings(),
     deps = [
         ":graph_info",
+        ":kernel_api",
         ":memory_planner",
         ":simple_memory_arena",
         ":util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+    ],
+)
+
+cc_library(
+    name = "arena_planner_with_profiler",
+    testonly = True,
+    srcs = ["arena_planner.cc"],
+    hdrs = ["arena_planner.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts_warnings() + ["-DTF_LITE_TENSORFLOW_PROFILER"],
+    deps = [
+        ":graph_info",
+        ":kernel_api",
+        ":memory_planner",
+        ":simple_memory_arena_with_profiler",
+        ":util",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -138,10 +195,12 @@ cc_test(
         "tflite_not_portable_android",
     ],
     deps = [
-        ":arena_planner",
+        ":arena_planner_with_profiler",
         ":graph_info",
         "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -158,6 +217,7 @@ cc_library(
         ":memory_planner",
         ":util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -170,6 +230,7 @@ cc_test(
         ":simple_planner",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -182,7 +243,10 @@ cc_library(
     hdrs = ["context.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    deps = ["//tensorflow/lite/c:common"],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+    ],
 )
 
 cc_library(
@@ -193,15 +257,21 @@ cc_library(
     copts = tflite_copts_warnings(),
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
 cc_library(
     name = "graph_info",
+    srcs = ["graph_info.cc"],
     hdrs = ["graph_info.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    deps = ["//tensorflow/lite/c:common"],
+    deps = [
+        ":kernel_api",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+    ],
 )
 
 cc_library(
@@ -209,7 +279,10 @@ cc_library(
     hdrs = ["memory_planner.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    deps = ["//tensorflow/lite/c:common"],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+    ],
 )
 
 cc_library(
@@ -217,11 +290,65 @@ cc_library(
     srcs = ["simple_memory_arena.cc"],
     hdrs = ["simple_memory_arena.h"],
     compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + tflite_copts_warnings(),
+    deps = [
+        ":macros",
+        ":tensorflow_profiler_logger_shim",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+    ],
+)
+
+cc_library(
+    name = "simple_memory_arena_with_profiler",
+    testonly = True,
+    srcs = ["simple_memory_arena.cc"],
+    hdrs = ["simple_memory_arena.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + tflite_copts_warnings() + ["-DTF_LITE_TENSORFLOW_PROFILER"],
+    deps = [
+        ":macros",
+        ":tensorflow_profiler_logger_shim",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+    ],
+)
+
+# A config for enabling tensorflow profiler in TFLite. Currently, it only supports dynamic
+# allocation. Add '--define=tflite_tensorflow_profiler=true' in your build command line to use it.
+config_setting(
+    name = "tensorflow_profiler_config",
+    define_values = {"tflite_tensorflow_profiler": "true"},
+)
+
+# This is intended to be used only by allocators.
+cc_library(
+    name = "tensorflow_profiler_logger_shim",
+    srcs = ["tensorflow_profiler_logger_shim.cc"],
+    hdrs = ["tensorflow_profiler_logger.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     deps = [
         ":macros",
-        "//tensorflow/lite/c:common",
     ],
+    alwayslink = 1,
+)
+
+# Benchmarks should link this library to see the actual result.
+cc_library(
+    name = "tensorflow_profiler_logger",
+    srcs = ["tensorflow_profiler_logger.cc"],
+    hdrs = ["tensorflow_profiler_logger.h"],
+    copts = tflite_copts_warnings(),
+    deps = [
+        ":macros",
+        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -239,7 +366,10 @@ cc_library(
     name = "builtin_op_data",
     hdrs = ["builtin_op_data.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = ["//tensorflow/lite/c:common"],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+    ],
 )
 
 cc_library(
@@ -250,7 +380,10 @@ cc_library(
         "context_util.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    deps = ["//tensorflow/lite/c:common"],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+    ],
 )
 
 cc_library(
@@ -281,6 +414,9 @@ cc_library(
         "//tensorflow:windows": [
             "mmap_allocation_disabled.cc",
         ],
+        ":fuchsia_mmap_disabled": [
+            "mmap_allocation_disabled.cc",
+        ],
         "//conditions:default": [
             "mmap_allocation.cc",
         ],
@@ -294,27 +430,18 @@ cc_library(
         ":string",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
 cc_library(
     name = "model_builder",
-    srcs = ["model_builder.cc"],
     hdrs = ["model_builder.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     visibility = internal_visibility_allowlist(),
     deps = [
-        ":allocation",
-        ":mutable_op_resolver",
-        ":stderr_reporter",
-        ":string",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core/api:error_reporter",
-        "//tensorflow/lite/core/api:op_resolver",
-        "//tensorflow/lite/core/api:verifier",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@flatbuffers",
+        "//tensorflow/lite/core:model_builder",
     ],
 )
 
@@ -341,8 +468,8 @@ alias(
 # TODO(ahentz): investigate dependency on gemm_support requiring usage of tf_copts.
 cc_library(
     name = "framework_stable",
-    srcs = [],
-    hdrs = FRAMEWORK_LIB_HDRS,
+    srcs = STABLE_FRAMEWORK_LIB_IMPL_HDRS,
+    hdrs = STABLE_FRAMEWORK_LIB_HDRS,
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     deps = [
@@ -359,10 +486,15 @@ cc_library(
         ":type_to_tflitetype",
         ":util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core:cc_api_stable",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
+        "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
     ],
@@ -391,7 +523,6 @@ cc_library(
         ":kernel_api",
         ":macros",
         ":memory_planner",
-        ":model_builder",
         ":mutable_op_resolver",
         ":optional_debug_tools",
         ":stderr_reporter",
@@ -399,10 +530,16 @@ cc_library(
         ":type_to_tflitetype",
         ":util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core:cc_api_stable",
+        "//tensorflow/lite/core:framework_experimental",
+        "//tensorflow/lite/core:model_builder",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
+        "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
     ],
@@ -429,73 +566,58 @@ alias(
 # these APIs, see 'framework_stable' above.
 cc_library(
     name = "cc_api_stable",
-    srcs = [
-        "core/subgraph.h",
-        "interpreter.cc",
-        "interpreter_builder.cc",
-        "signature_runner.h",
+    srcs = STABLE_FRAMEWORK_LIB_IMPL_HDRS + [
+        "logger.cc",
     ],
     hdrs = [
         "interpreter.h",
         "interpreter_builder.h",
+        "interpreter_options.h",
+        "logger.h",
         "model.h",
         "model_builder.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + tflite_copts_warnings() +
-            # As xnn_enable_qs8_explicit_true and xnn_enable_qu8_explicit_true
-            # could be specified simultaneously, use two selects here.
-            select({
-                "@XNNPACK//:xnn_enable_qs8_explicit_false": [],
-                "@XNNPACK//:xnn_enable_qs8_explicit_true": [
-                    "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
-                ],
-                "//tensorflow:emscripten": [
-                    "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
-                ],
-                "//conditions:default": [],
-            }) + select({
-        "@XNNPACK//:xnn_enable_qu8_explicit_false": [],
-        "@XNNPACK//:xnn_enable_qu8_explicit_true": [
-            "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
-        ],
-        "//tensorflow:emscripten": [
-            "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
-        ],
-        "//conditions:default": [],
-    }),
+    copts = tflite_copts() + tflite_copts_warnings(),
     visibility = [
+        "//tensorflow/lite/core/kernels:__subpackages__",
         "//tensorflow/lite/core/shims:__subpackages__",
         "//tensorflow/lite/delegates/flex:__subpackages__",
         "//tensorflow/lite/kernels:__subpackages__",
     ],
     deps = [
         ":allocation",
-        ":arena_planner",
         ":external_cpu_backend_context",
         ":graph_info",
-        ":kernel_api",
         ":macros",
         ":memory_planner",
         ":minimal_logging",
-        ":model_builder",
         ":mutable_op_resolver",
         ":shared_library",
         ":simple_memory_arena",
         ":stderr_reporter",
         ":string",
+        ":tensorflow_profiler_logger_shim",
         ":type_to_tflitetype",
         ":util",
         ":version",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core:cc_api_stable",
+        "//tensorflow/lite/core:model_builder",
+        "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates:telemetry",
+        "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qs8",
+        "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qu8",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/profiling:platform_profiler",
+        "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@flatbuffers//:runtime_cc",
@@ -504,27 +626,38 @@ cc_library(
     alwayslink = 1,  # TODO(b/161243354): eliminate this.
 )
 
+cc_library(
+    name = "signature_runner",
+    srcs = ["signature_runner.cc"],
+    hdrs = ["signature_runner.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//tensorflow/lite/core:__subpackages__"],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/internal:signature_def",
+    ],
+)
+
 # The key parts of the C++ API, including experimental APIs.
 #
 # This target has restricted visibility; for a public target that exposes
 # these APIs, see 'framework_experimental' above.
 cc_library(
     name = "cc_api_experimental",
-    srcs = [
-        "core/subgraph.cc",
-        "graph_info.cc",
-        "interpreter_builder_experimental.cc",
-        "interpreter_experimental.cc",
-        "signature_runner.cc",
-    ],
+    srcs = [],
     hdrs = [
-        "core/subgraph.h",
         "graph_info.h",
         "interpreter.h",
         "interpreter_builder.h",
+        "interpreter_options.h",
+        "logger.h",
         "model.h",
         "model_builder.h",
         "signature_runner.h",
+        "//tensorflow/lite/core:subgraph.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
@@ -538,8 +671,6 @@ cc_library(
         ":builtin_ops",
         ":cc_api_stable",
         ":external_cpu_backend_context",
-        ":graph_info",
-        ":kernel_api",
         ":macros",
         ":memory_planner",
         ":minimal_logging",
@@ -548,24 +679,32 @@ cc_library(
         ":string",
         ":type_to_tflitetype",
         ":util",
-        "@flatbuffers//:runtime_cc",
-        "@ruy//ruy:denormal",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core:cc_api_experimental",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
+        "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
-    ] + select({
-        ":tflite_use_simple_memory_planner": [
-            ":simple_planner",
-        ],
-        "//conditions:default": [
-            ":arena_planner",
-        ],
-    }),
+        "@flatbuffers//:runtime_cc",
+        "@ruy//ruy:denormal",
+    ],
     alwayslink = 1,  # TODO(b/161243354): eliminate this.
+)
+
+cc_library(
+    name = "interpreter_options_header",
+    hdrs = [
+        "interpreter_options.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow/lite/core:__subpackages__",
+    ],
 )
 
 cc_library(
@@ -584,6 +723,8 @@ cc_library(
         ":macros",
         "//tensorflow/lite:cc_api_experimental",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -615,6 +756,7 @@ cc_library(
         ":minimal_logging",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -646,6 +788,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/api:op_resolver_internal",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -659,6 +802,7 @@ cc_library(
     deps = [
         ":string",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -671,9 +815,29 @@ cc_library(
     linkstatic = True,
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
     ],
     alwayslink = 1,
+)
+
+# Enables calling xnnpack impl directly from TFLite kernels.
+config_setting(
+    name = "tflite_kernel_use_xnnpack_false",
+    define_values = {"tflite_kernel_use_xnnpack": "false"},
+)
+
+cc_library(
+    name = "tflite_kernel_use_xnnpack_optional",
+    compatible_with = get_compatible_with_portable(),
+    defines = select({
+        ":tflite_kernel_use_xnnpack_false": [],
+        "//tensorflow:macos": [],
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": [
+            "TFLITE_KERNEL_USE_XNNPACK",
+        ],
+    }),
 )
 
 # Enables applying XNNPACK delegate for float models in TFLite runtime.
@@ -705,24 +869,23 @@ cc_library(
     # Note: adding ":tflite_with_xnnpack_enabled" to the values of following
     # configuration conditions will make TFLite interpreter to apply XNNPACK
     # delegate by default.
-    deps = select({
-        "//tensorflow:macos": [],
-        "//tensorflow:fuchsia": [],
-        "//conditions:default": [":tflite_with_xnnpack_enabled"],
-    }),
+    deps = [
+        ":tflite_with_xnnpack_enabled",
+    ],
 )
 
 cc_library(
     name = "tflite_with_xnnpack_optional",
     srcs = ["tflite_with_xnnpack_optional.cc"],
     hdrs = [
-        "core/macros.h",
         "tflite_with_xnnpack_optional.h",
+        "//tensorflow/lite/core:macros.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ] + select({
         ":tflite_with_xnnpack_explicit_true": [
             "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
@@ -746,6 +909,8 @@ cc_test(
         ":string",
         ":string_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -762,7 +927,9 @@ cc_library(
         ":string_util",
         ":version",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:cpu_backend_context",
@@ -793,29 +960,16 @@ cc_test(
         ":string",
         ":string_util",
         ":util",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/utils:simple_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/testing:util",
         "//third_party/eigen3",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-# Test subgraph.
-cc_test(
-    name = "subgraph_test",
-    size = "small",
-    srcs = [
-        "core/subgraph_test.cc",
-    ],
-    deps = [
-        ":framework",
-        "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -830,6 +984,7 @@ cc_test(
     ],
     deps = [
         ":framework",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
@@ -846,6 +1001,7 @@ cc_test(
     deps = [
         ":framework",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -860,48 +1016,9 @@ cc_test(
     deps = [
         ":simple_memory_arena",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-# Test model framework.
-cc_test(
-    name = "model_test",
-    size = "small",
-    srcs = ["model_test.cc"],
-    data = [
-        "testdata/0_subgraphs.bin",
-        "testdata/2_subgraphs.bin",
-        "testdata/2_subgraphs_dont_delegate_name.bin",
-        "testdata/add_shared_tensors.bin",
-        "testdata/empty_model.bin",
-        "testdata/multi_add_flex.bin",
-        "testdata/segment_sum_invalid_buffer.bin",
-        "testdata/sparse_tensor.bin",
-        "testdata/test_min_runtime.bin",
-        "testdata/test_model.bin",
-        "testdata/test_model_broken.bin",
-        "testdata/test_model_redux_precision.bin",
-        "testdata/while_op_with_forwarding_input.bin",
-    ],
-    tags = [
-        "no_windows",  # TODO(b/194459105): the test is flaky.
-        "tflite_not_portable",
-        "tflite_smoke_test",
-    ],
-    deps = [
-        ":framework",
-        ":interpreter_test_util",
-        ":string",
-        "//tensorflow/lite:string_util",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/core/api:verifier",
-        "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest_main",
-        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -921,6 +1038,7 @@ tf_cc_test(
     ],
     deps = [
         ":framework",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -951,6 +1069,8 @@ cc_test(
         ":tflite_with_xnnpack",
         ":util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_googletest//:gtest_main",
     ],
@@ -982,6 +1102,7 @@ cc_test(
     deps = [
         ":framework",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
@@ -1010,6 +1131,8 @@ cc_test(
         ":framework",
         ":optional_debug_tools",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_googletest//:gtest_main",
@@ -1026,6 +1149,7 @@ cc_library(
         ":kernel_api",
         ":macros",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -1033,9 +1157,9 @@ cc_library(
 cc_library(
     name = "create_op_resolver_header",
     hdrs = ["create_op_resolver.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
-        ":mutable_op_resolver",
-        ":op_resolver",
+        "//tensorflow/lite/core:create_op_resolver_header",
     ],
 )
 
@@ -1044,10 +1168,12 @@ cc_library(
     name = "create_op_resolver_with_builtin_ops",
     srcs = ["create_op_resolver_with_builtin_ops.cc"],
     hdrs = ["create_op_resolver.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":mutable_op_resolver",
         ":op_resolver",
+        "//tensorflow/lite/core:create_op_resolver_header",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
     # Some targets only have an implicit dependency on CreateOpResolver.
@@ -1061,9 +1187,14 @@ cc_library(
     srcs = ["create_op_resolver_with_selected_ops.cc"],
     hdrs = ["create_op_resolver.h"],
     copts = tflite_copts(),
+    # This library is not self-contained; it needs to be linked
+    # together with an implementation of RegisterSelectedOps
+    # (normally one automatically generated by gen_selected_ops).
+    tags = ["allow_undefined_symbols"],
     deps = [
         ":mutable_op_resolver",
         ":op_resolver",
+        "//tensorflow/lite/core:create_op_resolver_header",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
     # Some targets only have an implicit dependency on CreateOpResolver.
@@ -1078,8 +1209,9 @@ cc_test(
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     deps = [
         ":util",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1103,7 +1235,10 @@ cc_library(
             "minimal_logging_default.cc",
         ],
     }),
-    hdrs = ["minimal_logging.h"],
+    hdrs = [
+        "logger.h",
+        "minimal_logging.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings() + tflite_copts(),
     linkopts = select({
@@ -1124,7 +1259,10 @@ cc_library(
         ],
     }),
     compatible_with = get_compatible_with_portable(),
-    deps = ["//tensorflow/lite/c:common"],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+    ],
 )
 
 cc_test(
@@ -1133,7 +1271,7 @@ cc_test(
     srcs = ["type_to_tflitetype_test.cc"],
     deps = [
         ":type_to_tflitetype",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1157,7 +1295,7 @@ cc_library(
 
 cc_library(
     name = "macros",
-    hdrs = ["core/macros.h"],
+    hdrs = ["//tensorflow/lite/core:macros.h"],
     compatible_with = get_compatible_with_portable(),
 )
 
@@ -1197,5 +1335,29 @@ tflite_cc_shared_object(
         "//tensorflow/lite/kernels:builtin_ops_all_linked",
     ],
 )
+
+bzl_library(
+    name = "build_def_bzl",
+    srcs = ["build_def.bzl"],
+    visibility = [
+        "//learning/brain/models/app_benchmarks:__pkg__",
+        "//tensorflow/lite/core/shims:__subpackages__",
+    ],
+    deps = [
+        ":special_rules_bzl",
+        "//tensorflow:tensorflow_bzl",
+        "//tensorflow/lite/java:aar_with_jni_bzl",
+        "@bazel_skylib//rules:build_test",
+    ],
+)
+
+bzl_library(
+    name = "special_rules_bzl",
+    srcs = ["special_rules.bzl"],
+    visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
+    deps = SPECIAL_RULES_DEPS,
+)
+
+tflite_self_contained_libs_test_suite(name = "self_contained_libs_test_suite")
 
 tflite_portable_test_suite()

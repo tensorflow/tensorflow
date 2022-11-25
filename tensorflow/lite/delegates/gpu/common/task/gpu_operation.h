@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_GPU_OPERATION_H_
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tuning_type.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
@@ -76,16 +76,11 @@ struct OperationDef {
   bool IsBatchSupported() const;
 };
 
-// GPUOperation represents some implementation of neural network operation on
-// GPU. GPUOperation can contain another GPU operations with flag elementwise_.
-// When GPUOperation contains another GPU ops, this GPUoperation replaces
-// some sequence of operations Op + op0 + op1 + ...
-// Because of this abilities of GPUOperation, usage scenario is next:
-// Create instance of GPUOperation.
-// Create all instances of GPUOperations that we will(probably) attach
-// to GPUOperation. Attach all GPUOperations to GPUOperation. Call
-// GPUOperation.Compile(). Don't call GPUOperations.Compile() if it
-// attached, it useless(and may be error)
+struct ElementwiseDescriptor {
+  Arguments args;
+  std::string code;
+};
+
 class GPUOperation {
  public:
   GPUOperation() = default;
@@ -97,7 +92,9 @@ class GPUOperation {
   GPUOperation(const GPUOperation&) = delete;
   GPUOperation& operator=(const GPUOperation&) = delete;
 
-  absl::Status AddOperation(GPUOperation* operation);
+  absl::Status AddOperation(const GpuInfo& gpu_info, GPUOperation* operation);
+
+  int GetElementwiseInputsCount() const { return elementwise_inputs_; }
 
   void SetSrc(GpuSpatialTensor* ptr, int index = 0);
   void SetDst(GpuSpatialTensor* ptr, int index = 0);
@@ -128,20 +125,16 @@ class GPUOperation {
   }
 
   const OperationDef& GetDefinition() const { return definition_; }
+  CalculationsPrecision GetPrecision() const { return definition_.precision; }
 
   void AddSrcTensor(const std::string& tensor_name,
                     const TensorDescriptor& desc);
   void AddSrcBuffer(const std::string& buffer_name,
                     const BufferDescriptor& desc);
-  void AddSrcTexture2D(const std::string& texture_name,
-                       const Texture2DDescriptor& desc);
   void AddDstTensor(const std::string& tensor_name,
                     const TensorDescriptor& desc);
 
-  bool IsLinkable() const { return elementwise_ && linkable_; }
-
-  // for linking
-  void AddUniquePostfix(const std::string& unique_postfix);
+  bool IsLinkable() const { return elementwise_; }
 
   virtual absl::Status BindArguments(ArgumentsBinder* args) {
     return absl::OkStatus();
@@ -156,12 +149,6 @@ class GPUOperation {
   // not applicable to elementwise
   TensorToGrid tensor_to_grid_ = TensorToGrid::kCustom;
 
-  bool elementwise_ = false;
-  // applicable only with elementwise_ = true;
-  bool linkable_ = true;  // by default every elementwise is linkable
-  // applicable only with elementwise_ = true;
-  bool check_src_channels_size_ = false;
-
   // for profiling
   uint64_t flops_ = 0;
   // size in bytes of constant gpu_objects inside args_
@@ -175,6 +162,31 @@ class GPUOperation {
       const GPUOperation& op, flatbuffers::FlatBufferBuilder* builder);
   friend absl::Status Decode(const tflite::gpu::data::GPUOperation* fb_op,
                              GPUOperation* op);
+  friend GPUOperation CreateGpuOperation(const OperationDef& definition,
+                                         ElementwiseDescriptor&& descriptor);
+  friend GPUOperation CreateGpuOperation(const OperationDef& definition,
+                                         ElementwiseDescriptor&& descriptor,
+                                         const BHWC& second_shape);
+
+  friend absl::Status FuseElemWithElemInternal(
+      const GpuInfo& gpu_info, GPUOperation&& elem0, GPUOperation&& elem1,
+      const std::vector<std::pair<std::string, std::string>>& replacements,
+      GPUOperation* result);
+  friend absl::Status FuseSimpleElemWithSimpleElem(const GpuInfo& gpu_info,
+                                                   GPUOperation&& elem0,
+                                                   GPUOperation&& elem1,
+                                                   GPUOperation* result);
+  friend absl::Status Fuse2InputElemWithSimpleElemAsFirstInput(
+      const GpuInfo& gpu_info, GPUOperation&& elem0, GPUOperation&& elem1,
+      GPUOperation* result);
+  friend absl::Status Fuse2InputElemWithSimpleElemAsSecondInput(
+      const GpuInfo& gpu_info, GPUOperation&& elem0, GPUOperation&& elem1,
+      GPUOperation* result);
+  friend absl::Status Fuse2InputElemWith2SimpleElem(const GpuInfo& gpu_info,
+                                                    GPUOperation&& elem0,
+                                                    GPUOperation&& elem1,
+                                                    GPUOperation&& elem_root,
+                                                    GPUOperation* result);
 
   virtual int3 GetGridSize() const;
   virtual void GetPossibleKernelWorkGroups(
@@ -192,11 +204,79 @@ class GPUOperation {
   std::vector<std::string> dst_tensors_names_;
 
  private:
+  absl::Status GetTensorDescriptor(const std::string& tensor_name,
+                                   TensorDescriptor** resutl);
+  absl::Status ResolveSecondElementwiseInput();
   int3 work_groups_count_ = int3(0, 0, 0);
-  int linkable_count_ = 0;
+  bool elementwise_ = false;      // temporary, used during op construction
+  int elementwise_inputs_ = 0;    // can be {0, 1, 2}
+  std::string
+      second_elementwise_tensor_name_;  // used with elementwise_inputs_ = 2
+  int linkable_count_ = 0;        // temporary, used during op construction
   std::string elementwise_code_;  // temporary, used during op construction
 };
 
+GPUOperation CreateGpuOperation(const OperationDef& definition,
+                                ElementwiseDescriptor&& descriptor);
+
+// For creating elementwise operations with 2 runtime inputs
+GPUOperation CreateGpuOperation(const OperationDef& definition,
+                                ElementwiseDescriptor&& descriptor,
+                                const BHWC& second_shape);
+
+absl::Status FuseElemWithElemInternal(
+    const GpuInfo& gpu_info, GPUOperation&& elem0, GPUOperation&& elem1,
+    const std::vector<std::pair<std::string, std::string>>& replacements,
+    GPUOperation* result);
+
+//    input       input
+//      |           |
+//    elem0         |
+//      |    -->  elem
+//    elem1         |
+//      |           |
+//    output      output
+absl::Status FuseSimpleElemWithSimpleElem(const GpuInfo& gpu_info,
+                                          GPUOperation&& elem0,
+                                          GPUOperation&& elem1,
+                                          GPUOperation* result);
+
+//      input           input
+//     /    \             |
+//  elem0    |            |
+//     \    /      -->  elem
+//     elem1              |
+//       |                |
+//     output           output
+absl::Status Fuse2InputElemWithSimpleElemAsFirstInput(const GpuInfo& gpu_info,
+                                                      GPUOperation&& elem0,
+                                                      GPUOperation&& elem1,
+                                                      GPUOperation* result);
+
+//      input           input
+//     /    \             |
+//    |    elem0          |
+//     \    /      -->  elem
+//     elem1              |
+//       |                |
+//     output           output
+absl::Status Fuse2InputElemWithSimpleElemAsSecondInput(const GpuInfo& gpu_info,
+                                                       GPUOperation&& elem0,
+                                                       GPUOperation&& elem1,
+                                                       GPUOperation* result);
+
+//      input           input
+//     /    \             |
+//  elem0  elem1          |
+//     \    /      -->  elem
+//   elem_root            |
+//       |                |
+//     output           output
+absl::Status Fuse2InputElemWith2SimpleElem(const GpuInfo& gpu_info,
+                                           GPUOperation&& elem0,
+                                           GPUOperation&& elem1,
+                                           GPUOperation&& elem_root,
+                                           GPUOperation* result);
 }  // namespace gpu
 }  // namespace tflite
 

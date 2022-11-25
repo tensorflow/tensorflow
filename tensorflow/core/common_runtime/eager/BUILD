@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -14,6 +14,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
@@ -112,6 +113,7 @@ tf_cuda_library(
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:session_options",
             "//tensorflow/core/distributed_runtime:collective_param_resolver_distributed",
+            "//tensorflow/core/distributed_runtime:session_mgr",
             "//tensorflow/core/distributed_runtime:device_resolver_distributed",
             "//tensorflow/core/distributed_runtime:rpc_collective_executor_mgr",
             "//tensorflow/core/distributed_runtime:worker_cache",
@@ -189,9 +191,6 @@ tf_cuda_library(
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            "//tensorflow/core/distributed_runtime/coordination:coordination_service",
-            "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
-            "//tensorflow/core/distributed_runtime/coordination:coordination_service_impl",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -208,6 +207,10 @@ tf_cuda_library(
             "//tensorflow/core/distributed_runtime/eager:eager_client",
             "//tensorflow/core/distributed_runtime/eager:cluster_function_library_runtime",
             "//tensorflow/core/distributed_runtime/eager:remote_mgr",
+            "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
+            "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
+            "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_impl",
+            "//tensorflow/tsl/distributed_runtime/preemption:preemption_notifier",
         ],
     }),
 )
@@ -228,6 +231,7 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:logging_ops",
+        "//tensorflow/core/kernels:math",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -534,6 +538,19 @@ cc_library(
 )
 
 tf_cc_test(
+    name = "execute_test",
+    srcs = ["execute_test.cc"],
+    deps = [
+        ":core",
+        ":execute",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/kernels:math",
+    ],
+)
+
+tf_cc_test(
     name = "execute_node_test",
     srcs = ["execute_node_test.cc"],
     deps = [
@@ -753,7 +770,7 @@ filegroup(
         "tensor_handle_data.h",
     ],
     visibility = [
-        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/function:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],
 )

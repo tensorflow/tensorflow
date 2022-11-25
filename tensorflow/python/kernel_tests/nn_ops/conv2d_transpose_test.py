@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
@@ -308,6 +309,15 @@ class Conv2DTransposeTest(test.TestCase):
         x, f, f_shape, strides=[1, 1, 1, 1], padding="SAME")
     self.assertEqual(output.get_shape().as_list(), [3, 10, 5, 5])
 
+  def testConv2DTransposeInvalidOutputShape(self):
+    with self.session():
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        op = nn_ops.conv2d_transpose(
+            input=np.ones((1, 1, 1, 1)),
+            filters=np.ones((1, 1, 1, 1)),
+            output_shape=[2, -2],
+            strides=[1])
+        self.evaluate(op)
 
 if __name__ == "__main__":
   test.main()

@@ -39,6 +39,7 @@ namespace builtin {
 TfLiteRegistration* Register_ABS();
 TfLiteRegistration* Register_RELU();
 TfLiteRegistration* Register_RELU_N1_TO_1();
+TfLiteRegistration* Register_RELU_0_TO_1();
 TfLiteRegistration* Register_RELU6();
 TfLiteRegistration* Register_TANH_REF();
 TfLiteRegistration* Register_LOGISTIC_REF();
@@ -169,11 +170,18 @@ TfLiteRegistration* Register_BUCKETIZE();
 TfLiteRegistration* Register_RANDOM_UNIFORM();
 TfLiteRegistration* Register_MULTINOMIAL();
 TfLiteRegistration* Register_GELU();
+TfLiteRegistration* Register_DYNAMIC_UPDATE_SLICE();
+TfLiteRegistration* Register_UNSORTED_SEGMENT_PROD();
+TfLiteRegistration* Register_UNSORTED_SEGMENT_MAX();
+TfLiteRegistration* Register_UNSORTED_SEGMENT_MIN();
+TfLiteRegistration* Register_UNSORTED_SEGMENT_SUM();
+TfLiteRegistration* Register_ATAN2();
+TfLiteRegistration* Register_SIGN();
 
 namespace {
 
 TfLiteStatus UnsupportedTensorFlowOp(TfLiteContext* context, TfLiteNode* node) {
-  context->ReportError(
+  TF_LITE_KERNEL_LOG(
       context,
       "Regular TensorFlow ops are not supported by this interpreter. Make sure "
       "you invoke the Flex delegate before inference.");
@@ -208,6 +216,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU(), /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_RELU_N1_TO_1, Register_RELU_N1_TO_1());
+  AddBuiltin(BuiltinOperator_RELU_0_TO_1, Register_RELU_0_TO_1());
   AddBuiltin(BuiltinOperator_RELU6, Register_RELU6(), /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_TANH, Register_TANH_REF(), /* min_version = */ 1,
@@ -224,7 +233,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_L2_POOL_2D, Register_L2_POOL_REF());
   AddBuiltin(BuiltinOperator_CONV_2D, Register_CONVOLUTION_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 5);
+             /* max_version = */ 6);
   AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D,
              Register_DEPTHWISE_CONVOLUTION_REF(),
              /* min_version = */ 1,
@@ -271,7 +280,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_MUL, Register_MUL_REF(), /* min_version = */ 1,
-             /* max_version = */ 5);
+             /* max_version = */ 6);
   AddBuiltin(BuiltinOperator_L2_NORMALIZATION, Register_L2NORM_REF(),
              /* min_version = */ 1,
              /* max_version = */ 2);
@@ -343,7 +352,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_CAST, Register_CAST(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE_REF(),
              /* min_version = */ 1,
              /* max_version = */ 4);
@@ -494,6 +503,18 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_GELU, Register_GELU(),
              /* min_version = */ 1,
              /* max_version = */ 2);
+  AddBuiltin(BuiltinOperator_DYNAMIC_UPDATE_SLICE,
+             Register_DYNAMIC_UPDATE_SLICE());
+  AddBuiltin(BuiltinOperator_UNSORTED_SEGMENT_PROD,
+             Register_UNSORTED_SEGMENT_PROD());
+  AddBuiltin(BuiltinOperator_UNSORTED_SEGMENT_MAX,
+             Register_UNSORTED_SEGMENT_MAX());
+  AddBuiltin(BuiltinOperator_UNSORTED_SEGMENT_MIN,
+             Register_UNSORTED_SEGMENT_MIN());
+  AddBuiltin(BuiltinOperator_UNSORTED_SEGMENT_SUM,
+             Register_UNSORTED_SEGMENT_SUM());
+  AddBuiltin(BuiltinOperator_ATAN2, Register_ATAN2());
+  AddBuiltin(BuiltinOperator_SIGN, Register_SIGN());
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that

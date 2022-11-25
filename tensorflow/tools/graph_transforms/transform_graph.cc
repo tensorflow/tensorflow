@@ -57,7 +57,7 @@ Status ParseTransformParameters(const string& transforms_string,
       if (remaining.empty()) {
         // Nothing remains after consuming trailing spaces.
         // Consumed all transform parameter string without errors.
-        return Status::OK();
+        return OkStatus();
       }
       // See if we have a valid transform name.
       const bool found_transform_name =
@@ -130,7 +130,7 @@ Status ParseTransformParameters(const string& transforms_string,
       state = TRANSFORM_PARAM_NAME;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 std::string ExpandPath(const std::string& path_string) {
@@ -298,7 +298,7 @@ Status ShouldIgnoreErrors(const TransformFuncParameters& transform_params,
           ignore_errors_string);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TransformGraph(const std::vector<string>& inputs,
@@ -343,7 +343,7 @@ Status TransformGraph(const std::vector<string>& inputs,
 
     *graph_def = transformed_graph_def;
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace graph_transforms
 }  // namespace tensorflow

@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/calibration/logging_op_resolver.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -42,7 +46,7 @@ LoggingOpResolver::LoggingOpResolver(
     BuiltinOperatorKey key = op_and_version;
     builtin_op_evalfn_map_[key] = base_registration->invoke;
     auto logging_registration =
-        absl::make_unique<TfLiteRegistration>(*base_registration);
+        std::make_unique<TfLiteRegistration>(*base_registration);
     logging_registration->invoke = logging_eval_fn;
     builtin_op_registration_map_[key] = std::move(logging_registration);
   }
@@ -57,7 +61,7 @@ LoggingOpResolver::LoggingOpResolver(
     CustomOperatorKey key = op_and_version;
     custom_op_evalfn_map_[key] = base_registration->invoke;
     auto logging_registration =
-        absl::make_unique<TfLiteRegistration>(*base_registration);
+        std::make_unique<TfLiteRegistration>(*base_registration);
     logging_registration->invoke = logging_eval_fn;
     custom_op_registration_map_[key] = std::move(logging_registration);
   }

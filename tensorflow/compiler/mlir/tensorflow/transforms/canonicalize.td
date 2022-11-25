@@ -255,7 +255,12 @@ def ReshapeToSelfShape : Pat<(TF_ReshapeOp:$op $x, (TF_ShapeOp $x)),
 // Square op patterns.
 //===----------------------------------------------------------------------===//
 
-def SquareOfSub : Pat<(TF_SquareOp (TF_SubOp $arg0, $arg1)),
+// Restrict the pattern to the types supported by SquaredDifferenceOp.
+def TF_NumberTensorNoSmallInt: TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64,
+    TF_Float16, TF_Float32, TF_Int32, TF_Int64]>;
+
+def SquareOfSub : Pat<(TF_SquareOp (TF_SubOp TF_NumberTensorNoSmallInt:$arg0,
+                                    TF_NumberTensorNoSmallInt:$arg1)),
                       (TF_SquaredDifferenceOp $arg0, $arg1)>;
 
 //===----------------------------------------------------------------------===//
@@ -324,3 +329,30 @@ def HashTableAndLookupTableFindToV2 :
      (TF_HashTableV2Op $container, $shared_name, $use_node_name_sharing, $key_dtype, $value_dtype),
      $keys, $default_value)
  >;
+
+//===----------------------------------------------------------------------===//
+// Canonicalize tf.Maximum of zero to tf.Relu
+//===----------------------------------------------------------------------===//
+
+def IsInteger32Pred: CPred<
+  "getElementTypeOrSelf($0.getType()).isInteger(32)">;
+
+// Whether the transformation is compatible with the device if given.
+// Currently, Relu with int32 is not supported on GPU.
+def IsDeviceCompatible: Constraint<
+  Neg<And<[IsOnGpuDevicePred, IsInteger32Pred]>>>;
+
+// TODO(b/239736969): Remove the device compatibility constraint to make the
+// canonicalization device independent, by adding an int32 GPU kernel for Relu.
+def MaximumOfZeroToRelu : Pat<
+  (TF_MaximumOp:$maximum_op $x, $y), (TF_ReluOp $x),
+  [(IsConstantValueOf<0> $y), (IsDeviceCompatible $maximum_op)]>;
+
+//===----------------------------------------------------------------------===//
+// Canonicalize tf.Relu of Minimul six to tf.Relu6
+//===----------------------------------------------------------------------===//
+
+def ReluOfMinimum6ToRelu6 :
+  Pat<(TF_ReluOp (TF_MinimumOp $x, $y)),
+      (TF_Relu6Op $x),
+      [(IsConstantValueOf<6> $y)]>;

@@ -144,7 +144,7 @@ def embedding_column_v2(categorical_column,
   if not isinstance(categorical_column, _SUPPORTED_CATEGORICAL_COLUMNS_V2):
     raise TypeError(
         'categorical_column for tpu '
-        ' embedding_column must be type %s, got %s.' % (' or '.join([
+        'embedding_column must be type {}, got {}.'.format(' or '.join([
             cc.__name__ for cc in _SUPPORTED_CATEGORICAL_COLUMNS_V2
         ]), type(categorical_column)))
   if (dimension is None) or (dimension < 1):
@@ -163,8 +163,8 @@ def embedding_column_v2(categorical_column,
 
   if (embedding_lookup_device and
       embedding_lookup_device not in _ALLOWED_DEVICES):
-    raise ValueError('If set, embedding_lookup_device must be in ',
-                     _ALLOWED_DEVICES)
+    raise ValueError(
+        f'If set, embedding_lookup_device must be in {_ALLOWED_DEVICES}')
 
   if embedding_lookup_device == 'cpu':
     embedding_lookup_device = EmbeddingDevice.CPU
@@ -314,9 +314,10 @@ def shared_embedding_columns_v2(categorical_columns,
     if not isinstance(categorical_column, _SUPPORTED_CATEGORICAL_COLUMNS_V2):
       raise TypeError(
           'categorical_column for tpu '
-          ' shared_embedding_columns must be type %s, got %s.' % (' or '.join([
-              cc.__name__ for cc in _SUPPORTED_CATEGORICAL_COLUMNS_V2
-          ]), type(categorical_column)))
+          ' shared_embedding_columns must be type {}, got {}.'.format(
+              ' or '.join(
+                  [cc.__name__ for cc in _SUPPORTED_CATEGORICAL_COLUMNS_V2]),
+              type(categorical_column)))
 
   if not max_sequence_lengths:
     max_sequence_lengths = [0] * len(categorical_columns)
@@ -364,8 +365,8 @@ def shared_embedding_columns_v2(categorical_columns,
 
   if (embedding_lookup_device and
       embedding_lookup_device not in _ALLOWED_DEVICES):
-    raise ValueError('If set, embedding_lookup_device must be in ',
-                     _ALLOWED_DEVICES)
+    raise ValueError(
+        f'If set, embedding_lookup_device must be in {_ALLOWED_DEVICES}')
 
   if embedding_lookup_device == 'cpu':
     embedding_lookup_device = EmbeddingDevice.CPU
@@ -779,7 +780,7 @@ def split_sequence_columns_v2(feature_columns):
                                _TPUSharedEmbeddingColumnV2)):
       raise TypeError(
           'column must be a _TPUEmbeddingColumnV2 or '
-          '_TPUSharedEmbeddingColumnV2 but got %s instead.' % (type(column)))
+          f'_TPUSharedEmbeddingColumnV2 but got {type(column)} instead.')
     if column.is_sequence_column():
       sequence_columns.append(column)
     else:

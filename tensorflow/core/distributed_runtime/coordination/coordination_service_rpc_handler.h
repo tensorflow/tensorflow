@@ -16,57 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_RPC_HANDLER_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_RPC_HANDLER_H_
 
-#include "tensorflow/core/platform/random.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/protobuf/coordination_service.pb.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_rpc_handler.h"
 
 namespace tensorflow {
-class CoordinationServiceAgent;
-
-class CoordinationServiceRpcHandler {
- public:
-  explicit CoordinationServiceRpcHandler() {}
-
-  void SetAgentInstance(CoordinationServiceAgent* agent);
-
-  void RegisterWorkerAsync(const RegisterWorkerRequest* request,
-                           RegisterWorkerResponse* response,
-                           StatusCallback done);
-
-  void HeartbeatAsync(const HeartbeatRequest* request,
-                      HeartbeatResponse* response, StatusCallback done);
-
-  void WaitForAllTasksAsync(const WaitForAllTasksRequest* request,
-                            WaitForAllTasksResponse* response,
-                            StatusCallback done);
-
-  void ReportErrorToAgentAsync(const ReportErrorToAgentRequest* request,
-                               ReportErrorToAgentResponse* response,
-                               StatusCallback done);
-
-  void ReportErrorToServiceAsync(const ReportErrorToServiceRequest* request,
-                                 ReportErrorToServiceResponse* response,
-                                 StatusCallback done);
-
-  void InsertKeyValueAsync(const InsertKeyValueRequest* request,
-                           InsertKeyValueResponse* response,
-                           StatusCallback done);
-
-  void GetKeyValueAsync(const GetKeyValueRequest* request,
-                        GetKeyValueResponse* response, StatusCallback done);
-
-  void DeleteKeyValueAsync(const DeleteKeyValueRequest* request,
-                           DeleteKeyValueResponse* response,
-                           StatusCallback done);
-
-  void BarrierAsync(const BarrierRequest* request, BarrierResponse* response,
-                    StatusCallback done);
-
- private:
-  const uint64_t leader_incarnation_id_ = random::New64();
-  CoordinationServiceAgent* agent_;
-};
-
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::CoordinationServiceRpcHandler;
+// NOLINTEND(misc-unused-using-decls)
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_RPC_HANDLER_H_

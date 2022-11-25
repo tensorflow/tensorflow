@@ -37,7 +37,7 @@ absl::Status InterpreterInvokeWithOpResolver(
     const ::tflite::Model* model, TfLiteDelegate* delegate,
     const OpResolver& op_resolver, const std::vector<TensorFloat32>& inputs,
     std::vector<TensorFloat32>* outputs) {
-  auto interpreter = absl::make_unique<Interpreter>();
+  auto interpreter = std::make_unique<Interpreter>();
   if (InterpreterBuilder(model, op_resolver)(&interpreter) != kTfLiteOk) {
     return absl::InternalError("Unable to create TfLite InterpreterBuilder");
   }

@@ -16,6 +16,7 @@
 
 import abc
 import typing
+import typing_extensions
 
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
@@ -113,7 +114,7 @@ class ExtensionType(
   Python booleans      | `b: bool`
   Python None          | `n: None`
   Tensors              | `t: tf.Tensor`
-  Composite Tensors    | `rt: tf.RaggdTensor`
+  Composite Tensors    | `rt: tf.RaggedTensor`
   Extension Types      | `m: MyMaskedTensor`
   Tensor shapes        | `shape: tf.TensorShape`
   Tensor dtypes        | `dtype: tf.DType`
@@ -169,7 +170,10 @@ class ExtensionType(
       return cls._tf_extension_type_cached_fields
 
     try:
-      type_hints = typing.get_type_hints(cls)
+      # Using include_extras=False will replace all Annotated[T, ...] with T.
+      # The typing_extensions module is used since this is only supported in
+      # Python 3.9.
+      type_hints = typing_extensions.get_type_hints(cls, include_extras=False)
       ok_to_cache = True  # all forward references have been resolved.
     except (NameError, AttributeError):
       # Unresolved forward reference -- gather type hints manually.
@@ -689,7 +693,7 @@ class BatchableExtensionType(ExtensionType):
   `BatchableExtensionType`s can be used with APIs that require batching or
   unbatching, including `Keras`, `tf.data.Dataset`, and `tf.map_fn`.  E.g.:
 
-  >>> class Vehicle(BatchableExtensionType):
+  >>> class Vehicle(tf.experimental.BatchableExtensionType):
   ...   top_speed: tf.Tensor
   ...   mpg: tf.Tensor
   >>> batch = Vehicle([120, 150, 80], [30, 40, 12])

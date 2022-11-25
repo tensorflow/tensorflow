@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for where_v2."""
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -82,6 +82,13 @@ def make_where_v2_tests(options):
           "input_dtype": [tf.float32, tf.int32],
           "input_shape_set": [([1, 2, 2], [1, 2]),],
       },
+      # Requires kernel supporting broadcasting for 5D case.
+      {
+          "condition_dtype": [tf.float32],
+          "input_condition_shape": [[1, 1, 1, 1, 1]],
+          "input_dtype": [tf.float32],
+          "input_shape_set": [([], [1, None, 1, 2, 512])],
+      },
   ]
 
   def build_graph(parameters):
@@ -106,8 +113,11 @@ def make_where_v2_tests(options):
           dtype=parameters["input_dtype"],
           name="input_y",
           shape=parameters["input_shape_set"][1])
-    out = tf.where_v2(input_condition, input_value1, input_value2)
+    out = tf.compat.v2.where(input_condition, input_value1, input_value2)
     return [input_condition, input_value1, input_value2], [out]
+
+  def build_input_shape(input_shape):
+    return [1 if v is None else v for v in input_shape]
 
   def build_inputs(parameters, sess, inputs, outputs):
     input_condition = create_tensor_data(parameters["condition_dtype"],
@@ -115,10 +125,12 @@ def make_where_v2_tests(options):
     input_value1 = None
     input_value2 = None
     if parameters["input_dtype"] is not None:
-      input_value1 = create_tensor_data(parameters["input_dtype"],
-                                        parameters["input_shape_set"][0])
-      input_value2 = create_tensor_data(parameters["input_dtype"],
-                                        parameters["input_shape_set"][1])
+      input_value1 = create_tensor_data(
+          parameters["input_dtype"],
+          build_input_shape(parameters["input_shape_set"][0]))
+      input_value2 = create_tensor_data(
+          parameters["input_dtype"],
+          build_input_shape(parameters["input_shape_set"][1]))
       return [input_condition, input_value1, input_value2], sess.run(
           outputs,
           feed_dict=dict(

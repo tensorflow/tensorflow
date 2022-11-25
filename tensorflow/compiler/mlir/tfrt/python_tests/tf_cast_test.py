@@ -26,9 +26,9 @@ class TfCastTest(test.TestCase):
 
   def test_cast_unsigned_signed_i32(self):
     mlir_function = """
-      func @test(%arg0: tensor<?xui32>) -> tensor<?xi32> {
+      func.func @test(%arg0: tensor<?xui32>) -> tensor<?xi32> {
         %0 = "tf.Cast"(%arg0) : (tensor<?xui32>) -> tensor<?xi32>
-        return %0 : tensor<?xi32>
+        func.return %0 : tensor<?xi32>
       }"""
 
     compiled = jitrt.compile(mlir_function, 'test')
@@ -41,9 +41,9 @@ class TfCastTest(test.TestCase):
 
   def test_cast_signed_unsigned_i32(self):
     mlir_function = """
-      func @test(%arg0: tensor<?xi32>) -> tensor<?xui32> {
+      func.func @test(%arg0: tensor<?xi32>) -> tensor<?xui32> {
         %0 = "tf.Cast"(%arg0) : (tensor<?xi32>) -> tensor<?xui32>
-        return %0 : tensor<?xui32>
+        func.return %0 : tensor<?xui32>
       }"""
 
     compiled = jitrt.compile(mlir_function, 'test')
@@ -56,9 +56,9 @@ class TfCastTest(test.TestCase):
 
   def test_cast_unsigned_signed_i32_i64(self):
     mlir_function = """
-      func @test(%arg0: tensor<?xui32>) ->  tensor<?xi64> {
+      func.func @test(%arg0: tensor<?xui32>) ->  tensor<?xi64> {
         %0 = "tf.Cast"(%arg0) : (tensor<?xui32>) -> tensor<?xi64>
-        return %0 : tensor<?xi64>
+        func.return %0 : tensor<?xi64>
       }"""
 
     compiled = jitrt.compile(mlir_function, 'test')
@@ -71,9 +71,9 @@ class TfCastTest(test.TestCase):
 
   def test_cast_signed_unsigned_i64_i8(self):
     mlir_function = """
-      func @test(%arg0: tensor<?xi64>) -> tensor<?xui8> {
+      func.func @test(%arg0: tensor<?xi64>) -> tensor<?xui8> {
         %0 = "tf.Cast"(%arg0) : (tensor<?xi64>) -> tensor<?xui8>
-        return %0 : tensor<?xui8>
+        func.return %0 : tensor<?xui8>
       }"""
 
     compiled = jitrt.compile(mlir_function, 'test')

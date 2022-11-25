@@ -37,7 +37,7 @@ Status ValidateResultShape(const Shape& client_shape,
         ShapeUtil::HumanStringWithLayout(client_shape),
         ShapeUtil::HumanString(result_shape));
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -45,8 +45,8 @@ StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     const ProgramShape& program_shape,
     absl::Span<const Shape* const> argument_shapes,
     const ExecutionOptions* execution_options, int default_num_replicas,
-    absl::optional<int> num_threads, const AotCompilationOptions* aot_options) {
-  auto config = absl::make_unique<HloModuleConfig>(program_shape);
+    std::optional<int> num_threads, const AotCompilationOptions* aot_options) {
+  auto config = std::make_unique<HloModuleConfig>(program_shape);
   ComputationLayout* computation_layout =
       config->mutable_entry_computation_layout();
   const int64_t argument_shapes_size = argument_shapes.size();
@@ -95,6 +95,20 @@ StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     }
     config->set_use_spmd_partitioning(
         execution_options->use_spmd_partitioning());
+    config->set_allow_spmd_sharding_propagation_to_output(
+        execution_options->allow_spmd_sharding_propagation_to_output());
+    config->set_use_auto_spmd_partitioning(
+        execution_options->use_auto_spmd_partitioning());
+    std::vector<int64_t> mesh_shape;
+    for (auto t : execution_options->auto_spmd_partitioning_mesh_shape()) {
+      mesh_shape.push_back(t);
+    }
+    config->set_auto_spmd_partitioning_mesh_shape(mesh_shape);
+    std::vector<int64_t> mesh_ids;
+    for (auto t : execution_options->auto_spmd_partitioning_mesh_ids()) {
+      mesh_ids.push_back(t);
+    }
+    config->set_auto_spmd_partitioning_mesh_ids(mesh_ids);
     config->set_deduplicate_hlo(execution_options->deduplicate_hlo());
     config->set_seed(execution_options->seed());
     config->set_launch_id(execution_options->launch_id());
@@ -118,14 +132,50 @@ StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
   config->set_alias_passthrough_params(
       execution_options->alias_passthrough_params());
 
-  if (aot_options != nullptr &&
-      aot_options->fusion_config_collection() != FusionConfigCollection::kOff) {
-    config->set_fusion_config_collection(
-        aot_options->fusion_config_collection());
-    *config->mutable_fusion_config() = aot_options->fusion_config();
+  if (aot_options != nullptr) {
+    config->set_matrix_unit_operand_precision(
+        aot_options->matrix_unit_operand_precision());
+    if (aot_options->fusion_config_collection() !=
+        FusionConfigCollection::kOff) {
+      config->set_fusion_config_collection(
+          aot_options->fusion_config_collection());
+      *config->mutable_fusion_config() = aot_options->fusion_config();
+    }
   }
 
   return std::move(config);
+}
+
+void UpdateEntryComputationLayout(
+    HloModule* module, DeviceShapeRepresentationFn shape_representation_fn,
+    bool empty_tiles_only) {
+  CHECK(shape_representation_fn != nullptr);
+  auto update_shape = [&shape_representation_fn,
+                       empty_tiles_only](Shape* shape) {
+    ShapeUtil::ForEachMutableSubshape(
+        shape, [&shape_representation_fn, empty_tiles_only](
+                   Shape* subshape, const ShapeIndex& index) {
+          if (subshape->IsArray() && subshape->has_layout()) {
+            if (!empty_tiles_only ||
+                (empty_tiles_only && subshape->layout().tiles().empty())) {
+              *subshape = shape_representation_fn(*subshape);
+            }
+          }
+        });
+  };
+
+  for (int i = 0; i < module->entry_computation_layout().parameter_count();
+       i++) {
+    Shape shape =
+        module->entry_computation_layout().parameter_layout(i).shape();
+    update_shape(&shape);
+    *module->mutable_entry_computation_layout()->mutable_parameter_layout(i) =
+        ShapeLayout(shape);
+  }
+  Shape shape = module->entry_computation_layout().result_layout().shape();
+  update_shape(&shape);
+  *module->mutable_entry_computation_layout()->mutable_result_layout() =
+      ShapeLayout(shape);
 }
 
 }  // namespace xla

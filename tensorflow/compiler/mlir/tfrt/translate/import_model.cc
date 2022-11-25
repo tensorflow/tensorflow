@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 
+#include <utility>
+
 #include "absl/strings/match.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -46,7 +48,7 @@ Status ConvertFunctionToBef(
         "Failed to convert function to mlir for function ", function_name.str(),
         ". Error: ", expected_module.status().error_message());
 
-  auto module = expected_module.ConsumeValueOrDie();
+  auto module = std::move(expected_module).value();
 
   // Attach devices to the MLIR module.
   if (!devices.empty()) {
@@ -63,7 +65,7 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
                           mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
-  if (options.tpu_target == TfrtTpuInfraTarget::kTpurt) {
+  if (options.device_target == TfrtDeviceInfraTarget::kTpurt) {
     VLOG(1) << "Running MLIR TPU bridge for tpurt";
     if (VLOG_IS_ON(1)) {
       tensorflow::DumpMlirOpToFile("tpu_bct_conversion_before", module);
@@ -88,7 +90,7 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
 
     TF_RETURN_IF_ERROR(
         mlir::TFTPU::TPUBridge(module, /*enable_logging=*/VLOG_IS_ON(1)));
-  } else if (options.tpu_target == TfrtTpuInfraTarget::kTfFallback) {
+  } else if (options.device_target == TfrtDeviceInfraTarget::kTfFallback) {
     auto tpu_partitioned_call_fallback_compat_result =
         tensorflow::RunTPUPartitionedCallFallbackCompatConversion(module);
     if (mlir::failed(tpu_partitioned_call_fallback_compat_result)) {
@@ -114,16 +116,17 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
 
   // TODO(b/187991150): Consider only decomposing read-only resource variable
   // ops.
-  pass_options.decompose_resource_ops = true;
+  pass_options.decompose_resource_ops = options.decompose_resource_ops;
   pass_options.enable_optimizer = options.enable_optimizer;
-  pass_options.enable_native_ops = options.enable_native_ops;
   pass_options.target_tpurt =
-      (options.tpu_target == TfrtTpuInfraTarget::kTpurt);
+      (options.device_target == TfrtDeviceInfraTarget::kTpurt);
   pass_options.tpu_fuse_ops = options.tpu_fuse_ops;
   pass_options.use_tpu_host_allocator_for_inputs =
       options.use_tpu_host_allocator_for_inputs;
   pass_options.hoist_invariant_ops = options.hoist_invariant_ops;
   pass_options.func_use_fallback_tensor = true;
+  pass_options.enable_while_parallel_iterations =
+      options.enable_while_parallel_iterations;
   pass_options.auto_fusion_oplist = options.auto_fusion_oplist;
   pass_options.auto_fusion_min_cluster_size =
       options.auto_fusion_min_cluster_size;
@@ -149,7 +152,7 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
 
   bef_buffer->shrink_to_fit();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

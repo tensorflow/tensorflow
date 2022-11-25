@@ -86,7 +86,6 @@ void CoreMlDelegateKernel::AddInputTensors(const TfLiteIntArray* input_tensors,
   int num_inputs = 0;
   for (int i = 0; i < input_tensors->size; ++i) {
     const int tensor_id = input_tensors->data[i];
-    const auto& tensor = context->tensors[tensor_id];
     builder_->AddTensorWithID(tensor_id, delegates::coreml::TensorID(0, num_inputs++));
   }
 }

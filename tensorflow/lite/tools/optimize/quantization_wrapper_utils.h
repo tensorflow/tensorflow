@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_QUANTIZATION_WRAPPER_UTILS_H_
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_QUANTIZATION_WRAPPER_UTILS_H_
 
+#include <string>
+
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"

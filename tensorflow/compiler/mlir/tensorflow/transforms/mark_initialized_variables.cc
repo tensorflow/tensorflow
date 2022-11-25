@@ -48,7 +48,7 @@ bool IsVariableInitialized(mlir::TF::VarHandleOp var_handle_op,
   return is_initialized;
 }
 
-LogicalResult MarkInitializedVariablesInFunction(FuncOp function,
+LogicalResult MarkInitializedVariablesInFunction(func::FuncOp function,
                                                  tensorflow::Session* session) {
   if (!session || !llvm::hasSingleElement(function)) return success();
   Block& block = function.front();
@@ -89,10 +89,10 @@ LogicalResult MarkInitializedVariablesInFunction(FuncOp function,
 
 LogicalResult MarkInitializedVariablesInFunction(ModuleOp module,
                                                  tensorflow::Session* session) {
-  auto functions_range = module.getOps<FuncOp>();
+  auto functions_range = module.getOps<func::FuncOp>();
   return mlir::failableParallelForEach(
       module.getContext(), functions_range.begin(), functions_range.end(),
-      [&](FuncOp function) {
+      [&](func::FuncOp function) {
         return MarkInitializedVariablesInFunction(function, session);
       });
 }

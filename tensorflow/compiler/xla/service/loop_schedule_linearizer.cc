@@ -107,7 +107,7 @@ static StatusOr<bool> AddControlEdgesForLoopWrites(
       // into account.
       HloInstruction* write = value_at_root.defining_instruction();
 
-      for (const HloUse& use : value_at_input.uses()) {
+      for (const HloUse& use : value_at_input.GetUses()) {
         HloInstruction* read = use.instruction;
 
         if (read != write &&
@@ -140,12 +140,15 @@ static StatusOr<bool> AddControlEdgesForLoopWrites(
   return changed;
 }
 
-StatusOr<bool> LoopScheduleLinearizer::Run(HloModule* module) {
+StatusOr<bool> LoopScheduleLinearizer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, can_share_buffer_));
 
   bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() == HloOpcode::kWhile) {

@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for gather_nd."""
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -41,6 +41,12 @@ def make_gather_nd_tests(options):
           "params_shape": [[5, 5, 10]],
           "indices_dtype": [tf.int32, tf.int64],
           "indices_shape": [[3, 1], [2, 2], [2, 3], [2, 1, 3]],
+      },
+      {
+          "params_dtype": [tf.float32, tf.string],
+          "params_shape": [[1, 0]],
+          "indices_dtype": [tf.int64],
+          "indices_shape": [[0, 2]],
       },
   ]
 

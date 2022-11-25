@@ -29,8 +29,8 @@ limitations under the License.
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/notification.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tfrt/host_context/task_function.h"  // from @tf_runtime

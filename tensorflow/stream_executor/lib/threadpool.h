@@ -16,17 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_THREADPOOL_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_THREADPOOL_H_
 
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/stream_executor/lib/env.h"
-#include "tensorflow/stream_executor/lib/thread_options.h"
-
-namespace stream_executor {
-namespace port {
-
-using tensorflow::Thread;
-using tensorflow::thread::ThreadPool;
-
-}  // namespace port
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/lib/threadpool.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_THREADPOOL_H_

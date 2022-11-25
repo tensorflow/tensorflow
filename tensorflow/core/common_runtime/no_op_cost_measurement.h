@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NO_OP_COST_MEASUREMENT_H_
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 
 namespace tensorflow {
@@ -26,6 +27,8 @@ namespace tensorflow {
 // costs.
 class NoOpCostMeasurement : public CostMeasurement {
  public:
+  using CostMeasurement::CostMeasurement;
+
   // Always returns zero Duration as the total cost.
   absl::Duration GetTotalCost() override;
   absl::string_view GetCostType() const override;

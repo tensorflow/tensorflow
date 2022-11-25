@@ -37,10 +37,9 @@ class DeallocationTest : public ClientLibraryTestBase {
   // transferred from the device successfully.
   std::unique_ptr<GlobalData> ExecuteAndCheckTransfer(
       XlaBuilder* builder, absl::Span<GlobalData* const> arguments) {
-    XlaComputation computation = builder->Build().ConsumeValueOrDie();
+    XlaComputation computation = builder->Build().value();
     auto global_data =
-        client_->Execute(computation, arguments, &execution_options_)
-            .ConsumeValueOrDie();
+        client_->Execute(computation, arguments, &execution_options_).value();
     TF_CHECK_OK(client_->Transfer(*global_data).status());
     return global_data;
   }

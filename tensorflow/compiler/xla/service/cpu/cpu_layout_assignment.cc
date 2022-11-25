@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace cpu {
@@ -35,8 +35,8 @@ namespace cpu {
 // instruction stream.
 
 namespace {
-using absl::nullopt;
-using absl::optional;
+using std::nullopt;
+using std::optional;
 
 using ShouldMakeOperandColMajorCache =
     absl::flat_hash_map<const HloInstruction*, bool>;
@@ -158,7 +158,7 @@ Status CpuLayoutAssignment::AddBackendConstraints(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace cpu
 }  // namespace xla

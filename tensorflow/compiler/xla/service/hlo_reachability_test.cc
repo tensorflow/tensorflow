@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <set>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -217,7 +217,7 @@ TEST_F(HloReachabilityTest, ReplaceInstructions) {
       p0 = f32[28,28]{1,0} parameter(0)
       ROOT add = f32[28,28]{1,0} add(p0, p0)
     })")
-                    .ValueOrDie();
+                    .value();
   auto computation = module->entry_computation();
   auto reachability = HloReachabilityMap::Build(computation);
   auto* add = module->entry_computation()->root_instruction();

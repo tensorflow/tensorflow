@@ -76,4 +76,7 @@ enum IODataType {
 
   // Int16, not quantized
   INT16 = 19;
+
+  // Uint16, not quantized
+  UINT16 = 20;
 }

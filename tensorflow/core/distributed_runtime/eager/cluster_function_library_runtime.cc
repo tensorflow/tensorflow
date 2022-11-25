@@ -16,19 +16,18 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <utility>
+#include <variant>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
-#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
-#include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
-#include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
+#include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 
 namespace tensorflow {
 namespace eager {
@@ -127,7 +126,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
         if (status.ok()) {
           for (const auto& t : *function_rets) {
             if (t.index() == 0) {
-              rets->push_back(absl::get<Tensor>(t));
+              rets->push_back(std::get<Tensor>(t));
             } else {
               status.Update(
                   errors::Internal("Expect a Tensor as a remote function "
@@ -178,11 +177,11 @@ void EagerClusterFunctionLibraryRuntime::Run(
 
   for (const auto& arg : args) {
     if (arg.index() == 0) {
-      absl::get<Tensor>(arg).AsProtoTensorContent(
+      std::get<Tensor>(arg).AsProtoTensorContent(
           remote_op->add_op_inputs()->mutable_tensor());
     } else {
       remote_op->add_op_inputs()->mutable_remote_handle()->Swap(
-          absl::get<RemoteTensorHandle*>(arg));
+          std::get<RemoteTensorHandle*>(arg));
     }
   }
 
@@ -250,7 +249,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
             return;
           }
         }
-        done(Status::OK());
+        done(OkStatus());
       });
 }
 
