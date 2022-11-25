@@ -161,6 +161,8 @@ struct ExternalLinalgOpTilingInterface
 
 void registerGmlStTilingInterfaceExternalModels(DialectRegistry &registry) {
   registry.addExtension(+[](MLIRContext *ctx, linalg::LinalgDialect *) {
+    linalg::BroadcastOp::attachInterface<
+        ExternalLinalgOpTilingInterface<linalg::BroadcastOp>>(*ctx);
     linalg::FillOp::attachInterface<
         ExternalLinalgOpTilingInterface<linalg::FillOp>>(*ctx);
     linalg::GenericOp::attachInterface<

@@ -50,3 +50,8 @@ def TestGmlStBufferization
   let summary = "Bufferize `gml_st.loop`.";
   let constructor = "::mlir::gml_st::createTestGmlStBufferizationPass()";
 }
+
+def TestGmlStGreedyFusion : Pass<"test-gml-st-greedy-fusion", "mlir::func::FuncOp"> {
+  let summary = "Fuse ops greedily into gml-st loops.";
+  let constructor = "::mlir::gml_st::createTestGmlStGreedyFusionPass()";
+}

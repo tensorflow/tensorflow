@@ -1276,6 +1276,7 @@ cc_library(
         ":gml_st_passes",
         ":gml_st_test_passes_inc_gen",
         ":gml_st_transforms",
+        ":tiling_interface_impl",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:BufferizationDialect",
         "@llvm-project//mlir:BufferizationTransforms",

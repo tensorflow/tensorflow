@@ -19,6 +19,8 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/interfaces/bufferizable_op_interface_impl.h"
+#include "gml_st/interfaces/tiling_interface_impl.h"
+#include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -37,6 +39,7 @@ namespace {
 #define GEN_PASS_DEF_TESTGMLSTBUFFERIZATION
 #define GEN_PASS_DEF_TESTGMLSTLOOPPEELING
 #define GEN_PASS_DEF_TESTGMLSTLOOPTILING
+#define GEN_PASS_DEF_TESTGMLSTGREEDYFUSION
 #include "gml_st/transforms/test_passes.h.inc"
 
 static constexpr char kPeeledLoopsLabel[] = "__peeled_loops__";
@@ -191,6 +194,47 @@ struct TestGmlStBufferizationPass
   }
 };
 
+struct GreedyFusionPattern : public OpRewritePattern<gml_st::ParallelOp> {
+  using OpRewritePattern<gml_st::ParallelOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(gml_st::ParallelOp op,
+                                PatternRewriter &rewriter) const override {
+    if (hasTransformationAttr(op)) return failure();
+
+    rewriter.updateRootInPlace(op, [&]() {
+      fuseGreedily(rewriter, op.getRegion().front(), [](Operation *op) {
+        return isa<linalg::BroadcastOp, linalg::FillOp, linalg::MapOp>(op);
+      });
+    });
+
+    setTransformationAttr(rewriter, op);
+    return success();
+  }
+};
+
+struct TestGmlStGreedyFusionPass
+    : public impl::TestGmlStGreedyFusionBase<TestGmlStGreedyFusionPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry
+        .insert<GmlStDialect, linalg::LinalgDialect, tensor::TensorDialect>();
+    registerGmlStTilingInterfaceExternalModels(registry);
+  }
+
+  void runOnOperation() override {
+    func::FuncOp funcOp = getOperation();
+
+    MLIRContext *ctx = funcOp.getContext();
+    RewritePatternSet patterns(ctx);
+
+    patterns.add<GreedyFusionPattern>(ctx);
+
+    if (failed(applyPatternsAndFoldGreedily(funcOp, std::move(patterns))))
+      return signalPassFailure();
+
+    funcOp.walk([](gml_st::ParallelOp op) { removeTransformationAttr(op); });
+  }
+};
+
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStLoopPeelingPass() {
@@ -203,6 +247,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStLoopTilingPass() {
 
 std::unique_ptr<OperationPass<ModuleOp>> createTestGmlStBufferizationPass() {
   return std::make_unique<TestGmlStBufferizationPass>();
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStGreedyFusionPass() {
+  return std::make_unique<TestGmlStGreedyFusionPass>();
 }
 
 }  // namespace gml_st
