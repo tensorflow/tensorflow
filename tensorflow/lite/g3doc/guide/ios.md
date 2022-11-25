@@ -7,7 +7,7 @@ example:
 image classification example</a>
 
 For an explanation of the source code, you should also read
-[TensorFlow Lite iOS image classification](https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/ios/EXPLORE_THE_CODE.md).
+[TensorFlow Lite iOS image classification](https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/ios/README.md).
 
 This example app uses
 [image classification](https://www.tensorflow.org/lite/examples/image_classification/overview)
@@ -58,10 +58,10 @@ version constraint as in the above examples, CocoaPods will pull the latest
 stable release by default.
 
 You can also specify a version constraint. For example, if you wish to depend on
-version 2.0.0, you can write the dependency as:
+version 2.10.0, you can write the dependency as:
 
 ```ruby
-pod 'TensorFlowLiteSwift', '~> 2.0.0'
+pod 'TensorFlowLiteSwift', '~> 2.10.0'
 ```
 
 This will ensure the latest available 2.x.y version of the `TensorFlowLiteSwift`
