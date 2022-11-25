@@ -32,6 +32,7 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 bool isZero(Value v) { return matchPattern(v, m_Zero()); }
+bool isOne(Value v) { return matchPattern(v, m_One()); }
 namespace {
 using ::mlir::linalg::LinalgOp;
 
