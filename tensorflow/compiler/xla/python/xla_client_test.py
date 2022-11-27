@@ -852,6 +852,18 @@ def TestFactory(xla_backend,
         ops.AllToAll(ops.Constant(c, lhs), 0, 0)
         self._ExecuteAndCompareExact(c, expected=[lhs])
 
+    def testAllToAllChannelId(self):
+      c = self._NewComputation()
+
+      channel_id = self.backend.create_channel_handle()
+      channel_id.handle = 1
+      lhs = NumpyArrayF32([1.0] * 64)
+      replica_groups = [[0]]
+      replica_groups_protos = xla_client.make_replica_groups(replica_groups)
+      ret = ops.AllToAll(ops.Constant(c, lhs), 0, 0, len(replica_groups[0]),
+                         replica_groups_protos, channel_id, None, True)
+      self._ExecuteAndCompareExact(c, expected=[lhs])
+
     def testCrossReplicaSumOneReplica(self):
       samples = [
           NumpyArrayF32(42.0),
