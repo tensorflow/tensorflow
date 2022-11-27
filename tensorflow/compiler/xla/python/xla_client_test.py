@@ -2670,8 +2670,8 @@ def TestFactory(xla_backend,
       options = xla_client.CompileOptions()
       options.num_replicas = num_replicas
       compiled_c = self.backend.compile(c.build(), compile_options=options)
-      results, sharded_token = compiled_c.execute_sharded_on_local_devices_with_tokens(
-          [])
+      results, sharded_token = (
+		  compiled_c.execute_sharded_on_local_devices_with_tokens([]))
       sharded_token.block_until_ready()
       self.assertLen(results, 1)
       self.assertLen(results[0], 1)
