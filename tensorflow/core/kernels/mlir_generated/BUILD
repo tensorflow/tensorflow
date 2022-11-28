@@ -220,42 +220,80 @@ tf_kernel_library(
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
-        ":gpu_add_v2_kernels",
-        ":gpu_atan2_kernels",
-        ":gpu_bitwise_and_kernels",
-        ":gpu_bitwise_or_kernels",
-        ":gpu_bitwise_xor_kernels",
         ":gpu_complex_kernels",
-        ":gpu_div_kernels",
-        ":gpu_truncate_div_kernels",
-        ":gpu_div_no_nan_kernels",
-        ":gpu_equal_kernels",
-        ":gpu_floor_div_kernels",
-        ":gpu_floor_mod_kernels",
-        ":gpu_greater_equal_kernels",
-        ":gpu_greater_kernels",
-        ":gpu_left_shift_kernels",
-        ":gpu_less_equal_kernels",
-        ":gpu_less_kernels",
-        ":gpu_logical_and_kernels",
-        ":gpu_logical_or_kernels",
-        ":gpu_maximum_kernels",
-        ":gpu_minimum_kernels",
-        ":gpu_mul_kernels",
-        ":gpu_mul_no_nan_kernels",
-        ":gpu_not_equal_kernels",
-        ":gpu_polygamma_kernels",
-        ":gpu_pow_kernels",
-        ":gpu_right_shift_kernels",
-        ":gpu_select_v2_kernels",
-        ":gpu_squared_difference_kernels",
-        ":gpu_sub_kernels",
-        ":gpu_xdivy_kernels",
-        ":gpu_xlog1py_kernels",
-        ":gpu_xlogy_kernels",
-        ":gpu_zeta_kernels",
         "//third_party/eigen3",
-    ]),
+    ]) + if_mlir_generated_experimental_kernels_enabled(
+        [
+            ":gpu_add_v2_kernels_experimental",
+            ":gpu_atan2_kernels_experimental",
+            ":gpu_bitwise_and_kernels_experimental",
+            ":gpu_bitwise_or_kernels_experimental",
+            ":gpu_bitwise_xor_kernels_experimental",
+            ":gpu_div_kernels_experimental",
+            ":gpu_truncate_div_kernels_experimental",
+            ":gpu_div_no_nan_kernels_experimental",
+            ":gpu_equal_kernels_experimental",
+            ":gpu_floor_div_kernels_experimental",
+            ":gpu_floor_mod_kernels_experimental",
+            ":gpu_greater_equal_kernels_experimental",
+            ":gpu_greater_kernels_experimental",
+            ":gpu_left_shift_kernels_experimental",
+            ":gpu_less_equal_kernels_experimental",
+            ":gpu_less_kernels_experimental",
+            ":gpu_logical_and_kernels_experimental",
+            ":gpu_logical_or_kernels_experimental",
+            ":gpu_maximum_kernels_experimental",
+            ":gpu_minimum_kernels_experimental",
+            ":gpu_mul_kernels_experimental",
+            ":gpu_mul_no_nan_kernels_experimental",
+            ":gpu_not_equal_kernels_experimental",
+            ":gpu_polygamma_kernels_experimental",
+            ":gpu_pow_kernels_experimental",
+            ":gpu_right_shift_kernels_experimental",
+            ":gpu_select_v2_kernels_experimental",
+            ":gpu_squared_difference_kernels_experimental",
+            ":gpu_sub_kernels_experimental",
+            ":gpu_xdivy_kernels_experimental",
+            ":gpu_xlog1py_kernels_experimental",
+            ":gpu_xlogy_kernels_experimental",
+            ":gpu_zeta_kernels_experimental",
+        ],
+        [
+            ":gpu_add_v2_kernels",
+            ":gpu_atan2_kernels",
+            ":gpu_bitwise_and_kernels",
+            ":gpu_bitwise_or_kernels",
+            ":gpu_bitwise_xor_kernels",
+            ":gpu_div_kernels",
+            ":gpu_truncate_div_kernels",
+            ":gpu_div_no_nan_kernels",
+            ":gpu_equal_kernels",
+            ":gpu_floor_div_kernels",
+            ":gpu_floor_mod_kernels",
+            ":gpu_greater_equal_kernels",
+            ":gpu_greater_kernels",
+            ":gpu_left_shift_kernels",
+            ":gpu_less_equal_kernels",
+            ":gpu_less_kernels",
+            ":gpu_logical_and_kernels",
+            ":gpu_logical_or_kernels",
+            ":gpu_maximum_kernels",
+            ":gpu_minimum_kernels",
+            ":gpu_mul_kernels",
+            ":gpu_mul_no_nan_kernels",
+            ":gpu_not_equal_kernels",
+            ":gpu_polygamma_kernels",
+            ":gpu_pow_kernels",
+            ":gpu_right_shift_kernels",
+            ":gpu_select_v2_kernels",
+            ":gpu_squared_difference_kernels",
+            ":gpu_sub_kernels",
+            ":gpu_xdivy_kernels",
+            ":gpu_xlog1py_kernels",
+            ":gpu_xlogy_kernels",
+            ":gpu_zeta_kernels",
+        ],
+    ),
 )
 
 tf_kernel_library(
@@ -818,6 +856,17 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_polygamma_kernels_experimental",
+    op = "polygamma",
+    tile_size = "256",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f32",
+        "f64",
+    ],
+    types = [],
+)
+
+gpu_kernel_library(
     name = "gpu_digamma_kernels",
     op = "digamma",
     tile_size = "256",
@@ -911,6 +960,20 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_squared_difference_kernels_experimental",
+    op = "squared_difference",
+    tile_size = "1024",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+    ],
+    types = [],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
     name = "gpu_add_v2_kernels",
     op = "add_v2",
     tile_size = "1024",
@@ -926,6 +989,25 @@ gpu_kernel_library(
         "c128",
     ],
     unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_add_v2_kernels_experimental",
+    op = "add_v2",
+    tile_size = "1024",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "4",
+    types=[],
 )
 
 gpu_kernel_library(
@@ -947,6 +1029,27 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_sub_kernels_experimental",
+    op = "sub",
+    tile_size = "1024",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "i32",
+        "i64",
+        "c64",
+        "c128",
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+    ],
+    types = [],
     unroll_factors = "4",
 )
 
@@ -1003,8 +1106,42 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_div_kernels_experimental",
+    op = "div",
+    tile_size = "1024",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "i16",
+        "i64",
+        "ui8",
+        "ui16",
+        "c64",
+        "c128",
+        "i8",
+        "ui32",
+        "ui64",
+    ],
+    types = [],
+    unroll_factors = "16B",
+)
+
+gpu_kernel_library(
     name = "gpu_truncate_div_kernels",
     jit_types = [
+        "i8",
+        "ui32",
+        "ui64",
+    ],
+    op = "truncate_div",
+    tile_size = "1024",
+    types = [],
+)
+
+gpu_kernel_library(
+    name = "gpu_truncate_div_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
         "i8",
         "ui32",
         "ui64",
@@ -1039,6 +1176,31 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_mul_kernels_experimental",
+    op = "mul",
+    tile_size = "1024",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+    ],
+    types=[],
+    unroll_factors = "4",
+    # For complex MulOp kernels, we don't use unrolling, it would only cause
+    # slowdowns.
+    unroll_factors_override = {
+        "c64": None,
+        "c128": None,
+    },
+)
+
+gpu_kernel_library(
     name = "gpu_mul_no_nan_kernels",
     op = "mul_no_nan",
     tile_size = "1024",
@@ -1049,6 +1211,27 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+    unroll_factors = "4",
+    # For complex MulNoNanOp kernels, we don't use unrolling, it would only
+    # cause slowdowns.
+    unroll_factors_override = {
+        "c64": None,
+        "c128": None,
+    },
+)
+
+gpu_kernel_library(
+    name = "gpu_mul_no_nan_kernels_experimental",
+    op = "mul_no_nan",
+    tile_size = "1024",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
+    types=[],
     unroll_factors = "4",
     # For complex MulNoNanOp kernels, we don't use unrolling, it would only
     # cause slowdowns.
@@ -1081,6 +1264,28 @@ gpu_kernel_library(
     ]
 ]
 
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels_experimental",
+        op = op,
+        tile_size = "1024",
+        jit_i64_indexed_for_large_tensors_types = [
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+        ],
+        types=[],
+        unroll_factors = "4",
+    )
+    for op in [
+        "bitwise_and",
+        "bitwise_or",
+        "bitwise_xor",
+        "left_shift",
+    ]
+]
+
 gpu_kernel_library(
     name = "gpu_right_shift_kernels",
     op = "right_shift",
@@ -1099,6 +1304,24 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_right_shift_kernels_experimental",
+    op = "right_shift",
+    tile_size = "1024",
+    jit_i64_indexed_for_large_tensors_types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
+    types=[],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
     name = "gpu_atan2_kernels",
     op = "atan2",
     tile_size = "256",
@@ -1110,6 +1333,19 @@ gpu_kernel_library(
     unroll_factors = "4",
 )
 
+gpu_kernel_library(
+    name = "gpu_atan2_kernels_experimental",
+    op = "atan2",
+    tile_size = "256",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+    types=[],
+)
+
 # Logical operations.
 [
     gpu_kernel_library(
@@ -1119,6 +1355,22 @@ gpu_kernel_library(
         types = [
             "i1",
         ],
+    )
+    for op in [
+        "logical_and",
+        "logical_or",
+    ]
+]
+
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels_experimental",
+        op = op,
+        tile_size = "1024",
+        jit_i64_indexed_for_large_tensors_types = [
+            "i1",
+        ],
+        types=[],
     )
     for op in [
         "logical_and",
@@ -1145,6 +1397,33 @@ gpu_kernel_library(
             "i64",
         ],
         unroll_factors = "4",
+    )
+    for op in [
+        "equal",
+        "not_equal",
+    ]
+]
+
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels_experimental",
+        op = op,
+        output_types = ["i1"] * 10,
+        tile_size = "1024",
+        jit_i64_indexed_for_large_tensors_types = [
+            "c64",
+            "c128",
+            "f16",
+            "f32",
+            "f64",
+            "i1",
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+        ],
+        unroll_factors = "4",
+        types=[],
     )
     for op in [
         "equal",
@@ -1182,6 +1461,35 @@ gpu_kernel_library(
 
 [
     gpu_kernel_library(
+        name = "gpu_" + op + "_kernels_experimental",
+        op = op,
+        output_types = ["i1"] * 10,
+        tile_size = "1024",
+        jit_i64_indexed_for_large_tensors_types = [
+            "f16",
+            "f32",
+            "f64",
+            "i8",
+            "i16",
+            "i64",
+            "ui8",
+            "ui16",
+            "ui32",
+            "ui64",
+        ],
+        types=[],
+        unroll_factors = "4",
+    )
+    for op in [
+        "less",
+        "less_equal",
+        "greater",
+        "greater_equal",
+    ]
+]
+
+[
+    gpu_kernel_library(
         name = "gpu_" + op + "_kernels",
         jit_types = [
             "i8",
@@ -1199,6 +1507,32 @@ gpu_kernel_library(
             "i64",
             "ui8",
         ],
+        unroll_factors = "4",
+    )
+    for op in [
+        "maximum",
+        "minimum",
+    ]
+]
+
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels_experimental",
+        op = op,
+        tile_size = "1024",
+        jit_i64_indexed_for_large_tensors_types = [
+            "f16",
+            "f32",
+            "f64",
+            "i16",
+            "i64",
+            "ui8",
+            "i8",
+            "ui16",
+            "ui32",
+            "ui64",
+        ],
+        types=[],
         unroll_factors = "4",
     )
     for op in [
@@ -1245,6 +1579,24 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_floor_div_kernels_experimental",
+    op = "floor_div",
+    tile_size = "1024",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "i16",
+        "i64",
+        "f64",
+        "i8",
+        "ui32",
+        "ui64",
+    ],
+    types=[],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
     name = "gpu_floor_mod_kernels",
     jit_types = [
         "i8",
@@ -1261,6 +1613,26 @@ gpu_kernel_library(
     op = "floor_mod",
     tile_size = "1024",
     types = [],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_floor_mod_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "i8",
+        "i16",
+        "i64",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+        "f16",
+        "f32",
+        "f64",
+    ],
+    types=[],
+    op = "floor_mod",
+    tile_size = "1024",
     unroll_factors = "4",
 )
 
@@ -1400,6 +1772,21 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_pow_kernels_experimental",
+    op = "pow",
+    tile_size = "1024",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+        "i8",
+        "i16",
+    ],
+    types = [],
+)
+
+gpu_kernel_library(
     # The zeta kernels needs many registers so tile at 256.
     name = "gpu_zeta_kernels",
     op = "zeta",
@@ -1408,6 +1795,20 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
+    # TODO(b/178388085): Enable unrolling after vectorization is fixed.
+    # unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    # The zeta kernels needs many registers so tile at 256.
+    name = "gpu_zeta_kernels_experimental",
+    op = "zeta",
+    tile_size = "256",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f32",
+        "f64",
+    ],
+    types = [],
     # TODO(b/178388085): Enable unrolling after vectorization is fixed.
     # unroll_factors = "4",
 )
@@ -1438,6 +1839,30 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_select_v2_kernels_experimental",
+    max_supported_rank = 8,
+    op = "select_v2",
+    tile_size = "256",
+    jit_i64_indexed_for_large_tensors_types = [
+        "i1",
+        "i32",
+        "i64",
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
+    types = [],
+)
+
+gpu_kernel_library(
     name = "gpu_xlogy_kernels",
     op = "xlogy",
     tile_size = "1024",
@@ -1448,6 +1873,27 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+    unroll_factors = "4",
+    # For complex XlogyOp kernels, we don't use unrolling, it would only cause
+    # slowdowns.
+    unroll_factors_override = {
+        "c64": None,
+        "c128": None,
+    },
+)
+
+gpu_kernel_library(
+    name = "gpu_xlogy_kernels_experimental",
+    op = "xlogy",
+    tile_size = "1024",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
+    types = [],
     unroll_factors = "4",
     # For complex XlogyOp kernels, we don't use unrolling, it would only cause
     # slowdowns.
@@ -1472,6 +1918,21 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_xdivy_kernels_experimental",
+    op = "xdivy",
+    tile_size = "1024",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
+    types = [],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
     name = "gpu_xlog1py_kernels",
     op = "xlog1py",
     tile_size = "1024",
@@ -1492,6 +1953,27 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_xlog1py_kernels_experimental",
+    op = "xlog1py",
+    tile_size = "1024",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
+    types = [],
+    unroll_factors = "4",
+    # For complex Xlog1pyOp kernels, we don't use unrolling, it would only cause
+    # slowdowns.
+    unroll_factors_override = {
+        "c64": None,
+        "c128": None,
+    },
+)
+
+gpu_kernel_library(
     name = "gpu_div_no_nan_kernels",
     op = "div_no_nan",
     tile_size = "1024",
@@ -1502,6 +1984,20 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+)
+
+gpu_kernel_library(
+    name = "gpu_div_no_nan_kernels_experimental",
+    op = "div_no_nan",
+    tile_size = "1024",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
+    types = [],
 )
 
 gpu_kernel_library(
