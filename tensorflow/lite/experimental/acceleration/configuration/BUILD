@@ -145,7 +145,7 @@ cc_library(
     hdrs = ["delegate_registry.h"],
     deps = [
         ":configuration_fbs",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
         "@com_google_absl//absl/synchronization",
     ],
@@ -181,7 +181,7 @@ cc_library(
     deps = [
         ":configuration_fbs",
         ":delegate_registry",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/experimental/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/nnapi:nnapi_implementation_headers",
@@ -203,8 +203,8 @@ cc_test(
         ":delegate_registry",
         ":nnapi_plugin",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate_mock_test",
         "//tensorflow/lite/kernels:test_util",

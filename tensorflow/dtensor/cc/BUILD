@@ -62,6 +62,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -318,4 +319,18 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_platform_interface",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_topology_external",
     ] + tf_dtensor_tpu_dependencies(),
+)
+
+cc_library(
+    name = "layout_to_xla_sharding",
+    srcs = ["xla_spmd/layout_to_xla_sharding.cc"],
+    hdrs = ["xla_spmd/layout_to_xla_sharding.h"],
+    deps = [
+        ":constants",
+        ":dstatus",
+        ":tensor_layout",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+    ],
 )

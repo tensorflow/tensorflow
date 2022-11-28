@@ -33,7 +33,8 @@ constexpr int kVersion = 1;
 
 Status LoadAutotuneResults(absl::string_view data) {
   AutotuneResults results;
-  if (!results.ParseFromString(data)) {
+  // The cast here is necessary for MacOS builds.
+  if (!results.ParseFromString(std::string(data))) {  // NOLINT
     return tsl::errors::InvalidArgument(
         "Failed to parse autotune results string.");
   }

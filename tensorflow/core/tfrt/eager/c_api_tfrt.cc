@@ -369,16 +369,16 @@ tensorflow::DataType TensorHandleInterface::DataType() const {
   // If dtype_ field is set, use it instead of waiting for the underlying
   // TensorHandle's metadata to be available.
   if (dtype_) {
-    return dtype_.getValue();
+    return dtype_.value();
   }
   auto metadata = Metadata();
-  if (!metadata.hasValue()) {
+  if (!metadata.has_value()) {
     LOG(ERROR)
         << "Failed to get DataType due to error metadata: "
         << value_.get<TensorHandle>().GetAsyncMetadata().GetError().message();
     return tensorflow::DT_INVALID;
   }
-  auto kind = metadata.getValue()->dtype;
+  auto kind = metadata.value()->dtype;
   if (kind == DType::Unsupported) {
     AsyncValue* async_tensor = value_.get<TensorHandle>().GetAsyncTensor();
     if (!async_tensor->IsAvailable()) {
@@ -403,7 +403,7 @@ tensorflow::Status TensorHandleInterface::TensorHandleStatus() const {
     return ::tensorflow::OkStatus();
   } else {
     auto metadata = Metadata();
-    if (!metadata.hasValue()) {
+    if (!metadata.has_value()) {
       LOG(ERROR)
           << "Metadata in the tensor handle is an error metadata: "
           << value_.get<TensorHandle>().GetAsyncMetadata().GetError().message();
@@ -429,27 +429,27 @@ tensorflow::Status TensorHandleInterface::TensorHandleStatus() const {
 tensorflow::Status TensorHandleInterface::Shape(
     tensorflow::PartialTensorShape* shape) const {
   auto metadata = Metadata();
-  if (!metadata.hasValue()) {
+  if (!metadata.has_value()) {
     return tensorflow::FromAbslStatus(
         value_.get<TensorHandle>().GetAsyncMetadata().GetError());
   }
-  int num_dims = metadata.getValue()->shape.GetRank();
+  int num_dims = metadata.value()->shape.GetRank();
   if (num_dims == -1) {
     return ::tensorflow::OkStatus();
   }
   llvm::SmallVector<Index, 8> dims;
-  metadata.getValue()->shape.GetDimensions(&dims);
+  metadata.value()->shape.GetDimensions(&dims);
   TF_RETURN_IF_ERROR(tensorflow::TensorShapeUtils::MakeShape(dims, shape));
   return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status TensorHandleInterface::NumDims(int* num_dims) const {
   auto metadata = Metadata();
-  if (!metadata.hasValue()) {
+  if (!metadata.has_value()) {
     return tensorflow::FromAbslStatus(
         value_.get<TensorHandle>().GetAsyncMetadata().GetError());
   }
-  *num_dims = metadata.getValue()->shape.GetRank();
+  *num_dims = metadata.value()->shape.GetRank();
 
   return ::tensorflow::OkStatus();
 }
@@ -457,11 +457,11 @@ tensorflow::Status TensorHandleInterface::NumDims(int* num_dims) const {
 tensorflow::Status TensorHandleInterface::NumElements(
     int64_t* num_elements) const {
   auto metadata = Metadata();
-  if (!metadata.hasValue()) {
+  if (!metadata.has_value()) {
     return tensorflow::FromAbslStatus(
         value_.get<TensorHandle>().GetAsyncMetadata().GetError());
   }
-  *num_elements = metadata.getValue()->shape.GetNumElements();
+  *num_elements = metadata.value()->shape.GetNumElements();
 
   return ::tensorflow::OkStatus();
 }
@@ -469,11 +469,11 @@ tensorflow::Status TensorHandleInterface::NumElements(
 tensorflow::Status TensorHandleInterface::Dim(int dim_index,
                                               int64_t* dim) const {
   auto metadata = Metadata();
-  if (!metadata.hasValue()) {
+  if (!metadata.has_value()) {
     return tensorflow::FromAbslStatus(
         value_.get<TensorHandle>().GetAsyncMetadata().GetError());
   }
-  *dim = metadata.getValue()->shape.GetDimensionSize(dim_index);
+  *dim = metadata.value()->shape.GetDimensionSize(dim_index);
 
   return ::tensorflow::OkStatus();
 }
@@ -574,10 +574,9 @@ llvm::Optional<const TensorMetadata*> TensorHandleInterface::Metadata() const {
 ContextInterface::ContextInterface(
     const tensorflow::SessionOptions& opts,
     tensorflow::ContextDevicePlacementPolicy default_device_placement_policy,
-    bool is_async, bool use_tfrt_distributed_runtime)
+    bool is_async)
     : ImmediateExecutionContext(kTfrt),
-      context_(opts, default_device_placement_policy, is_async),
-      use_tfrt_distributed_runtime_(use_tfrt_distributed_runtime) {
+      context_(opts, default_device_placement_policy, is_async) {
   LOG(INFO) << "TFRT Enabled";
   metrics::AddTFRTVersionMetric();
 
@@ -619,7 +618,7 @@ static TensorInterface* MakeScalarTensor(T value, HostContext* host) {
     LOG(ERROR) << "Failed to create DenseHostTensor";
     return nullptr;
   }
-  auto& dht = t.getValue();
+  auto& dht = t.value();
   MutableDHTArrayView<T> view{&dht};
   view.Elements()[0] = value;
 
@@ -743,7 +742,7 @@ tensorflow::AbstractTensorInterface* ContextInterface::CreateTensor(
   } else {
     auto t = DenseHostTensor::CreateUninitialized(md, GetHostContext());
     return new TensorInterface(
-        MakeAvailableAsyncValueRef<DenseHostTensor>(std::move(t.getValue())));
+        MakeAvailableAsyncValueRef<DenseHostTensor>(std::move(t.value())));
   }
 }
 
@@ -952,9 +951,6 @@ void ContextInterface::EndStep() { GetEagerContext()->EndStep(); }
 
 tensorflow::Status ContextInterface::EnableCollectiveOps(
     const tensorflow::ServerDef& server_def) {
-  if (use_tfrt_distributed_runtime_) {
-    return distributed_manager_->EnableCollectiveOps(server_def);
-  }
   // Preserve the local virtual device names, since local virtual devices are
   // added by TFRT and we need to add it back after worker server is
   // initialized. Currently one such use case is the TPU_SYSTEM device, which
@@ -1279,8 +1275,8 @@ bool OpAttrsInterface::GetType(absl::string_view attr_name,
                                tensorflow::DataType* result) const {
   auto optional_type =
       attrs_->GetOptional<OpAttrType>({attr_name.data(), attr_name.size()});
-  if (!optional_type.hasValue()) return false;
-  *result = tensorflow::tfd::ConvertToTfDataType(optional_type.getValue());
+  if (!optional_type.has_value()) return false;
+  *result = tensorflow::tfd::ConvertToTfDataType(optional_type.value());
   return true;
 }
 

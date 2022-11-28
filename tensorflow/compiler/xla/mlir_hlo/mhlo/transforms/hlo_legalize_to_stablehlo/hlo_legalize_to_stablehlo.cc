@@ -160,6 +160,12 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
       if (dimensionNumbers.find('?') != std::string::npos) return failure();
     }
 
+    if constexpr (std::is_same<HloOpTy, mhlo::AllToAllOp>::value) {
+      // StableHLO AllToAll doesn't support the tuple form yet.
+      // Proposal: https://github.com/openxla/stablehlo/issues/574.
+      if (hloOp.getNumOperands() != 1) return failure();
+    }
+
     // Convert MHLO types to StableHLO equivalents.
     // If a type is not defined in MHLO, then it is unchanged,
     // with the exception of RankedTensorType and TupleType which are

@@ -1275,7 +1275,8 @@ class _EagerTensorBase(Tensor):
     """Returns the number of Tensor dimensions."""
     return self.shape.ndims
 
-  @deprecation.deprecated(None, "Use tf.identity instead.")
+  @deprecation.deprecated(
+      None, "Use tf.identity with explicit device placement instead.")
   def cpu(self):
     """A copy of this Tensor with contents backed by host memory."""
     return self._copy(context.context(), "CPU:0")

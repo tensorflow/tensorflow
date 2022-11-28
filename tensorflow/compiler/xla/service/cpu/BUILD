@@ -214,6 +214,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/service/cpu/runtime:collectives",
         "//tensorflow/compiler/xla/service/cpu/runtime:custom_call",
+        "//tensorflow/compiler/xla/service/cpu/runtime:fft_call",
         "//tensorflow/compiler/xla/service/cpu/runtime:xfeed",
         "//tensorflow/compiler/xla/service:stochastic_convert_decomposer",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
@@ -333,13 +334,13 @@ cc_library(
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ] + select({
-        "//tensorflow:arm_any": [
+        "//tensorflow/tsl:arm_any": [
             "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
         ],
-        "//tensorflow:linux_ppc64le": [
+        "//tensorflow/tsl:linux_ppc64le": [
             "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
         ],
-        "//tensorflow:macos_arm64": [
+        "//tensorflow/tsl:macos_arm64": [
             "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
         ],
         "//conditions:default": [

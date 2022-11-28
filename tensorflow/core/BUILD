@@ -69,6 +69,7 @@ load(
     "if_ios",
     "if_libtpu",
     "if_mobile",
+    "if_nccl",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -79,7 +80,7 @@ load(
     "tf_opts_nortti_if_lite_protos",
     "transitive_hdrs",
 )
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "if_nccl", "tensorflow_opensource_extra_deps", "tf_monitoring_framework_deps", "tf_selective_registration_deps")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tensorflow_opensource_extra_deps", "tf_monitoring_framework_deps", "tf_selective_registration_deps")
 
 # For platform specific build config
 load(
@@ -88,7 +89,6 @@ load(
     "tf_additional_test_deps",
     "tf_dtensor_tpu_dependencies",
     "tf_jspb_proto_library",
-    "tf_kernel_tests_linkstatic",
     "tf_lib_proto_parsing_deps",
     "tf_portable_deps_no_runtime",
     "tf_portable_proto_lib",
@@ -1961,7 +1961,6 @@ tf_cc_tests(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":core",
         ":core_cpu",

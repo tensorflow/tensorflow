@@ -98,8 +98,7 @@ void ColocateCompositeResourceOpsInReplicate(
     tf_device::ReplicateOp replicate_op, OpBuilder* builder) {
   auto devices = replicate_op.getDevices();
   if (!devices) return;
-  if (!devices.getValue().get(tensorflow::GetDeviceAliasForLogicalCore(0)))
-    return;
+  if (!devices.value().get(tensorflow::GetDeviceAliasForLogicalCore(0))) return;
 
   const auto composite_resource_users =
       GetResourceOpsUsingCompositeArgsInReplicate(replicate_op);

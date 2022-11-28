@@ -1819,6 +1819,15 @@ func.func @op_add_dependency(%arg0: tensor<16xf32>, %arg1: !mhlo.token) -> tenso
 
 // -----
 
+func.func private @op_all_to_all_tuple(%arg0: tensor<128x4xf32>,
+    %arg1: tensor<128x4xf32>) -> (tensor<128x4xf32>, tensor<128x4xf32>) {
+  // expected-error@+1 {{failed to legalize operation 'mhlo.all_to_all' that was explicitly marked illegal}}
+  %0:2 = "mhlo.all_to_all"(%arg0, %arg1) {replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>} : (tensor<128x4xf32>, tensor<128x4xf32>) -> (tensor<128x4xf32>, tensor<128x4xf32>)
+  return %0#0, %0#1 : tensor<128x4xf32>, tensor<128x4xf32>
+}
+
+// -----
+
 func.func @async_computation(%arg0: tensor<16xf32>) -> tensor<16xf32>
   attributes {execution_thread = "main"} {
   return %arg0 : tensor<16xf32>

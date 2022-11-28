@@ -422,7 +422,8 @@ def _set_dtensor_device(device: dtensor_device.DTensorDevice) -> None:
 def _dtensor_device() -> dtensor_device.DTensorDevice:
   with _dtensor_singleton_lock:
     if _dtensor_singleton is None:
-      _set_dtensor_device(dtensor_device.DTensorDevice(meshes=[]))
+      _set_dtensor_device(
+          dtensor_device.DTensorDevice(meshes=[], is_async=False))
   return _dtensor_singleton
 
 

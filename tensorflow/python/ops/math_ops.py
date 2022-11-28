@@ -3636,7 +3636,7 @@ def matmul(a,
       for some support for `tf.sparse.SparseTensor` multiplication.
     b_is_sparse: If `True`, `b` is treated as a sparse matrix. Notice, this
       **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
-      that assume most values in `a` are zero.
+      that assume most values in `b` are zero.
       See `tf.sparse.sparse_dense_matmul`
       for some support for `tf.sparse.SparseTensor` multiplication.
     output_type: The output datatype if needed. Defaults to None in which case

@@ -543,7 +543,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
       with self.cached_session():
         t = gen_nn_ops.avg_pool(
             value=np.ones([1, 1, 1, 1]),
-            ksize=[1, 1e20, 1, 1],
+            ksize=[1, 9223372036854775807, 1, 1],
             strides=[1, 1, 1, 1],
             padding="SAME",
             data_format="NHWC")

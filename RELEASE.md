@@ -30,11 +30,6 @@
 
 # Major Features and Improvements
 
-*   `tf.math`:
-
-    *   Added `math_ops.segment_sum_v2` that takes `num_segments` as an
-        additional input for efficient implementation with XLA.
-
 *   `tf.lite`:
 
     *   Add 16-bit float type support for built-in op `fill`.

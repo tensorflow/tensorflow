@@ -864,6 +864,7 @@ def sparse_reorder(sp_input, name=None):
 
 @tf_export("sparse.reshape", v1=["sparse.reshape", "sparse_reshape"])
 @deprecation.deprecated_endpoints("sparse_reshape")
+@dispatch.add_dispatch_support
 def sparse_reshape(sp_input, shape, name=None):
   """Reshapes a `SparseTensor` to represent values in a new dense shape.
 

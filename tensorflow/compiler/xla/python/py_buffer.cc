@@ -218,7 +218,7 @@ std::pair<Status, bool> PyBuffer::CopyToRemoteDevice(
   Status status;
   bool sends_were_enqueued;
   buffer_->CopyToRemoteDevice(
-      serialized_descriptor,
+      PjRtFuture<StatusOr<std::string>>(std::string(serialized_descriptor)),
       [&done, &status, &sends_were_enqueued, &mu](Status s, bool dispatched) {
         absl::MutexLock l(&mu);
         done = true;

@@ -18,6 +18,10 @@ def c_api_visibility_allowlist():
     """Returns a list of packages that can depend on c_api."""
     return []
 
+def common_header_visibility_allowlist():
+    """Returns a list of packages that can depend on tensorflow/lite/core/c/common.h."""
+    return []
+
 def vendor_delegate_allowlist():
     """Returns a list of packages that can depend on vendor_delegate."""
     return []

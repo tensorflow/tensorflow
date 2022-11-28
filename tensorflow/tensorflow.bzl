@@ -20,8 +20,11 @@ load(
 load(
     "//tensorflow/tsl:tsl.bzl",
     "tsl_gpu_library",
+    _cc_header_only_library = "cc_header_only_library",
     _clean_dep = "clean_dep",
     _if_cuda_or_rocm = "if_cuda_or_rocm",
+    _if_nccl = "if_nccl",
+    _transitive_hdrs = "transitive_hdrs",
 )
 load(
     "@local_config_tensorrt//:build_defs.bzl",
@@ -77,6 +80,8 @@ two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 workspace_root = Label("//:WORKSPACE").workspace_root or "."
 
 clean_dep = _clean_dep
+cc_header_only_library = _cc_header_only_library
+transitive_hdrs = _transitive_hdrs
 
 def if_oss(oss_value, google_value = []):
     """Returns one of the arguments based on the non-configurable build env.
@@ -294,12 +299,7 @@ def if_override_eigen_strong_inline(a):
         "//conditions:default": [],
     })
 
-def if_nccl(if_true, if_false = []):
-    return select({
-        "//tensorflow:no_nccl_support": if_false,
-        "//tensorflow:windows": if_false,
-        "//conditions:default": if_true,
-    })
+if_nccl = _if_nccl
 
 def if_libtpu(if_true, if_false = []):
     """Shorthand for select()ing whether to build backend support for TPUs when building libtpu.so"""
@@ -733,7 +733,7 @@ def tf_cc_shared_object(
             name + longsuffix,
         )]
 
-    testonly = kwargs.pop("testonly", default = False)
+    testonly = kwargs.pop("testonly", False)
 
     for name_os, name_os_major, name_os_full in names:
         # Windows DLLs cant be versioned
@@ -1932,97 +1932,6 @@ def _get_repository_roots(ctx, files):
                 result[root] = 0
             result[root] -= 1
     return [k for v, k in sorted([(v, k) for k, v in result.items()])]
-
-# Bazel rule for collecting the header files that a target depends on.
-def _transitive_hdrs_impl(ctx):
-    outputs = _get_transitive_headers([], ctx.attr.deps)
-    return struct(files = outputs)
-
-_transitive_hdrs = rule(
-    attrs = {
-        "deps": attr.label_list(
-            allow_files = True,
-            providers = [CcInfo],
-        ),
-    },
-    implementation = _transitive_hdrs_impl,
-)
-
-def transitive_hdrs(name, deps = [], **kwargs):
-    _transitive_hdrs(name = name + "_gather", deps = deps)
-    native.filegroup(name = name, srcs = [":" + name + "_gather"])
-
-# Bazel rule for collecting the transitive parameters from a set of dependencies into a library.
-# Propagates defines and includes.
-def _transitive_parameters_library_impl(ctx):
-    defines = depset(
-        transitive = [dep[CcInfo].compilation_context.defines for dep in ctx.attr.original_deps],
-    )
-    system_includes = depset(
-        transitive = [dep[CcInfo].compilation_context.system_includes for dep in ctx.attr.original_deps],
-    )
-    includes = depset(
-        transitive = [dep[CcInfo].compilation_context.includes for dep in ctx.attr.original_deps],
-    )
-    quote_includes = depset(
-        transitive = [dep[CcInfo].compilation_context.quote_includes for dep in ctx.attr.original_deps],
-    )
-    framework_includes = depset(
-        transitive = [dep[CcInfo].compilation_context.framework_includes for dep in ctx.attr.original_deps],
-    )
-    return CcInfo(
-        compilation_context = cc_common.create_compilation_context(
-            defines = depset(direct = defines.to_list()),
-            system_includes = depset(direct = system_includes.to_list()),
-            includes = depset(direct = includes.to_list()),
-            quote_includes = depset(direct = quote_includes.to_list()),
-            framework_includes = depset(direct = framework_includes.to_list()),
-        ),
-    )
-
-_transitive_parameters_library = rule(
-    attrs = {
-        "original_deps": attr.label_list(
-            allow_empty = True,
-            allow_files = True,
-            providers = [CcInfo],
-        ),
-    },
-    implementation = _transitive_parameters_library_impl,
-)
-
-# Create a header only library that includes all the headers exported by
-# the libraries in deps.
-#
-# **NOTE**: The headers brought in are **NOT** fully transitive; certain
-# deep headers may be missing.  If this creates problems, you must find
-# a header-only version of the cc_library rule you care about and link it
-# *directly* in addition to your use of the cc_header_only_library
-# intermediary.
-#
-# For:
-#   * Eigen: it's a header-only library.  Add it directly to your deps.
-#   * GRPC: add a direct dep on @com_github_grpc_grpc//:grpc++_public_hdrs.
-#
-def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], compatible_with = None, **kwargs):
-    _transitive_hdrs(
-        name = name + "_gather",
-        deps = deps,
-        compatible_with = compatible_with,
-    )
-    _transitive_parameters_library(
-        name = name + "_gathered_parameters",
-        original_deps = deps,
-        compatible_with = compatible_with,
-    )
-    cc_library(
-        name = name,
-        hdrs = [":" + name + "_gather"],
-        includes = includes,
-        compatible_with = compatible_with,
-        deps = [":" + name + "_gathered_parameters"] + extra_deps,
-        **kwargs
-    )
 
 def tf_custom_op_library_additional_deps():
     return [

@@ -51,14 +51,14 @@ Value transposeReshape(Value arg, Location loc,
   int64_t leftSize = 1;
   for (auto dim : leftDims) {
     leftSize = (ShapedType::isDynamic(argShape[dim]) || leftSize < 0)
-                   ? ShapedType::kDynamicSize
+                   ? ShapedType::kDynamic
                    : leftSize * argShape[dim];
   }
 
   int64_t rightSize = 1;
   for (auto dim : rightDims) {
     rightSize = (ShapedType::isDynamic(argShape[dim]) || rightSize < 0)
-                    ? ShapedType::kDynamicSize
+                    ? ShapedType::kDynamic
                     : rightSize * argShape[dim];
   }
 

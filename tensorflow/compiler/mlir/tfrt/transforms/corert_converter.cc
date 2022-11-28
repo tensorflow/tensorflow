@@ -31,7 +31,6 @@ limitations under the License.
 #include "tfrt/core_runtime/opdefs/attributes.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/core_runtime.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/types.h"  // from @tf_runtime
-#include "tfrt/distributed_runtime/opdefs/kernels.h"  // from @tf_runtime
 
 namespace tensorflow {
 

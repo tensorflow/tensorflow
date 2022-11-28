@@ -1551,18 +1551,31 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtStreamExecutorBuffer::CopyToDevice(
 }
 
 void PjRtStreamExecutorBuffer::CopyToRemoteDevice(
-    absl::string_view serialized_descriptor, RemoteSendCallback on_done) {
+    PjRtFuture<StatusOr<std::string>> serialized_descriptor,
+    RemoteSendCallback on_done) {
   VLOG(1) << "PjRtStreamExecutorBuffer::CopyToRemoteDevice";
-  client_->CopyToRemoteDevice(this, serialized_descriptor, std::move(on_done));
+  auto desc = serialized_descriptor.Await();
+  if (desc.ok()) {
+    client_->CopyToRemoteDevice(this, *desc, std::move(on_done));
+  } else {
+    on_done(desc.status(), /*sends_enqueued=*/false);
+  }
 }
 
 void PjRtStreamExecutorBuffer::CopyToRemoteDeviceScattered(
-    absl::Span<const std::pair<std::string, RemoteSendCallback>>
-        serialized_descriptors_and_callbacks,
+    PjRtFuture<StatusOr<std::vector<std::string>>> serialized_descriptors,
+    std::vector<RemoteSendCallback> callbacks,
     const ScatterDetails& scatter_details) {
   VLOG(1) << "PjRtStreamExecutorBuffer::CopyToRemoteDeviceScattered";
-  client_->CopyToRemoteDeviceScattered(
-      this, serialized_descriptors_and_callbacks, scatter_details);
+  auto res = serialized_descriptors.Await();
+  if (res.ok()) {
+    client_->CopyToRemoteDeviceScattered(this, *std::move(res),
+                                         std::move(callbacks), scatter_details);
+  } else {
+    for (const auto& cb : callbacks) {
+      cb(res.status(), /*sends_enqueued=*/false);
+    }
+  }
 }
 
 PjRtFuture<Status> PjRtStreamExecutorBuffer::GetReadyFuture() {

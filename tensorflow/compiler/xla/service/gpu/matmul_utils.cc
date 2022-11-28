@@ -347,7 +347,7 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   int64_t compute_precision = 0;  // Default
   if (op.getPrecisionConfig().has_value()) {
     auto precision_config = op.getPrecisionConfig();
-    for (auto attr : precision_config.getValue()) {
+    for (auto attr : precision_config.value()) {
       int64_t value = static_cast<int64_t>(
           attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
       if (value > compute_precision) {
@@ -661,9 +661,9 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
   mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
 
   int64_t compute_precision = 0;  // Default
-  if (op.getPrecisionConfig().hasValue()) {
+  if (op.getPrecisionConfig().has_value()) {
     auto precision_config = op.getPrecisionConfig();
-    for (auto attr : precision_config.getValue()) {
+    for (auto attr : precision_config.value()) {
       int64_t value = static_cast<int64_t>(
           attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
       if (value > compute_precision) {

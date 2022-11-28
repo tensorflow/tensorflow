@@ -17,6 +17,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//third_party/eigen3",
     ],
 )
@@ -31,6 +32,7 @@ cc_test(
     deps = [
         ":sparsity_format_converter",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
         "@com_google_googletest//:gtest_main",
     ],
 )

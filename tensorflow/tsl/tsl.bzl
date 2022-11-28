@@ -171,6 +171,22 @@ def if_no_default_logger(a):
         "//conditions:default": [],
     })
 
+# Enabled unless Windows or actively disabled, even without --config=cuda.
+# Combine with 'if_gpu_is_configured' (XLA) or 'if_cuda_or_rocm' (otherwise).
+def if_nccl(if_true, if_false = []):
+    return select({
+        "//tensorflow/tsl:no_nccl_support": if_false,
+        "//tensorflow/tsl:windows": if_false,
+        "//conditions:default": if_true,
+    })
+
+def if_with_tpu_support(if_true, if_false = []):
+    """Shorthand for select()ing whether to build API support for TPUs when building TSL"""
+    return select({
+        "//tensorflow/tsl:with_tpu_support": if_true,
+        "//conditions:default": if_false,
+    })
+
 def get_win_copts(is_external = False):
     WINDOWS_COPTS = [
         "/DPLATFORM_WINDOWS",
@@ -392,3 +408,109 @@ def if_not_mobile_or_arm_or_lgpl_restricted(a):
 
 def tsl_grpc_cc_dependencies():
     return ["//tensorflow/tsl:grpc++"]
+
+# Bazel rule for collecting the header files that a target depends on.
+def _transitive_hdrs_impl(ctx):
+    outputs = _get_transitive_headers([], ctx.attr.deps)
+    return struct(files = outputs)
+
+_transitive_hdrs = rule(
+    attrs = {
+        "deps": attr.label_list(
+            allow_files = True,
+            providers = [CcInfo],
+        ),
+    },
+    implementation = _transitive_hdrs_impl,
+)
+
+def transitive_hdrs(name, deps = [], **kwargs):
+    _transitive_hdrs(name = name + "_gather", deps = deps)
+    native.filegroup(name = name, srcs = [":" + name + "_gather"])
+
+# Create a header only library that includes all the headers exported by
+# the libraries in deps.
+#
+# **NOTE**: The headers brought in are **NOT** fully transitive; certain
+# deep headers may be missing.  If this creates problems, you must find
+# a header-only version of the cc_library rule you care about and link it
+# *directly* in addition to your use of the cc_header_only_library
+# intermediary.
+#
+# For:
+#   * Eigen: it's a header-only library.  Add it directly to your deps.
+#   * GRPC: add a direct dep on @com_github_grpc_grpc//:grpc++_public_hdrs.
+#
+def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], compatible_with = None, **kwargs):
+    _transitive_hdrs(
+        name = name + "_gather",
+        deps = deps,
+        compatible_with = compatible_with,
+    )
+    _transitive_parameters_library(
+        name = name + "_gathered_parameters",
+        original_deps = deps,
+        compatible_with = compatible_with,
+    )
+    cc_library(
+        name = name,
+        hdrs = [":" + name + "_gather"],
+        includes = includes,
+        compatible_with = compatible_with,
+        deps = [":" + name + "_gathered_parameters"] + extra_deps,
+        **kwargs
+    )
+
+def _get_transitive_headers(hdrs, deps):
+    """Obtain the header files for a target and its transitive dependencies.
+
+      Args:
+        hdrs: a list of header files
+        deps: a list of targets that are direct dependencies
+
+      Returns:
+        a collection of the transitive headers
+      """
+    return depset(
+        hdrs,
+        transitive = [dep[CcInfo].compilation_context.headers for dep in deps],
+    )
+
+# Bazel rule for collecting the transitive parameters from a set of dependencies into a library.
+# Propagates defines and includes.
+def _transitive_parameters_library_impl(ctx):
+    defines = depset(
+        transitive = [dep[CcInfo].compilation_context.defines for dep in ctx.attr.original_deps],
+    )
+    system_includes = depset(
+        transitive = [dep[CcInfo].compilation_context.system_includes for dep in ctx.attr.original_deps],
+    )
+    includes = depset(
+        transitive = [dep[CcInfo].compilation_context.includes for dep in ctx.attr.original_deps],
+    )
+    quote_includes = depset(
+        transitive = [dep[CcInfo].compilation_context.quote_includes for dep in ctx.attr.original_deps],
+    )
+    framework_includes = depset(
+        transitive = [dep[CcInfo].compilation_context.framework_includes for dep in ctx.attr.original_deps],
+    )
+    return CcInfo(
+        compilation_context = cc_common.create_compilation_context(
+            defines = depset(direct = defines.to_list()),
+            system_includes = depset(direct = system_includes.to_list()),
+            includes = depset(direct = includes.to_list()),
+            quote_includes = depset(direct = quote_includes.to_list()),
+            framework_includes = depset(direct = framework_includes.to_list()),
+        ),
+    )
+
+_transitive_parameters_library = rule(
+    attrs = {
+        "original_deps": attr.label_list(
+            allow_empty = True,
+            allow_files = True,
+            providers = [CcInfo],
+        ),
+    },
+    implementation = _transitive_parameters_library_impl,
+)

@@ -24,7 +24,6 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
         "//tensorflow/compiler/xla/service/gpu:cublas_cudnn",

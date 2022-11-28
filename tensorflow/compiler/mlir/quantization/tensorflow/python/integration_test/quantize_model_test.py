@@ -24,6 +24,7 @@ import tensorflow  # pylint: disable=unused-import
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import quantize_model
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
+from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
 from tensorflow.compiler.mlir.quantization.tensorflow.python.integration_test import quantize_model_test_base
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.client import session
@@ -203,6 +204,74 @@ class QuantizationMethodTest(quantize_model_test_base.QuantizedModelTest):
     with self.assertRaises(ValueError):
       quantize_model.quantize(
           input_saved_model_path, quantization_options=options)
+
+
+class TensorNamePreservationTest(quantize_model_test_base.QuantizedModelTest):
+
+  def test_preserving_input_output_tensor_names(self):
+
+    class MultiSignatureModel(module.Module):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(
+              name='input', shape=[32], dtype=dtypes.float32),
+      ])
+      def multiple_output_ops(
+          self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+        k = array_ops.constant(4, dtype=dtypes.int32)
+        values, indices = nn_ops.top_k(input_tensor, k, name='TopK')
+        adj_values = values + 2
+        return {'indices': indices, 'adj_values': adj_values, 'values': values}
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(
+              name='input', shape=[32], dtype=dtypes.float32),
+      ])
+      def duplicate_outputs(
+          self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+        q_input = array_ops.fake_quant_with_min_max_args(
+            input_tensor, min=-0.1, max=0.2, num_bits=8, narrow_range=False)
+        adj_values = q_input + 2
+        return {'adj_values_1': adj_values, 'adj_values_2': adj_values}
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(
+              name='input', shape=[32], dtype=dtypes.float32),
+      ])
+      def return_higher_index_only(
+          self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+        k = array_ops.constant(4, dtype=dtypes.int32)
+        values, indices = nn_ops.top_k(input_tensor, k, name='TopK')
+        adj_values = values + 2
+        return {'indices': indices, 'adj_values': adj_values}
+
+    model = MultiSignatureModel()
+    signatures = {
+        'multiple_output_ops': model.multiple_output_ops,
+        'duplicate_outputs': model.duplicate_outputs,
+        'return_higher_index_only': model.return_higher_index_only,
+    }
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path, signatures=signatures)
+
+    tags = {tag_constants.SERVING}
+    original_signature_map = save_model.get_signatures_from_saved_model(
+        input_saved_model_path, signature_keys=signatures.keys(), tags=tags)
+
+    output_directory = self.create_tempdir('output').full_path
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE),
+        op_set=quant_opts_pb2.TF)
+    quantize_model.quantize(input_saved_model_path, signatures.keys(), tags,
+                            output_directory, quantization_options)
+    converted_signature_map = save_model.get_signatures_from_saved_model(
+        output_directory, signature_keys=signatures.keys(), tags=tags)
+
+    # The original and converted model should have the same signature map.
+    self.assertAllInSet(
+        list(original_signature_map.keys()), set(signatures.keys()))
+    self.assertDictEqual(original_signature_map, converted_signature_map)
 
 
 class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
@@ -1517,8 +1586,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     tags = {tag_constants.SERVING}
     data_gen = self._create_data_generator(
         input_key='input', shape=input_placeholder.shape)
-    with self.assertRaisesRegex(RuntimeError,
-                                'Failed to retrieve MetaGraphDef'):
+    with self.assertRaisesRegex(
+        RuntimeError,
+        "MetaGraphDef associated with tags {'serve'} could not be found"):
       quantize_model.quantize(
           input_saved_model_path,
           signature_keys,

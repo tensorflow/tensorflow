@@ -42,7 +42,7 @@ class InsertQuantizedFunctionsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertQuantizedFunctionsPass)
 
-  explicit InsertQuantizedFunctionsPass() {}
+  explicit InsertQuantizedFunctionsPass() = default;
   explicit InsertQuantizedFunctionsPass(QuantizationMethod quantization_method,
                                         OpSet op_set) {
     quantization_method_ = quantization_method;

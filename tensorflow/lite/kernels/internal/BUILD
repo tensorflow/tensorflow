@@ -319,6 +319,7 @@ cc_library(
         ":transpose_utils",
         ":types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
@@ -356,6 +357,7 @@ cc_library(
         ":transpose_utils",
         ":types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
@@ -378,6 +380,7 @@ cc_library(
         ":optimized_base",
         ":types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/tsl/framework/convolution:eigen_spatial_convolutions-inl",
         "//third_party/eigen3",
     ],
@@ -616,6 +619,7 @@ cc_library(
         ":types",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
@@ -710,6 +714,7 @@ cc_library(
         ":types",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//third_party/eigen3",
@@ -735,6 +740,7 @@ cc_library(
         ":types",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -755,6 +761,7 @@ cc_library(
         ":types",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -817,6 +824,7 @@ cc_library(
         ":neon_tensor_utils",
         ":portable_tensor_utils",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:op_macros",
@@ -845,6 +853,7 @@ cc_library(
     deps = [
         ":tensor_utils",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -896,6 +905,7 @@ cc_library(
         ":cpu_check",
         "//third_party/eigen3",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ] + selects.with_or({
         (
             ":arm_any",
@@ -942,6 +952,7 @@ cc_test(
         ":quantization_util",
         ":tensor_utils",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",

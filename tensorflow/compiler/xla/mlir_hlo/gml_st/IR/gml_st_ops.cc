@@ -53,7 +53,7 @@ void printShapeTypeDimensionsList(AsmPrinter &printer,
   llvm::interleave(
       integers, printer,
       [&](int64_t val) {
-        if (val == ShapedType::kDynamicSize)
+        if (val == ShapedType::kDynamic)
           printer << '?';
         else
           printer << val;
@@ -858,6 +858,40 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<ForOp> {
     // Exit if none of the loop dimensions perform a single iteration.
     if (newLowerBounds.size() == op.getLowerBound().size()) return failure();
 
+    // All of the loop dimensions perform a single iteration. Inline loop body.
+    if (newLowerBounds.empty()) {
+      mapping.map(op.getRegionOutputArgs(), op.getOutputs());
+      for (auto &bodyOp : op.getBody()->without_terminator()) {
+        rewriter.clone(bodyOp, mapping);
+      }
+      SmallVector<Value> results;
+      results.reserve(op.getResults().size());
+      SetYieldOp terminator = op.getTerminator();
+      for (const auto &[dst, src, set] : llvm::zip(
+               op.getOutputs(), terminator.getSrcs(), terminator.getSets())) {
+        auto tileOp = set.getDefiningOp<TileOp>();
+
+        if (!tileOp) {
+          return op.emitOpError(
+              "expected the SetYieldOp terminator of ForOp loop to have a "
+              "TileOp set");
+        }
+        auto getMappedValues = [&](ValueRange values) {
+          return llvm::to_vector(llvm::map_range(values, [&](Value value) {
+            return mapping.lookupOrDefault(value);
+          }));
+        };
+        results.push_back(rewriter.create<tensor::InsertSliceOp>(
+            op.getLoc(), dst.getType(), mapping.lookupOrDefault(src), dst,
+            getMappedValues(tileOp.getOffsets()),
+            getMappedValues(tileOp.getSizes()),
+            getMappedValues(tileOp.getStrides()), tileOp.getStaticOffsets(),
+            tileOp.getStaticSizes(), tileOp.getStaticStrides()));
+      }
+      rewriter.replaceOp(op, results);
+      return success();
+    }
+
     // Replace the parallel loop by lower-dimensional parallel loop.
     auto newOp = rewriter.create<ForOp>(op.getLoc(), op.getResultTypes(),
                                         newLowerBounds, newUpperBounds,
@@ -899,6 +933,8 @@ struct RefineForOpShape : public OpRewritePattern<ForOp> {
     auto newFor = rewriter.create<ForOp>(loc, newTypes, op.getLowerBound(),
                                          op.getUpperBound(), op.getStep(),
                                          newOutputs, nullptr);
+    // The new loop needs to keep all attributes from the old one.
+    newFor->setAttrs(op->getAttrs());
 
     // Map outputs, insert `tensor.cast` if necessary.
     BlockAndValueMapping bvm;
@@ -1504,9 +1540,9 @@ struct FoldConstantsIntoTileType : public OpRewritePattern<TileOp> {
     SmallVector<OpFoldResult> mixedOffsets(op.getMixedOffsets());
     SmallVector<OpFoldResult> mixedSizes(op.getMixedSizes());
     SmallVector<OpFoldResult> mixedStrides(op.getMixedStrides());
-    canonicalizeSubViewPart(mixedOffsets, ShapedType::isDynamicStrideOrOffset);
+    canonicalizeSubViewPart(mixedOffsets, ShapedType::isDynamic);
     canonicalizeSubViewPart(mixedSizes, ShapedType::isDynamic);
-    canonicalizeSubViewPart(mixedStrides, ShapedType::isDynamicStrideOrOffset);
+    canonicalizeSubViewPart(mixedStrides, ShapedType::isDynamic);
 
     // Create the new tile in canonical form.
     TileOp newOp = rewriter.create<TileOp>(op.getLoc(), mixedOffsets,
@@ -1528,15 +1564,16 @@ void TileOp::build(OpBuilder &b, OperationState &result,
   SmallVector<int64_t> staticOffsets, staticSizes, staticStrides;
   SmallVector<Value> dynamicOffsets, dynamicSizes, dynamicStrides;
   dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets,
-                             ShapedType::kDynamicStrideOrOffset);
+                             ShapedType::kDynamic);
   dispatchIndexOpFoldResults(sizes, dynamicSizes, staticSizes,
-                             ShapedType::kDynamicSize);
+                             ShapedType::kDynamic);
   dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides,
-                             ShapedType::kDynamicStrideOrOffset);
+                             ShapedType::kDynamic);
   auto tileType = TileType::get(b.getContext(), staticSizes);
   build(b, result, tileType, dynamicOffsets, dynamicSizes, dynamicStrides,
-        b.getI64ArrayAttr(staticOffsets), b.getI64ArrayAttr(staticSizes),
-        b.getI64ArrayAttr(staticStrides));
+        b.getDenseI64ArrayAttr(staticOffsets),
+        b.getDenseI64ArrayAttr(staticSizes),
+        b.getDenseI64ArrayAttr(staticStrides));
   result.addAttributes(attrs);
 }
 
@@ -1555,12 +1592,7 @@ LogicalResult TileOp::inferReturnTypes(
     SmallVectorImpl<Type> &inferredReturnTypes) {
   // Derive result shape.
   TileOp::Adaptor adaptor(operands, attributes, regions);
-  SmallVector<int64_t> shape = llvm::to_vector(
-      llvm::map_range(adaptor.getStaticSizes(), [&](const auto &size) {
-        return size.template dyn_cast<mlir::IntegerAttr>()
-            .getValue()
-            .getSExtValue();
-      }));
+  SmallVector<int64_t> shape = llvm::to_vector(adaptor.getStaticSizes());
 
   auto resultTy = TileType::get(ctx, shape);
   inferredReturnTypes.push_back(resultTy);
@@ -1570,41 +1602,32 @@ LogicalResult TileOp::inferReturnTypes(
 LogicalResult TileOp::verify() {
   auto resultType = getType();
   auto rank = resultType.getRank();
-  if (failed(mlir::verifyListOfOperandsOrIntegers(getOperation(), "size", rank,
-                                                  getStaticSizes(), getSizes(),
-                                                  ShapedType::isDynamic))) {
+  if (failed(mlir::verifyListOfOperandsOrIntegers(
+          getOperation(), "size", rank, getStaticSizes(), getSizes()))) {
     return failure();
   }
   if (failed(mlir::verifyListOfOperandsOrIntegers(
-          getOperation(), "offset", rank, getStaticOffsets(), getOffsets(),
-          ShapedType::isDynamicStrideOrOffset))) {
+          getOperation(), "offset", rank, getStaticOffsets(), getOffsets()))) {
     return failure();
   }
   if (failed(mlir::verifyListOfOperandsOrIntegers(
-          getOperation(), "stride", rank, getStaticStrides(), getStrides(),
-          ShapedType::isDynamicStrideOrOffset))) {
+          getOperation(), "stride", rank, getStaticStrides(), getStrides()))) {
     return failure();
   }
-  for (auto it : llvm::zip(resultType.getShape(), getStaticOffsets(),
-                           getStaticSizes(), getStaticStrides())) {
-    auto offset =
-        std::get<1>(it).dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
-    if (offset < 0 && offset != ShapedType::kDynamicStrideOrOffset) {
+  for (auto [tileSize, offset, size, stride] :
+       llvm::zip(resultType.getShape(), getStaticOffsets(), getStaticSizes(),
+                 getStaticStrides())) {
+    if (offset < 0 && offset != ShapedType::kDynamic) {
       return emitOpError("expected offset = ")
              << offset << " to be non-negative";
     }
-    auto size =
-        std::get<2>(it).dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
-    if (size < 0 && size != ShapedType::kDynamicSize) {
+    if (size < 0 && size != ShapedType::kDynamic) {
       return emitOpError("expected size = ") << size << " to be non-negative";
     }
-    auto stride =
-        std::get<3>(it).dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
-    if (stride < 0 && stride != ShapedType::kDynamicStrideOrOffset) {
+    if (stride < 0 && stride != ShapedType::kDynamic) {
       return emitOpError("expected stride = ")
              << stride << " to be non-negative";
     }
-    auto tileSize = std::get<0>(it);
     if (tileSize != size) {
       return emitOpError("size arg = ")
              << size << " does not match tile size = " << tileSize;

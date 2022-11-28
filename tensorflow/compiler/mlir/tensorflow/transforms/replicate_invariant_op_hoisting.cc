@@ -94,7 +94,7 @@ bool UsesVirtualDevice(const Optional<DictionaryAttr>& virtual_devices,
     StringAttr op_device = op->getAttrOfType<StringAttr>(kDeviceAttr);
     if (!op_device) return WalkResult::advance();
 
-    if (virtual_devices.getValue().get(op_device.getValue()))
+    if (virtual_devices.value().get(op_device.getValue()))
       return WalkResult::interrupt();
     return WalkResult::advance();
   });

@@ -169,13 +169,13 @@ struct ConvertNdConvOp {
     // All ones in "lhs_dilation" means this "mhlo.conv" op should be
     // converted to "tf.Conv2D" or "tf.DepthwiseConv2dNativeOp".
     if (conv_op.getLhsDilation().has_value()) {
-      auto lhs_dilation = conv_op.getLhsDilation().getValue();
+      auto lhs_dilation = conv_op.getLhsDilation().value();
       if (!lhs_dilation.isSplat() || lhs_dilation.getSplatValue<int64_t>() != 1)
         return false;
     }
 
     if (!conv_op.getWindowStrides().has_value() || conv_op.getWindowStrides()
-                                                           .getValue()
+                                                           .value()
                                                            .getType()
                                                            .cast<ShapedType>()
                                                            .getRank() != 1)
@@ -284,7 +284,7 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
 
     // Padding
     SmallVector<int64_t, 4> padding_2d_array;
-    for (const auto v : conv_op.getPadding().getValue().getValues<int64_t>()) {
+    for (const auto v : conv_op.getPadding().value().getValues<int64_t>()) {
       padding_2d_array.emplace_back(v);
     }
     // The newly added spatial dimension requires zero left and right padding.
@@ -295,8 +295,7 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
 
     // LHS dilation
     SmallVector<int64_t, 4> lhs_dilation_array_2d;
-    for (const auto v :
-         conv_op.getLhsDilation().getValue().getValues<int64_t>()) {
+    for (const auto v : conv_op.getLhsDilation().value().getValues<int64_t>()) {
       lhs_dilation_array_2d.emplace_back(v);
     }
     lhs_dilation_array_2d.push_back(1);
@@ -306,8 +305,7 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
 
     // RHS dilation
     SmallVector<int64_t, 4> rhs_dilation_array_2d;
-    for (const auto v :
-         conv_op.getRhsDilation().getValue().getValues<int64_t>()) {
+    for (const auto v : conv_op.getRhsDilation().value().getValues<int64_t>()) {
       rhs_dilation_array_2d.emplace_back(v);
     }
     rhs_dilation_array_2d.push_back(1);
@@ -405,7 +403,7 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
     // For example, [2, 3] -> [1, 2, 3, 1].
     SmallVector<int64_t, 4> strides({1});
     for (const auto v :
-         conv_op.getWindowStrides().getValue().getValues<int64_t>()) {
+         conv_op.getWindowStrides().value().getValues<int64_t>()) {
       strides.emplace_back(v);
     }
     strides.emplace_back(1);
@@ -415,8 +413,8 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
     if (auto rhs_dilation = conv_op.getRhsDilation()) {
       // For example, [2, 3] -> [1, 2, 3, 1].
       dilation.emplace_back(1);
-      dilation.append(rhs_dilation.getValue().getValues<int64_t>().begin(),
-                      rhs_dilation.getValue().getValues<int64_t>().end());
+      dilation.append(rhs_dilation.value().getValues<int64_t>().begin(),
+                      rhs_dilation.value().getValues<int64_t>().end());
       dilation.emplace_back(1);
     } else {
       // Default value
@@ -440,13 +438,12 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
     std::string padding;
     SmallVector<int64_t, 8> explicit_padding;
     if (!conv_op.getPadding().has_value() ||
-        (conv_op.getPadding().getValue().isSplat() &&
+        (conv_op.getPadding().value().isSplat() &&
          conv_op.getPadding()->getSplatValue<int64_t>() == 0)) {
       padding = "VALID";
     } else {
       SmallVector<int64_t, 4> padding_array;
-      for (const auto v :
-           conv_op.getPadding().getValue().getValues<int64_t>()) {
+      for (const auto v : conv_op.getPadding().value().getValues<int64_t>()) {
         padding_array.emplace_back(v);
       }
 
@@ -728,8 +725,8 @@ class ConvertNonTrivialConvOp
     // For example, [2, 3] -> [1, 2, 3, 1].
     SmallVector<int64_t, 4> strides({1});
     strides.append(
-        conv_op.getLhsDilation().getValue().getValues<int64_t>().begin(),
-        conv_op.getLhsDilation().getValue().getValues<int64_t>().end());
+        conv_op.getLhsDilation().value().getValues<int64_t>().begin(),
+        conv_op.getLhsDilation().value().getValues<int64_t>().end());
     strides.emplace_back(1);
 
     // Constructs dilation array.
@@ -737,8 +734,8 @@ class ConvertNonTrivialConvOp
     if (auto rhs_dilation = conv_op.getRhsDilation()) {
       // For example, [2, 3] -> [1, 2, 3, 1].
       dilation.emplace_back(1);
-      dilation.append(rhs_dilation.getValue().getValues<int64_t>().begin(),
-                      rhs_dilation.getValue().getValues<int64_t>().end());
+      dilation.append(rhs_dilation.value().getValues<int64_t>().begin(),
+                      rhs_dilation.value().getValues<int64_t>().end());
       dilation.emplace_back(1);
     } else {
       // Default value
@@ -748,7 +745,7 @@ class ConvertNonTrivialConvOp
     mhlo::ConvDimensionNumbersAttr dnums = conv_op.getDimensionNumbers();
     std::string padding;
     if (!conv_op.getPadding().has_value() ||
-        (conv_op.getPadding().getValue().isSplat() &&
+        (conv_op.getPadding().value().isSplat() &&
          conv_op.getPadding()->getSplatValue<int64_t>() == 0)) {
       padding = "VALID";
     } else {
@@ -830,13 +827,13 @@ class ConvertNonTrivialConvOp
       return rewriter.notifyMatchFailure(conv_op,
                                          "requires lhs_dilation attribute");
     }
-    auto lhs_dilation = conv_op.getLhsDilation().getValue();
+    auto lhs_dilation = conv_op.getLhsDilation().value();
     if (lhs_dilation.isSplat() && lhs_dilation.getSplatValue<int64_t>() == 1)
       return rewriter.notifyMatchFailure(conv_op,
                                          "requires non-trivial lhs_dilation");
 
     if (!conv_op.getWindowStrides().has_value() || conv_op.getWindowStrides()
-                                                           .getValue()
+                                                           .value()
                                                            .getType()
                                                            .cast<ShapedType>()
                                                            .getRank() != 1)
@@ -934,10 +931,10 @@ class ConvertNonTrivialConvOp
       return rewriter.notifyMatchFailure(
           conv_op, "resize op requires rhs_dilation and padding");
 
-    auto lhs_dilation = conv_op.getLhsDilation().getValue();
-    auto rhs_dilation = conv_op.getRhsDilation().getValue();
-    auto window_strides = conv_op.getWindowStrides().getValue();
-    auto padding = conv_op.getPadding().getValue();
+    auto lhs_dilation = conv_op.getLhsDilation().value();
+    auto rhs_dilation = conv_op.getRhsDilation().value();
+    auto window_strides = conv_op.getWindowStrides().value();
+    auto padding = conv_op.getPadding().value();
     if (lhs_dilation.getNumElements() != 2 || !rhs_dilation.isSplat() ||
         rhs_dilation.getSplatValue<int64_t>() != 1 ||
         window_strides.getNumElements() != 2 || padding.getNumElements() != 4)

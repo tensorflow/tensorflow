@@ -286,7 +286,7 @@ StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
 
   // Convert the arguments.
   for (int i = 0, e = func.getNumArguments(); i < e; i += 2) {
-    auto attrs = func.getArgAttrs().getValue()[i].cast<DictionaryAttr>();
+    auto attrs = func.getArgAttrs().value()[i].cast<DictionaryAttr>();
     TF_ASSIGN_OR_RETURN(OpDef::ArgDef &arg = *signature->add_input_arg(),
                         ConvertArgumentAttributes(attrs));
     DataType dtype;
@@ -467,7 +467,7 @@ static StatusOr<std::string> GetValueName(
     // If the block argument is a control token, use the attributes of the
     // associated data argument (which preceeds it).
     auto attrs = func.getArgAttrs()
-                     .getValue()[arg.getArgNumber() - is_control]
+                     .value()[arg.getArgNumber() - is_control]
                      .cast<DictionaryAttr>();
     auto name_attr =
         attrs.getAs<StringAttr>(dialect->getTfgNameAttrIdentifier());

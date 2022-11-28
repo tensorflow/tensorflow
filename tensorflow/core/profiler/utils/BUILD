@@ -497,7 +497,7 @@ tf_cuda_library(
     visibility = [":friends"],
     deps = [
         ":hlo_proto_to_module",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core/platform:path",

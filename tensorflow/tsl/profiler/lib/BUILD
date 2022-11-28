@@ -50,7 +50,7 @@ cc_library(
     srcs = ["profiler_controller.cc"],
     hdrs = ["profiler_controller.h"],
     visibility = [
-        "//tensorflow/core/profiler/lib:__pkg__",
+        "//tensorflow/tsl/profiler:internal",
     ],
     deps = [
         ":profiler_interface",
@@ -65,8 +65,8 @@ cc_library(
     name = "profiler_factory",
     hdrs = ["profiler_factory.h"],
     visibility = [
-        "//tensorflow/compiler/xla/backends/profiler:friends",
-        "//tensorflow/core/profiler/lib:__pkg__",
+        "//tensorflow/tsl/profiler:internal",
+        "//tensorflow/tsl/profiler:xla_profiler_backends",
     ],
     deps = [
         ":profiler_interface",
@@ -84,8 +84,7 @@ cc_library(
     ],
     copts = tf_profiler_copts(),
     visibility = [
-        "//tensorflow/core/profiler:__pkg__",
-        "//tensorflow/core/profiler/lib:__pkg__",
+        "//tensorflow/tsl/profiler:internal",
     ],
     deps = [
         ":profiler_interface",
@@ -118,9 +117,9 @@ cc_library(
     hdrs = ["profiler_interface.h"],
     copts = tf_profiler_copts(),
     visibility = [
-        "//tensorflow/compiler/xla/backends/profiler:friends",
-        "//tensorflow/core/profiler:internal",
         "//tensorflow/tsl:internal",
+        "//tensorflow/tsl/profiler:internal",
+        "//tensorflow/tsl/profiler:xla_profiler_backends",
     ],
     deps = [
         "//tensorflow/tsl/platform:status",
@@ -133,7 +132,7 @@ cc_library(
     srcs = ["profiler_lock.cc"],
     hdrs = ["profiler_lock.h"],
     copts = tf_profiler_copts(),
-    visibility = ["//tensorflow/core/profiler:internal"],
+    visibility = ["//tensorflow/tsl/profiler:internal"],
     deps = [
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:macros",
@@ -155,7 +154,7 @@ tsl_cc_test(
 cc_library(
     name = "profiler_session",
     hdrs = ["profiler_session.h"],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//tensorflow/tsl:internal"],
     deps = [
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
@@ -181,8 +180,8 @@ cc_library(
     ],
     copts = tf_profiler_copts(),
     visibility = [
-        "//tensorflow/core/profiler/lib:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/tsl/profiler:internal",
     ],
     deps = [
         "//tensorflow/tsl/platform:errors",
@@ -198,7 +197,9 @@ cc_library(
         ":profiler_factory",
         ":profiler_interface",
         ":profiler_lock",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/tsl/platform",
+        "//tensorflow/tsl/platform:platform_port",
+        "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/profiler/convert:post_process_single_host_xplane",
         "//tensorflow/tsl/profiler/utils:time_utils",
     ]),
@@ -231,7 +232,7 @@ tsl_cc_test(
 tf_profiler_pybind_cc_library_wrapper(
     name = "traceme_for_pybind",
     actual = ":traceme",
-    visibility = ["//tensorflow/compiler/xla/python/profiler/internal:__pkg__"],
+    visibility = ["//tensorflow/tsl/profiler:xla_internal"],
 )
 
 cc_library(
@@ -267,8 +268,8 @@ cc_library(
     name = "scoped_annotation_stack",
     hdrs = ["scoped_annotation_stack.h"],
     visibility = [
-        "//tensorflow/compiler/xla:runtime",
-        "//tensorflow/core/profiler/lib:__pkg__",
+        "//tensorflow/tsl/profiler:internal",
+        "//tensorflow/tsl/profiler:xla_internal",
     ],
     deps = [
         "@com_google_absl//absl/strings",

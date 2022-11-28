@@ -134,6 +134,7 @@ cc_library(
         ":operator",
         ":types",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/toco:model",

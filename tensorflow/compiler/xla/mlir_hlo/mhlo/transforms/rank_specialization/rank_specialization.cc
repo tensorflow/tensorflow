@@ -314,7 +314,7 @@ bool isScalarShapeType(Type ty) {
 Type deriveRankedTensorTypes(Type ty, int64_t rank) {
   auto tensorTy = ty.dyn_cast<TensorType>();
   if (!tensorTy) return ty;
-  SmallVector<int64_t, 8> shape(rank, ShapedType::kDynamicSize);
+  SmallVector<int64_t, 8> shape(rank, ShapedType::kDynamic);
   return RankedTensorType::get(shape, tensorTy.getElementType());
 }
 

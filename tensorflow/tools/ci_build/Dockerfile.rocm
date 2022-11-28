@@ -88,6 +88,7 @@ ENV OPENCL_ROOT=$ROCM_PATH/opencl
 ENV PATH="$HCC_HOME/bin:$HIP_PATH/bin:${PATH}"
 ENV PATH="$ROCM_PATH/bin:${PATH}"
 ENV PATH="$OPENCL_ROOT/bin:${PATH}"
+ENV PATH="/usr/local/bin:${PATH}"
 
 # Add target file to help determine which device(s) to build for
 RUN printf '%s\n' > ${ROCM_PATH}/bin/target.lst ${GPU_DEVICE_TARGETS}

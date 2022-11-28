@@ -67,7 +67,8 @@ CreateInsertCustomAggregationOpsPass();
 // pass runs, functions in the given graph will be replaced with their quantized
 // versions. By doing so, the quantization will be applied to the given input.
 std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
-    QuantizationMethod quantization_method, OpSet target_opset);
+    QuantizationMethod quantization_method, OpSet target_opset,
+    bool enable_per_channel_quantization = false);
 
 // Converts dequantize-(quantizable) call-quantize pattern to a single call op
 // that has quantized input and output types. It is expected for this pass to
@@ -78,7 +79,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass();
 
 // Overloading of CreateQuantizePass which takes QuantizationSpecs.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
-    QuantizationSpecs quant_specs);
+    QuantizationSpecs quant_specs, OpSet target_opset);
 
 // Creates an instance of the PrepareQuantize pass, which will perfrom similar
 // transformations as TFL::PrepareQuantizePass.
@@ -122,6 +123,11 @@ CreateMergeInitializerFunctionOpsToMainPass();
 // created variables will be initialized in the session initializer function via
 // AssignVariableOps.
 std::unique_ptr<OperationPass<ModuleOp>> CreateUnfreezeConstantsPass();
+
+// Creates a plass that duplicates constants that affect the shape of a tensor
+// after some computation.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateDuplicateShapeDeterminingConstantsPass();
 
 }  // namespace quant
 }  // namespace mlir

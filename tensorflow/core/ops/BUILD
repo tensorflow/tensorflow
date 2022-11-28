@@ -5,12 +5,10 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_gen_op_libs")
-
-# For platform specific build config
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
+    "//tensorflow:tensorflow.default.bzl",
+    "filegroup",
+    "tf_gen_op_libs",
 )
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -437,7 +435,6 @@ tf_cc_test(
     name = "ops_array_grad_test",
     size = "small",
     srcs = ["array_grad_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":ops",
         "//tensorflow/cc:cc_ops",
@@ -465,7 +462,6 @@ tf_cc_test(
     name = "ops_math_grad_test",
     size = "small",
     srcs = ["math_grad_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_gpu"],
     deps = [
         ":ops",
@@ -520,7 +516,6 @@ tf_cc_test(
         "training_ops_test.cc",
         "uniform_quant_ops_test.cc",
     ],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":ops",
         "//tensorflow/cc:cc_ops",
@@ -535,6 +530,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:type_inference",
         "//third_party/eigen3",
     ],
 )

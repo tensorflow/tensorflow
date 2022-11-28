@@ -218,7 +218,7 @@ def initialize_rbe_configs():
     )
 
     tensorflow_rbe_config(
-        name = "ubuntu20.04-gcc9_manylinux2014-cuda11.8-cudnn8.6tensorrt8.4",
+        name = "ubuntu20.04-gcc9_manylinux2014-cuda11.8-cudnn8.6-tensorrt8.4",
         compiler = "/dt9/usr/bin/gcc",
         compiler_prefix = "/usr/bin",
         cuda_version = "11.8",

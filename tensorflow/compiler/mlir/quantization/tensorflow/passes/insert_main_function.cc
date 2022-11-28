@@ -12,11 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
 #include <memory>
 #include <string>
+#include <tuple>
+#include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -46,7 +51,7 @@ class InsertMainFunctionPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertMainFunctionPass)
 
-  explicit InsertMainFunctionPass() {}
+  explicit InsertMainFunctionPass() = default;
 
   StringRef getArgument() const override { return "quant-add-main-function"; }
 
@@ -114,6 +119,18 @@ void SetFunctionPrivate(func::FuncOp& func) {
     }
   }
 }
+
+// Information to identify an output in its node and in the model output list.
+// Ex: If the model output list is ["add:0", "topk:0": "topk:1"], then the
+// output corresponding to "topk:1" will have output_index=2 and tensor_index=1.
+struct OutputInfo {
+  // The index of this output in the model output list.
+  int32_t output_index;
+  // The index of this output in its node.
+  int32_t tensor_index;
+  // The output value.
+  Value value;
+};
 
 // Creates a main function which calls other exported functions.
 bool CreateMainFunction(ModuleOp& module) {
@@ -208,7 +225,7 @@ bool CreateMainFunction(ModuleOp& module) {
   auto guard = OpBuilder::InsertionGuard(builder);
   int arg_idx = 0;
   int result_idx = 0;
-  llvm::SmallVector<Value> returning_values;
+  llvm::SmallVector<Value> call_op_returns;
   for (auto function : module.getOps<func::FuncOp>()) {
     if (!ShouldIncludeInMainFunction(function)) continue;
 
@@ -225,9 +242,64 @@ bool CreateMainFunction(ModuleOp& module) {
         /*config=*/builder.getStringAttr(""),
         /*config_proto=*/builder.getStringAttr(""),
         /*executor_type=*/builder.getStringAttr(""));
-    returning_values.append(call_op.getResults().begin(),
-                            call_op.getResults().end());
+    call_op_returns.append(call_op.getResults().begin(),
+                           call_op.getResults().end());
     SetFunctionPrivate(function);
+  }
+
+  // Creates Identity/IdentityN ops for returing values. This allows us to
+  // restore the same output tensor names in python.
+  int32_t output_count = 0;
+  // Map from node name to the list of the OutputInfos of its outputs that are
+  // used as the model outputs.
+  llvm::StringMap<llvm::SmallVector<OutputInfo>> node_to_output_map;
+  for (auto tensor_name_value_pair : llvm::zip(output_names, call_op_returns)) {
+    std::vector<std::string> name_and_index = absl::StrSplit(
+        std::get<0>(tensor_name_value_pair), ':', absl::SkipEmpty());
+    llvm::StringRef node_name = name_and_index.front();
+    int32_t tensor_index = 0;
+    if (name_and_index.size() > 1) {
+      tensor_index = std::stoi(name_and_index.back());
+    }
+    node_to_output_map[node_name].push_back(
+        {output_count++, tensor_index, std::get<1>(tensor_name_value_pair)});
+  }
+
+  Value scalar_one =
+      CreateScalarConstValue<float>(builder, builder.getUnknownLoc(), 1.0);
+  llvm::SmallVector<Value> returning_values(output_count, Value());
+  for (const auto& node_name : node_to_output_map.keys()) {
+    auto node_output_tensors = node_to_output_map[node_name];
+
+    NameLoc new_loc = NameLoc::get(builder.getStringAttr(node_name));
+    int32_t max_tensor_index = 0;
+    absl::c_for_each(node_output_tensors,
+                     [&max_tensor_index](const OutputInfo& output_info) {
+                       max_tensor_index =
+                           std::max(max_tensor_index, output_info.tensor_index);
+                     });
+
+    // Create IdentityOp or IdentityNOp based on the number of outputs.
+    Operation* identity_op;
+    if (max_tensor_index == 0) {
+      Value output_value = node_output_tensors.front().value;
+      identity_op = builder.create<TF::IdentityOp>(
+          new_loc, output_value.getType(), output_value);
+    } else {
+      llvm::SmallVector<Value> input_values(node_output_tensors.size(),
+                                            scalar_one);
+      for (const auto& [output_index, tensor_index, tensor_value] :
+           node_output_tensors) {
+        input_values[tensor_index] = tensor_value;
+      }
+      identity_op = builder.create<TF::IdentityNOp>(
+          new_loc, TypeRange(ValueRange(input_values)), input_values);
+    }
+
+    for (const auto& [output_index, tensor_index, tensor_value] :
+         node_output_tensors) {
+      returning_values[output_index] = identity_op->getResult(tensor_index);
+    }
   }
   builder.create<func::ReturnOp>(main_func.getBody().getLoc(),
                                  returning_values);

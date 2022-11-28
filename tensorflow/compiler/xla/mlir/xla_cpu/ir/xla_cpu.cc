@@ -100,6 +100,12 @@ LogicalResult AllToAllOp::bufferize(
   return BufferizeOp(*this, rewriter, options);
 }
 
+LogicalResult FftOp::bufferize(
+    RewriterBase &rewriter,
+    const bufferization::BufferizationOptions &options) {
+  return BufferizeOp(*this, rewriter, options);
+}
+
 }  // namespace xla_cpu
 }  // namespace mlir
 

@@ -34,6 +34,7 @@ add_mlir_library(GmlStPasses
   gml_st_simtfy/gml_st_simtfy.cc
   gml_st_to_scf/gml_st_to_scf.cc
   gml_st_to_gpu/gml_st_to_gpu.cc
+  greedy_tiling_and_fusion/greedy_tiling_and_fusion.cc
   peeling/peeling.cc
   tiling/tiling.cc
   tiling_cwise/tiling_cwise.cc
