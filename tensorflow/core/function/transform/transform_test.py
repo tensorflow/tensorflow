@@ -218,6 +218,114 @@ class TransformTest(test.TestCase, parameterized.TestCase):
         nested_fn_transforms=nested_transforms)
     self.assertEqual(updated_f(*inputs), 4.0)  # 1 x (1 x 2 x 2) = 4
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="fn",
+          transform_fn=add_to_multiply),
+      dict(
+          testcase_name="mlir",
+          mlir_pipeline="test-pass"),
+      dict(
+          testcase_name="fn_and_mlir",
+          transform_fn=add_to_multiply,
+          mlir_pipeline="test-pass"),
+  )
+  @test_util.run_v2_only
+  def test_nested_python_function_transform_with(self,
+                                                 transform_fn=None,
+                                                 mlir_pipeline=None):
+
+    @def_function.function
+    def f(x, y):
+
+      def inner_add():
+        return math_ops.add(x, y, name="x_plus_y")
+
+      return inner_add()
+
+    inputs = [1.0, 2.0]
+    self.assertEqual(f(*inputs), 3.0)  # 1 + 2 = 3
+
+    # Transform `f`.
+    updated_f = transform.transform_function(
+        f,
+        inputs=inputs,
+        transform_fn=transform_fn,
+        mlir_pipeline=mlir_pipeline)
+    # Nested Python functions should be transformed.
+    self.assertEqual(updated_f(*inputs), 2.0)  # 1 x 2 = 2
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="fn_and_nested_fn",
+          transform_fn=add_to_multiply,
+          nested_fn=True),
+      dict(
+          testcase_name="fn_and_nested_mlir",
+          transform_fn=add_to_multiply,
+          nested_mlir=True),
+      dict(
+          testcase_name="mlir_and_nested_fn",
+          mlir_pipeline="test-pass",
+          nested_fn=True),
+      dict(
+          testcase_name="mlir_and_nested_mlir",
+          mlir_pipeline="test-pass",
+          nested_mlir=True),
+      dict(
+          testcase_name="mlir_fn_and_nested_mlir_fn",
+          transform_fn=add_to_multiply,
+          mlir_pipeline="test-pass",
+          nested_fn=True,
+          nested_mlir=True),
+  )
+  @test_util.run_v2_only
+  def test_nested_transform_with(self,
+                                 transform_fn=None,
+                                 mlir_pipeline=None,
+                                 nested_fn=False,
+                                 nested_mlir=False):
+
+    @def_function.function
+    def f(x, y, z):
+
+      @def_function.function
+      def inner_add():
+        return math_ops.add(y, z, name="x_plus_y")
+
+      return math_ops.add(x, inner_add(), name="x_plus_y")
+
+    # 1, 2, 4 are picked so the following combinations create different results.
+    # 1 + (2 + 4) = 7
+    # 1 + (2 * 4) = 9
+    # 1 * (2 + 4) = 6
+    # 1 * (2 * 4) = 8
+    inputs = [1.0, 2.0, 4.0]
+    self.assertEqual(f(*inputs), 7.0)  # 1 + (2 + 4) = 7
+
+    # Extract all the functions in `f`'s library that we want to transform.
+    nested_fn_transforms = {}
+    nested_mlir_transforms = {}
+
+    cf = f.get_concrete_function(*inputs)
+    gdef = cf.graph.as_graph_def()
+    for fdef in gdef.library.function:
+      fdef_name = fdef.signature.name
+      if nested_fn:
+        nested_fn_transforms[fdef_name] = add_to_multiply
+      if nested_mlir:
+        nested_mlir_transforms[fdef_name] = "test-pass"
+
+    # Transform `f` and all of its library functions.
+    updated_f = transform.transform_function(
+        f,
+        inputs=inputs,
+        transform_fn=transform_fn,
+        mlir_pipeline=mlir_pipeline,
+        nested_fn_transforms=nested_fn_transforms,
+        nested_mlir_transforms=nested_mlir_transforms)
+    self.assertEqual(updated_f(*inputs), 8.0)  # 1 x (2 x 4) = 8
+
   @test_util.run_v2_only
   def test_save_transform_for_all_signatures(self):
     m = Model()

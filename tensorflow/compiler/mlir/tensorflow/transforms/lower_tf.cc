@@ -955,7 +955,7 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
       }
     } else {
       for (int i = 0; i < block_rank; i++) {
-        padded_shape[i + 1] = ShapedType::kDynamicSize;
+        padded_shape[i + 1] = ShapedType::kDynamic;
       }
       block_shape_ints.resize(block_shape_type.getNumElements(), -1);
     }
@@ -1838,7 +1838,8 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerSquaredDifferenceOpOnRealTensors,
       LowerSquaredDifferenceOpOneComplexTensors,
       LowerTanhGradOp,
-      LowerTruncateDivOp,
+      LowerTruncateDivOpOnIntTensors,
+      LowerTruncateDivOpOnFloatTensors,
       LowerXdivyOp,
       LowerXlog1pyOp,
       LowerXlogyOp>(context);

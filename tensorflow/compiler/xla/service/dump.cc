@@ -27,8 +27,8 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/lib/io/zlib_compression_options.h"
@@ -627,7 +627,7 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
   mlir::OpPrintingFlags print_flags = mlir::OpPrintingFlags().useLocalScope();
   // Enable debug info so that it is easier to see the corresponding HLO node.
   if (file_prefix == "lmhlo") {
-    print_flags.enableDebugInfo(/*prettyForm=*/true);
+    print_flags.enableDebugInfo(/*enable=*/true, /*prettyForm=*/true);
   }
   op->print(outputFile->os(), print_flags);
   outputFile->keep();

@@ -39,13 +39,14 @@ class ModulePressureState;
 
 enum class ResourceType {
   kNoResource = 0,
-  kAllGather = 1,
-  kAllReduce = 2,
-  kCollectivePermute = 3,
-  kSendRecv = 4,
-  kSendHost = 5,
-  kRecvHost = 6,
-  kNumResources = 7,
+  kAllToAll = 1,
+  kAllGather = 2,
+  kAllReduce = 3,
+  kCollectivePermute = 4,
+  kSendRecv = 5,
+  kSendHost = 6,
+  kRecvHost = 7,
+  kNumResources = 8,
 };
 
 enum class ResourceUsageType {
@@ -66,6 +67,7 @@ class HloScheduleGraph;
 
 struct SchedulerConfig {
   int64_t collective_permute_overlap_limit = 1;
+  int64_t all_to_all_overlap_limit = 1;
   int64_t all_gather_overlap_limit = 1;
   int64_t all_reduce_overlap_limit = 1;
   int64_t send_recv_overlap_limit = 1;

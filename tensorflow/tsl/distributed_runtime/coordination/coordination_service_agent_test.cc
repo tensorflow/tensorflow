@@ -474,5 +474,17 @@ TEST_F(CoordinationServiceAgentTest, Connect_AbortedErrorShouldFailEventually) {
   EXPECT_TRUE(errors::IsAborted(s));
 }
 
+TEST_F(CoordinationServiceAgentTest, Connect_InternalErrorShouldBeRetried) {
+  EXPECT_CALL(*GetClient(), RegisterTaskAsync(_, _, _, _))
+      .WillOnce(InvokeArgument<3>(
+          errors::Internal("Coordination service is not enabled.")))
+      .WillOnce(InvokeArgument<3>(
+          errors::Internal("Coordination service is not enabled.")))
+      .WillOnce(InvokeArgument<3>(OkStatus()));
+  InitializeAgent();
+
+  TF_EXPECT_OK(agent_->Connect());
+}
+
 }  // namespace
 }  // namespace tsl

@@ -10,6 +10,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -20,6 +21,8 @@ package(
 exports_files([
     "captured_function.cc",
     "captured_function.h",
+    "compression_utils.cc",
+    "compression_utils.h",
     "dataset_utils.cc",
     "dataset_utils.h",
     "finalization_utils.cc",
@@ -71,6 +74,7 @@ cc_library(
     name = "compression_utils",
     srcs = ["compression_utils.cc"],
     hdrs = ["compression_utils.h"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -93,10 +97,11 @@ tf_cc_test(
         ":dataset_test_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/tsl/platform:status_matchers",
     ],
 )
 
@@ -326,10 +331,12 @@ cc_library(
     srcs = ["serialization_utils.cc"],
     hdrs = ["serialization_utils.h"],
     deps = [
+        ":compression_utils",
         ":dataset_utils",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/core:status",
     ],
 )

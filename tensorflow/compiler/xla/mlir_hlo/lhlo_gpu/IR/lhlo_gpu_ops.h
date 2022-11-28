@@ -19,7 +19,7 @@ limitations under the License.
 #define MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mhlo/IR/hlo_ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"

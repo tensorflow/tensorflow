@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package tensorflow;
+
+import "tensorflow/core/framework/graph.proto";
+import "tensorflow/core/framework/types.proto";
+
+// Optimized function graph after instantiation-related graph optimization
+// passes (up till before graph partitioning). The first half of the proto is
+// representing a GraphDef and the rest of the fields are extra information from
+// graph optimizations.
+message OptimizedFunctionGraph {
+  // Function name. It can be a human-readable SignatureDef's method name, or a
+  // FunctionDef name.
+  string name = 1;
+  // Optimized function graph.
+  GraphDef function_graph = 2;
+  // Maps from node name to control ret. This is an output from running TF/XLA
+  // bridge.
+  map<string, string> node_name_to_control_ret = 3;
+  // Return node types of the function. This is an output of graph
+  // preprocessing.
+  repeated DataType ret_types = 4;
+  // Number of return nodes. This is an output of graph preprocessing.
+  uint32 num_return_nodes = 5;
+}

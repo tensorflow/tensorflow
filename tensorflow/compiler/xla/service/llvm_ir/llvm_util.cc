@@ -160,6 +160,11 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       // addition to an addition on this type (int16_t) - this is just the type
       // used for storage.
       return llvm::Type::getInt16Ty(module->getContext());
+    case F8E5M2:
+    case F8E4M3FN:
+      // Similarly as with BF16, we represent F8 as an int since there is no
+      // LLVM F8 dtype.
+      return llvm::Type::getInt8Ty(module->getContext());
     case F16:
       return llvm::Type::getHalfTy(module->getContext());
     case S32:

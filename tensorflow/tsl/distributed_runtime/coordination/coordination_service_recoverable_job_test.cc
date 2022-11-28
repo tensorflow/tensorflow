@@ -72,19 +72,21 @@ class TestCoordinationClientCache : public CoordinationClientCache {
 
 class TestCoordinationServiceTaskState {
  public:
-  TestCoordinationServiceTaskState() {}
+  TestCoordinationServiceTaskState() = default;
 
-  ~TestCoordinationServiceTaskState() {}
+  ~TestCoordinationServiceTaskState() = default;
 
   void Shutdown() {
     coord_client_.reset();
     coord_agent_.reset();
     coord_compute_pool_.reset();
+    static_cast<tsl::GrpcCoordinationServiceImpl*>(coord_rpc_service_.get())
+        ->SetCoordinationServiceInstance(nullptr);
     grpc_server_->Shutdown();
     coord_rpc_service_->Shutdown();
   }
 
-  void StartCoordinationService() {
+  void StartGrpcServer() {
     ::grpc::ServerBuilder builder;
     coord_compute_pool_ = std::make_unique<thread::ThreadPool>(
         Env::Default(), /*name=*/"CoordinationServiceRpcHandler",
@@ -100,6 +102,12 @@ class TestCoordinationServiceTaskState {
     coord_rpc_thread_ = absl::WrapUnique(Env::Default()->StartThread(
         /*thread_options=*/{}, /*name=*/"CoordinationServiceHandleRPCsLoop",
         [service = coord_rpc_service_.get()]() { service->HandleRPCsLoop(); }));
+  }
+
+  void SetCoordinationService(CoordinationServiceInterface* service) {
+    auto* grpc_coord_service =
+        static_cast<GrpcCoordinationServiceImpl*>(coord_rpc_service_.get());
+    grpc_coord_service->SetCoordinationServiceInstance(service);
   }
 
   void InitializeAndConnectCoordinationAgents(
@@ -140,10 +148,10 @@ class TestCoordinationServiceTaskState {
 class CoordinationServiceRecoverableJobTest : public ::testing::Test {
  public:
   void SetUp() override {
-    state_ps_0_.StartCoordinationService();
-    state_ps_1_.StartCoordinationService();
-    state_worker_0_.StartCoordinationService();
-    state_worker_1_.StartCoordinationService();
+    state_ps_0_.StartGrpcServer();
+    state_ps_1_.StartGrpcServer();
+    state_worker_0_.StartGrpcServer();
+    state_worker_1_.StartGrpcServer();
   }
 
   void TearDown() override {
@@ -170,6 +178,13 @@ class CoordinationServiceRecoverableJobTest : public ::testing::Test {
         state_worker_1_.GetCoordinationClient());
     coord_service_ = CoordinationServiceInterface::EnableCoordinationService(
         Env::Default(), coordination_config_, std::move(client_cache));
+    // Set the service pointer for all the tasks since it is needed for handling
+    // error propagations. In reality, every task has its own service pointer.
+    // To mimic that, we need multi-process tests.
+    state_ps_0_.SetCoordinationService(coord_service_.get());
+    state_ps_1_.SetCoordinationService(coord_service_.get());
+    state_worker_0_.SetCoordinationService(coord_service_.get());
+    state_worker_1_.SetCoordinationService(coord_service_.get());
     state_ps_0_.InitializeAndConnectCoordinationAgents(kParameterServerJobName,
                                                        /*task_id=*/0,
                                                        coordination_config_);

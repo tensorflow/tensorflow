@@ -12,6 +12,6 @@ limitations under the License.
 
 #include "bindings/c/Passes.h"
 
-#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mhlo/transforms/passes.h"
 
 void mlirRegisterAllMhloPasses() { mlir::mhlo::registerAllMhloPasses(); }

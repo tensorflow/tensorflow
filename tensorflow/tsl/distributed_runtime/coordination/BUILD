@@ -3,6 +3,7 @@ load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library", "tsl_cc_t
 load("//tensorflow/tsl:tsl.bzl", "if_oss", "tsl_gpu_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/tsl:internal",
     ],

@@ -19,7 +19,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "lhlo/IR/lhlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace mhlo {

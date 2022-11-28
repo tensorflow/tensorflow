@@ -43,7 +43,7 @@ class LiftQuantizableSpotsAsFunctionsDRQPass
       LiftQuantizableSpotsAsFunctionsDRQPass)
 
   // Constructor used by the PassRegistration. This is only used by test.
-  explicit LiftQuantizableSpotsAsFunctionsDRQPass() {}
+  explicit LiftQuantizableSpotsAsFunctionsDRQPass() = default;
 
   // Constructor used by manually creating the pass.
   explicit LiftQuantizableSpotsAsFunctionsDRQPass(

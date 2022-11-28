@@ -90,7 +90,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 80
+// Next ID: 81
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -282,10 +282,9 @@ message HloInstructionProto {
   // kCustomCall.
   bool custom_call_has_side_effect = 65;
 
-  // A list of CustomCallOutputOperandAliasing pairs that specifies aliasing
-  // buffers between output and operands for kCustomCall.
-  repeated xla.CustomCallOutputOperandAliasing
-      custom_call_output_operand_aliasing = 74;
+  // A list of OutputOperandAliasing pairs that specifies aliasing buffers
+  // between output and operands for kCustomCall and kFusion.
+  repeated xla.OutputOperandAliasing output_operand_aliasing = 74;
 
   // Specifies the desired schedule for the custom-call. The field is only
   // present for custom-call.
@@ -414,7 +413,7 @@ message HloInputOutputAliasProto {
 }
 
 message DynamicParameterBindingProto {
-  // A list of bindings which indicates that the `target_dim_num` in
+  // A list of bindings which indicates that the `target_param_dim_num` in
   // the subshape `target_param_index` of parameter `target_param_num`
   // is a dynamic dimension and its real dynamic size is represented
   // by `dynamic_param_index` in parameter `dynamic_param_num`.
@@ -436,7 +435,7 @@ message DynamicParameterBindingProto {
   // dynamic_param_index = {}
   // target_param_num = 0
   // target_param_index = {}
-  // target_param_dim = 0
+  // target_param_dim_num = 0
   message Binding {
     int64 dynamic_param_num = 1;
     repeated int64 dynamic_param_index = 2;

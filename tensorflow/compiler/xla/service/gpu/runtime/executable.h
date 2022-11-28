@@ -26,9 +26,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
-#include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/collectives.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
@@ -119,17 +119,22 @@ class GpuRuntimeExecutable {
 
   const DebugOptions debug_options_;
 
-  // Keep a cache of kernels instantiated by this executable.
-  GpuExecutableKernelsCache kernels_cache_;
+  // Keep gpu kernels loaded by this executable.
+  GpuExecutableKernels gpu_kernels_;
 
-  // Keep a cache of gemm configs for all gemm operation in the program.
-  JitRtGemmConfigCache gemm_configs_cache_;
+  // Keep gemm configs for all gemm operation in the program.
+  GemmConfigs gemm_configs_;
 
   // Keep a cache for conv configs for all conv operations in the program.
   ConvRunnerCache conv_runners_cache_;
 
   // Support for running collective operations.
   JitRtCollectiveSupport collectives_;
+
+#if GOOGLE_CUDA
+  // Keep matmul execution plans (only if cuBLASLt is available).
+  MatmulPlans cublas_lt_matmul_plans_;
+#endif  // GOOGLE_CUDA
 };
 
 }  // namespace gpu

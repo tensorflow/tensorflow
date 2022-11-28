@@ -16,18 +16,32 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_CUBLAS_LT_MATMUL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_CUBLAS_LT_MATMUL_H_
 
+#include "absl/container/node_hash_map.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 
 #if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #endif  // GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
 
-// Registers XLA Gpu runtime kernel launch custom calls.
+#if GOOGLE_CUDA
+
+// Keep cublas_lt::MatmulPlan's for all matmul instances in the executable.
+class MatmulPlans : public runtime::StateVector<cublas_lt::MatmulPlan> {};
+
+#endif  // GOOGLE_CUDA
+
+// Registers XLA Gpu runtime cuBLASLt custom calls.
 void RegisterMatmulCustomCalls(runtime::DirectCustomCallRegistry& registry);
+
+// Add cuBLASLt attributes encoding
+void PopulateCublasLtMatmulAttrEncoding(
+    runtime::CustomCallAttrEncodingSet& encoding);
 
 }  // namespace gpu
 }  // namespace xla

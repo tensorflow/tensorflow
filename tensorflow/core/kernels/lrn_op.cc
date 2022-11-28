@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if !defined(IS_MOBILE_PLATFORM)

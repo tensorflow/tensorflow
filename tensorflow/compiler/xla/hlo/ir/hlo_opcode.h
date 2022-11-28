@@ -165,7 +165,7 @@ namespace xla {
   V(kTriangularSolve, "triangular-solve", 2)                                   \
   V(kTuple, "tuple", kHloOpcodeIsVariadic)                                     \
   V(kWhile, "while", 1)
-// LINT.ThenChange(../../mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td)
+// LINT.ThenChange(../../mlir_hlo/mhlo/IR/hlo_ops.td)
 
 enum class HloOpcode {
 #define DECLARE_ENUM(enum_name, opcode_name, ...) enum_name,

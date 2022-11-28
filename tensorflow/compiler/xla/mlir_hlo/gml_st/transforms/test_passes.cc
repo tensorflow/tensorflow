@@ -19,6 +19,9 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/interfaces/bufferizable_op_interface_impl.h"
+#include "gml_st/interfaces/tiling_interface_impl.h"
+#include "gml_st/transforms/fusion/fusion.h"
+#include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
@@ -36,6 +39,7 @@ namespace {
 #define GEN_PASS_DEF_TESTGMLSTBUFFERIZATION
 #define GEN_PASS_DEF_TESTGMLSTLOOPPEELING
 #define GEN_PASS_DEF_TESTGMLSTLOOPTILING
+#define GEN_PASS_DEF_TESTGMLSTGREEDYFUSION
 #include "gml_st/transforms/test_passes.h.inc"
 
 static constexpr char kPeeledLoopsLabel[] = "__peeled_loops__";
@@ -68,17 +72,17 @@ struct TiledLoopPeelingPattern : public OpRewritePattern<LoopOp> {
       return failure();
 
     // Peel loop and canonicalize.
-    LoopOp result;
-    if (failed(peelAndCanonicalizeGmlStLoop(rewriter, loopOp, idx, result)))
-      return failure();
+    auto result = peelAndCanonicalizeGmlStLoop(rewriter, loopOp, idx);
+    if (failed(result)) return failure();
 
     // Apply label, so that the same loop is not rewritten a second time.
     peeledLoops.push_back(idx);
     rewriter.updateRootInPlace(loopOp, [&]() {
       loopOp->setAttr(kPeeledLoopsLabel, rewriter.getI64ArrayAttr(peeledLoops));
     });
-    result->setAttr(kPeeledLoopsLabel, rewriter.getI64ArrayAttr(peeledLoops));
-    result->setAttr(kPartialIterationLabel, rewriter.getUnitAttr());
+    (*result)->setAttr(kPeeledLoopsLabel,
+                       rewriter.getI64ArrayAttr(peeledLoops));
+    (*result)->setAttr(kPartialIterationLabel, rewriter.getUnitAttr());
 
     return success();
   }
@@ -109,6 +113,9 @@ class TestGmlStLoopPeelingPass
   }
 };
 
+static constexpr llvm::StringRef kTestTilingAppliedLabel =
+    "__test_tiling_applied_label__";
+
 struct LinalgTilingPattern
     : public OpInterfaceRewritePattern<linalg::LinalgOp> {
   LinalgTilingPattern(MLIRContext *context, linalg::LinalgTilingOptions options,
@@ -118,13 +125,13 @@ struct LinalgTilingPattern
 
   LogicalResult matchAndRewrite(linalg::LinalgOp op,
                                 PatternRewriter &rewriter) const override {
-    if (hasTransformationAttr(op)) return failure();
+    if (hasLabel(op, kTestTilingAppliedLabel)) return failure();
 
     FailureOr<linalg::TiledLinalgOp> res =
         gml_st::tileLinalgOp(rewriter, op, options);
     if (failed(res)) return failure();
 
-    setTransformationAttr(rewriter, res->op);
+    setLabel(res->op, kTestTilingAppliedLabel);
 
     if (res->tensorResults.empty())
       rewriter.eraseOp(op);
@@ -162,7 +169,8 @@ struct TestGmlStLoopTilingPass
     patterns.add<LinalgTilingPattern>(ctx, options);
     (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
 
-    funcOp.walk([](linalg::LinalgOp op) { removeTransformationAttr(op); });
+    funcOp.walk(
+        [](linalg::LinalgOp op) { removeLabel(op, kTestTilingAppliedLabel); });
   }
 };
 
@@ -180,13 +188,59 @@ struct TestGmlStBufferizationPass
     opts.allowReturnAllocs = true;
     opts.bufferizeFunctionBoundaries = true;
     opts.functionBoundaryTypeConversion =
-        bufferization::BufferizationOptions::LayoutMapOption::IdentityLayoutMap;
+        bufferization::LayoutMapOption::IdentityLayoutMap;
 
     ModuleOp module = getOperation();
     if (failed(bufferization::runOneShotModuleBufferize(module, opts))) {
       signalPassFailure();
       return;
     }
+  }
+};
+
+static constexpr llvm::StringRef kTestFusionAppliedLabel =
+    "__test_fusion_applied_label__";
+
+struct GreedyFusionPattern : public OpRewritePattern<gml_st::ParallelOp> {
+  using OpRewritePattern<gml_st::ParallelOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(gml_st::ParallelOp op,
+                                PatternRewriter &rewriter) const override {
+    if (hasLabel(op, kTestFusionAppliedLabel)) return failure();
+
+    rewriter.updateRootInPlace(op, [&]() {
+      fuseGreedily(rewriter, op.getRegion().front(), [](Operation *op) {
+        return isa<linalg::BroadcastOp, linalg::FillOp, linalg::MapOp>(op);
+      });
+    });
+
+    setLabel(op, kTestFusionAppliedLabel);
+    return success();
+  }
+};
+
+struct TestGmlStGreedyFusionPass
+    : public impl::TestGmlStGreedyFusionBase<TestGmlStGreedyFusionPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry
+        .insert<GmlStDialect, linalg::LinalgDialect, tensor::TensorDialect>();
+    registerGmlStTilingInterfaceExternalModels(registry);
+  }
+
+  void runOnOperation() override {
+    func::FuncOp funcOp = getOperation();
+
+    MLIRContext *ctx = funcOp.getContext();
+    RewritePatternSet patterns(ctx);
+
+    patterns.add<GreedyFusionPattern>(ctx);
+
+    if (failed(applyPatternsAndFoldGreedily(funcOp, std::move(patterns))))
+      return signalPassFailure();
+
+    funcOp.walk([](gml_st::ParallelOp op) {
+      removeLabel(op, kTestFusionAppliedLabel);
+    });
   }
 };
 
@@ -202,6 +256,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStLoopTilingPass() {
 
 std::unique_ptr<OperationPass<ModuleOp>> createTestGmlStBufferizationPass() {
   return std::make_unique<TestGmlStBufferizationPass>();
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStGreedyFusionPass() {
+  return std::make_unique<TestGmlStGreedyFusionPass>();
 }
 
 }  // namespace gml_st

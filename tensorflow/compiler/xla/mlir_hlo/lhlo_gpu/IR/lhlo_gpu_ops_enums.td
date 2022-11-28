@@ -29,12 +29,13 @@ def ActivationModeRelu : I32EnumAttrCase<"Relu", 3>;
 def ActivationModeRelu6 : I32EnumAttrCase<"Relu6", 4>;
 def ActivationModeReluX : I32EnumAttrCase<"ReluX", 5>;
 def ActivationModeBandPass : I32EnumAttrCase<"BandPass", 6>;
+def ActivationModeElu: I32EnumAttrCase<"Elu", 7>;
 
 def Activation: I32EnumAttr<"Activation",
     "Activation applied with fused convolution",
     [ActivationModeNone,  ActivationModeSigmoid, ActivationModeTanh,
      ActivationModeRelu, ActivationModeRelu6, ActivationModeReluX,
-     ActivationModeBandPass]> {
+     ActivationModeBandPass, ActivationModeElu]> {
   let genSpecializedAttr = 0;
   let cppNamespace = "::mlir::lmhlo_gpu";
 }

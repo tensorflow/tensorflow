@@ -55,9 +55,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/tsl/platform/denormal.h"
 #include "tensorflow/tsl/platform/setround.h"
+#include "tensorflow/tsl/profiler/lib/connected_traceme.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
@@ -1100,16 +1100,15 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
         std::move(ready_event),
         /*on_block_start=*/
         []() {
-          tensorflow::profiler::TraceMeProducer traceme(
-              "TfrtCpuBuffer::ToLiteral");
+          tsl::profiler::TraceMeProducer traceme("TfrtCpuBuffer::ToLiteral");
           VLOG(1) << "TfrtCpuBuffer::ToLiteral";
           return PjRtFutureHelpers::ProfilingKeys(
               {/*traceme_context_id =*/traceme.GetContextId()});
         },
         /*on_block_end=*/
         [](PjRtFutureHelpers::ProfilingKeys keys) {
-          tensorflow::profiler::TraceMeConsumer traceme(
-              "TfrtCpuBuffer::ToLiteral", keys.traceme_context_id);
+          tsl::profiler::TraceMeConsumer traceme("TfrtCpuBuffer::ToLiteral",
+                                                 keys.traceme_context_id);
         });
   }
 }
@@ -1246,15 +1245,15 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
         std::move(status_event),
         /*on_block_start=*/
         []() {
-          tensorflow::profiler::TraceMeProducer traceme("TfrtCpuBuffer::Await");
+          tsl::profiler::TraceMeProducer traceme("TfrtCpuBuffer::Await");
           VLOG(1) << "TfrtCpuBuffer::Await";
           return PjRtFutureHelpers::ProfilingKeys(
               {/*traceme_context_id=*/traceme.GetContextId()});
         },
         /*on_block_end=*/
         [](PjRtFutureHelpers::ProfilingKeys keys) {
-          tensorflow::profiler::TraceMeConsumer traceme(
-              "TfrtCpuBuffer::Await", keys.traceme_context_id);
+          tsl::profiler::TraceMeConsumer traceme("TfrtCpuBuffer::Await",
+                                                 keys.traceme_context_id);
         });
   }
 }
@@ -1413,6 +1412,18 @@ Status TfrtCpuExecutable::CheckBufferCompatibilities(
     }
   }
   return OkStatus();
+}
+
+// Create a descriptor table for XLA Runtime from a buffer table.
+static std::vector<xla::cpu::BufferDesc> MakeXLARuntimeDescriptorTable(
+    absl::Span<const std::shared_ptr<MaybeOwningCpuMemory>> buffer_table) {
+  std::vector<xla::cpu::BufferDesc> descriptor_table;
+  descriptor_table.reserve(descriptor_table.size());
+  for (const auto& buf : buffer_table) {
+    descriptor_table.emplace_back(
+        xla::cpu::BufferDesc{buf->data(), buf->size()});
+  }
+  return descriptor_table;
 }
 
 StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
@@ -1612,13 +1623,8 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
     // Call generated function.
     if (cpu_executable->IsXlaRuntime()) {
-      std::vector<xla::cpu::BufferDesc> descriptor_table;
-      descriptor_table.reserve(descriptor_table.size());
-      for (const auto& buf : buffer_table) {
-        descriptor_table.emplace_back(
-            xla::cpu::BufferDesc{buf->data(), buf->size()});
-      }
-      Status status = cpu_executable->ExecuteXlaRuntime(descriptor_table);
+      Status status = cpu_executable->ExecuteXlaRuntime(
+          MakeXLARuntimeDescriptorTable(buffer_table), &run_options);
       if (!status.ok()) return status;
     } else {
       cpu_executable->compute_function()(result_buffer, &run_options, nullptr,
@@ -1675,15 +1681,22 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           tsl::port::ScopedFlushDenormal flush;
           tsl::port::ScopedSetRound round(FE_TONEAREST);
 
-          XlaCustomCallStatus status;
-
           // Call generated function.
-          cpu_executable->compute_function()(result_buffer, &run_options,
-                                             nullptr, buffer_pointers.data(),
-                                             &status, nullptr);
-
-          std::optional<absl::string_view> error_message =
-              xla::CustomCallStatusGetMessage(&status);
+          std::optional<absl::string_view> error_message;
+          if (cpu_executable->IsXlaRuntime()) {
+            Status s = cpu_executable->ExecuteXlaRuntime(
+                MakeXLARuntimeDescriptorTable(buffer_table), &run_options);
+            if (!s.ok()) {
+              // TODO(kramerb): Propagate custom call error messages.
+              error_message = "XLA Runtime execution failed";
+            }
+          } else {
+            XlaCustomCallStatus status;
+            cpu_executable->compute_function()(result_buffer, &run_options,
+                                               nullptr, buffer_pointers.data(),
+                                               &status, nullptr);
+            error_message = xla::CustomCallStatusGetMessage(&status);
+          }
 
           for (auto& donation_transaction : donation_transactions) {
             std::move(donation_transaction).Commit();
@@ -1757,9 +1770,9 @@ TfrtCpuExecutable::Execute(
   }
 
   RunId run_id;
-  tensorflow::profiler::TraceMeProducer activity(
-      "TfrtCpuExecutable::Execute", tensorflow::profiler::ContextType::kPjRt,
-      run_id.ToInt());
+  tsl::profiler::TraceMeProducer activity("TfrtCpuExecutable::Execute",
+                                          tsl::profiler::ContextType::kPjRt,
+                                          run_id.ToInt());
 
   const int num_addressable_devices = addressable_devices_.size();
 

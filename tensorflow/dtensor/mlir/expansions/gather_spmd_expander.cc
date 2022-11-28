@@ -53,6 +53,7 @@ StatusOr<mlir::Operation*> GatherV2SPMDExpander::ExpandOp(mlir::Operation* op) {
   if (axis < 0) axis += params_rank;
 
   int batch_dims = gather_op.getBatchDims();
+  if (batch_dims < 0) batch_dims += indices_rank;
 
   auto params = gather_op.getParams();
   auto indices = gather_op.getIndices();
@@ -189,7 +190,7 @@ GatherV2SPMDExpander::ComputeLayoutForward(
 
   // Handle the case of negative axis.
   if (axis < 0) axis += params_rank;
-
+  if (batch_dims < 0) batch_dims += indices_rank;
   if (params_layout || indices_layout) {
     std::vector<std::string> output_layout_specs;
 
@@ -261,7 +262,7 @@ GatherV2SPMDExpander::ComputeLayoutBackward(
 
     // Handle the case of negative axis.
     if (axis < 0) axis += params_rank;
-
+    if (batch_dims < 0) batch_dims += indices_rank;
     std::vector<std::string> params_layout_specs;
     std::vector<std::string> indices_layout_specs;
     params_layout_specs.reserve(params_rank);

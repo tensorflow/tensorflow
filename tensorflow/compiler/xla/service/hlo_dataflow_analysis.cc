@@ -29,13 +29,13 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -1835,7 +1835,26 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(
     }
     return in_place_pairs;
   } else if (instruction->opcode() == HloOpcode::kFusion) {
-    return GetFusionInstructionInPlaceInputOutputPairs(instruction);
+    const auto& aliasing_pairs =
+        Cast<HloFusionInstruction>(instruction)->output_to_operand_aliasing();
+    // WARNING: The users of fusion's output_to_operand_aliasing should be aware
+    // that the annotated output-operand-aliasing pairs should not conflict with
+    // those discovered by GetFusionInstructionInPlaceInputOutputPairs.
+    // TODO (b/259460539): Make sure the annotated and discovered pairs do not
+    // conflict (possibly through implementing a new pass)
+    auto in_place_pairs =
+        GetFusionInstructionInPlaceInputOutputPairs(instruction);
+    if (!aliasing_pairs.empty()) {
+      for (const auto& pair : aliasing_pairs) {
+        ShapeIndex output_shape_index = pair.first;
+        int64_t operand_index = pair.second.first;
+        ShapeIndex operand_shape_index = pair.second.second;
+        in_place_pairs.push_back(
+            {HloOperandIndex{operand_index, {operand_shape_index}},
+             output_shape_index});
+      }
+    }
+    return in_place_pairs;
   }
 
   return {};

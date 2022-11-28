@@ -19,10 +19,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 
 namespace xla {
 namespace gpu {
@@ -46,7 +46,7 @@ int64_t GpuHloCostAnalysis::FusionParameterReadBytes(
                            hlo->opcode() == HloOpcode::kGetTupleElement));
   float utilization = hlo_properties_.at(hlo).at(kUtilizationKey);
   if (!options_.count_multiple_input_accesses) {
-    utilization = fmax(utilization, 1.0);
+    utilization = fmin(utilization, 1.0);
   }
   return GetShapeSize(hlo->shape()) * utilization;
 }
@@ -221,8 +221,15 @@ Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
     // possible", and if we were to include temp memory in here, we'd
     // essentially be *rewarding* convs that use additional temp memory!
     if (custom_call->shape().IsTuple()) {
-      SetOutputBytesAccessed(
-          options_.shape_size(custom_call->shape().tuple_shapes(0)));
+      float output_size =
+          options_.shape_size(custom_call->shape().tuple_shapes(0));
+      // 'Bytes accessed' are estimated in HloCostAnalysis::Preprocess() as
+      // input + output. As the output size is being adjusted here it has
+      // to propagate to the total bytes accessed.
+      current_properties_[kBytesAccessedKey] -=
+          current_properties_[GetOutputBytesAccessedKey()];
+      SetOutputBytesAccessed(output_size);
+      current_properties_[kBytesAccessedKey] += output_size;
     }
     return OkStatus();
   }

@@ -114,8 +114,7 @@ func.func @main(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>, %arg2: tensor<1xf32>
       mlir::parseSourceString<mlir::ModuleOp>(kMLIR, &context));
   auto module_op = module.get();
   auto serialized_result_fb = ExportRuntimeMetadata(module_op);
-  const auto* result =
-      GetRuntimeMetadata(serialized_result_fb.getValue().c_str());
+  const auto* result = GetRuntimeMetadata(serialized_result_fb.value().c_str());
   const auto* expected = GetRuntimeMetadata(kExpectedFB.c_str());
   ASSERT_TRUE(result != nullptr);
   ASSERT_TRUE(result->subgraph_metadata() != nullptr);

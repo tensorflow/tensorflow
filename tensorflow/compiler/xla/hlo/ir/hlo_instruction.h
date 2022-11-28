@@ -833,6 +833,12 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateBitcastConvert(
       const Shape& shape, HloInstruction* operand);
 
+  // Creates a stochastic conversion instruction, where operand is the data to
+  // convert, random is a given random input to determine the rounding direction
+  // and shape is the target shape for the conversion.
+  static std::unique_ptr<HloInstruction> CreateStochasticConvert(
+      const Shape& shape, HloInstruction* operand, HloInstruction* random);
+
   // Creates an infeed instruction, which reads data of the given shape from the
   // Infeed interface of the device. infeed_shape is the shape of the data
   // received from the infeed *not* the shape of the infeed instruction which

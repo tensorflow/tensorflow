@@ -20,14 +20,13 @@ load("//tensorflow:tensorflow.bzl", "clean_dep")
 load("build_defs.bzl", "embedded_binary")
 load("special_rules.bzl", "jpeg_copts", "libjpeg_deps", "minibenchmark_visibility_allowlist")
 
-default_visibility_group = [
-    "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
-    "//tensorflow/lite/tools/benchmark:__subpackages__",
-    "@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__",
-] + minibenchmark_visibility_allowlist()
-
 package(
-    default_visibility = default_visibility_group,
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
+        "//tensorflow/lite/tools/benchmark:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__",
+    ] + minibenchmark_visibility_allowlist(),
     licenses = ["notice"],
 )
 
@@ -40,7 +39,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "@flatbuffers",
@@ -56,8 +55,8 @@ cc_test(
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:interpreter_test_util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/testing:util",
@@ -80,9 +79,9 @@ cc_library(
     deps = [
         ":status_codes",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
@@ -96,8 +95,8 @@ cc_test(
     deps = [
         ":fb_storage",
         ":status_codes",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
@@ -127,7 +126,7 @@ cc_library(
         "decode_jpeg_status.h",
     ],
     deps = [
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
     ],
 )
 
@@ -142,7 +141,7 @@ cc_library(
         ":decode_jpeg_status",
         ":jpeg_common",
         ":libjpeg_hdrs",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
     ],
 )
 
@@ -155,7 +154,7 @@ cc_test(
     deps = [
         ":decode_jpeg_status",
         ":libjpeg_handle",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -188,7 +187,7 @@ cc_test(
     deps = [
         ":decode_jpeg_status",
         ":libc_handle",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -225,7 +224,7 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -264,7 +263,7 @@ cc_test(
         ":libjpeg_decoder_test_helper",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -280,8 +279,8 @@ cc_library(
         ":libjpeg_decoder",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:tensor",
         "@flatbuffers",
@@ -337,8 +336,8 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
     ],
 )
@@ -349,7 +348,7 @@ cc_test(
     deps = [
         ":embedded_chessboard_jpeg",
         ":jpeg_header_parser",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -422,11 +421,11 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:c_api",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/configuration:delegate_registry",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:constants",
@@ -973,6 +972,7 @@ cc_test(
         "//tensorflow/lite/experimental/acceleration/configuration:flatbuffer_to_proto",
         "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
         "//tensorflow/lite/experimental/acceleration/configuration:proto_to_flatbuffer",
+        "//tensorflow/lite:stderr_reporter",
     ] + select({
         clean_dep("//tensorflow:android"): [
             "//tensorflow/lite/experimental/acceleration/configuration:gpu_plugin",

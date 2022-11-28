@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 
-namespace tensorflow {
+namespace stream_executor {
 namespace tpu {
 
 TfTpu_BaseFn* InitializeApiFn() {
@@ -29,4 +29,4 @@ const TfTpu_OpsApiFn* OpsApiFn() {
 }
 
 }  // namespace tpu
-}  // namespace tensorflow
+}  // namespace stream_executor

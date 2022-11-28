@@ -213,6 +213,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       if (deregister_fn_) deregister_fn_();
     }
 
+    bool SymbolicCheckpointCompatible() const override { return true; }
+
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
       interleave_depth_ = ctx->interleave_depth();
@@ -226,8 +228,10 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
           [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
       IteratorContext::Params params(ctx);
       params.cancellation_manager = cancellation_manager_.get();
+      IteratorContext iter_ctx(params);
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
-          IteratorContext(params), this, prefix(), &input_impl_));
+          &iter_ctx, this, prefix(), &input_impl_));
+      ctx->MergeCheckpoint(iter_ctx.checkpoint());
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
@@ -264,6 +268,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       if (result->output_allocated) {
         RecordBufferDequeue(ctx, result->output);
       }
+      ctx->MergeCheckpoint(result->checkpoint);
       TF_RETURN_IF_ERROR(
           ProcessBatch(dataset()->batch_size_, result->num_elements,
                        dataset()->drop_remainder_, result->status, ctx,
@@ -284,6 +289,12 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
                         IteratorStateWriter* writer) override {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
+      if (ctx->symbolic_checkpoint()) {
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCallCounter), 0));
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(full_name(kBatchResultsSize), 0));
+        return OkStatus();
+      }
       mutex_lock l(*mu_);
       // Wait for all in-flight calls to complete.
       while (num_calls_ > 0) {
@@ -380,6 +391,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       int64_t status_offset TF_GUARDED_BY(mu);
       // Counts the number of outstanding calls for this batch.
       int64_t num_calls TF_GUARDED_BY(&Iterator::mu_);
+      MemoryCheckpoint checkpoint TF_GUARDED_BY(mu);
       const uint64 uid = -1;
     };
 
@@ -415,6 +427,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       bool return_early;
       {
         mutex_lock l(result->mu);
+        result->checkpoint.Merge(ctx->checkpoint());
         result->end_of_input = result->end_of_input || end_of_input;
         result->status.Update(status);
         return_early = result->end_of_input || !result->status.ok();

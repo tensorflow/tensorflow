@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/worker_client.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -108,12 +109,20 @@ class GrpcDataTransferClient : public DataTransferClient {
       }
     }
     grpc::ClientContext ctx;
+    gtl::Cleanup<std::function<void()>> cleanup;
     {
       mutex_lock l(mu_);
       active_contexts_.insert(&ctx);
+      cleanup = gtl::MakeCleanup([this, &ctx] {
+        mutex_lock l(mu_);
+        active_contexts_.erase(&ctx);
+      });
     }
     GetElementResponse resp;
     grpc::Status s = stub_->GetElement(&ctx, req, &resp);
+    if (!s.ok()) {
+      return grpc_util::WrapError("Failed to get element", s);
+    }
     result.end_of_sequence = resp.end_of_sequence();
     result.skip = resp.skip_task();
     switch (resp.element_case()) {
@@ -133,13 +142,6 @@ class GrpcDataTransferClient : public DataTransferClient {
         break;
       case GetElementResponse::ELEMENT_NOT_SET:
         break;
-    }
-    {
-      mutex_lock l(mu_);
-      active_contexts_.erase(&ctx);
-    }
-    if (!s.ok()) {
-      return grpc_util::WrapError("Failed to get element", s);
     }
     return OkStatus();
   }

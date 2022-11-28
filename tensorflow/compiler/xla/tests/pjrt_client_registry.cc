@@ -19,9 +19,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/service/hlo_runner.h"
-#include "tensorflow/compiler/xla/service/hlo_runner_pjrt.h"
-
 namespace xla {
 
 PjRtClientTestFactoryRegistry& GetGlobalPjRtClientTestFactory() {
@@ -29,20 +26,12 @@ PjRtClientTestFactoryRegistry& GetGlobalPjRtClientTestFactory() {
   return *factory;
 }
 
-StatusOr<std::unique_ptr<HloRunnerInterface>> GetHloRunnerForTest(
-    se::Platform* test_platform) {
-  if (ShouldUsePjRt()) {
-    TF_ASSIGN_OR_RETURN(auto client, GetGlobalPjRtClientTestFactory().Get()());
-    return std::unique_ptr<HloRunnerInterface>(
-        new HloRunnerPjRt(std::move(client)));
-  } else {
-    return std::unique_ptr<HloRunnerInterface>(new HloRunner(test_platform));
-  }
-}
-
 void RegisterPjRtClientTestFactory(
-    std::function<StatusOr<std::unique_ptr<PjRtClient>>()> factory) {
-  GetGlobalPjRtClientTestFactory().Register(std::move(factory));
+    PjRtClientTestFactoryRegistry::PjRtClientFactory factory,
+    PjRtClientTestFactoryRegistry::DeviceShapeRepresentationFnFactory
+        registered_device_shape_representation_fn) {
+  GetGlobalPjRtClientTestFactory().Register(
+      std::move(factory), registered_device_shape_representation_fn);
 }
 
 bool ShouldUsePjRt() {

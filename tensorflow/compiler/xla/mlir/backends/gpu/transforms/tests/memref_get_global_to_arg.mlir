@@ -38,6 +38,6 @@ func.func @get_global(%arg0: memref<24xi8> {lmhlo.constant_name = "cst0"},
   %2 = memref.get_global @cst2 : memref<2x3xf32, #map>
 
   // CHECK: return %[[V0]], %[[V1]], %[[V2]]
-  // CHECK-SAME: : memref<2x3xf32>, memref<f32>, memref<2x3xf32, #map>
+  // CHECK-SAME: : memref<2x3xf32>, memref<f32>, memref<2x3xf32, #map{{[0-9]*}}>
   return %0, %1, %2 : memref<2x3xf32>, memref<f32>, memref<2x3xf32, #map>
 }

@@ -27,8 +27,19 @@ module {
 // CHECK: func private @quantize_i8
 // CHECK: func private @dequantize_i8
 
+// UQ-CHECK-NOT: func private @dequantize_i8
+// UQ-CHECK-NOT: func private @internal_conv2d_fn
+// UQ-CHECK-NOT: func private @internal_requantize_qi8_fn
+// UQ-CHECK-NOT: func private @internal_requantize_no_activation_fn
+// UQ-CHECK-NOT: func private @internal_requantize_and_relu_fn
+// UQ-CHECK-NOT: func private @quantize_i8
 // UQ-CHECK: func private @quantized_conv2d_with_bias_fn
-// UQ-CHECK: func private @quantize_qi8
-// UQ-CHECK: func private @requantize_qi8
-// UQ-CHECK: func private @dequantize_qi8
-
+// UQ-CHECK: func private @quantized_conv2d_with_bias_and_relu_fn
+// UQ-CHECK: func private @quantized_conv2d_with_bias_and_relu6_fn
+// UQ-CHECK: func private @quantized_conv2d_with_relu_fn
+// UQ-CHECK: func private @quantized_conv2d_with_relu6_fn
+// UQ-CHECK: func private @quantized_depthwise_conv2d_with_bias_fn
+// UQ-CHECK: func private @quantized_depthwise_conv2d_with_bias_and_relu_fn
+// UQ-CHECK: func private @quantized_depthwise_conv2d_with_bias_and_relu6_fn
+// UQ-CHECK: func private @quantized_depthwise_conv2d_with_relu_fn
+// UQ-CHECK: func private @quantized_depthwise_conv2d_with_relu6_fn

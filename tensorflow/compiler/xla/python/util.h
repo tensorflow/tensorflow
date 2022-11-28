@@ -16,8 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_UTIL_H_
 
+#include <memory>
+#include <vector>
+
 #include "absl/strings/str_format.h"
 #include "pybind11/pybind11.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/status.h"
 
 namespace xla {
 
@@ -31,6 +36,11 @@ void PythonDeprecationWarning(const absl::FormatSpec<Args...>& format,
     throw pybind11::error_already_set();
   }
 }
+
+// Requests if given buffers are ready, awaits for results and returns OK if
+// all of the buffers are ready or the last non-ok status.
+Status AwaitBuffersReady(
+    const std::vector<std::shared_ptr<PjRtBuffer>>& buffers);
 
 }  // namespace xla
 

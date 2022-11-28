@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -284,7 +284,7 @@ Status LoadAndPreprocessModule(int version,
   if (!*module) {
     return errors::InvalidArgument("Cannot deserialize computation");
   }
-  VLOG(3) << "Parsed serialized module (version" << version << ")\n"
+  VLOG(3) << "Parsed serialized module (version " << version << ")\n"
           << debugString(**module);
 
   if (failed((*module)->verifyInvariants())) {

@@ -110,6 +110,20 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
     Operation* tf_op = rewriter.create(op_state);
     rewriter.replaceOp(op, tf_op->getResults());
 
+    if (isa<TF::MapDatasetOp, TF::ReduceDatasetOp>(tf_op)) {
+      constexpr StringRef kFuncAttrName = "f";
+      tf_op->setAttr(
+          kFuncAttrName,
+          tf_op->getAttr(kFuncAttrName).cast<TF::FuncAttr>().getName());
+    }
+
+    if (isa<TF::TakeWhileDatasetOp>(tf_op)) {
+      constexpr StringRef kFuncAttrName = "predicate";
+      tf_op->setAttr(
+          kFuncAttrName,
+          tf_op->getAttr(kFuncAttrName).cast<TF::FuncAttr>().getName());
+    }
+
     // Special type fixes for TF Resource Tensors that are casted to
     // Int32 tensor during MLIR->TFLite flatbuffer conversion.
     // TODO(b/146131919): correct handling of resource type

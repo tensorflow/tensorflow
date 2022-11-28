@@ -35,6 +35,9 @@ namespace {
 #define GEN_PASS_DEF_TILINGSOFTMAXPASS
 #include "gml_st/transforms/passes.h.inc"
 
+static constexpr llvm::StringRef kTileSoftmaxAppliedLabel =
+    "__tile_softmax_applied_label__";
+
 Operation *fuseIthOperandInPlace(PatternRewriter &rewriter, Operation *op,
                                  int64_t i) {
   auto matOp = llvm::cast<MaterializeOp>(op->getOperand(i).getDefiningOp());
@@ -49,7 +52,8 @@ LogicalResult tilePartialSoftmax(
     llvm::function_ref<FailureOr<Operation *>(Operation *, int64_t)>
         tileOperationFn) {
   // Match cwise root op.
-  if (!isCwiseGenericOp(op)) return failure();
+  if (!isCwiseGenericOp(op))
+    return rewriter.notifyMatchFailure(op, "not cwise generic");
 
   // Match all operands to be derived from the same source value in one of two
   // ways:
@@ -66,34 +70,39 @@ LogicalResult tilePartialSoftmax(
     if (isSimpleBcastReduction(operand.getDefiningOp(), &reductionDim,
                                &bcastReduction)) {
       if (commonSource && commonSource != bcastReduction.operand) {
-        return failure();
+        return rewriter.notifyMatchFailure(bcastReduction.bcast,
+                                           "no common reduction source");
       }
       commonSource = bcastReduction.operand;
       if (commonReductionDim && *commonReductionDim != reductionDim) {
-        return failure();
+        return rewriter.notifyMatchFailure(bcastReduction.reduction,
+                                           "no common reduction dim");
       }
       commonReductionDim = reductionDim;
       simpleBcastReductions.push_back(bcastReduction);
-      // foundBcastReduction = true;
       continue;
     }
 
     // Case ii.
-    if (commonSource && commonSource != operand) return failure();
+    if (commonSource && commonSource != operand)
+      return rewriter.notifyMatchFailure(op, "common source != operand");
     commonSource = operand;
     simpleBcastReductions.push_back(llvm::None);
   }
 
-  if (!commonReductionDim || !commonSource) return failure();
+  if (!commonReductionDim || !commonSource)
+    return rewriter.notifyMatchFailure(op, "no common dim/src");
 
   // Tile or fuse cwise root op.
   FailureOr<Operation *> tiledOp = tileOperationFn(op, *commonReductionDim);
-  if (failed(tiledOp)) return failure();
-  setTransformationAttr(rewriter, *tiledOp);
+  if (failed(tiledOp))
+    return rewriter.notifyMatchFailure(op, "call to tileOperationFn failed");
+  setLabel(*tiledOp, kTileSoftmaxAppliedLabel);
 
   // Fuse through the bcast reduction chains.
   Value commonTiledSource;
-  for (int64_t i = 0; i < simpleBcastReductions.size(); i++) {
+  for (int64_t i = 0; i < static_cast<int64_t>(simpleBcastReductions.size());
+       i++) {
     if (!simpleBcastReductions[i]) continue;
 
     // Fuse.
@@ -110,7 +119,7 @@ LogicalResult tilePartialSoftmax(
   }
 
   // Also use the common tiled source value for the remaining operands.
-  for (int64_t i = 0; i < simpleBcastReductions.size(); i++) {
+  for (size_t i = 0; i < simpleBcastReductions.size(); i++) {
     if (simpleBcastReductions[i]) continue;
     (*tiledOp)->setOperand(i, commonTiledSource);
   }
@@ -133,13 +142,15 @@ struct TilePartialSoftmaxPattern
 
   LogicalResult matchAndRewrite(TilingInterface op,
                                 PatternRewriter &rewriter) const override {
-    if (hasTransformationAttr(op)) return failure();
+    if (hasLabel(op, kTileSoftmaxAppliedLabel))
+      return rewriter.notifyMatchFailure(op, "has tranformation attr");
 
     // Only apply to non-fusable occurrences.
     bool hasFusableOccurrences = llvm::any_of(
         op->getUsers(),
         [](Operation *op) { return llvm::isa<MaterializeOp>(op); });
-    if (hasFusableOccurrences) return failure();
+    if (hasFusableOccurrences)
+      return rewriter.notifyMatchFailure(op, "has fusable occurrences");
 
     return tilePartialSoftmax(
         op, rewriter,
@@ -151,7 +162,8 @@ struct TilePartialSoftmaxPattern
               [&](OpBuilder &b, Operation *op) -> SmallVector<Value> {
             Location loc = op->getLoc();
             SmallVector<Value> tileSizeValues;
-            for (int64_t i = 0; i < tileSizes.size(); i++) {
+            for (int64_t i = 0; i < static_cast<int64_t>(tileSizes.size());
+                 i++) {
               // Skip tiling the reduction dimension. By convention, this is a
               // tile size of 0.
               int64_t tileSizeInDim =
@@ -169,7 +181,7 @@ struct TilePartialSoftmaxPattern
           if (failed(tilingResult)) return failure();
 
           rewriter.replaceOp(op, tilingResult->loop->getResults());
-          setTransformationAttr(rewriter, tilingResult->tiledOp);
+          setLabel(tilingResult->tiledOp, kTileSoftmaxAppliedLabel);
           return tilingResult->tiledOp;
         });
   }
@@ -196,7 +208,10 @@ struct FusePartialSoftmaxPattern : public OpRewritePattern<MaterializeOp> {
         [&](Operation *cwiseOp,
             int64_t /*commonReductionDim*/) -> FailureOr<Operation *> {
           auto iface = llvm::dyn_cast_or_null<TilingInterface>(cwiseOp);
-          if (!iface) return failure();
+          if (!iface) {
+            return rewriter.notifyMatchFailure(
+                cwiseOp, "doesn't implement tiling iface");
+          }
 
           // By construction, we assume that the tile spans the operand in the
           // common reduction dimension (`commonReductionDim`).
@@ -212,7 +227,10 @@ struct FusePartialSoftmaxPattern : public OpRewritePattern<MaterializeOp> {
           SmallVector<OpFoldResult> sizes = tile.getMixedSizes();
           FailureOr<Value> result =
               iface.generateResultTileValue(rewriter, 0, offsets, sizes);
-          if (failed(result)) return failure();
+          if (failed(result)) {
+            return rewriter.notifyMatchFailure(
+                cwiseOp, "failed to generate result tile");
+          }
 
           rewriter.replaceOp(op, *result);
           return result->getDefiningOp();
@@ -271,7 +289,7 @@ struct TilingSoftmaxPass
     }
 
     // Clean up by removing temporary attributes.
-    f.walk([](Operation *op) { removeTransformationAttr(op); });
+    f.walk([](Operation *op) { removeLabel(op, kTileSoftmaxAppliedLabel); });
   }
 };
 

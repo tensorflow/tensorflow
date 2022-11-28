@@ -21,7 +21,7 @@ limitations under the License.
 #include "lhlo/IR/lhlo_ops_structs.h"
 #include "lhlo/IR/lhlo_structured_interface.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"

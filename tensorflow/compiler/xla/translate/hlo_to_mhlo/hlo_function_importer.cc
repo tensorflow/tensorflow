@@ -31,21 +31,22 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/comparison_util.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/location_importer.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 using llvm::APInt;
 using llvm::makeArrayRef;
@@ -116,20 +117,6 @@ void CleanUpTupleOps(mlir::Block* block, mlir::OpBuilder* builder) {
 
 }  // namespace
 
-constexpr char kInternalFunction[] = "HLO_INTERNAL_";
-
-std::string Gensym(mlir::ModuleOp op, std::string name) {
-  mlir::SymbolTable symbolTable(op);
-
-  int fresh = 0;
-  std::string fresh_name;
-  do {
-    fresh_name = absl::StrCat(kInternalFunction, name, fresh);
-  } while (symbolTable.lookup(fresh_name));
-
-  return fresh_name;
-}
-
 mlir::TypeRange Untuple(const mlir::Type& type) {
   if (type.isa<mlir::TupleType>()) {
     return llvm::dyn_cast<mlir::TupleType>(type).getTypes();
@@ -150,9 +137,13 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncStart(
   }
   auto func_type = mlir::FunctionType::get(context_, Untuple(result_types[0]),
                                            Untuple(result_types[1]));
-  auto sym = Gensym(module_, func_name);
-  auto function = mlir::OpBuilder(module_.getBodyRegion())
-                      .create<FuncOp>(loc, sym, func_type);
+  auto function = FuncOp::create(loc, func_name, func_type);
+
+  // The new function doesn't need to be inserted in the beginning but is done
+  // to make testing easier and preserve the original behavior.
+  mlir::Block& block = symbol_table_.getOp()->getRegion(0).front();
+  symbol_table_.insert(function, mlir::Block::iterator(block.begin()));
+
   function.setPrivate();
   auto async_builder = mlir::OpBuilder(function.getBody());
 
@@ -336,19 +327,19 @@ Value HloFunctionImporter::CreateTupleValue(
       .getResult();
 }
 
-Status HloFunctionImporter::ImportAsFunc(
-    const HloComputation& computation, mlir::ModuleOp module,
+StatusOr<mlir::func::FuncOp> HloFunctionImporter::ImportAsFunc(
+    const HloComputation& computation, mlir::SymbolTable& symbol_table,
     std::unordered_map<const HloComputation*, FuncOp>* function_map,
     mlir::Builder* builder, bool is_main) {
-  HloFunctionImporter importer(module, function_map, builder);
-  return importer.ImportAsFunc(computation, is_main).status();
+  HloFunctionImporter importer(symbol_table, function_map, builder);
+  return importer.ImportAsFunc(computation, is_main);
 }
 
 Status HloFunctionImporter::ImportAsRegion(
-    const xla::HloComputation& computation, mlir::Region* region,
-    mlir::Builder* builder, bool flatten_region_arg_tuple) {
-  HloFunctionImporter importer(region->getParentOfType<mlir::ModuleOp>(), {},
-                               builder);
+    const xla::HloComputation& computation, mlir::SymbolTable& symbol_table,
+    mlir::Region* region, mlir::Builder* builder,
+    bool flatten_region_arg_tuple) {
+  HloFunctionImporter importer(symbol_table, {}, builder);
   return importer.ImportAsRegion(computation, region, flatten_region_arg_tuple);
 }
 
@@ -363,11 +354,8 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
     if (*imported) {
       return *imported;
     }
-  } else {
-    TF_RET_CHECK(!module_.lookupSymbol<FuncOp>(computation_name))
-        << "Attempting to redeclare an existing function named "
-        << computation.name();
   }
+
   llvm::SmallVector<Type, 4> args, rets;
   TF_RETURN_IF_ERROR(GetMlirTypes(computation.parameter_instructions(), &args));
   TF_RETURN_IF_ERROR(GetMlirTypes({computation.root_instruction()}, &rets));
@@ -434,7 +422,7 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
     }
   }
 
-  module_.push_back(function);
+  symbol_table_.insert(function);
 
   // Add to the map right away for function calls if map is set.
   if (imported) {
@@ -582,29 +570,28 @@ Status HloFunctionImporter::ImportInstructions(
 
 StatusOr<Value> HloFunctionImporter::ImportInstructions(
     const xla::HloComputation& computation,
-    const llvm::SmallVectorImpl<Value>& arguments, mlir::OpBuilder* builder) {
+    const llvm::SmallVectorImpl<Value>& arguments,
+    mlir::SymbolTable& symbol_table, mlir::OpBuilder* builder) {
   mlir::Block* block = builder->getBlock();
   if (block == nullptr)
     return InvalidArgument(
         "ImportInstructions requires a valid block in the builder");
 
-  HloFunctionImporter importer(
-      block->getParent()->getParentOfType<mlir::ModuleOp>(), {}, builder);
+  HloFunctionImporter importer(symbol_table, {}, builder);
   return importer.ImportInstructionsImpl(computation, arguments, builder);
 }
 
 StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
     const xla::HloInstruction* instr,
     const llvm::SmallVectorImpl<mlir::Value>& operands,
-    mlir::OpBuilder* builder, DynamicShapeHandlingMode mode) {
+    mlir::SymbolTable& symbol_table, mlir::OpBuilder* builder,
+    DynamicShapeHandlingMode mode) {
   mlir::Block* block = builder->getBlock();
   if (block == nullptr)
     return InvalidArgument(
         "ImportInstructions requires a valid block in the builder");
 
-  HloFunctionImporter importer(
-      block->getParent()->getParentOfType<mlir::ModuleOp>(), {}, builder);
-
+  HloFunctionImporter importer(symbol_table, {}, builder);
   return importer.ImportInstructionWithLayout(instr, operands, builder, mode);
 }
 
@@ -1312,37 +1299,49 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                                      func_builder);
     }
     case HloOpcode::kAllToAll: {
-      // TODO(b/207152612): all-to-all HLO can either have pre-split operands
-      // (and returns a tuple) or a single operand that is split across
-      // `split_dimension` into the number of replicas in a group. Only the
-      // latter case (array all-to-all) is supported in importer right now and
-      // the former (tuple all-to-all) is not supported yet.
       auto all_to_all = Cast<HloAllToAllInstruction>(instruction);
-      if (all_to_all->shape().IsTuple())
-        return Unimplemented(
-            "Importing tuple all-to-all HLO is not supported yet");
+      auto result_tuple_ty = result_type.dyn_cast<mlir::TupleType>();
 
       // Check invariants of array all-to-all. This is a sanity check and is
       // verified by the HLO verifier.
-      if (!all_to_all->split_dimension().has_value() || operands.size() != 1 ||
-          all_to_all->replica_groups().empty())
-        return InvalidArgument(
-            "Array all-to-all should have a split dimension, one operand and "
-            "non-empty replica groups");
+      if (result_tuple_ty) {
+        if (all_to_all->split_dimension().has_value()) {
+          return InvalidArgument(
+              "Tuple all-to-all should not have a split dimension");
+        }
+      } else {
+        if (!all_to_all->split_dimension().has_value() ||
+            operands.size() != 1 || all_to_all->replica_groups().empty()) {
+          return InvalidArgument(
+              "Array all-to-all should have a split dimension, one operand and "
+              "non-empty replica groups");
+        }
+      }
 
       auto replica_groups_attr =
           ConvertReplicaGroups(all_to_all->replica_groups(), builder_)
               .getValue()
               .cast<DenseIntElementsAttr>();
-      uint64_t split_dim = all_to_all->split_dimension().value();
-      uint64_t concat_dim = split_dim;
-      uint64_t split_count = all_to_all->replica_groups()[0].replica_ids_size();
 
-      return func_builder
-          ->create<mlir::mhlo::AllToAllOp>(loc, result_type, operands[0],
-                                           split_dim, concat_dim, split_count,
-                                           replica_groups_attr)
-          .getOperation();
+      llvm::SmallVector<Type, 4> return_types = {result_type};
+      if (result_tuple_ty) {
+        return_types = llvm::to_vector<4>(result_tuple_ty.getTypes());
+      }
+
+      auto result = func_builder->create<mlir::mhlo::AllToAllOp>(
+          loc, return_types, operands, nullptr, nullptr, nullptr,
+          replica_groups_attr);
+
+      if (result_tuple_ty) {
+        return func_builder
+            ->create<mlir::mhlo::TupleOp>(loc, result_type, result.getResults())
+            .getOperation();
+      }
+
+      result.setSplitDimension(all_to_all->split_dimension().value());
+      result.setConcatDimension(all_to_all->split_dimension().value());
+      result.setSplitCount(all_to_all->replica_groups()[0].replica_ids_size());
+      return result.getOperation();
     }
     case HloOpcode::kReduce: {
       // Operands in the first half are reduction inputs and the remaining
@@ -1487,7 +1486,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           mlir::mhlo::symbolizeTranspose(
               TriangularSolveOptions::Transpose_Name(
                   instruction->triangular_solve_options().transpose_a()))
-              .getValue());
+              .value());
 
       attributes.push_back(builder_->getNamedAttr("transpose_a", transpose_a));
       return func_builder
@@ -1611,7 +1610,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto fft_type = mlir::mhlo::FftTypeAttr::get(
           builder_->getContext(),
           mlir::mhlo::symbolizeFftType(FftType_Name(instruction->fft_type()))
-              .getValue());
+              .value());
 
       std::vector<int64_t> fft_length(instruction->fft_length().begin(),
                                       instruction->fft_length().end());
@@ -1813,7 +1812,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto fusion = func_builder->create<mlir::mhlo::FusionOp>(
           loc, flattened_ret_types, flattened_operands,
           mlir::mhlo::FusionKindAttr::get(func_builder->getContext(),
-                                          fusion_kind.getValue()));
+                                          fusion_kind.value()));
       TF_RETURN_IF_ERROR(ImportAsRegion(
           *instruction->fused_instructions_computation(),
           &fusion.getFusedComputation(), /*flatten_region_arg_tuple=*/true));
@@ -1927,7 +1926,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertComparisonDirection(
       mlir::mhlo::ComparisonDirectionAttr::get(
           builder_->getContext(), mlir::mhlo::symbolizeComparisonDirection(
                                       ComparisonDirectionToString(direction))
-                                      .getValue()));
+                                      .value()));
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertComparisonType(
@@ -1937,7 +1936,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertComparisonType(
       mlir::mhlo::ComparisonTypeAttr::get(
           builder_->getContext(),
           mlir::mhlo::symbolizeComparisonType(ComparisonTypeToString(type))
-              .getValue()));
+              .value()));
 }
 
 mlir::DenseIntElementsAttr HloFunctionImporter::ConvertDimensions(

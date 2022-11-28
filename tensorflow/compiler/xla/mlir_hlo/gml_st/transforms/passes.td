@@ -57,7 +57,7 @@ def TilingCwisePass : Pass<"gml-tiling-cwise", "mlir::func::FuncOp"> {
 
 def TilingGPUWarpPass : Pass<"gml-tiling-gpu-warp", "mlir::func::FuncOp"> {
   let summary = "Tile warp-level ops for GPU";
-  let constructor = "::mlir::gml_st::createTilingGPUWarpPass()";
+  let constructor = "::mlir::gml_st::createTilingGpuWarpPass()";
   let dependentDialects = ["::mlir::gml_st::GmlStDialect",
                            "::mlir::arith::ArithDialect"];
 }
@@ -76,6 +76,36 @@ def TilingSoftmaxPass : Pass<"gml-tiling-softmax", "mlir::func::FuncOp"> {
   ];
 }
 
+def GreedyTilingAndFusionPass : Pass<"gml-greedy-tiling-and-fusion",
+    "mlir::func::FuncOp"> {
+  let summary = "Pass to tile the root operation and to greedily fuse "
+      "producers into it.";
+  let constructor = "::mlir::gml_st::createGreedyTilingAndFusionPass()";
+  let options = [
+    Option<"distribute", "distribute", "bool", /*default=*/"true",
+           "Generate gml_st.parallel or gml_st.for">,
+    ListOption<"tileSizes", "tile-sizes", "int64_t",
+               "Tile sizes", "llvm::cl::ZeroOrMore">,
+    Option<"distributionLabel", "distribution-label", "std::string",
+           /*default=*/"", "Distribution label for generated gml_st.parallel">,
+  ];
+}
+
+def CollapseShapePass : Pass<"gml-collapse-shape", "mlir::func::FuncOp"> {
+  let summary = "Collapse dimensions of bcasts, reductions, and cwise ops";
+  let description = [{
+    Pass to collapse dimensions of bcasts, reductions, and cwise ops. A given
+    number of trailing dimensions remains untouched while the remaining leading
+    dimensions will be collapsed where possible.
+  }];
+  let options = [
+    Option<"retainTrailingDims", "retain-trailing-dims", "int64_t",
+           /*default=*/"0",
+           "Number of trailing dimensions that will not be collapsed.">,
+  ];
+  let dependentDialects = ["::mlir::tensor::TensorDialect"];
+}
+
 def CollapseMaterializeOpsPass : Pass<"gml-collapse-materialize-ops",
     "mlir::func::FuncOp"> {
   let summary = "Collapse (or uncollapse) materialize operations.";
@@ -90,20 +120,28 @@ def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {
 
 def GmlStToGpuPass : Pass<"gml-st-to-gpu", "mlir::func::FuncOp"> {
   let summary = "Lower nested `gml_st.parallel` to `gpu.launch`";
-  let dependentDialects = ["::mlir::AffineDialect",
-                           "::mlir::arith::ArithDialect",
-                           "::mlir::gpu::GPUDialect", "::mlir::scf::SCFDialect",
+  let dependentDialects = ["::mlir::gpu::GPUDialect",
                            "::mlir::vector::VectorDialect",
                            "::mlir::memref::MemRefDialect"];
   let options = [
-    Option<"blockDistributionLabel", "block-distribution-label",
-           "std::string", /*default=*/"\"block\"",
-           "Direct children of `gml_st.parallel` loops with this distribution "
-           "type are distributed over blocks.">,
     Option<"warpDistributionLabel", "warp-distribution-label",
            "std::string", /*default=*/"\"warp\"",
            "Direct children of `gml_st.parallel` loops with this distribution "
            "type are distributed over warps.">
+  ];
+}
+
+def GmlStSimtfyPass : Pass<"gml-st-simtfy", "mlir::func::FuncOp"> {
+  let summary = "Lower nested `gml_st.parallel` to `gpu.launch`";
+  let dependentDialects = ["::mlir::AffineDialect",
+                           "::mlir::arith::ArithDialect",
+                           "::mlir::gpu::GPUDialect",
+                           "::mlir::scf::SCFDialect"];
+  let options = [
+    Option<"blockDistributionLabel", "block-distribution-label",
+           "std::string", /*default=*/"\"block\"",
+           "Direct children of `gml_st.parallel` loops with this distribution "
+           "type are distributed over blocks.">
   ];
 }
 
@@ -125,6 +163,14 @@ def VectorizeGmlStLoopsPass :
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }
 
+def LoweringVectorContractPass :
+    Pass<"lowering-vector-contract", "mlir::func::FuncOp"> {
+  let summary = "Pass to lower vector.contract";
+  let constructor = "::mlir::gml_st::createLoweringVectorContractPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect",
+                           "::mlir::gml_st::GmlStDialect"];
+}
+
 def TransformScatterForCpuPass :
     Pass<"xla-cpu-transform-scatter", "mlir::func::FuncOp"> {
   let summary = "Transform scatter ops for running on CPU";
@@ -139,6 +185,8 @@ def TransformMatmulForCpuPass :
   let constructor = "createTransformMatmulForCpuPass()";
 
   let options = [
+    Option<"lowerToMmt4D", "lower-to-mmt4d", "bool", "false",
+           "If true, lower linalg.matmul into linalg.mmt4d">,
     ListOption<"tileSizes", "tile-sizes", "int64_t",
                "Tile sizes for a `linalg.matmul`">,
   ];
@@ -165,5 +213,17 @@ def TransformTransposeForCpuPass :
   let options = [
     ListOption<"tileSizes", "tile-sizes", "int64_t",
                "Tile sizes for a `linalg.transpose`">,
+  ];
+}
+
+def TransformReduceForCpuPass :
+    Pass<"xla-cpu-transform-reduce", "mlir::func::FuncOp"> {
+  let summary = "Transform reduce ops for running on CPU";
+
+  let constructor = "createTransformReduceForCpuPass()";
+
+  let options = [
+    ListOption<"tileSizes", "tile-sizes", "int64_t",
+               "Tile sizes for a `linalg.reduce`">,
   ];
 }

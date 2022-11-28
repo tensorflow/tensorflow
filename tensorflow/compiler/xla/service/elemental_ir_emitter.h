@@ -24,8 +24,8 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_builder_mixin.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
@@ -75,6 +75,8 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
 
   virtual llvm::Value* EmitExtractReal(llvm::Value* value);
   virtual llvm::Value* EmitExtractImag(llvm::Value* value);
+
+  virtual StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value);
 
  private:
   virtual StatusOr<llvm::Value*> EmitUnaryOp(const HloInstruction* op,

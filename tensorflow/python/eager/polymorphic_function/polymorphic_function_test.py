@@ -2890,21 +2890,21 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     foo = Foo()
     with self.assertRaisesRegex(
-        TypeError, 'missing 1 required positional argument: \'y\''):
+        TypeError, 'missing a required argument: \'y\''):
       foo.add1(2)  # pylint: disable=no-value-for-parameter
 
     with self.assertRaisesRegex(TypeError, 'missing 1 required argument: x'):
       foo.add1(y=2)  # pylint: disable=no-value-for-parameter
 
     with self.assertRaisesRegex(
-        TypeError, 'missing 1 required positional argument: \'y\''):
+        TypeError, 'missing a required argument: \'y\''):
       foo.add2(2)  # pylint: disable=no-value-for-parameter
 
     with self.assertRaisesRegex(TypeError, 'missing 1 required argument: x'):
       foo.add2(y=2)  # pylint: disable=no-value-for-parameter
 
     with self.assertRaisesRegex(
-        TypeError, 'missing 1 required positional argument: \'y\''):
+        TypeError, 'missing a required argument: \'y\''):
       foo.add3(2)  # pylint: disable=no-value-for-parameter
 
     with self.assertRaisesRegex(TypeError, 'missing 1 required argument: x'):

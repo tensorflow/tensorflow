@@ -40,8 +40,6 @@ def TF_JITRT_Dialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::tf_jitrt";
-
-  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 //===----------------------------------------------------------------------===//

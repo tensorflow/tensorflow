@@ -38,8 +38,9 @@ func.func @sigmoid_dynamic_dim(%arg0: tensor<?x1xf32>) -> tensor<?x1xf32> {
 
 // -----
 
-// CHECK: #map{{[0-9]*}} = affine_map<(d0) -> ()>
-// CHECK: #map{{[0-9]*}} = affine_map<(d0) -> (d0)>
+// CHECK-DAG: #map{{[0-9]*}} = affine_map<() -> ()>
+// CHECK-DAG: #map{{[0-9]*}} = affine_map<(d0) -> ()>
+// CHECK-DAG: #map{{[0-9]*}} = affine_map<(d0) -> (d0)>
 
 // CHECK-LABEL: @add_scalar_with_vec
 func.func @add_scalar_with_vec(%arg0: tensor<f32>,
@@ -271,8 +272,8 @@ func.func @cast_sub(%arg0: tensor<?x32xi16>, %arg1: tensor<?x?x32xf16>)
 
 // -----
 
-// CHECK: #map{{[0-9]*}} = affine_map<(d0, d1) -> (d1, d0)>
-// CHECK: #map{{[0-9]*}} = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-DAG: #map{{[0-9]*}} = affine_map<(d0, d1) -> (d1, d0)>
+// CHECK-DAG: #map{{[0-9]*}} = affine_map<(d0, d1) -> (d0, d1)>
 
 // CHECK-LABEL: @tf_transpose_const_perm
 func.func @tf_transpose_const_perm(%arg0: tensor<2x3xf32>) -> tensor<3x2xf32> {
@@ -289,8 +290,8 @@ func.func @tf_transpose_const_perm(%arg0: tensor<2x3xf32>) -> tensor<3x2xf32> {
 
 // -----
 
-// CHECK: #map{{[0-9]*}} = affine_map<(d0, d1, d2) -> (d2, d0, d1)>
-// CHECK: #map{{[0-9]*}} = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+// CHECK-DAG: #map{{[0-9]*}} = affine_map<(d0, d1, d2) -> (d2, d0, d1)>
+// CHECK-DAG: #map{{[0-9]*}} = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 
 // CHECK-LABEL: @tf_transpose_after_transpose
 func.func @tf_transpose_after_transpose(%arg0: tensor<?x?x?xf32>)

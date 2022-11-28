@@ -93,6 +93,18 @@ class StreamExecutor {
   // Returns a reference to the platform that created this executor.
   const Platform* platform() const { return platform_; }
 
+  // Gets a human-readable description of the device, e.g. "nvidia GPU
+  // supporting sm75 with 32GB RAM, 80 SMs, ...".  This is intended to be the if
+  // and only if two devices are "the same" (e.g. the same make/model of GPU),
+  // though it may not completely succeed at this for all platforms.
+  //
+  // This string is not guaranteed to be stable between versions.  Please DO NOT
+  // rely on it never changing.  (Within one version of the code, it won't
+  // change, don't worry.)
+  absl::string_view device_description_str() const {
+    return device_description_str_;
+  }
+
   // Retrieves (loads) a kernel for the platform this StreamExecutor is acting
   // upon, if one exists.
   //
@@ -775,6 +787,8 @@ class StreamExecutor {
   int64_t memory_limit_bytes_;
 
   StreamExecutorMemoryAllocator allocator_;
+
+  std::string device_description_str_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutor);
 };

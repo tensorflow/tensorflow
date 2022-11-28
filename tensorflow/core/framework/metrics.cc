@@ -69,7 +69,7 @@ auto* tf_data_fetch_op_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/fetch_op",
     "The number of times a tf.data operation that fetches output(s) of a "
     "tf.data input pipeline (e.g. `IteratorGetNext`) was executed.",
-    "name");
+    "fetch_op");
 
 auto* tf_data_autotune_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/autotune", "tf.data autotuning", "name");

@@ -32,6 +32,8 @@ bool isCwiseGenericOp(Operation *op, int64_t *arity = nullptr);
 
 bool isUnaryCwiseGenericOp(Operation *op);
 
+bool isBcast(Operation *op);
+
 bool isSimpleBcast(Operation *op, int64_t *dimension = nullptr,
                    Value *operand = nullptr);
 

@@ -66,10 +66,10 @@ class XLACompatibleSharding : public Sharding {
   ~XLACompatibleSharding() override = default;
 };
 
-class MeshPspecSharding : public XLACompatibleSharding {
+class NamedSharding : public XLACompatibleSharding {
  public:
-  MeshPspecSharding(pybind11::object mesh, pybind11::object spec,
-                    pybind11::object parsed_pspec);
+  NamedSharding(pybind11::object mesh, pybind11::object spec,
+                pybind11::object parsed_pspec);
 
   const pybind11::object& mesh() const { return mesh_; }
   const pybind11::object& spec() const { return spec_; }
@@ -79,7 +79,7 @@ class MeshPspecSharding : public XLACompatibleSharding {
   }
 
   static pybind11::handle type() {
-    static auto type = pybind11::type::handle_of<MeshPspecSharding>();
+    static auto type = pybind11::type::handle_of<NamedSharding>();
     return type;
   }
 

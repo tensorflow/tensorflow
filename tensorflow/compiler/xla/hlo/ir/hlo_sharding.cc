@@ -515,7 +515,14 @@ StatusOr<HloSharding> HloSharding::GetTupleSharding(const Shape& shape) const {
     TF_RETURN_IF_ERROR(CheckLeafCount(shape));
     return *this;
   }
-  return Tuple(ShapeTree<HloSharding>(shape, *this));
+  return SingleTuple(shape, *this);
+}
+
+HloSharding HloSharding::NormalizeTupleSharding(const Shape& shape) const {
+  if (shape.IsTuple() && !IsTuple()) {
+    return HloSharding::SingleTuple(shape, *this);
+  }
+  return *this;
 }
 
 std::optional<int64_t> HloSharding::UniqueDevice() const {

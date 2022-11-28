@@ -342,6 +342,19 @@ class AvgPoolingGradOp : public OpKernel {
     const T* out_backprop_ptr = out_backprop.flat<T>().data();
     T* input_backprop_ptr = output->flat<T>().data();
 
+    for (int64_t r = 0; r < out_backprop_rows; ++r) {
+      int rindex, rsize;
+      OP_REQUIRES_OK(context,
+                     GetBroadcastSize(r, in_rows, window_rows, row_stride,
+                                      pad_rows, &rindex, &rsize));
+      for (int64_t c = 0; c < out_backprop_cols; ++c) {
+        int cindex, csize;
+        OP_REQUIRES_OK(context,
+                       GetBroadcastSize(c, in_cols, window_cols, col_stride,
+                                        pad_cols, &cindex, &csize));
+      }
+    }
+
     auto shard = [context, out_backprop_ptr, input_backprop_ptr,
                   out_backprop_rows, out_backprop_cols, out_backprop_depth,
                   in_rows, in_cols, window_rows, window_cols, row_stride,

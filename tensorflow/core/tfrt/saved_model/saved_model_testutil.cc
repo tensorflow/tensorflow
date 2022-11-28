@@ -171,7 +171,7 @@ void ExpectTensorEqual(const tensorflow::Tensor& x, const tensorflow::Tensor& y,
 
 SavedModel::Options DefaultTpuModelOptions(
     tensorflow::tfrt_stub::Runtime* runtime,
-    tensorflow::TfrtTpuInfraTarget tpu_target) {
+    tensorflow::TfrtDeviceInfraTarget device_target) {
   SavedModel::Options options(runtime);
   auto& compile_options = options.graph_execution_options.compile_options;
   compile_options.variable_device =
@@ -179,7 +179,7 @@ SavedModel::Options DefaultTpuModelOptions(
   compile_options.enable_optimizer = false;
   compile_options.enable_native_ops = false;
   compile_options.enable_grappler = true;
-  compile_options.tpu_target = tpu_target;
+  compile_options.device_target = device_target;
   compile_options.hoist_invariant_ops = true;
   compile_options.cost_threshold =
       1024;  // Servo currently uses 1024 as threshold for TPU models

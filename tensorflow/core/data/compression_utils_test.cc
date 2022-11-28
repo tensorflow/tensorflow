@@ -19,15 +19,16 @@ limitations under the License.
 
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 TEST(CompressionUtilsTest, Exceeds4GB) {
   std::vector<Tensor> element = {
@@ -85,25 +86,25 @@ TEST_P(ParameterizedCompressionUtilsTest, RoundTrip) {
       ExpectEqual(element, round_trip_element, /*compare_order=*/true));
 }
 
-INSTANTIATE_TEST_SUITE_P(Instantiation, ParameterizedCompressionUtilsTest,
-                         ::testing::ValuesIn(TestCases()));
-
-class ParameterizedCompressionAndSerializationTest
-    : public DatasetOpsTestBase,
-      public ::testing::WithParamInterface<std::vector<Tensor>> {};
-
-TEST_P(ParameterizedCompressionAndSerializationTest, RoundTrip) {
+TEST_P(ParameterizedCompressionUtilsTest, CompressedElementVersion) {
   std::vector<Tensor> element = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_tensors,
-                          CompressAndSerialize(element));
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Tensor> round_trip_element,
-                          DeserializeAndUncompress(serialized_tensors));
-  TF_EXPECT_OK(
-      ExpectEqual(element, round_trip_element, /*compare_order=*/true));
+  CompressedElement compressed;
+  TF_ASSERT_OK(CompressElement(element, &compressed));
+  EXPECT_EQ(0, compressed.version());
 }
 
-INSTANTIATE_TEST_SUITE_P(Instantiation,
-                         ParameterizedCompressionAndSerializationTest,
+TEST_P(ParameterizedCompressionUtilsTest, VersionMismatch) {
+  std::vector<Tensor> element = GetParam();
+  CompressedElement compressed;
+  TF_ASSERT_OK(CompressElement(element, &compressed));
+
+  compressed.set_version(1);
+  std::vector<Tensor> round_trip_element;
+  EXPECT_THAT(UncompressElement(compressed, &round_trip_element),
+              StatusIs(error::INTERNAL));
+}
+
+INSTANTIATE_TEST_SUITE_P(Instantiation, ParameterizedCompressionUtilsTest,
                          ::testing::ValuesIn(TestCases()));
 
 }  // namespace

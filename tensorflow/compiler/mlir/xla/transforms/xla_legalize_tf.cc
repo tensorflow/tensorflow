@@ -41,8 +41,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace mlir {
@@ -62,7 +62,7 @@ class LegalizeTF : public impl::LegalizeTFBase<LegalizeTF> {
     prefer_tf2xla_ = prefer_tf2xla;
     use_tf2xla_fallback_ = tf2xla_fallback_device_type.has_value();
     if (tf2xla_fallback_device_type.has_value()) {
-      device_type_ = tf2xla_fallback_device_type.getValue().str();
+      device_type_ = tf2xla_fallback_device_type.value().str();
     }
   }
   /// Performs the lowering to XLA dialect.
@@ -429,7 +429,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
 
   if (tf2xla_fallback_device_type) {
     // Add TF->HLO legalization patterns via TF2XLA fallback.
-    PopulateLegalizeTfWithTf2XlaPatterns(tf2xla_fallback_device_type.getValue(),
+    PopulateLegalizeTfWithTf2XlaPatterns(tf2xla_fallback_device_type.value(),
                                          patterns, context, prefer_tf2xla);
   }
 

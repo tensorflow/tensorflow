@@ -292,8 +292,12 @@ absl::Status RunModelSample(const std::string& model_name) {
   std::cout << "Storage type: " << ToString(create_info.storage_type)
             << std::endl;
   InferenceContext context;
+  const auto start_init = std::chrono::high_resolution_clock::now();
   RETURN_IF_ERROR(
       context.InitFromGraphWithTransforms(create_info, &graph_cl, &env));
+  const auto end_init = std::chrono::high_resolution_clock::now();
+  std::cout << "Graph initialization time: "
+            << (end_init - start_init).count() * 1e-6f << " ms." << std::endl;
 
   auto* queue = env.profiling_queue();
   ProfilingInfo profiling_info;

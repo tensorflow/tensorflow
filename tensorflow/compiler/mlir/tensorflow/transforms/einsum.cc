@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
@@ -99,7 +100,8 @@ TF::TransposeOp createTransposeOp(Value value, Location loc,
 TF::ReshapeOp createReshapeOp(Value value, ArrayRef<int64_t> shape,
                               Type element_type, Location loc,
                               PatternRewriter* rewriter) {
-  auto shape_tensor = createI64ConstantOp(shape, loc, rewriter);
+  auto shape_tensor = createI64ConstantOp(
+      tensorflow::ConvertMlirShapeToTF(shape), loc, rewriter);
   Type resultType = RankedTensorType::get(shape, element_type);
   return rewriter->create<TF::ReshapeOp>(loc, resultType, /*tensor=*/value,
                                          /*shape=*/shape_tensor);
@@ -362,7 +364,7 @@ llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
 
   auto flattended_labels =
       FlattenEllipsis(lhs, lhs_named_label, rhs, rhs_named_label, out, lhs_ty,
-                      rhs_ty, available_labels.getValue());
+                      rhs_ty, available_labels.value());
 
   lhs = std::get<0>(flattended_labels);
   rhs = std::get<1>(flattended_labels);
@@ -370,15 +372,15 @@ llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
 
   auto lhs_map_or = EquationToMap(lhs);
   if (!lhs_map_or.has_value()) return llvm::None;
-  auto lhs_map = lhs_map_or.getValue();
+  auto lhs_map = lhs_map_or.value();
 
   auto rhs_map_or = EquationToMap(rhs);
   if (!rhs_map_or.has_value()) return llvm::None;
-  auto rhs_map = rhs_map_or.getValue();
+  auto rhs_map = rhs_map_or.value();
 
   auto out_map_or = EquationToMap(out);
   if (!out_map_or.has_value()) return llvm::None;
-  auto out_map = out_map_or.getValue();
+  auto out_map = out_map_or.value();
 
   EinsumDimensionNumbers dnums;
   for (int64_t i = 0, e = lhs.size(); i < e; ++i) {
@@ -714,7 +716,7 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
   // among: L0,...,Ln R0,...,Rn or C0,...,Cn.
   if (const auto dnums_or =
           GetEinsumDimensionNumbers(op.getEquation(), lhs, rhs))
-    return rewriteToBatchMatmul(op, dnums_or.getValue(), rewriter);
+    return rewriteToBatchMatmul(op, dnums_or.value(), rewriter);
   return rewriter.notifyMatchFailure(op, "unsupported einsum lowering");
 }
 

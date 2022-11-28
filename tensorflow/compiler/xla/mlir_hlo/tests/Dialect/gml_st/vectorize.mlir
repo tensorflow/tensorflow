@@ -83,6 +83,7 @@ func.func @for_with_tiles(
 #map3 = affine_map<(d0) -> (d0)>
 
 // CHECK-LABEL: @parallel_on_tensor(
+// CHECK: {{%.*}}: tensor<?xf32>, {{%.*}}: tensor<?xf32>, %[[ARG2:.*]]: tensor<?xf32>)
 func.func @parallel_on_tensor(
     %arg0: tensor<?xf32>, %arg1: tensor<?xf32>, %arg2: tensor<?xf32>)
     -> tensor<?xf32> {
@@ -112,10 +113,11 @@ func.func @parallel_on_tensor(
   func.return %2 : tensor<?xf32>
 }
 // CHECK-NOT: linalg.generic
+// CHECK: gml_st.parallel (%[[ITER:.*]]) = (%c0)
 // CHECK: %[[LHS:.*]] = vector.transfer_read {{%.*}}[%c0]
 // CHECK: %[[RHS:.*]] = vector.transfer_read {{%.*}}[%c0]
 // CHECK: %[[ADD:.*]] = arith.addf %[[LHS]], %[[RHS]] : vector<4xf32>
-// CHECK: vector.transfer_write %[[ADD]], {{%.*}}[%c0]
+// CHECK: vector.transfer_write %[[ADD]], %[[ARG2]][%[[ITER]]]
 
 // -----
 

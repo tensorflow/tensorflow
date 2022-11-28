@@ -2345,7 +2345,7 @@ def DeviceIndexSelectorPass : Pass<"tf-device-index-selector", "mlir::func::Func
   let constructor = "TF::CreateDeviceIndexSelectorPass()";
 }
 
-def OrderByDialectPass : Pass<"tf-order-by-dialect", "mlir::func::FuncOp"> {
+def OrderByDialectPass : Pass<"tf-order-by-dialect", "mlir::ModuleOp"> {
   let summary = "Reorders ops so ops of the same dialect are next to each other.";
   let description = [{
       Performs a reordering of ops so that

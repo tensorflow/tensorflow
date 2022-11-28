@@ -2420,36 +2420,50 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddParameterToConstantF32s) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, CosF32s) {
   XlaBuilder builder(TestName());
-  auto kInf = std::numeric_limits<float>::infinity();
-  auto kQNaN = std::numeric_limits<float>::quiet_NaN();
   // Test a variety of values of both signs that stress trigonometric range
   // reduction, as well as numbers that fall in different quadrants.
+  // -2.19993846e+10 is a hard case because this number is so close to a
+  // multiple of pi/2 that the leading 31 bits cancel in the Payne-Hanek
+  // algorithm, leading to catastrophic loss of (relative) accuracy unless
+  // 64-bit fixed pont arithmeic is used.
+  //
   // Also test IEEE special values {+/-0, +/-Inf, NaN}; for the latter two
   // Cos(x) should return NaN.
+  auto kInf = std::numeric_limits<float>::infinity();
+  auto kQNaN = std::numeric_limits<float>::quiet_NaN();
   auto a = ConstantR1<float>(
-      &builder,
-      {-1.9938988e-28, 1.9938988e-28, -1e20f, 1e20f, -3.14159f, 3.14159f, -0.0f,
-       0.0f, -1.570796f, 1.570796f, -0.78539f, 0.78539f, -kInf, kInf, kQNaN});
+      &builder, {-1.9938988e-28, 1.9938988e-28, -1e20f, 1e20f, -2.3564024f,
+                 -3.14159f, 3.14159f, -0.0f, 0.0f, -1.570796f, 1.570796f,
+                 -0.78539f, 0.78539f, -2.19993846e+10, -kInf, kInf, kQNaN});
   Cos(a);
 
-  ComputeAndCompare(&builder, {}, error_spec_);
+  // This error spec corresponds to 1 ULP max relative error.
+  ComputeAndCompare(&builder, {},
+                    ErrorSpec(0, std::numeric_limits<float>::epsilon()));
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, SinF32s) {
   XlaBuilder builder(TestName());
-  auto kInf = std::numeric_limits<float>::infinity();
-  auto kQNaN = std::numeric_limits<float>::quiet_NaN();
   // Test a variety of values of both signs that stress trigonometric range
   // reduction, as well as numbers that fall in different quadrants.
+  // -2.19993846e+10 is a hard case because this number is so close to a
+  // multiple of pi/2 that the leading 31 bits cancel in the Payne-Hanek
+  // algorithm, leading to catastrophic loss of (relative) accuracy unless
+  // 64-bit fixed pont arithmeic is used.
+  //
   // Also test IEEE special values {+/-0, +/-Inf, NaN}; for the latter two
   // Sin(x) should return NaN.
+  auto kInf = std::numeric_limits<float>::infinity();
+  auto kQNaN = std::numeric_limits<float>::quiet_NaN();
   auto a = ConstantR1<float>(
-      &builder,
-      {-1.9938988e-28, 1.9938988e-28, -1e20f, 1e20f, -3.14159f, 3.14159f, -0.0f,
-       0.0f, -1.570796f, 1.570796f, -0.78539f, 0.78539f, -kInf, kInf, kQNaN});
+      &builder, {-1.9938988e-28, 1.9938988e-28, -1e20f, 1e20f, -2.3564024f,
+                 -3.14159f, 3.14159f, -0.0f, 0.0f, -1.570796f, 1.570796f,
+                 -0.78539f, 0.78539f, -2.19993846e+10, -kInf, kInf, kQNaN});
   Sin(a);
 
-  ComputeAndCompare(&builder, {}, error_spec_);
+  // This error spec corresponds to 1 ULP max relative error.
+  ComputeAndCompare(&builder, {},
+                    ErrorSpec(0, std::numeric_limits<float>::epsilon()));
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, RealF64s) {

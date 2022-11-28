@@ -342,7 +342,9 @@ mlir::LogicalResult InsertInitialLayoutsFromComputeLayout(
 
     auto* expander = SPMDExpanderRegistry::Global()->GetPropagateFnForOp(op);
     if (expander == nullptr) {
-      op->emitOpError() << "does not implement layout propagation";
+      op->emitOpError()
+          << "does not implement layout propagation. Please file a feature "
+             "request to TF DTensor. (component id: 833864)";
       return mlir::WalkResult::interrupt();
     }
 
@@ -570,7 +572,9 @@ mlir::LogicalResult UpdateLayoutsForOp(
     llvm::DenseSet<mlir::Value>& is_updated) {
   auto* expander = SPMDExpanderRegistry::Global()->GetPropagateFnForOp(op);
   if (expander == nullptr)
-    return op->emitOpError() << "does not implement layout propagation";
+    return op->emitOpError()
+           << "does not implement layout propagation. Please file a feature "
+              "request to TF DTensor. (component id: 833864)";
 
   // Get input and output layouts for this op from the merged_layouts map.
   llvm::DenseMap<int, Layout> input_layouts(op->getNumOperands());

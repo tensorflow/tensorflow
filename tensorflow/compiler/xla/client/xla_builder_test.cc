@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
@@ -1459,5 +1460,30 @@ TEST_F(XlaBuilderTest, OutfeedDummyTupleSharding) {
   EXPECT_FALSE(module->entry_computation()->root_instruction()->has_sharding());
 }
 
+TEST_F(XlaBuilderTest, NormalizeTupleSharding) {
+  XlaBuilder b(TestName());
+  Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5}), ShapeUtil::MakeShape(F32, {6})});
+  b.SetSharding(sharding_builder::Replicate());
+  Parameter(&b, 0, tuple_param_shape, "p0");
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(root->has_sharding());
+  EXPECT_TRUE(root->sharding().IsTuple());
+  EXPECT_EQ(root->sharding().tuple_elements().size(), 2);
+}
+
+TEST_F(XlaBuilderTest, InvalidSharding) {
+  XlaBuilder b(TestName());
+  Shape shape2d = ShapeUtil::MakeShape(F32, {6, 8});
+  Shape shape1d = ShapeUtil::MakeShape(F32, {5});
+  b.SetSharding(sharding_builder::Tile1D(shape1d, 4));
+  Parameter(&b, 0, shape2d, "p0");
+  auto statusor = b.Build();
+  EXPECT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("Number of tile assignment dimensions (excluding "
+                        "subgroups) is different than the input rank"));
+}
 }  // namespace
 }  // namespace xla

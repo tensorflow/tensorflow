@@ -4,7 +4,7 @@
 # TODO(jlebar): None of these tests actually use the GPU, so they should not
 # need to run on machines with GPUs present.
 
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load(
@@ -22,6 +22,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -89,8 +90,8 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:ir_emitter",
         "//tensorflow/compiler/xla/service/gpu:target_constants",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/core/common_runtime/gpu:gpu_init",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -115,7 +116,6 @@ tf_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":mlir_gpu_test_base",
-        "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
@@ -128,7 +128,6 @@ tf_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":mlir_gpu_test_base",
-        "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
@@ -853,22 +852,5 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
-py_test(
-    name = "mnist",
-    srcs = ["mnist.py"],
-    python_version = "PY3",
-    tags = [
-        "manual",
-        "no_oss",
-        "notap",
-        "requires-gpu-nvidia",
-        "requires-net:external",
-    ],
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "@absl_py//absl:app",
     ],
 )
