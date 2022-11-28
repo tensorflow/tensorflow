@@ -5,7 +5,7 @@ load(
     "tsl_copts",
     "tsl_gpu_library",
 )
-load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
+load("//tensorflow/tsl:tsl.default.bzl", "tsl_gpu_cc_test")
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_additional_device_tracer_srcs",
@@ -107,7 +107,7 @@ tsl_gpu_library(
     ],
 )
 
-tf_cuda_cc_test(
+tsl_gpu_cc_test(
     name = "cupti_error_manager_test",
     size = "small",
     srcs = ["cupti_error_manager_test.cc"],
@@ -125,7 +125,9 @@ tf_cuda_cc_test(
         ":cupti_wrapper",
         ":mock_cupti",
         "@com_google_absl//absl/memory",
+        "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/profiler/utils:time_utils",
+        "//tensorflow/tsl/profiler/backends/cpu:annotation_stack_impl",
     ]),
 )
 
