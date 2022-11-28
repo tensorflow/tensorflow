@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 /// \file
+///
 /// Deserialization infrastructure for tflite. Provides functionality
 /// to go from a serialized tflite model in flatbuffer format to an
 /// in-memory representation of the model.
