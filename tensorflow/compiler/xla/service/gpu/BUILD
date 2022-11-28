@@ -13,9 +13,8 @@ load(
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
-    "tf_cuda_library",
 )
-load("//tensorflow/tsl:tsl.bzl", "if_google", "if_nccl", "tsl_copts")
+load("//tensorflow/tsl:tsl.bzl", "if_google", "if_nccl", "tsl_copts", "tsl_gpu_library")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
@@ -449,7 +448,7 @@ cc_library(
     ],
 )
 
-tf_cuda_library(
+tsl_gpu_library(
     name = "nccl_collective_thunks",
     srcs = [
         "nccl_all_gather_thunk.cc",
@@ -465,7 +464,7 @@ tf_cuda_library(
         "nccl_collective_permute_thunk.h",
         "nccl_collective_thunk.h",
     ],
-    # Override tf_cuda_library()'s internal default value of ["//buildenv/target:gce"].
+    # Override tsl_gpu_library()'s internal default value of ["//buildenv/target:gce"].
     compatible_with = [],
     deps = [
         ":buffer_allocations",
@@ -509,11 +508,11 @@ alias(
 )
 
 # Do not depend on this target, but rather depend on :nccl_utils.
-tf_cuda_library(
+tsl_gpu_library(
     name = "_nccl_utils",
     srcs = if_gpu_is_configured(["nccl_utils.cc"]),
     hdrs = if_gpu_is_configured(["nccl_utils.h"]),
-    # Override tf_cuda_library()'s internal default value of ["//buildenv/target:gce"].
+    # Override tsl_gpu_library()'s internal default value of ["//buildenv/target:gce"].
     compatible_with = [],
     defines = if_gpu_is_configured(["XLA_ENABLE_XCCL"]),
     tags = ["manual"],  # Only builds with if_nccl().
@@ -3053,7 +3052,7 @@ cc_library(
     ],
 )
 
-tf_cuda_library(
+tsl_gpu_library(
     name = "runtime_intrinsics",
     srcs = ["runtime_intrinsics.cc"],
     hdrs = ["runtime_intrinsics.h"],
