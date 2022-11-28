@@ -98,6 +98,7 @@
 # nothing in a bazelrc will default to a monolithic build. The following line
 # opts in to modular op registration support by default.
 build --define framework_shared_object=true
+build --define tsl_protobuf_header_only=true
 
 build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
@@ -209,6 +210,7 @@ build:ios_fat --ios_multi_cpus=armv7,arm64,i386,x86_64
 # By default, TensorFlow will build with a dependence on
 # //tensorflow:libtensorflow_framework.so.
 build:monolithic --define framework_shared_object=false
+build:monolithic --define tsl_protobuf_header_only=false
 build:monolithic --experimental_link_static_libraries_once=false  # b/229868128
 
 # Please note that MKL on MacOS or windows is still not supported.

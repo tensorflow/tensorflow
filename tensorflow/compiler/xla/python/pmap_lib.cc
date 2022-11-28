@@ -44,8 +44,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace jax {
 
@@ -118,35 +118,36 @@ xla::StatusOr<ShardArgResult> ShardArg(
     const py::function& python_fallback) {
   if (arg.get_type() == xla::PyArray::type()) {
     auto py_array = py::reinterpret_borrow<xla::PyArray>(arg);
+    if (py_array.fastpath_enabled()) {
+      if (py_array.sharding().get_type() ==
+          input_spec.array_sharding.get_type()) {
+        auto* pmap_sharding = py_array.sharding().cast<jax::PmapSharding*>();
+        auto* cached_pmap_sharding =
+            input_spec.array_sharding.cast<jax::PmapSharding*>();
 
-    if (py_array.sharding().get_type() ==
-        input_spec.array_sharding.get_type()) {
-      auto* pmap_sharding = py_array.sharding().cast<jax::PmapSharding*>();
-      auto* cached_pmap_sharding =
-          input_spec.array_sharding.cast<jax::PmapSharding*>();
+        if (pmap_sharding->sharding_spec() ==
+            cached_pmap_sharding->sharding_spec()) {
+          ShardArgResult result;
+          result.owning_sda = py::reinterpret_borrow<py::object>(arg);
+          auto& per_device_buffers = result.per_device_buffers;
+          per_device_buffers.reserve(devices.size());
 
-      if (pmap_sharding->sharding_spec() ==
-          cached_pmap_sharding->sharding_spec()) {
-        ShardArgResult result;
-        result.owning_sda = py::reinterpret_borrow<py::object>(arg);
-        auto& per_device_buffers = result.per_device_buffers;
-        per_device_buffers.reserve(devices.size());
+          DCHECK_EQ(py_array.num_shards(), devices.size());
 
-        DCHECK_EQ(py_array.num_shards(), devices.size());
-
-        for (int i = 0; i < devices.size(); ++i) {
-          auto* pjrt_buffer = py_array.GetBuffer(i);
-          if (devices[i] == pjrt_buffer->device()) {
-            per_device_buffers.push_back(pjrt_buffer);
-          } else {
-            TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtBuffer> out,
-                                pjrt_buffer->CopyToDevice(devices[i]));
-            per_device_buffers.push_back(out.get());
-            result.owned_buffers.push_back(std::move(out));
+          for (int i = 0; i < devices.size(); ++i) {
+            auto* pjrt_buffer = py_array.GetBuffer(i);
+            if (devices[i] == pjrt_buffer->device()) {
+              per_device_buffers.push_back(pjrt_buffer);
+            } else {
+              TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtBuffer> out,
+                                  pjrt_buffer->CopyToDevice(devices[i]));
+              per_device_buffers.push_back(out.get());
+              result.owned_buffers.push_back(std::move(out));
+            }
           }
-        }
 
-        return result;
+          return result;
+        }
       }
     }
   }
@@ -207,7 +208,7 @@ xla::StatusOr<ShardArgResult> ShardArg(
 }
 
 struct PmapCacheEntry {
-  std::shared_ptr<xla::PyExecutable> executable;
+  std::shared_ptr<xla::PyLoadedExecutable> executable;
   // The value `backend.local_devices()`.
   py::object py_devices;  // To pass back to Python.
   std::vector<xla::PjRtDevice*> devices;
@@ -235,7 +236,7 @@ struct PmapCacheEntry {
 
 // A `PmapFunction` is associated to a `jax.pmap(f)` and takes care of the
 // bookkeeping of the different signatures used and the dispatch of calls to
-// the correct underlying `PyExecutable`. This class is thread-safe.
+// the correct underlying `PyLoadedExecutable`. This class is thread-safe.
 class PmapFunction {
  public:
   PmapFunction(py::function fun, py::function cache_miss,
@@ -376,7 +377,7 @@ class PmapFunction {
   py::function cache_miss_;
 
   // We need to know the static arguments to remove them from the arguments
-  // passed to the underlying PyExecutable. In sorted order.
+  // passed to the underlying PyLoadedExecutable. In sorted order.
   std::vector<int> static_argnums_;
   // We need a `unique_ptr` here to ensure value pointer stability.
   absl::flat_hash_map<CallSignature, std::unique_ptr<PmapCacheEntry>>
@@ -407,9 +408,9 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
   }
   // See api.py::_PmapFastpathData in the JAX code base for the expected
   // namedtuple.
-  std::shared_ptr<xla::PyExecutable> executable;
+  std::shared_ptr<xla::PyLoadedExecutable> executable;
   try {
-    executable = py::cast<std::shared_ptr<xla::PyExecutable>>(
+    executable = py::cast<std::shared_ptr<xla::PyLoadedExecutable>>(
         pmap_data.attr("xla_executable"));
   } catch (const py::cast_error& e) {
     // Backends that don't implement the C++ PjRt APIs
@@ -784,7 +785,7 @@ static PyGetSetDef JaxPmapFunction_tp_getset[] = {
 PyObject* JaxPmapFunction_tp_call(PyObject* self, PyObject* args,
                                   PyObject* kwargs) {
   JaxPmapFunctionObject* o = reinterpret_cast<JaxPmapFunctionObject*>(self);
-  tensorflow::profiler::TraceMe traceme([&] {
+  tsl::profiler::TraceMe traceme([&] {
     return absl::StrCat("JaxPmapFunction(", o->fun.function_name(), ")");
   });
   py::kwargs py_kwargs;
@@ -846,6 +847,8 @@ void BuildPmapSubmodule(py::module& m) {
 
   py::class_<NoSharding> no_sharding(pmap_lib, "NoSharding");
   no_sharding.def(py::init<>())
+      .def(py::pickle([](const NoSharding& self) { return py::make_tuple(); },
+                      [](py::tuple t) { return NoSharding{}; }))
       .def("__repr__",
            [](const NoSharding& chuncked) { return "NoSharding()"; })
       .def("__eq__",
@@ -859,6 +862,9 @@ void BuildPmapSubmodule(py::module& m) {
 
   py::class_<Chunked> chunked(pmap_lib, "Chunked");
   chunked.def(py::init<std::vector<int>>())
+      .def(py::pickle(
+          [](const Chunked& self) { return py::make_tuple(self.chunks); },
+          [](py::tuple t) { return Chunked{t[0].cast<std::vector<int>>()}; }))
       .def_readonly("chunks", &Chunked::chunks)
       .def("__repr__",
            [](const Chunked& chuncked) {
@@ -874,6 +880,9 @@ void BuildPmapSubmodule(py::module& m) {
 
   py::class_<Unstacked> unstacked(pmap_lib, "Unstacked");
   unstacked.def(py::init<int>())
+      .def(py::pickle(
+          [](const Unstacked& self) { return py::make_tuple(self.size); },
+          [](py::tuple t) { return Unstacked{t[0].cast<int>()}; }))
       .def_readonly("size", &Unstacked::size)
       .def("__repr__",
            [](const Unstacked& x) {
@@ -887,8 +896,11 @@ void BuildPmapSubmodule(py::module& m) {
       });
 
   py::class_<ShardedAxis> sharded_axis(pmap_lib, "ShardedAxis");
-  sharded_axis.def(py::init<int>()).def_readonly("axis", &ShardedAxis::axis);
-  sharded_axis
+  sharded_axis.def(py::init<int>())
+      .def(py::pickle(
+          [](const ShardedAxis& self) { return py::make_tuple(self.axis); },
+          [](py::tuple t) { return ShardedAxis{t[0].cast<int>()}; }))
+      .def_readonly("axis", &ShardedAxis::axis)
       .def("__repr__",
            [](const ShardedAxis& x) {
              return absl::StrCat("ShardedAxis(axis=", x.axis, ")");
@@ -899,6 +911,9 @@ void BuildPmapSubmodule(py::module& m) {
 
   py::class_<Replicated> replicated(pmap_lib, "Replicated");
   replicated.def(py::init<int>())
+      .def(py::pickle(
+          [](const Replicated& self) { return py::make_tuple(self.replicas); },
+          [](py::tuple t) { return Replicated{t[0].cast<int>()}; }))
       .def_readonly("replicas", &Replicated::replicas)
       .def("__repr__",
            [](const Replicated& x) {
@@ -912,6 +927,18 @@ void BuildPmapSubmodule(py::module& m) {
   sharding_spec
       .def(py::init<py::iterable, py::iterable>(), py::arg("sharding"),
            py::arg("mesh_mapping"))
+      .def(py::pickle(
+          [](const ShardingSpec& self) {
+            auto sharding =
+                xla::SpanToTuple(absl::MakeConstSpan(self.GetSharding()));
+            auto mesh_mapping =
+                xla::SpanToTuple(absl::MakeConstSpan(self.GetMeshMapping()));
+            return py::make_tuple(sharding, mesh_mapping);
+          },
+          [](py::tuple t) {
+            return ShardingSpec{t[0].cast<std::vector<AvalDimSharding>>(),
+                                t[1].cast<std::vector<MeshDimAssignment>>()};
+          }))
       .def_property_readonly(
           "sharding",
           [](const ShardingSpec& self) {

@@ -63,8 +63,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace jax {
 
@@ -183,13 +183,19 @@ bool CallSignature::operator==(const CallSignature& other) const {
   // TODO(chky): Consider implementing hashing and equality for sharding in cpp
   // instead of hashing and checking sharding's pointer values.
   return std::tie(dynamic_arg_treedefs, dynamic_arg_names,
-                  dynamic_arg_signatures, dynamic_arg_shardings, device,
-                  jax_enable_x64, jax_array, static_arg_names) ==
+                  dynamic_arg_signatures, device, jax_enable_x64, jax_array,
+                  static_arg_names) ==
              std::tie(other.dynamic_arg_treedefs, other.dynamic_arg_names,
-                      other.dynamic_arg_signatures, other.dynamic_arg_shardings,
-                      other.device, other.jax_enable_x64, other.jax_array,
+                      other.dynamic_arg_signatures, other.device,
+                      other.jax_enable_x64, other.jax_array,
                       other.static_arg_names) &&
          // `==` on py:objects is the Python `is`. We need equal.
+         std::equal(dynamic_arg_shardings.begin(), dynamic_arg_shardings.end(),
+                    other.dynamic_arg_shardings.begin(),
+                    other.dynamic_arg_shardings.end(),
+                    [](const py::object& a, const py::object& b) {
+                      return ShardingEqual(a, b);
+                    }) &&
          std::equal(
              static_args.begin(), static_args.end(), other.static_args.begin(),
              other.static_args.end(),
@@ -225,7 +231,7 @@ xla::Status ParseArguments(py::handle args,
                            absl::Span<int const> static_argnums,
                            absl::Span<py::str const> static_argnames,
                            ParsedArgumentsAsBuffers& arguments) {
-  tensorflow::profiler::TraceMe traceme("ParseArguments");
+  tsl::profiler::TraceMe traceme("ParseArguments");
   int num_args = PyTuple_GET_SIZE(args.ptr());
   int num_kwargs = py_kwargs ? py_kwargs->size() : 0;
 
@@ -320,7 +326,7 @@ struct CacheEntry {
   absl::Notification compilation_complete;
   std::thread::id thread_id = std::this_thread::get_id();
 
-  std::shared_ptr<xla::PyExecutable> executable;
+  std::shared_ptr<xla::PyLoadedExecutable> executable;
   xla::PyTreeDef out_pytree_def;
   // We use Python types within the vector because this is what we will be
   // returning to Python. No need to convert back and forth.
@@ -444,7 +450,7 @@ std::shared_ptr<CompiledFunctionCache::Cache> CompiledFunctionCache::Lookup(
 
 // A `CompiledFunction` is associated to a `jax.jit(f)` and takes care of the
 // bookkeeping of the different signatures used and the dispatch of calls to
-// the correct underlying `PyExecutable`. This class is thread-safe.
+// the correct underlying `PyLoadedExecutable`. This class is thread-safe.
 class CompiledFunction {
  public:
   CompiledFunction(py::function fun, py::function cache_miss,
@@ -537,7 +543,7 @@ class CompiledFunction {
   py::function cache_miss_;
 
   // We need to know the static arguments to remove them from the arguments
-  // passed to the underlying PyExecutable. In sorted order.
+  // passed to the underlying PyLoadedExecutable. In sorted order.
   std::vector<int> static_argnums_;
   // Keyword arguments, interned.
   std::vector<py::str> static_argnames_;
@@ -643,16 +649,17 @@ static xla::StatusOr<xla::PjRtDevice*> GetJitArgumentStickyDevice(
 
   if (arg.get_type() == xla::PyArray::type()) {
     auto py_array = py::reinterpret_borrow<xla::PyArray>(arg);
+    if (py_array.fastpath_enabled()) {
+      if (py_array.num_shards() != 1) {
+        return xla::InvalidArgument(
+            "Only single-sharded Array is expected in C++ JIT.");
+      }
 
-    if (py_array.num_shards() != 1) {
-      return xla::InvalidArgument(
-          "Only single-sharded Array is expected in C++ JIT.");
+      if (!py_array.committed()) {
+        return nullptr;
+      }
+      return py_array.GetBuffer(0)->device();
     }
-
-    if (!py_array.committed()) {
-      return nullptr;
-    }
-    return py_array.GetBuffer(0)->device();
   }
 
   // We specically only deal with DeviceArray (not ShardedDeviceArray).
@@ -694,7 +701,7 @@ static xla::StatusOr<xla::PjRtDevice*> GetJitArgumentStickyDevice(
 xla::Status ComputeSignature(bool jax_enable_x64,
                              xla::PjRtDevice* default_device, bool is_committed,
                              ParsedArgumentsAsBuffers& arguments) {
-  tensorflow::profiler::TraceMe traceme("ComputeSignature");
+  tsl::profiler::TraceMe traceme("ComputeSignature");
 
   int num_flat_dynamic_args = arguments.flat_dynamic_args.size();
   // When the jitted function is not committed, we first check whether any
@@ -787,7 +794,7 @@ void CompiledFunction::PopulateCacheEntry(
 
   py::tuple executable_handlers_out_tree =
       py::cast<py::tuple>(out_and_fastpath_data[1]);
-  auto executable = py::cast<std::shared_ptr<xla::PyExecutable>>(
+  auto executable = py::cast<std::shared_ptr<xla::PyLoadedExecutable>>(
       executable_handlers_out_tree.attr("xla_executable"));
   cache_entry->executable = std::move(executable);
   int num_devices =
@@ -1209,7 +1216,7 @@ PyObject* JaxCompiledFunction_tp_call(PyObject* self, PyObject* args,
                                       PyObject* kwargs) {
   JaxCompiledFunctionObject* o =
       reinterpret_cast<JaxCompiledFunctionObject*>(self);
-  tensorflow::profiler::TraceMe traceme([&] {
+  tsl::profiler::TraceMe traceme([&] {
     return absl::StrCat("JaxCompiledFunction(", o->fun.function_name(), ")");
   });
   std::optional<py::kwargs> py_kwargs;

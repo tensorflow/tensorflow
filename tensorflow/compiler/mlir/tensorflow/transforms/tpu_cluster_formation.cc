@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -79,8 +78,11 @@ using OpSetVector = llvm::SmallSetVector<Operation*, 8>;
 // Mapping for `_replication_info` attribute to ops of a cluster.
 using ClusterMap = llvm::SmallDenseMap<llvm::StringRef, OpSetVector, 8>;
 
+#define GEN_PASS_DEF_TPUCLUSTERFORMATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TPUClusterFormationPass
-    : public TF::TPUClusterFormationPassBase<TPUClusterFormationPass> {
+    : public impl::TPUClusterFormationPassBase<TPUClusterFormationPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<tf_device::TensorFlowDeviceDialect>();
   }
@@ -467,7 +469,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
             status = pi.emitOpError()
                      << "requires " << num_cores_per_replica
                      << " operands but found " << pi->getNumOperands();
-          for (auto operand : pi.inputs()) {
+          for (auto operand : pi.getInputs()) {
             if (auto ri = llvm::dyn_cast_or_null<TF::TPUReplicatedInputOp>(
                     operand.getDefiningOp())) {
               if (!seen_ops.contains(ri)) {
@@ -493,7 +495,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
   llvm::SmallVector<TF::TPUReplicatedInputOp, 8> packed_ops;
   for (auto& pos_and_input : llvm::enumerate(replicated_input_ops)) {
     auto input = pos_and_input.value();
-    bool is_packed = input.is_packed();
+    bool is_packed = input.getIsPacked();
     const int num_operands = input->getNumOperands();
     int num_inputs = is_packed ? 1 : num_replicas;
     if (num_operands != num_inputs)
@@ -519,7 +521,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
   for (const auto& pos_and_input :
        llvm::enumerate(ordered_tpu_replicate_inputs)) {
     auto tpu_replicated_input = pos_and_input.value();
-    if (tpu_replicated_input.is_mirrored_variable()) {
+    if (tpu_replicated_input.getIsMirroredVariable()) {
       mirrored_variable_indices.push_back(pos_and_input.index());
     }
   }

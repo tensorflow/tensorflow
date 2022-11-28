@@ -16,23 +16,25 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/while_loop_all_reduce_code_motion.h"
 
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <stack>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/hlo_replication_analysis.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -156,7 +158,7 @@ bool IsValueReplicatedWithinEachAllReduceGroup(
 //         all-reduce result and 0. The predicate to kSelect must have the same
 //         value on all all-reduce cores.
 MovableAllReduceContext IsAllReduceMovable(
-    HloInstruction* all_reduce, HloComputation* while_body,
+    HloAllReduceInstruction* all_reduce, HloComputation* while_body,
     const std::unique_ptr<HloReplicationAnalysis>&
         cross_replica_replication_analysis,
     const std::unique_ptr<HloReplicationAnalysis>&
@@ -164,14 +166,13 @@ MovableAllReduceContext IsAllReduceMovable(
   VLOG(4) << "IsAllReduceMovable: " << all_reduce->ToString();
   StatusOr<CollectiveOpGroupMode> all_reduce_group_mode =
       GetCollectiveOpGroupMode(all_reduce->channel_id().has_value(),
-                               DynCast<HloAllReduceInstruction>(all_reduce)
-                                   ->use_global_device_ids());
+                               all_reduce->use_global_device_ids());
   CHECK(all_reduce_group_mode.ok());
-  auto all_reduce_is_summation = [](HloInstruction* all_reduce) -> bool {
+  bool all_reduce_is_summation = [all_reduce]() {
     std::optional<ReductionKind> reduction_type =
         MatchReductionComputation(all_reduce->to_apply());
     return reduction_type.has_value() && *reduction_type == ReductionKind::SUM;
-  };
+  }();
 
   auto is_value_replicated_within_replica_group =
       [&cross_replica_replication_analysis,
@@ -195,7 +196,7 @@ MovableAllReduceContext IsAllReduceMovable(
 
   if (!absl::c_linear_search(kSupportedTypes,
                              all_reduce->shape().element_type()) ||
-      !all_reduce_is_summation(all_reduce)) {
+      !all_reduce_is_summation) {
     return MovableAllReduceContext{/*is_movable=*/false,
                                    /*accumulation_contexts=*/{}};
   }
@@ -781,7 +782,7 @@ StatusOr<bool> WhileLoopAllReduceCodeMotion::Run(
       if (while_caller_instructions.empty()) {
         continue;
       }
-      std::vector<HloInstruction*> while_body_all_reduces;
+      std::vector<HloAllReduceInstruction*> while_body_all_reduces;
       for (HloInstruction* while_body_instruction :
            computation->MakeInstructionPostOrder()) {
         if (auto* all_reduce_instruction =
@@ -795,7 +796,7 @@ StatusOr<bool> WhileLoopAllReduceCodeMotion::Run(
       }
       HloInstructionMap<std::vector<AccumulationContext>>
           all_reduce_to_accumulations;
-      for (HloInstruction* all_reduce : while_body_all_reduces) {
+      for (HloAllReduceInstruction* all_reduce : while_body_all_reduces) {
         auto movable_all_reduce_context = IsAllReduceMovable(
             all_reduce, computation, cross_replica_replication_analysis,
             cross_partition_replication_analysis);

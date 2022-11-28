@@ -496,6 +496,8 @@ REGISTER_SPMD(SparseToDense, TF::SparseToDenseOp, SparseToDenseSPMDExpander);
 // StringFormat
 REGISTER_SPMD(StringFormat, TF::StringFormatOp, ReplicatedOpSPMDExpander,
               /*relayout_when_sharded=*/true);
+REGISTER_SPMD(StringToHashBucketFast, TF::StringToHashBucketFastOp,
+              ElementwiseSPMDExpander);
 
 // TensorList ops
 REGISTER_SPMD(TensorListReserve, TF::TensorListReserveOp,

@@ -1,4 +1,4 @@
-// RUN: rm /tmp/model.tflite; odml_to_stablehlo %s -o=/tmp/model.tflite --export-type=tflite; cat /tmp/model.tflite | flatbuffer_translate --tflite-flatbuffer-to-mlir - -o - | FileCheck %s
+// RUN: odml_to_stablehlo %s -o=/tmp/model.tflite --export-type=tflite; cat /tmp/model.tflite | flatbuffer_translate --tflite-flatbuffer-to-mlir - -o - | FileCheck %s
 
 module {
 func.func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {

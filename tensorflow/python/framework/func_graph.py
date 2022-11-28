@@ -105,7 +105,7 @@ def convert_structure_to_signature(structure, arg_names=None,
         # of the function argument.
         name = user_specified_name
       else:
-        name = "/".join(str(p) for p in path)
+        name = tensor_spec.sanitize_spec_name("_".join(str(p) for p in path))
       return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
     if isinstance(arg, resource_variable_ops.ResourceVariable):
       return trace_type.from_value(arg, signature_context)
@@ -281,10 +281,6 @@ class FuncGraph(ops.Graph):
       self.capture_by_value = False
 
     self._building_function = True
-    # Map from resource tensor name to last op (in program order) which uses
-    # this tensor. Used to enforce that execution order matches program order
-    # for resource tensors.
-    self._last_op_using_resource_tensor = {}
 
     graph = self.outer_graph
 
@@ -1183,6 +1179,7 @@ def func_graph_from_py_func(name,
     if signature is not None:
       args = signature
       kwargs = {}
+   # Get placeholders for args and kwargs
     func_args = _get_defun_inputs_from_args(args, arg_names)
     func_kwargs = _get_defun_inputs_from_kwargs(kwargs)
 

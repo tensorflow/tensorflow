@@ -3,6 +3,7 @@ load("//tensorflow/lite:special_rules.bzl", "nonportable_visibility_allowlist")
 
 # Kernel for custom parse_example
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -26,6 +27,7 @@ cc_library(
         "@flatbuffers",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite:string_util",
@@ -56,6 +58,7 @@ tf_cc_test(
         ":parse_example",
         "@flatbuffers",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -104,6 +107,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:tensor",
         "@com_google_absl//absl/base",
@@ -126,6 +130,7 @@ tf_cc_test(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api:op_resolver",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:test_main",
         "//tensorflow/lite/kernels:test_util",

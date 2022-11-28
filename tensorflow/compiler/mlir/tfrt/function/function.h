@@ -44,7 +44,7 @@ struct TfrtFunctionCompileOptions : public TfrtCompileOptions {
     tpu_fuse_ops = false;
     // TF function in eager execution uses CoreRT native ops as fallback states
     // are not initialized in that code path.
-    enable_native_ops = true;
+    enable_native_ops = false;
     // Currently grappler is not correctly applied in the eager execution of TF
     // functions, as it may sometimes remove arguments and results.
     enable_grappler = false;

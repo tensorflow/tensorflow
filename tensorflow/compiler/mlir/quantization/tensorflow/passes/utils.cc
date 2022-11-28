@@ -49,7 +49,7 @@ bool HasStaticShape(Value value) {
 
 bool HasStaticShapeAtDims(Value value, llvm::ArrayRef<int> dims) {
   auto shaped_type = value.getType().dyn_cast<ShapedType>();
-  if (!shaped_type) return false;
+  if (!shaped_type || !shaped_type.hasRank()) return false;
 
   for (auto dim : dims) {
     if (shaped_type.isDynamicDim(dim)) return false;
@@ -76,7 +76,7 @@ LogicalResult IsOperationFoldable(Operation* op) {
   // folded to preserve the original semantics.
   if (op->hasTrait<OpTrait::IsTerminator>() ||
       op->hasTrait<OpTrait::TF::NoConstantFold>() || op->getNumRegions() != 0 ||
-      !MemoryEffectOpInterface::hasNoEffect(op)) {
+      !isMemoryEffectFree(op)) {
     return failure();
   }
 
@@ -135,7 +135,7 @@ LogicalResult FoldOperation(TFE_Context* ctx, OpBuilder& builder, Operation* op,
   for (auto operand : op->getOperands()) {
     auto preceding_const_op = operand.getDefiningOp<TF::ConstOp>();
     if (preceding_const_op) {
-      inputs.push_back(preceding_const_op.value());
+      inputs.push_back(preceding_const_op.getValue());
       continue;
     }
 
@@ -153,7 +153,7 @@ LogicalResult FoldOperation(TFE_Context* ctx, OpBuilder& builder, Operation* op,
     }
     auto preceding_result = preceding_results[preceding_result_id];
     preceding_const_op = preceding_result.getDefiningOp<TF::ConstOp>();
-    inputs.push_back(preceding_const_op.value());
+    inputs.push_back(preceding_const_op.getValue());
   }
 
   // Avoid overlapping folds with the same context.

@@ -47,13 +47,18 @@ void AddQuantizeQatPasses(mlir::PassManager &pm,
                           const QuantizationOptions &quantization_options) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertFakeQuantToQdqPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::TF::CreateUnrollBatchMatMulPassPass());
+  // TODO(b/260031290): Set unfold_batchmatmul = false for ODML support
+  if (quantization_options.op_set() == OpSet::UNIFORM_QUANTIZED) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::TF::CreateUnrollBatchMatMulPassPass());
+  }
   // TODO(b/229995333): Add PrepareLiftingPass for QAT. In QAT, AffineOps are
   // connected to FakeQuantOp instead of the ConstOp so need to add separate
   // pattern for FakeQuantOp.
   // pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
-  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(
+      quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
       mlir::quant::QuantizationMethod::kQuantizationAwareTraining,
       quantization_options.op_set()));
@@ -79,6 +84,7 @@ void AddQuantizeQatPasses(mlir::PassManager &pm,
 
 void AddQuantizePtqDynamicRangePasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options) {
+  // TODO(b/260031290): Set unfold_batchmatmul = false for ODML support
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateUnrollBatchMatMulPassPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
@@ -94,11 +100,17 @@ void AddQuantizePtqDynamicRangePasses(
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 }
 
-void AddQuantizePtqPreCalibrationPasses(mlir::PassManager &pm) {
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::TF::CreateUnrollBatchMatMulPassPass());
+void AddQuantizePtqPreCalibrationPasses(
+    mlir::PassManager &pm, const QuantizationOptions &quantization_options) {
+  // TODO(b/260031290): Set unfold_batchmatmul = false for ODML support
+  if (quantization_options.op_set() == OpSet::UNIFORM_QUANTIZED) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::TF::CreateUnrollBatchMatMulPassPass());
+  }
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
-  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(
+      quantization_options.op_set()));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateInsertCustomAggregationOpsPass());
   pm.addPass(mlir::quant::CreateIssueIDsOfCustomAggregationOpsPass());

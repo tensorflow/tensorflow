@@ -19,7 +19,7 @@ func.func @optimize_1dx1d_bcast(
 
   // CHECK:      %[[C0:.*]] = arith.constant 0 : index
   // CHECK:      %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
-  // CHECK:      %[[OUT:.*]] = linalg.init_tensor [%[[D0]]]
+  // CHECK:      %[[OUT:.*]] = tensor.empty(%[[D0]])
   // CHECK:      %[[RET:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP]], #[[MAP]]]
   // CHECK-SAME: iterator_types = ["parallel"]
@@ -52,7 +52,7 @@ func.func @optimize_1dx2d_bcast_const_shape(
 
   // CHECK:      %[[C0:.*]] = arith.constant 0 : index
   // CHECK:      %[[D0:.*]] = tensor.dim %[[ARG1]], %[[C0]]
-  // CHECK:      %[[OUT:.*]] = linalg.init_tensor [%[[D0]], 512]
+  // CHECK:      %[[OUT:.*]] = tensor.empty(%[[D0]])
   // CHECK:      %[[RET:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]]]
   // CHECK-SAME: iterator_types = ["parallel", "parallel"]
@@ -91,7 +91,7 @@ func.func @optimize_1dx1dx1d_bcast(
 
   // CHECK:      %[[C0:.*]] = arith.constant 0 : index
   // CHECK:      %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
-  // CHECK:      %[[OUT:.*]] = linalg.init_tensor [%[[D0]]]
+  // CHECK:      %[[OUT:.*]] = tensor.empty(%[[D0]])
   // CHECK:      %[[RET:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP]], #[[MAP]]]
   // CHECK-SAME: iterator_types = ["parallel"]
@@ -126,7 +126,7 @@ func.func @optimize_2dx1d_bcast(
   // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
   // CHECK:      %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
 
-  // CHECK:      %[[OUT0:.*]] = linalg.init_tensor [10, %[[D1]]]
+  // CHECK:      %[[OUT0:.*]] = tensor.empty(%[[D1]])
   // CHECK:      %[[RET0:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP0]]]
   // CHECK-SAME: iterator_types = ["parallel", "parallel"]
@@ -137,7 +137,7 @@ func.func @optimize_2dx1d_bcast(
        : (tensor<10x?xf32>, tensor<2xindex>) -> tensor<10x?xf32>
 
   // CHECK-DAG:  %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C1]]
-  // CHECK:      %[[OUT1:.*]] = linalg.init_tensor [10, %[[D0]]]
+  // CHECK:      %[[OUT1:.*]] = tensor.empty(%[[D0]])
   // CHECK:      %[[RET1:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP1]], #[[MAP0]]]
   // CHECK-SAME: iterator_types = ["parallel", "parallel"]
@@ -178,7 +178,7 @@ func.func @optimize_3dx3d_bcast(
   // CHECK:      %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
   // CHECK:      %[[D1:.*]] = tensor.dim %[[ARG1]], %[[C1]]
   // CHECK:      %[[D2:.*]] = tensor.dim %[[ARG0]], %[[C2]]
-  // CHECK:      %[[OUT0:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
+  // CHECK:      %[[OUT0:.*]] = tensor.empty(%[[D0]], %[[D1]], %[[D2]])
   // CHECK:      %[[RET0:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]]]
   // CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel"]
@@ -188,7 +188,7 @@ func.func @optimize_3dx3d_bcast(
          {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>}
        : (tensor<?x1x?xf32>, tensor<3xindex>) -> tensor<?x?x?xf32>
 
-  // CHECK:      %[[OUT1:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
+  // CHECK:      %[[OUT1:.*]] = tensor.empty(%[[D0]], %[[D1]], %[[D2]])
   // CHECK:      %[[RET1:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP2]], #[[MAP1]]]
   // CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel"]

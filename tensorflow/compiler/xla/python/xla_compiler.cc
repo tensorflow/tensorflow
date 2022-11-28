@@ -34,6 +34,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/types.h"
@@ -41,11 +44,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -147,9 +147,9 @@ StatusOr<uint64_t> HashComputation(const XlaComputation& computation) {
                       GetHloModule(computation));
   return absl::HashOf(*hlo_module);
 }
-// Safe version of ShapeUtil::MakeShapeWithLayout that fails gracefully on
+// Safe version of ShapeUtil::MakeShapeWithDenseLayout that fails gracefully on
 // invalid input.
-StatusOr<Shape> MakeShapeWithLayout(
+StatusOr<Shape> MakeShapeWithDenseLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims,
     std::optional<absl::Span<const int64_t>> minor_to_major,
     std::optional<const std::vector<bool>> dynamic_dimensions) {
@@ -252,11 +252,11 @@ void BuildXlaCompilerSubmodule(py::module& m) {
             if (layout_seq) {
               std::vector<int64_t> layout =
                   SequenceToVector<int64_t>(*layout_seq);
-              return MakeShapeWithLayout(type, dims, layout,
-                                         dynamic_dimensions);
+              return MakeShapeWithDenseLayout(type, dims, layout,
+                                              dynamic_dimensions);
             } else {
-              return MakeShapeWithLayout(type, dims, std::nullopt,
-                                         dynamic_dimensions);
+              return MakeShapeWithDenseLayout(type, dims, std::nullopt,
+                                              dynamic_dimensions);
             }
           },
           "Constructs an array shape.", py::arg("type"), py::arg("dims"),
@@ -273,11 +273,11 @@ void BuildXlaCompilerSubmodule(py::module& m) {
             if (layout_seq) {
               std::vector<int64_t> layout =
                   SequenceToVector<int64_t>(*layout_seq);
-              return MakeShapeWithLayout(type, dims, layout,
-                                         dynamic_dimensions);
+              return MakeShapeWithDenseLayout(type, dims, layout,
+                                              dynamic_dimensions);
             } else {
-              return MakeShapeWithLayout(type, dims, std::nullopt,
-                                         dynamic_dimensions);
+              return MakeShapeWithDenseLayout(type, dims, std::nullopt,
+                                              dynamic_dimensions);
             }
           },
           "Constructs an array shape.", py::arg("type"), py::arg("dims"),
@@ -593,6 +593,16 @@ void BuildXlaCompilerSubmodule(py::module& m) {
         debug_options->set_xla_gpu_enable_fast_min_max(false);
         return options;
       }))
+      .def(py::pickle(
+          [](const CompileOptions& self) -> py::tuple {
+            return py::make_tuple(
+                py::bytes(ValueOrThrow(self.ToProto()).SerializeAsString()));
+          },
+          [](py::tuple t) {
+            CompileOptionsProto result;
+            result.ParseFromString(t[0].cast<std::string>());
+            return ValueOrThrow(CompileOptions::FromProto(result));
+          }))
       .def_readwrite("argument_layouts", &CompileOptions::argument_layouts)
       .def_readwrite("parameter_is_tupled_arguments",
                      &CompileOptions::parameter_is_tupled_arguments)
@@ -746,6 +756,15 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           "Type",
           [op_sharding_type](const py::object&) { return op_sharding_type; })
       .def(py::init<>())
+      .def(py::pickle(
+          [](const OpSharding& self) {
+            return py::make_tuple(py::bytes(self.SerializeAsString()));
+          },
+          [](py::tuple t) {
+            OpSharding result;
+            result.ParseFromString(t[0].cast<std::string>());
+            return result;
+          }))
       .def_property("type", &xla::OpSharding::type, &xla::OpSharding::set_type)
       .def_property("replicate_on_last_tile_dim",
                     &xla::OpSharding::replicate_on_last_tile_dim,

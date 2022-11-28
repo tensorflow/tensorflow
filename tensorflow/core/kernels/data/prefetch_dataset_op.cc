@@ -163,6 +163,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       if (deregister_fn_) deregister_fn_();
     }
 
+    bool SymbolicCheckpointCompatible() const override { return true; }
+
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
       interleave_depth_ = ctx->interleave_depth();
@@ -176,8 +178,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           &deregister_fn_));
       IteratorContext::Params params(ctx);
       params.cancellation_manager = cancellation_manager_.get();
-      return dataset()->input_->MakeIterator(IteratorContext(params), this,
-                                             prefix(), &input_impl_);
+      IteratorContext iter_ctx(params);
+      TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
+          &iter_ctx, this, prefix(), &input_impl_));
+      ctx->MergeCheckpoint(iter_ctx.checkpoint());
+      return OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -246,13 +251,17 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
+      if (ctx->symbolic_checkpoint()) {
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kBufferSize), 0));
+        return OkStatus();
+      }
       // Acquire both locks to ensure that the prefetch thread and
       // all GetNext threads are blocked.
       mutex_lock input_l(input_mu_);
       mutex_lock l(*mu_);
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(prefix(), kBufferSize, buffer_.size()));
+          writer->WriteScalar(full_name(kBufferSize), buffer_.size()));
       for (size_t i = 0; i < buffer_.size(); i++) {
         auto& buffer_element = buffer_[i];
         TF_RETURN_IF_ERROR(WriteStatus(writer, i, buffer_element.status));
@@ -279,7 +288,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       size_t buffer_size;
       {
         int64_t temp;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kBufferSize, &temp));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kBufferSize), &temp));
         buffer_size = static_cast<size_t>(temp);
       }
       for (size_t i = 0; i < buffer_size; i++) {
@@ -364,6 +373,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       std::vector<Tensor> value;
       int64_t created_us;
       const uint64 uid;
+      MemoryCheckpoint checkpoint;
     };
 
     int64_t buffer_limit() const TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
@@ -422,6 +432,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           VLOG(2) << "Setting slack_us_: " << slack_us_;
         }
         *out_tensors = std::move(buffer_.front().value);
+        ctx->MergeCheckpoint(buffer_.front().checkpoint);
         RecordBufferDequeue(ctx, *out_tensors);
       } else {
         // If status not ok, we still record the dequeue event to make sure each
@@ -495,7 +506,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         // we have added the fetched element to the `buffer_` else there will be
         // local state that may be missed by SaveInternal.
         mutex_lock input_l(input_mu_);
-        bool end_of_sequence;
+        bool end_of_sequence = false;
         BufferElement buffer_element;
         {
           profiler::TraceMe traceme(
@@ -506,6 +517,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
               profiler::kInfo);
           buffer_element.status = input_impl_->GetNext(
               ctx.get(), &buffer_element.value, &end_of_sequence);
+          buffer_element.checkpoint = ctx->checkpoint();
         }
         if (buffer_element.status.ok() && end_of_sequence) {
           mutex_lock l(*mu_);

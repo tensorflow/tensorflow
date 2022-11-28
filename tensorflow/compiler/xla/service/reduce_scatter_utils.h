@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <functional>
 
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 
 namespace xla {
 

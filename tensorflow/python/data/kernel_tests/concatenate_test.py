@@ -19,6 +19,7 @@ from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
@@ -162,22 +163,31 @@ class ConcatenateTest(test_base.DatasetTestBase, parameterized.TestCase):
 class ConcatenateCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                 parameterized.TestCase):
 
-  def _build_concatenate_dataset(self, var_array):
+  def _build_concatenate_dataset(self, var_array, options=None):
     input_components = (np.tile(np.array([[1], [2], [3], [4]]), 20),
                         np.tile(np.array([[12], [13], [14], [15]]), 4))
     to_concatenate_components = (np.tile(
         np.array([[5], [6], [7], [8], [9]]), 20), var_array)
 
-    return dataset_ops.Dataset.from_tensor_slices(input_components).concatenate(
-        dataset_ops.Dataset.from_tensor_slices(to_concatenate_components))
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        input_components).concatenate(
+            dataset_ops.Dataset.from_tensor_slices(to_concatenate_components))
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def test(self, verify_fn):
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, symbolic_checkpoint):
     num_outputs = 9
     array = np.tile(np.array([[16], [17], [18], [19], [20]]), 15)
-    verify_fn(self, lambda: self._build_concatenate_dataset(array), num_outputs)
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(self, lambda: self._build_concatenate_dataset(array, options),
+              num_outputs)
 
 
 class ConcatenateRandomAccessTest(test_base.DatasetTestBase,

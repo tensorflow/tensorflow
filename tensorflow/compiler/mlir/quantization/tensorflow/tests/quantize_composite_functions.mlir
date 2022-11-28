@@ -1,17 +1,3 @@
-// Copyright 2022 The TensorFlow Runtime Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 // RUN: tf-quant-opt %s -split-input-file -quant-insert-quantized-functions -quant-quantize-composite-functions -symbol-dce | FileCheck %s
 
 module {
@@ -145,7 +131,6 @@ module {
   }
 
 // CHECK-LABEL: func @conv_with_avgpool
-// CHECK-DAG: %[[cst:.*]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<f32>} : () -> tensor<f32>
 // CHECK: %[[quantize:.*]] = "tf.PartitionedCall"(%arg0
 // CHECK-SAME: f = @quantize_i8
 // CHECK: %[[conv_quant:.*]] = "tf.PartitionedCall"(%[[quantize]]
@@ -153,9 +138,8 @@ module {
 // CHECK-SAME: (tensor<1x2x2x3xi8>, tensor<2x2x3x2xi8>, tensor<2xi32>, tensor<f32>, tensor<i32>, tensor<2xf32>, tensor<2xi32>, tensor<2xf32>, tensor<2xi32>, tensor<f32>, tensor<i32>) -> tensor<*xi8>
 // CHECK: %[[cast_1:.*]] = "tf.Cast"(%[[conv_quant]]) {Truncate = false} : (tensor<*xi8>) -> tensor<*xf32>
 // CHECK: %[[avgpool:.*]] = "tf.AvgPool"(%[[cast_1]]) {data_format = "NHWC", ksize = [1, 2, 2, 1], padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK: %[[add:.*]] = "tf.AddV2"(%[[avgpool]], %[[cst]]) : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
-// CHECK: %[[floor:.*]] = "tf.Floor"(%[[add]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK: %[[cast_2:.*]] = "tf.Cast"(%[[floor]]) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi8>
+// CHECK: %[[round:.*]] = "tf.Round"(%[[avgpool]]) : (tensor<*xf32>) -> tensor<*xf32>
+// CHECK: %[[cast_2:.*]] = "tf.Cast"(%[[round]]) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi8>
 // CHECK: %[[dequantize:.*]] = "tf.PartitionedCall"(%[[cast_2]]
 // CHECK-SAME: f = @dequantize_i8
 // CHECK: return %[[dequantize]]

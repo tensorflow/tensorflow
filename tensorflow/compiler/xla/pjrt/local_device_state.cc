@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace xla {
 
@@ -109,7 +109,7 @@ Status LocalDeviceState::ThenMemcpyDeviceToDevice(
 
 void LocalDeviceState::ThenExecuteCallback(se::Stream* stream,
                                            std::function<void()> callback) {
-  tensorflow::profiler::TraceMe traceme("ThenExecuteCallback");
+  tsl::profiler::TraceMe traceme("ThenExecuteCallback");
   if (callback_stream_map_.has_value()) {
     // Prevent concurrent updates to the callback stream map.
     absl::MutexLock lock(&mu_);
@@ -155,7 +155,7 @@ std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {
     usage_stream_pool_.pop();
     auto status = stream->RefreshStatus();  // Can return error::Unimplemented
     // Stream may fail with "ABORTED: Bad connection".
-    if (status.code() != tensorflow::error::ABORTED) {
+    if (status.code() != tsl::error::ABORTED) {
       CHECK(stream->ok()) << status;
     }
     return stream;
@@ -165,7 +165,7 @@ std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {
 void LocalDeviceState::ReturnStreamToPool(std::unique_ptr<se::Stream> stream) {
   auto status = stream->RefreshStatus();  // Can return error::Unimplemented
   // Stream may fail with "ABORTED: Bad connection".
-  if (status.code() != tensorflow::error::ABORTED) {
+  if (status.code() != tsl::error::ABORTED) {
     CHECK(stream->ok()) << status;
   }
   absl::MutexLock lock(&mu_);

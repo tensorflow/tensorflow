@@ -11,14 +11,11 @@ load(
     "tf_copts",
     "tf_cuda_library",
 )
-load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")  # buildifier: disable=same-origin-load
-
-# For platform specific build config
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
+    "//tensorflow:tensorflow.default.bzl",
+    "filegroup",
+    "tf_cuda_cc_test",
+    "tf_grpc_cc_dependencies",
 )
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -26,6 +23,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = if_google(
         ["//tensorflow:internal"],
         ["//visibility:public"],
@@ -121,7 +119,6 @@ cc_library(
 tf_cc_test(
     name = "cluster_function_library_runtime_test",
     srcs = ["cluster_function_library_runtime_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = [
         "no_windows",
     ],
@@ -151,14 +148,16 @@ cc_library(
         ":worker_cache_wrapper",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core/activity_watcher",
-        "//tensorflow/core/distributed_runtime/coordination:coordination_service",
-        "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
-        "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_rpc_handler",
+        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
     ],
 )
 
@@ -246,10 +245,9 @@ tf_cuda_library(
 
 cc_library(
     name = "call_options",
-    srcs = ["call_options.cc"],
     hdrs = ["call_options.h"],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/tsl/distributed_runtime:call_options",
     ],
 )
 
@@ -428,9 +426,7 @@ cc_library(
     copts = tf_copts(),
     deps = [
         ":rendezvous_mgr_interface",
-        ":worker_cache",
         ":worker_env",
-        ":worker_interface",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -440,6 +436,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/hash",
     ],
 )
 
@@ -689,7 +686,6 @@ tf_cuda_cc_test(
     srcs = [
         "master_test.cc",
     ],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
         ":master",
@@ -725,7 +721,6 @@ tf_cuda_cc_test(
     name = "remote_device_test",
     size = "small",
     srcs = ["remote_device_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
         "manual",
         "notap",  # Memory leak due to b/62910646

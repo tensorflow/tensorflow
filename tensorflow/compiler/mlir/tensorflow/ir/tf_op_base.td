@@ -48,8 +48,6 @@ TODO: Make invariants more structured so that we can reference them in ops.
   }];
 
   let cppNamespace = "::mlir::TF";
-
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 //===----------------------------------------------------------------------===//
@@ -408,6 +406,12 @@ def TF_Quint16 : AnyTypeOf<
 def TF_Quantized : AnyTypeOf<
   [TF_Qint8, TF_Qint16, TF_Qint32, TF_Quint8, TF_Quint16], "quantized">;
 
+def TF_Qint8Tensor : TensorOf<[TF_Qint8]>;
+def TF_Qint16Tensor : TensorOf<[TF_Qint16]>;
+def TF_Qint32Tensor : TensorOf<[TF_Qint32]>;
+def TF_Quint8Tensor : TensorOf<[TF_Quint8]>;
+def TF_Quint16Tensor : TensorOf<[TF_Quint16]>;
+
 //===----------------------------------------------------------------------===//
 // Floating-point types (including corresponding reference types)
 
@@ -550,7 +554,7 @@ class TF_DerivedOperandTypeListAttr<int idx> : DerivedAttr<
   "return {mlir::OperandElementTypeIterator(values.begin()), "
           "mlir::OperandElementTypeIterator(values.end())};",
   [{
-    ArrayAttr::get($_ctxt, 
+    ArrayAttr::get($_ctxt,
     [&]() {
       llvm::SmallVector<Attribute, 4> ret;
       for (auto t : $_self)
@@ -606,7 +610,7 @@ class TF_DerivedResultTypeListAttr<int idx> : DerivedAttr<
   "return {mlir::ResultElementTypeIterator(values.begin()), "
           "mlir::ResultElementTypeIterator(values.end())};",
   [{
-    ArrayAttr::get($_ctxt, 
+    ArrayAttr::get($_ctxt,
     [&]() {
       llvm::SmallVector<Attribute, 4> ret;
       for (auto t : $_self)

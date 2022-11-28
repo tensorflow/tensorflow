@@ -143,10 +143,11 @@ void CreateComponentTensorsFromSparseTensors(
         block_arg.getArgNumber(), kSparseValue);
     if (is_sparse) {
       sparse_tensor_components->push_back(SparseTensorToComponentInfo{
-          /*indices=*/mlir::RankedTensorType::get({-1, ValueRank(block_arg)},
-                                                  builder.getI64Type()),
+          /*indices=*/mlir::RankedTensorType::get(
+              {mlir::ShapedType::kDynamic, ValueRank(block_arg)},
+              builder.getI64Type()),
           /*values=*/
-          mlir::RankedTensorType::get({-1},
+          mlir::RankedTensorType::get({mlir::ShapedType::kDynamic},
                                       block_arg.getType()
                                           .dyn_cast<mlir::RankedTensorType>()
                                           .getElementType()),
@@ -210,11 +211,12 @@ struct DTensorSparseTensorToDenseTensor
 
       // Emit a SparseToDenseOp and replace the SparseTensor with the result of
       // this new op.
-      auto zero_scalar = CreateZeroScalarConst(builder, front_op->getLoc(),
-                                               sparse_tensor_value.getType()
-                                                   .cast<mlir::TensorType>()
-                                                   .getElementType());
-      if (!zero_scalar.has_value()) return signalPassFailure();
+      StatusOr<mlir::Value> zero_scalar =
+          CreateZeroScalarConst(builder, front_op->getLoc(),
+                                sparse_tensor_value.getType()
+                                    .cast<mlir::TensorType>()
+                                    .getElementType());
+      if (!zero_scalar.ok()) return signalPassFailure();
       mlir::TF::SparseToDenseOp sparse_to_dense_op =
           builder.create<mlir::TF::SparseToDenseOp>(
               front_op->getLoc(), sparse_tensor_value.getType(),

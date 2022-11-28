@@ -62,15 +62,15 @@ TYPED_TEST(ReshapeOpTest, MismatchedDimensions) {
 }
 
 TYPED_TEST(ReshapeOpTest, TooManyDimensions) {
+#ifdef GTEST_HAS_DEATH_TEST
   for (ShapeSpecificationType shape_type :
        ReshapeOpTest<ShapeSpecificationType>::_range_) {
-#ifdef GTEST_HAS_DEATH_TEST
     EXPECT_DEATH(
         ReshapeOpModel<TypeParam>({1, 1, 2, 1, 1, 1, 1, 1, 1}, {9},
                                   {1, 1, 1, 1, 1, 1, 1, 1, 2}, shape_type),
         "Found too many dimensions");
-#endif
   }
+#endif
 }
 
 TYPED_TEST(ReshapeOpTest, TooManySpecialDimensions) {

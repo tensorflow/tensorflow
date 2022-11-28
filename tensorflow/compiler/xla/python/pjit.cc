@@ -23,13 +23,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/synchronization/notification.h"
+#include "tensorflow/compiler/xla/pjrt/lru_cache.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace jax {
 namespace {
@@ -37,7 +38,7 @@ namespace {
 namespace py = pybind11;
 
 struct PjitCacheEntry {
-  std::shared_ptr<xla::PyExecutable> executable;
+  std::shared_ptr<xla::PyLoadedExecutable> executable;
   std::vector<py::object> in_shardings;
   std::vector<py::object> out_avals;
   std::vector<py::dtype> out_dtypes;
@@ -59,13 +60,13 @@ struct PjitCacheEntry {
 
 class PjitFunction {
  public:
-  PjitFunction(py::function fun, py::function cache_miss,
-               std::vector<int> static_argnums)
-      : fun_(std::move(fun)),
+  PjitFunction(std::string function_name, py::function cache_miss,
+               std::vector<int> static_argnums, int executables_cache_size)
+      : function_name_(std::move(function_name)),
         cache_miss_(std::move(cache_miss)),
-        static_argnums_(std::move(static_argnums)) {
-    function_name_ = py::str(py::getattr(fun_, "__name__", py::none()));
-  }
+        static_argnums_(std::move(static_argnums)),
+        lru_list_(std::make_unique<Cache::LRUList>(executables_cache_size)),
+        executables_(std::make_unique<Cache>(lru_list_.get())) {}
 
   PjitFunction(const PjitFunction&) = delete;
   PjitFunction& operator=(const PjitFunction&) = delete;
@@ -73,6 +74,8 @@ class PjitFunction {
   PjitFunction& operator=(PjitFunction&&) = default;
 
   xla::StatusOr<py::object> Call(py::args args, py::kwargs kwargs);
+
+  using Cache = xla::LRUCache<CallSignature, std::shared_ptr<PjitCacheEntry>>;
 
  private:
   xla::Status UpdateArgsSignature(const py::args& args,
@@ -83,19 +86,19 @@ class PjitFunction {
                           const CallSignature& signature,
                           const py::tuple& out_and_fastpath_data);
 
-  py::function fun_;
   std::string function_name_;
   py::function cache_miss_;
   std::vector<int> static_argnums_;
 
-  absl::flat_hash_map<CallSignature, std::unique_ptr<PjitCacheEntry>>
-      executables_;
+  std::unique_ptr<Cache::LRUList> lru_list_;
+  std::unique_ptr<Cache> executables_;
 };
 
 // Prepares the input PjRtBuffers from the python arguments. This is equivalent
 // to shard_args() in pxla.py but for only a few supported cases.
 xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
-    const xla::PyExecutable& executable, ParsedArgumentsAsBuffers& arguments) {
+    const xla::PyLoadedExecutable& executable,
+    ParsedArgumentsAsBuffers& arguments) {
   const auto& devices = executable.AddressableDevices();
   int num_args = arguments.flat_dynamic_args.size();
 
@@ -159,7 +162,7 @@ xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
 }
 
 xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
-  tensorflow::profiler::TraceMe traceme(
+  tsl::profiler::TraceMe traceme(
       [&] { return absl::StrCat("JaxPjitFunction(", function_name_, ")"); });
   ParsedArgumentsAsBuffers arguments;
 
@@ -180,6 +183,9 @@ xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
       return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
     }
     xla::PyArray py_array = arg;
+    if (!py_array.fastpath_enabled()) {
+      return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
+    }
 
     // Only allow committed PyArray in cpp pjit for now as the logic on handling
     // sharding for uncommited PyArray is complicated and still under
@@ -199,11 +205,15 @@ xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
     return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
 
-  auto [it, inserted] = executables_.try_emplace(
-      arguments.signature, std::make_unique<PjitCacheEntry>());
-  auto& cache_entry = *(it->second);
+  bool inserted = false;
+  std::shared_ptr<PjitCacheEntry> cache_entry =
+      executables_->GetOrCreateIfAbsent(
+          arguments.signature, [&inserted](const CallSignature& unused) {
+            inserted = true;
+            return std::make_shared<PjitCacheEntry>();
+          });
 
-  if (!cache_entry.compilation_complete.HasBeenNotified()) {
+  if (!cache_entry->compilation_complete.HasBeenNotified()) {
     // In case of several threads attempting to compile the executable, only
     // the one that inserted the item will perform the compilation.
     if (inserted) {
@@ -216,14 +226,14 @@ xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
         out_and_fastpath_data = cache_miss_(*args, **kwargs);
         out_tuple = py::cast<py::tuple>(out_and_fastpath_data);
 
-        PopulateCacheEntry(cache_entry, arguments.signature, out_tuple);
+        PopulateCacheEntry(*cache_entry, arguments.signature, out_tuple);
       } catch (const std::exception& e) {
         LOG(ERROR) << "cache miss fail: " << e.what();
-        cache_entry.fall_back_to_python = true;
-        cache_entry.compilation_complete.Notify();
+        cache_entry->fall_back_to_python = true;
+        cache_entry->compilation_complete.Notify();
         throw;
       }
-      cache_entry.compilation_complete.Notify();
+      cache_entry->compilation_complete.Notify();
 
       // We have already computed the result in the miss path so we can return
       // it. We are even *required* to do so if there are donated arguments,
@@ -233,18 +243,18 @@ xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
       // Release the GIL while we wait, making sure the compile thread can
       // lock it.
       py::gil_scoped_release release;
-      cache_entry.compilation_complete.WaitForNotification();
+      cache_entry->compilation_complete.WaitForNotification();
     }
   }
 
-  if (cache_entry.fall_back_to_python) {
+  if (cache_entry->fall_back_to_python) {
     VLOG(2) << "cpp pjit fallback to python.";
     return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
 
   // A vector of [num_devices, num_inputs].
   auto num_computation_num_args_buffers =
-      PreparePjRtInputs(*cache_entry.executable, arguments);
+      PreparePjRtInputs(*cache_entry->executable, arguments);
   if (!num_computation_num_args_buffers.ok()) {
     VLOG(2) << "Failed to prepare PjRt inputs: "
             << num_computation_num_args_buffers.status();
@@ -256,14 +266,15 @@ xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
   std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> output_buffers;
   {
     py::gil_scoped_release gil_release;
-    auto pjrt_executable = cache_entry.executable->mutable_pjrt_executable();
-    TF_ASSIGN_OR_RETURN(output_buffers, pjrt_executable->Execute(
-                                            *num_computation_num_args_buffers,
-                                            cache_entry.executable->options()));
+    auto pjrt_executable = cache_entry->executable->mutable_pjrt_executable();
+    TF_ASSIGN_OR_RETURN(
+        output_buffers,
+        pjrt_executable->Execute(*num_computation_num_args_buffers,
+                                 cache_entry->executable->options()));
   }
 
   auto traceback = xla::Traceback::Get();
-  const auto& client = cache_entry.executable->client();
+  const auto& client = cache_entry->executable->client();
 
   // Convert the PjRtBuffer objects to PyArray, and invert the order from
   // [num_devices, num_args] to [num_args, num_devices].
@@ -282,16 +293,16 @@ xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
     // like `aval` and `sharding` are retrieved from the cache for this
     // function, which are produced by the python path in `cache_miss`.
     xla::PyArray py_array(
-        cache_entry.out_avals[i], cache_entry.out_weak_types[i],
-        cache_entry.out_dtypes[i], cache_entry.out_shapes[i],
-        cache_entry.out_shardings[i], cache_entry.executable->client(),
+        cache_entry->out_avals[i], cache_entry->out_weak_types[i],
+        cache_entry->out_dtypes[i], cache_entry->out_shapes[i],
+        cache_entry->out_shardings[i], cache_entry->executable->client(),
         traceback, std::move(pjrt_buffers),
-        /*committed=*/cache_entry.out_committed.at(i), /*skip_checks=*/true);
+        /*committed=*/cache_entry->out_committed.at(i), /*skip_checks=*/true);
 
     outputs.push_back(std::move(py_array));
   }
 
-  py::object out = cache_entry.out_pytree_def.Unflatten(outputs);
+  py::object out = cache_entry->out_pytree_def.Unflatten(outputs);
 
   // If there is a post-hook function, call it with the inputs and the outputs.
   std::optional<py::object> post_hook = GetPostHook();
@@ -336,7 +347,7 @@ xla::Status PjitFunction::UpdateArgsSignature(
   arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
   arguments.signature.global_extra_jit_context = global_state.extra_jit_context;
 
-  return xla::Status::OK();
+  return xla::OkStatus();
 }
 
 void PjitFunction::PopulateCacheEntry(PjitCacheEntry& cache_entry,
@@ -352,7 +363,7 @@ void PjitFunction::PopulateCacheEntry(PjitCacheEntry& cache_entry,
 
   py::tuple fastpath_data = py::cast<py::tuple>(out_and_fastpath_data[1]);
 
-  cache_entry.executable = py::cast<std::shared_ptr<xla::PyExecutable>>(
+  cache_entry.executable = py::cast<std::shared_ptr<xla::PyLoadedExecutable>>(
       fastpath_data.attr("xla_executable"));
 
   py::list in_shardings = fastpath_data.attr("in_shardings");
@@ -399,10 +410,11 @@ void BuildPjitSubmodule(py::module& m) {
   py::class_<PjitFunction>(m, "PjitFunction", py::dynamic_attr())
       .def("__call__", &PjitFunction::Call);
 
-  m.def("pjit", [](py::function fun, py::function cache_miss,
+  m.def("pjit", [](std::string function_name, py::function cache_miss,
                    std::vector<int> static_argnums) {
-    return PjitFunction(std::move(fun), std::move(cache_miss),
-                        std::move(static_argnums));
+    return PjitFunction(std::move(function_name), std::move(cache_miss),
+                        std::move(static_argnums),
+                        /*executables_cache_size=*/4096);
   });
 }
 

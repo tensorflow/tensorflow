@@ -17,22 +17,59 @@ limitations under the License.
 
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "pybind11/pybind11.h"
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir/utils/error_util.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace py = pybind11;
 
 namespace xla {
 namespace {
+
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseModule(
+    mlir::MLIRContext* context, std::string str) {
+  mlir::OwningOpRef<mlir::ModuleOp> module;
+  context->loadDialect<mlir::func::FuncDialect>();
+  context->loadDialect<mlir::mhlo::MhloDialect>();
+  context->loadDialect<mlir::chlo::ChloDialect>();
+  context->loadDialect<mlir::sparse_tensor::SparseTensorDialect>();
+  context->loadDialect<mlir::stablehlo::StablehloDialect>();
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
+  module = mlir::parseSourceString<mlir::ModuleOp>(
+      llvm::StringRef(str.data(), str.size()), context);
+  if (!module) {
+    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
+  }
+  if (failed(module->verifyInvariants())) {
+    VLOG(1) << "MLIR verification failed.";
+    module->dump();
+    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
+  }
+  return module;
+}
+
+std::string PrintModule(mlir::ModuleOp module) {
+  std::string s;
+  llvm::raw_string_ostream os(s);
+  mlir::OpPrintingFlags flags;
+  flags.enableDebugInfo();
+  module->print(os, flags);
+  return s;
+}
 
 // Converts an XlaComputation to an MHLO mlir::Module string. Exists for
 // backwards compatibility.
@@ -47,38 +84,43 @@ StatusOr<std::string> PyXlaComputationToMlirModule(
   context.loadDialect<mlir::mhlo::MhloDialect>();
   TF_RETURN_IF_ERROR(ConvertHloToMlirHlo(*module, &computation.proto(),
                                          /*import_all_computations=*/true));
-  std::string s;
-  llvm::raw_string_ostream os(s);
-  mlir::OpPrintingFlags flags;
-  flags.enableDebugInfo();
-  module->print(os, flags);
-  return s;
+  return PrintModule(*module);
 }
 
 StatusOr<XlaComputation> PyMlirModuleToXlaComputation(std::string mlir_module,
                                                       bool use_tuple_args,
                                                       bool return_tuple) {
   mlir::MLIRContext context;
-  mlir::OwningOpRef<mlir::ModuleOp> module;
-  context.loadDialect<mlir::func::FuncDialect>();
-  context.loadDialect<mlir::mhlo::MhloDialect>();
-  context.loadDialect<mlir::chlo::ChloDialect>();
-  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
-  module = mlir::parseSourceString<mlir::ModuleOp>(
-      llvm::StringRef(mlir_module.data(), mlir_module.size()), &context);
-  if (!module) {
-    return diagnostic_handler.ConsumeStatus();
-  }
-  if (failed(module->verifyInvariants())) {
-    VLOG(1) << "MLIR verification failed.";
-    module->dump();
-    return diagnostic_handler.ConsumeStatus();
-  }
-
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                      ParseModule(&context, mlir_module));
   XlaComputation computation;
   TF_RETURN_IF_ERROR(
       MlirToXlaComputation(*module, computation, use_tuple_args, return_tuple));
   return computation;
+}
+
+StatusOr<std::string> PyMhloToStablehlo(std::string mlir_module) {
+  mlir::MLIRContext context;
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                      ParseModule(&context, mlir_module));
+  mlir::PassManager pm(&context);
+  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+  if (!mlir::succeeded(pm.run(*module))) {
+    return tsl::errors::InvalidArgument("MHLO => StableHLO failed");
+  }
+  return PrintModule(*module);
+}
+
+StatusOr<std::string> PyStablehloToMhlo(std::string mlir_module) {
+  mlir::MLIRContext context;
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                      ParseModule(&context, mlir_module));
+  mlir::PassManager pm(&context);
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+  if (!mlir::succeeded(pm.run(*module))) {
+    return tsl::errors::InvalidArgument("StableHLO => MHLO failed");
+  }
+  return PrintModule(*module);
 }
 
 }  // namespace
@@ -92,6 +134,10 @@ void BuildMlirSubmodule(py::module& m) {
                   &PyMlirModuleToXlaComputation, py::arg("mlir_module"),
                   py::arg("use_tuple_args") = false,
                   py::arg("return_tuple") = false);
+  mlir_module.def("mhlo_to_stablehlo", &PyMhloToStablehlo,
+                  py::arg("mlir_module"));
+  mlir_module.def("stablehlo_to_mhlo", &PyStablehloToMhlo,
+                  py::arg("mlir_module"));
 }
 
 }  // namespace xla

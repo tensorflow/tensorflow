@@ -65,7 +65,7 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
 
     // If the attribute is missing or empty, set the element count to 0 and
     // return NULL.
-    if (!attr.has_value() || attr.getValue().empty()) {
+    if (!attr.has_value() || attr.value().empty()) {
       Value zero = rewriter->create<LLVM::ConstantOp>(
           loc, size_ty, rewriter->getIntegerAttr(size_ty, 0));
       Value null_ptr = rewriter->create<LLVM::NullOp>(loc, element_ptr_ty);
@@ -73,7 +73,7 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
     }
 
     // Allocate array to store the elements.
-    auto &array_attr = attr.getValue();
+    auto &array_attr = attr.value();
     Value array_size = rewriter->create<LLVM::ConstantOp>(
         loc, size_ty, rewriter->getIntegerAttr(size_ty, array_attr.size()));
     Value array_ptr = rewriter->create<LLVM::AllocaOp>(
@@ -134,7 +134,7 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
     Value output_index = rewriter.create<LLVM::ConstantOp>(
         loc, llvmInt32Type,
         rewriter.getI32IntegerAttr(tf_alloc_op.getOutputIndex().has_value()
-                                       ? tf_alloc_op.getOutputIndex().getValue()
+                                       ? tf_alloc_op.getOutputIndex().value()
                                        : -1));
 
     // Convert `candidate_input_indices`.
@@ -323,7 +323,7 @@ class JITExecuteOpConverter : public ConvertToLLVMCallOpPattern<JITExecuteOp> {
       JITExecuteOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     // The TF context must be known for a successful lowering.
-    if (adaptor.getCtx() == nullptr || op.operands().empty()) {
+    if (adaptor.getCtx() == nullptr || op.getInputs().empty()) {
       return failure();
     }
 
@@ -343,14 +343,14 @@ class JITExecuteOpConverter : public ConvertToLLVMCallOpPattern<JITExecuteOp> {
 
     // Pass the buffer arguments as a stack-allocated array.
     Type arg_ptr_ty =
-        LLVM::LLVMPointerType::get(adaptor.operands().front().getType());
+        LLVM::LLVMPointerType::get(adaptor.getInputs().front().getType());
     Value num_args = rewriter.create<LLVM::ConstantOp>(
         loc, i64_ty,
         rewriter.getI64IntegerAttr(
-            static_cast<int64_t>(adaptor.operands().size())));
+            static_cast<int64_t>(adaptor.getInputs().size())));
     Value args_ptr = rewriter.create<LLVM::AllocaOp>(loc, arg_ptr_ty, num_args,
                                                      /*alignment=*/0);
-    for (const auto &it : llvm::enumerate(adaptor.operands())) {
+    for (const auto &it : llvm::enumerate(adaptor.getInputs())) {
       Value index = rewriter.create<LLVM::ConstantOp>(
           loc, i64_ty, rewriter.getI64IntegerAttr(it.index()));
       Value element_ptr =

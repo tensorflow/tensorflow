@@ -44,7 +44,8 @@ class OpLogger : public tfrt::SharedContext {
   }
 
   tfrt::ArrayRef<std::string> GetLoggedOps() const {
-    return op_names_->ToArrayRef();
+    absl::Span<const std::string> span = op_names_->ToConstSpan();
+    return tfrt::ArrayRef<std::string>(span.data(), span.size());
   }
 
   // Cannot be called concurrently with any API in this class.

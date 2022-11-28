@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_timer.h"
-#include "tensorflow/compiler/xla/stream_executor/cuda/cudnn_version.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/error.h"
@@ -48,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/tsl/cuda/cudnn_version.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 #include "tensorflow/tsl/util/determinism.h"
@@ -3418,13 +3418,6 @@ dnn::DataType GetConvAccumulatorType(dnn::DataType data_type) {
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
 namespace {
-cudnnBackendHeurMode_t GetCudnnFrontendHeurMode() {
-#if CUDNN_VERSION >= 8300
-  return CUDNN_HEUR_MODE_B;
-#else
-  return CUDNN_HEUR_MODE_INSTANT;
-#endif  // CUDNN_VERSION >= 8300
-}
 
 cudnnBackendDescriptorType_t GetCudnnConvolutionType(
     dnn::ConvolutionKind kind) {
@@ -4748,60 +4741,12 @@ port::Status CreateOpRunners(
         /*disable_tensor_core*/ !IsTensorMathEnabled(stream, input_type));
   };
 
-  if (!use_fallback) {
-    // In theory, mode GetCudnnFrontendHeurMode() is supposed to fall back to
-    // HEUR_MODE_INSTANT if it can't find any working engines. But there's a
-    // known cudnn issue where it doesn't when dealing with runtime compiled
-    // fusion engines. So we do it manually here.
-    // TODO(kaixih@nvidia): remove this when the cudnn fixes it.
-    cudnn_frontend::EngineHeuristics heuristics = [&] {
-      auto heuristics = cudnn_frontend::EngineHeuristicsBuilder()
-                            .setOperationGraph(*op_graph)
-                            .setHeurMode(GetCudnnFrontendHeurMode())
-                            .build();
-      if (heuristics.get_status() == CUDNN_STATUS_SUCCESS) return heuristics;
-      return cudnn_frontend::EngineHeuristicsBuilder()
-          .setOperationGraph(*op_graph)
-          .setHeurMode(CUDNN_HEUR_MODE_INSTANT)
-          .build();
-    }();
-    RETURN_MSG_IF_CUDNN_ERROR(heuristics);
-
-    // cuDNN frontend sneakily puts error messages on the object and returns
-    // partially-initialized results when there's an error; make sure to check
-    // them.
-    int64_t engine_count = heuristics.getEngineConfigCount();
-    RETURN_MSG_IF_CUDNN_ERROR(heuristics);
-    auto& heuristics_configs = heuristics.getEngineConfig(engine_count);
-    RETURN_MSG_IF_CUDNN_ERROR(heuristics);
-    VLOG(4) << "\nHeuristics engine configs size: "
-            << heuristics_configs.size();
-
-    cudnn_frontend::filter(heuristics_configs, filtered_configs,
-                           generic_filter_fn);
-  } else {
-#if CUDNN_VERSION < 8300
-    auto fallback = cudnn_frontend::EngineFallbackListBuilder()
-                        .setOperationGraph(*op_graph)
-                        .setOperation(GetCudnnConvolutionType(kind))
-                        .build();
-    RETURN_MSG_IF_CUDNN_ERROR(fallback);
-    auto& fallback_configs = fallback.getFallbackList();
-#else
-    auto fallback = cudnn_frontend::EngineHeuristicsBuilder()
-                        .setOperationGraph(*op_graph)
-                        .setHeurMode(CUDNN_HEUR_MODE_FALLBACK)
-                        .build();
-    RETURN_MSG_IF_CUDNN_ERROR(fallback);
-    int64_t engine_count = fallback.getEngineConfigCount();
-    RETURN_MSG_IF_CUDNN_ERROR(fallback);
-    auto& fallback_configs = fallback.getEngineConfig(engine_count);
-    RETURN_MSG_IF_CUDNN_ERROR(fallback);
-#endif
-    VLOG(4) << "\nFallback engine configs size: " << fallback_configs.size();
-
-    cudnn_frontend::filter(fallback_configs, filtered_configs,
-                           generic_filter_fn);
+  std::array<std::string, 1> heur_mode = {use_fallback ? "heuristics_fallback"
+                                                       : "heuristics_mode_b"};
+  std::vector<cudnnStatus_t> ret = cudnn_frontend::get_heuristics_list(
+      heur_mode, *op_graph, generic_filter_fn, filtered_configs);
+  for (auto status : ret) {
+    RETURN_IF_CUDNN_ERROR(status);
   }
   VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
@@ -5647,6 +5592,30 @@ bool CudnnSupport::DoBatchNormalizationForward(
       /*report_error=*/true);
 }
 
+bool CudnnSupport::DoBatchNormalizationForward(
+    Stream* stream, const DeviceMemory<Eigen::bfloat16>& x,
+    const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
+    const DeviceMemory<float>& estimated_mean,
+    const DeviceMemory<float>& estimated_variance,
+    const DeviceMemory<Eigen::bfloat16>& side_input,
+    const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
+    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::bfloat16>* y,
+    DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
+    DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
+    bool is_training, ScratchAllocator* reserve_space_allocator,
+    ScratchAllocator* workspace_allocator) {
+  return IsStatusOk(
+      DoBatchNormalizationForwardImpl<Eigen::bfloat16, float>(
+          stream, dnn::DataType::kBF16, dnn::DataType::kFloat, x, scale, offset,
+          estimated_mean, estimated_variance, side_input, x_desc,
+          scale_offset_desc, epsilon, exponential_average_factor,
+          activation_mode, y, batch_mean, batch_var, saved_mean, saved_inv_var,
+          is_training, reserve_space_allocator, workspace_allocator),
+      /*report_error=*/true);
+}
+
 template <class T, class U>
 port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
     Stream* stream, dnn::DataType input_data_type,
@@ -5832,6 +5801,28 @@ bool CudnnSupport::DoBatchNormalizationBackward(
   return IsStatusOk(
       DoBatchNormalizationBackwardImpl(
           stream, CUDNN_DATA_HALF, CUDNN_DATA_FLOAT, y_backprop, x, scale,
+          offset, mean, inv_var, y, x_desc, scale_offset_desc, epsilon,
+          activation_mode, x_backprop, scale_backprop, offset_backprop,
+          side_input_backprop, reserve_space_data, workspace_allocator),
+      /*report_error=*/true);
+}
+
+bool CudnnSupport::DoBatchNormalizationBackward(
+    Stream* stream, const DeviceMemory<Eigen::bfloat16>& y_backprop,
+    const DeviceMemory<Eigen::bfloat16>& x, const DeviceMemory<float>& scale,
+    const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
+    const DeviceMemory<float>& inv_var, const DeviceMemory<Eigen::bfloat16>& y,
+    const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    dnn::ActivationMode activation_mode,
+    DeviceMemory<Eigen::bfloat16>* x_backprop,
+    DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+    DeviceMemory<Eigen::bfloat16>* side_input_backprop,
+    DeviceMemory<uint8_t>* reserve_space_data,
+    ScratchAllocator* workspace_allocator) {
+  return IsStatusOk(
+      DoBatchNormalizationBackwardImpl(
+          stream, CUDNN_DATA_BFLOAT16, CUDNN_DATA_FLOAT, y_backprop, x, scale,
           offset, mean, inv_var, y, x_desc, scale_offset_desc, epsilon,
           activation_mode, x_backprop, scale_backprop, offset_backprop,
           side_input_backprop, reserve_space_data, workspace_allocator),

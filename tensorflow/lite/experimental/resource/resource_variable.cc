@@ -20,7 +20,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 
 namespace tflite {
 namespace resource {

@@ -1,6 +1,5 @@
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
     "tf_proto_library",
     "tf_pyclif_proto_library",
 )
@@ -11,17 +10,7 @@ load(
     "tf_copts",
     "tf_cuda_library",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_generate_proto_text_sources")
-
-# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_generate_proto_text_sources")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -33,6 +22,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core:__subpackages__",
         "//tensorflow/security/fuzzing:__subpackages__",
@@ -256,7 +246,6 @@ filegroup(
         "//tensorflow/core/framework/registration:options.h",
         "//tensorflow/core/framework/registration:registration.h",
         "//tensorflow/tsl/framework:device_type.h",
-        "//tensorflow/tsl/framework:framework_internal_private_hdrs",
     ],
 )
 
@@ -279,6 +268,7 @@ filegroup(
         "logging.cc",
         "lookup_interface.cc",
         "memory_types.cc",
+        "metrics.cc",
         "model.cc",
         "node_def_builder.cc",
         "op_kernel.cc",
@@ -293,7 +283,6 @@ filegroup(
         "tensor_slice.cc",
         "tensor_util.cc",
         "versions.cc",
-        "//tensorflow/tsl/framework:framework_internal_impl_srcs",
     ],
 )
 
@@ -324,6 +313,7 @@ filegroup(
         "tensor_shape.cc",
         "tensor_shape.h",
         "tensor_types.h",
+        "tensor_util.h",
         "tracking_allocator.h",
         "type_index.h",
         "type_traits.h",
@@ -387,6 +377,7 @@ filegroup(
         "lookup_interface.h",
         "memory_types.cc",
         "memory_types.h",
+        "metrics.cc",
         "metrics.h",
         "model.cc",
         "model.h",
@@ -442,7 +433,6 @@ filegroup(
         "versions.h",
         "//tensorflow/core/framework/registration:options.h",
         "//tensorflow/core/framework/registration:registration.h",
-        "//tensorflow/tsl/framework:mobile_srcs_only_runtime",
     ],
 )
 
@@ -586,7 +576,7 @@ cc_library(
     testonly = 1,
     srcs = ["fake_input.cc"],
     hdrs = ["fake_input.h"],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":attr_value_proto_cc",
         ":op_def_proto_cc",
@@ -627,31 +617,6 @@ cc_library(
         "//third_party/eigen3",
     ],
     alwayslink = 1,
-)
-
-cc_library(
-    name = "float8",
-    srcs = ["float8.cc"],
-    hdrs = ["float8.h"],
-    visibility = [
-        "//tensorflow/core:__subpackages__",
-        "//tensorflow/security/fuzzing:__subpackages__",
-    ],
-    deps = [
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
-tf_cc_test(
-    name = "float8_test",
-    srcs = ["float8_test.cc"],
-    deps = [
-        ":float8",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:test_benchmark",
-    ],
 )
 
 cc_library(
@@ -810,6 +775,7 @@ tf_cuda_library(
         "log_memory.h",
         "register_types.h",
         "tensor.h",
+        "tensor_util.h",
         "typed_allocator.h",
         "types.h",
         "variant.h",
@@ -836,6 +802,7 @@ tf_cuda_library(
         ":tensor_description_proto_cc",
         ":tensor_proto_cc",
         ":tensor_shape",
+        ":tensor_shape_proto_cc",
         ":tensor_types",
         ":type_index",
         ":type_traits",
@@ -863,6 +830,7 @@ tf_cuda_library(
         "//tensorflow/core/public:version",
         "//tensorflow/core/util:managed_stack_trace",
         "//tensorflow/tsl/framework:device_type",
+        "//tensorflow/tsl/util:byte_swap_array",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -959,14 +927,13 @@ cc_library(
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/core:stringpiece",
         "//tensorflow/core/lib/gtl:map_util",
-        "//tensorflow/core/lib/hash",
         "//tensorflow/core/lib/strings:proto_serialization",
         "//tensorflow/core/lib/strings:scanner",
-        "//tensorflow/core/lib/strings:str_util",
-        "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -1088,19 +1055,17 @@ cc_library(
         ":full_type_util",
         ":op_def_builder",
         ":op_def_util",
+        "//tensorflow/core:core_stringpiece",
         "//tensorflow/core/framework/registration",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/gtl:map_util",
-        "//tensorflow/core/lib/strings:str_util",
-        "//tensorflow/core/lib/strings:strcat",
-        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:platform_port",
-        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -1163,7 +1128,6 @@ tf_cuda_cc_test(
     name = "variant_op_copy_test",
     size = "small",
     srcs = ["variant_op_copy_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/cc:cc_ops",
@@ -1190,7 +1154,6 @@ tf_cc_test(
     name = "framework_run_handler_util_test",
     size = "small",
     srcs = ["run_handler_util_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -1203,7 +1166,6 @@ tf_cc_test(
     name = "framework_run_handler_test",
     size = "small",
     srcs = ["run_handler_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session_internal",
@@ -1227,7 +1189,6 @@ tf_cc_test(
     name = "framework_op_segment_test",
     size = "small",
     srcs = ["op_segment_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core",
@@ -1253,7 +1214,6 @@ tf_cc_test(
     name = "framework_resource_var_test",
     size = "small",
     srcs = ["resource_var_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -1339,7 +1299,6 @@ tf_cc_tests(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    linkstatic = tf_kernel_tests_linkstatic(),
     visibility = [
         "//tensorflow:internal",
         "//tensorflow/core:__pkg__",
@@ -1786,7 +1745,9 @@ tf_proto_library(
         ":tensor_proto",
         ":tensor_shape_proto",
         ":types_proto",
+        "//tensorflow/tsl/protobuf:histogram_proto",
     ],
+    exports = ["//tensorflow/tsl/protobuf:histogram_proto"],
 )
 
 tf_proto_library(
@@ -1794,6 +1755,18 @@ tf_proto_library(
     srcs = ["model.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+)
+
+tf_proto_library(
+    name = "dataset_proto",
+    srcs = ["dataset.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    protodeps = [
+        ":tensor_proto",
+        ":tensor_shape_proto",
+        ":types_proto",
+    ],
 )
 
 tf_proto_library(
@@ -1814,6 +1787,17 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "optimized_function_graph_proto",
+    srcs = ["optimized_function_graph.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    protodeps = [
+        ":types_proto",
+        ":graph_proto",
+    ],
+)
+
+tf_proto_library(
     name = "protos_all",
     cc_api_version = 2,
     make_default_target_header_only = True,
@@ -1822,6 +1806,7 @@ tf_proto_library(
         ":api_def_proto",
         ":attr_value_proto",
         ":cost_graph_proto",
+        ":dataset_proto",
         ":dataset_metadata_proto",
         ":dataset_options_proto",
         ":device_attributes_proto",
@@ -1833,6 +1818,7 @@ tf_proto_library(
         ":log_memory_proto",
         ":model_proto",
         ":node_def_proto",
+        ":optimized_function_graph_proto",
         ":op_def_proto",
         ":reader_base_proto",
         ":resource_handle_proto",

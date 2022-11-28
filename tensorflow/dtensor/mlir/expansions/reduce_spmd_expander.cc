@@ -97,10 +97,10 @@ Status ExtractDims(mlir::Operation* op,
                    bool* matched) {
   if (!llvm::isa<OpType>(op)) return OkStatus();
   auto reduce_op = llvm::cast<OpType>(op);
-  *keep_dims = reduce_op.keep_dims();
-  TF_RETURN_IF_ERROR(
-      ExtractConstVectorFromValue(reduce_op.reduction_indices(), reduced_dims));
-  TF_RETURN_IF_ERROR(AssertReplicated(reduce_op.reduction_indices()));
+  *keep_dims = reduce_op.getKeepDims();
+  TF_RETURN_IF_ERROR(ExtractConstVectorFromValue(
+      reduce_op.getReductionIndices(), reduced_dims));
+  TF_RETURN_IF_ERROR(AssertReplicated(reduce_op.getReductionIndices()));
   *matched = true;
 
   return OkStatus();
@@ -112,7 +112,7 @@ Status ExtractDims<mlir::TF::BiasAddGradOp>(
     bool* keep_dims, bool* matched) {
   if (!llvm::isa<mlir::TF::BiasAddGradOp>(op)) return OkStatus();
   auto bias_add_grad_op = llvm::cast<mlir::TF::BiasAddGradOp>(op);
-  auto data_format = bias_add_grad_op.data_format();
+  auto data_format = bias_add_grad_op.getDataFormat();
   // rank is at least 2 (required by BiasAddGrad).
   int rank = ValueRank(bias_add_grad_op->getOperand(0));
   if (data_format.equals("NHWC")) {

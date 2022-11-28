@@ -66,8 +66,8 @@ struct GpuComplexT<std::complex<double>*> {
 using gpuStream_t = hipStream_t;
 
 #if TF_ROCM_VERSION >= 40500
-#define GPU_SOLVER_CONTEXT_PREFIX tensorflow::wrap::hipsolver
-#define GPU_SOLVER_PREFIX tensorflow::wrap::hipsolver
+#define GPU_SOLVER_CONTEXT_PREFIX se::wrap::hipsolver
+#define GPU_SOLVER_PREFIX se::wrap::hipsolver
 
 template <>
 struct GpuComplexT<std::complex<float>> {
@@ -87,8 +87,8 @@ struct GpuComplexT<std::complex<double>*> {
   typedef hipDoubleComplex* type;
 };
 #else
-#define GPU_SOLVER_CONTEXT_PREFIX tensorflow::wrap::rocblas_
-#define GPU_SOLVER_PREFIX tensorflow::wrap::rocsolver_
+#define GPU_SOLVER_CONTEXT_PREFIX se::wrap::rocblas_
+#define GPU_SOLVER_PREFIX se::wrap::rocsolver_
 
 template <>
 struct GpuComplexT<std::complex<float>> {

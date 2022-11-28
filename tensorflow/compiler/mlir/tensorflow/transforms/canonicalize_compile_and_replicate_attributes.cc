@@ -27,7 +27,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -38,8 +37,11 @@ namespace TF {
 
 namespace {
 
+#define GEN_PASS_DEF_CANONICALIZECOMPILEANDREPLICATEATTRIBUTESPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct CanonicalizeCompileAndReplicateAttributesPass
-    : public TF::CanonicalizeCompileAndReplicateAttributesPassBase<
+    : public impl::CanonicalizeCompileAndReplicateAttributesPassBase<
           CanonicalizeCompileAndReplicateAttributesPass> {
   void runOnOperation() override;
 };

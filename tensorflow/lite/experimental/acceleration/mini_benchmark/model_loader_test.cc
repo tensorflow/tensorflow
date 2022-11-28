@@ -130,7 +130,7 @@ TEST_F(ModelLoaderTest, InvalidPipe) {
   auto model_loader = std::make_unique<PipeModelLoader>(-1, 10);
 
   ASSERT_NE(model_loader, nullptr);
-  EXPECT_THAT(model_loader->Init(), kMinibenchmarkModelReadFailed);
+  EXPECT_THAT(model_loader->Init(), kMinibenchmarkPreconditionNotMet);
 }
 
 TEST_F(ModelLoaderTest, CreateModelLoaderFromValidPath) {

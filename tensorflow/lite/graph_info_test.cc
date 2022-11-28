@@ -24,7 +24,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
@@ -60,6 +60,7 @@ class SimpleTestGraph : public GraphInfo {
     for (const auto& [inputs, outputs, might_have_side_effect] : nodes) {
       AddNode(inputs, outputs, might_have_side_effect);
     }
+    registrations_.resize(nodes.size());
   }
 
   ~SimpleTestGraph() override {
@@ -80,6 +81,9 @@ class SimpleTestGraph : public GraphInfo {
     return index + node_index_offset_;
   }
   size_t num_tensors() const override { return tensors_.size(); }
+  const TfLiteRegistration& registration(size_t index) const override {
+    return registrations_[index + node_index_offset_];
+  }
   TfLiteTensor* tensor(size_t index) override { return &tensors_[index]; }
   TfLiteTensor* tensors() override { return tensors_.data(); }
   const std::vector<int>& inputs() const override { return inputs_; }
@@ -108,6 +112,7 @@ class SimpleTestGraph : public GraphInfo {
   std::vector<int> inputs_;
   std::vector<int> outputs_;
   std::vector<int> variables_;
+  std::vector<TfLiteRegistration> registrations_;
   size_t node_index_offset_;
 };
 

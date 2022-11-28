@@ -20,20 +20,22 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_COMPILER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_COMPILER_H_
 
+#include <any>
 #include <functional>
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
@@ -173,6 +175,11 @@ class AotCompilationOptions {
     sanitize_abilists_dataflow_ = abilists;
   }
 
+  const std::any& target_config() const { return target_config_; }
+  void set_target_config(std::any target_config) {
+    target_config_ = std::move(target_config);
+  }
+
  protected:
   AotCompilationOptions();
 
@@ -190,6 +197,8 @@ class AotCompilationOptions {
   bool run_backend_only_ = false;
   bool sanitize_dataflow_ = false;
   std::vector<std::string> sanitize_abilists_dataflow_;
+  // Contains target-specific information required by AOT compilation.
+  std::any target_config_;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time
@@ -231,6 +240,10 @@ class Compiler {
 
     // An optional thread pool for parallel compilation.
     tsl::thread::ThreadPool* thread_pool = nullptr;
+
+    std::function<StatusOr<std::pair<std::vector<Shape>, Shape>>(
+        const HloModule& module)>
+        layout_canonicalization_callback = {};
   };
 
   virtual ~Compiler() {}

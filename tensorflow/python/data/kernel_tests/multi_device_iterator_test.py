@@ -20,6 +20,7 @@ import numpy as np
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import from_generator_op
 from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import cancellation
@@ -380,7 +381,7 @@ class OwnedMultiDeviceIteratorTest(test_base.DatasetTestBase,
 
     @def_function.function
     def fn():
-      dataset = dataset_ops._GeneratorDataset(
+      dataset = from_generator_op._GeneratorDataset(
           1,
           init_fn,
           next_fn,

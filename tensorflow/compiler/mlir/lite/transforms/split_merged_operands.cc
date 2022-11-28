@@ -65,11 +65,11 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_SPLITMERGEDOPERANDSPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 struct SplitMergedOperandsPass
-    : public SplitMergedOperandsPassBase<SplitMergedOperandsPass> {
+    : public impl::SplitMergedOperandsPassBase<SplitMergedOperandsPass> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SplitMergedOperandsPass)
 
   void runOnOperation() override;

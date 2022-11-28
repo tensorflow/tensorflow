@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 namespace mlir {
@@ -38,9 +37,12 @@ namespace TFDevice {
 
 namespace {
 
+#define GEN_PASS_DEF_CONVERTLAUNCHFUNCTOTFCALLPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Rewrites tf_device::LaunchFuncOp into TF::PartitionedCallOp.
 struct ConvertLaunchFuncToTFCallPass
-    : public TF::ConvertLaunchFuncToTFCallPassBase<
+    : public impl::ConvertLaunchFuncToTFCallPassBase<
           ConvertLaunchFuncToTFCallPass> {
   void runOnOperation() override;
 };

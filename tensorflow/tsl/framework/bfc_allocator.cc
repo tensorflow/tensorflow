@@ -32,9 +32,9 @@ limitations under the License.
 #ifdef TENSORFLOW_MEM_DEBUG
 #include "tensorflow/tsl/stacktrace.h"
 #endif
-#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/protobuf/bfc_memory_map.pb.h"
+#include "tensorflow/tsl/profiler/lib/scoped_memory_debug_annotation.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/tsl/protobuf/bfc_memory_map.pb.h"
 
 namespace tsl {
 
@@ -481,9 +481,8 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
         << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
         << " (rounded to " << rounded_bytes << ")"
         << "requested by op "
-        << tensorflow::profiler::ScopedMemoryDebugAnnotation::
-               CurrentAnnotation()
-                   .pending_op_name
+        << tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation()
+               .pending_op_name
         << "\nIf the cause is memory fragmentation maybe the environment "
         << "variable 'TF_GPU_ALLOCATOR=cuda_malloc_async' will "
         << "improve the situation. \nCurrent allocation summary follows."
@@ -518,20 +517,20 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name, const void* ptr) {
 void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                               const void* chunk_ptr, int64_t req_bytes,
                               int64_t alloc_bytes) {
-  tensorflow::profiler::TraceMe::InstantActivity(
+  tsl::profiler::TraceMe::InstantActivity(
       [this, traceme_name, chunk_ptr, req_bytes, alloc_bytes]()
           TF_NO_THREAD_SAFETY_ANALYSIS {
             int64_t bytes_available =
                 memory_limit_ - stats_.bytes_reserved - stats_.bytes_in_use;
-            const auto& annotation = tensorflow::profiler::
-                ScopedMemoryDebugAnnotation::CurrentAnnotation();
+            const auto& annotation =
+                tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
             const auto op_name = annotation.pending_op_name
                                      ? annotation.pending_op_name
                                      : "(null)";
             const auto region_type = annotation.pending_region_type
                                          ? annotation.pending_region_type
                                          : "(null)";
-            return tensorflow::profiler::TraceMeEncode(
+            return tsl::profiler::TraceMeEncode(
                 traceme_name, {{"allocator_name", name_},
                                {"bytes_reserved", stats_.bytes_reserved},
                                {"bytes_allocated", stats_.bytes_in_use},
@@ -547,7 +546,7 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                                {"data_type", annotation.pending_data_type},
                                {"shape", annotation.pending_shape_func()}});
           },
-      /*level=*/tensorflow::profiler::TraceMeLevel::kInfo);
+      /*level=*/tsl::profiler::TraceMeLevel::kInfo);
 }
 
 void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,

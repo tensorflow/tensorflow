@@ -150,7 +150,7 @@ struct JITExecuteOpConverter : public OpConversionPattern<JITExecuteOp> {
     llvm::Optional<Value> ctx = FindOpKernelContext(op);
     if (!ctx) return failure();
     rewriter.replaceOpWithNewOp<JITExecuteOp>(
-        op, op.getResult().getType(), *ctx, op.getCallable(), op.operands());
+        op, op.getResult().getType(), *ctx, op.getCallable(), op.getInputs());
     return success();
   }
 };

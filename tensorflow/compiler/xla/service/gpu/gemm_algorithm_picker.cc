@@ -15,30 +15,31 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 
+#include <algorithm>
 #include <functional>
 #include <limits>
 #include <string>
 #include <tuple>
 #include <utility>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/protobuf/autotuning.pb.h"
-#include "tensorflow/core/util/proto/proto_utils.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logger.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/protobuf/autotuning.pb.h"
+#include "tensorflow/tsl/util/proto/proto_utils.h"
 
 namespace xla {
 namespace gpu {
@@ -46,6 +47,22 @@ namespace gpu {
 using tensorflow::AutotuneResult;
 
 namespace {
+
+StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
+    GemmBackendConfig_Epilogue epilogue) {
+  switch (epilogue) {
+    case GemmBackendConfig::DEFAULT:
+      return se::cuda::BlasLt::Epilogue::kDefault;
+    case GemmBackendConfig::RELU:
+      return se::cuda::BlasLt::Epilogue::kReLU;
+    case GemmBackendConfig::BIAS:
+      return se::cuda::BlasLt::Epilogue::kBias;
+    case GemmBackendConfig::BIASRELU:
+      return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
+    default:
+      return InternalError("Unsupported Epilogue.");
+  }
+}
 
 struct AutotuneConfig {
   bool should_init_buffers() const { return autotune_level >= 2; }
@@ -141,7 +158,7 @@ StatusOr<std::optional<size_t>> GetBestAlgorithm(
     VLOG(2) << "gemm algorithm " << profile_result.algorithm() << " took "
             << profile_result.elapsed_time_in_ms() << "ms";
 
-    *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
+    *result.mutable_run_time() = tsl::proto_utils::ToDurationProto(
         absl::Milliseconds(profile_result.elapsed_time_in_ms()));
 
     if (!autotune_config.should_check_correctness()) {
@@ -206,45 +223,49 @@ StatusOr<std::optional<size_t>> GetBestAlgorithm(
   return {std::nullopt};
 }
 
+static absl::Mutex autotune_cache_mu(absl::kConstInit);
+static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
+    *new absl::flat_hash_map<
+        std::tuple<
+            std::string /*stream_exec->device_description_str()*/,
+            std::string /*conv->ToString(HloPrintOptions::Canonical()) */>,
+        std::optional<se::blas::AlgorithmType>>();
+static int64_t autotune_cache_hits ABSL_GUARDED_BY(autotune_cache_mu) = 0;
+static int64_t autotune_cache_misses ABSL_GUARDED_BY(autotune_cache_mu) = 0;
+
 StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
     const HloInstruction* gemm, const GemmBackendConfig& gemm_config,
     se::DeviceMemoryAllocator* allocator, se::Stream* stream) {
   VLOG(3) << "Starting autotune of GemmThunk " << gemm->ToString();
-  const HloInstruction* lhs = gemm->operand(0);
-  const HloInstruction* rhs = gemm->operand(1);
 
   TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(gemm));
   // Don't run autotuning concurrently on the same GPU.
   absl::MutexLock gpu_lock(&GetGpuMutex(stream->parent()));
 
-  auto key = std::make_tuple(stream->parent(), lhs->shape(), rhs->shape(),
-                             gemm->shape(), gemm_config.SerializeAsString(),
-                             IsCublasLtMatmul(*gemm));
+  auto key = std::make_tuple(
+      std::string(stream->parent()->device_description_str()),
+      gemm->ToString(
+          HloPrintOptions::Canonical().set_print_backend_config(true)));
 
-  static absl::Mutex mutex(absl::kConstInit);
-  static auto& cache ABSL_GUARDED_BY(mutex) =
-      *new absl::flat_hash_map<decltype(key),
-                               std::optional<se::blas::AlgorithmType>>();
-  static int64_t cache_hits ABSL_GUARDED_BY(mutex) = 0;
-  static int64_t cache_misses ABSL_GUARDED_BY(mutex) = 0;
+  {
+    absl::MutexLock lock(&autotune_cache_mu);
+    auto it = autotune_cache.find(key);
+    int64_t requests = autotune_cache_hits + autotune_cache_misses;
+    if (requests && requests % 10 == 0) {
+      VLOG(2) << "Autotuning cache hits/(hits + misses): "
+              << autotune_cache_hits << "/" << requests;
+    }
 
-  absl::MutexLock lock(&mutex);
-  auto it = cache.find(key);
-  int64_t requests = cache_hits + cache_misses;
-  if (requests && requests % 10 == 0) {
-    VLOG(2) << "Autotuning cache hits/(hits + misses): " << cache_hits << "/"
-            << requests;
+    if (it != autotune_cache.end()) {
+      autotune_cache_hits++;
+      VLOG(4) << "Autotuning cache hit, using algorithm: "
+              << (it->second.has_value() ? absl::StrCat(*(it->second))
+                                         : "<generic>");
+      return it->second;
+    }
+    VLOG(4) << "Autotuning cache miss";
+    autotune_cache_misses++;
   }
-
-  if (it != cache.end()) {
-    cache_hits++;
-    VLOG(4) << "Autotuning cache hit, using algorithm: "
-            << (it->second.has_value() ? absl::StrCat(*(it->second))
-                                       : "<generic>");
-    return it->second;
-  }
-  cache_misses++;
-  VLOG(4) << "Autotuning cache miss";
 
   const DebugOptions& debug_options =
       gemm->GetModule()->config().debug_options();
@@ -267,10 +288,12 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   std::optional<se::blas::AlgorithmType> best_algorithm;
   if (IsCublasLtMatmul(*gemm)) {
     bool has_matrix_bias = config.beta != 0.;
-    bool has_vector_bias = gemm_config.epilogue() == GemmBackendConfig::BIAS;
 
-    auto epilogue = has_vector_bias ? se::cuda::BlasLt::Epilogue::kBias
-                                    : se::cuda::BlasLt::Epilogue::kDefault;
+    TF_ASSIGN_OR_RETURN(bool has_vector_bias, cublas_lt::EpilogueAddsVectorBias(
+                                                  gemm_config.epilogue()));
+
+    TF_ASSIGN_OR_RETURN(auto epilogue,
+                        AsBlasLtEpilogue(gemm_config.epilogue()));
 
     se::DeviceMemoryBase bias_buffer;
     if (has_vector_bias) {
@@ -331,8 +354,12 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
     if (best_algorithm_idx) best_algorithm = algorithms[*best_algorithm_idx];
   }
 
-  CHECK(cache.emplace(key, best_algorithm).second);
-  return best_algorithm;
+  // Insert our result into the cache.  After we released the lock on
+  // autotune_cache_mu, another autotuning job may have run for this same key on
+  // another GPU on the machine.  If so, use its result.
+  absl::MutexLock lock(&autotune_cache_mu);
+  auto [it, inserted] = autotune_cache.emplace(key, best_algorithm);
+  return it->second;
 }
 
 StatusOr<bool> RunOnInstruction(HloInstruction* instr,
@@ -353,7 +380,12 @@ StatusOr<bool> RunOnInstruction(HloInstruction* instr,
   // We update instruction->backend_config(); if no algorithms are supported,
   // a different API is used, which does not require specifying an algorithm.
   GemmBackendConfig updated_config = gemm_config;
-  if (gemm_algorithm) {
+
+  // We only set the 'algorithm' field on non-Ampere architectures, as for
+  // Ampere it's ignored in any case.
+  if (gemm_algorithm &&
+      !executor->GetDeviceDescription().cuda_compute_capability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
     VLOG(4) << "GEMM autotuning picked algorithm " << *gemm_algorithm << " for "
             << instr->name();
     updated_config.set_selected_algorithm(*gemm_algorithm);
@@ -377,10 +409,53 @@ StatusOr<bool> RunOnComputation(HloComputation* computation,
 
 }  // namespace
 
+void GemmAlgorithmPicker::ClearAutotuneResults() {
+  absl::MutexLock lock(&autotune_cache_mu);
+  autotune_cache.clear();
+}
+
+Status GemmAlgorithmPicker::WriteAutotuneResults(AutotuneResults* results) {
+  absl::MutexLock lock(&autotune_cache_mu);
+
+  for (const auto& [k, result] : autotune_cache) {
+    // For now, we don't cache "failed to autotune" results, because we don't
+    // have a good way to represent them in the proto.
+    if (!result.has_value()) continue;
+
+    const auto& [device_description_str, hlo] = k;
+    auto& entry = *results->add_dots();
+    entry.set_device(device_description_str);
+    entry.set_hlo(hlo);
+    entry.mutable_result()->mutable_gemm()->set_algorithm(*result);
+  }
+
+  // Sort the results so they're deterministic.
+  std::sort(results->mutable_dots()->pointer_begin(),
+            results->mutable_dots()->pointer_end(),
+            [](const auto* a, const auto* b) {
+              return std::make_pair(absl::string_view(a->device()),
+                                    absl::string_view(a->hlo())) <
+                     std::make_pair(absl::string_view(b->device()),
+                                    absl::string_view(b->hlo()));
+            });
+  return OkStatus();
+}
+
+Status GemmAlgorithmPicker::LoadAutotuneResults(
+    const AutotuneResults& results) {
+  absl::MutexLock lock(&autotune_cache_mu);
+  for (const auto& result : results.dots()) {
+    autotune_cache[std::make_tuple(result.device(), result.hlo())] =
+        result.result().gemm().algorithm();
+  }
+  return OkStatus();
+}
+
 StatusOr<bool> GemmAlgorithmPicker::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_SCOPED_LOGGING_TIMER("GemmAlgorithmPicker");
+  XLA_SCOPED_LOGGING_TIMER(
+      absl::StrCat("GemmAlgorithmPicker for ", module->name()));
 
   if (module->config().debug_options().xla_gpu_autotune_level() == 0) {
     VLOG(2) << "GEMM auto-tuning disabled, GemmAlgorithmPicker returning early";

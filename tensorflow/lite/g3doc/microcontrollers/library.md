@@ -60,7 +60,7 @@ instructions in this section.
 ### Use the Arduino library
 
 If you are using Arduino, the *Hello World* example is included in the
-`Arduino_TensorFlowLite` Arduino library, which you can download from the
+`Arduino_TensorFlowLite` Arduino library, which you can manually install in the
 Arduino IDE and in [Arduino Create](https://create.arduino.cc/).
 
 Once the library has been added, go to `File -> Examples`. You should see an
@@ -168,9 +168,6 @@ You can add your own optimizations by creating a new subfolder for them. We
 encourage pull requests for new optimized implementations.
 
 ## Generate the Arduino library
-
-A nightly build of the Arduino library is available via the Arduino IDE's
-library manager.
 
 If you need to generate a new build of the library, you can run the following
 script from the TensorFlow repository:

@@ -90,14 +90,58 @@ module {
     %2 = "tf.Cast"(%weight) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
     %3 = "tf.Sub"(%2, %weight_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
 
-    // TODO(b/215633216): Optimize this function with the XLA Dot op.
     %5 = "tf.MatMul"(%1, %3) {
       attr_map = "transpose_a:0,transpose_b:1"
     } : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
     func.return %5 : tensor<*xi32>
   }
 
-  func.func @quantized_matmul_fn(
+  // Conv2D with int32 accumulation
+  func.func private @internal_conv2d_fn(
+                         %input : tensor<*xi8>, %filter : tensor<*xi8>,
+                         %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
+                         %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>) -> tensor<*xi32> {
+    %0 = "tf.Cast"(%input) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
+    %1 = "tf.Sub"(%0, %input_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    %2 = "tf.Cast"(%filter) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
+    %3 = "tf.Sub"(%2, %filter_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    %5 = "tf.Conv2D"(%1, %3) {
+      padding = "VALID", strides = [1, 1, 1, 1],
+      attr_map = "strides:0,use_cudnn_on_gpu:1,padding:2,explicit_paddings:3,dilations:4"
+    } : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+    func.return %5 : tensor<*xi32>
+  }
+
+  // DepthwiseConv2D with int32 accumulation
+  func.func private @internal_depthwise_conv2d_fn(
+                         %input : tensor<*xi8>, %filter : tensor<*xi8>,
+                         %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
+                         %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>) -> tensor<*xi32> {
+    %0 = "tf.Cast"(%input) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
+    %1 = "tf.Sub"(%0, %input_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    %2 = "tf.Cast"(%filter) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
+    %3 = "tf.Sub"(%2, %filter_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    %cast_1_f32 = "tf.Cast"(%1) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
+    %cast_3_f32 = "tf.Cast"(%3) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
+
+    %5 = "tf.DepthwiseConv2dNative"(%cast_1_f32, %cast_3_f32) {
+      padding = "VALID", strides = [1, 1, 1, 1],
+      attr_map = "strides:0,padding:1,explicit_paddings:2,dilations:3"
+    } : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %6 = "tf.Cast"(%5) : (tensor<*xf32>) -> tensor<*xi32>
+    func.return %6 : tensor<*xi32>
+  }
+
+  parameters[
+    {"func_name": "matmul", "internal_func_name": "internal_matmul_fn"},
+    {"func_name": "conv2d", "internal_func_name": "internal_conv2d_fn"},
+    {"func_name": "depthwise_conv2d", "internal_func_name": "internal_depthwise_conv2d_fn"}
+  ]
+  func.func @quantized_${func_name}_fn(
                          %input : tensor<*xf32>, %weight : tensor<*xi8>,
                          %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>) -> tensor<*xf32> {
 
@@ -111,7 +155,7 @@ module {
 
     %accum_out = "tf.PartitionedCall"(%quantized_input, %weight, %input_scale, %input_zp,
                                 %weight_scale, %weight_zp) {
-        config = "", config_proto = "", executor_type = "", f=@internal_matmul_fn
+        config = "", config_proto = "", executor_type = "", f=@${internal_func_name}
       } : (tensor<*xi8>, tensor<*xi8>, tensor<*xf32>, tensor<*xi32>,
              tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
 

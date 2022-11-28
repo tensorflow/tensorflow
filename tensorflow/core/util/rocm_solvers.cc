@@ -74,24 +74,26 @@ struct GpuSolverHandles {
     parent_ = parent;
     ScopedActivateExecutorContext sac{parent_};
 #if TF_ROCM_VERSION >= 40500
-    CHECK(wrap::hipsolverCreate(&hipsolver_handle) == rocblas_status_success)
+    CHECK(se::wrap::hipsolverCreate(&hipsolver_handle) ==
+          rocblas_status_success)
         << "Failed to create hipsolver instance";
 #endif
-    CHECK(wrap::rocblas_create_handle(&rocm_blas_handle) ==
+    CHECK(se::wrap::rocblas_create_handle(&rocm_blas_handle) ==
           rocblas_status_success)
         << "Failed to create rocBlas instance.";
-    CHECK(wrap::rocblas_set_stream(rocm_blas_handle, stream) ==
+    CHECK(se::wrap::rocblas_set_stream(rocm_blas_handle, stream) ==
           rocblas_status_success)
         << "Failed to set rocBlas stream.";
   }
 
   ~GpuSolverHandles() {
     ScopedActivateExecutorContext sac{parent_};
-    CHECK(wrap::rocblas_destroy_handle(rocm_blas_handle) ==
+    CHECK(se::wrap::rocblas_destroy_handle(rocm_blas_handle) ==
           rocblas_status_success)
         << "Failed to destroy rocBlas instance.";
 #if TF_ROCM_VERSION >= 40500
-    CHECK(wrap::hipsolverDestroy(hipsolver_handle) == rocblas_status_success)
+    CHECK(se::wrap::hipsolverDestroy(hipsolver_handle) ==
+          rocblas_status_success)
         << "Failed to destroy hipsolver instance.";
 #endif
   }
@@ -257,27 +259,28 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
   m(float, s) m(double, d) m(std::complex<float>, c) m(std::complex<double>, z)
 #define TF_CALL_LAPACK_TYPES_NO_COMPLEX(m) m(float, s) m(double, d)
 #define BLAS_SOLVER_FN(method, type_prefix) \
-  wrap::rocblas##_##type_prefix##method
+  se::wrap::rocblas##_##type_prefix##method
 
 #if TF_ROCM_VERSION >= 40500
 #define TF_CALL_LAPACK_TYPES(m) \
   m(float, S) m(double, D) m(std::complex<float>, C) m(std::complex<double>, Z)
 #define TF_CALL_LAPACK_TYPES_NO_REAL(m) \
   m(std::complex<float>, C) m(std::complex<double>, Z)
-#define SOLVER_FN(method, hip_prefix) wrap::hipsolver##hip_prefix##method
+#define SOLVER_FN(method, hip_prefix) se::wrap::hipsolver##hip_prefix##method
 #else
 #define TF_CALL_LAPACK_TYPES(m) \
   m(float, s) m(double, d) m(std::complex<float>, c) m(std::complex<double>, z)
 #define TF_CALL_LAPACK_TYPES_NO_REAL(m) \
   m(std::complex<float>, c) m(std::complex<double>, z)
-#define SOLVER_FN(method, type_prefix) wrap::rocsolver##_##type_prefix##method
+#define SOLVER_FN(method, type_prefix) \
+  se::wrap::rocsolver##_##type_prefix##method
 #endif
 
 // Macros to construct rocsolver/hipsolver method names.
 #define ROCSOLVER_FN(method, type_prefix) \
-  wrap::rocsolver##_##type_prefix##method
+  se::wrap::rocsolver##_##type_prefix##method
 #define BUFSIZE_FN(method, hip_prefix) \
-  wrap::hipsolver##hip_prefix##method##_bufferSize
+  se::wrap::hipsolver##hip_prefix##method##_bufferSize
 
 #if TF_ROCM_VERSION >= 40500
 
@@ -579,7 +582,7 @@ TF_CALL_LAPACK_TYPES(POTRF_INSTANCE);
 #define GETRS_INSTANCE(Scalar, type_prefix)                                   \
   template <>                                                                 \
   Status GpuSolver::Getrs<Scalar>(rocblas_operation trans, int n, int nrhs,   \
-                                  Scalar* A, int lda, const int* dev_pivots,  \
+                                  Scalar* A, int lda, int* dev_pivots,        \
                                   Scalar* B, int ldb, int* dev_lapack_info) { \
     mutex_lock lock(handle_map_mutex);                                        \
     using ROCmScalar = typename ROCmComplexT<Scalar>::type;                   \
@@ -596,7 +599,6 @@ TF_CALL_LAPACK_TYPES(GETRS_INSTANCE);
   Status GpuSolver::PotrfBatched<Scalar>(                                     \
       rocblas_fill uplo, int n, const Scalar* const host_a_dev_ptrs[],        \
       int lda, DeviceLapackInfo* dev_lapack_info, int batch_size) {           \
-    rocblas_stride stride = n;                                                \
     mutex_lock lock(handle_map_mutex);                                        \
     using ROCmScalar = typename ROCmComplexT<Scalar>::type;                   \
     ScratchSpace<uint8> dev_a = this->GetScratchSpace<uint8>(                 \
@@ -643,7 +645,7 @@ TF_CALL_LAPACK_TYPES(POTRF_BATCHED_INSTANCE);
                           pivots.bytes())) {                                  \
       return errors::Internal("GetriBatched: Failed to copy ptrs to device"); \
     }                                                                         \
-    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(getri_batched, type_prefix)(         \
+    TF_RETURN_IF_ROCBLAS_ERROR(ROCSOLVER_FN(getri_batched, type_prefix)(      \
         rocm_blas_handle_, n,                                                 \
         reinterpret_cast<ROCmScalar**>(dev_a.mutable_data()), lda,            \
         reinterpret_cast<int*>(pivots.mutable_data()), stride,                \
@@ -666,7 +668,7 @@ TF_CALL_ROCSOLV_TYPES(GETRI_BATCHED_INSTANCE);
     if (!CopyHostToDevice(context_, dev_a.mutable_data(), A, dev_a.bytes())) { \
       return errors::Internal("GetrfBatched: Failed to copy ptrs to device");  \
     }                                                                          \
-    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(getrf_batched, type_prefix)(          \
+    TF_RETURN_IF_ROCBLAS_ERROR(ROCSOLVER_FN(getrf_batched, type_prefix)(       \
         rocm_blas_handle_, n, n,                                               \
         reinterpret_cast<ROCmScalar**>(dev_a.mutable_data()), lda, dev_pivots, \
         stride, dev_info->mutable_data(), batch_size));                        \
@@ -694,7 +696,7 @@ TF_CALL_ROCSOLV_TYPES(GETRF_BATCHED_INSTANCE);
     if (!CopyHostToDevice(context_, dev_b.mutable_data(), B, dev_b.bytes())) { \
       return errors::Internal("GetrfBatched: Failed to copy ptrs to device");  \
     }                                                                          \
-    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(getrs_batched, type_prefix)(          \
+    TF_RETURN_IF_ROCBLAS_ERROR(ROCSOLVER_FN(getrs_batched, type_prefix)(       \
         rocm_blas_handle_, trans, n, nrhs,                                     \
         reinterpret_cast<ROCmScalar**>(dev_a.mutable_data()), lda, dev_pivots, \
         stride, reinterpret_cast<ROCmScalar**>(dev_b.mutable_data()), ldb,     \

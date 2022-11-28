@@ -1,6 +1,5 @@
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
     "tf_proto_library",
 )
 load(
@@ -18,15 +17,7 @@ load(
     "tf_kernel_library",
     "tf_mkl_kernel_library",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_version_info_genrule")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable", "tf_version_info_genrule")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -42,6 +33,7 @@ default_package_visibility = [
 ]
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = default_package_visibility,
     features = [
         "-layering_check",
@@ -74,6 +66,7 @@ filegroup(
         "padding.h",
         "tensor_format.cc",
         "tensor_format.h",
+        "//tensorflow/tsl/util:mobile_srcs_no_runtime",
     ],
 )
 
@@ -87,7 +80,6 @@ filegroup(
         "bcast.h",
         "command_line_flags.h",
         "determinism.h",
-        "device_name_utils.cc",
         "device_name_utils.h",
         "dump_graph.cc",
         "dump_graph.h",
@@ -218,7 +210,6 @@ filegroup(
         "batch_util.cc",
         "bcast.cc",
         "debug_events_writer.cc",
-        "device_name_utils.cc",
         "dump_graph.cc",
         "equal_graph_def.cc",
         "events_writer.cc",
@@ -392,16 +383,31 @@ cc_library(
 
 cc_library(
     name = "stats_calculator_portable",
-    srcs = [
-        "stat_summarizer_options.h",
-        "stats_calculator.cc",
-    ],
     hdrs = [
+        "stat_summarizer_options.h",
         "stats_calculator.h",
     ],
     copts = tf_copts(),
     visibility = [
         "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/tsl/util:stats_calculator_portable",
+    ],
+)
+
+cc_library(
+    name = "stat_summarizer",
+    hdrs = [
+        "stat_summarizer.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/python/util:__pkg__",
+    ],
+    deps = [
+        ":stats_calculator_portable",
+        "//tensorflow/core:framework",
     ],
 )
 
@@ -458,16 +464,6 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "stats_calculator_test",
-    srcs = ["stats_calculator_test.cc"],
-    deps = [
-        ":stats_calculator_portable",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
 cc_library(
     name = "reporter",
     hdrs = ["reporter.h"],
@@ -475,7 +471,7 @@ cc_library(
         "//tensorflow/core:__subpackages__",
     ],
     deps = [
-        ":test_log_proto_impl_cc",
+        ":test_log_proto_cc",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform:errors",
@@ -496,6 +492,11 @@ cc_library(
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/util:__pkg__",
+    ],
+    deps = [
+        ":env_var",
+        "//tensorflow/core/platform:platform_port",
+        "@com_google_absl//absl/base",
     ],
     alwayslink = 1,
 )
@@ -639,8 +640,8 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
+        ":env_var",
         "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/util:env_var",
         "//tensorflow/tsl/util:determinism",
     ],
     alwayslink = 1,
@@ -731,6 +732,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_wrapper",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_gpu_executor",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
+        "//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
     ] + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
@@ -753,6 +755,7 @@ tf_kernel_library(
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
         "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
+        "//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
         "//tensorflow/compiler/xla/stream_executor/rocm:hipsparse_wrapper",
     ]),
 )
@@ -836,7 +839,6 @@ tf_cc_tests(
     srcs = [
         "bcast_test.cc",
         "command_line_flags_test.cc",
-        "device_name_utils_test.cc",
         "dump_graph_test.cc",
         "equal_graph_def_test.cc",
         "events_writer_test.cc",
@@ -862,7 +864,6 @@ tf_cc_tests(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    linkstatic = tf_kernel_tests_linkstatic(),
     visibility = [
         "//tensorflow/core:__pkg__",
     ],
@@ -906,7 +907,6 @@ tf_cc_test(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -934,15 +934,13 @@ tf_cc_test(
 
 # Proto libraries.
 tf_proto_library(
-    name = "test_log_proto_impl",
+    name = "test_log_proto",
     srcs = ["test_log.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = ["//tensorflow/tsl/protobuf:test_log_proto"],
     # Not to be used outside of tensorflow/core.
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/tsl/util:__pkg__",
-    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+    exports = ["//tensorflow/tsl/protobuf:test_log_proto"],
 )
 
 tf_proto_library(

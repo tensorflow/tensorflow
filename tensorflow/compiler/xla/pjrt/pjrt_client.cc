@@ -39,6 +39,15 @@ StatusOr<std::uintptr_t> PjRtClient::UnsafeBufferPointer(PjRtBuffer* buffer) {
   return absl::bit_cast<std::uintptr_t>(ptr);
 }
 
+PjRtFuture<Status> PjRtBuffer::CopyRawToHostFuture(
+    PjRtFuture<StatusOr<void*>> dst, int64_t offset, int64_t transfer_size) {
+  StatusOr<void*> awaited_dst = dst.Await();
+  if (!awaited_dst.ok()) {
+    return PjRtFuture<Status>(std::move(awaited_dst).status());
+  }
+  return CopyRawToHost(*awaited_dst, offset, transfer_size);
+}
+
 MultiSliceConfig::~MultiSliceConfig() {}
 
 std::string CompiledMemoryStats::DebugString() const {
@@ -53,41 +62,11 @@ std::string CompiledMemoryStats::DebugString() const {
       output_size_in_bytes, alias_size_in_bytes, temp_size_in_bytes);
 }
 
-Status CopyToDeviceStream::AddChunk(PjRtChunk chunk) {
-  absl::MutexLock lock(&mu_);
-  if (current_bytes_ >= total_bytes_) {
-    return xla::Status(tensorflow::error::Code::FAILED_PRECONDITION,
-                       "Stream is already complete");
-  }
-  current_bytes_ += chunk.size();
-  if (current_bytes_ > total_bytes_) {
-    return xla::Status(tensorflow::error::Code::FAILED_PRECONDITION,
-                       absl::StrCat("Stream byte size mismatch: ",
-                                    current_bytes_, " > ", total_bytes_));
-  }
-
-  buffered_chunks_.push_back(std::move(chunk));
-  return OkStatus();
-}
-
-std::optional<PjRtChunk> CopyToDeviceStream::ConsumeNextChunk() {
-  absl::MutexLock lock(&mu_);
-  if (buffered_chunks_.empty() && current_bytes_ >= total_bytes_) {
-    return std::nullopt;
-  }
-  mu_.Await(absl::Condition(
-      +[](std::deque<PjRtChunk>* buffered_chunks) {
-        return !buffered_chunks->empty();
-      },
-      &buffered_chunks_));
-  PjRtChunk chunk = std::move(buffered_chunks_.front());
-  buffered_chunks_.pop_front();
-  return std::move(chunk);
-}
-
 // Defining the first virtual non-pure method, which is usually the virtual
 // destructor, makes it a key function. This reduces the program size and takes
 // fewer linker resources.
 PjRtHostMemoryForDeviceManager::~PjRtHostMemoryForDeviceManager() = default;
+
+CopyToDeviceStream::~CopyToDeviceStream() = default;
 
 }  // namespace xla

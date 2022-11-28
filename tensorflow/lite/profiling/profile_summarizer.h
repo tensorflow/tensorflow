@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_PROFILING_PROFILE_SUMMARIZER_H_
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>

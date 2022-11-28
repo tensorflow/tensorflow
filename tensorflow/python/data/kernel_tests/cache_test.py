@@ -27,6 +27,7 @@ from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
@@ -220,6 +221,10 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset_ops.Dataset.range(3).flat_map(
           lambda x: dataset_ops.Dataset.from_tensors(x).repeat(repeat_count))
 
+      options = options_lib.Options()
+      options.experimental_optimization.inject_prefetch = False
+      dataset = dataset.with_options(options)
+
       cached_dataset = dataset.cache().repeat(2)
       uncached_dataset = dataset.repeat(2)
 
@@ -305,6 +310,9 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
       return x
 
     dataset = dataset_ops.Dataset.range(10).map(increment_fn).cache().repeat(2)
+    options = options_lib.Options()
+    options.experimental_optimization.inject_prefetch = False
+    dataset = dataset.with_options(options)
     get_next = self.getNext(dataset, requires_initialization=True)
 
     # first epoch
@@ -328,6 +336,9 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
       return x
 
     dataset = dataset_ops.Dataset.range(10).map(increment_fn).cache()
+    options = options_lib.Options()
+    options.experimental_optimization.inject_prefetch = False
+    dataset = dataset.with_options(options)
 
     # first epoch
     i = 0

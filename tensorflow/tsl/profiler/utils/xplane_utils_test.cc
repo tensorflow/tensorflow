@@ -21,14 +21,13 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/profiler/utils/math_utils.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/tsl/profiler/utils/xplane_builder.h"
 #include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 #include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
@@ -286,7 +285,7 @@ TEST(XPlaneUtilsTest, MergeXPlaneTest) {
   // Check plane level stats,
   EXPECT_EQ(dst_plane.stats_size(), 3);
   absl::flat_hash_map<absl::string_view, absl::string_view> plane_stats;
-  plane.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
+  plane.ForEachStat([&](const XStatVisitor& stat) {
     if (stat.Name() == "plane_stat1") {
       EXPECT_EQ(stat.IntValue(), 1);
     } else if (stat.Name() == "plane_stat2") {
@@ -572,6 +571,26 @@ TEST(XplaneutilsTest, TestEventMetadataStatsAreCopiedForRefValue) {
   ASSERT_TRUE(stat.has_value());
   EXPECT_EQ(stat->Name(), "tf_op");
   EXPECT_EQ(stat->StrOrRefValue(), "TestFunction");
+}
+
+TEST(XplaneutilsTest, TestIsXSpaceGrouped) {
+  XSpace space;
+  {
+    XPlaneBuilder p1(space.add_planes());
+    auto l1 = CreateXLine(&p1, "l1", "d1", 1, 100);
+    auto e1 = CreateXEvent(&p1, l1, "event1", "display1", 1, 2);
+    CreateXStats(&p1, &e1, "event_stat1", 2.0);
+  }
+  EXPECT_FALSE(IsXSpaceGrouped(space));
+
+  {
+    XPlaneBuilder p2(space.add_planes());
+    auto l2 = CreateXLine(&p2, "l2", "d2", 1, 100);
+    auto e2 = CreateXEvent(&p2, l2, "event2", "display2", 1, 2);
+    CreateXStats(&p2, &e2, "group_id", 1);
+  }
+  LOG(ERROR) << space.DebugString();
+  EXPECT_TRUE(IsXSpaceGrouped(space));
 }
 
 }  // namespace

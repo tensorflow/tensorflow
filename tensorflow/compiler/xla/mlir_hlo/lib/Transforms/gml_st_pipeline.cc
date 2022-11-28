@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "mlir-hlo/Transforms/gml_st_pipeline.h"
 
-#include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "gml_st/transforms/passes.h"
+#include "mhlo/transforms/passes.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
@@ -43,12 +43,11 @@ void createGmlStPipeline(mlir::OpPassManager& pm,
   pm.addNestedPass<FuncOp>(createScalarizationPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
-  pm.addNestedPass<FuncOp>(gml_st::createComposeSetOpsPass());
 
   if (!options.lowerToLoops) return;
 
   // Bufferization-related passes.
-  pm.addNestedPass<FuncOp>(createLinalgInitTensorToAllocTensorPass());
+  pm.addNestedPass<FuncOp>(bufferization::createEmptyTensorToAllocTensorPass());
   pm.addPass(hlo::createOneShotBufferizePass());
   pm.addPass(createCSEPass());
   pm.addPass(createCanonicalizerPass());

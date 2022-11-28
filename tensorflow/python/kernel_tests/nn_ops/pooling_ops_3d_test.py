@@ -125,7 +125,7 @@ class PoolingTest(test.TestCase):
         padding="SAME",
         expected=expected_output)
 
-  def testMaxPool3dGrad(self):
+  def testAvgPool3dGrad(self):
     with self.assertRaises(
         (errors.ResourceExhaustedError, errors.InvalidArgumentError)):
       with self.cached_session():
@@ -140,6 +140,22 @@ class PoolingTest(test.TestCase):
             strides=[1, 1, 1, 1, 1],
             padding="SAME",
             data_format="NDHWC")
+        self.evaluate(t)
+
+  def testAvgPool3dGradEmptyInput(self):
+    for data_format, use_gpu in GetTestConfigs():
+      with self.cached_session(use_gpu=use_gpu):
+        orig_input_shape = constant_op.constant([5, 6, 7, 0, 8],
+                                                dtype=dtypes.int32)
+        grad = constant_op.constant(
+            1, shape=[5, 6, 7, 0, 8], dtype=dtypes.float32)
+        t = gen_nn_ops.AvgPool3DGrad(
+            orig_input_shape=orig_input_shape,
+            grad=grad,
+            ksize=[1, 1, 1, 1, 1],
+            strides=[1, 1, 1, 1, 1],
+            padding="SAME",
+            data_format=data_format)
         self.evaluate(t)
 
   def testMaxPool3dValidPadding(self):
@@ -244,6 +260,22 @@ class PoolingTest(test.TestCase):
         name="max_pool_3d")
     values = self.evaluate(max_pool_3d)
     self.assertEqual(values.shape, (0, 56, 56, 56, 64))
+
+  # TODO(penporn): Determine if we will allow input_sizes[3] < ksize[3].
+  def DISABLED_testAvgPool3dEmptyOutTensor(self):
+    input_sizes = [30, 19, 4, 19, 17]
+    input_data = 1.0
+    input_tensor = constant_op.constant(
+        input_data, shape=input_sizes, name="input")
+    avg_pool_3d = nn_ops.avg_pool3d(
+        input_tensor,
+        ksize=(1, 13, 3, 20, 1),
+        strides=(1, 14, 4, 1, 1),
+        padding="VALID",
+        data_format="NDHWC",
+        name="avg_pool_3d")
+    values = self.evaluate(avg_pool_3d)
+    self.assertEqual(values.shape, (30, 1, 1, 0, 17))
 
   def _ConstructAndTestGradientForConfig(self,
                                          pool_func,

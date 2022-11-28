@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_H_
 
 #include <functional>
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -26,6 +28,7 @@ limitations under the License.
 #else
 #include <map>
 #endif
+#include "absl/functional/function_ref.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_repacking.h"
@@ -114,9 +117,9 @@ class MemorySpaceAssignmentCostAnalysis {
 
   // Function type that can be used to indicate which input/output values are in
   // the alternate memory.
-  using IsInAlternateMemoryFun =
-      std::function<bool(std::optional<int> /*operand_num*/,
-                         const ShapeIndex& /*index*/, const Shape& /*shape*/)>;
+  using IsInAlternateMemoryFun = absl::FunctionRef<bool(
+      std::optional<int> /*operand_num*/, const ShapeIndex& /*index*/,
+      const Shape& /*shape*/)>;
 
   virtual ~MemorySpaceAssignmentCostAnalysis() = default;
 
@@ -1494,7 +1497,8 @@ class AlternateMemoryBestFitHeap
   void AddRequiredAssignment(const HloValue* value,
                              const HloInstruction* instruction,
                              MemorySpace memory_space, int64_t time,
-                             AliasedOffset* offset = nullptr);
+                             AliasedOffset* offset = nullptr,
+                             bool add_to_pending = true);
   void AddRequiredAssignment(const HloInstruction* instruction,
                              ShapeIndex index, MemorySpace memory_space,
                              AliasedOffset* offset = nullptr);

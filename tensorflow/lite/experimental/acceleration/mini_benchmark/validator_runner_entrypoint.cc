@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_entrypoint.h"
+
 #include <string>
 
 #ifndef _WIN32

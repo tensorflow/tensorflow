@@ -17,6 +17,8 @@ limitations under the License.
 // assigned to save devices. Clusters are represented as regions.
 // Note that side-effecting ops are not correctly handled yet.
 
+#include <vector>
+
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -30,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
@@ -38,8 +39,11 @@ namespace TFDevice {
 
 namespace {
 
+#define GEN_PASS_DEF_CLUSTERFORMATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct ClusterFormationPass
-    : public TF::ClusterFormationPassBase<ClusterFormationPass> {
+    : public impl::ClusterFormationPassBase<ClusterFormationPass> {
   void runOnOperation() override;
 };
 
@@ -128,6 +132,56 @@ void GetLiveOuts(Region* region, llvm::SmallVectorImpl<Value>* live_outs) {
   }
 }
 
+// Reorder all users of the given op's results to after the op.
+//
+// Since launch ops are inserted after the last op in the region, the region is
+// guaranteed to dominate all live-in values. On the other hand, it is still
+// possible that live-out values don't dominate the region. For example:
+//
+// ```
+// %0 = "tf.OpA"()
+// %1 = "tf.OpB"(%0)
+// %2 = "tf.OpC"(%0)
+// ```
+//
+// Assuming `tf.OpA` and `tf.OpC` are clustered together, the region will be
+// inserted right after `tf.OpC`. The live-out `%0`, however, is used by
+// `tf.OpB`, which won't dominate the region. This function reorders all users
+// of the cluster op to be placed after the cluster op itself so that SSA
+// dominance is preserved after cluster op creation.
+void ReorderOpResultUses(mlir::Operation* cluster) {
+  mlir::Block* const cluster_block = cluster->getBlock();
+  llvm::SetVector<mlir::Operation*> ops_to_reorder;
+
+  llvm::SmallVector<mlir::Value> worklist;
+  llvm::append_range(worklist, cluster->getResults());
+
+  while (!worklist.empty()) {
+    mlir::Value value = worklist.back();
+    worklist.pop_back();
+
+    for (mlir::Operation* const user : value.getUsers()) {
+      mlir::Operation* const op = cluster_block->findAncestorOpInBlock(*user);
+      if (op == nullptr || !op->isBeforeInBlock(cluster)) {
+        continue;
+      }
+
+      if (ops_to_reorder.insert(op)) {
+        llvm::append_range(worklist, op->getResults());
+      }
+    }
+  }
+
+  std::vector<mlir::Operation*> sorted = ops_to_reorder.takeVector();
+  llvm::sort(sorted, [](mlir::Operation* lhs, mlir::Operation* rhs) {
+    return lhs->isBeforeInBlock(rhs);
+  });
+
+  for (mlir::Operation* const op : llvm::reverse(sorted)) {
+    op->moveAfter(cluster);
+  }
+}
+
 // Build a `tf_device.launch` op with a region that contains all the operations
 // in given cluster. Then all ops in cluster are replaced by `tf_device.launch`.
 void BuildLaunchForCluster(const Cluster& c, OpBuilder* builder) {
@@ -174,6 +228,10 @@ void BuildLaunchForCluster(const Cluster& c, OpBuilder* builder) {
   // Replace any external uses of live-out values with return values of launch
   // op. So live-out values no longer escape the region.
   ReplaceLiveOutExternalUses(live_outs, launch_op);
+
+  // Ensure that users of the launch op's results appear after the launch op
+  // in order to preserve the dominance property.
+  ReorderOpResultUses(launch_op);
 }
 
 void BuildClusters(Block* block, OpBuilder builder) {

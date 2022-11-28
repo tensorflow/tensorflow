@@ -539,54 +539,6 @@ class Dict(trace.TraceType, serialization.Serializable):
   def __repr__(self):
     return f"{self.__class__.__name__}(mapping={self.mapping!r})"
 
-
-class Reference(trace.TraceType):
-  """Represents a resource with an identifier.
-
-  Resource identifiers are useful to denote identical resources, that is,
-  resources which are known at compilation time to point to the same thing.
-  This information is useful in automatic control dependencies for instance,
-  where ops using the same resource don't run concurrently.
-  """
-
-  def __init__(self, base: trace.TraceType, identifier: Hashable):
-    self.base = base
-    self.identifier = identifier
-
-  def is_subtype_of(self, other: trace.TraceType) -> bool:
-    if isinstance(other, Reference) and self.identifier == other.identifier:
-      return self.base.is_subtype_of(other.base)
-    return False
-
-  def most_specific_common_supertype(
-      self, types: Sequence[trace.TraceType]) -> Optional["Reference"]:
-    if all(
-        isinstance(other, Reference) and self.identifier == other.identifier
-        for other in types):
-      base_supertype = self.base.most_specific_common_supertype(
-          [other.base for other in types])
-      if base_supertype is not None:
-        return Reference(base_supertype, self.identifier)
-    return None
-
-  def _placeholder_value(self) -> Any:
-    return self.base._placeholder_value()  # pylint: disable=protected-access
-
-  def __eq__(self, other: Any) -> bool:
-    if not isinstance(other, trace.TraceType):
-      return NotImplemented
-
-    return isinstance(
-        other, Reference
-    ) and self.identifier == other.identifier and self.base == other.base
-
-  def __hash__(self) -> int:
-    return hash((self.identifier, self.base))
-
-  def __repr__(self):
-    return (f"{self.__class__.__name__}(base={self.base!r}, "
-            f"identifier={self.identifier!r})")
-
 serialization.register_serializable(Literal)
 serialization.register_serializable(Tuple)
 serialization.register_serializable(List)

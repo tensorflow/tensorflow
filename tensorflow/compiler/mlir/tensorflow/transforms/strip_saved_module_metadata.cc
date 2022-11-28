@@ -26,15 +26,18 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 
 namespace mlir {
 namespace tf_saved_model {
 
 namespace {
 
+#define GEN_PASS_DEF_STRIPSAVEDMODULEMETADATAPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
+
 struct StripSavedModuleMetadataPass
-    : public StripSavedModuleMetadataPassBase<StripSavedModuleMetadataPass> {
+    : public impl::StripSavedModuleMetadataPassBase<
+          StripSavedModuleMetadataPass> {
   void runOnOperation() override;
 };
 

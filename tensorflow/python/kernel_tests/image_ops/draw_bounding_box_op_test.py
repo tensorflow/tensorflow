@@ -16,8 +16,11 @@
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import image_ops_impl
@@ -131,6 +134,22 @@ class DrawBoundingBoxOpTest(test.TestCase):
     self._testDrawBoundingBoxColorCycling(
         image, dtype=dtypes.half, colors=colors)
 
+  # generate_bound_box_proposals is only available on GPU.
+  @test_util.run_gpu_only()
+  def testGenerateBoundingBoxProposals(self):
+    # Op only exists on GPU.
+    with self.cached_session(use_gpu=True):
+      with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                  "must be rank 4"):
+        scores = constant_op.constant(
+            value=[[[[1.0, 1.0], [1.0, 1.0], [1.0, 1.0], [1.0, 1.0]]]])
+        self.evaluate(
+            image_ops.generate_bounding_box_proposals(
+                scores=scores,
+                bbox_deltas=[],
+                image_info=[],
+                anchors=[],
+                pre_nms_topn=1))
 
 if __name__ == "__main__":
   test.main()

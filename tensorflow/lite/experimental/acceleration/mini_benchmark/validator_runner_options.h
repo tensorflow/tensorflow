@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
@@ -59,6 +60,7 @@ struct ValidatorRunnerOptions {
   // Optional: The timeout for each acceleration config test. By default
   // timeout is not enabled.
   int per_test_timeout_ms = 0;
+
   // The nnapi_sl pointer can be used to configure the runner to use
   // the NNAPI implementation coming from the Support Library instead of
   // the NNAPI platform drivers.
@@ -71,6 +73,10 @@ struct ValidatorRunnerOptions {
   std::string validation_entrypoint_name = TfLiteValidationEntrypointName();
   ErrorReporter* error_reporter = DefaultErrorReporter();
 };
+
+// Create a ValidatorRunnerOptions based on the given settings.
+ValidatorRunnerOptions CreateValidatorRunnerOptionsFrom(
+    const MinibenchmarkSettings& settings);
 
 }  // namespace acceleration
 }  // namespace tflite

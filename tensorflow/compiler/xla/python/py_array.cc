@@ -25,6 +25,7 @@ limitations under the License.
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/python/python_utils.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
+#include "tensorflow/compiler/xla/python/util.h"
 
 namespace xla {
 namespace {
@@ -82,7 +83,10 @@ extern "C" void PyArray_tp_dealloc(PyObject* self) {
     PyObject_ClearWeakRefs(self);
   }
 
-  GetPyArrayStorageFromObject(obj)->~Storage();
+  GetPyArrayStorageFromObject(obj)->~PyArray_Storage();
+
+  PyObject*& dict = *_PyObject_GetDictPtr(self);
+  Py_CLEAR(dict);
 
   tp->tp_free(self);
   Py_DECREF(tp);
@@ -166,6 +170,11 @@ void PyArray::PyInit(py::object self, py::object aval, py::object sharding,
   if (!skip_checks) {
     py_array.CheckAndRearrange();
   }
+}
+
+void PyArray::PyInit(py::object self, DisableFastpath) {
+  Construct(reinterpret_cast<PyArrayObject*>(self.ptr()),
+            PyArray_Storage::DisableFastpath());
 }
 
 PyArray::PyArray(py::object aval, bool weak_type, py::dtype dtype,
@@ -252,6 +261,57 @@ Status PyArray::set_arrays(py::object obj) {
   return OkStatus();
 }
 
+Status PyArray::BlockUntilReady() const {
+  pybind11::gil_scoped_release gil_release;
+  return AwaitBuffersReady(pjrt_buffers());
+}
+
+bool PyArray::IsDeleted() const {
+  if (pjrt_buffers().empty()) {
+    return true;
+  }
+
+  for (const auto& pjrt_buffer : pjrt_buffers()) {
+    if (pjrt_buffer->IsDeleted()) return true;
+  }
+  return false;
+}
+
+py::handle PyArray::Storage::AsHandle() {
+  return reinterpret_cast<PyObject*>(reinterpret_cast<char*>(this) -
+                                     offsetof(PyArrayObject, array_storage));
+}
+
+PyArray::Storage::~PyArray_Storage() {
+  CHECK(PyGILState_Check());
+  if (!fastpath_enabled) {
+    return;
+  }
+  if (py_client->arrays_ == this) {
+    py_client->arrays_ = next;
+  }
+  if (prev) {
+    prev->next = next;
+  }
+  if (next) {
+    next->prev = prev;
+  }
+}
+
+std::vector<py::object> PyClient::LiveArrays() {
+  std::vector<py::object> result;
+  for (PyArray::Storage* array = arrays_; array; array = array->next) {
+    bool all_deleted = true;
+    for (auto& buffer : array->pjrt_buffers) {
+      all_deleted &= buffer->IsDeleted();
+    }
+    if (!all_deleted) {
+      result.push_back(py::reinterpret_borrow<py::object>(array->AsHandle()));
+    }
+  }
+  return result;
+}
+
 Status PyArray::SetUpType() {
   static constexpr char kName[] = "Array";
 
@@ -305,14 +365,24 @@ Status PyArray::RegisterTypes(py::module& m) {
           auto py_arrays = py::cast<std::vector<PyArray>>(arrays);
           PyArray::PyInit(self, std::move(aval), std::move(sharding), py_arrays,
                           committed, skip_checks);
-        } else {
+        } else if (arrays[0].get_type().ptr() == PyBuffer::type()) {
           auto py_buffers = py::cast<std::vector<PyBuffer::object>>(arrays);
           PyArray::PyInit(self, std::move(aval), std::move(sharding),
                           py_buffers, committed, skip_checks);
+        } else {
+          throw py::type_error(
+              absl::StrCat("Unsupported type for elements in `arrays`: ",
+                           std::string(py::str(arrays[0].get_type()))));
         }
       },
       py::is_method(type), py::arg("aval"), py::arg("sharding"),
       py::arg("arrays"), py::arg("committed"), py::arg("_skip_checks") = false);
+  // TODO(yashkatariya): remove this once the transition completes.
+  type.attr("_init_with_fastpath_disabled") = py::cpp_function(
+      [](py::object self) {
+        PyArray::PyInit(self, PyArray::DisableFastpath());
+      },
+      py::is_method(type));
   type.attr("_sharding") = jax::property_readonly(&PyArray::sharding);
   type.attr("aval") = jax::property(&PyArray::aval, &PyArray::set_aval);
   type.attr("_arrays") = jax::property(&PyArray::arrays, &PyArray::set_arrays);
@@ -325,6 +395,9 @@ Status PyArray::RegisterTypes(py::module& m) {
         return self;
       },
       py::is_method(type));
+  type.attr("is_deleted") =
+      py::cpp_function(&PyArray::IsDeleted, py::is_method(type));
+  type.attr("traceback") = jax::property_readonly(&PyArray::traceback);
   type.attr("__module__") = m.attr("__name__");
 
   return OkStatus();

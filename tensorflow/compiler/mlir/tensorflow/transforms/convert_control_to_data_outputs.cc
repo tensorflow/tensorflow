@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verify_suitable_for_graph_export.h"
 
 namespace mlir {
@@ -48,8 +47,11 @@ static constexpr ResourceId kInvalidResourceId =
 using OperationSetTy = SmallPtrSet<Operation*, 4>;
 using ResourceToOpsMapTy = DenseMap<ResourceId, OperationSetTy>;
 
+#define GEN_PASS_DEF_EXECUTORCONVERTCONTROLTODATAOUTPUTSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class ConvertControlToDataOutputsPass
-    : public TF::ExecutorConvertControlToDataOutputsPassBase<
+    : public impl::ExecutorConvertControlToDataOutputsPassBase<
           ConvertControlToDataOutputsPass> {
  public:
   void runOnOperation() override;
@@ -345,7 +347,7 @@ TF::WhileOp RewriteWhileOp(TF::WhileOp while_op, int num_resource_inputs,
   // Get the dummy constant.
   OpBuilder builder(while_wrapper);
   auto loc = NameLoc::get(
-      builder.getStringAttr("chain_control_outputs@" + while_op.body()));
+      builder.getStringAttr("chain_control_outputs@" + while_op.getBody()));
   IslandOp const_wrapper = GetDummyConstant(builder, const_type, loc);
 
   // Get new operand and result types.

@@ -1,5 +1,5 @@
-// RUN: rm /tmp/temp.mlir; odml_to_stablehlo %s --allow-tf=false -o /tmp/temp.mlir; [ ! -f /tmp/temp.mlir ]
-// RUN: rm /tmp/temp.mlir; odml_to_stablehlo %s --allow-tf=true -o /tmp/temp.mlir; [ -f /tmp/temp.mlir ]
+// RUN: odml_to_stablehlo %s --allow-tf=false -o /tmp/temp.mlir; [ ! -f /tmp/temp.mlir ]
+// RUN: odml_to_stablehlo %s --allow-tf=true -o /tmp/temp2.mlir; [ -f /tmp/temp2.mlir ]
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 975 : i32}, tf_saved_model.semantics}  {
   func.func @serving_default(%arg0: tensor<1x20x20x28xf32> {tf_saved_model.index_path = ["a"]}) -> (tensor<1x40x40x28xf32> {tf_saved_model.index_path = ["b"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "c:0", outputs = "d:0"}, tf_saved_model.exported_names = ["serving_default"]} {

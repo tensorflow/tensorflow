@@ -14,6 +14,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
@@ -190,10 +191,6 @@ tf_cuda_library(
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            "//tensorflow/core/distributed_runtime/coordination:coordination_service",
-            "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
-            "//tensorflow/core/distributed_runtime/coordination:coordination_service_impl",
-            "//tensorflow/core/distributed_runtime/preemption:preemption_notifier",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -210,6 +207,10 @@ tf_cuda_library(
             "//tensorflow/core/distributed_runtime/eager:eager_client",
             "//tensorflow/core/distributed_runtime/eager:cluster_function_library_runtime",
             "//tensorflow/core/distributed_runtime/eager:remote_mgr",
+            "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
+            "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
+            "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_impl",
+            "//tensorflow/tsl/distributed_runtime/preemption:preemption_notifier",
         ],
     }),
 )

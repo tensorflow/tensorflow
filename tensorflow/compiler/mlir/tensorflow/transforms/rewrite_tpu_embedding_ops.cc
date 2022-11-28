@@ -19,17 +19,19 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
 
 namespace {
 
+#define GEN_PASS_DEF_REWRITETPUEMBEDDINGOPSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Rewrites RecvTPUEmbeddingActivationsOp and SendTPUEmbeddingGradients ops to
 // internal variants by introducing XlaRecvTPUEmbeddingDeduplicationData op.
 struct RewriteTPUEmbeddingOps
-    : public RewriteTPUEmbeddingOpsPassBase<RewriteTPUEmbeddingOps> {
+    : public impl::RewriteTPUEmbeddingOpsPassBase<RewriteTPUEmbeddingOps> {
   void runOnOperation() override;
 };
 
@@ -70,7 +72,7 @@ LogicalResult RunOnRegion(Region* region) {
   if (!recv_op && !send_op) return success();
 
   Location loc = recv_op ? recv_op.getLoc() : send_op.getLoc();
-  StringRef config = recv_op ? recv_op.config() : send_op.config();
+  StringRef config = recv_op ? recv_op.getConfig() : send_op.getConfig();
 
   // Create XlaRecvTPUEmbeddingDeduplicationData op.
   OpBuilder builder(region);
@@ -87,8 +89,8 @@ LogicalResult RunOnRegion(Region* region) {
   // Rewrite SendTPUEmbeddingGradients op to the corresponding internal op and
   // then update the OperandSegmentSize attribute.
   if (send_op) {
-    int32_t operand_sizes[] = {static_cast<int32_t>(send_op.N()),
-                               static_cast<int32_t>(send_op.NN()), 1};
+    int32_t operand_sizes[] = {static_cast<int32_t>(send_op.getN()),
+                               static_cast<int32_t>(send_op.getNN()), 1};
     auto operand_size_attr = builder.getDenseI32ArrayAttr(operand_sizes);
 
     auto new_send_op = AddOperandAndRewriteAs<XlaSendTPUEmbeddingGradientsOp>(

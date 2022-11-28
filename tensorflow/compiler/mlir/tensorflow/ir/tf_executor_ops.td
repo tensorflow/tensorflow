@@ -43,7 +43,6 @@ def TfExecutor_Dialect : Dialect {
     value).
 }];
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
   let cppNamespace = "::mlir::tf_executor";
 }
 
@@ -470,7 +469,7 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source",
 
   let extraClassDeclaration = [{
     NextIterationSinkOp GetSink() {
-      return cast<NextIterationSinkOp>(*token().user_begin());
+      return cast<NextIterationSinkOp>(*getToken().user_begin());
     }
   }];
 

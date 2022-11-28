@@ -25,7 +25,6 @@ limitations under the License.
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/core_runtime.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/types.h"  // from @tf_runtime
-#include "tfrt/distributed_runtime/opdefs/types.h"  // from @tf_runtime
 
 namespace tensorflow {
 
@@ -50,6 +49,7 @@ class CoreRTConverter : public mlir::TypeConverter {
   // both being string attributes. The values represent function names.
   // This method also populates a vector of attribute keys to be removed.
   mlir::ArrayAttr CreateOpFuncAttrs(
+      const mlir::SymbolTable &symbol_table,
       llvm::ArrayRef<mlir::NamedAttribute> attrs,
       llvm::SmallVector<mlir::StringAttr, 4> *func_attr_keys);
 
@@ -69,24 +69,19 @@ class CoreRTConverter : public mlir::TypeConverter {
 
   // Get a DistributedContext value to be used by the given op. The
   // DistributedContext value should be shared by all operations in the body
-  // of the same FuncOp. If there does not exist one, insert a
-  // GetDistributedContext op right before the given op and return the result
-  // value.
+  // of the same FuncOp. If there does not exist one, return a null Value.
   mlir::Value GetDistributedContext(mlir::Operation *op,
                                     mlir::ConversionPatternRewriter *rewriter);
 
   // Get a RemoteChainManager value to be used by the given op. The
   // RemoteChainManager value should be shared by all operations in the body
-  // of the same FuncOp. If there does not exist one, insert a
-  // tfrt_dist.test_create_remote_chain_manager op right before the given op and
-  // return the result value.
+  // of the same FuncOp. If there does not exist one, return a null Value.
   mlir::Value GetRemoteChainManager(mlir::Operation *op,
                                     mlir::ConversionPatternRewriter *rewriter);
 
   // Get a TaskHandle value with the given task name. If the TaskHandle value
   // has already been created for the given task name within the same FuncOp,
-  // return this TaskHandle value. Otherwise, insert a tfrt_dist.get_task_handle
-  // op right before the given op and return the result value.
+  // return this TaskHandle value. Otherwise, return a null Value.
   mlir::Value GetTaskHandle(mlir::Operation *op, StringRef task_name,
                             mlir::ConversionPatternRewriter *rewriter);
 
@@ -102,11 +97,6 @@ class CoreRTConverter : public mlir::TypeConverter {
   mlir::Value GetLocalSideEffectChain(
       mlir::Operation *op, mlir::ConversionPatternRewriter *rewriter);
 
-  // Return a remote chain for side effects for `op`.
-  mlir::Value GetRemoteSideEffectChain(
-      mlir::Operation *op, StringRef remote_host,
-      mlir::ConversionPatternRewriter *rewriter);
-
   mlir::Type op_handler_type() {
     return builder_.getType<::tfrt::corert::OpHandlerType>();
   }
@@ -117,10 +107,6 @@ class CoreRTConverter : public mlir::TypeConverter {
 
   mlir::Type chain_type() {
     return builder_.getType<::tfrt::compiler::ChainType>();
-  }
-
-  mlir::Type distributed_context_type() {
-    return builder_.getType<::tfrt::dist::DistributedContextType>();
   }
 
   mlir::Builder &builder() { return builder_; }
@@ -156,6 +142,7 @@ class CoreRTConverter : public mlir::TypeConverter {
   mlir::TypeAttr ConvertTypeAttribute(mlir::TypeAttr type_attr);
 
   mlir::StringAttr ConvertSymbolAttrToStringAttr(
+      const mlir::SymbolTable &symbol_table,
       mlir::FlatSymbolRefAttr symbol_attr);
 
   mlir::Builder builder_;

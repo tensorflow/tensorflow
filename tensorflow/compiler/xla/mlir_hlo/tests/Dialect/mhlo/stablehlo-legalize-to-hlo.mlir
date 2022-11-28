@@ -225,7 +225,7 @@ func.func @attr_precision_config_highest(%arg0: tensor<8x16xf32>, %arg1: tensor<
 func.func @attr_rng_algorithm_default(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   %0:2 = "stablehlo.rng_bit_generator"(%arg0) {
     // CHECK: rng_algorithm = #mhlo.rng_algorithm<DEFAULT>
-    rng_algorithm = #stablehlo.rng_algorithm<DEFAULT>
+    rng_algorithm = #stablehlo<rng_algorithm DEFAULT>
   } : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
   func.return %0#0, %0#1 : tensor<f32>, tensor<f32>
 }
@@ -234,7 +234,7 @@ func.func @attr_rng_algorithm_default(%arg0: tensor<f32>) -> (tensor<f32>, tenso
 func.func @attr_rng_algorithm_three_fry(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   %0:2 = "stablehlo.rng_bit_generator"(%arg0) {
     // CHECK: rng_algorithm = #mhlo.rng_algorithm<THREE_FRY>
-    rng_algorithm = #stablehlo.rng_algorithm<THREE_FRY>
+    rng_algorithm = #stablehlo<rng_algorithm THREE_FRY>
   } : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
   func.return %0#0, %0#1 : tensor<f32>, tensor<f32>
 }
@@ -243,7 +243,7 @@ func.func @attr_rng_algorithm_three_fry(%arg0: tensor<f32>) -> (tensor<f32>, ten
 func.func @attr_rng_algorithm_philox(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   %0:2 = "stablehlo.rng_bit_generator"(%arg0) {
     // CHECK: rng_algorithm = #mhlo.rng_algorithm<PHILOX>
-    rng_algorithm = #stablehlo.rng_algorithm<PHILOX>
+    rng_algorithm = #stablehlo<rng_algorithm PHILOX>
   } : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
   func.return %0#0, %0#1 : tensor<f32>, tensor<f32>
 }
@@ -252,7 +252,7 @@ func.func @attr_rng_algorithm_philox(%arg0: tensor<f32>) -> (tensor<f32>, tensor
 func.func @attr_rng_distribution_uniform(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<?xindex>) -> tensor<f32> {
   %0 = "stablehlo.rng"(%arg0, %arg1, %arg2) {
     // CHECK: rng_distribution = #mhlo.rng_distribution<UNIFORM>
-    rng_distribution = #stablehlo.rng_distribution<UNIFORM>
+    rng_distribution = #stablehlo<rng_distribution UNIFORM>
   } : (tensor<f32>, tensor<f32>, tensor<?xindex>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
@@ -261,7 +261,7 @@ func.func @attr_rng_distribution_uniform(%arg0: tensor<f32>, %arg1: tensor<f32>,
 func.func @attr_rng_distribution_normal(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<?xindex>) -> tensor<f32> {
   %0 = "stablehlo.rng"(%arg0, %arg1, %arg2) {
     // CHECK: rng_distribution = #mhlo.rng_distribution<NORMAL>
-    rng_distribution = #stablehlo.rng_distribution<NORMAL>
+    rng_distribution = #stablehlo<rng_distribution NORMAL>
   } : (tensor<f32>, tensor<f32>, tensor<?xindex>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
@@ -307,10 +307,13 @@ func.func @attr_transpose_adjoint(%arg0: tensor<16x16xf32>, %arg1: tensor<16x16x
 
 // TypeExtensionsAttr aka #stablehlo.type_extensions is covered below.
 
-func.func @attr_type_extensions_bounds(%arg0: tensor<?xf32, #stablehlo.type_extensions<bounds = [16]>>) -> tensor<?xf32, #stablehlo.type_extensions<bounds = [16]>> {
-  // CHECK: "func.return"(%arg0) : (tensor<?xf32, #mhlo.type_extensions<bounds = [16]>>) -> ()
-  func.return %arg0 : tensor<?xf32, #stablehlo.type_extensions<bounds = [16]>>
+func.func @attr_type_extensions_bounds(
+    %arg0: tensor<?x?xf32, #stablehlo.type_extensions<bounds = [16, ?]>>)
+    -> tensor<?x?xf32, #stablehlo.type_extensions<bounds = [16, ?]>> {
+  // CHECK: "func.return"(%arg0) : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [16, ?]>>) -> ()
+  func.return %arg0 : tensor<?x?xf32, #stablehlo.type_extensions<bounds = [16, ?]>>
 }
+
 // CHECK-LABEL: "attr_type_extensions_bounds"
 
 // ============ OPS ============
@@ -340,12 +343,14 @@ func.func @op_all_gather(%arg0: tensor<16x8xf32>) -> tensor<16x16xf32> {
   //               CHECK: "mhlo.all_gather"(%arg0) {
   //          CHECK-SAME:   all_gather_dim = 1 : i64,
   //          CHECK-SAME:   channel_handle = #mhlo.channel_handle<handle = 0, type = 0>,
-  // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>
+  // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>,
+  //          CHECK-SAME:   use_global_device_ids
   //          CHECK-SAME: } : (tensor<16x8xf32>) -> tensor<16x16xf32>
   %0 = "stablehlo.all_gather"(%arg0) {
     all_gather_dim = 1 : i64,
     replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>,
-    channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>
+    channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>,
+    use_global_device_ids
   } : (tensor<16x8xf32>) -> tensor<16x16xf32>
   func.return %0 : tensor<16x16xf32>
 }
@@ -525,10 +530,12 @@ func.func @op_count_leading_zeros(%arg0: tensor<i32>) -> tensor<i32> {
 
 func.func @op_collective_permute(%arg0: tensor<16x8xf32>) -> tensor<16x8xf32> {
   //               CHECK: "mhlo.collective_permute"(%arg0) {
+  //          CHECK-SAME:   channel_handle = #mhlo.channel_handle<handle = 0, type = 0>,
   // CHECK-SAME{LITERAL}:   source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>
   //          CHECK-SAME: } : (tensor<16x8xf32>) -> tensor<16x8xf32>
   %0 = "stablehlo.collective_permute"(%arg0) {
-    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>
+    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>,
+    channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>
   } : (tensor<16x8xf32>) -> tensor<16x8xf32>
   func.return %0 : tensor<16x8xf32>
 }
@@ -590,10 +597,10 @@ func.func @op_convert(%arg0: tensor<i32>) -> tensor<f32> {
 }
 // CHECK-LABEL: "op_convert"
 
-func.func @op_convolution(%arg0: tensor<1x8x8x32x207xf32>, %arg1: tensor<3x3x32x207x16xf32>) -> tensor<32x1x8x8x16xf32> {
+func.func @op_convolution(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32> {
   //      CHECK: "mhlo.convolution"(%arg0, %arg1) {
   // CHECK-SAME:   batch_group_count = 1 : i64,
-  // CHECK-SAME:   dimension_numbers = #mhlo.conv<[b, 0, 1, ?, f]x[0, 1, ?, i, o]->[?, b, 0, 1, f]>,
+  // CHECK-SAME:   dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>,
   // CHECK-SAME:   feature_group_count = 1 : i64,
   // CHECK-SAME:   lhs_dilation = dense<1> : tensor<2xi64>,
   // CHECK-SAME:   padding = dense<1> : tensor<2x2xi64>,
@@ -601,19 +608,19 @@ func.func @op_convolution(%arg0: tensor<1x8x8x32x207xf32>, %arg1: tensor<3x3x32x
   // CHECK-SAME:   rhs_dilation = dense<1> : tensor<2xi64>,
   // CHECK-SAME:   window_reversal = dense<false> : tensor<2xi1>,
   // CHECK-SAME:   window_strides = dense<1> : tensor<2xi64>
-  // CHECK-SAME: } : (tensor<1x8x8x32x207xf32>, tensor<3x3x32x207x16xf32>) -> tensor<32x1x8x8x16xf32>
+  // CHECK-SAME: } : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   %0 = "stablehlo.convolution"(%arg0, %arg1) {
     window_strides = dense<1> : tensor<2xi64>,
     padding = dense<1> : tensor<2x2xi64>,
     lhs_dilation = dense<1> : tensor<2xi64>,
     rhs_dilation = dense<1> : tensor<2xi64>,
     window_reversal = dense<false> : tensor<2xi1>,
-    dimension_numbers = #stablehlo.conv<[b, 0, 1, ?, f]x[0, 1, ?, i, o]->[?, b, 0, 1, f]>,
+    dimension_numbers = #stablehlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>,
     feature_group_count = 1 : i64,
     batch_group_count = 1 : i64,
     precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
-  } : (tensor<1x8x8x32x207xf32>, tensor<3x3x32x207x16xf32>) -> tensor<32x1x8x8x16xf32>
-  func.return %0 : tensor<32x1x8x8x16xf32>
+  } : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
+  func.return %0 : tensor<1x8x8x16xf32>
 }
 // CHECK-LABEL: "op_convolution"
 
@@ -658,6 +665,11 @@ func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
   // CHECK-SAME:   called_computations = [@foo],
   // CHECK-SAME:   has_side_effect = false,
   // CHECK-SAME:   operand_layouts = [dense<> : tensor<0xindex>],
+  // CHECK-SAME:   output_operand_aliases = [
+  // CHECK-SAME:     #mhlo.output_operand_alias<
+  // CHECK-SAME:       output_tuple_indices = [],
+  // CHECK-SAME:       operand_index = 0,
+  // CHECK-SAME:       operand_tuple_indices = []>]
   // CHECK-SAME:   result_layouts = [dense<> : tensor<0xindex>]
   // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
   %0 = "stablehlo.custom_call"(%arg0) {
@@ -667,6 +679,10 @@ func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
     api_version = 1 : i32,
     called_computations = [@foo],
     operand_layouts = [dense<> : tensor<0xindex>],
+    output_operand_aliases = [
+      #stablehlo.output_operand_alias<output_tuple_indices = [],
+                                 operand_index = 0,
+                                 operand_tuple_indices = []>],
     result_layouts = [dense<> : tensor<0xindex>]
   } : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
@@ -729,10 +745,10 @@ func.func @op_dynamic_broadcast_in_dim(%arg0: tensor<?xf32>, %arg1: tensor<2xind
 }
 // CHECK-LABEL: "op_dynamic_broadcast_in_dim"
 
-func.func @op_dynamic_conv(%arg0: tensor<1x8x8x32x207xf32>, %arg1: tensor<3x3x32x207x16xf32>, %arg2: tensor<4xi32>) -> tensor<32x1x?x?x16xf32> {
+func.func @op_dynamic_conv(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>, %arg2: tensor<4xi32>) -> tensor<1x?x?x16xf32> {
   //      CHECK: "mhlo.dynamic_conv"(%arg0, %arg1, %arg2) {
   // CHECK-SAME:   batch_group_count = 1 : i64,
-  // CHECK-SAME:   dimension_numbers = #mhlo.conv<[b, 0, 1, ?, f]x[0, 1, ?, i, o]->[?, b, 0, 1, f]>,
+  // CHECK-SAME:   dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>,
   // CHECK-SAME:   feature_group_count = 1 : i64,
   // CHECK-SAME:   lhs_dilation = dense<1> : tensor<2xi64>,
   // CHECK-SAME:   padding = dense<1> : tensor<2x2xi64>,
@@ -740,19 +756,19 @@ func.func @op_dynamic_conv(%arg0: tensor<1x8x8x32x207xf32>, %arg1: tensor<3x3x32
   // CHECK-SAME:   rhs_dilation = dense<1> : tensor<2xi64>,
   // CHECK-SAME:   window_reversal = dense<false> : tensor<2xi1>,
   // CHECK-SAME:   window_strides = dense<1> : tensor<2xi64>
-  // CHECK-SAME: } : (tensor<1x8x8x32x207xf32>, tensor<3x3x32x207x16xf32>, tensor<4xi32>) -> tensor<32x1x?x?x16xf32>
+  // CHECK-SAME: } : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>, tensor<4xi32>) -> tensor<1x?x?x16xf32>
   %0 = "stablehlo.dynamic_conv"(%arg0, %arg1, %arg2) {
     window_strides = dense<1> : tensor<2xi64>,
     padding = dense<1> : tensor<2x2xi64>,
     lhs_dilation = dense<1> : tensor<2xi64>,
     rhs_dilation = dense<1> : tensor<2xi64>,
     window_reversal = dense<false> : tensor<2xi1>,
-    dimension_numbers = #stablehlo.conv<[b, 0, 1, ?, f]x[0, 1, ?, i, o]->[?, b, 0, 1, f]>,
+    dimension_numbers = #stablehlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>,
     feature_group_count = 1 : i64,
     batch_group_count = 1 : i64,
     precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
-  } : (tensor<1x8x8x32x207xf32>, tensor<3x3x32x207x16xf32>, tensor<4xi32>) -> tensor<32x1x?x?x16xf32>
-  func.return %0 : tensor<32x1x?x?x16xf32>
+  } : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>, tensor<4xi32>) -> tensor<1x?x?x16xf32>
+  func.return %0 : tensor<1x?x?x16xf32>
 }
 // CHECK-LABEL: "op_dynamic_conv"
 
@@ -1246,7 +1262,7 @@ func.func @op_rng_bit_generator(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>
   // CHECK-SAME:   rng_algorithm = #mhlo.rng_algorithm<PHILOX>
   // CHECK-SAME: } : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
   %0:2 = "stablehlo.rng_bit_generator"(%arg0) {
-    rng_algorithm = #stablehlo.rng_algorithm<PHILOX>
+    rng_algorithm = #stablehlo<rng_algorithm PHILOX>
   } : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
   func.return %0#0, %0#1 : tensor<f32>, tensor<f32>
 }
@@ -1257,7 +1273,7 @@ func.func @op_rng(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<?xindex>
   // CHECK-SAME:   rng_distribution = #mhlo.rng_distribution<NORMAL>
   // CHECK-SAME: } : (tensor<f32>, tensor<f32>, tensor<?xindex>) -> tensor<f32>
   %0 = "stablehlo.rng"(%arg0, %arg1, %arg2) {
-    rng_distribution = #stablehlo.rng_distribution<NORMAL>
+    rng_distribution = #stablehlo<rng_distribution NORMAL>
   } : (tensor<f32>, tensor<f32>, tensor<?xindex>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }

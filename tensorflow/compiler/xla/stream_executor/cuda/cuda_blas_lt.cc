@@ -128,14 +128,6 @@ port::Status BlasLt::Init() {
   return tsl::OkStatus();
 }
 
-/*static*/ blas::DataType BlasLt::GetScaleType(
-    blas::DataType c_type, blas::ComputationType computation_type) {
-  return ((computation_type == blas::ComputationType::kF32) &&
-          (c_type != blas::DataType::kComplexFloat))
-             ? blas::DataType::kFloat
-             : c_type;
-}
-
 /*static*/ port::StatusOr<BlasLt::MatrixLayout> BlasLt::MatrixLayout::Create(
     blas::DataType type, size_t num_rows, size_t num_cols,
     BlasLt::MatrixLayout::Order order, size_t batch_size,

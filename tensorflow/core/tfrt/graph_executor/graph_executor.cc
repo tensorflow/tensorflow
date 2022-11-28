@@ -84,40 +84,50 @@ constexpr char kArgumentTypeJoiningDelimiter[] = "^";
 
 StatusOr<std::unique_ptr<RequestInfo>> SetUpRequestContext(
     const GraphExecutionRunOptions& run_options,
-    const SessionMetadata& model_metadata, tfrt::HostContext* host,
+    const SessionMetadata& model_metadata, const Runtime& runtime,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
     tfrt::ResourceContext* resource_context,
     const tensorflow::tfrt_stub::FallbackState& fallback_state) {
-  DCHECK(host);
-  DCHECK(work_queue);
-  // Create request context and prepare deadline tracker.
-  // TODO(tfrt-devs): Consider using an ID unique within each model to reduce
-  // contention.
-  int64_t request_id = work_queue->id();
-  if (request_id == 0) request_id = tfrt::GetUniqueInt();
-  tfrt::RequestContextBuilder request_context_builder(
-      host, resource_context, request_id, run_options.enable_cost_measurement);
-
-  // TODO(b/198671794): `intra_op_threadpool` should be passed through Run()
-  // directly.
-  tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
-
-  // TODO(b/198671794): The per-request queue should be passed through Run()
-  // directly.
-  TF_ASSIGN_OR_RETURN(auto request_queue,
-                      work_queue->InitializeRequest(&request_context_builder,
-                                                    &intra_op_threadpool));
+  auto* host = runtime.core_runtime()->GetHostContext();
 
   auto request_info = std::make_unique<RequestInfo>();
 
-  // If a per-request queue is not provided, use the original queue in the
-  // tensorflow::Executor::Args::Runner.
-  auto* inter_op_queue = request_queue ? request_queue.get() : work_queue;
-  request_info->runner = [inter_op_queue](std::function<void()> f) {
-    inter_op_queue->AddTask(std::move(f));
-  };
+  int64_t request_id = 0;
 
-  request_info->request_queue = std::move(request_queue);
+  // TODO(tfrt-devs): Consider using an ID unique within each model to reduce
+  // contention.
+  if (work_queue) {
+    // If the user provides a work_queue, we use it for inter-op tasks.
+    request_id = work_queue->id();
+    // If the user does not provide a valid id, we need to generate one.
+    if (request_id == 0) request_id = tfrt::GetUniqueInt();
+
+    request_info->request_queue = work_queue;
+  } else {
+    // Otherwise we use the global queue in `runtime`.
+
+    request_id = tfrt::GetUniqueInt();
+    TF_ASSIGN_OR_RETURN(request_info->request_queue_owner,
+                        runtime.CreateRequestQueue(request_id));
+    request_info->request_queue = request_info->request_queue_owner.get();
+  }
+
+  auto* request_queue = request_info->request_queue;
+
+  // Retrieve the intra op thread pool in the corresponding work queue. It can
+  // be nullptr, and in that case, the thread pool in tensorflow::Device is
+  // used.
+  tensorflow::thread::ThreadPoolInterface* intra_op_threadpool =
+      request_queue->GetIntraOpThreadPool();
+
+  // Create request context and prepare deadline tracker.
+  tfrt::RequestContextBuilder request_context_builder(
+      host, resource_context, request_id, run_options.enable_cost_measurement);
+
+  // Use the request queue above to create tensorflow::Executor::Args::Runner.
+  request_info->runner = [request_queue](std::function<void()> f) {
+    request_queue->AddTask(std::move(f));
+  };
 
   TF_RETURN_IF_ERROR(tensorflow::tfd::SetUpKernelFallbackCompatRequestContext(
       &request_context_builder, &fallback_state.device_manager(),
@@ -146,19 +156,14 @@ tensorflow::Status GraphExecutionRunOnFunction(
     const GraphExecutionRunOptions& run_options,
     absl::string_view signature_name, const tfrt::Function& func,
     absl::Span<const tensorflow::Tensor> inputs,
-    absl::Span<const tensorflow::Tensor> captures,
     std::vector<tensorflow::Tensor>* outputs,
     tfrt::ResourceContext* resource_context, const Runtime& runtime,
     const FallbackState& fallback_state,
-    tfrt::RequestDeadlineTracker& req_deadline_tracker) {
-  auto* host = runtime.core_runtime()->GetHostContext();
-
-  TF_ASSIGN_OR_RETURN(
-      auto request_info,
-      SetUpRequestContext(run_options, options.model_metadata, host,
-                          run_options.work_queue ? run_options.work_queue
-                                                 : runtime.work_queue(),
-                          resource_context, fallback_state));
+    tfrt::RequestDeadlineTracker* req_deadline_tracker) {
+  TF_ASSIGN_OR_RETURN(auto request_info,
+                      SetUpRequestContext(run_options, options.model_metadata,
+                                          runtime, run_options.work_queue,
+                                          resource_context, fallback_state));
 
   tensorflow::profiler::TraceMeProducer traceme(
       // To TraceMeConsumers in RunHandlerThreadPool::WorkerLoop.
@@ -181,7 +186,11 @@ tensorflow::Status GraphExecutionRunOnFunction(
     if (absl::ToChronoTime(absl::Now()) > deadline) {
       return tensorflow::errors::DeadlineExceeded(kDeadlineExceededMessage);
     }
-    req_deadline_tracker.CancelRequestOnDeadline(
+    if (req_deadline_tracker == nullptr) {
+      return tensorflow::errors::InvalidArgument(
+          "req_deadline_tracker must be non-null");
+    }
+    req_deadline_tracker->CancelRequestOnDeadline(
         deadline, request_info->tfrt_request_context);
   }
 
@@ -191,7 +200,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
     // in `run_options` is specified.
     exec_ctx.set_work_queue(run_options.work_queue);
   } else if (request_info->request_queue) {
-    exec_ctx.set_work_queue(request_info->request_queue.get());
+    exec_ctx.set_work_queue(request_info->request_queue);
   } else {
     exec_ctx.set_work_queue(runtime.work_queue());
   }
@@ -209,9 +218,6 @@ tensorflow::Status GraphExecutionRunOnFunction(
     arguments.push_back(
         tfrt::MakeAvailableAsyncValueRef<FallbackTensor>(input).release());
   }
-
-  DCHECK(captures.empty()) << "signature should have no captures, which is "
-                              "guaranteed by the compiler";
 
   if (arguments.size() != func.argument_types().size())
     return tensorflow::errors::Internal("incorrect number of inputs.");
@@ -262,10 +268,6 @@ tensorflow::Status GraphExecutionRunOnFunction(
     outputs->push_back(host_tensor);
   }
 
-  // TODO(b/171926578): Explicitly clear the context data. Remove it after the
-  // b/171926578 is fixed.
-  exec_ctx.request_ctx()->ClearData();
-
   // Check if error is due to cancellation.
   // TODO(tfrt-devs): report cancellation reason from runtime.
   if (request_info->tfrt_request_context->IsCancelled()) {
@@ -279,14 +281,14 @@ tensorflow::Status GraphExecutionRunOnFunction(
 std::unique_ptr<tfrt::ResourceContext> CreateResourceContext(
     const tensorflow::tfrt_stub::Runtime& runtime,
     tfrt::tpu::TpuModelResource* tpu_model_resource,
-    tensorflow::TfrtTpuInfraTarget tpu_target) {
+    tensorflow::TfrtDeviceInfraTarget device_target) {
   auto resource_context = std::make_unique<tfrt::ResourceContext>();
   runtime.CreateRuntimeResources(resource_context.get());
 
   // TODO(b/178227859): We should make TPU resource init code pluggable, as
   // opposed to linking it in. We can do this by adding a callback with
   // `Runtime::AddCreateRuntimeResourceFn`.
-  if (tpu_target == tensorflow::TfrtTpuInfraTarget::kTpurt) {
+  if (device_target == tensorflow::TfrtDeviceInfraTarget::kTpurt) {
     AddTpuResources(resource_context.get(), tpu_model_resource);
   }
   return resource_context;
@@ -381,11 +383,11 @@ tensorflow::Status GraphExecutor::Run(
   std::sort(sorted_target_node_names.begin(), sorted_target_node_names.end());
 
   // Load the client graph.
-  TF_ASSIGN_OR_RETURN(
-      const LoadedClientGraph& loaded_client_graph,
-      GetOrCreateLoadedClientGraph(
-          sorted_input_names, sorted_input_dtypes, sorted_output_names,
-          sorted_target_node_names, run_options.work_queue));
+  TF_ASSIGN_OR_RETURN(const LoadedClientGraph& loaded_client_graph,
+                      GetOrCreateLoadedClientGraph(
+                          run_options, sorted_input_names, sorted_input_dtypes,
+                          sorted_output_names, sorted_target_node_names,
+                          run_options.work_queue));
 
   const auto* func = loaded_client_graph.bef_file->GetFunction(
       tensorflow::kImportModelDefaultGraphFuncName);
@@ -402,9 +404,8 @@ tensorflow::Status GraphExecutor::Run(
   std::vector<tensorflow::Tensor> flat_outputs;
   TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
       options_, run_options, loaded_client_graph.name, *func, flat_inputs,
-      /*captures=*/{}, &flat_outputs,
-      loaded_client_graph.resource_context.get(), runtime(), fallback_state_,
-      req_deadline_tracker_));
+      &flat_outputs, loaded_client_graph.resource_context.get(), runtime(),
+      fallback_state_, &req_deadline_tracker_));
 
   // Create the outputs from the actual function results, which are sorted
   // according to the output tensor names.
@@ -428,7 +429,7 @@ GraphExecutor::ImportAndCompileClientGraph(
   auto loaded_client_graph = std::make_unique<LoadedClientGraph>();
   loaded_client_graph->name = client_graph.name;
   loaded_client_graph->resource_context = CreateResourceContext(
-      runtime(), tpu_model_resource_, options_.compile_options.tpu_target);
+      runtime(), tpu_model_resource_, options_.compile_options.device_target);
 
   // Step 1 of loading: Import the client graph from proto to an MLIR module.
   auto import_start_time = absl::Now();
@@ -529,12 +530,10 @@ StatusOr<tfrt::BefBuffer> GraphExecutor::CompileMlirModuleToBef(
 tensorflow::Status GraphExecutor::InitBef(
     tfrt::BEFFile* bef_file, tfrt::ResourceContext* resource_context,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue) {
-  auto* host = runtime().core_runtime()->GetHostContext();
   TF_ASSIGN_OR_RETURN(
       auto request_info,
-      SetUpRequestContext(/*run_options=*/{}, /*model_metadata=*/{}, host,
-                          work_queue ? work_queue : runtime().work_queue(),
-                          resource_context, fallback_state_));
+      SetUpRequestContext(/*run_options=*/{}, /*model_metadata=*/{}, runtime(),
+                          work_queue, resource_context, fallback_state_));
 
   tfrt::ExecutionContext exec_ctx(request_info->tfrt_request_context);
 
@@ -555,6 +554,7 @@ tensorflow::Status GraphExecutor::InitBef(
 
 StatusOr<std::reference_wrapper<const GraphExecutor::LoadedClientGraph>>
 GraphExecutor::GetOrCreateLoadedClientGraph(
+    const RunOptions& run_options,
     absl::Span<const std::string> input_tensor_names,
     absl::Span<const tensorflow::DataType> input_tensor_dtypes,
     absl::Span<const std::string> output_tensor_names,
@@ -579,6 +579,13 @@ GraphExecutor::GetOrCreateLoadedClientGraph(
   // Cache hit; return immediately.
   const auto iter = loaded_client_graphs_.find(joined_name);
   if (iter != loaded_client_graphs_.end()) return {*iter->second};
+
+  if (run_options.disable_compilation) {
+    return tensorflow::errors::InvalidArgument(
+        absl::StrCat("GraphExecutor: compilation is disabled in execution but "
+                     "the compiled graph is not found for ",
+                     joined_name));
+  }
 
   // Cache miss; populate a `ClientGraph` and load it.
   tensorflow::GraphImportConfig::InputArrays input_nodes;
@@ -613,22 +620,20 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
     absl::Span<const std::string> output_tensor_names,
     absl::Span<const std::string> target_tensor_names,
     absl::Span<tfrt::Value*> outputs) {
-  TF_ASSIGN_OR_RETURN(
-      const LoadedClientGraph& loaded_client_graph,
-      GetOrCreateLoadedClientGraph(input_names, input_dtypes,
-                                   output_tensor_names, target_tensor_names,
-                                   /*work_queue=*/nullptr, graph_name));
+  TF_ASSIGN_OR_RETURN(const LoadedClientGraph& loaded_client_graph,
+                      GetOrCreateLoadedClientGraph(
+                          /*run_options=*/{}, input_names, input_dtypes,
+                          output_tensor_names, target_tensor_names,
+                          /*work_queue=*/nullptr, graph_name));
 
   const auto* func = loaded_client_graph.bef_file->GetFunction(
       tensorflow::kImportModelDefaultGraphFuncName);
   DCHECK(func);
 
-  auto* host = options_.runtime->core_runtime()->GetHostContext();
-
   TF_ASSIGN_OR_RETURN(
       auto request_info,
-      SetUpRequestContext(/*run_options=*/{}, /*model_metadata=*/{}, host,
-                          options_.runtime->work_queue(),
+      SetUpRequestContext(/*run_options=*/{}, /*model_metadata=*/{},
+                          *options_.runtime, options_.runtime->work_queue(),
                           loaded_client_graph.resource_context.get(),
                           fallback_state_));
   tfrt::ExecutionContext exec_ctx{request_info->tfrt_request_context};

@@ -27,7 +27,7 @@ func.func @multiple_func_body_ops() {
 // Test that functions' graph op must have only island ops wrapping a single op
 // and a single fetch op, otherwise, the pass will signal failure.
 
-func.func @graph_multiple_islands() {
+func.func @graph_multi_op_island() {
   tf_executor.graph {
     // expected-error@+1 {{functions must be of a single Graph with single op Islands: tf_executor.island must perfectly wrap a single op}}
     tf_executor.island {
@@ -202,3 +202,61 @@ func.func @tpu_load_embedding_ops_sink_controls(%arg0: tensor<*x!tf_type.resourc
 // CHECK:    %[[control_10:.*]] = tf_executor.island(%[[control_9]]) wraps "tf.LoadTPUEmbeddingAdagradParameters"(%[[outputs]], %[[outputs_0]]) {config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table3"} : (tensor<8xf32>, tensor<8xf32>) -> ()
 // CHECK:    %[[control_11:.*]] = tf_executor.island(%[[control_9]]) wraps "tf.LoadTPUEmbeddingAdagradParameters"(%[[outputs_2]], %[[outputs_5]]) {config = "", num_shards = 1 : i64, shard_id = 0 : i64, table_id = -1 : i64, table_name = "table4"} : (tensor<8xf32>, tensor<8xf32>) -> ()
 // CHECK:    tf_executor.fetch %[[control_10]], %[[control_11]] : !tf_executor.control, !tf_executor.control
+
+// -----
+
+// Test that we don't create dependencies between ops on different devices, even
+// if both have unknown side effects.
+// Also test that the fetch op still depends on all side-effecting ops.
+func.func @different_devices() {
+  tf_executor.graph {
+    // CHECK: %[[control:.*]] = tf_executor.island wraps "tf.A"()
+    tf_executor.island wraps "tf.A"() {is_stateless = false, device = "CPU:0"} : () -> ()
+    // CHECK: %[[control_2:.*]] = tf_executor.island wraps "tf.B"()
+    tf_executor.island wraps "tf.B"() {is_stateless = false, device = "CPU:1"} : () -> ()
+    // CHECK: tf_executor.fetch %[[control]], %[[control_2]] : !tf_executor.control, !tf_executor.control
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+// Test that we do create dependencies between ops with different but compatible
+// device attributes, if both ops have unknown side effects.
+func.func @compatible_devices() {
+  tf_executor.graph {
+    // CHECK: %[[control:.*]] = tf_executor.island wraps "tf.A"()
+    tf_executor.island wraps "tf.A"() {is_stateless = false, device = "CPU:0"} : () -> ()
+    // CHECK: %[[control_2:.*]] =  tf_executor.island(%[[control]]) wraps "tf.B"()
+    tf_executor.island wraps "tf.B"() {is_stateless = false, device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
+    // CHECK: tf_executor.fetch %[[control_2]] : !tf_executor.control
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+// More complex test with mixed compatible and different devices. In this case,
+// side effect analysis should report following dependencies
+// A -> B -> C -> D -> E -> fetch
+// and we expect following dependency chains (one chain per device)
+// A -> D -> fetch, B -> E -> fetch, C -> fetch.
+func.func @mixed_compatible_and_different_devices() {
+  tf_executor.graph {
+    // CHECK: %[[control:.*]] = tf_executor.island wraps "tf.A"()
+    tf_executor.island wraps "tf.A"() {is_stateless = false, device = "CPU:0"} : () -> ()
+    // CHECK: %[[control_2:.*]] =  tf_executor.island wraps "tf.B"()
+    tf_executor.island wraps "tf.B"() {is_stateless = false, device = "TPU:0"} : () -> ()
+    // CHECK: %[[control_3:.*]] =  tf_executor.island wraps "tf.C"()
+    tf_executor.island wraps "tf.C"() {is_stateless = false, device = "CPU:2"} : () -> ()
+    // CHECK: %[[control_4:.*]] =  tf_executor.island(%[[control]]) wraps "tf.D"()
+    tf_executor.island wraps "tf.D"() {is_stateless = false, device = "CPU:0"} : () -> ()
+    // CHECK: %[[control_5:.*]] =  tf_executor.island(%[[control_2]]) wraps "tf.E"()
+    tf_executor.island wraps "tf.E"() {is_stateless = false, device = "TPU:0"} : () -> ()
+    // CHECK: tf_executor.fetch %[[control_3]], %[[control_4]], %[[control_5]] : !tf_executor.control, !tf_executor.control, !tf_executor.control
+    tf_executor.fetch
+  }
+  func.return
+}

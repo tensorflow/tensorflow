@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_RUNTIME_TYPES_H_
 
 #include <functional>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -148,15 +149,35 @@ class ScalarType : public llvm::RTTIExtends<ScalarType, Type> {
 };
 
 //===----------------------------------------------------------------------===//
+// Tuple type corresponding to mlir::TupleType.
+//===----------------------------------------------------------------------===//
+
+class TupleType : public llvm::RTTIExtends<TupleType, Type> {
+ public:
+  static constexpr char ID = 0;  // NOLINT
+
+  explicit TupleType(llvm::SmallVector<std::unique_ptr<Type>> elems)
+      : elems_(std::move(elems)) {}
+
+  std::string ToString() const final;
+
+  // Note: the AsArgument() and AsResult() methods are unimplemented, because
+  // this type is not meant to be used without expansion at run time.
+
+ private:
+  llvm::SmallVector<std::unique_ptr<Type>> elems_;
+};
+
+//===----------------------------------------------------------------------===//
 // Ranked Tensor type corresponding to the mlir::RankedTensorType.
 //===----------------------------------------------------------------------===//
 
 class RankedTensorType : public llvm::RTTIExtends<RankedTensorType, Type> {
  public:
   static constexpr char ID = 0;  // NOLINT
-  static constexpr int64_t kDynamicSize = -1;
+  static constexpr int64_t kDynamic = std::numeric_limits<int64_t>::min();
 
-  static constexpr bool IsDynamic(int64_t dim) { return dim == kDynamicSize; }
+  static constexpr bool IsDynamic(int64_t dim) { return dim == kDynamic; }
 
   RankedTensorType(absl::Span<const int64_t> sizes, PrimitiveType element_type)
       : sizes_(sizes.begin(), sizes.end()), element_type_(element_type) {}
@@ -198,9 +219,9 @@ class UnrankedTensorType : public llvm::RTTIExtends<UnrankedTensorType, Type> {
 class MemrefType : public llvm::RTTIExtends<MemrefType, Type> {
  public:
   static constexpr char ID = 0;  // NOLINT
-  static constexpr int64_t kDynamicSize = -1;
+  static constexpr int64_t kDynamic = std::numeric_limits<int64_t>::min();
 
-  static constexpr bool IsDynamic(int64_t dim) { return dim == kDynamicSize; }
+  static constexpr bool IsDynamic(int64_t dim) { return dim == kDynamic; }
 
   MemrefType(absl::Span<const int64_t> sizes, PrimitiveType element_type)
       : sizes_(sizes.begin(), sizes.end()), element_type_(element_type) {}

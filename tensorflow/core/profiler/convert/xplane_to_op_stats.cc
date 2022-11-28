@@ -22,10 +22,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
-#include "tensorflow/core/profiler/convert/op_stats_combiner.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_kernel_stats_db.h"
@@ -233,46 +231,6 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
     details.set_hostname(Hostname(space));
   }
   return op_stats;
-}
-
-Status ConvertMultiXSpacesToCombinedOpStats(
-    const SessionSnapshot& session_snapshot, const OpStatsOptions& options,
-    OpStats* combined_op_stats) {
-  // A shortcut code path for a single XSpace. There is no need to merge OpStats
-  // if there is only a single XSpace.
-  if (session_snapshot.XSpaceSize() == 1) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
-                        session_snapshot.GetXSpace(0));
-    *combined_op_stats = ConvertXSpaceToOpStats(*xspace, options);
-    return OkStatus();
-  }
-
-  // Read multiple XSpaces and convert to multiple OpStats.
-  // TODO(profiler): Change the combiner to convert and combine one OpStats at a
-  // time, to reduce peak memory usage.
-  std::vector<OpStats> all_op_stats;
-  all_op_stats.reserve(session_snapshot.XSpaceSize());
-  for (int i = 0; i < session_snapshot.XSpaceSize(); i++) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
-                        session_snapshot.GetXSpace(i));
-    all_op_stats.push_back(ConvertXSpaceToOpStats(*xspace, options));
-  }
-
-  // Combine OpStats.
-  std::vector<OpStatsInfo> all_op_stats_info;
-  all_op_stats_info.reserve(all_op_stats.size());
-  for (int i = 0; i < all_op_stats.size(); i++) {
-    all_op_stats_info.emplace_back(
-        &all_op_stats[i],
-        ParseHardwareType(all_op_stats[i].run_environment().device_type()), i);
-  }
-
-  // Do not limit the maximum number of steps during the merge of OpStats.
-  StepIntersection step_intersection =
-      ComputeStepIntersectionToMergeOpStats(all_op_stats_info, kuint32max);
-  CombineAllOpStats(all_op_stats_info, step_intersection, combined_op_stats);
-
-  return OkStatus();
 }
 
 }  // namespace profiler

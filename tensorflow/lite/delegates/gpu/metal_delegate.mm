@@ -109,7 +109,6 @@ class GpuAlarmClock {
       command_queue_ = command_queue;
       device_ = [command_queue_ device];
       total_alarms_ = 1;
-      NSString* error;
       id<MTLComputePipelineState> program;
       // TODO(impjdi): Properly handle returned status.
       CreateComputeProgram(device_,
@@ -189,7 +188,6 @@ class Delegate {
             output_buffer[0] = value;
           }
         )";
-      NSString* error;
       id<MTLComputePipelineState> signal_program;
       // TODO(impjdi): Properly handle returned status.
       CreateComputeProgram(metal_device_, code, "ComputeFunction", {}, &signal_program)

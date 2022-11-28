@@ -25,9 +25,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/c_api_opaque.h"
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
+#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -43,13 +44,15 @@ namespace delegates {
 
 using test_utils::SimpleDelegate;
 using test_utils::TestDelegate;
+using test_utils::TestDelegateWithControlEdges;
 using test_utils::TestFP16Delegation;
 using test_utils::TestTwoDelegates;
 
 namespace {
 
 TEST_F(TestDelegate, NullDelegate) {
-  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(nullptr),
+  TfLiteDelegate* delegate = nullptr;
+  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(delegate),
             kTfLiteDelegateError);
 }
 
@@ -493,7 +496,7 @@ struct OpaqueTestDelegate {
 
 // Ensure that the runtime correctly interacts with a delegate that uses the
 // 'TfLiteOpaqueDelegateBuilder'.  This test:
-// 1. Defines a delegate that will replace the full graph will a delegate
+// 1. Defines a delegate that will replace the full graph with a delegate
 //    kernel.
 // 2. Associates the model's output tensor with the delegate and marks the
 //    output tensor's data as stale, to prompt the runtime to use the delegate's
@@ -512,18 +515,19 @@ TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
   ASSERT_NE(model, nullptr);
   constexpr int kNumTensorElements = 1 * 8 * 8 * 3;
 
-  TfLiteOpaqueDelegateBuilder opaque_delegate{};
-  opaque_delegate.data = &delegate_state;
-  opaque_delegate.CopyFromBufferHandle =
+  TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
+  opaque_delegate_builder.data = &delegate_state;
+  opaque_delegate_builder.CopyFromBufferHandle =
       OpaqueTestDelegate::CopyFromBufferHandle;
-  opaque_delegate.FreeBufferHandle = OpaqueTestDelegate::FreeBufferHandle;
-  opaque_delegate.Prepare = OpaqueTestDelegate::Prepare;
+  opaque_delegate_builder.FreeBufferHandle =
+      OpaqueTestDelegate::FreeBufferHandle;
+  opaque_delegate_builder.Prepare = OpaqueTestDelegate::Prepare;
+  TfLiteOpaqueDelegateStruct* opaque_delegate =
+      TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
   tflite::InterpreterBuilder builder(*model, resolver);
-  TfLiteDelegate tflite_delegate{};
-  tflite_delegate.opaque_delegate_builder = &opaque_delegate;
-  builder.AddDelegate(&tflite_delegate);
+  builder.AddDelegate(opaque_delegate);
   std::unique_ptr<tflite::Interpreter> interpreter;
   builder(&interpreter);
   ASSERT_NE(interpreter, nullptr);
@@ -542,9 +546,17 @@ TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
   int first_buffer_handle = 1;
   const int kOutputTensorIndex = 2;
   interpreter->SetBufferHandle(kOutputTensorIndex, first_buffer_handle,
-                               &tflite_delegate);
+                               opaque_delegate);
   TfLiteTensor* output_t = interpreter->output_tensor(0);
   output_t->data_is_stale = true;
+
+  // Check that we can get the same buffer handle and delegate pointer back.
+  TfLiteBufferHandle loaded_buffer_handle = kTfLiteNullBufferHandle;
+  TfLiteOpaqueDelegateStruct* loaded_opaque_delegate = nullptr;
+  interpreter->GetBufferHandle(kOutputTensorIndex, &loaded_buffer_handle,
+                               &loaded_opaque_delegate);
+  EXPECT_EQ(loaded_buffer_handle, first_buffer_handle);
+  EXPECT_EQ(loaded_opaque_delegate, opaque_delegate);
 
   // Run inference
   ASSERT_EQ(interpreter->Invoke(), kTfLiteOk);
@@ -562,7 +574,7 @@ TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
   // associated with it will free the previously installed buffer handle.
   int second_buffer_handle = first_buffer_handle + 1;
   interpreter->SetBufferHandle(kOutputTensorIndex, second_buffer_handle,
-                               &tflite_delegate);
+                               opaque_delegate);
   EXPECT_FALSE(delegate_state.copy_from_buffer_handle_called);
   EXPECT_EQ(delegate_state.buffer_handle, first_buffer_handle);
   EXPECT_TRUE(delegate_state.free_buffer_handle_called);
@@ -574,6 +586,7 @@ TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
   EXPECT_FALSE(delegate_state.copy_from_buffer_handle_called);
   EXPECT_EQ(delegate_state.buffer_handle, second_buffer_handle);
   EXPECT_TRUE(delegate_state.free_buffer_handle_called);
+  TfLiteOpaqueDelegateDelete(opaque_delegate);
 }
 
 TEST_F(TestDelegate, DelegateCustomOpResolution) {
@@ -1129,7 +1142,7 @@ class TestOpaqueDelegateBuilderWithDynamicTensors
   }
 
  private:
-  TfLiteOpaqueDelegateBuilder delegate_external_;
+  TfLiteOpaqueDelegateBuilder delegate_external_{};
 };
 
 TEST_F(TestDelegateWithDynamicTensors, DisallowDynamicTensors) {
@@ -1354,6 +1367,68 @@ TEST_F(TestReleaseDynamicTensorWithDelegate, ShapePropagation_FlagNotSet) {
   ASSERT_EQ(interpreter_->tensor(1)->data.raw, nullptr);
 }
 
+// Tests for control edges passed in metadata
+// ==========================================
+
+TEST_F(TestDelegateWithControlEdges, NoControlEdges) {
+  // Put {0,2} on a super-node, if possible
+  delegate_ = std::make_unique<SimpleDelegate>(std::vector<int>({0, 2}));
+  interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate());
+  ASSERT_EQ(interpreter_->execution_plan().size(), 3);     // [ {0, 2}, 1, 3]
+  EXPECT_EQ(interpreter_->execution_plan().data()[0], 4);  // new super-node
+  EXPECT_EQ(interpreter_->execution_plan().data()[1], 1);  // undelegated
+  EXPECT_EQ(interpreter_->execution_plan().data()[2], 3);  // undelegated
+}
+
+TEST_F(TestDelegateWithControlEdges, OverrideControlEdges) {
+  // Execute node 1 before node 2.
+  SetMetadata({{kModelControlDependenciesMetadataKey,
+                SerializeModelControlDependencies({{{1, 2}}})}});
+  // Put {0,2} on a super-node, if possible
+  delegate_ = std::make_unique<SimpleDelegate>(std::vector<int>({0, 2}));
+  interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate());
+
+  // 1 has to be executed before 2, so original execution order is
+  // preserved. Nodes 0 and 2 both get rewritten into new delegate nodes
+  // 4 and 5.
+  ASSERT_EQ(interpreter_->execution_plan().size(), 4);  // [ 0, 1, 2, 3]
+  EXPECT_EQ(interpreter_->execution_plan().data()[0], 4);
+  EXPECT_EQ(interpreter_->execution_plan().data()[1], 1);
+  EXPECT_EQ(interpreter_->execution_plan().data()[2], 5);
+  EXPECT_EQ(interpreter_->execution_plan().data()[3], 3);
+}
+
+// Test that empty control edge metadata for subgraph 0 don't change anything.
+TEST_F(TestDelegateWithControlEdges, EmptyControlEdges) {
+  SetMetadata({{kModelControlDependenciesMetadataKey,
+                SerializeModelControlDependencies({{}})}});
+  delegate_ = std::make_unique<SimpleDelegate>(std::vector<int>({0, 2}));
+  interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate());
+  EXPECT_EQ(interpreter_->execution_plan().size(), 3);  // [ {0, 2}, 1, 3]
+}
+
+// Test that control edges that are compatible with execution order
+// [0, 2, 1, 3] don't change anything (case 1).
+TEST_F(TestDelegateWithControlEdges, CompatibleControlEdges1) {
+  // Execute node 0 before node 2 and node 1 before node 3.
+  SetMetadata({{kModelControlDependenciesMetadataKey,
+                SerializeModelControlDependencies({{{0, 2}, {1, 3}}})}});
+  delegate_ = std::make_unique<SimpleDelegate>(std::vector<int>({0, 2}));
+  interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate());
+  EXPECT_EQ(interpreter_->execution_plan().size(), 3);  // [ {0, 2}, 1, 3]
+}
+
+// Test that control edges that are compatible with execution order
+// [0, 2, 1, 3] don't change anything (case 2).
+TEST_F(TestDelegateWithControlEdges, CompatibleControlEdges2) {
+  // Execute node 0 before node 1 and node 1 before node 3.
+  SetMetadata({{kModelControlDependenciesMetadataKey,
+                SerializeModelControlDependencies({{{0, 1}, {1, 3}}})}});
+  delegate_ = std::make_unique<SimpleDelegate>(std::vector<int>({0, 2}));
+  interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate());
+  EXPECT_EQ(interpreter_->execution_plan().size(), 3);  // [ {0, 2}, 1, 3]
+}
+
 // Tests for FP16 graphs
 // =====================
 
@@ -1363,7 +1438,8 @@ TEST_P(TestFP16Delegation, NonDelegatedInterpreterWorks) {
 }
 
 TEST_F(TestFP16Delegation, NullDelegate) {
-  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(nullptr),
+  TfLiteDelegate* delegate = nullptr;
+  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(delegate),
             kTfLiteDelegateError);
   // Verify that resulting interpreter still works, despite null delegate.
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);

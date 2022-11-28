@@ -691,6 +691,53 @@ would be transformed into something like
   call @x_2(%c)
 with @x_1, @x_2 and @y_1 filled in.
 ### `-tf-guarantee-all-funcs-one-use`: Guarantee all FuncOp's have only a single use.
+### `-tf-hoist-loop-invariant`: Hoists loop invariant ops to the outside of the loop
+   Hoists loop invariant to the outside of the loop. The pass is similar to
+   LoopInvariantCodeMotion pass, but it also hoists ReadVariableOps,
+   if the variable is read only.
+
+   For example, the following pseudo MLIR code (types are left out for
+   brevity)
+   ```mlir
+     func.func @hoist_loop_invariant(%arg0, %arg1) {
+%var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
+       %results:2 = "tf.WhileRegion"(%arg0, %arg1) ({
+       ^bb0(%arg2, %arg3):
+         %0 = "tf.OpA"() {is_stateless = true}
+         "tf.Yield"(%0)
+       }, {
+       ^bb0(%arg2, %arg3):
+  %1 = "tf.ReadVariableOp"(%var)
+         %2 = "tf.OpB"(%1) {is_stateless = true}
+         %3 = "tf.OpC"(%arg2, %2) {is_stateless = true}
+         %4 = "tf.OpD"(%arg3, %2) {is_stateless = true}
+         "tf.Yield"(%3, %4)
+       }) {is_stateless = true}
+       return %results#0, %results#1
+     }
+   ```
+   would be transformed to
+   ```mlir
+    func.func @hoist_loop_invariant(%arg0, %arg1) {
+%var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
+%1 = "tf.ReadVariableOp"(%var)
+       %2 = "tf.OpB"(%1) {is_stateless = true}
+       %results:2 = "tf.WhileRegion"(%arg0, %arg1) ({
+       ^bb0(%arg2, %arg3):
+         %0 = "tf.OpA"() {is_stateless = true}
+         "tf.Yield"(%0)
+       }, {
+       ^bb0(%arg2, %arg3):
+         %3 = "tf.OpC"(%arg2, %2) {is_stateless = true}
+         %4 = "tf.OpD"(%arg3, %2) {is_stateless = true}
+         "tf.Yield"(%3, %4)
+       }) {is_stateless = true}
+       return %results#0, %results#1
+     }
+   ```
+   The `tf.ReadVariableOp` and `tf.OpB` can be hoisted to the outside of
+   the loop.
+
 ### `-tf-hoist-replicate-invariant-resource-writes`: Hoists writes to replicate invariant resource variables.
 This pass hoists replicate invariant resource variable writes outside
 tf_device.replicate op. These may have been inserted by other passes such as
@@ -715,6 +762,31 @@ not required. We can use the output of first replica in such cases.
 -force-data-format : Force data format for all layout sensitive ops.
 ```
 ### `-tf-legalize-hlo`: Legalize from HLO to the TF dialect
+### `-tf-localize-var-handles`: Creates VarHandleOps next to the operations that use them.
+Creates VarHandleOps right next to the operations that use them, one
+per operation.
+This is useful for transformations that only end up with a few small
+snippets of remaining TF code, and wish for those snippets to be
+self-contained.
+For example, this would transform
+
+"tf_saved_model.global_tensor"() { sym_name = "v" ... }
+func @f(%arg0 {tf_saved_model.bound_input = @v}) {
+  %1 = "tf.ReadVariableOp"(%arg0)
+  ...
+}
+
+to
+
+func @f(%arg0 {tf_saved_model.bound_input = @v}) {
+  %0 = "tf.VarHandleOp"(sym_name = "v")
+  %1 = "tf.ReadVariableOp"(%0)
+  ...
+}
+
+Note that this pass might leave behind unused values
+(like e.g. %arg0 in the example above), which can later be
+pruned using DCE.
 ### `-tf-lower-quantized`: Lowers ops that require quantized input or output.
 This pass rewrites all ops that have at least one input or output that must
 be a quantized type to ops whose inputs and outputs allow non-quantized
@@ -809,6 +881,12 @@ Would be transformed to:
 -fold-transpose-in-ops : Whether to fold transposes in ops which can support folding.
 -direction             : Move transposes to the beginning or the end of the block where they are defined.
 ```
+### `-tf-name-anonymous-iterators`: Converts anonymous iterators to named iterators
+This converts AnonymousIterator ops to Iterator, thus giving them a name.
+For example, this will convert
+  %0 = "tf.AnonymousIteratorV3"() {...}
+to
+  %0 = "tf.Iterator"() {shared_name = "_iterator1", ...}
 ### `-tf-optimize`: Optimize TensorFlow module
 ### `-tf-order-by-dialect`: Reorders ops so ops of the same dialect are next to each other.
 Performs a reordering of ops so that
@@ -1155,6 +1233,10 @@ and each pop will be turned into
 
 The pass also works across control flow and functional calls.
 ### `-tf-strip-noinline-attribute`: Strip the tf._noinline attribute from top-level functions.
+### `-tf-strip-tf-attributes`: Removes TF specific attributes
+Removes attributes that are TF specific (start with "tf.") or that
+have a value from the TF dialect. Useful after legalizing TF graphs
+to other dialects, to remove any TF remnants.
 ### `-tf-tensor-array-ops-decomposition`: Decompose tensor array operations into local variable operations.
 A pass that converts tensor array operations to tensor operations and
 read/assign ops on local variables. A later resource lifting pass can further

@@ -27,11 +27,12 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/variant.h"
+#include "tensorflow/compiler/jit/device_compilation_profiler.h"
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/compiler/jit/xla_activity.pb.h"
-#include "tensorflow/compiler/jit/xla_activity_listener.h"
+#include "tensorflow/compiler/jit/tf_graph_to_hlo_compiler.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/jit/xla_compilation_cache.pb.h"
+#include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -71,6 +71,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/dump_graph.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -145,12 +146,6 @@ std::string XlaSerializedCacheKeyToString(const XlaSerializedCacheKey& key) {
 
 }  // namespace
 
-constexpr int64_t XlaCompilationCache::kDefaultCompilationThreshold;
-constexpr int64_t
-    XlaCompilationCache::AsyncCompilationState::kNumCompilerThreads;
-constexpr int64_t
-    XlaCompilationCache::AsyncCompilationState::kMaxNumOngoingCompilations;
-
 XlaCompilationCache::XlaCompilationCache(Config config,
                                          xla::LocalClient* client,
                                          DeviceType device_type)
@@ -158,7 +153,11 @@ XlaCompilationCache::XlaCompilationCache(Config config,
       device_type_(std::move(device_type)),
       disable_strict_signature_checks_(config.disable_strict_signature_checks),
       persistance_prefix_(config.persistance_prefix),
-      persistent_cache_directory_(config.persistent_cache_directory) {}
+      persistent_cache_directory_(config.persistent_cache_directory) {
+  async_compiler_threads_ = std::make_unique<tensorflow::thread::ThreadPool>(
+      tensorflow::Env::Default(), "async_compiler_threads",
+      kNumAsyncDeviceCompilerThreads);
+}
 
 XlaCompilationCache::~XlaCompilationCache() {
   // Ensure any use of our programs have completed by waiting for all stream
@@ -175,7 +174,7 @@ XlaCompilationCache::~XlaCompilationCache() {
   // Without this, the pointer would be reset when the AsyncCompilationState
   // is destructed, which is dependent on the order of the members in the
   // XlaCompilationCache class, which is error prone if the order changes.
-  async_compilation_state_.compiler_threads.reset();
+  async_compiler_threads_.reset();
   // TODO(b/110813685): Think about the program ownership model. Programs are
   // currently owned by the compilation cache which means we must wait for
   // program completion in the destructor. There are multiple compilation caches
@@ -254,27 +253,6 @@ static std::vector<const xla::Shape*> GetShapePointers(
   return shape_ptrs;
 }
 
-static xla::ExecutableBuildOptions GetBuildOptions(
-    const XlaCompiler::Options& options,
-    const XlaCompiler::CompilationResult& result, int default_device_ordinal) {
-  xla::ExecutableBuildOptions build_options;
-  if (result.collective_info) {
-    build_options.set_num_replicas(result.collective_info->group_size);
-  }
-  build_options.set_device_ordinal(options.device_ordinal != -1
-                                       ? options.device_ordinal
-                                       : default_device_ordinal);
-  build_options.set_result_layout(result.xla_output_shape);
-  build_options.set_device_allocator(options.device_allocator.get());
-  build_options.set_alias_passthrough_params(options.alias_passthrough_params);
-  build_options.mutable_debug_options()->set_xla_detailed_logging_and_dumping(
-      options.detailed_logging);
-  if (tensorflow::OpDeterminismRequired()) {
-    build_options.mutable_debug_options()->set_xla_gpu_deterministic_ops(true);
-  }
-  return build_options;
-}
-
 Status XlaCompilationCache::BuildExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result,
@@ -283,8 +261,8 @@ Status XlaCompilationCache::BuildExecutable(
 
   std::vector<const xla::Shape*> argument_layouts =
       GetShapePointers(result.xla_input_shapes);
-  xla::ExecutableBuildOptions build_options =
-      GetBuildOptions(options, result, client_->default_device_ordinal());
+  xla::ExecutableBuildOptions build_options = GetExecutableBuildOptions(
+      options, result, client_->default_device_ordinal());
   TF_ASSIGN_OR_RETURN(
       auto executables,
       client_->Compile(*result.computation, argument_layouts, build_options));
@@ -301,8 +279,8 @@ XlaCompilationCache::BuildSerializedExecutable(
 
   std::vector<const xla::Shape*> argument_layouts =
       GetShapePointers(result.xla_input_shapes);
-  xla::ExecutableBuildOptions build_options =
-      GetBuildOptions(options, result, client_->default_device_ordinal());
+  xla::ExecutableBuildOptions build_options = GetExecutableBuildOptions(
+      options, result, client_->default_device_ordinal());
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<xla::AotCompilationResult>> aot_results,
       client_->CompileAheadOfTime(*result.computation, argument_layouts,
@@ -316,10 +294,10 @@ XlaCompilationCache::LoadExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result,
     const std::string& serialized_aot_result) {
-  VLOG(2) << "Loading local executable using BEF.";
+  VLOG(2) << "Loading local executable from serialized AOT result";
 
-  xla::ExecutableBuildOptions build_options =
-      GetBuildOptions(options, result, client_->default_device_ordinal());
+  xla::ExecutableBuildOptions build_options = GetExecutableBuildOptions(
+      options, result, client_->default_device_ordinal());
   return client_->Load(serialized_aot_result, build_options);
 }
 
@@ -327,129 +305,19 @@ Status XlaCompilationCache::Compile(
     const XlaCompiler::Options& options, const NameAttrList& function,
     const std::vector<XlaCompiler::Argument>& args,
     const XlaCompiler::CompileOptions& compile_options,
-    CompileMode compile_mode,
+    DeviceCompileMode compile_mode, DeviceCompilationProfiler* profiler,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
   return CompileImpl(compile_options, options, function, args,
-                     /*ctx=*/nullptr, CompileScope::kFunction, compile_mode,
-                     out_compilation_result, out_executable);
-}
-
-static bool ShouldBeMegamorphic(int64_t compile_count,
-                                int64_t execution_count) {
-  const int64_t kCompileThreshold = 10;
-  const int64_t kMinExecutionsPerCompile = 50;
-
-  // This heuristic is trying to capture the following property: have we sunk a
-  // certain minimum amount of compile time into the cluster that didn't quite
-  // "pay off"?
-  return compile_count > kCompileThreshold &&
-         execution_count < kMinExecutionsPerCompile * compile_count;
-}
-
-StatusOr<std::unique_ptr<Graph>> CreateGraph(
-    const NodeDef& node_def, absl::Span<const XlaCompiler::Argument> args,
-    absl::Span<const DataType> result_types) {
-  // TODO(b/74182462): We implement this by creating a new dummy Graph including
-  // _Arg nodes, and let CompileGraph walk it. This could be optimized.
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-
-  // First create the actual node we care about computing.
-  TF_ASSIGN_OR_RETURN(Node * main_node, graph->AddNode(node_def));
-
-  // Create dummy _Arg nodes. Link these to `node` and also via a control
-  // dependency edge to the _SOURCE node.
-  for (int64_t i = 0, end = args.size(); i < end; ++i) {
-    Node* node;
-    string arg_name = absl::StrCat("_arg", i);
-    Status status =
-        NodeBuilder(arg_name, FunctionLibraryDefinition::kArgOp)
-            .ControlInput(graph->source_node())
-            .Attr("T", args[i].kind == XlaCompiler::Argument::kResource
-                           ? DT_RESOURCE
-                           : args[i].type)
-            .Attr("index", i)
-            .Finalize(graph.get(), &node);
-    TF_RETURN_IF_ERROR(status);
-    graph->AddEdge(node, 0, main_node, i);
-  }
-
-  // Similarly with return values, create dummy _Retval nodes fed by `node`.
-  for (int64_t i = 0, end = result_types.size(); i < end; ++i) {
-    Node* node;
-    string retval_name = absl::StrCat("_retval", i);
-    Status status = NodeBuilder(retval_name, FunctionLibraryDefinition::kRetOp)
-                        .Input(main_node, i)
-                        .Attr("T", result_types[i])
-                        .Attr("index", i)
-                        .Finalize(graph.get(), &node);
-    TF_RETURN_IF_ERROR(status);
-  }
-  FixupSourceAndSinkEdges(graph.get());
-  return graph;
-}
-
-Status XlaSingleOpToHlo(
-    XlaCompiler* compiler, const XlaCompiler::Options& options,
-    const std::vector<XlaCompiler::Argument>& args,
-    const XlaCompiler::SingleOpCompileArgument& single_op_compile_argument,
-    const XlaCompiler::CompileOptions& compile_options,
-    XlaCompiler::CompilationResult* compilation_result) {
-  const std::vector<DataType>& result_dtypes =
-      single_op_compile_argument.output_dtypes;
-  const NodeDef& node_def = single_op_compile_argument.node_def;
-  TF_ASSIGN_OR_RETURN(
-      auto graph,
-      CreateGraph(node_def, args, single_op_compile_argument.output_dtypes));
-
-  auto compile_with_old_bridge = [&]() {
-    *compilation_result = {};
-    return compiler->CompileGraph(compile_options, node_def.name(),
-                                  std::move(graph), args, compilation_result);
-  };
-
-  const ConfigProto* config = &(single_op_compile_argument.config_proto);
-  auto bridge_rollout = GetMlirBridgeRolloutState(
-      config ? std::optional<ConfigProto>(*config) : std::nullopt);
-  if (bridge_rollout ==
-          ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED ||
-      node_def.op() == "VarIsInitializedOp" ||
-      (bridge_rollout !=
-           ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED &&
-       options.device_type.type_string() != DEVICE_TPU_XLA_JIT)) {
-    return compile_with_old_bridge();
-  }
-
-  GraphDebugInfo debug_info;
-  std::vector<std::string> control_rets;
-  if (result_dtypes.empty()) {
-    control_rets.push_back(node_def.name());
-  }
-
-  bool mlir_enabled = (bridge_rollout ==
-                       ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED);
-  VLOG(1) << "Attempting MLIR bridge."
-          << (mlir_enabled ? " MLIR is explicitly enabled." : "");
-  auto mlir_result = CompileGraphToXlaHlo(
-      *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
-      options.device_type.type_string(), compile_options.use_tuple_arg,
-      /*analyse_graph=*/!mlir_enabled, *options.flib_def, debug_info,
-      options.shape_determination_fns, compilation_result);
-
-  if (mlir_result.ok() || mlir_enabled) {
-    return mlir_result;
-  }
-
-  VLOG(2) << "Failed second phase of the MLIR bridge. Will "
-             "retry with the old bridge. MLIR bridge compilation status: "
-          << mlir_result;
-  return compile_with_old_bridge();
+                     CompileScope::kFunction, compile_mode, /*ctx=*/nullptr,
+                     profiler, out_compilation_result, out_executable);
 }
 
 Status XlaCompilationCache::CompileSingleOp(
     const XlaCompiler::Options& options,
-    const std::vector<XlaCompiler::Argument>& args, OpKernelContext* ctx,
-    const XlaCompiler::CompileOptions& compile_options,
+    const std::vector<XlaCompiler::Argument>& args,
+    const XlaCompiler::CompileOptions& compile_options, OpKernelContext* ctx,
+    DeviceCompilationProfiler* profiler,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
   const NodeDef& def = ctx->op_kernel().def();
@@ -460,8 +328,8 @@ Status XlaCompilationCache::CompileSingleOp(
   // compilation cache key. This attribute is information for the colocator
   // and causes false uniqueness between nodes.
   name.mutable_attr()->erase("_class");
-  return CompileImpl(compile_options, options, name, args, ctx,
-                     CompileScope::kOp, CompileMode::kStrict,
+  return CompileImpl(compile_options, options, name, args, CompileScope::kOp,
+                     DeviceCompileMode::kStrict, ctx, profiler,
                      out_compilation_result, out_executable);
 }
 
@@ -480,38 +348,24 @@ void LogOnceXlaCompiledFirstCluster() {
 }  // namespace
 
 Status XlaCompilationCache::CompileStrict(
-    const Signature& sig, Entry* entry,
-    const XlaCompiler::CompileOptions& compile_options,
+    const Signature& sig, const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::Options& options,
     const std::vector<XlaCompiler::Argument>& args,
-    const NameAttrList& function, OpKernelContext* ctx, CompileScope scope) {
+    const NameAttrList& function, CompileScope scope, OpKernelContext* ctx,
+    DeviceCompilationProfiler* profiler, Entry* entry) {
   tensorflow::Env* env = tensorflow::Env::Default();
   const uint64 compile_start_us = env->NowMicros();
 
-  XlaCompiler compiler(options);
+  TfGraphToHloCompiler compiler(options);
   entry->compile_state = CompileState::kCompiled;
-  entry->compilation_status = [&] {
-    if (scope == CompileScope::kOp) {
-      XlaCompiler::SingleOpCompileArgument single_op_arg;
-      std::vector<DataType> output_dtypes(ctx->num_outputs());
-      for (int i = 0; i < output_dtypes.size(); ++i) {
-        output_dtypes[i] = ctx->expected_output_dtype(i);
-      }
-      single_op_arg.output_dtypes = std::move(output_dtypes);
-      single_op_arg.node_def = ctx->op_kernel().def();
-      auto* config_proto = ctx->function_library()->config_proto();
-      if (config_proto != nullptr) {
-        single_op_arg.config_proto = *config_proto;
-      }
-      return XlaSingleOpToHlo(&compiler, options, args, single_op_arg,
-                              compile_options, &entry->compilation_result);
-
-    } else {
-      CHECK(scope == CompileScope::kFunction);  // Crash OK
-      return compiler.CompileFunction(compile_options, function, args,
-                                      &entry->compilation_result);
-    }
-  }();
+  if (scope == CompileScope::kOp) {
+    entry->compilation_status = compiler.CompileSingleOp(
+        compile_options, ctx, args, &entry->compilation_result);
+  } else {
+    CHECK(scope == CompileScope::kFunction);  // Crash OK
+    entry->compilation_status = compiler.Compile(
+        compile_options, function, args, &entry->compilation_result);
+  }
   TF_RETURN_IF_ERROR(entry->compilation_status);
   TF_RET_CHECK(entry->executable.get() == nullptr);
   TF_RET_CHECK(entry->compilation_result.computation != nullptr);
@@ -560,50 +414,22 @@ Status XlaCompilationCache::CompileStrict(
 
   const uint64 compile_end_us = env->NowMicros();
   const uint64 compile_time_us = compile_end_us - compile_start_us;
-  metrics::UpdateXlaCompilationTime(compile_time_us);
 
-  mutex_lock lock(cluster_compile_stats_mu_);
-  const std::string& function_name = function.name();
-  auto it = cluster_compile_stats_.find(function_name);
-  const uint64 compile_time_s = compile_time_us / 1.0e6;
-  it->second.compile_count++;
-  it->second.cumulative_compile_time_us += compile_time_us;
   LogOnceXlaCompiledFirstCluster();
-  VLOG(1) << "compiled " << function_name << " " << it->second.compile_count
-          << " times, compile time: " << compile_time_us
-          << " us, cumulative: " << it->second.cumulative_compile_time_us
-          << " us ("
-          << tensorflow::strings::HumanReadableElapsedTime(compile_time_s)
-          << " / "
-          << tensorflow::strings::HumanReadableElapsedTime(
-                 it->second.cumulative_compile_time_us / 1.0e6)
-          << ")";
-
-  XlaJitCompilationActivity jit_compilation_activity;
-  jit_compilation_activity.set_cluster_name(function_name);
-  jit_compilation_activity.set_compile_count(it->second.compile_count);
-  jit_compilation_activity.set_compile_time_us(compile_time_us);
-  jit_compilation_activity.set_cumulative_compile_time_us(
-      it->second.cumulative_compile_time_us);
-  jit_compilation_activity.set_used_persistent_cache(
-      serialized_entry.has_value());
-  TF_RETURN_IF_ERROR(BroadcastXlaActivity(std::move(jit_compilation_activity)));
-
-  return OkStatus();
+  return profiler->RegisterCompilation(function, compile_time_us,
+                                       serialized_entry.has_value());
 }
 
 Status XlaCompilationCache::CompileAsynchronous(
-    const Signature& signature, Entry* entry,
+    const Signature& signature,
     const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::Options& options,
     const std::vector<XlaCompiler::Argument>& args,
-    const NameAttrList& function, OpKernelContext* ctx, CompileScope scope) {
+    const NameAttrList& function, CompileScope scope, OpKernelContext* ctx,
+    DeviceCompilationProfiler* profiler, Entry* entry) {
   // Explicitly capture all required data by value for async compilation.
   entry->compile_state = CompileState::kCompiling;
-  {
-    mutex_lock lock(async_compilation_state_.async_compilation_state_mu);
-    async_compilation_state_.num_ongoing_compilations++;
-  }
+  profiler->IncrementOngoingAsyncCompilations();
   // Don't move the above code into the thread function as it synchronously
   // updates the async compilation state!
 
@@ -612,23 +438,20 @@ Status XlaCompilationCache::CompileAsynchronous(
   // be alive for the duration of the compilation.
   // !!Pay attention when additional variables must be captured by this lambda!!
   // All values are captured by value. Make sure that all pointer values (like
-  // entry) do not get freed until the lambda has finished,\.
+  // entry) do not get freed until the lambda has finished.
   const std::string& function_name = function.name();
-  async_compilation_state_.compiler_threads->Schedule([=] {
+  async_compiler_threads_->Schedule([=] {
     Entry local_entry;
     VLOG(2) << "Starting asynchronous compilation of cluster " << function_name
             << '.';
     // We don't need to lock local_entry.mu, but do it anyway to satisfy
     // thread safety analysis.
     mutex_lock entry_lock(local_entry.mu);
-    Status s = CompileStrict(signature, &local_entry, compile_options, options,
-                             args, function, ctx, scope);
+    Status s = CompileStrict(signature, compile_options, options, args,
+                             function, scope, ctx, profiler, &local_entry);
     VLOG(2) << "Finished asynchronous compililation of cluster "
             << function_name << '.';
-    {
-      mutex_lock lock(async_compilation_state_.async_compilation_state_mu);
-      async_compilation_state_.num_ongoing_compilations--;
-    }
+    profiler->DecrementOngoingAsyncCompilations();
     {  // Populate original entry with compilation result.
       mutex_lock entry_lock(entry->mu);
       if (!s.ok()) {
@@ -642,57 +465,6 @@ Status XlaCompilationCache::CompileAsynchronous(
     }
   });
   return OkStatus();
-}
-
-bool XlaCompilationCache::ShouldCompileCluster(CompileMode compile_mode,
-                                               bool is_megamorphic,
-                                               bool is_first_execution,
-                                               int64_t current_request_count,
-                                               const NameAttrList& function) {
-  std::optional<int64_t> compile_threshold;
-  if (compile_mode == CompileMode::kLazy) {
-    compile_threshold = kDefaultCompilationThreshold;
-  } else if (compile_mode == CompileMode::kAsync) {
-    compile_threshold = 0;  // for now, always compile right away.
-  }
-
-  if (compile_mode == CompileMode::kStrict) {
-    // Lazy compilation is disabled.
-    return true;
-  }
-
-  if (is_megamorphic) {
-    BroadcastOptimizationRemark(XlaOptimizationRemark::MEGAMORPHIC_FUNCTION,
-                                function.name())
-        .IgnoreError();
-    VLOG(2) << "Not compiling cluster " << function.name()
-            << " because it is megamorphic.";
-    return false;
-  }
-
-  if (is_first_execution) {
-    return true;
-  }
-
-  if (compile_mode == CompileMode::kAsync) {
-    // Asynchronous compilation is enabled.
-    mutex_lock lock(async_compilation_state_.async_compilation_state_mu);
-    if (async_compilation_state_.num_ongoing_compilations >=
-        async_compilation_state_.kMaxNumOngoingCompilations) {
-      VLOG(2) << "Not asynchronously compiling cluster " << function.name()
-              << " because of too many ongoing compilations.";
-      return false;
-    }
-  }
-
-  bool reached_compile_threshold = current_request_count >= *compile_threshold;
-  if (!reached_compile_threshold) {
-    VLOG(2) << "Not compiling cluster " << function.name()
-            << " because it has not reached compile threshold; threshold is "
-            << *compile_threshold << " execution count "
-            << current_request_count << ".";
-  }
-  return reached_compile_threshold;
 }
 
 StatusOr<XlaCompilationCache::CompilationResultAndExecutable>
@@ -742,8 +514,9 @@ XlaCompilationCache::GetCompilationResultIfAlreadyCompiled(
 Status XlaCompilationCache::CompileImpl(
     const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::Options& options, const NameAttrList& function,
-    const std::vector<XlaCompiler::Argument>& args, OpKernelContext* ctx,
-    CompileScope scope, CompileMode compile_mode,
+    const std::vector<XlaCompiler::Argument>& args, CompileScope scope,
+    DeviceCompileMode compile_mode, OpKernelContext* ctx,
+    DeviceCompilationProfiler* profiler,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
   DCHECK_NE(out_executable, nullptr);
@@ -772,37 +545,7 @@ Status XlaCompilationCache::CompileImpl(
     entry = cache_entry->second.get();
   }
 
-  // We always compile a cluster the very first time it is executed.  This is an
-  // optimistic guess that pays off for statically shaped TensorFlow graphs
-  // (since they get the benefit of XLA right away without waiting for warmup)
-  // and doesn't hurt much for dynamically shaped TensorFlow graphs (we "pay" at
-  // most one cluster-compilation's worth of compile time).
-  bool is_first_execution;
-
-  // We avoid compiling clusters that have "gone megamorphic" i.e. have an
-  // excessive amount of shape dynamism.
-  bool is_megamorphic;
-
-  {
-    mutex_lock lock(cluster_compile_stats_mu_);
-    auto it =
-        cluster_compile_stats_.emplace(function.name(), ClusterCompileStats{})
-            .first;
-    is_first_execution = it->second.execution_count++ == 0;
-
-    // The is_megamorphic bit is "sticky".  We assume clusters that have been
-    // observed to be megamorphic once stay megamorphic forever.
-    if (!it->second.is_megamorphic &&
-        ShouldBeMegamorphic(/*compile_count=*/it->second.compile_count,
-                            /*execution_count=*/it->second.execution_count)) {
-      VLOG(1) << "Marking " << function.name()
-              << " as megamorphic, compile_count=" << it->second.compile_count
-              << " execution_count=" << it->second.execution_count;
-      it->second.is_megamorphic = true;
-    }
-
-    is_megamorphic = it->second.is_megamorphic;
-  }
+  profiler->RegisterExecution(function);
 
   string human_signature;
   if (VLOG_IS_ON(2)) {
@@ -842,21 +585,22 @@ Status XlaCompilationCache::CompileImpl(
 
   if (state == CompileState::kUncompiled) {
     XLA_SCOPED_LOGGING_TIMER("Compilation of XLA executable");
-    if (!ShouldCompileCluster(compile_mode, is_megamorphic, is_first_execution,
-                              current_request_count, function)) {
+    if (!profiler->ShouldCompileCluster(function, compile_mode,
+                                        current_request_count)) {
       VLOG(2) << "Not compiling for signature: " << human_signature;
       return OkStatus();
-    } else if (compile_mode == CompileMode::kAsync) {
+    } else if (compile_mode == DeviceCompileMode::kAsync) {
       VLOG(2) << "Queueing asynchronous compilation for signature: "
               << human_signature;
-      TF_RETURN_IF_ERROR(CompileAsynchronous(signature, entry, compile_options,
-                                             options, args, function, ctx,
-                                             scope));
+      TF_RETURN_IF_ERROR(CompileAsynchronous(signature, compile_options,
+                                             options, args, function, scope,
+                                             ctx, profiler, entry));
       return OkStatus();
     } else {
       VLOG(2) << "Instantly compiling for signature: " << human_signature;
-      TF_RETURN_IF_ERROR(CompileStrict(signature, entry, compile_options,
-                                       options, args, function, ctx, scope));
+      TF_RETURN_IF_ERROR(CompileStrict(signature, compile_options, options,
+                                       args, function, scope, ctx, profiler,
+                                       entry));
     }
   } else if (state == CompileState::kCompiling) {
     VLOG(2) << "Ongoing asynchronous compilation for signature: "
@@ -937,9 +681,32 @@ StatusOr<XlaSerializedCacheEntry> XlaCompilationCache::SerializeEntry(
   *serialized_entry.mutable_key() = BuildSerializedCacheKey(sig, hlo_module);
   *serialized_entry.mutable_hlo_module() = hlo_module;
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::AotCompilationResult> aot_result,
-      BuildSerializedExecutable(options, entry.compilation_result));
+  // XLA compiler supports exporting executables as an AOT compilation result
+  // to avoid running potentially expensive compilation pipeline twice. If entry
+  // does not have an executable, only then we'll run the AOT compiler.
+  std::unique_ptr<xla::AotCompilationResult> aot_result;
+
+  // Check if XLA compiler can export available executable.
+  if (entry.executable) {
+    VLOG(1) << "Export local executable as an AOT compilation result";
+    xla::Compiler* compiler = client_->backend().compiler();
+    auto exported = compiler->Export(entry.executable->executable());
+    if (exported.ok()) {
+      aot_result = std::move(*exported);
+    } else if (exported.status().code() == error::UNIMPLEMENTED) {
+      VLOG(1) << "Executable export is not implemented";
+    } else {
+      return exported.status();
+    }
+  }
+
+  // Run AOT compilation pipeline only if execuable export is not supported.
+  if (!aot_result) {
+    VLOG(1) << "Compile executable using AOT compilation pipeline";
+    TF_ASSIGN_OR_RETURN(aot_result, BuildSerializedExecutable(
+                                        options, entry.compilation_result));
+  }
+
   TF_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
   serialized_entry.set_executable(std::move(serialized));
   return serialized_entry;
@@ -976,6 +743,29 @@ XlaCompilationCache::TryLoadSerializedEntry(const XlaSerializedCacheKey& key) {
   XlaSerializedCacheEntry entry;
   TF_RETURN_IF_ERROR(ReadTextOrBinaryProto(env, file_path, &entry));
   return StatusOr<std::optional<XlaSerializedCacheEntry>>(entry);
+}
+
+xla::ExecutableBuildOptions GetExecutableBuildOptions(
+    const XlaCompiler::Options& options,
+    const XlaCompiler::CompilationResult& result, int default_device_ordinal) {
+  xla::ExecutableBuildOptions build_options;
+  if (result.collective_info) {
+    build_options.set_num_replicas(result.collective_info->group_size);
+  }
+  if (options.device_ordinal != -1) {
+    build_options.set_device_ordinal(options.device_ordinal);
+  } else if (default_device_ordinal != -1) {
+    build_options.set_device_ordinal(default_device_ordinal);
+  }
+  build_options.set_result_layout(result.xla_output_shape);
+  build_options.set_device_allocator(options.device_allocator.get());
+  build_options.set_alias_passthrough_params(options.alias_passthrough_params);
+  build_options.mutable_debug_options()->set_xla_detailed_logging_and_dumping(
+      options.detailed_logging);
+  if (tensorflow::OpDeterminismRequired()) {
+    build_options.mutable_debug_options()->set_xla_gpu_deterministic_ops(true);
+  }
+  return build_options;
 }
 
 }  // namespace tensorflow

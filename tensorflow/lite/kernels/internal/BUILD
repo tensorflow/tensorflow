@@ -5,6 +5,7 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_extra_arm_config_settings", 
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -287,6 +288,7 @@ cc_library(
         "optimized/integer_ops/depthwise_conv_hybrid_3x3_filter.h",
         "optimized/integer_ops/fully_connected.h",
         "optimized/integer_ops/leaky_relu.h",
+        "optimized/integer_ops/lut.h",
         "optimized/integer_ops/mean.h",
         "optimized/integer_ops/mul.h",
         "optimized/integer_ops/pooling.h",
@@ -301,7 +303,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
-    defines = ["EIGEN_NEON_DO_NOT_OVERRIDE_NR"],
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
     deps = [
         ":avx2_quantization_utils",
         ":common",
@@ -317,6 +319,7 @@ cc_library(
         ":transpose_utils",
         ":types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
@@ -354,6 +357,7 @@ cc_library(
         ":transpose_utils",
         ":types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
@@ -375,8 +379,9 @@ cc_library(
         ":common",
         ":optimized_base",
         ":types",
-        "//tensorflow/core/kernels:eigen_spatial_convolutions-inl",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/tsl/framework/convolution:eigen_spatial_convolutions-inl",
         "//third_party/eigen3",
     ],
 )
@@ -545,6 +550,7 @@ cc_library(
         "reference/integer_ops/fully_connected.h",
         "reference/integer_ops/l2normalization.h",
         "reference/integer_ops/logistic.h",
+        "reference/integer_ops/lut.h",
         "reference/integer_ops/mean.h",
         "reference/integer_ops/mul.h",
         "reference/integer_ops/pooling.h",
@@ -613,6 +619,7 @@ cc_library(
         ":types",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
@@ -707,6 +714,7 @@ cc_library(
         ":types",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//third_party/eigen3",
@@ -732,6 +740,7 @@ cc_library(
         ":types",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -752,6 +761,7 @@ cc_library(
         ":types",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -814,6 +824,7 @@ cc_library(
         ":neon_tensor_utils",
         ":portable_tensor_utils",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:op_macros",
@@ -842,6 +853,7 @@ cc_library(
     deps = [
         ":tensor_utils",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -893,6 +905,7 @@ cc_library(
         ":cpu_check",
         "//third_party/eigen3",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ] + selects.with_or({
         (
             ":arm_any",
@@ -939,6 +952,7 @@ cc_test(
         ":quantization_util",
         ":tensor_utils",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
@@ -1077,7 +1091,6 @@ cc_test(
     srcs = [
         "strided_slice_logic_test.cc",
     ],
-    shard_count = 4,
     deps = [
         ":strided_slice_logic",
         "@com_google_googletest//:gtest_main",

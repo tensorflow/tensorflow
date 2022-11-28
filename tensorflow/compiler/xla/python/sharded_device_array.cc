@@ -243,10 +243,10 @@ py::handle ShardedDeviceArray::AsHandle() {
           std::move(sharded_buffer_or_device_buffers).cast<py::list>(), indices,
           weak_type);
     }
+    const auto& sharded_buffer =
+        *sharded_buffer_or_device_buffers.cast<xla::PyShardedBuffer*>();
 
-    return ShardedDeviceArray::Make(aval, sharding_spec,
-                                    std::move(sharded_buffer_or_device_buffers)
-                                        .cast<xla::PyShardedBuffer>(),
+    return ShardedDeviceArray::Make(aval, sharding_spec, sharded_buffer,
                                     indices, weak_type);
   });
   type.attr("aval") =

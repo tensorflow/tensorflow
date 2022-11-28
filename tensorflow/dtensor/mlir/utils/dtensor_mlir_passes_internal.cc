@@ -24,14 +24,15 @@ namespace tensorflow {
 namespace dtensor {
 
 void AddDTensorAllReduceCombineOptimization(mlir::OpPassManager* pm){
-  // Experimental feature. If non-zero, combines all reduces with same group
-  // assignment and reduction.
+  // Experimental feature. If zero, the optimization for combining all reduces
+  // with same group assignment and reduction, will not be done.
   const char * env_str = (
       std::getenv("DTENSOR_ENABLE_COMBINE_ALL_REDUCES_OPTIMIZATION"));
-  if (env_str && strcmp(env_str, "0") != 0) {
-    pm->addNestedPass<mlir::func::FuncOp>(
-        CreateDTensorAllReduceCombineOptimization());
+  if (env_str && strcmp(env_str, "0") == 0) {
+    return;
   }
+  pm->addNestedPass<mlir::func::FuncOp>(
+      CreateDTensorAllReduceCombineOptimization());
 }
 
 void AddDTensorEmbeddingPass(mlir::OpPassManager* pm){}

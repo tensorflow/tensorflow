@@ -20,13 +20,13 @@ func.func @if(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
 
 func.func @cond_false(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32>
 attributes  {tf._input_shapes = ["tfshape$", "tfshape$"]} {
-  %0 = mhlo.exponential(%arg1) : (tensor<f32>) -> tensor<f32>
+  %0 = mhlo.exponential %arg1 : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
 
 func.func @cond_true(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32>
 attributes  {tf._input_shapes = ["tfshape$", "tfshape$"]} {
-  %0 = mhlo.log(%arg0) : (tensor<f32>) -> tensor<f32>
+  %0 = mhlo.log %arg0 : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
 
@@ -38,12 +38,12 @@ func.func @ifRegion(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
   // CHECK: [[VAL1:%.+]] = "mhlo.if"([[VAL0]]) ({
   %1 = "tf.IfRegion"(%0) ({
     // CHECK: [[VAL2:%.+]] = mhlo.log [[ARG0]]
-    %2 = mhlo.log(%arg0) : (tensor<f32>) -> tensor<f32>
+    %2 = mhlo.log %arg0 : (tensor<f32>) -> tensor<f32>
     // CHECK: mhlo.return [[VAL2]]
     "tf.Yield"(%2) : (tensor<f32>) -> ()
   }, {
     // CHECK: [[VAL3:%.+]] = mhlo.exponential [[ARG1]]
-    %2 = mhlo.exponential(%arg1) : (tensor<f32>) -> tensor<f32>
+    %2 = mhlo.exponential %arg1 : (tensor<f32>) -> tensor<f32>
     // CHECK: mhlo.return [[VAL3]]
     "tf.Yield"(%2) : (tensor<f32>) -> ()
   // CHECK: }) : (tensor<i1>) -> tensor<f32>
@@ -72,12 +72,12 @@ func.func @case(%index: tensor<i32>, %arg0: tensor<f32>, %arg1: tensor<f32>) -> 
 }
 
 func.func @exponential(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
-  %0 = mhlo.exponential(%arg1) : (tensor<f32>) -> tensor<f32>
+  %0 = mhlo.exponential %arg1 : (tensor<f32>) -> tensor<f32>
   func.return %0, %arg1 : tensor<f32>, tensor<f32>
 }
 
 func.func @log(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
-  %0 = mhlo.log(%arg0) : (tensor<f32>) -> tensor<f32>
+  %0 = mhlo.log %arg0 : (tensor<f32>) -> tensor<f32>
   func.return %0, %arg1 : tensor<f32>, tensor<f32>
 }
 
@@ -93,12 +93,12 @@ func.func @caseRegion(%index: tensor<i32>, %arg0: tensor<f32>, %arg1: tensor<f32
   // CHECK: [[VAL1:%.+]]:2 = "mhlo.case"([[BRANCH_INDEX]]) ({
   %0:2 = "tf.CaseRegion"(%index) ({
     // CHECK: [[VAL2:%.+]] = mhlo.exponential [[ARG1]]
-    %1 = mhlo.exponential(%arg1) : (tensor<f32>) -> tensor<f32>
+    %1 = mhlo.exponential %arg1 : (tensor<f32>) -> tensor<f32>
     // CHECK: mhlo.return [[VAL2]], [[ARG1]]
     "tf.Yield"(%1, %arg1) : (tensor<f32>, tensor<f32>) -> ()
   }, {
     // CHECK: [[VAL3:%.+]] = mhlo.log [[ARG0]]
-    %1 = mhlo.log(%arg0) : (tensor<f32>) -> tensor<f32>
+    %1 = mhlo.log %arg0 : (tensor<f32>) -> tensor<f32>
     // CHECK: mhlo.return [[VAL3]], [[ARG1]]
     "tf.Yield"(%1, %arg1) : (tensor<f32>, tensor<f32>) -> ()
   }, {

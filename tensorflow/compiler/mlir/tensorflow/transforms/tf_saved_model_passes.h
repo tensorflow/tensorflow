@@ -61,6 +61,14 @@ CreateLowerVariableOpsToMlProgramPass();
 std::unique_ptr<OperationPass<ModuleOp>> CreateStripSavedModuleMetadataPass();
 
 #define GEN_PASS_REGISTRATION
+#define GEN_PASS_DECL_DEDUPBOUNDINPUTBINDINGPASS
+#define GEN_PASS_DECL_FREEZEASSETSPASS
+#define GEN_PASS_DECL_FREEZEGLOBALTENSORSPASS
+#define GEN_PASS_DECL_LOWERGLOBALSTOMLPROGRAMPASS
+#define GEN_PASS_DECL_LOWERVARIABLEOPSTOMLPROGRAMPASS
+#define GEN_PASS_DECL_OPTIMIZEGLOBALTENSORSPASS
+#define GEN_PASS_DECL_REMOVEVARIABLESINSESSIONINITIALIZERPASS
+#define GEN_PASS_DECL_STRIPSAVEDMODULEMETADATAPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
 
 }  // namespace tf_saved_model

@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_LOGGING_H_
 #define TENSORFLOW_CORE_PLATFORM_LOGGING_H_
 
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/core/platform/types.h"   // IWYU pragma: export
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: export
 
 // NOLINTBEGIN(misc-unused-using-decls)
 namespace tensorflow {

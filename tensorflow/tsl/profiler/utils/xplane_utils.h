@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/profiler/utils/timespan.h"
 #include "tensorflow/tsl/profiler/utils/trace_utils.h"
 #include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
@@ -158,6 +158,9 @@ int64_t GetStartTimestampNs(const XPlane& plane);
 
 // Returns true if there are no XEvents.
 bool IsEmpty(const XSpace& space);
+
+// Return true if grouping/step-tracking is done on the Xspace already.
+bool IsXSpaceGrouped(const XSpace& space);
 
 // Mutate the XPlane by adding predefined XFlow. e.g. GPU kernel launches =>
 // GPU kernel events.

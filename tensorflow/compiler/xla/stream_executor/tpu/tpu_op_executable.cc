@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_op_executable.h"
 
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/tsl/platform/casts.h"
 
 namespace tensorflow {
@@ -34,7 +34,7 @@ TpuOpExecutable::TpuOpExecutable(const XLA_TpuProgram* core_program,
       core_program_(core_program),
       host_command_handler_(std::move(host_command_handler)) {}
 
-Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
+xla::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
     const xla::ServiceExecutableRunOptions& run_options,
     absl::Span<const se::DeviceMemoryBase> arguments,
     se::DeviceMemoryBase result,
@@ -93,7 +93,8 @@ Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
   params.stream = stream;
   params.status = status.c_status;
 
-  tpu::OpsApiFn()->TpuExecutable_LoadProgramAndEnqueueToStreamFn(&params);
+  stream_executor::tpu::OpsApiFn()
+      ->TpuExecutable_LoadProgramAndEnqueueToStreamFn(&params);
 
   if (dev_assign != nullptr) {
     stream_executor::tpu::SerializedProto_Free(dev_assign_serialized);
@@ -107,8 +108,8 @@ xla::Shape TpuOpExecutable::HostShapeToDeviceShape(
   XLA_Shape c_host_shape;
   XLA_Shape c_device_shape;
   ApiConverter::ToC(host_shape, &c_host_shape);
-  tpu::OpsApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(&c_host_shape,
-                                                           &c_device_shape);
+  stream_executor::tpu::OpsApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
+      &c_host_shape, &c_device_shape);
   xla::Shape device_shape = ApiConverter::FromC(&c_device_shape);
   ApiConverter::Destroy(&c_host_shape);
   ApiConverter::Destroy(&c_device_shape);
@@ -118,7 +119,8 @@ xla::Shape TpuOpExecutable::HostShapeToDeviceShape(
 int64_t TpuOpExecutable::ShapeSize(const xla::Shape& shape) {
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
-  int64_t size = tpu::OpsApiFn()->HardwareLayout_ShapeSizeFn(&c_shape);
+  int64_t size =
+      stream_executor::tpu::OpsApiFn()->HardwareLayout_ShapeSizeFn(&c_shape);
   ApiConverter::Destroy(&c_shape);
   return size;
 }

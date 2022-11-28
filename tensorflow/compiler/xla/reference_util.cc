@@ -24,10 +24,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -148,7 +149,7 @@ ReferenceUtil::SeparableConvArray4D(const Array4D<float>& input,
 /* static  */ std::unique_ptr<std::vector<float>>
 ReferenceUtil::ReduceWindow1DGeneric(
     absl::Span<const float> operand, float init,
-    const std::function<float(float, float)>& reduce_func,
+    absl::FunctionRef<float(float, float)> reduce_func,
     absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
     absl::Span<const std::pair<int64_t, int64_t>> padding) {
   CHECK_EQ(window.size(), 1);
@@ -236,7 +237,7 @@ ReferenceUtil::ReduceWindow1DAdd(absl::Span<const float> operand, float init,
 /* static */ std::unique_ptr<Array4D<float>>
 ReferenceUtil::ReduceWindow4DGeneric(
     const Array4D<float>& operand, float init,
-    const std::function<float(float, float)>& reduce_func,
+    absl::FunctionRef<float(float, float)> reduce_func,
     absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
     Padding padding) {
   std::vector<int64_t> dim_lengths{operand.n1(), operand.n2(), operand.n3(),
@@ -249,7 +250,7 @@ ReferenceUtil::ReduceWindow4DGeneric(
 /* static */ std::unique_ptr<Array4D<float>>
 ReferenceUtil::ReduceWindow4DGeneric(
     const Array4D<float>& operand, float init,
-    const std::function<float(float, float)>& reduce_func,
+    absl::FunctionRef<float(float, float)> reduce_func,
     absl::Span<const int64_t> window, absl::Span<const int64_t> stride,
     absl::Span<const std::pair<int64_t, int64_t>> padding) {
   std::vector<int64_t> dim_lengths{operand.n1(), operand.n2(), operand.n3(),
@@ -511,7 +512,7 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
 /* static */ std::unique_ptr<std::vector<float>>
 ReferenceUtil::ReduceToColArray2D(
     const Array2D<float>& matrix, float init,
-    const std::function<float(float, float)>& reduce_function) {
+    absl::FunctionRef<float(float, float)> reduce_function) {
   int64_t rows = matrix.height();
   int64_t cols = matrix.width();
   auto result = std::make_unique<std::vector<float>>();
@@ -528,7 +529,7 @@ ReferenceUtil::ReduceToColArray2D(
 /* static */ std::unique_ptr<std::vector<float>>
 ReferenceUtil::ReduceToRowArray2D(
     const Array2D<float>& matrix, float init,
-    const std::function<float(float, float)>& reduce_function) {
+    absl::FunctionRef<float(float, float)> reduce_function) {
   int64_t rows = matrix.height();
   int64_t cols = matrix.width();
   auto result = std::make_unique<std::vector<float>>();
@@ -544,7 +545,7 @@ ReferenceUtil::ReduceToRowArray2D(
 
 /*static*/ std::vector<float> ReferenceUtil::Reduce4DTo1D(
     const Array4D<float>& array, float init, absl::Span<const int64_t> dims,
-    const std::function<float(float, float)>& reduce_function) {
+    absl::FunctionRef<float(float, float)> reduce_function) {
   std::vector<float> result;
   CHECK_EQ(dims.size(), 3);
   const absl::flat_hash_set<int64_t> dim_set(dims.begin(), dims.end());
@@ -619,7 +620,7 @@ ReferenceUtil::ReduceToRowArray2D(
 
 /* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::Reduce3DTo2D(
     const Array3D<float>& array, float init, absl::Span<const int64_t> dims,
-    const std::function<float(float, float)>& reduce_function) {
+    absl::FunctionRef<float(float, float)> reduce_function) {
   CHECK_EQ(dims.size(), 1);
   int64_t rows = dims[0] == 0 ? array.n2() : array.n1();
   int64_t cols = dims[0] == 2 ? array.n2() : array.n3();
@@ -640,7 +641,7 @@ ReferenceUtil::ReduceToRowArray2D(
 
 /* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::MapArray2D(
     const Array2D<float>& matrix,
-    const std::function<float(float)>& map_function) {
+    absl::FunctionRef<float(float)> map_function) {
   int64_t rows = matrix.height();
   int64_t cols = matrix.width();
   auto result = std::make_unique<Array2D<float>>(rows, cols);
@@ -654,7 +655,7 @@ ReferenceUtil::ReduceToRowArray2D(
 
 /* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::MapArray2D(
     const Array2D<float>& lhs, const Array2D<float>& rhs,
-    const std::function<float(float, float)>& map_function) {
+    absl::FunctionRef<float(float, float)> map_function) {
   CHECK_EQ(lhs.height(), rhs.height());
   CHECK_EQ(lhs.width(), rhs.width());
   int64_t rows = lhs.height();
@@ -669,8 +670,7 @@ ReferenceUtil::ReduceToRowArray2D(
 }
 
 /* static */ std::unique_ptr<Array3D<float>> ReferenceUtil::MapArray3D(
-    const Array3D<float>& array,
-    const std::function<float(float)>& map_function) {
+    const Array3D<float>& array, absl::FunctionRef<float(float)> map_function) {
   int64_t n1 = array.n1();
   int64_t n2 = array.n2();
   int64_t n3 = array.n3();
@@ -687,7 +687,7 @@ ReferenceUtil::ReduceToRowArray2D(
 
 /* static */ std::unique_ptr<Array3D<float>> ReferenceUtil::MapArray3D(
     const Array3D<float>& lhs, const Array3D<float>& rhs,
-    const std::function<float(float, float)>& map_function) {
+    absl::FunctionRef<float(float, float)> map_function) {
   CHECK_EQ(lhs.n1(), rhs.n1());
   CHECK_EQ(lhs.n2(), rhs.n2());
   CHECK_EQ(lhs.n3(), rhs.n3());
@@ -707,7 +707,7 @@ ReferenceUtil::ReduceToRowArray2D(
 
 /* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::MapWithIndexArray2D(
     const Array2D<float>& matrix,
-    const std::function<float(float, int64_t, int64_t)>& map_function) {
+    absl::FunctionRef<float(float, int64_t, int64_t)> map_function) {
   int64_t rows = matrix.height();
   int64_t cols = matrix.width();
   auto result = std::make_unique<Array2D<float>>(rows, cols);

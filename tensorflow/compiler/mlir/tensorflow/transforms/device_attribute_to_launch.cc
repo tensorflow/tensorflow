@@ -19,7 +19,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
@@ -30,8 +29,11 @@ namespace {
 
 constexpr char kDeviceAttr[] = "device";
 
+#define GEN_PASS_DEF_DEVICEATTRIBUTETOLAUNCHPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+
 struct DeviceAttributeToLaunch
-    : public DeviceAttributeToLaunchPassBase<DeviceAttributeToLaunch> {
+    : public impl::DeviceAttributeToLaunchPassBase<DeviceAttributeToLaunch> {
   void runOnOperation() override;
 };
 

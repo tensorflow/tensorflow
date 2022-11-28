@@ -2347,3 +2347,41 @@ func.func @if_region_with_resource_var(
   // expected-remark@above {{ID: 18}}
   // expected-remark@above {{Sinks: {17}}}
 }
+
+// -----
+
+// Tests that we create dependencies from ops with resources that only have
+// self-dependency (like `_XlaRecvAtHostV2`) to `fetch`, even if there is an op
+// with unknown side effects in between. See b/253049649.
+func.func @self_dependent_only_feeds_into_fetch(
+  // expected-remark@above {{ID: 9}}
+  %arg0: tensor<!tf_type.string>,
+  %arg1: tensor<i64>) {
+  tf_executor.graph {
+  // expected-remark@above {{ID: 7}}
+    tf_executor.island {
+    // expected-remark@above {{ID: 2}}
+    // expected-remark@above {{Successors: {6}}}
+      "tf._XlaRecvAtHostV2"(%arg0, %arg1) {_xla_has_host_transfer = true, key = "host_compute_channel_1_args"} : (tensor<!tf_type.string>, tensor<i64>) -> tensor<f32>
+      // expected-remark@above {{ID: 0}}
+      tf_executor.yield
+      // expected-remark@above {{ID: 1}}
+    }
+    tf_executor.island {
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Successors: {6}}}
+      "tf._UnknownSideEffectingOp_"() {is_stateless=false} : () -> ()
+      // expected-remark@above {{ID: 3}}
+      // expected-remark@above {{Successors: {4}}}
+      tf_executor.yield
+      // expected-remark@above {{ID: 4}}
+      // expected-remark@above {{Predecessors: {3}}}
+    }
+    tf_executor.fetch
+    // expected-remark@above {{ID: 6}}
+    // expected-remark@above {{Predecessors: {2,5}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 8}}
+  // expected-remark@above {{Sinks: {7}}}
+}

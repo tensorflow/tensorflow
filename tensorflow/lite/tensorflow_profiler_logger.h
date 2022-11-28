@@ -23,13 +23,22 @@ limitations under the License.
 
 struct TfLiteTensor;
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 class TraceMe;
+}  // namespace profiler
+}  // namespace tsl
+
+namespace tensorflow {
+namespace profiler {
+
+using tsl::profiler::TraceMe;
+
 }  // namespace profiler
 }  // namespace tensorflow
 
 namespace tflite {
+
 // Records an op preparation with `op_name` and `node_index`.
 TFLITE_ATTRIBUTE_WEAK void OnTfLiteOpPrepare(const char* op_name,
                                              int subgraph_index,

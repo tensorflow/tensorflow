@@ -19,7 +19,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_INTERPRETER_H_
 
 /// For documentation, see
-/// third_party/tensorflow/lite/core/impl/interpreter.h.
+/// third_party/tensorflow/lite/core/interpreter.h.
 
 #include "tensorflow/lite/core/interpreter.h"  // IWYU pragma: export
 

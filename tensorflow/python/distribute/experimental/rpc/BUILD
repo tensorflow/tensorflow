@@ -1,11 +1,10 @@
 # Python bindings for RPC client and server ops.
 
-load("//tensorflow:tensorflow.default.bzl", "pytype_library")
-
-# buildifier: disable=same-origin-load
+load("//tensorflow:pytype.default.bzl", "pytype_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )

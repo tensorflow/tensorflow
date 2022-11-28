@@ -18,13 +18,13 @@ limitations under the License.
 #include <functional>
 #include <string>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
@@ -42,6 +42,15 @@ bool IsConvCustomCall(const HloInstruction* instr) {
          (instr->custom_call_target() == kCudnnConvForwardCallTarget ||
           instr->custom_call_target() ==
               kCudnnConvBiasActivationForwardCallTarget);
+}
+
+bool IsExponentialMinusOne(const HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kExpm1;
+}
+
+bool HasThreeUsers(const HloInstruction* instr) {
+  int64_t user_count = instr->user_count();
+  return user_count == 3;
 }
 
 // Can instr be converted to type `dst_ty` without losing any precision?  For
@@ -445,6 +454,83 @@ StatusOr<bool> FuseSideInputAlpha(HloComputation* comp) {
   return changed;
 }
 
+StatusOr<bool> FuseElu(HloComputation* comp, se::CudaComputeCapability cc) {
+  bool changed = false;
+  for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
+    const DebugOptions& debug_options =
+        instr->GetModule()->config().debug_options();
+    if (!debug_options.xla_gpu_use_runtime_fusion() ||
+        !cc.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+      return false;
+    }
+
+    HloInstruction* gte;
+    HloInstruction* conv;
+    HloInstruction* expm1;
+
+    // In Elu computation, the GetTupleElement node will have three users:
+    // Compare, ExponentialMinusOnem, and Select.
+    auto gte_pattern =
+        m::GetTupleElement(
+            &gte, m::Op(&conv).WithPredicate(IsConvCustomCall).WithOneUse())
+            .WithElementType(F16)
+            .WithPredicate(HasThreeUsers);
+    if (!Match(instr,
+               m::Select(m::Compare(gte_pattern,
+                                    m::Broadcast(m::ConstantEffectiveScalar(0)))
+                             .WithComparisonDirection(ComparisonDirection::kGt)
+                             .WithOneUse(),
+                         gte_pattern,
+                         m::Op(&expm1)
+                             .WithPredicate(IsExponentialMinusOne)
+                             .WithOperand(0, gte_pattern)
+                             .WithOneUse()))) {
+      continue;
+    }
+
+    // In some cases, the XLA optimizes the inputs of the convolution by
+    // moving and broadcasting the bias to the side input, e.g., when the input
+    // spatial dimensions are all ones and filter spatial dimentsions are all
+    // non-ones. However, there is a known issue that the side input is not well
+    // supported in the cuDNN runtime fusion. Therefore, we skip these cases.
+    // TODO(kaixih@nvidia): remove this check when cuDNN fixes it.
+    if (conv->operands().size() > 3) {
+      continue;
+    }
+
+    // cuDNN runtime funsion kernels require 32-bit aligned data access. Since
+    // we only allow fp16 datatype, we need to check if the in and out channels
+    // of filter are even numbers.
+    const Shape& shape = conv->operand(1)->shape();
+    int64_t num_input_features = shape.dimensions(
+        conv->convolution_dimension_numbers().kernel_input_feature_dimension());
+    int64_t num_output_features =
+        shape.dimensions(conv->convolution_dimension_numbers()
+                             .kernel_output_feature_dimension());
+    if (num_input_features % 2 != 0 || num_output_features % 2 != 0) {
+      continue;
+    }
+
+    TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig config,
+                        conv->backend_config<CudnnConvBackendConfig>());
+    if (config.activation_mode() != se::dnn::kNone) {
+      continue;
+    }
+
+    if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
+          return absl::StrCat("FuseElu: ", conv->ToString());
+        })) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(conv, EnsureIsConvBiasActivation(conv));
+    config.set_activation_mode(se::dnn::kElu);
+    TF_RETURN_IF_ERROR(conv->set_backend_config(config));
+    TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte));
+    changed = true;
+  }
+  return changed;
+}
+
 StatusOr<bool> FuseRelu(HloComputation* comp) {
   bool changed = false;
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
@@ -786,6 +872,8 @@ StatusOr<bool> CudnnFusedConvRewriter::Run(
     // cases.
     TF_ASSIGN_OR_RETURN(changed, FuseRelu(comp));
     any_changed |= changed;
+    TF_ASSIGN_OR_RETURN(changed, FuseElu(comp, compute_capability_));
+    any_changed |= changed;
 
     TF_ASSIGN_OR_RETURN(changed, FuseConvertToF16(comp));
     any_changed |= changed;
@@ -802,6 +890,8 @@ StatusOr<bool> CudnnFusedConvRewriter::Run(
     any_changed |= changed;
 
     TF_ASSIGN_OR_RETURN(changed, FuseRelu(comp));
+    any_changed |= changed;
+    TF_ASSIGN_OR_RETURN(changed, FuseElu(comp, compute_capability_));
     any_changed |= changed;
 
     // Check that we don't have any convs outputing integer types other than s8.

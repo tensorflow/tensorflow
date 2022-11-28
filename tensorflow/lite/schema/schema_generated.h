@@ -600,11 +600,12 @@ enum TensorType : int8_t {
   TensorType_VARIANT = 14,
   TensorType_UINT32 = 15,
   TensorType_UINT16 = 16,
+  TensorType_INT4 = 17,
   TensorType_MIN = TensorType_FLOAT32,
-  TensorType_MAX = TensorType_UINT16
+  TensorType_MAX = TensorType_INT4
 };
 
-inline const TensorType (&EnumValuesTensorType())[17] {
+inline const TensorType (&EnumValuesTensorType())[18] {
   static const TensorType values[] = {
     TensorType_FLOAT32,
     TensorType_FLOAT16,
@@ -622,13 +623,14 @@ inline const TensorType (&EnumValuesTensorType())[17] {
     TensorType_RESOURCE,
     TensorType_VARIANT,
     TensorType_UINT32,
-    TensorType_UINT16
+    TensorType_UINT16,
+    TensorType_INT4
   };
   return values;
 }
 
 inline const char * const *EnumNamesTensorType() {
-  static const char * const names[18] = {
+  static const char * const names[19] = {
     "FLOAT32",
     "FLOAT16",
     "INT32",
@@ -646,13 +648,14 @@ inline const char * const *EnumNamesTensorType() {
     "VARIANT",
     "UINT32",
     "UINT16",
+    "INT4",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameTensorType(TensorType e) {
-  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_UINT16)) return "";
+  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_INT4)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesTensorType()[index];
 }

@@ -41,9 +41,11 @@ StatusOr<std::string> ConvertHloProtoToMemoryViewer(
   static constexpr int kSmallBufferSize = 16 * 1024;  // 16KB
   static constexpr int kMemorySpaceColor = 0;         // HBM
 
+  // heap_simulator_trace_id is set to -1. The profiler will get heap simulator
+  // trace based on memory space.
   auto result_or = ConvertHloProtoToPreprocessResult(
-      hlo_proto, kSmallBufferSize,
-      GetHeapSimulatorTraceId(hlo_proto, kMemorySpaceColor), kMemorySpaceColor);
+      hlo_proto, kSmallBufferSize, /*heap_simulator_trace_id=*/-1,
+      kMemorySpaceColor);
   if (!result_or.ok()) {
     return errors::Internal(
         "Failed to convert HLO proto to memory viewer result: ",
@@ -66,7 +68,7 @@ StatusOr<std::string> ConvertHloProtoToMemoryViewer(
 }
 
 StatusOr<std::string> ConvertHloProtoToGraphViewer(
-    const xla::HloProto& hlo_proto, const ToolOptions& options) {
+    const xla::HloProto& hlo_proto, const HloToolOptions& options) {
   TF_ASSIGN_OR_RETURN(GraphViewerParams params,
                       ParseGraphViewerParams(options));
   if (params.type == "graph") {
@@ -83,10 +85,9 @@ StatusOr<std::string> ConvertHloProtoToGraphViewer(
 
 StatusOr<std::string> ConvertHloProtoToToolData(
     const SessionSnapshot& session_snapshot, const absl::string_view tool_name,
-    const ToolOptions& options) {
+    const HloToolOptions& options) {
   // <options> must provide a hlo module_name field to identify the HLO module.
-  std::optional<std::string> hlo_module_name =
-      GetParam<std::string>(options, "module_name");
+  std::optional<std::string> hlo_module_name = options.module_name;
   if (!hlo_module_name.has_value() || hlo_module_name->empty()) {
     return errors::InvalidArgument(
         "Can not find HLO module name from options.");

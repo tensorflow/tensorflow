@@ -16,16 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_CONTEXT_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_CONTEXT_H_
 
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
-#include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 
 namespace xla {
@@ -84,6 +84,12 @@ class IrEmitterContext {
     CHECK_EQ(nullptr, buffer_assignment_);
     allocations_ = allocations;
   }
+
+  // Emit a constant with a given number of element, given byte size of the
+  // element, given symbol name and content.
+  void emit_constant(int64_t num_elements, int64_t bytes_per_element,
+                     absl::string_view symbol_name, int allocation_idx,
+                     llvm::ArrayRef<uint8_t> content, llvm::IRBuilder<>* b);
 
  private:
   const HloModule* hlo_module_;

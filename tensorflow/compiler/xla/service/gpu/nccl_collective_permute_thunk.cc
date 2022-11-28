@@ -22,11 +22,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/call_once.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 #if XLA_ENABLE_XCCL
@@ -99,13 +98,14 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
 /*static*/ bool NcclCollectivePermuteThunk::CanImplement(
     mlir::lmhlo::CollectivePermuteOp op) {
   const Shape shape = GetShape(op.getOperand());
-  return IsTypeSupportedByNccl(shape.element_type());
+  return IsTypeSupportedByNccl(shape.element_type(),
+                               Thunk::kNcclCollectivePermute);
 }
 
 NcclCollectivePermuteThunk::NcclCollectivePermuteThunk(
     ThunkInfo thunk_info, mlir::lmhlo::CollectivePermuteOp op,
     int64_t replica_count, int64_t partition_count, const Buffer& buffer)
-    : NcclCollectiveThunk(Thunk::kCollectivePermute, thunk_info),
+    : NcclCollectiveThunk(Thunk::kNcclCollectivePermute, thunk_info),
       config_(
           GetNcclCollectivePermuteConfig(op, replica_count, partition_count)),
       buffer_(buffer) {}
@@ -184,7 +184,8 @@ Status RunCollectivePermute(
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
 
   TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                      ToNcclDataTypeAndCountMultiplier(buffer.element_type));
+                      ToNcclDataTypeAndCountMultiplier(
+                          buffer.element_type, Thunk::kNcclCollectivePermute));
   ncclDataType_t dtype = dtype_and_multiplier.first;
   int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
 

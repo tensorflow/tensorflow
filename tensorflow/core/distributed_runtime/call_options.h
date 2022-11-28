@@ -16,66 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CALL_OPTIONS_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CALL_OPTIONS_H_
 
-#include <functional>
-
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/distributed_runtime/call_options.h"
 
 namespace tensorflow {
-
-// Options passed to interface calls. This class provides portable
-// functionality across different RPC systems on top of
-// platform-specific mechanisms (for client and server contexts,
-// cancellation, etc.).
-//
-// TODO(zhifengc): Maybe change all RPC methods to take CallOptions.
-class CallOptions {
- public:
-  CallOptions();
-
-  // Cancellation.
-  //
-  // The caller may call StartCancel() anytime as long as this
-  // CallOptions object is alive. The callee may or may not receive
-  // the cancellation notification depending on the rpc layer
-  // implementation.
-  void StartCancel();
-
-  // The callee (the rpc layer implementation) must set a cancellation
-  // notifier before its blocking operation and clear the notifier
-  // before the call returns.
-  //
-  // "cancel_func" may be called zero, once or more time. Therefore, it
-  // should _not_ be responsible for memory management of any objects.
-  //
-  // "cancel_func" must be very light-weight. It should not block on
-  // IO or locking. Typically, it just calls the rpc implementation
-  // layer's specific cancellation mechanism and does nothing else.
-  //
-  // NOTE: "cancel_func" itself is pass-by-value. Therefore, we do not
-  // worry about its ownership here.
-  typedef std::function<void()> CancelFunction;
-  void SetCancelCallback(CancelFunction cancel_func);
-  void ClearCancelCallback();
-
-  // Get and set operation timeout. Timeout value is in milliseconds.
-  //
-  // Default: 0. indicating there is no timeout for this call.
-  int64_t GetTimeout();
-  void SetTimeout(int64_t ms);
-
- private:
-  mutex mu_;
-  CancelFunction cancel_func_ TF_GUARDED_BY(mu_);
-
-  // RPC operation timeout in milliseconds.
-  int64_t timeout_in_ms_ TF_GUARDED_BY(mu_) = 0;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(CallOptions);
-};
-
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::CallOptions;
+// NOLINTEND(misc-unused-using-decls)
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CALL_OPTIONS_H_
