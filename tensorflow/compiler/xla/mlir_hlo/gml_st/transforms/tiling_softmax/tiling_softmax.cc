@@ -35,8 +35,8 @@ namespace {
 #define GEN_PASS_DEF_TILINGSOFTMAXPASS
 #include "gml_st/transforms/passes.h.inc"
 
-static constexpr llvm::StringRef kTransformedMarker =
-    "__tile_softmax_applied_marker__";
+static constexpr llvm::StringRef kTileSoftmaxAppliedLabel =
+    "__tile_softmax_applied_label__";
 
 Operation *fuseIthOperandInPlace(PatternRewriter &rewriter, Operation *op,
                                  int64_t i) {
@@ -97,7 +97,7 @@ LogicalResult tilePartialSoftmax(
   FailureOr<Operation *> tiledOp = tileOperationFn(op, *commonReductionDim);
   if (failed(tiledOp))
     return rewriter.notifyMatchFailure(op, "call to tileOperationFn failed");
-  setLabel(*tiledOp, kTransformedMarker);
+  setLabel(*tiledOp, kTileSoftmaxAppliedLabel);
 
   // Fuse through the bcast reduction chains.
   Value commonTiledSource;
@@ -142,7 +142,7 @@ struct TilePartialSoftmaxPattern
 
   LogicalResult matchAndRewrite(TilingInterface op,
                                 PatternRewriter &rewriter) const override {
-    if (hasLabel(op, kTransformedMarker))
+    if (hasLabel(op, kTileSoftmaxAppliedLabel))
       return rewriter.notifyMatchFailure(op, "has tranformation attr");
 
     // Only apply to non-fusable occurrences.
@@ -181,7 +181,7 @@ struct TilePartialSoftmaxPattern
           if (failed(tilingResult)) return failure();
 
           rewriter.replaceOp(op, tilingResult->loop->getResults());
-          setLabel(tilingResult->tiledOp, kTransformedMarker);
+          setLabel(tilingResult->tiledOp, kTileSoftmaxAppliedLabel);
           return tilingResult->tiledOp;
         });
   }
@@ -289,7 +289,7 @@ struct TilingSoftmaxPass
     }
 
     // Clean up by removing temporary attributes.
-    f.walk([](Operation *op) { removeLabel(op, kTransformedMarker); });
+    f.walk([](Operation *op) { removeLabel(op, kTileSoftmaxAppliedLabel); });
   }
 };
 

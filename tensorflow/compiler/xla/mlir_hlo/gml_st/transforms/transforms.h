@@ -30,8 +30,6 @@ struct LinalgTilingOptions;
 namespace mlir {
 namespace gml_st {
 
-constexpr llvm::StringRef kPeeledMarker = "__internal_peeled_marker__";
-constexpr llvm::StringRef kVectorizedMarker = "__internal_vectorized_marker__";
 
 bool isZero(Value v);
 bool isOne(Value v);

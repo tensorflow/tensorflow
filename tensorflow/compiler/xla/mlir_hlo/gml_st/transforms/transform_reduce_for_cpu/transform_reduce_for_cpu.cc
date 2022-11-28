@@ -37,8 +37,8 @@ namespace {
 #define GEN_PASS_DEF_TRANSFORMREDUCEFORCPUPASS
 #include "gml_st/transforms/passes.h.inc"
 
-static constexpr llvm::StringRef kTransformedMarker =
-    "__tile_reduce_applied_marker__";
+static constexpr llvm::StringRef kReduceTransformedLabel =
+    "__reduce_transformed_label__";
 
 FailureOr<TilingResult> tileReduce(PatternRewriter &rewriter,
                                    linalg::ReduceOp reduceOp,
@@ -92,7 +92,7 @@ struct ReduceTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
 
   LogicalResult matchAndRewrite(linalg::ReduceOp reduceOp,
                                 PatternRewriter &rewriter) const override {
-    if (hasLabel(reduceOp, kTransformedMarker))
+    if (hasLabel(reduceOp, kReduceTransformedLabel))
       return rewriter.notifyMatchFailure(reduceOp,
                                          "has already been transformed.");
 
@@ -140,7 +140,7 @@ struct ReduceTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       reduceOp = cast<linalg::ReduceOp>(tilingReductionDimsResult->tiledOp);
     }
 
-    setLabel(reduceOp, kTransformedMarker);
+    setLabel(reduceOp, kReduceTransformedLabel);
 
     // Peel parallel loops.
     if (auto loop =
@@ -151,7 +151,7 @@ struct ReduceTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       for (auto *remParLoop : peelingResult) {
         remParLoop->walk([&](Operation *childOp) {
           if (isa<ForOp>(childOp)) {
-            setLabel(childOp, kPeeledMarker);
+            setLabel(childOp, kPeelingAppliedLabel);
           }
         });
       }
@@ -204,7 +204,7 @@ struct TransformReduceForCpuPass
 
     // Ensure we drop the marker in the end.
     f.walk([](linalg::ReduceOp reduceOp) {
-      removeLabel(reduceOp, kTransformedMarker);
+      removeLabel(reduceOp, kReduceTransformedLabel);
     });
   }
 };

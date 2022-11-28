@@ -54,8 +54,7 @@ namespace {
 #define GEN_PASS_DEF_TILINGPASS
 #include "gml_st/transforms/passes.h.inc"
 
-static constexpr llvm::StringRef kTransformedMarker =
-    "__tiling_applied_marker__";
+static constexpr llvm::StringRef kTileAppliedLabel = "__tile_applied_label__";
 
 // Compute tile size for the tile that starts at `offset`, has size `tileSize`
 // for the tensor with the dimension size `dimSize`.
@@ -199,7 +198,7 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
 
   LogicalResult matchAndRewrite(TilingInterface op,
                                 PatternRewriter &rewriter) const override {
-    if (!filterFn || failed(filterFn(op)) || hasLabel(op, kTransformedMarker))
+    if (!filterFn || failed(filterFn(op)) || hasLabel(op, kTileAppliedLabel))
       return failure();
 
     auto tilingResult = tile(options, rewriter, op);
@@ -210,7 +209,7 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
     if (tilingResult->loop != nullptr) {
       rewriter.replaceOp(op, tilingResult->loop->getResults());
     }
-    setLabel(tilingResult->tiledOp, kTransformedMarker);
+    setLabel(tilingResult->tiledOp, kTileAppliedLabel);
     return success();
   }
 
@@ -347,7 +346,7 @@ void populateTilingPatterns(
 }
 
 void removeTilingLabels(Operation *op) {
-  op->walk([](Operation *op) { removeLabel(op, kTransformedMarker); });
+  op->walk([](Operation *op) { removeLabel(op, kTileAppliedLabel); });
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(

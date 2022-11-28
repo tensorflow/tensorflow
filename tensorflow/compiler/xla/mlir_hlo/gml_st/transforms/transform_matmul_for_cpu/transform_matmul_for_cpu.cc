@@ -25,6 +25,7 @@ limitations under the License.
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
+#include "gml_st/transforms/vectorization/vectorization.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -38,8 +39,8 @@ namespace {
 #define GEN_PASS_DEF_TRANSFORMMATMULFORCPUPASS
 #include "gml_st/transforms/passes.h.inc"
 
-static constexpr llvm::StringRef kTransformedMarker =
-    "__matmul_for_cpu_transformed_marker__";
+static constexpr llvm::StringRef kMatmulTransformedLabel =
+    "__matmul_transformed_label__";
 
 // Helper to pick the tile shapes to use as the 2 inner dimensions of the
 // 4D shapes appearing in a Mmt4D.
@@ -390,7 +391,7 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
 
   LogicalResult matchAndRewrite(linalg::MatmulOp matmulOp,
                                 PatternRewriter &rewriter) const override {
-    if (hasLabel(matmulOp, kTransformedMarker))
+    if (hasLabel(matmulOp, kMatmulTransformedLabel))
       return rewriter.notifyMatchFailure(matmulOp,
                                          "has already been transformed.");
 
@@ -433,7 +434,7 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
       matmulOp = cast<linalg::MatmulOp>(tilingReductionDimsResult->tiledOp);
     }
 
-    setLabel(matmulOp, kTransformedMarker);
+    setLabel(matmulOp, kMatmulTransformedLabel);
 
     // Peel parallel loops.
     //
@@ -446,13 +447,13 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     if (auto loop =
             dyn_cast_or_null<ParallelOp>(tilingParallelDimsResult->loop)) {
       auto peelingResult = peelAllLoops(loop, rewriter);
-      setLabel(loop, kVectorizedMarker);
+      setLabel(loop, kVectorizationAppliedLabel);
       for (auto *remParLoop : peelingResult) {
-        setLabel(remParLoop, kVectorizedMarker);
+        setLabel(remParLoop, kVectorizationAppliedLabel);
         remParLoop->walk([&](Operation *childOp) {
           if (isa<ForOp>(childOp)) {
-            setLabel(childOp, kPeeledMarker);
-            setLabel(childOp, kVectorizedMarker);
+            setLabel(childOp, kPeelingAppliedLabel);
+            setLabel(childOp, kVectorizationAppliedLabel);
           }
         });
       }
@@ -462,7 +463,7 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     if (auto loop = dyn_cast_or_null<ForOp>(tilingReductionDimsResult->loop)) {
       auto peelingResult = peelAllLoops(loop, rewriter);
       for (auto *remParLoop : peelingResult) {
-        setLabel(remParLoop, kVectorizedMarker);
+        setLabel(remParLoop, kVectorizationAppliedLabel);
       }
     }
 
@@ -515,7 +516,7 @@ struct TransformMatmulForCpuPass
     // Ensure we drop the marker in the end.
     f.walk([](Operation *op) {
       if (isa<linalg::MatmulOp>(op) || isa<linalg::Mmt4DOp>(op))
-        removeLabel(op, kTransformedMarker);
+        removeLabel(op, kMatmulTransformedLabel);
     });
   }
 };

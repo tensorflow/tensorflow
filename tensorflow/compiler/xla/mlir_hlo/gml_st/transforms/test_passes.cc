@@ -113,7 +113,8 @@ class TestGmlStLoopPeelingPass
   }
 };
 
-static constexpr llvm::StringRef kTiledMarker = "__tiled_linalg__";
+static constexpr llvm::StringRef kTestTilingAppliedLabel =
+    "__test_tiling_applied_label__";
 
 struct LinalgTilingPattern
     : public OpInterfaceRewritePattern<linalg::LinalgOp> {
@@ -124,13 +125,13 @@ struct LinalgTilingPattern
 
   LogicalResult matchAndRewrite(linalg::LinalgOp op,
                                 PatternRewriter &rewriter) const override {
-    if (hasLabel(op, kTiledMarker)) return failure();
+    if (hasLabel(op, kTestTilingAppliedLabel)) return failure();
 
     FailureOr<linalg::TiledLinalgOp> res =
         gml_st::tileLinalgOp(rewriter, op, options);
     if (failed(res)) return failure();
 
-    setLabel(res->op, kTiledMarker);
+    setLabel(res->op, kTestTilingAppliedLabel);
 
     if (res->tensorResults.empty())
       rewriter.eraseOp(op);
@@ -168,7 +169,8 @@ struct TestGmlStLoopTilingPass
     patterns.add<LinalgTilingPattern>(ctx, options);
     (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
 
-    funcOp.walk([](linalg::LinalgOp op) { removeLabel(op, kTiledMarker); });
+    funcOp.walk(
+        [](linalg::LinalgOp op) { removeLabel(op, kTestTilingAppliedLabel); });
   }
 };
 
@@ -196,12 +198,15 @@ struct TestGmlStBufferizationPass
   }
 };
 
+static constexpr llvm::StringRef kTestFusionAppliedLabel =
+    "__test_fusion_applied_label__";
+
 struct GreedyFusionPattern : public OpRewritePattern<gml_st::ParallelOp> {
   using OpRewritePattern<gml_st::ParallelOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(gml_st::ParallelOp op,
                                 PatternRewriter &rewriter) const override {
-    if (hasLabel(op, kTiledMarker)) return failure();
+    if (hasLabel(op, kTestFusionAppliedLabel)) return failure();
 
     rewriter.updateRootInPlace(op, [&]() {
       fuseGreedily(rewriter, op.getRegion().front(), [](Operation *op) {
@@ -209,7 +214,7 @@ struct GreedyFusionPattern : public OpRewritePattern<gml_st::ParallelOp> {
       });
     });
 
-    setLabel(op, kTiledMarker);
+    setLabel(op, kTestFusionAppliedLabel);
     return success();
   }
 };
@@ -233,7 +238,9 @@ struct TestGmlStGreedyFusionPass
     if (failed(applyPatternsAndFoldGreedily(funcOp, std::move(patterns))))
       return signalPassFailure();
 
-    funcOp.walk([](gml_st::ParallelOp op) { removeLabel(op, kTiledMarker); });
+    funcOp.walk([](gml_st::ParallelOp op) {
+      removeLabel(op, kTestFusionAppliedLabel);
+    });
   }
 };
 
