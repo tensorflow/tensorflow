@@ -203,8 +203,9 @@ Status ExecuteThunks(const std::string& module_name,
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tsl::profiler::TraceMeLevel::kInfo);
-
-  ScopedAnnotation annotation(absl::StrCat(module_name, ",program_id=", module_id));
+  ScopedAnnotation annotation(
+      [&] { return absl::StrFormat("Thunk:#hlo_module=%s,program_id=%d#",
+                                   module_name, module_id);});
 
   for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
     // Annotate execution of this op if tracing was enabled when we started

@@ -5417,26 +5417,10 @@ void IrEmitterUnnested::GetDependentDialects(mlir::DialectRegistry& registry) {
 
 Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(mlir::Operation* op) {
   auto module = op->getParentOfType<mlir::ModuleOp>();
-  // Include the HloModule's unique_id in the thunk's module name so that xprof
-  // shows different modules differently, addressing b/202415436#comment24.
-  // xprof calls this the "program_id".
-  std::string unique_id_str;
-  if (auto unique_id_attr =
-          module->getAttrOfType<mlir::IntegerAttr>("mhlo.unique_id")) {
-    unique_id_str = absl::StrFormat(",program_id=%d",
-                                    unique_id_attr.getValue().getZExtValue());
-  }
   Thunk::ThunkInfo thunk_info(op);
-  if (tsl::profiler::nvtx::RangesEnabled()) {
-    thunk_info.profile_annotation = absl::StrFormat(
-        "hlo_op=%s",
-        mlir::mhlo::GetDebugNameFromLocation(op->getLoc()));
-  } else {
-    thunk_info.profile_annotation = absl::StrFormat(
-        "Thunk:#hlo_op=%s,hlo_module=%s%s#",
-        mlir::mhlo::GetDebugNameFromLocation(op->getLoc()),
-        mlir::mhlo::GetDebugNameFromLocation(module->getLoc()), unique_id_str);
-  }
+  thunk_info.profile_annotation = absl::StrFormat(
+      "Thunk:#hlo_op=%s#",
+      mlir::mhlo::GetDebugNameFromLocation(op->getLoc()));
   return thunk_info;
 }
 
