@@ -6965,11 +6965,46 @@ tf_cc_binary(
 # )
 #
 # xla_test(
-#     name = "xla_aot_compile_test",
-#     srcs = ["xla_aot_compile_test.cc"],
-#     backends = ["cpu"],
+#     name = "xla_aot_compile_cpu_test",
+#     srcs = ["xla_aot_compile_cpu_test.cc"],
+#     backends = [
+#         "cpu",
+#     ],
 #     data = [
 #         ":xla_aot_compile_test_cpu_executable",
+#     ],
+#     deps = [
+#         ":platform_util",
+#         "//tensorflow/compiler/xla:executable_run_options",
+#         "//tensorflow/compiler/xla:literal_util",
+#         "//tensorflow/compiler/xla/client:client_library",
+#         "//tensorflow/compiler/xla/client:local_client",
+#         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+#         "//tensorflow/tsl/lib/core:status_test_util",
+#         "//tensorflow/tsl/platform:env",
+#         "//tensorflow/tsl/platform:resource_loader",
+#         "//tensorflow/tsl/platform:statusor",
+#         "//tensorflow/tsl/platform:test",
+#         "@com_google_googletest//:gtest_main",
+#     ],
+# )
+#
+# xla_test(
+#     name = "xla_aot_compile_gpu_test",
+#     srcs = ["xla_aot_compile_gpu_test.cc"],
+#     backends = ["gpu"],
+#     data = [
+#         ":xla_aot_compile_test_gpu_executable",
+#     ],
+#     env = {
+#         "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
+#     },
+#     tags = [
+#         "gpu",
+#         "no_oss",
+#         "no_rocm",
+#         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
+#         "requires-gpu-nvidia",
 #     ],
 #     deps = [
 #         ":platform_util",
