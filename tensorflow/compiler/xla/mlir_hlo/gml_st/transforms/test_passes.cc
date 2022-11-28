@@ -113,6 +113,8 @@ class TestGmlStLoopPeelingPass
   }
 };
 
+static constexpr llvm::StringRef kTiledMarker = "__tiled_linalg__";
+
 struct LinalgTilingPattern
     : public OpInterfaceRewritePattern<linalg::LinalgOp> {
   LinalgTilingPattern(MLIRContext *context, linalg::LinalgTilingOptions options,
@@ -122,13 +124,13 @@ struct LinalgTilingPattern
 
   LogicalResult matchAndRewrite(linalg::LinalgOp op,
                                 PatternRewriter &rewriter) const override {
-    if (hasTransformationAttr(op)) return failure();
+    if (hasLabel(op, kTiledMarker)) return failure();
 
     FailureOr<linalg::TiledLinalgOp> res =
         gml_st::tileLinalgOp(rewriter, op, options);
     if (failed(res)) return failure();
 
-    setTransformationAttr(rewriter, res->op);
+    setLabel(res->op, kTiledMarker);
 
     if (res->tensorResults.empty())
       rewriter.eraseOp(op);
@@ -166,7 +168,7 @@ struct TestGmlStLoopTilingPass
     patterns.add<LinalgTilingPattern>(ctx, options);
     (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
 
-    funcOp.walk([](linalg::LinalgOp op) { removeTransformationAttr(op); });
+    funcOp.walk([](linalg::LinalgOp op) { removeLabel(op, kTiledMarker); });
   }
 };
 
@@ -199,7 +201,7 @@ struct GreedyFusionPattern : public OpRewritePattern<gml_st::ParallelOp> {
 
   LogicalResult matchAndRewrite(gml_st::ParallelOp op,
                                 PatternRewriter &rewriter) const override {
-    if (hasTransformationAttr(op)) return failure();
+    if (hasLabel(op, kTiledMarker)) return failure();
 
     rewriter.updateRootInPlace(op, [&]() {
       fuseGreedily(rewriter, op.getRegion().front(), [](Operation *op) {
@@ -207,7 +209,7 @@ struct GreedyFusionPattern : public OpRewritePattern<gml_st::ParallelOp> {
       });
     });
 
-    setTransformationAttr(rewriter, op);
+    setLabel(op, kTiledMarker);
     return success();
   }
 };
@@ -231,7 +233,7 @@ struct TestGmlStGreedyFusionPass
     if (failed(applyPatternsAndFoldGreedily(funcOp, std::move(patterns))))
       return signalPassFailure();
 
-    funcOp.walk([](gml_st::ParallelOp op) { removeTransformationAttr(op); });
+    funcOp.walk([](gml_st::ParallelOp op) { removeLabel(op, kTiledMarker); });
   }
 };
 

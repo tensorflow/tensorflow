@@ -88,12 +88,12 @@ func.func @reduce_mulf(%input: tensor<?x?xf32>,
 //       MARKED:       %[[C0:.*]] = arith.constant 0 : index
 //       MARKED:       gml_st.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[IUB:.*]]) step
 //       MARKED:         gml_st.for (%[[J:.*]]) = (%[[C0]]) to (%[[JUB:.*]]) step
-//       MARKED:         } {__internal_peeled_marker__ = true}
+//       MARKED:         } {__internal_peeled_marker__}
 //       MARKED:         gml_st.for (%[[J:.*]]) = (%[[JUB]])
-//       MARKED:         } {__internal_peeled_marker__ = true}
-//       MARKED:       } {__internal_peeled_marker__ = true}
+//       MARKED:         } {__internal_peeled_marker__}
+//       MARKED:       } {__internal_peeled_marker__}
 
 //       MARKED:       gml_st.parallel (%[[I:.*]]) = (%[[IUB]])
 //       MARKED:         gml_st.for (%[[J:.*]]) = (%[[C0]])
-//       MARKED:         } {__internal_peeled_marker__ = true}
-//       MARKED:       } {__internal_peeled_marker__ = true}
+//       MARKED:         } {__internal_peeled_marker__}
+//       MARKED:       } {__internal_peeled_marker__}

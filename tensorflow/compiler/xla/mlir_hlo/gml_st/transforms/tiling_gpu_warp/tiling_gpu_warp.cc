@@ -39,6 +39,9 @@ namespace gml_st {
 
 namespace {
 
+static constexpr llvm::StringRef kTransformedMarker =
+    "__tile_gpu_warp_applied_marker__";
+
 constexpr const char* kWarpDistributionLabel = "warp";
 constexpr const char* kThreadDistributionLabel = "thread";
 
@@ -65,7 +68,7 @@ struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
 
   LogicalResult matchAndRewrite(linalg::GenericOp genericOp,
                                 PatternRewriter& rewriter) const override {
-    if (hasTransformationAttr(genericOp)) {
+    if (hasLabel(genericOp, kTransformedMarker)) {
       return rewriter.notifyMatchFailure(genericOp, "already transformed");
     }
 
@@ -186,7 +189,7 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
 
   LogicalResult matchAndRewrite(linalg::GenericOp genericOp,
                                 PatternRewriter& rewriter) const override {
-    if (hasTransformationAttr(genericOp)) {
+    if (hasLabel(genericOp, kTransformedMarker)) {
       return rewriter.notifyMatchFailure(genericOp, "already transformed");
     }
 
@@ -296,7 +299,7 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
     // Change existing linalg.generic to warp-reduce the partial results.
     rewriter.updateRootInPlace(genericOp, [&] {
       genericOp->setOperand(0, warpResult);
-      gml_st::setTransformationAttr(rewriter, genericOp);
+      setLabel(genericOp, kTransformedMarker);
     });
 
     return success();
@@ -336,7 +339,7 @@ struct TilingGPUWarpPass
     }
 
     // Clean up by removing temporary attributes.
-    func.walk([](Operation* op) { removeTransformationAttr(op); });
+    func.walk([](Operation* op) { removeLabel(op, kTransformedMarker); });
   }
 };
 

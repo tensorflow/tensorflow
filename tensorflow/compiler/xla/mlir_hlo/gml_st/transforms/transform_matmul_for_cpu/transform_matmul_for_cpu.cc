@@ -38,6 +38,9 @@ namespace {
 #define GEN_PASS_DEF_TRANSFORMMATMULFORCPUPASS
 #include "gml_st/transforms/passes.h.inc"
 
+static constexpr llvm::StringRef kTransformedMarker =
+    "__matmul_for_cpu_transformed_marker__";
+
 // Helper to pick the tile shapes to use as the 2 inner dimensions of the
 // 4D shapes appearing in a Mmt4D.
 class Mmt4DTileParams {
@@ -387,7 +390,7 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
 
   LogicalResult matchAndRewrite(linalg::MatmulOp matmulOp,
                                 PatternRewriter &rewriter) const override {
-    if (hasTransformationAttr(matmulOp))
+    if (hasLabel(matmulOp, kTransformedMarker))
       return rewriter.notifyMatchFailure(matmulOp,
                                          "has already been transformed.");
 
@@ -430,7 +433,7 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
       matmulOp = cast<linalg::MatmulOp>(tilingReductionDimsResult->tiledOp);
     }
 
-    setTransformationAttr(rewriter, matmulOp);
+    setLabel(matmulOp, kTransformedMarker);
 
     // Peel parallel loops.
     //
@@ -443,13 +446,13 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     if (auto loop =
             dyn_cast_or_null<ParallelOp>(tilingParallelDimsResult->loop)) {
       auto peelingResult = peelAllLoops(loop, rewriter);
-      setTransformationAttr(rewriter, loop, kVectorizedMarker);
+      setLabel(loop, kVectorizedMarker);
       for (auto *remParLoop : peelingResult) {
-        setTransformationAttr(rewriter, remParLoop, kVectorizedMarker);
+        setLabel(remParLoop, kVectorizedMarker);
         remParLoop->walk([&](Operation *childOp) {
           if (isa<ForOp>(childOp)) {
-            setTransformationAttr(rewriter, childOp, kPeeledMarker);
-            setTransformationAttr(rewriter, childOp, kVectorizedMarker);
+            setLabel(childOp, kPeeledMarker);
+            setLabel(childOp, kVectorizedMarker);
           }
         });
       }
@@ -459,7 +462,7 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     if (auto loop = dyn_cast_or_null<ForOp>(tilingReductionDimsResult->loop)) {
       auto peelingResult = peelAllLoops(loop, rewriter);
       for (auto *remParLoop : peelingResult) {
-        setTransformationAttr(rewriter, remParLoop, kVectorizedMarker);
+        setLabel(remParLoop, kVectorizedMarker);
       }
     }
 
@@ -512,7 +515,7 @@ struct TransformMatmulForCpuPass
     // Ensure we drop the marker in the end.
     f.walk([](Operation *op) {
       if (isa<linalg::MatmulOp>(op) || isa<linalg::Mmt4DOp>(op))
-        gml_st::removeTransformationAttr(op);
+        removeLabel(op, kTransformedMarker);
     });
   }
 };

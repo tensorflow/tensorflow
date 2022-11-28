@@ -87,7 +87,7 @@ struct GreedyTilingAndFusionPass
       return signalPassFailure();
 
     // Clean up by removing temporary attributes.
-    f.walk([](Operation *op) { removeTransformationAttr(op); });
+    removeTilingLabels(f);
   }
 };
 

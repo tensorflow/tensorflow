@@ -682,8 +682,7 @@ struct VectorizeGmlStLoopsPass
       return sourceOp && isValidDistribution(sourceOp);
     };
     auto loopOpFilter = [&](Operation *op) {
-      return isValidDistribution(op) &&
-             !hasTransformationAttr(op, kVectorizedMarker);
+      return isValidDistribution(op) && !hasLabel(op, kVectorizedMarker);
     };
 
     {

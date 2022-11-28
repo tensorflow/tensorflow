@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "gml_st/transforms/transforms.h"
 
+#include <cstddef>
 #include <tuple>
 #include <utility>
 
@@ -217,19 +218,13 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOp(
   return tileLinalgOpImpl(b, op, tileSizeVector, options);
 }
 
-void setTransformationAttr(mlir::OpBuilder &b, Operation *op, StringRef name) {
-  op->setAttr(name, b.getBoolAttr(true));
+void setLabel(Operation *op, StringRef name) {
+  op->setAttr(name, UnitAttr::get(op->getContext()));
 }
 
-void removeTransformationAttr(Operation *op, StringRef name) {
-  op->removeAttr(name);
-}
+void removeLabel(Operation *op, StringRef name) { op->removeAttr(name); }
 
-bool hasTransformationAttr(Operation *op, StringRef name) {
-  auto marker = op->getAttr(name);
-  if (!marker) return false;
-  return marker && marker.cast<BoolAttr>().getValue();
-}
+bool hasLabel(Operation *op, StringRef name) { return op->hasAttr(name); }
 
 constexpr llvm::StringLiteral kOpLabel = "op_label";
 

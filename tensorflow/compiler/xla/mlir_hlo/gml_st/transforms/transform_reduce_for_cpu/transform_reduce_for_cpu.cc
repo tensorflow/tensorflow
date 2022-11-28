@@ -37,6 +37,9 @@ namespace {
 #define GEN_PASS_DEF_TRANSFORMREDUCEFORCPUPASS
 #include "gml_st/transforms/passes.h.inc"
 
+static constexpr llvm::StringRef kTransformedMarker =
+    "__tile_reduce_applied_marker__";
+
 FailureOr<TilingResult> tileReduce(PatternRewriter &rewriter,
                                    linalg::ReduceOp reduceOp,
                                    ArrayRef<int64_t> tileSizes,
@@ -89,7 +92,7 @@ struct ReduceTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
 
   LogicalResult matchAndRewrite(linalg::ReduceOp reduceOp,
                                 PatternRewriter &rewriter) const override {
-    if (hasTransformationAttr(reduceOp))
+    if (hasLabel(reduceOp, kTransformedMarker))
       return rewriter.notifyMatchFailure(reduceOp,
                                          "has already been transformed.");
 
@@ -137,7 +140,7 @@ struct ReduceTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       reduceOp = cast<linalg::ReduceOp>(tilingReductionDimsResult->tiledOp);
     }
 
-    setTransformationAttr(rewriter, reduceOp);
+    setLabel(reduceOp, kTransformedMarker);
 
     // Peel parallel loops.
     if (auto loop =
@@ -148,7 +151,7 @@ struct ReduceTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       for (auto *remParLoop : peelingResult) {
         remParLoop->walk([&](Operation *childOp) {
           if (isa<ForOp>(childOp)) {
-            setTransformationAttr(rewriter, childOp, kPeeledMarker);
+            setLabel(childOp, kPeeledMarker);
           }
         });
       }
@@ -201,7 +204,7 @@ struct TransformReduceForCpuPass
 
     // Ensure we drop the marker in the end.
     f.walk([](linalg::ReduceOp reduceOp) {
-      gml_st::removeTransformationAttr(reduceOp);
+      removeLabel(reduceOp, kTransformedMarker);
     });
   }
 };

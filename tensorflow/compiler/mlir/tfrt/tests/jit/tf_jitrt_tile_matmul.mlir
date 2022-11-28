@@ -103,17 +103,17 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // MARKED:         %[[C0:.*]] = arith.constant 0 : index
 // MARKED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]]) to (%[[IUB:.*]], %[[JUB:.*]]) step
 // MARKED:           gml_st.for (%[[K:.*]]) = (%[[C0]]) to (%[[KUB:.*]]) step
-// MARKED:           } {__internal_peeled_marker__ = true}
+// MARKED:           } {__internal_peeled_marker__}
 // MARKED:           gml_st.for (%[[K:.*]]) = (%[[KUB]])
-// MARKED:           } {__internal_peeled_marker__ = true, __internal_vectorized_marker__ = true
-// MARKED:         } {__internal_peeled_marker__ = true, __internal_vectorized_marker__ = true
+// MARKED:           } {__internal_peeled_marker__, __internal_vectorized_marker__
+// MARKED:         } {__internal_peeled_marker__, __internal_vectorized_marker__
 
 // MARKED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[JUB]])
 // MARKED:           gml_st.for (%[[K:.*]]) = (%[[C0]])
-// MARKED:           } {__internal_peeled_marker__ = true, __internal_vectorized_marker__ = true
-// MARKED:         } {__internal_peeled_marker__ = true, __internal_vectorized_marker__ = true
+// MARKED:           } {__internal_peeled_marker__, __internal_vectorized_marker__
+// MARKED:         } {__internal_peeled_marker__, __internal_vectorized_marker__
 
 // MARKED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[IUB]], %[[C0]])
 // MARKED:           gml_st.for (%[[K:.*]]) = (%[[C0]])
-// MARKED:           } {__internal_peeled_marker__ = true, __internal_vectorized_marker__ = true
-// MARKED:         } {__internal_peeled_marker__ = true, __internal_vectorized_marker__ = true
+// MARKED:           } {__internal_peeled_marker__, __internal_vectorized_marker__
+// MARKED:         } {__internal_peeled_marker__, __internal_vectorized_marker__
