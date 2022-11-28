@@ -66,7 +66,7 @@
     *   Added a new `rerandomize_each_iteration` argument for the
         `tf.data.Dataset.random()` operation, which controls whether the
         sequence of generated random numbers should be re-randomized every epoch
-        (the default behavior) or not. If `seed` is set and
+        or not (the default behavior). If `seed` is set and
         `rerandomize_each_iteration=True`, the `random()` operation will
         produce a different (deterministic) sequence of numbers every epoch.
 

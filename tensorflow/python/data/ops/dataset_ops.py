@@ -3209,7 +3209,7 @@ name=None))
       rerandomize_each_iteration: (Optional) If set to False, the dataset
       generates the same sequence of random numbers for each epoch. If set to
       True, it generates a different deterministic sequence of random numbers
-      for each epoch. It is defaulted to True if left unspecified.
+      for each epoch. It is defaulted to False if left unspecified.
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
