@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -186,6 +187,7 @@ Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
                            uint64_t start_nanos, se::Stream* stream_to_sync);
 
 Status ExecuteThunks(const std::string& module_name,
+                     ModuleIdentifier module_id,
                      const ThunkSequence& thunk_sequence,
                      const ServiceExecutableRunOptions* run_options,
                      const BufferAllocations& buffer_allocations,
@@ -202,7 +204,7 @@ Status ExecuteThunks(const std::string& module_name,
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tsl::profiler::TraceMeLevel::kInfo);
 
-  ScopedAnnotation annotation(module_name);
+  ScopedAnnotation annotation(absl::StrCat(module_name, ",program_id=", module_id));
 
   for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
     // Annotate execution of this op if tracing was enabled when we started
@@ -636,7 +638,8 @@ Status GpuExecutable::ExecuteThunksOrXlaRuntime(
     for (const std::unique_ptr<Thunk>& thunk : *thunks_) {
       TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
     }
-    return ExecuteThunks(module_name_, *thunks_, run_options,
+    return ExecuteThunks(module_name_, module().unique_id(),
+                         *thunks_, run_options,
                          buffer_allocations, block_host_until_done);
   }
 
