@@ -635,122 +635,6 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-template <typename LoopLikeOp>
-struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
-  explicit CollapseSingleIterationLoops(
-      MLIRContext *context,
-      llvm::function_ref<bool(LoopLikeOp)> filterFn = nullptr,
-      PatternBenefit benefit = 1)
-      : OpRewritePattern<LoopLikeOp>(context, benefit), filterFn(filterFn) {}
-
-  LogicalResult matchAndRewrite(LoopLikeOp op,
-                                PatternRewriter &rewriter) const override {
-    if (filterFn && !filterFn(op))
-      return rewriter.notifyMatchFailure(op, "did not match filter");
-
-    BlockAndValueMapping mapping;
-    // Compute new loop bounds that omit all single-iteration loop dimensions.
-    SmallVector<Value> newLowerBounds, newUpperBounds, newSteps;
-    newLowerBounds.reserve(op.getLowerBound().size());
-    newUpperBounds.reserve(op.getUpperBound().size());
-    newSteps.reserve(op.getStep().size());
-    auto getConstant = [](Value v) -> Optional<int64_t> {
-      auto constant =
-          dyn_cast_or_null<arith::ConstantIndexOp>(v.getDefiningOp());
-      if (constant) return constant.value();
-      return None;
-    };
-    for (auto [lowerBound, upperBound, step, iv] :
-         llvm::zip(op.getLowerBound(), op.getUpperBound(), op.getStep(),
-                   op.getInductionVars())) {
-      // Collect the statically known loop bounds.
-      auto lowerBoundConstant = getConstant(lowerBound);
-      auto upperBoundConstant = getConstant(upperBound);
-      auto stepConstant = getConstant(step);
-      // Replace the loop induction variable by the lower bound if the loop
-      // performs a single iteration. Otherwise, copy the loop bounds.
-      if (lowerBoundConstant && upperBoundConstant && stepConstant &&
-          (*upperBoundConstant - *lowerBoundConstant) > 0 &&
-          (*upperBoundConstant - *lowerBoundConstant) <= *stepConstant) {
-        mapping.map(iv, lowerBound);
-      } else {
-        newLowerBounds.push_back(lowerBound);
-        newUpperBounds.push_back(upperBound);
-        newSteps.push_back(step);
-      }
-    }
-    // Exit if none of the loop dimensions perform a single iteration.
-    if (newLowerBounds.size() == op.getLowerBound().size()) return failure();
-
-    // All of the loop dimensions perform a single iteration. Inline loop body.
-    if (newLowerBounds.empty()) {
-      if constexpr (std::is_same_v<LoopLikeOp, ForOp>) {
-        mapping.map(op.getRegionOutputArgs(), op.getOutputs());
-      }
-      for (auto &bodyOp : op.getBody()->without_terminator()) {
-        rewriter.clone(bodyOp, mapping);
-      }
-      SmallVector<Value> results;
-      results.reserve(op.getResults().size());
-      SetYieldOp terminator = op.getTerminator();
-      for (const auto &[dst, src, set] :
-           llvm::zip(terminator.getDsts(), terminator.getSrcs(),
-                     terminator.getSets())) {
-        auto tileOp = set.template getDefiningOp<TileOp>();
-
-        if (!tileOp) {
-          return op.emitOpError(
-              "expected the SetYieldOp terminator of gml_st loop to have a "
-              "TileOp set");
-        }
-        auto getMappedValues = [&](ValueRange values) {
-          return llvm::to_vector(llvm::map_range(values, [&](Value value) {
-            return mapping.lookupOrDefault(value);
-          }));
-        };
-        results.push_back(rewriter.create<tensor::InsertSliceOp>(
-            op.getLoc(), dst.getType(), mapping.lookupOrDefault(src),
-            mapping.lookupOrDefault(dst), getMappedValues(tileOp.getOffsets()),
-            getMappedValues(tileOp.getSizes()),
-            getMappedValues(tileOp.getStrides()), tileOp.getStaticOffsets(),
-            tileOp.getStaticSizes(), tileOp.getStaticStrides()));
-      }
-      rewriter.replaceOp(op, results);
-      return success();
-    }
-
-    // Replace the loop by a lower-dimensional loop.
-    LoopLikeOp newOp;
-    if constexpr (std::is_same_v<LoopLikeOp, ParallelOp>) {
-      newOp =
-          rewriter.create<ParallelOp>(op.getLoc(), op.getResultTypes(),
-                                      newLowerBounds, newUpperBounds, newSteps);
-    } else {
-      newOp = rewriter.create<ForOp>(op.getLoc(), op.getResultTypes(),
-                                     newLowerBounds, newUpperBounds, newSteps,
-                                     op.getOutputs(), nullptr);
-    }
-    // The new loop needs to keep all attributes from the old one, except for
-    // "operand_segment_sizes" which captures the outdated information of the
-    // old iteration domain.
-    for (const auto &namedAttr : op->getAttrs()) {
-      if (namedAttr.getName() == LoopLikeOp::getOperandSegmentSizeAttr())
-        continue;
-      newOp->setAttr(namedAttr.getName(), namedAttr.getValue());
-    }
-
-    // Clone the loop body and remap the block arguments of the collapsed loops
-    // (inlining does not support a cancellable block argument mapping).
-    rewriter.cloneRegionBefore(op.getRegion(), newOp.getRegion(),
-                               newOp.getRegion().begin(), mapping);
-    rewriter.replaceOp(op, newOp.getResults());
-    return success();
-  }
-
- private:
-  llvm::function_ref<bool(LoopLikeOp)> filterFn;
-};
-
 //===----------------------------------------------------------------------===//
 // ParallelOp
 //===----------------------------------------------------------------------===//
@@ -822,13 +706,6 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
 
 ValueRange ParallelOp::getLoopLikeOpInits() {
   return getTerminator().getDsts();
-}
-
-void ParallelOp::getCanonicalizationPatterns(RewritePatternSet &results,
-                                             MLIRContext *context) {
-  results.add<CollapseSingleIterationLoops<ParallelOp>>(
-      context,
-      [&](ParallelOp op) { return !op.getDistributionType().has_value(); });
 }
 
 //===----------------------------------------------------------------------===//
@@ -940,6 +817,94 @@ ParseResult ForOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 namespace {
+// Collapse loop dimensions that perform a single iteration.
+// This is a partial copy of the corresponding pattern from SCF.
+struct CollapseSingleIterationLoops : public OpRewritePattern<ForOp> {
+  using OpRewritePattern<ForOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ForOp op,
+                                PatternRewriter &rewriter) const override {
+    BlockAndValueMapping mapping;
+    // Compute new loop bounds that omit all single-iteration loop dimensions.
+    SmallVector<Value> newLowerBounds, newUpperBounds, newSteps;
+    newLowerBounds.reserve(op.getLowerBound().size());
+    newUpperBounds.reserve(op.getUpperBound().size());
+    newSteps.reserve(op.getStep().size());
+    auto getConstant = [](Value v) -> Optional<int64_t> {
+      auto constant =
+          dyn_cast_or_null<arith::ConstantIndexOp>(v.getDefiningOp());
+      if (constant) return constant.value();
+      return None;
+    };
+    for (auto [lowerBound, upperBound, step, iv] :
+         llvm::zip(op.getLowerBound(), op.getUpperBound(), op.getStep(),
+                   op.getInductionVars())) {
+      // Collect the statically known loop bounds.
+      auto lowerBoundConstant = getConstant(lowerBound);
+      auto upperBoundConstant = getConstant(upperBound);
+      auto stepConstant = getConstant(step);
+      // Replace the loop induction variable by the lower bound if the loop
+      // performs a single iteration. Otherwise, copy the loop bounds.
+      if (lowerBoundConstant && upperBoundConstant && stepConstant &&
+          (*upperBoundConstant - *lowerBoundConstant) > 0 &&
+          (*upperBoundConstant - *lowerBoundConstant) <= *stepConstant) {
+        mapping.map(iv, lowerBound);
+      } else {
+        newLowerBounds.push_back(lowerBound);
+        newUpperBounds.push_back(upperBound);
+        newSteps.push_back(step);
+      }
+    }
+    // Exit if none of the loop dimensions perform a single iteration.
+    if (newLowerBounds.size() == op.getLowerBound().size()) return failure();
+
+    // All of the loop dimensions perform a single iteration. Inline loop body.
+    if (newLowerBounds.empty()) {
+      mapping.map(op.getRegionOutputArgs(), op.getOutputs());
+      for (auto &bodyOp : op.getBody()->without_terminator()) {
+        rewriter.clone(bodyOp, mapping);
+      }
+      SmallVector<Value> results;
+      results.reserve(op.getResults().size());
+      SetYieldOp terminator = op.getTerminator();
+      for (const auto &[dst, src, set] : llvm::zip(
+               op.getOutputs(), terminator.getSrcs(), terminator.getSets())) {
+        auto tileOp = set.getDefiningOp<TileOp>();
+
+        if (!tileOp) {
+          return op.emitOpError(
+              "expected the SetYieldOp terminator of ForOp loop to have a "
+              "TileOp set");
+        }
+        auto getMappedValues = [&](ValueRange values) {
+          return llvm::to_vector(llvm::map_range(values, [&](Value value) {
+            return mapping.lookupOrDefault(value);
+          }));
+        };
+        results.push_back(rewriter.create<tensor::InsertSliceOp>(
+            op.getLoc(), dst.getType(), mapping.lookupOrDefault(src), dst,
+            getMappedValues(tileOp.getOffsets()),
+            getMappedValues(tileOp.getSizes()),
+            getMappedValues(tileOp.getStrides()), tileOp.getStaticOffsets(),
+            tileOp.getStaticSizes(), tileOp.getStaticStrides()));
+      }
+      rewriter.replaceOp(op, results);
+      return success();
+    }
+
+    // Replace the parallel loop by lower-dimensional parallel loop.
+    auto newOp = rewriter.create<ForOp>(op.getLoc(), op.getResultTypes(),
+                                        newLowerBounds, newUpperBounds,
+                                        newSteps, op.getOutputs(), nullptr);
+    // Clone the loop body and remap the block arguments of the collapsed loops
+    // (inlining does not support a cancellable block argument mapping).
+    rewriter.cloneRegionBefore(op.getRegion(), newOp.getRegion(),
+                               newOp.getRegion().begin(), mapping);
+    rewriter.replaceOp(op, newOp.getResults());
+    return success();
+  }
+};
+
 /// Folds CastOp of loop outputs into ForOp
 struct RefineForOpShape : public OpRewritePattern<ForOp> {
   using OpRewritePattern<ForOp>::OpRewritePattern;
@@ -1009,7 +974,7 @@ struct RefineForOpShape : public OpRewritePattern<ForOp> {
 
 void ForOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                         MLIRContext *context) {
-  results.add<CollapseSingleIterationLoops<ForOp>, RefineForOpShape>(context);
+  results.add<CollapseSingleIterationLoops, RefineForOpShape>(context);
 }
 
 namespace {
