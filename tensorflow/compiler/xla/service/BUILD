@@ -10,7 +10,7 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow/tsl:tsl.bzl", "if_libtpu")
-load("//tensorflow:tensorflow.default.bzl", "internal_cuda_deps", "internal_hlo_deps")
+load("//tensorflow:tensorflow.default.bzl", "internal_hlo_deps")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
@@ -1217,7 +1217,7 @@ cc_library(
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler",
         "//tensorflow/compiler/xla/stream_executor/rocm:stream_executor_rocm",
-    ]) + internal_cuda_deps(),
+    ]),
 )
 
 cc_library(

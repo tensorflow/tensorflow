@@ -13,7 +13,6 @@ load(
     _if_indexing_source_code = "if_indexing_source_code",
     _if_not_mobile_or_arm_or_lgpl_restricted = "if_not_mobile_or_arm_or_lgpl_restricted",
     _if_portable = "if_portable",
-    _internal_cuda_deps = "internal_cuda_deps",
     _internal_hlo_deps = "internal_hlo_deps",
     _internal_tfrt_deps = "internal_tfrt_deps",
     _pybind_extension = "pybind_extension",
@@ -91,6 +90,5 @@ filegroup = _filegroup
 genrule = _genrule
 internal_hlo_deps = _internal_hlo_deps
 internal_tfrt_deps = _internal_tfrt_deps
-internal_cuda_deps = _internal_cuda_deps
 tf_disable_ptxas_warning_flags = _tf_disable_ptxas_warning_flags
 replace_with_portable_tf_lib_when_required = _replace_with_portable_tf_lib_when_required

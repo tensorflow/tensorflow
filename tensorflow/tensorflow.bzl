@@ -3254,9 +3254,6 @@ def internal_hlo_deps():
 def internal_tfrt_deps():
     return []
 
-def internal_cuda_deps():
-    return []
-
 def _tf_gen_options_header_impl(ctx):
     header_depset = depset([ctx.outputs.output_header])
 
