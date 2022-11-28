@@ -360,6 +360,48 @@ constexpr inline bool isinf(const float8_e5m2& a) {
 using float8_e4m3 = float8_internal::float8_e4m3;
 using float8_e5m2 = float8_internal::float8_e5m2;
 
+#define DECLARE_CONVERT(Derived, Other)                                    \
+  extern template EIGEN_DEVICE_FUNC Derived                                \
+  float8_internal::float8_base<Derived>::ConvertFrom<false, false, Other>( \
+      const Other&);                                                       \
+  extern template EIGEN_DEVICE_FUNC Derived                                \
+  float8_internal::float8_base<Derived>::ConvertFrom<false, true, Other>(  \
+      const Other&);                                                       \
+  extern template EIGEN_DEVICE_FUNC Derived                                \
+  float8_internal::float8_base<Derived>::ConvertFrom<true, false, Other>(  \
+      const Other&);                                                       \
+  extern template EIGEN_DEVICE_FUNC Derived                                \
+  float8_internal::float8_base<Derived>::ConvertFrom<true, true, Other>(   \
+      const Other&);                                                       \
+  extern template EIGEN_DEVICE_FUNC Other                                  \
+  float8_internal::float8_base<Derived>::ConvertTo<Other, false, false>(   \
+      const Derived&);                                                     \
+  extern template EIGEN_DEVICE_FUNC Other                                  \
+  float8_internal::float8_base<Derived>::ConvertTo<Other, false, true>(    \
+      const Derived&);                                                     \
+  extern template EIGEN_DEVICE_FUNC Other                                  \
+  float8_internal::float8_base<Derived>::ConvertTo<Other, true, false>(    \
+      const Derived&);                                                     \
+  extern template EIGEN_DEVICE_FUNC Other                                  \
+  float8_internal::float8_base<Derived>::ConvertTo<Other, true, true>(     \
+      const Derived&)
+
+DECLARE_CONVERT(float8_e4m3, double);
+DECLARE_CONVERT(float8_e4m3, float);
+DECLARE_CONVERT(float8_e4m3, Eigen::bfloat16);
+DECLARE_CONVERT(float8_e4m3, Eigen::half);
+DECLARE_CONVERT(float8_e4m3, float8_e5m2);
+DECLARE_CONVERT(float8_e4m3, float8_e4m3);
+
+DECLARE_CONVERT(float8_e5m2, double);
+DECLARE_CONVERT(float8_e5m2, float);
+DECLARE_CONVERT(float8_e5m2, Eigen::bfloat16);
+DECLARE_CONVERT(float8_e5m2, Eigen::half);
+DECLARE_CONVERT(float8_e5m2, float8_e5m2);
+DECLARE_CONVERT(float8_e5m2, float8_e4m3);
+
+#undef DECLARE_CONVERT
+
 }  // namespace tsl
 
 // Standard-library overrides.  Note that these are picked up by Eigen as well.
