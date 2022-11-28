@@ -32,6 +32,7 @@ cc_test(
     deps = [
         ":sparsity_format_converter",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -15,6 +15,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
         "//tensorflow/lite/kernels:builtin_ops",

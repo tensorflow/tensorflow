@@ -354,6 +354,7 @@ cc_test(
         "//tensorflow/lite:interpreter_test_util",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/c:common",
