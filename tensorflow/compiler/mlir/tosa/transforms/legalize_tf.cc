@@ -646,6 +646,7 @@ LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
 LogicalResult ConvertTFConcatV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_concatv2_op = cast<TF::ConcatV2Op>(op);
+  auto result_type = tf_concatv2_op.getResult().getType().cast<ShapedType>();
   SmallVector<Value> values(tf_concatv2_op.getValues());
 
   ElementsAttr axis_elems;
@@ -655,7 +656,7 @@ LogicalResult ConvertTFConcatV2Op::matchAndRewrite(
   int32_t axis = axis_elems.getValues<IntegerAttr>()[0].getInt();
 
   llvm::Optional<Value> result =
-      convertConcatV2Op(rewriter, op, tf_concatv2_op.getResult(), values, axis);
+      convertConcatV2Op(rewriter, op, result_type, values, axis);
 
   if (!result) return failure();
 
