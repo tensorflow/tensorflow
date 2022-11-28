@@ -54,7 +54,6 @@ limitations under the License.
 #include "llvm/Transforms/IPO/Internalize.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Scalar.h"
-#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/dump_ir_pass.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_command_line_options.h"
@@ -198,22 +197,14 @@ void EmitBitcodeToFile(const llvm::Module& module, absl::string_view filename) {
 std::string EmitModuleToPTX(llvm::Module* module,
                             llvm::TargetMachine* target_machine) {
   std::string ptx;
-  {
-    llvm::raw_string_ostream stream(ptx);
-    llvm::buffer_ostream pstream(stream);
-    // The extension is stripped by IrDumpingPassManager, so we need to
-    // get creative to add a suffix.
-    IrDumpingPassManager codegen_passes(
-        MakeNameForTempProduct(module->getModuleIdentifier(), "-nvptx.dummy"),
-        "", false);
-    codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
-        llvm::Triple(module->getTargetTriple())));
-
-    target_machine->addPassesToEmitFile(codegen_passes, pstream, nullptr,
-                                        llvm::CGFT_AssemblyFile);
-    codegen_passes.run(*module);
-  }
-
+  llvm::raw_string_ostream stream(ptx);
+  llvm::buffer_ostream pstream(stream);
+  llvm::legacy::PassManager pm;
+  pm.add(new llvm::TargetLibraryInfoWrapperPass(
+      llvm::Triple(module->getTargetTriple())));
+  target_machine->addPassesToEmitFile(pm, pstream, nullptr,
+                                      llvm::CGFT_AssemblyFile);
+  pm.run(*module);
   return ptx;
 }
 
@@ -336,6 +327,61 @@ std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
 using TargetModuleLinker = std::function<Status(
     llvm::Module*, GpuVersion, const HloModuleConfig&, const std::string&)>;
 
+void DumpModule(const std::string output_filename, const llvm::Module* module) {
+  std::error_code ec;
+  auto out = std::make_unique<llvm::raw_fd_ostream>(
+      llvm::StringRef(output_filename), ec, llvm::sys::fs::OF_None);
+  if (ec) {
+    LOG(FATAL) << "Unable to open " << output_filename
+               << " to dump LLVM IR: " << ec.message();
+    return;
+  }
+  module->print(*out, /*AAW=*/nullptr);
+  out->close();
+}
+
+const llvm::Module* GetModule(llvm::Any IR) {
+  if (llvm::any_isa<const llvm::Module*>(IR))
+    return llvm::any_cast<const llvm::Module*>(IR);
+
+  if (llvm::any_isa<const llvm::Function*>(IR)) {
+    const llvm::Function* F = llvm::any_cast<const llvm::Function*>(IR);
+    return F->getParent();
+  }
+
+  if (llvm::any_isa<const llvm::LazyCallGraph::SCC*>(IR)) {
+    const llvm::LazyCallGraph::SCC* C =
+        llvm::any_cast<const llvm::LazyCallGraph::SCC*>(IR);
+    return C->begin()->getFunction().getParent();
+  }
+
+  if (llvm::any_isa<const llvm::Loop*>(IR)) {
+    const llvm::Loop* L = llvm::any_cast<const llvm::Loop*>(IR);
+    const llvm::Function* F = L->getHeader()->getParent();
+    return F->getParent();
+  }
+
+  return nullptr;
+}
+
+auto DumpCallbackForModule(std::string module_identifier) {
+  int i = 0;
+  return [module_identifier, i](llvm::StringRef pass, llvm::Any ir) mutable {
+    const llvm::Module* module = GetModule(ir);
+    if (!module) {
+      return;
+    }
+
+    const std::string basename = ReplaceFilenameExtension(
+        absl::string_view(tsl::io::Basename(module_identifier)),
+        absl::StrFormat("pass-%02d.before.%s.ll", i++,
+                        absl::string_view(pass.str())));
+    std::string outputs_dir;
+    tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir);
+    DumpModule(tsl::io::JoinPath(outputs_dir, basename), module);
+  };
+}
+
 Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
                              const HloModuleConfig& hlo_module_config,
                              const std::string& device_bitcode_dir_path,
@@ -368,6 +414,11 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
   pb.registerFunctionAnalyses(fam);
   pb.registerLoopAnalyses(lam);
   pb.crossRegisterProxies(lam, fam, cgam, mam);
+
+  if (hlo_module_config.debug_options().xla_gpu_dump_llvmir()) {
+    pic.registerBeforeNonSkippedPassCallback(
+        DumpCallbackForModule(module->getModuleIdentifier()));
+  }
 
   int32_t opt_level =
       hlo_module_config.debug_options().xla_backend_optimization_level();
@@ -662,23 +713,17 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   ir_fs->flush();
 
   // Emit GCN ISA binary.
-  // The extension is stripped by IrDumpingPassManager, so we need to
-  // get creative to add a suffix.
-  std::string module_id = module->getModuleIdentifier();
-  IrDumpingPassManager codegen_passes(
-      ReplaceFilenameExtension(tsl::io::Basename(module_id),
-                               random_number + "-amdgpu.dummy"),
-      "", false);
-  codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
+  llvm::legacy::PassManager pm;
+  pm.add(new llvm::TargetLibraryInfoWrapperPass(
       llvm::Triple(module->getTargetTriple())));
   llvm::SmallVector<char, 0> stream;
   llvm::raw_svector_ostream pstream(stream);
   std::unique_ptr<llvm::raw_fd_ostream> isabin_fs(
       new llvm::raw_fd_ostream(isabin_path, ec, llvm::sys::fs::OF_Text));
   module->setDataLayout(target_machine->createDataLayout());
-  target_machine->addPassesToEmitFile(codegen_passes, *isabin_fs, nullptr,
+  target_machine->addPassesToEmitFile(pm, *isabin_fs, nullptr,
                                       llvm::CGFT_ObjectFile);
-  codegen_passes.run(*module);
+  pm.run(*module);
   isabin_fs->flush();
 
   if (keep_tempfiles) {
