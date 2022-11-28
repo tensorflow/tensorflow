@@ -53,9 +53,21 @@ __device__ __host__ EIGEN_STRONG_INLINE float strict_cast<float, Eigen::half>(
 }
 
 template <>
+__device__ __host__ EIGEN_STRONG_INLINE float strict_cast<float, Eigen::bfloat16>(
+    Eigen::bfloat16 t) {
+  return functor::HalfToFloat<Eigen::bfloat16>()(t);
+}
+
+template <>
 __device__ __host__ EIGEN_STRONG_INLINE Eigen::half
 strict_cast<Eigen::half, float>(float t) {
   return functor::FloatToHalf<Eigen::half>()(t);
+}
+
+template <>
+__device__ __host__ EIGEN_STRONG_INLINE Eigen::bfloat16
+strict_cast<Eigen::bfloat16, float>(float t) {
+  return functor::FloatToHalf<Eigen::bfloat16>()(t);
 }
 
 template <typename T>
@@ -65,6 +77,11 @@ struct softmax_traits {
 
 template <>
 struct softmax_traits<Eigen::half> {
+  using accumulator_type = float;
+};
+
+template <>
+struct softmax_traits<Eigen::bfloat16> {
   using accumulator_type = float;
 };
 
@@ -286,6 +303,7 @@ class SoftmaxOpGPU : public OpKernel {
       Name("Softmax").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       SoftmaxOpGPU<T>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_bfloat16(REGISTER_GPU);
 
 #undef REGISTER_GPU
 #define REGISTER_GPU(T)                                             \
@@ -293,6 +311,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
       Name("LogSoftmax").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       SoftmaxOpGPU<T>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_bfloat16(REGISTER_GPU);
 
 #undef REGISTER_GPU
 
