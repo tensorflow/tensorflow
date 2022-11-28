@@ -1166,8 +1166,6 @@ renames = {
         'tf.math.segment_prod',
     'tf.segment_sum':
         'tf.math.segment_sum',
-    'tf.segment_sum_v2':
-        'tf.math.segment_sum_v2',
     'tf.self_adjoint_eig':
         'tf.linalg.eigh',
     'tf.self_adjoint_eigvals':
