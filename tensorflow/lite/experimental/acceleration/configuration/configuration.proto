@@ -491,7 +491,7 @@ message TFLiteSettings {
   optional FallbackSettings fallback_settings = 9;
 
   // Whether to disable default delegates (XNNPack).
-  // TODO(b/260405596): Update the commeent to clarify the interaction between
+  // TODO(b/260405596): Update the comment to clarify the interaction between
   // `disable_default_delegates` and `fallback_settings`.
   optional bool disable_default_delegates = 12;
 
