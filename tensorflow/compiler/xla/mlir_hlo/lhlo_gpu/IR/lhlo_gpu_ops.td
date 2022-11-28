@@ -156,6 +156,26 @@ def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul", [AttrSizedOperandS
     I64Attr:$algorithm);
 }
 
+def LHLOGPU_CublasLtMatmulF8Op : LHLOGPU_Op<"cublas.lt.matmul.f8"> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$a,
+    Arg<LHLO_Buffer, "", [MemRead]>:$b,
+    Arg<LHLO_Buffer, "", [MemRead]>:$c,
+    Arg<LHLO_Buffer, "", [MemRead]>:$a_scale,
+    Arg<LHLO_Buffer, "", [MemRead]>:$b_scale,
+    Arg<LHLO_Buffer, "", [MemRead]>:$c_scale,
+    Arg<LHLO_Buffer, "", [MemRead]>:$d_scale,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$d,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$d_amax,
+    MHLO_DotDimensionNumbers:$dot_dimension_numbers,
+    MHLO_PrecisionConfigAttr:$precision_config,
+    F64Attr:$alpha_real,
+    F64Attr:$alpha_imag,
+    F64Attr:$beta,
+    CublasLtMatmulEpilogueAttr:$epilogue,
+    I64Attr:$algorithm);
+}
+
 def LHLOGPU_CholeskyOp : LHLOGPU_Op<"cholesky"> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$input,

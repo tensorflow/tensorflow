@@ -137,6 +137,10 @@ const Shape& ScalarShape(PrimitiveType type) {
       return ScalarShapeImpl<S32>();
     case S64:
       return ScalarShapeImpl<S64>();
+    case F8E4M3FN:
+      return ScalarShapeImpl<F8E4M3FN>();
+    case F8E5M2:
+      return ScalarShapeImpl<F8E5M2>();
     case F16:
       return ScalarShapeImpl<F16>();
     case BF16:
@@ -1183,6 +1187,12 @@ std::string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
       return StrCat(Get<uint32_t>(multi_index, shape_index));
     case U64:
       return StrCat(Get<uint64_t>(multi_index, shape_index));
+    case F8E4M3FN:
+      return RoundTripFpToString(
+          Get<tsl::float8_e4m3>(multi_index, shape_index));
+    case F8E5M2:
+      return RoundTripFpToString(
+          Get<tsl::float8_e5m2>(multi_index, shape_index));
     case F16:
       return RoundTripFpToString(Get<half>(multi_index, shape_index));
     case F32:
@@ -1635,6 +1645,8 @@ StatusOr<Literal> ConvertIfDestTypeMatches(const LiteralBase& src_literal,
     CONVERT_IF_TYPES_MATCH(F32)
     CONVERT_IF_TYPES_MATCH(F64)
     CONVERT_IF_TYPES_MATCH(BF16)
+    CONVERT_IF_TYPES_MATCH(F8E4M3FN)
+    CONVERT_IF_TYPES_MATCH(F8E5M2)
 #undef CONVERT_IF_TYPES_MATCH
     case C64:
       if (bitcast) {
@@ -1680,6 +1692,8 @@ StatusOr<Literal> ConvertSwitch(const LiteralBase& literal,
     CONVERT_IF_DEST_TYPE_MATCHES(F32)
     CONVERT_IF_DEST_TYPE_MATCHES(F64)
     CONVERT_IF_DEST_TYPE_MATCHES(BF16)
+    CONVERT_IF_DEST_TYPE_MATCHES(F8E4M3FN)
+    CONVERT_IF_DEST_TYPE_MATCHES(F8E5M2)
 #undef CONVERT_IF_DEST_TYPE_MATCHES
       // Other types are not yet supported.
     default:
@@ -2063,6 +2077,12 @@ bool LiteralBase::IsAllFloat(float value) const {
   PrimitiveType ty = shape().element_type();
   Literal scalar(ShapeUtil::MakeScalarShape(ty));
   switch (ty) {
+    case F8E4M3FN:
+      scalar.Set<tsl::float8_e4m3>({}, static_cast<tsl::float8_e4m3>(value));
+      break;
+    case F8E5M2:
+      scalar.Set<tsl::float8_e5m2>({}, static_cast<tsl::float8_e5m2>(value));
+      break;
     case F16:
       scalar.Set<half>({}, static_cast<half>(value));
       break;
@@ -2330,6 +2350,22 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
         ConvertEndianShort(proto->mutable_s16s());
       }
       break;
+    case F8E4M3FN:
+      *proto->mutable_f8e4m3fns() = std::string(
+          reinterpret_cast<const char*>(data<tsl::float8_e4m3>().data()),
+          size_bytes_dense());
+      if (!kLittleEndian) {
+        ConvertEndianShort(proto->mutable_f8e4m3fns());
+      }
+      break;
+    case F8E5M2:
+      *proto->mutable_f8e5m2s() = std::string(
+          reinterpret_cast<const char*>(data<tsl::float8_e5m2>().data()),
+          size_bytes_dense());
+      if (!kLittleEndian) {
+        ConvertEndianShort(proto->mutable_f8e5m2s());
+      }
+      break;
     case F16:
       *proto->mutable_f16s() =
           std::string(reinterpret_cast<const char*>(data<half>().data()),
@@ -2462,6 +2498,24 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       }
     } break;
 
+    case F8E4M3FN: {
+      const std::string& s(proto.f8e4m3fns());
+      TF_RET_CHECK(data<tsl::float8_e4m3>().size() * sizeof(tsl::float8_e4m3) ==
+                   s.size());
+      memcpy(untyped_data(), s.data(), s.size());
+      if (!kLittleEndian) {
+        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
+      }
+    } break;
+    case F8E5M2: {
+      const std::string& s(proto.f8e5m2s());
+      TF_RET_CHECK(data<tsl::float8_e5m2>().size() * sizeof(tsl::float8_e5m2) ==
+                   s.size());
+      memcpy(untyped_data(), s.data(), s.size());
+      if (!kLittleEndian) {
+        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
+      }
+    } break;
     case BF16: {
       const std::string& s(proto.bf16s());
       TF_RET_CHECK(data<bfloat16>().size() * sizeof(bfloat16) == s.size());

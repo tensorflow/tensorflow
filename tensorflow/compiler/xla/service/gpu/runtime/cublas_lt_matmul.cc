@@ -116,12 +116,21 @@ static absl::Status CublasLtMatmulImpl(
   se::DeviceMemoryBase aux_data;
   if (aux.has_value()) aux_data = GetDeviceAddress(*aux);
 
+  se::DeviceMemoryBase a_scale;
+  se::DeviceMemoryBase b_scale;
+  se::DeviceMemoryBase c_scale;
+  se::DeviceMemoryBase d_scale;
+  se::DeviceMemoryBase d_amax;
+
   se::OwningScratchAllocator<> scratch_allocator(
       stream->parent()->device_ordinal(), stream->parent()->GetAllocator());
 
-  return ToAbslStatus((*plan)->ExecuteOnStream(
-      stream, a_data, b_data, c_data, d_data, bias_data, aux_data,
-      (*algos)[algorithm], scratch_allocator));
+  auto st = (*plan)->ExecuteOnStream(
+      stream, a_data, b_data, c_data, d_data, bias_data, aux_data, a_scale, b_scale,
+      c_scale, d_scale, d_amax, (*algos)[algorithm], scratch_allocator);
+  if (!st.ok()) return ToAbslStatus(st);
+
+  return absl::OkStatus();
 }
 
 //===----------------------------------------------------------------------===//

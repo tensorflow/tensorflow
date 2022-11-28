@@ -108,6 +108,16 @@ inline PrimitiveType NativeToPrimitiveType<int64_t>() {
 
 // Floating point
 template <>
+inline PrimitiveType NativeToPrimitiveType<tsl::float8_e5m2>() {
+  return F8E5M2;
+}
+
+template <>
+inline PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3>() {
+  return F8E4M3FN;
+}
+
+template <>
 inline PrimitiveType NativeToPrimitiveType<float>() {
   return F32;
 }
@@ -428,6 +438,14 @@ struct PrimitiveTypeToNative<F16> {
 template <>
 struct PrimitiveTypeToNative<BF16> {
   using type = bfloat16;
+};
+template <>
+struct PrimitiveTypeToNative<F8E4M3FN> {
+  using type = tsl::float8_e4m3;
+};
+template <>
+struct PrimitiveTypeToNative<F8E5M2> {
+  using type = tsl::float8_e5m2;
 };
 
 // Complex

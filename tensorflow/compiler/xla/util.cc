@@ -145,6 +145,20 @@ static void RoundTripNanPayload(FloatT value, std::string* result) {
   }
 }
 
+// TODO(philipphack): Remove once std::isnan supports FP8 types.
+template <typename FloatT>
+static void RoundTripNanPayloadF8(FloatT value, std::string* result) {
+  const int kPayloadBits = NanPayloadBits<FloatT>();
+  if (Eigen::numext::isnan(value) && kPayloadBits > 0) {
+    auto rep = absl::bit_cast<
+        typename UnsignedIntegerTypeForSize<sizeof(FloatT)>::type>(value);
+    auto payload = rep & NanPayloadBitMask<FloatT>();
+    if (payload != QuietNanWithoutPayload<FloatT>()) {
+      absl::StrAppendFormat(result, "(0x%x)", payload);
+    }
+  }
+}
+
 template <typename FloatT>
 static std::string GenericRoundTripFpToString(FloatT value) {
   // TODO(majnemer): Remove this temporary variable once Eigen creates a symbol
@@ -152,6 +166,18 @@ static std::string GenericRoundTripFpToString(FloatT value) {
   int max_decimal_digits = std::numeric_limits<FloatT>::max_digits10;
   return absl::StrFormat("%.*g", max_decimal_digits,
                          static_cast<double>(value));
+}
+
+std::string RoundTripFpToString(tsl::float8_e4m3 value) {
+  std::string result = GenericRoundTripFpToString(value);
+  RoundTripNanPayloadF8(value, &result);
+  return result;
+}
+
+std::string RoundTripFpToString(tsl::float8_e5m2 value) {
+  std::string result = GenericRoundTripFpToString(value);
+  RoundTripNanPayloadF8(value, &result);
+  return result;
 }
 
 std::string RoundTripFpToString(bfloat16 value) {

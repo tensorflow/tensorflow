@@ -239,6 +239,14 @@ bool IsNan(NativeT value) {
 }
 
 // Converts the given floating-point value to a string.
+std::string FpValueToString(tsl::float8_e4m3 value) {
+  return absl::StrFormat("%10.4g", static_cast<double>(value));
+}
+
+std::string FpValueToString(tsl::float8_e5m2 value) {
+  return absl::StrFormat("%10.4g", static_cast<double>(value));
+}
+
 std::string FpValueToString(bfloat16 value) {
   return absl::StrFormat("%10.4g", static_cast<double>(value));
 }
@@ -266,10 +274,20 @@ std::string FpValueToString(complex128 value) {
 }
 
 // A wrapper of std::abs to include data types that are not supported by
-// std::abs, in particular, bfloat16 and half.
+// std::abs, in particular, float8, bfloat16 and half.
 template <typename NativeT>
 double FpAbsoluteValue(NativeT value) {
   return std::abs(value);
+}
+
+template <>
+double FpAbsoluteValue(tsl::float8_e4m3 value) {
+  return FpAbsoluteValue<float>(static_cast<float>(value));
+}
+
+template <>
+double FpAbsoluteValue(tsl::float8_e5m2 value) {
+  return FpAbsoluteValue<float>(static_cast<float>(value));
 }
 
 template <>
@@ -840,6 +858,14 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
     bool use_detailed_message = detailed_message.value_or(
         ShapeUtil::ElementsIn(expected.shape()) >= 64);
     switch (expected.shape().element_type()) {
+      case F8E4M3FN:
+        return NearComparator<tsl::float8_e4m3>::Compare(
+            expected, actual, shape_index, error, use_detailed_message,
+            miscompare_callback);
+      case F8E5M2:
+        return NearComparator<tsl::float8_e5m2>::Compare(
+            expected, actual, shape_index, error, use_detailed_message,
+            miscompare_callback);
       case BF16:
         return NearComparator<bfloat16>::Compare(expected, actual, shape_index,
                                                  error, use_detailed_message,
