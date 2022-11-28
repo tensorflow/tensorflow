@@ -35,9 +35,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Rewrite/FrozenRewritePatternSet.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/RegionUtils.h"
 
 namespace mlir {
@@ -45,7 +43,17 @@ namespace mlir {
 #define GEN_PASS_DEF_GPUFUSIONREWRITEPASS
 #include "mlir-hlo/Transforms/gpu_passes.h.inc"
 
+// Name of the 'gpu.launch_func' attribute which specifies the written operands.
+static constexpr llvm::StringLiteral kWrittenOperandsAttrName("lmhlo.written");
+
 namespace {
+struct HloToGpuPipelineOptions {
+  SmallVector<int64_t> blockTileDim;
+  SmallVector<int64_t> warpTileDim;
+  SmallVector<int64_t> threadTileDim;
+  bool experimentalSoftmax = false;
+};
+
 class GpuFusionRewritePass
     : public impl::GpuFusionRewritePassBase<GpuFusionRewritePass> {
  public:
@@ -55,85 +63,16 @@ class GpuFusionRewritePass
  private:
   void getDependentDialects(DialectRegistry& registry) const override;
   void runOnOperation() override;
-};
 
-// Rewrites `lmhlo.fusion` to `gpu.launch_func` for fusion regions that the
-// HLO to GPU pipeline can handle.
-class FusionRewritePattern : public OpRewritePattern<lmhlo::FusionOp> {
-  struct HloToGpuPipelineOptions {
-    SmallVector<int64_t> blockTileDim;
-    SmallVector<int64_t> warpTileDim;
-    SmallVector<int64_t> threadTileDim;
-    bool experimentalSoftmax = false;
-  };
-
- public:
-  explicit FusionRewritePattern(MLIRContext* ctx,
+  // Rewrites `lmhlo.fusion` to `gpu.launch_func` for fusion regions that the
+  // HLO to GPU pipeline can handle.
+  LogicalResult rewriteFusionOp(lmhlo::FusionOp fusionOp,
+                                RewriterBase& rewriter,
+                                const HloToGpuPipelineOptions& options,
                                 GpuFusionRewritePass& parentPass,
-                                SymbolTable& symbolTable);
-
- private:
-  LogicalResult matchAndRewrite(lmhlo::FusionOp fusionOp,
-                                PatternRewriter& rewriter) const override;
-
-  // Returns the hlo-to-gpu pipeline options, or failure if the fusion cannot be
-  // rewritten.
-  FailureOr<HloToGpuPipelineOptions> getPipelineOptions(
-      lmhlo::FusionOp fusionOp, PatternRewriter& rewriter) const;
-
-  // Annotates gpu.launch_func with attribute specifying written operands.
-  //
-  // func.func @fusion(%arg0, %arg1 {lmhlo.written}) {
-  //   gpu.launch_func args(%arg0, %arg1, %arg0)
-  //
-  // will add a `lmhlo.written = [false, true, false]` attribute.
-  //
-  // The 'written_operands' attribute is used later to retrieve which
-  // gpu.launch_func arguments are written vs. just read.
-  static void annotateLaunchFunc(func::FuncOp funcOp,
-                                 PatternRewriter& rewriter);
-
-  // Returns target where lowerable fusion ops are marked legal.
-  static ConversionTarget getRewritableTarget(MLIRContext* ctx);
-
-  GpuFusionRewritePass& parentPass;
-  SymbolTable& symbolTable;
-  ConversionTarget rewritableTarget = getRewritableTarget(getContext());
+                                SymbolTable& symbolTable) const;
 };
 }  // namespace
-
-// Name of the 'gpu.launch_func' attribute which specifies the written operands.
-static constexpr llvm::StringLiteral kWrittenOperandsAttrName = "lmhlo.written";
-
-void GpuFusionRewritePass::getDependentDialects(
-    DialectRegistry& registry) const {
-  // Collect the dependent dialects for both variants of the pipeline.
-  OpPassManager passManager;
-  for (bool experimentalSoftmax : {false, true})
-    createHloToGpuPipeline(passManager, {}, {}, {}, experimentalSoftmax);
-  passManager.getDependentDialects(registry);
-}
-
-void GpuFusionRewritePass::runOnOperation() {
-  SymbolTable symbolTable(getOperation());
-  auto pattern =
-      std::make_unique<FusionRewritePattern>(&getContext(), *this, symbolTable);
-  mlir::FrozenRewritePatternSet patterns({&getContext(), std::move(pattern)});
-  auto callback = [&](lmhlo::FusionOp fusion) {
-    if (failed(applyOpPatternsAndFold(fusion, patterns)))
-      return WalkResult::interrupt();
-    return WalkResult::advance();
-  };
-  if (getOperation().walk(callback).wasInterrupted())
-    return signalPassFailure();
-}
-
-FusionRewritePattern::FusionRewritePattern(MLIRContext* ctx,
-                                           GpuFusionRewritePass& parentPass,
-                                           SymbolTable& symbolTable)
-    : OpRewritePattern<lmhlo::FusionOp>::OpRewritePattern(ctx),
-      parentPass(parentPass),
-      symbolTable(symbolTable) {}
 
 // Returns the number of groups per block for softmax. Each group of threads
 // handles a row. A group has power-of-two size up to a warp. We use 256 threads
@@ -198,11 +137,131 @@ static int64_t getThreadsPerBlock(TensorType type, int64_t elementsPerThread) {
   return 256;
 }
 
-LogicalResult FusionRewritePattern::matchAndRewrite(
-    lmhlo::FusionOp fusionOp, PatternRewriter& rewriter) const {
-  FailureOr<HloToGpuPipelineOptions> options =
-      getPipelineOptions(fusionOp, rewriter);
-  if (failed(options)) return failure();
+// Annotates gpu.launch_func with attribute specifying written operands.
+//
+// func.func @fusion(%arg0, %arg1 {lmhlo.written}) {
+//   gpu.launch_func args(%arg0, %arg1, %arg0)
+//
+// will add a `lmhlo.written = [false, true, false]` attribute.
+//
+// The 'written_operands' attribute is used later to retrieve which
+// gpu.launch_func arguments are written vs. just read.
+static void annotateLaunchFunc(func::FuncOp funcOp, RewriterBase& rewriter) {
+  funcOp.walk([&](gpu::LaunchFuncOp op) {
+    auto writtenOperands = llvm::to_vector(
+        llvm::map_range(op.getKernelOperands(), [&](Value operand) -> bool {
+          auto arg = operand.dyn_cast<BlockArgument>();
+          if (!arg) return false;
+          return funcOp.getArgAttr(arg.getArgNumber(),
+                                   kWrittenOperandsAttrName) != nullptr;
+        }));
+    op->setAttr(kWrittenOperandsAttrName,
+                rewriter.getBoolArrayAttr(writtenOperands));
+  });
+}
+
+// Returns whether 'type' is can be lowered by the FusionRewritePattern.
+static bool isRewritableType(Type type) {
+  auto shapedType = type.cast<ShapedType>();
+  // Complex types are not yet supported.
+  if (shapedType.getElementType().isa<ComplexType>()) return false;
+  // Zero ranked shapes are not yet supported.
+  if (shapedType.getRank() == 0) return false;
+  // MemRef types need to have identity layout.
+  if (auto memrefType = shapedType.dyn_cast<MemRefType>())
+    return memrefType.getLayout().isIdentity();
+  // Unsigned integers are not yet supported.
+  if (auto intType = shapedType.getElementType().dyn_cast<IntegerType>())
+    return !intType.isUnsigned();
+  // F8 types are not yet supported.
+  // TODO(b/259609697): Support F8 types.
+  if (shapedType.getElementType().isFloat8E5M2() ||
+      shapedType.getElementType().isFloat8E4M3FN())
+    return false;
+  return true;
+}
+
+// Returns target where lowerable fusion ops are marked legal.
+static ConversionTarget getRewritableTarget(MLIRContext* ctx) {
+  ConversionTarget target(*ctx);
+  // Mark expected auxiliary ops as legal.
+  target.addLegalOp<lmhlo::TerminatorOp>();
+  target.addDynamicallyLegalOp<bufferization::ToTensorOp>(
+      [&](bufferization::ToTensorOp op) {
+        return isRewritableType(op.getMemref().getType()) &&
+               isRewritableType(op.getType());
+      });
+  target.addDynamicallyLegalOp<memref::TensorStoreOp>(
+      [&](memref::TensorStoreOp op) {
+        return isRewritableType(op.getTensor().getType()) &&
+               isRewritableType(op.getMemref().getType());
+      });
+  // For now, use an explicit allow-list of hlo ops inside the fusion. If any
+  // other op is present, the fusion will not be rewritten.
+  target.addDynamicallyLegalOp<
+      mhlo::AddOp, mhlo::AbsOp, mhlo::CbrtOp, mhlo::CeilOp, mhlo::CosineOp,
+      mhlo::DivOp, mhlo::ExpOp, mhlo::Expm1Op, mhlo::FloorOp, mhlo::LogOp,
+      mhlo::Log1pOp, mhlo::LogisticOp, mhlo::MulOp, mhlo::NegOp, mhlo::RoundOp,
+#if !TENSORFLOW_USE_ROCM
+      mhlo::RoundNearestEvenOp,
+#endif
+      mhlo::RsqrtOp, mhlo::SignOp, mhlo::SineOp, mhlo::SqrtOp, mhlo::SubtractOp,
+      mhlo::TanhOp>([&](Operation* op) { return op->hasOneUse(); });
+  return target;
+}
+
+// Returns the hlo-to-gpu pipeline options, or failure if the fusion cannot be
+// rewritten.
+static FailureOr<HloToGpuPipelineOptions> getPipelineOptions(
+    lmhlo::FusionOp fusionOp, RewriterBase& rewriter) {
+  if (fusionOp.getFusionResults().size() != 1)
+    return rewriter.notifyMatchFailure(fusionOp, "expected single result");
+  if (isa<bufferization::ToTensorOp>(fusionOp.getFusionRoots().front()))
+    return rewriter.notifyMatchFailure(fusionOp, "expected non-empty fusion");
+
+  auto resultType =
+      fusionOp.getFusionResults().front().getType().cast<TensorType>();
+  // If fusion type is tagged as softmax, use that.
+  if (auto fusionType = fusionOp->getAttrOfType<StringAttr>("fusion_type");
+      fusionType && fusionType.getValue() == "softmax_fusion") {
+    HloToGpuPipelineOptions options;
+    options.blockTileDim = {getGroupsPerBlock(resultType)};
+    options.warpTileDim = {1};
+    options.experimentalSoftmax = true;
+    return options;
+  }
+
+  ConversionTarget rewritableTarget =
+      getRewritableTarget(rewriter.getContext());
+
+  // If fusion_op (including its region) is not legal by rewriteableTarget, we
+  // expect lowering to GPU to fail or produce incorrect results.
+  auto callback = [&](Operation* op) {
+    if (rewritableTarget.isLegal(op)) return WalkResult::advance();
+    (void)rewriter.notifyMatchFailure(op, "expected to be rewritable");
+    return WalkResult::interrupt();
+  };
+  if (fusionOp.getRegion().walk(callback).wasInterrupted()) return failure();
+
+  int64_t elementsPerThread = getElementsPerThread(resultType);
+  constexpr int64_t kThreadsPerWarp = 32;
+  int64_t elementsPerWarp = elementsPerThread * kThreadsPerWarp;
+  int64_t elementsPerBlock =
+      getThreadsPerBlock(resultType, elementsPerThread) * elementsPerThread;
+  HloToGpuPipelineOptions options;
+  options.blockTileDim = {elementsPerBlock};
+  options.warpTileDim = {elementsPerWarp};
+  options.threadTileDim = {elementsPerThread};
+  return options;
+}
+
+// Rewrites `lmhlo.fusion` to `gpu.launch_func` for fusion regions that the
+// HLO to GPU pipeline can handle.
+LogicalResult GpuFusionRewritePass::rewriteFusionOp(
+    lmhlo::FusionOp fusionOp, RewriterBase& rewriter,
+    const HloToGpuPipelineOptions& options, GpuFusionRewritePass& parentPass,
+    SymbolTable& symbolTable) const {
+  rewriter.setInsertionPoint(fusionOp);
 
   // Collect values in fusion region defined above.
   SetVector<Value> captures;
@@ -213,7 +272,7 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
   // Convert statically shaped types to their 1D equivalent. This only works for
   // element wise fusions and will have to become a more sophisticated pass when
   // e.g. broadcasts are involved.
-  if (!options->experimentalSoftmax) {
+  if (!options.experimentalSoftmax) {
     converter.addConversion([](ShapedType type) {
       if (!type.hasStaticShape()) return type;
       return type.clone(type.getNumElements());
@@ -262,12 +321,11 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
   // Create and run the HLO to GPU pass pipeline.
   // Note: passManager.enableIRPrinting() doesn't do anything on dynamic pass
   // pipelines. Printing needs to be enabled on the parent pass manager.
-  PassManager passManager(getContext());
-  createHloToGpuPipeline(passManager, options->blockTileDim,
-                         options->warpTileDim, options->threadTileDim,
-                         options->experimentalSoftmax);
+  PassManager passManager(rewriter.getContext());
+  createHloToGpuPipeline(passManager, options.blockTileDim, options.warpTileDim,
+                         options.threadTileDim, options.experimentalSoftmax);
   if (failed(parentPass.runPipeline(passManager, moduleOp)))
-    return rewriter.notifyMatchFailure(fusionOp, "failed to run pipeline");
+    return fusionOp->emitError() << "failed to run the hlo-to-gpu pipeline";
 
   // Clone the (single) gpu module with the device function.
   rewriter.setInsertionPoint(fusionOp->getParentOfType<func::FuncOp>());
@@ -275,7 +333,7 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
     StringAttr symbol =
         symbolTable.insert(rewriter.clone(*gpuModuleOp.getOperation()));
     if (failed(symbolTable.replaceAllSymbolUses(gpuModuleOp, symbol, funcOp)))
-      return rewriter.notifyMatchFailure(fusionOp, "failed to replace symbol");
+      return gpuModuleOp->emitError() << "failed to replace symbol";
   }
   // Add 'gpu.container_module' attribute to parent module.
   fusionOp->getParentOfType<ModuleOp>()->setAttr(
@@ -296,109 +354,29 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
   return success();
 }
 
-FailureOr<FusionRewritePattern::HloToGpuPipelineOptions>
-FusionRewritePattern::getPipelineOptions(lmhlo::FusionOp fusionOp,
-                                         PatternRewriter& rewriter) const {
-  if (fusionOp.getFusionResults().size() != 1)
-    return rewriter.notifyMatchFailure(fusionOp, "expected single result");
-  if (isa<bufferization::ToTensorOp>(fusionOp.getFusionRoots().front()))
-    return rewriter.notifyMatchFailure(fusionOp, "expected non-empty fusion");
+void GpuFusionRewritePass::getDependentDialects(
+    DialectRegistry& registry) const {
+  // Collect the dependent dialects for both variants of the pipeline.
+  OpPassManager passManager;
+  for (bool experimentalSoftmax : {false, true})
+    createHloToGpuPipeline(passManager, {}, {}, {}, experimentalSoftmax);
+  passManager.getDependentDialects(registry);
+}
 
-  auto resultType =
-      fusionOp.getFusionResults().front().getType().cast<TensorType>();
-  // If fusion type is tagged as softmax, use that.
-  if (auto fusionType = fusionOp->getAttrOfType<StringAttr>("fusion_type");
-      fusionType && fusionType.getValue() == "softmax_fusion") {
-    HloToGpuPipelineOptions options;
-    options.blockTileDim = {getGroupsPerBlock(resultType)};
-    options.warpTileDim = {1};
-    options.experimentalSoftmax = true;
-    return options;
-  }
+void GpuFusionRewritePass::runOnOperation() {
+  IRRewriter rewriter(&getContext());
+  SymbolTable symbolTable(getOperation());
 
-  // If fusion_op (including its region) is not legal by rewriteableTarget, we
-  // expect lowering to GPU to fail or produce incorrect results.
-  auto callback = [&](Operation* op) {
-    if (rewritableTarget.isLegal(op)) return WalkResult::advance();
-    (void)rewriter.notifyMatchFailure(op, "expected to be rewritable");
-    return WalkResult::interrupt();
+  auto callback = [&](lmhlo::FusionOp fusionOp) {
+    FailureOr<HloToGpuPipelineOptions> options =
+        getPipelineOptions(fusionOp, rewriter);
+    if (failed(options)) return WalkResult::advance();
+    return WalkResult(
+        rewriteFusionOp(fusionOp, rewriter, *options, *this, symbolTable));
   };
-  if (fusionOp.getRegion().walk(callback).wasInterrupted()) return failure();
 
-  int64_t elementsPerThread = getElementsPerThread(resultType);
-  constexpr int64_t kThreadsPerWarp = 32;
-  int64_t elementsPerWarp = elementsPerThread * kThreadsPerWarp;
-  int64_t elementsPerBlock =
-      getThreadsPerBlock(resultType, elementsPerThread) * elementsPerThread;
-  HloToGpuPipelineOptions options;
-  options.blockTileDim = {elementsPerBlock};
-  options.warpTileDim = {elementsPerWarp};
-  options.threadTileDim = {elementsPerThread};
-  return options;
-}
-
-void FusionRewritePattern::annotateLaunchFunc(func::FuncOp funcOp,
-                                              PatternRewriter& rewriter) {
-  funcOp.walk([&](gpu::LaunchFuncOp op) {
-    auto writtenOperands = llvm::to_vector(
-        llvm::map_range(op.getKernelOperands(), [&](Value operand) -> bool {
-          auto arg = operand.dyn_cast<BlockArgument>();
-          if (!arg) return false;
-          return funcOp.getArgAttr(arg.getArgNumber(),
-                                   kWrittenOperandsAttrName) != nullptr;
-        }));
-    op->setAttr(kWrittenOperandsAttrName,
-                rewriter.getBoolArrayAttr(writtenOperands));
-  });
-}
-
-// Returns whether 'type' is can be lowered by the FusionRewritePattern.
-static bool isRewritableType(Type type) {
-  auto shapedType = type.cast<ShapedType>();
-  // Complex types are not yet supported.
-  if (shapedType.getElementType().isa<ComplexType>()) return false;
-  // Zero ranked shapes are not yet supported.
-  if (shapedType.getRank() == 0) return false;
-  // MemRef types need to have identity layout.
-  if (auto memrefType = shapedType.dyn_cast<MemRefType>())
-    return memrefType.getLayout().isIdentity();
-  // Unsigned integers are not yet supported.
-  if (auto intType = shapedType.getElementType().dyn_cast<IntegerType>())
-    return !intType.isUnsigned();
-  // F8 types are not yet supported.
-  // TODO(b/259609697): Support F8 types.
-  if (shapedType.getElementType().isFloat8E5M2() ||
-      shapedType.getElementType().isFloat8E4M3FN())
-    return false;
-  return true;
-}
-
-ConversionTarget FusionRewritePattern::getRewritableTarget(MLIRContext* ctx) {
-  ConversionTarget target(*ctx);
-  // Mark expected auxiliary ops as legal.
-  target.addLegalOp<lmhlo::TerminatorOp>();
-  target.addDynamicallyLegalOp<bufferization::ToTensorOp>(
-      [&](bufferization::ToTensorOp op) {
-        return isRewritableType(op.getMemref().getType()) &&
-               isRewritableType(op.getType());
-      });
-  target.addDynamicallyLegalOp<memref::TensorStoreOp>(
-      [&](memref::TensorStoreOp op) {
-        return isRewritableType(op.getTensor().getType()) &&
-               isRewritableType(op.getMemref().getType());
-      });
-  // For now, use an explicit allow-list of hlo ops inside the fusion. If any
-  // other op is present, the fusion will not be rewritten.
-  target.addDynamicallyLegalOp<
-      mhlo::AddOp, mhlo::AbsOp, mhlo::CbrtOp, mhlo::CeilOp, mhlo::CosineOp,
-      mhlo::DivOp, mhlo::ExpOp, mhlo::Expm1Op, mhlo::FloorOp, mhlo::LogOp,
-      mhlo::Log1pOp, mhlo::LogisticOp, mhlo::MulOp, mhlo::NegOp, mhlo::RoundOp,
-#if !TENSORFLOW_USE_ROCM
-      mhlo::RoundNearestEvenOp,
-#endif
-      mhlo::RsqrtOp, mhlo::SignOp, mhlo::SineOp, mhlo::SqrtOp, mhlo::SubtractOp,
-      mhlo::TanhOp>([&](Operation* op) { return op->hasOneUse(); });
-  return target;
+  if (getOperation().walk(callback).wasInterrupted())
+    return signalPassFailure();
 }
 
 std::unique_ptr<OperationPass<ModuleOp>> createGpuFusionRewritePass() {
