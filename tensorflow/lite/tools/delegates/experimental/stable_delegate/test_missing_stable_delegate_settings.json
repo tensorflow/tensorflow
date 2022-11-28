@@ -1,4 +1,0 @@
-// Test only TF Lite settings file without stable delegate loader settings.
-{
-  "delegate": "NONE"
-}
