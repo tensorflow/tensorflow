@@ -769,7 +769,7 @@ add_computation {
   ROOT add = f32[] add(arg0, arg1)
 }
 
-ENTRY main.19 {
+ENTRY main {
   param_0 = f32[13,1,5]{2,1,0} parameter(0)
   constant_zero = f32[] constant(0)
   reduction = f32[13,1]{1,0} reduce(param_0, constant_zero), dimensions={2}, to_apply=add_computation
@@ -781,6 +781,31 @@ ENTRY main.19 {
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   SoftmaxFusion fusion;
   EXPECT_TRUE(fusion.Run(module.get()).value());
+}
+
+TEST_F(SoftmaxFusionTest, SingleSoftmaxPatternMergeSomeUnaryElementwiseOps) {
+  const std::string& hlo_string = R"(
+HloModule softmax
+
+add_computation {
+  arg0 = f32[] parameter(0)
+  arg1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg0, arg1)
+}
+
+ENTRY main {
+  param_0 = f32[13,1,5]{2,1,0} parameter(0)
+  constant_zero = f32[] constant(0)
+  sign = f32[13,1,5]{2,1,0} sign(param_0)
+  convert = c64[13,1,5]{2,1,0} convert(sign)
+  real = f32[13,1,5]{2,1,0} real(convert)
+  reduction = f32[13,1]{1,0} reduce(sign, constant_zero), dimensions={2}, to_apply=add_computation
+  broadcast = f32[13,1,5]{2,1,0} broadcast(reduction), dimensions={0,1}
+  ROOT add = f32[13,1,5]{2,1,0} add(real, broadcast)
+})";
+
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec(1e-6, 1e-6)));
 }
 
 class SoftmaxFusionEnd2EndTest
