@@ -1,10 +1,4 @@
 op {
   graph_op_name: "SegmentSumV2"
-  endpoint {
-    name: "math.segment_sum_v2"
-  }
-  endpoint {
-    name: "segment_sum_v2"
-    deprecation_version: 2
-  }
+  visibility: HIDDEN
 }

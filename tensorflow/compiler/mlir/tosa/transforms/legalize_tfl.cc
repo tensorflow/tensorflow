@@ -29,15 +29,14 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
-#include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
@@ -1801,6 +1800,7 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
 LogicalResult ConvertTFLConcatenationOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_concat_op = cast<TFL::ConcatenationOp>(op);
+  auto result_type = tfl_concat_op.getResult().getType().dyn_cast<ShapedType>();
 
   SmallVector<Value> values(tfl_concat_op.getValues());
 
@@ -1815,7 +1815,7 @@ LogicalResult ConvertTFLConcatenationOp::matchAndRewrite(
   int32_t axis = axis_attr.getInt();
 
   llvm::Optional<Value> result =
-      convertConcatV2Op(rewriter, op, tfl_concat_op.getResult(), values, axis);
+      convertConcatV2Op(rewriter, op, result_type, values, axis);
 
   if (!result) return failure();
 
@@ -3506,11 +3506,12 @@ LogicalResult ConvertTFLSparseToDenseOp::matchAndRewrite(
   auto values_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, loc, UnrankedTensorType::get(result_ety), values,
       rewriter.getI64ArrayAttr(
-          ArrayRef<int64_t>{1, values_ty.getDimSize(0), 1}));
+          tensorflow::ConvertMlirShapeToTF({1, values_ty.getDimSize(0), 1})));
 
   auto index_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, loc, UnrankedTensorType::get(indices_ety), reduce_op,
-      rewriter.getI64ArrayAttr(ArrayRef<int64_t>{1, indices_ty.getDimSize(0)}));
+      rewriter.getI64ArrayAttr(
+          tensorflow::ConvertMlirShapeToTF({1, indices_ty.getDimSize(0)})));
 
   auto scatter = CreateOpAndInfer<tosa::ScatterOp>(
       rewriter, loc, UnrankedTensorType::get(result_ety), default_const,
@@ -3518,7 +3519,8 @@ LogicalResult ConvertTFLSparseToDenseOp::matchAndRewrite(
 
   CreateReplaceOpAndInfer<tosa::ReshapeOp>(
       rewriter, op, result_ty, scatter,
-      rewriter.getI64ArrayAttr(result_ty.getShape()));
+      rewriter.getI64ArrayAttr(
+          tensorflow::ConvertMlirShapeToTF(result_ty.getShape())));
 
   return success();
 }
