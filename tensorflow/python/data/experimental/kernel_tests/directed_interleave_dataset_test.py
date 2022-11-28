@@ -16,10 +16,12 @@
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -208,6 +210,85 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     ds = ds.flat_map(lambda x: x)
     next_element = self.getNext(ds, requires_initialization=True)
     self.evaluate(next_element())
+
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(),
+                         combinations.combine(rerandomize=[None, True, False])))
+  def testSampleFromDatasetsRerandomizeEachIterationEpochs(self, rerandomize):
+    if rerandomize is not None and not tf_compat.forward_compatible(
+        2022, 12, 17):
+      self.skipTest(
+          "target functionality not available due to forward compatibility")
+    dataset1 = dataset_ops.Dataset.range(0, 10)
+    dataset2 = dataset_ops.Dataset.range(100, 110)
+    sample_dataset = dataset_ops.Dataset.sample_from_datasets(
+        [dataset1, dataset2],
+        seed=42,
+        weights=[0.5, 0.5],
+        stop_on_empty_dataset=True,
+        rerandomize_each_iteration=rerandomize)
+    first_epoch = self.getDatasetOutput(sample_dataset)
+    second_epoch = self.getDatasetOutput(sample_dataset)
+
+    if rerandomize:
+      self.assertNotEqual(first_epoch, second_epoch)
+    else:
+      self.assertEqual(first_epoch, second_epoch)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(rerandomize=[None, True, False])))
+  def testSampleFromDatasetsRerandomizeRepeatEpochs(self, rerandomize):
+    if rerandomize is not None and not tf_compat.forward_compatible(
+        2022, 12, 17):
+      self.skipTest(
+          "target functionality not available due to forward compatibility")
+    dataset1 = dataset_ops.Dataset.range(0, 10)
+    dataset2 = dataset_ops.Dataset.range(100, 110)
+    sample_dataset = dataset_ops.Dataset.sample_from_datasets(
+        [dataset1, dataset2],
+        seed=42,
+        weights=[0.5, 0.5],
+        stop_on_empty_dataset=True,
+        rerandomize_each_iteration=rerandomize)
+    sample_dataset = sample_dataset.repeat(2)
+    epochs = self.getDatasetOutput(sample_dataset, requires_initialization=True)
+    first_epoch = epochs[:len(epochs) // 2]
+    second_epoch = epochs[len(epochs) // 2:]
+
+    if rerandomize:
+      self.assertNotEqual(first_epoch, second_epoch)
+    else:
+      self.assertEqual(first_epoch, second_epoch)
+
+  @combinations.generate(
+      combinations.times(test_base.v2_eager_only_combinations(),
+                         combinations.combine(rerandomize=[None, True, False])))
+  def testSampleFromDatasetsRerandomizeInsideFunction(self, rerandomize):
+    if rerandomize is not None and not tf_compat.forward_compatible(
+        2022, 12, 17):
+      self.skipTest(
+          "target functionality not available due to forward compatibility")
+    @def_function.function
+    def make_dataset():
+      dataset1 = dataset_ops.Dataset.range(0, 10)
+      dataset2 = dataset_ops.Dataset.range(100, 110)
+      sample_dataset = dataset_ops.Dataset.sample_from_datasets(
+          [dataset1, dataset2],
+          seed=42,
+          weights=[0.5, 0.5],
+          stop_on_empty_dataset=True,
+          rerandomize_each_iteration=rerandomize)
+      return sample_dataset
+
+    sample_dataset = make_dataset()
+    first_epoch = self.getDatasetOutput(sample_dataset)
+    second_epoch = self.getDatasetOutput(sample_dataset)
+
+    if rerandomize:
+      self.assertNotEqual(first_epoch, second_epoch)
+    else:
+      self.assertEqual(first_epoch, second_epoch)
 
   @combinations.generate(test_base.default_test_combinations())
   def testChooseFromDatasets(self):
