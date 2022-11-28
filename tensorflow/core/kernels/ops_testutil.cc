@@ -1,11 +1,8 @@
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-
     http://www.apache.org/licenses/LICENSE-2.0
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -17,6 +14,10 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #include "tensorflow/core/common_runtime/gpu/gpu_managed_allocator.h"
+#endif
+
+#if GOOGLE_CUDA 
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.h"
 #endif
 
 #include <memory>
@@ -207,9 +208,13 @@ Tensor* OpsTestBase::GetOutput(int output_index) {
           new Tensor(allocator(), output->dtype(), output->shape());
       auto src = output->tensor_data();
       auto dst = managed_output->tensor_data();
-      context_->eigen_gpu_device().memcpyDeviceToHost(
-          const_cast<char*>(dst.data()), src.data(), src.size());
-      context_->eigen_gpu_device().synchronize();
+      #if GOOGLE_CUDA
+        cuMemcpyDtoH(const_cast<char*>(dst.data()), (CUdeviceptr)context_->input(0).data(), src.size());
+      #else
+        context_->eigen_gpu_device().memcpyDeviceToHost(
+            const_cast<char*>(dst.data()), src.data(), src.size());
+        context_->eigen_gpu_device().synchronize();
+      #endif
       managed_outputs_[output_index] = managed_output;
     }
     output = managed_outputs_[output_index];

@@ -420,6 +420,7 @@ tf_cuda_library(
         "//tensorflow/core:gpu_runtime",
     ],
     deps = [
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
