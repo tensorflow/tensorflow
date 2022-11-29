@@ -2693,7 +2693,7 @@ def stateless_random_hue(image, max_delta, seed):
     image: RGB image or images. The size of the last dimension must be 3.
     max_delta: float. The maximum value for the random delta.
     seed: A shape [2] Tensor, the seed to the random number generator. Must have
-      dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
+      dtype `int32` or `int64`.
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
