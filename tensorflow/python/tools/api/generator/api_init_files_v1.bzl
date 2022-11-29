@@ -26,6 +26,7 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "dtypes/__init__.py",
     "errors/__init__.py",
     "experimental/__init__.py",
+    "experimental/extension_type/__init__.py",
     "feature_column/__init__.py",
     "gfile/__init__.py",
     "io/gfile/__init__.py",
