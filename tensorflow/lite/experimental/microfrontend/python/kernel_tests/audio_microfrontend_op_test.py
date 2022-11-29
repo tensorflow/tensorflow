@@ -49,7 +49,7 @@ class AudioFeatureGenerationTest(tf.test.TestCase):
           lower_band_limit=LOWER_BAND_LIMIT,
           smoothing_bits=SMOOTHING_BITS,
           enable_pcan=True)
-      self.assertAllEqual(filterbanks.eval(),
+      self.assertAllEqual(self.evaluate(filterbanks),
                           [[479, 425], [436, 378], [410, 350], [391, 325]])
 
   def testSimpleFloatScaled(self):
@@ -69,7 +69,7 @@ class AudioFeatureGenerationTest(tf.test.TestCase):
           enable_pcan=True,
           out_scale=64,
           out_type=tf.float32)
-      self.assertAllEqual(filterbanks.eval(),
+      self.assertAllEqual(self.evaluate(filterbanks),
                           [[7.484375, 6.640625], [6.8125, 5.90625],
                            [6.40625, 5.46875], [6.109375, 5.078125]])
 
@@ -90,7 +90,7 @@ class AudioFeatureGenerationTest(tf.test.TestCase):
           enable_pcan=True,
           right_context=1,
           frame_stride=2)
-      self.assertAllEqual(filterbanks.eval(),
+      self.assertAllEqual(self.evaluate(filterbanks),
                           [[479, 425, 436, 378], [410, 350, 391, 325]])
 
   def testStackingWithOverlap(self):
@@ -132,7 +132,7 @@ class AudioFeatureGenerationTest(tf.test.TestCase):
           enable_pcan=True,
           left_context=1,
           frame_stride=2)
-      self.assertAllEqual(filterbanks.eval(),
+      self.assertAllEqual(self.evaluate(filterbanks),
                           [[479, 425, 479, 425], [436, 378, 410, 350]])
 
   def testZeroPadding(self):

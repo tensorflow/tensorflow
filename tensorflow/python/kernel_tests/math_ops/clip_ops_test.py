@@ -312,8 +312,8 @@ class ClipTest(test.TestCase):
       np_ans_1 = [0.8, -1.6]
 
       ans, norm = clip_ops.clip_by_global_norm((x0, x1), clip_norm)
-      tf_ans_1 = ans[0].eval()
-      tf_ans_2 = ans[1].eval()
+      tf_ans_1 = self.evaluate(ans[0])
+      tf_ans_2 = self.evaluate(ans[1])
       tf_norm = self.evaluate(norm)
 
     self.assertAllClose(tf_norm, 5.0)
@@ -334,8 +334,8 @@ class ClipTest(test.TestCase):
       np_ans_1 = [0.8, -1.6]
 
       ans, norm = clip_ops.clip_by_global_norm((x0, x1), clip_norm)
-      tf_ans_1 = ans[0].eval()
-      tf_ans_2 = ans[1].eval()
+      tf_ans_1 = self.evaluate(ans[0])
+      tf_ans_2 = self.evaluate(ans[1])
       tf_norm = self.evaluate(norm)
 
     self.assertAllClose(tf_norm, 5.0)
@@ -358,8 +358,8 @@ class ClipTest(test.TestCase):
       ans, norm = clip_ops.clip_by_global_norm((x0, None, x1, None), clip_norm)
       self.assertTrue(ans[1] is None)
       self.assertTrue(ans[3] is None)
-      tf_ans_1 = ans[0].eval()
-      tf_ans_2 = ans[2].eval()
+      tf_ans_1 = self.evaluate(ans[0])
+      tf_ans_2 = self.evaluate(ans[2])
       tf_norm = self.evaluate(norm)
 
     self.assertAllClose(tf_norm, 5.0)
@@ -412,8 +412,8 @@ class ClipTest(test.TestCase):
       clip_norm = 6.0
 
       ans, norm = clip_ops.clip_by_global_norm([x0, x1], clip_norm)
-      tf_ans_1 = ans[0].eval()
-      tf_ans_2 = ans[1].eval()
+      tf_ans_1 = self.evaluate(ans[0])
+      tf_ans_2 = self.evaluate(ans[1])
       tf_norm = self.evaluate(norm)
 
     self.assertAllClose(tf_norm, 5.0)
@@ -432,8 +432,8 @@ class ClipTest(test.TestCase):
       clip_norm = 6.0
 
       ans, norm = clip_ops.clip_by_global_norm([x0, x1], clip_norm)
-      tf_ans_1 = ans[0].eval()
-      tf_ans_2 = ans[1].eval()
+      tf_ans_1 = self.evaluate(ans[0])
+      tf_ans_2 = self.evaluate(ans[1])
       tf_norm = self.evaluate(norm)
 
     self.assertAllClose(tf_norm, 0.0)
@@ -450,8 +450,8 @@ class ClipTest(test.TestCase):
       clip_norm = 6.0
 
       ans, norm = clip_ops.clip_by_global_norm([x0, x1], clip_norm)
-      tf_ans_1 = ans[0].eval()
-      tf_ans_2 = ans[1].eval()
+      tf_ans_1 = self.evaluate(ans[0])
+      tf_ans_2 = self.evaluate(ans[1])
       tf_norm = self.evaluate(norm)
       self.assertAllEqual(tf_norm, float('inf'))
       self.assertAllEqual(tf_ans_1, np.full([2, 3], float('nan')))
