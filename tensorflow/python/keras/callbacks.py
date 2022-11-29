@@ -2630,6 +2630,13 @@ class ReduceLROnPlateau(Callback):
       cooldown: number of epochs to wait before resuming normal operation after
         lr has been reduced.
       min_lr: lower bound on the learning rate.
+      restore_best_weights: Whether to restore model weights from
+        the epoch with the best value of the monitored quantity.
+        If False, the model weights obtained at the last step of
+        training are used. An epoch will be restored regardless
+        of the performance relative to the `baseline`. If no epoch
+        improves on `baseline`, training will run for `patience`
+        epochs and restore weights from the best epoch in that set.
   """
 
   def __init__(self,
@@ -2641,6 +2648,7 @@ class ReduceLROnPlateau(Callback):
                min_delta=1e-4,
                cooldown=0,
                min_lr=0,
+               restore_best_weights=False,
                **kwargs):
     super(ReduceLROnPlateau, self).__init__()
 
@@ -2662,6 +2670,8 @@ class ReduceLROnPlateau(Callback):
     self.best = 0
     self.mode = mode
     self.monitor_op = None
+    self.restore_best_weights = restore_best_weights
+    self.best_weights = None
     self._reset()
 
   def _reset(self):
@@ -2680,6 +2690,7 @@ class ReduceLROnPlateau(Callback):
       self.best = -np.Inf
     self.cooldown_counter = 0
     self.wait = 0
+    self.best_weights = None
 
   def on_train_begin(self, logs=None):
     self._reset()
@@ -2714,6 +2725,18 @@ class ReduceLROnPlateau(Callback):
                     'rate to %s.' % (epoch + 1, new_lr))
             self.cooldown_counter = self.cooldown
             self.wait = 0
+
+      # Restore best_weights if there is no improvements before reducing again lr
+      if self.restore_best_weights:
+        if self.monitor_op(current - self.min_delta, self.best):
+          self.best_weights = self.model.get_weights() 
+        elif not self.monitor_op(current - self.min_delta, self.best):
+          if not self.in_cooldown():
+            if self.wait+1 >= self.patience:
+              if self.restore_best_weights and self.best_weights is not None:
+                if self.verbose > 0:
+                  print('Restoring model weights from the end of the best epoch.')
+                self.model.set_weights(self.best_weights)
 
   def in_cooldown(self):
     return self.cooldown_counter > 0
