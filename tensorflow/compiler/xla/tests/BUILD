@@ -2856,3 +2856,22 @@ xla_test(
         "//tensorflow/tsl/platform:logging",
     ],
 )
+
+# TODO(ezhulenev): Move this tests to xla/tests once all XLA backends
+# support XLA runtime FFI calls.
+xla_test(
+    name = "xla_ffi_test",
+    srcs = ["xla_ffi_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
+        "//tensorflow/compiler/xla/runtime/ffi:ffi_api_hdrs",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:test_macros_header",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
