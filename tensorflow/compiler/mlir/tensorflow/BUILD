@@ -707,6 +707,7 @@ cc_library(
         "@llvm-project//mlir:include/mlir/Transforms/InliningUtils.h",
     ],
     includes = ["include"],
+    visibility = ["//visibility:public"],
     deps = [
         ":tensorflow_all_ops_inc_gen",
         ":tensorflow_attributes",
@@ -1024,6 +1025,7 @@ cc_library(
     hdrs = [
         "transforms/tf_saved_model_passes.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":resource_value_typed_analyzer",
         ":tensorflow",
@@ -1288,6 +1290,7 @@ cc_library(
         "transforms/tf_passes.h.inc",
         "transforms/tf_savedmodel_passes.h.inc",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":attribute_utils",
         ":bridge_logger",
@@ -1534,6 +1537,7 @@ cc_library(
     hdrs = [
         "translate/export_graphdef.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":convert_type",
         ":error_util",
@@ -1797,6 +1801,7 @@ cc_library(
     name = "mlir_roundtrip_flags",
     srcs = ["translate/mlir_roundtrip_flags.cc"],
     hdrs = ["translate/mlir_roundtrip_flags.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
@@ -1953,6 +1958,7 @@ cc_library(
     hdrs = [
         "transforms/constant_fold.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":convert_tensor",
         ":eval_util",
@@ -2034,12 +2040,14 @@ cc_library(
 cc_library(
     name = "mlir_import_options",
     hdrs = ["translate/mlir_import_options.h"],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "translate_lib",
     srcs = ["translate/tf_mlir_translate.cc"],
     hdrs = ["translate/tf_mlir_translate.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":error_util",
         ":export_graphdef",

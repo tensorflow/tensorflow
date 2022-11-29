@@ -4,6 +4,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/lite:__subpackages__",
         "//tensorflow/lite/python:__subpackages__",
         "//tensorflow/lite/toco/python:__subpackages__",
