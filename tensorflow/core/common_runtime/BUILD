@@ -220,6 +220,7 @@ tf_cuda_library(
     copts = tf_copts(),
     deps = [
         ":scoped_allocator",
+        ":stats_publisher_interface",
         "//tensorflow/core:graph",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -802,6 +803,7 @@ cc_library(
         ":rendezvous_util",
         ":replicate_per_replica_nodes",
         ":single_threaded_executor",
+        ":stats_publisher_interface",
         ":type_inference",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
