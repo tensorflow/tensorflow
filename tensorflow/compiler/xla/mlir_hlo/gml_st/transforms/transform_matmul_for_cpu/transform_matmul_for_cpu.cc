@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <array>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <utility>
@@ -29,6 +31,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -364,18 +367,140 @@ struct FoldFillGenericOpPattern : public OpRewritePattern<linalg::GenericOp> {
   }
 };
 
-FailureOr<TilingResult> tileMatmul(PatternRewriter &rewriter,
-                                   linalg::MatmulOp matmulOp,
+FailureOr<TilingResult> tileMatmul(PatternRewriter &rewriter, Operation *op,
                                    ArrayRef<int64_t> tileSizes,
                                    bool distribute) {
   TilingOptions opts;
   opts.setTileSizeComputationFn(tileSizes);
   opts.distribute = distribute;
-  return tile(opts, rewriter, cast<TilingInterface>(matmulOp.getOperation()));
+  return tile(opts, rewriter, cast<TilingInterface>(op));
 }
 
-/// Pattern to tile `linalg.matmul` and fuse `linalg.fill` into generated
-/// `gml_st.parallel`.
+/// Splits the tile sizes in `parallelSizes` into `reductionSizes` for the
+/// reduction loops.
+void splitParallelAndReductionTiles(linalg::LinalgOp op,
+                                    SmallVectorImpl<int64_t> &parallelSizes,
+                                    SmallVectorImpl<int64_t> &reductionSizes) {
+  reductionSizes.assign(parallelSizes.begin(), parallelSizes.end());
+  for (auto [index, iteratorType] :
+       llvm::enumerate(op.getIteratorTypesArray())) {
+    if (iteratorType == utils::IteratorType::parallel) {
+      reductionSizes[index] = 0;
+    } else {
+      parallelSizes[index] = 0;
+    }
+  }
+}
+
+/// Pattern to tile `linalg.mmt4d`.
+struct Mmt4DTransformPattern : public OpRewritePattern<linalg::Mmt4DOp> {
+  using OpRewritePattern<linalg::Mmt4DOp>::OpRewritePattern;
+
+  explicit Mmt4DTransformPattern(MLIRContext *context,
+                                 PatternBenefit benefit = 1)
+      : OpRewritePattern<linalg::Mmt4DOp>(context, benefit) {}
+
+  LogicalResult matchAndRewrite(linalg::Mmt4DOp mmt4dOp,
+                                PatternRewriter &rewriter) const override {
+    if (hasLabel(mmt4dOp, kMatmulTransformedLabel)) {
+      return rewriter.notifyMatchFailure(mmt4dOp,
+                                         "has already been transformed.");
+    }
+
+    // Compute the tile sizes. Note that at this stage we only do layout tiling.
+    // Later we might also want to do traversal tiling (only on M and N dims).
+    auto getL1TileSizes = [&]() -> SmallVector<int64_t> {
+      auto lhsShape =
+          mmt4dOp.getInputs()[0].getType().cast<ShapedType>().getShape();
+      auto rhsShape =
+          mmt4dOp.getInputs()[1].getType().cast<ShapedType>().getShape();
+      int64_t m0 = lhsShape[2];
+      int64_t n0 = rhsShape[2];
+      int64_t k0 = lhsShape[3];
+      return {1, 1, 1, m0, n0, k0};
+    };
+
+    SmallVector<int64_t> parallelTileSizes = getL1TileSizes();
+    SmallVector<int64_t> reductionTileSizes;
+
+    // Search the number of outer parallel loops to separate them from possible
+    // inner reduction dimensions.
+    auto iterTypes = mmt4dOp.getIteratorTypesArray();
+    // Make sure to only look at the leading loops for tiling---we will scan
+    // this array to find the first non-parallel loop later and use that for
+    // indexing into the tile sizes.
+    if (iterTypes.size() > parallelTileSizes.size()) {
+      iterTypes.resize(parallelTileSizes.size());
+    }
+
+    splitParallelAndReductionTiles(mmt4dOp.getOperation(), parallelTileSizes,
+                                   reductionTileSizes);
+
+    auto *it = find_if_not(iterTypes, linalg::isParallelIterator);
+    int64_t split = std::distance(iterTypes.begin(), it);
+
+    // Perform tiling in two steps.
+    SmallVector<int64_t> outerTileSizes(parallelTileSizes.size(), 0);
+    SmallVector<int64_t> innerTileSizes(parallelTileSizes.size(), 0);
+    std::copy(parallelTileSizes.begin(), parallelTileSizes.begin() + split + 1,
+              outerTileSizes.begin());
+    std::copy(parallelTileSizes.begin() + split + 1, parallelTileSizes.end(),
+              innerTileSizes.begin() + split + 1);
+
+    // Tile the outer parallel loop.
+    auto tilingParallelDimsResult =
+        tileMatmul(rewriter, mmt4dOp, outerTileSizes, /*distribute=*/true);
+    if (failed(tilingParallelDimsResult)) return failure();
+    // Update the results if tiling occurred.
+    if (tilingParallelDimsResult->loop != nullptr) {
+      rewriter.replaceOp(mmt4dOp, tilingParallelDimsResult->loop->getResults());
+      mmt4dOp = cast<linalg::Mmt4DOp>(tilingParallelDimsResult->tiledOp);
+    }
+
+    // Tile the inner parallel loop.
+    tilingParallelDimsResult =
+        tileMatmul(rewriter, mmt4dOp, innerTileSizes, /*distribute=*/true);
+    if (failed(tilingParallelDimsResult)) return failure();
+    // Update the results if tiling occurred.
+    if (tilingParallelDimsResult->loop != nullptr) {
+      rewriter.replaceOp(mmt4dOp, tilingParallelDimsResult->loop->getResults());
+      mmt4dOp = cast<linalg::Mmt4DOp>(tilingParallelDimsResult->tiledOp);
+    }
+
+    std::copy(reductionTileSizes.begin(),
+              reductionTileSizes.begin() + split + 1, outerTileSizes.begin());
+    std::copy(reductionTileSizes.begin() + split + 1, reductionTileSizes.end(),
+              innerTileSizes.begin() + split + 1);
+
+    // Tile the outer reduction loop.
+    auto tilingReductionDimsResult =
+        tileMatmul(rewriter, mmt4dOp, outerTileSizes, /*distribute=*/false);
+    if (failed(tilingReductionDimsResult)) return failure();
+    // Update the results if tiling occurred.
+    if (tilingReductionDimsResult->loop != nullptr) {
+      rewriter.replaceOp(mmt4dOp,
+                         tilingReductionDimsResult->loop->getResults());
+      mmt4dOp = cast<linalg::Mmt4DOp>(tilingReductionDimsResult->tiledOp);
+    }
+
+    // Tile the inner reduction loop.
+    tilingReductionDimsResult =
+        tileMatmul(rewriter, mmt4dOp, innerTileSizes, /*distribute=*/false);
+    if (failed(tilingReductionDimsResult)) return failure();
+    // Update the results if tiling occurred.
+    if (tilingReductionDimsResult->loop != nullptr) {
+      rewriter.replaceOp(mmt4dOp,
+                         tilingReductionDimsResult->loop->getResults());
+      mmt4dOp = cast<linalg::Mmt4DOp>(tilingReductionDimsResult->tiledOp);
+    }
+
+    setLabel(mmt4dOp, kMatmulTransformedLabel);
+    return success();
+  }
+};
+
+/// Pattern to tile `linalg.matmul`, fuse `linalg.fill` into generated
+/// `gml_st.parallel`, and peel the generated loops.
 struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
   using OpRewritePattern<linalg::MatmulOp>::OpRewritePattern;
 
@@ -496,28 +621,63 @@ struct TransformMatmulForCpuPass
     func::FuncOp f = getOperation();
     MLIRContext *ctx = &getContext();
 
-    // Convert linalg.matmul to linalg.mmt4d (packed matmul) if required.
-    RewritePatternSet patterns(ctx);
-    if (lowerToMmt4D) {
-      patterns.add<MatmulToMmt4dPattern>(ctx);
-    } else {
+    // Just do tiling and fusion on linalg.matmul.
+    if (!lowerToMmt4D) {
       if (tileSizes.empty()) {
         tileSizes = {2, 4, 8};
       }
       assert(tileSizes.size() == 3 &&
              "Tiling sizes for MatMul should have 3 elements");
+      RewritePatternSet patterns(ctx);
       patterns.add<MatmulTransformPattern>(ctx, tileSizes[0], tileSizes[1],
                                            tileSizes[2]);
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+        return signalPassFailure();
+      }
+      // Ensure we drop the marker in the end.
+      f.walk([](linalg::MatmulOp op) {
+        removeLabel(op, kMatmulTransformedLabel);
+      });
+      return;
     }
 
-    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
-      return signalPassFailure();
+    // Lower linalg.matmul to linalg.mmt4d (packed matmul).
+    {
+      // Convert linalg.matmul to linalg.mmt4d.
+      RewritePatternSet patterns(ctx);
+      patterns.add<MatmulToMmt4dPattern>(ctx);
+
+      // Canonicalization.
+      tensor::ExpandShapeOp::getCanonicalizationPatterns(patterns, ctx);
+      tensor::EmptyOp::getCanonicalizationPatterns(patterns, ctx);
+      linalg::FillOp::getCanonicalizationPatterns(patterns, ctx);
+      patterns.insert<FoldFillGenericOpPattern>(ctx);
+
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+        return signalPassFailure();
+      }
+      // Ensure we drop the marker in the end.
+      f.walk([](Operation *op) {
+        if (isa<linalg::MatmulOp>(op) || isa<linalg::Mmt4DOp>(op))
+          removeLabel(op, kMatmulTransformedLabel);
+      });
     }
-    // Ensure we drop the marker in the end.
-    f.walk([](Operation *op) {
-      if (isa<linalg::MatmulOp>(op) || isa<linalg::Mmt4DOp>(op))
-        removeLabel(op, kMatmulTransformedLabel);
-    });
+    // Tiling.
+    {
+      RewritePatternSet patterns(ctx);
+      // We tile towards SIMD codegen, so the tile sizes depend on the target
+      // architecture (vector instruction sizes, etc.). Luckily, this
+      // information is already captured in linalg.mmt4d during linalg.matmul ->
+      // linalg.mmt4d lowering phase. It is hardcoded for AVX on x86 for now.
+      patterns.add<Mmt4DTransformPattern>(ctx);
+
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+        return signalPassFailure();
+      }
+      // Ensure we drop the marker in the end.
+      f.walk(
+          [](linalg::Mmt4DOp op) { removeLabel(op, kMatmulTransformedLabel); });
+    }
   }
 };
 
