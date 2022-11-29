@@ -6929,33 +6929,33 @@ tf_cc_test(
     ],
 )
 
-tf_cc_binary(
-    name = "xla_compile",
-    srcs = ["xla_compile_main.cc"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":compiler",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/mlir_hlo",
-        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
-        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
-        "//tensorflow/compiler/xla/service/cpu:cpu_executable",
-        "//tensorflow/compiler/xla/service/gpu:executable_proto_cc",
-        "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
-        "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
-        "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:platform_port",
-        "//tensorflow/tsl/platform:protobuf",
-        "//tensorflow/tsl/util:command_line_flags",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
-    ],
-)
-
-# TODO(b/248362914): Fix the OSS build.
+# TODO(b/248362914): xla_compile breaks MacOS build (b/260357152), try to re-enable it later.
 # copybara:uncomment_begin
+# tf_cc_binary(
+#     name = "xla_compile",
+#     srcs = ["xla_compile_main.cc"],
+#     visibility = ["//visibility:public"],
+#     deps = [
+#         ":compiler",
+#         "//tensorflow/compiler/xla:statusor",
+#         "//tensorflow/compiler/xla/mlir_hlo",
+#         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
+#         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+#         "//tensorflow/compiler/xla/service/cpu:cpu_executable",
+#         "//tensorflow/compiler/xla/service/gpu:executable_proto_cc",
+#         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
+#         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
+#         "//tensorflow/tsl/platform:env",
+#         "//tensorflow/tsl/platform:platform_port",
+#         "//tensorflow/tsl/platform:protobuf",
+#         "//tensorflow/tsl/util:command_line_flags",
+#         "@llvm-project//mlir:ArithDialect",
+#         "@llvm-project//mlir:FuncDialect",
+#         "@llvm-project//mlir:IR",
+#         "@llvm-project//mlir:Parser",
+#     ],
+# )
+#
 # # A simple test of xla_aot_compile which generates an output file from an mhlo file.
 # xla_aot_compile_cpu(
 #     name = "xla_aot_compile_test_cpu_executable",
