@@ -849,7 +849,10 @@ StatusOr<Operation*> ConvertOp(
 
       mlir::SmallVector<mlir::Attribute, 4> shape;
       for (auto s : new_shape) {
-        shape.push_back(builder.getI32IntegerAttr(static_cast<int32_t>(s)));
+        // TODO(b/259719789): clean up dynamic shape check (e.g. into a
+        // discrete function) once bug is completely fixed.
+        shape.push_back(builder.getI32IntegerAttr(
+            mlir::ShapedType::isDynamic(s) ? -1 : static_cast<int32_t>(s)));
       }
       auto output_shape = DenseElementsAttr::get(shape_type, shape);
       auto shape_op = builder.create<tfl::ConstOp>(loc, output_shape);
@@ -907,8 +910,11 @@ StatusOr<Operation*> ConvertOp(
         for (const auto& dim :
              llvm::enumerate(shape_attr.getValues<llvm::APInt>())) {
           const int64_t size = dim.value().getSExtValue();
-          shape.push_back(
-              builder.getI32IntegerAttr(static_cast<int32_t>(size)));
+          // TODO(b/259719789): clean up dynamic shape check (e.g. into a
+          // discrete function) once bug is completely fixed.
+          shape.push_back(builder.getI32IntegerAttr(
+              mlir::ShapedType::isDynamic(size) ? -1
+                                                : static_cast<int32_t>(size)));
           ++dim_size;
         }
         auto shape_type = tensorflow::GetTypeFromTFTensorShape(
