@@ -795,6 +795,7 @@ cc_library(
         ":inline_function_utils",
         ":memory_types",
         ":optimization_registry",
+        ":optimize_function_graph_utils",
         ":optimized_function_graph_info",
         ":partitioning_utils",
         ":placer",
@@ -3253,6 +3254,44 @@ tf_cc_test(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "optimize_function_graph_utils",
+    srcs = ["optimize_function_graph_utils.cc"],
+    hdrs = ["optimize_function_graph_utils.h"],
+    copts = tf_copts(),
+    deps = [
+        ":composite_device",
+        ":device_set",
+        ":function_body",
+        ":function_optimization_registry",
+        ":function_utils",
+        ":optimization_registry",
+        ":placer",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/framework:graph_proto_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "optimize_function_graph_utils_test",
+    srcs = ["optimize_function_graph_utils_test.cc"],
+    deps = [
+        ":device",
+        ":device_factory",
+        ":device_set",
+        ":optimize_function_graph_utils",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
