@@ -137,6 +137,16 @@ TFL_CAPI_EXPORT int TfLiteSchemaVersion(void);
 TFL_CAPI_EXPORT extern TfLiteModel* TfLiteModelCreate(const void* model_data,
                                                       size_t model_size);
 
+// Same as `TfLiteModelCreate` with customizble error reporter.
+// * `reporter` takes the provided `user_data` object, as well as a C-style
+//   format string and arg list (see also vprintf).
+// * `user_data` is optional. If non-null, it is owned by the client and must
+//   remain valid for the duration of the interpreter lifetime.
+TFL_CAPI_EXPORT extern TfLiteModel* TfLiteModelCreateWithErrorReporter(
+    const void* model_data, size_t model_size,
+    void (*reporter)(void* user_data, const char* format, va_list args),
+    void* user_data);
+
 // Returns a model from the provided file, or null on failure.
 //
 // NOTE: The file's contents must not be modified during the lifetime of the
@@ -144,6 +154,16 @@ TFL_CAPI_EXPORT extern TfLiteModel* TfLiteModelCreate(const void* model_data,
 // `TfLiteModel`.
 TFL_CAPI_EXPORT extern TfLiteModel* TfLiteModelCreateFromFile(
     const char* model_path);
+
+// Same as `TfLiteModelCreateFromFile` with customizble error reporter.
+// * `reporter` takes the provided `user_data` object, as well as a C-style
+//   format string and arg list (see also vprintf).
+// * `user_data` is optional. If non-null, it is owned by the client and must
+//   remain valid for the duration of the interpreter lifetime.
+TFL_CAPI_EXPORT extern TfLiteModel* TfLiteModelCreateFromFileWithErrorReporter(
+    const char* model_path,
+    void (*reporter)(void* user_data, const char* format, va_list args),
+    void* user_data);
 
 // Destroys the model instance.
 TFL_CAPI_EXPORT extern void TfLiteModelDelete(TfLiteModel* model);
@@ -399,7 +419,8 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterCancel(
 // Returns the type of a tensor element.
 TFL_CAPI_EXPORT extern TfLiteType TfLiteTensorType(const TfLiteTensor* tensor);
 
-// Returns the number of dimensions that the tensor has.
+// Returns the number of dimensions that the tensor has.  Returns -1 in case
+// the 'opaque_tensor' does not have its dimensions property set.
 TFL_CAPI_EXPORT extern int32_t TfLiteTensorNumDims(const TfLiteTensor* tensor);
 
 // Returns the length of the tensor in the "dim_index" dimension.
@@ -454,6 +475,13 @@ TfLiteRegistrationExternalCreate(TfLiteBuiltinOperator builtin_code,
 // WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern TfLiteBuiltinOperator
 TfLiteRegistrationExternalGetBuiltInCode(
+    const TfLiteRegistrationExternal* registration);
+
+// Returns the custom name of the provided 'registration'.  The returned pointer
+// will be non-null iff the op is a custom op.
+//
+// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern const char* TfLiteRegistrationExternalGetCustomName(
     const TfLiteRegistrationExternal* registration);
 
 // Destroys the TfLiteRegistrationExternal instance.

@@ -133,7 +133,7 @@ bool IsBoundedOrStatic(mlir::Type ty) {
   int64_t rank = ranked_ty.getRank();
   for (int64_t dim = 0; dim < rank; ++dim) {
     if (ranked_ty.isDynamicDim(dim) &&
-        encoding.getBounds()[dim] == mlir::ShapedType::kDynamicSize)
+        encoding.getBounds()[dim] == mlir::ShapedType::kDynamic)
       return false;
   }
   return true;
@@ -340,7 +340,7 @@ static std::unique_ptr<xla::PrecisionConfig> Convert_precision_config(
   if (!optional_precision_config_attr.has_value()) return nullptr;
 
   auto precision_config = std::make_unique<xla::PrecisionConfig>();
-  for (auto attr : optional_precision_config_attr.getValue()) {
+  for (auto attr : optional_precision_config_attr.value()) {
     xla::PrecisionConfig::Precision p;
     auto operand_precision =
         mlir::mhlo::stringifyPrecision(
@@ -407,7 +407,7 @@ xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandleAttr attr) {
 std::optional<xla::ChannelHandle> Convert_channel_handle(
     llvm::Optional<mlir::mhlo::ChannelHandleAttr> attr) {
   if (!attr.has_value()) return std::nullopt;
-  return Convert_channel_handle(attr.getValue());
+  return Convert_channel_handle(attr.value());
 }
 
 // Converts the comparison_direction string attribute into the XLA enum. The
@@ -801,6 +801,35 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
       operand, computation, Convert_replica_groups(op.getReplicaGroups()),
       Convert_channel_handle(op.getChannelHandle()), std::nullopt,
       Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+  return success();
+}
+
+LogicalResult ExportXlaOp(AllToAllOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+
+  SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op.getOperation(), op.getOperands(), ctx, operands))) {
+    return failure();
+  }
+
+  auto shape = ExtractXlaShape(op.getOperation());
+  if (shape.IsTuple()) {
+    std::optional<xla::Layout> layout = std::nullopt;
+    if (shape.has_layout()) {
+      layout = shape.layout();
+    }
+    auto tuple = xla::AllToAllTuple(
+        operands, Convert_replica_groups(op.getReplicaGroups()), layout);
+    for (auto [index, result] : llvm::enumerate(op.getResults())) {
+      value_map[result] = xla::GetTupleElement(tuple, index);
+    }
+  } else {
+    // ArrayAllToAll always has exactly one operand (checked in the verifier).
+    value_map[op->getResults()[0]] = xla::AllToAll(
+        operands[0], *op.getSplitDimension(), *op.getConcatDimension(),
+        *op.getSplitCount(), Convert_replica_groups(op.getReplicaGroups()));
+  }
+
   return success();
 }
 
@@ -1491,9 +1520,9 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
 
   if (op.getOperandLayouts() && op.getResultLayouts()) {
     auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
-        op.getOperandTypes(), op.getOperandLayouts().getValue());
+        op.getOperandTypes(), op.getOperandLayouts().value());
     xla::Shape result_shape_with_layout = GetCustomCallResultShapeWithLayout(
-        result.getType(), op.getResultLayouts().getValue());
+        result.getType(), op.getResultLayouts().value());
     value_map[result] = xla::CustomCallWithLayout(
         ctx.builder, std::string(op.getCallTargetName()), args,
         result_shape_with_layout, operand_shapes_with_layout,
@@ -2079,7 +2108,7 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
   for (auto operand : op.getInputs()) operands.push_back(values[operand]);
 
   auto fusion_kind_string =
-      mlir::mhlo::stringifyFusionKind(op.getFusionKind().getValue());
+      mlir::mhlo::stringifyFusionKind(op.getFusionKind().value());
   xla::XlaOp fusion = xla::internal::XlaBuilderFriend::BuildFusion(
       ctx.builder, operands,
       absl::string_view(fusion_kind_string.data(), fusion_kind_string.size()),

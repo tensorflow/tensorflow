@@ -15,9 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_C_C_API_OPAQUE_H_
 #define TENSORFLOW_LITE_C_C_API_OPAQUE_H_
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/c/c_api_types.h"  // IWYU pragma: export
+#include "tensorflow/lite/core/c/common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -38,13 +38,37 @@ extern "C" {
 TFL_CAPI_EXPORT extern TfLiteType TfLiteOpaqueTensorType(
     const TfLiteOpaqueTensor* opaque_tensor);
 
-// Returns the number of dimensions that the tensor has.
+// Returns the number of dimensions that the tensor has.  Returns -1 in case
+// the 'opaque_tensor' does not have its dimensions property set.
 TFL_CAPI_EXPORT extern int32_t TfLiteOpaqueTensorNumDims(
     const TfLiteOpaqueTensor* opaque_tensor);
 
 // Returns the length of the tensor in the "dim_index" dimension.
 TFL_CAPI_EXPORT extern int32_t TfLiteOpaqueTensorDim(
     const TfLiteOpaqueTensor* opaque_tensor, int32_t dim_index);
+
+// Returns the number of dimensions that the tensor's signature has.
+//
+// A tensor's dimension signature encodes shapes with unknown dimensions with
+// -1.  E.g. for a tensor with three dimensions, whose first dimension has an
+// unkowns size, and the second and third dimension have a size of 2, the
+// dimension signature is [-1,2,2], and 'TfLiteOpaqueTensorNumDimsSignature'
+// returns 3.
+//
+// If the 'opaque_tensor' does not have its dimensions signature property set,
+// which is for example the case when no unkown dimension is present, then -1 is
+// returned to indicate the absence of the dimension signature property.
+TFL_CAPI_EXPORT extern int32_t TfLiteOpaqueTensorNumDimsSignature(
+    const TfLiteOpaqueTensor* opaque_tensor);
+
+// Returns the length of the tensor in the "dim_index" signature dimension.
+TFL_CAPI_EXPORT extern int32_t TfLiteOpaqueTensorDimSignature(
+    const TfLiteOpaqueTensor* opaque_tensor, int32_t dim_index);
+
+// Returns 'non-zero' if the provided 'opaque_tensor' is a variable, and returns
+// zero otherwise.
+TFL_CAPI_EXPORT extern int TfLiteOpaqueTensorIsVariable(
+    const TfLiteOpaqueTensor* opaque_tensor);
 
 // Returns the size of the underlying data in bytes.
 TFL_CAPI_EXPORT extern size_t TfLiteOpaqueTensorByteSize(
@@ -54,8 +78,21 @@ TFL_CAPI_EXPORT extern size_t TfLiteOpaqueTensorByteSize(
 TFL_CAPI_EXPORT extern void* TfLiteOpaqueTensorData(
     const TfLiteOpaqueTensor* opaque_tensor);
 
+// Returns the 'opaque_tensor's allocation type.
+TFL_CAPI_EXPORT extern TfLiteAllocationType TfLiteOpaqueTensorGetAllocationType(
+    const TfLiteOpaqueTensor* opaque_tensor);
+
 // Returns the (null-terminated) name of the tensor.
 TFL_CAPI_EXPORT extern const char* TfLiteOpaqueTensorName(
+    const TfLiteOpaqueTensor* opaque_tensor);
+
+// Returns the 'opaque_tensor's quantization information.
+TFL_CAPI_EXPORT extern TfLiteQuantization TfLiteOpaqueTensorGetQuantization(
+    const TfLiteOpaqueTensor* opaque_tensor);
+
+// Returns the 'opaque_tensor's quantization parameters.
+TFL_CAPI_EXPORT extern TfLiteQuantizationParams
+TfLiteOpaqueTensorGetQuantizationParams(
     const TfLiteOpaqueTensor* opaque_tensor);
 
 // Copies from the provided input buffer into the tensor's buffer.
@@ -94,6 +131,77 @@ TFL_CAPI_EXPORT int TfLiteOpaqueNodeNumberOfOutputs(
 // that was passed to `TfLiteRegistrationExternalSetInit`.
 TFL_CAPI_EXPORT extern void* TfLiteOpaqueNodeGetUserData(
     const TfLiteOpaqueNode* opaque_node);
+
+// Returns the builtin data associated with the provided 'opaque_node'.
+//
+// The builtin init data associated with a node would typically be set during
+// the creation of the associated interpreter, through a mechanism like the
+// interpreter builder that loads a TFLite model and initialises the
+// interpreter's nodes accordingly.  Under these conditions the returned address
+// remains valid throughout the lifetime of the 'opaque_node'.
+TFL_CAPI_EXPORT extern void* TfLiteOpaqueNodeGetBuiltinData(
+    const TfLiteOpaqueNode* opaque_node);
+
+// Loads into the provided '*init_data' pointer the address of the custom init
+// data associated with the provided 'opaque_node'.  The length of data is
+// loaded into the provided 'size' pointer.  Returns 'kTfLiteOk' in case
+// of success.  Any other return value indicates a failure and will leave
+// 'init_data' and 'size' in an unspecified state.
+//
+// The custom init data associated with a node would typically be set during the
+// creation of the associated interpreter, through a mechanism like the
+// interpreter builder that loads a TFLite model and initialises the
+// interpreter's nodes accordingly.  Under these conditions the returned address
+// remains valid throughout the lifetime of the 'opaque_node'.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOpaqueNodeGetCustomInitialData(
+    const TfLiteOpaqueNode* opaque_node, const void** init_data, int* size);
+
+// Loads into the provided '*inputs' pointer the starting address of an array
+// of indices representing the tensors that are inputs of the provided
+// 'opaque_node'. The length of the array is loaded into the provided
+// 'num_inputs' pointer. Returns 'kTfLiteOk' in case of success.  Any other
+// return value indicates a failure and will leave 'inputs' and
+// 'num_inputs' in an unspecified state.
+//
+// The input tensors associated with a node would typically be set during the
+// creation of the associated interpreter, through a mechanism like the
+// interpreter builder that loads a TFLite model and initialises the
+// interpreter's nodes accordingly.  Under these conditions the loaded address
+// remains valid throughout the lifetime of the 'opaque_node'.
+TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueNodeInputs(
+    const TfLiteOpaqueNode* opaque_node, const int** inputs, int* num_inputs);
+
+// Loads into the provided '*outputs' pointer the starting address of an array
+// of indices representing the tensors that are outputs of the provided
+// 'opaque_node'. The length of the array is loaded into the provided
+// 'num_outputs' pointer. Returns 'kTfLiteOk' in case of success.  Any other
+// return value indicates a failure and will leave 'outputs' and
+// 'num_outputs' in an unspecified state.
+//
+// The output tensors associated with a node would typically be set during the
+// creation of the associated interpreter, through a mechanism like the
+// interpreter builder that loads a TFLite model and initialises the
+// interpreter's nodes accordingly.  Under these conditions the loaded address
+// remains valid throughout the lifetime of the 'opaque_node'.
+TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueNodeOutputs(
+    const TfLiteOpaqueNode* opaque_node, const int** outputs, int* num_outputs);
+
+// Loads into the provided '*temporaries' pointer the starting address of an
+// array of indices representing the temporary tensors associated with the
+// provided 'opaque_node'. The length of the array is loaded into the provided
+// 'num_temporaries' pointer. Returns 'kTfLiteOk' in case of success.  Any other
+// return value indicates a failure and will leave 'temporaries' and
+// 'num_temporaries' in an unspecified state.
+//
+// The temporary tensors associated with a node would typically be set during
+// the creation of the associated interpreter, through a mechanism like the
+// interpreter builder that loads a TFLite model and initialises the
+// interpreter's nodes accordingly.  Under these conditions the loaded address
+// remains valid throughout the lifetime of the 'opaque_node'.
+TFL_CAPI_EXPORT
+TfLiteStatus TfLiteOpaqueNodeTemporaries(const TfLiteOpaqueNode* opaque_node,
+                                         const int** temporaries,
+                                         int* num_temporaries);
 
 // --------------------------------------------------------------------------
 // Accessors for TfLiteOpaqueContext.
@@ -176,6 +284,60 @@ TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
 TFL_CAPI_EXPORT
 TfLiteOpaqueTensor* TfLiteOpaqueContextGetOpaqueTensor(
     const TfLiteOpaqueContext* opaque_context, int index);
+
+// Loads into the provided '*inputs' pointer the starting address of an array
+// of indices representing the tensors that are inputs to the subgraph that is
+// associated with the provided 'opaque_context'.  The length of the array is
+// loaded into the provided 'num_inputs' pointer.  Returns 'kTfLiteOk' in case
+// of success.  Any other return value indicates a failure and will leave
+// 'inputs' and 'num_inputs' in an unspecified state.  Calls to 'SetInputs' on
+// the associated subgraph invalidate the loaded pointers.
+TFL_CAPI_EXPORT
+TfLiteStatus TfLiteOpaqueContextGetInputs(
+    const struct TfLiteOpaqueContext* opaque_context, const int** inputs,
+    int* num_inputs);
+
+// Loads into the provided '*outputs' pointer the starting address of an array
+// of indices representing the tensors that are outputs to the subgraph that is
+// associated with the provided 'opaque_context'.  The length of the array is
+// loaded into the provided 'num_outputs' pointer.  Returns 'kTfLiteOk' in case
+// of success.  Any other return value indicates a failure and will leave
+// 'outputs' and 'num_outputs' in an unspecified state.  Calls to 'SetOutputs'
+// on the associated subgraph invalidate the loaded pointers.
+TFL_CAPI_EXPORT
+TfLiteStatus TfLiteOpaqueContextGetOutputs(
+    const struct TfLiteOpaqueContext* opaque_context, const int** outputs,
+    int* num_outputs);
+
+// Loads into the provided '*variables' pointer the starting address of an array
+// of indices representing the tensors that are variables to the subgraph that
+// is associated with the provided 'opaque_context'.  The length of the array is
+// loaded into the provided 'num_variables' pointer.  Returns 'kTfLiteOk' in
+// case of success.  Any other return value indicates a failure and will leave
+// 'variables' and 'num_variables' in an unspecified state.  Calls to
+// 'SetVariables' on the associated subgraph invalidate the loaded pointers.
+TFL_CAPI_EXPORT
+TfLiteStatus TfLiteOpaqueContextGetVariables(
+    const struct TfLiteOpaqueContext* opaque_context, const int** variables,
+    int* num_variables);
+
+// Returns the number of nodes associated with the provided 'opaque_context'.
+TFL_CAPI_EXPORT
+size_t TfLiteOpaqueContextGetNumNodes(
+    const struct TfLiteOpaqueContext* opaque_context);
+
+// Returns the number of tensors associated with the provided 'opaque_context'.
+TFL_CAPI_EXPORT
+size_t TfLiteOpaqueContextGetNumTensors(
+    const struct TfLiteOpaqueContext* opaque_context);
+
+// Returns the name of the subgraph that is associated with the provided
+// 'opaque_context'.  Typically the returned pointer will remain valid
+// throughout the lifetime of the subgraph, but may be invalidated by a call to
+// 'Subgraph::SetName'.
+TFL_CAPI_EXPORT
+const char* TfLiteOpaqueContextGetName(
+    const struct TfLiteOpaqueContext* opaque_context);
 
 #ifdef __cplusplus
 }  // extern "C"

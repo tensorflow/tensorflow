@@ -78,12 +78,18 @@ std::unique_ptr<OpQuantScaleSpec> GetTfQuantScaleSpec(Operation* op) {
           // clang-format off
           // go/keep-sorted start
           TF::AvgPoolOp,
+          TF::ConcatOp,
           TF::ConcatV2Op,
+          TF::ExpandDimsOp,
           TF::IdentityOp,
           TF::MaxPoolOp,
           TF::PadV2Op,
           TF::ReshapeOp,
-          TF::SqueezeOp
+          TF::SelectOp,
+          TF::SelectV2Op,
+          TF::ShapeOp,
+          TF::SqueezeOp,
+          TF::TransposeOp
           // go/keep-sorted end
           // clang-format on
           >(op)) {

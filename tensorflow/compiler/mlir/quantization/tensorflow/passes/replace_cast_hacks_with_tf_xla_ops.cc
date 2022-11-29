@@ -185,7 +185,7 @@ Value CreateXlaConvOp(OpBuilder &builder, Location loc, Value input,
           .getOutput();
   if (input_zp_value == 0) return xla_conv_output;
 
-  Value zp_offset = CalculateZeroPointOffset(builder, loc, /*filter=*/filter,
+  Value zp_offset = CalculateZeroPointOffset(builder, loc, /*weight=*/filter,
                                              /*input_zp=*/input_zp_value,
                                              /*output_dims=*/{num_dims - 1});
   return builder.create<TF::SubOp>(loc, xla_conv_output, zp_offset).getZ();

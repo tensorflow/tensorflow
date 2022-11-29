@@ -15,7 +15,6 @@ load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_
 # For platform specific build config
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
     "tf_protos_profiler_service",
 )
 load(
@@ -436,7 +435,6 @@ tf_cuda_cc_tests(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [],
     deps = [
         ":grpc_channel",
@@ -488,7 +486,6 @@ tf_cuda_cc_test(
     # highly variable test time. Typically ~2m, but can spike to 5+min.
     timeout = "long",
     srcs = ["grpc_session_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/176448181
         "no_oss",  # b/62956105: port conflicts.

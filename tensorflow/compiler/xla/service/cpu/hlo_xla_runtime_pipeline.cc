@@ -68,7 +68,8 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions() {
   options.bufferizeFunctionBoundaries = true;
   options.allowReturnAllocs = true;
   options.functionBoundaryTypeConversion = LayoutMapOption::IdentityLayoutMap;
-  options.unknownTypeConverterFn = [](mlir::Value value, unsigned memorySpace,
+  options.unknownTypeConverterFn = [](mlir::Value value,
+                                      mlir::Attribute memorySpace,
                                       const BufferizationOptions& options) {
     return mlir::bufferization::getMemRefTypeWithStaticIdentityLayout(
         value.getType().cast<mlir::TensorType>(), memorySpace);

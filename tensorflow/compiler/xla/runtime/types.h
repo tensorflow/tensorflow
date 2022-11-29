@@ -175,9 +175,9 @@ class TupleType : public llvm::RTTIExtends<TupleType, Type> {
 class RankedTensorType : public llvm::RTTIExtends<RankedTensorType, Type> {
  public:
   static constexpr char ID = 0;  // NOLINT
-  static constexpr int64_t kDynamicSize = std::numeric_limits<int64_t>::min();
+  static constexpr int64_t kDynamic = std::numeric_limits<int64_t>::min();
 
-  static constexpr bool IsDynamic(int64_t dim) { return dim == kDynamicSize; }
+  static constexpr bool IsDynamic(int64_t dim) { return dim == kDynamic; }
 
   RankedTensorType(absl::Span<const int64_t> sizes, PrimitiveType element_type)
       : sizes_(sizes.begin(), sizes.end()), element_type_(element_type) {}
@@ -219,9 +219,9 @@ class UnrankedTensorType : public llvm::RTTIExtends<UnrankedTensorType, Type> {
 class MemrefType : public llvm::RTTIExtends<MemrefType, Type> {
  public:
   static constexpr char ID = 0;  // NOLINT
-  static constexpr int64_t kDynamicSize = std::numeric_limits<int64_t>::min();
+  static constexpr int64_t kDynamic = std::numeric_limits<int64_t>::min();
 
-  static constexpr bool IsDynamic(int64_t dim) { return dim == kDynamicSize; }
+  static constexpr bool IsDynamic(int64_t dim) { return dim == kDynamic; }
 
   MemrefType(absl::Span<const int64_t> sizes, PrimitiveType element_type)
       : sizes_(sizes.begin(), sizes.end()), element_type_(element_type) {}

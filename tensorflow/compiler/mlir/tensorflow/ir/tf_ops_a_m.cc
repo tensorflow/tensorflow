@@ -324,8 +324,8 @@ static LogicalResult Verify(OpT op) {
   // Check output batch dim with potential broadcasting.
   ArrayRef<int64_t> output_shape = output_ty.getShape();
   for (int i = 0; i < result_batch_shape.size(); ++i) {
-    if (output_shape[i] != ShapedType::kDynamicSize &&
-        result_batch_shape[i] != ShapedType::kDynamicSize &&
+    if (output_shape[i] != ShapedType::kDynamic &&
+        result_batch_shape[i] != ShapedType::kDynamic &&
         output_shape[i] != result_batch_shape[i])
       return op.emitOpError()
              << "has mismatching input batch dimension "
@@ -345,14 +345,14 @@ static LogicalResult Verify(OpT op) {
   int64_t expected_out_row_dim = op.getAdjX() ? x_col_dim : x_row_dim;
   int64_t expected_out_col_dim = op.getAdjY() ? y_row_dim : y_col_dim;
 
-  if (expected_out_row_dim != ShapedType::kDynamicSize &&
-      out_row_dim != ShapedType::kDynamicSize &&
+  if (expected_out_row_dim != ShapedType::kDynamic &&
+      out_row_dim != ShapedType::kDynamic &&
       out_row_dim != expected_out_row_dim)
     return op.emitOpError()
            << "found invalid output dimension on row, expected "
            << expected_out_row_dim << " but got " << out_row_dim;
-  if (expected_out_col_dim != ShapedType::kDynamicSize &&
-      out_col_dim != ShapedType::kDynamicSize &&
+  if (expected_out_col_dim != ShapedType::kDynamic &&
+      out_col_dim != ShapedType::kDynamic &&
       out_col_dim != expected_out_col_dim)
     return op.emitOpError()
            << "found invalid output dimension on col, expected "
@@ -382,7 +382,7 @@ LogicalResult BatchToSpaceOp::verify() {
   // Op already has a constraint that block_size >= 2.
   int64_t block_size = op.getBlockSize();
 
-  llvm::SmallVector<int64_t, 4> input_shape(4, ShapedType::kDynamicSize);
+  llvm::SmallVector<int64_t, 4> input_shape(4, ShapedType::kDynamic);
   auto input_type = op.getInput().getType().cast<TensorType>();
   if (input_type.hasRank()) {
     if (input_type.getRank() != 4)
@@ -390,7 +390,7 @@ LogicalResult BatchToSpaceOp::verify() {
              << "requires input to be a 4D tensor, but got " << input_type;
 
     int64_t input_batch = input_type.getDimSize(0);
-    if (input_batch != ShapedType::kDynamicSize &&
+    if (input_batch != ShapedType::kDynamic &&
         input_batch % (block_size * block_size) != 0) {
       return op.emitOpError()
              << "requires input batch (dimension 0) to be evenly divisible "
@@ -444,8 +444,7 @@ LogicalResult BatchToSpaceOp::verify() {
              << "requires output to be a 4D tensor, but got " << output_type;
 
     auto static_dims = [](int64_t dim_a, int64_t dim_b) {
-      return dim_a != ShapedType::kDynamicSize &&
-             dim_b != ShapedType::kDynamicSize;
+      return dim_a != ShapedType::kDynamic && dim_b != ShapedType::kDynamic;
     };
 
     auto output_shape = output_type.getShape();
@@ -587,8 +586,8 @@ LogicalResult BiasAddOp::verify() {
       tensorflow::GetTensorFeatureDimIndex(value_ty.getRank(), format);
   int64_t feature_dim = value_ty.getDimSize(feature_dim_idx);
   int64_t bias_len = bias_ty.getDimSize(0);
-  if (feature_dim != ShapedType::kDynamicSize &&
-      bias_len != ShapedType::kDynamicSize && feature_dim != bias_len) {
+  if (feature_dim != ShapedType::kDynamic && bias_len != ShapedType::kDynamic &&
+      feature_dim != bias_len) {
     return op.emitOpError()
            << "requires channel dimension and feature dimension to match; "
               "found "
@@ -1741,7 +1740,7 @@ static LogicalResult Verify(OpT op) {
     return failure();
   }
 
-  int64_t input_channels = ShapedType::kDynamicSize;
+  int64_t input_channels = ShapedType::kDynamic;
   if (auto ty = op.getInput().getType().template dyn_cast<RankedTensorType>()) {
     absl::string_view data_format(op.getDataFormat().data(),
                                   op.getDataFormat().size());
@@ -1752,7 +1751,7 @@ static LogicalResult Verify(OpT op) {
     input_channels = ty.getDimSize(idx);
   }
 
-  int64_t filter_channels = ShapedType::kDynamicSize;
+  int64_t filter_channels = ShapedType::kDynamic;
   if (auto ty =
           op.getFilter().getType().template dyn_cast<RankedTensorType>()) {
     int idx = tensorflow::GetFilterTensorInputChannelsDimIndex(
@@ -1830,7 +1829,7 @@ static LogicalResult inferConvReturnTypeComponents(
 
   // Output always have `num_dims` rank. All dimensions are initialized to
   // dynamic size and can be partially inferred.
-  SmallVector<int64_t, 4> return_shape(num_dims, ShapedType::kDynamicSize);
+  SmallVector<int64_t, 4> return_shape(num_dims, ShapedType::kDynamic);
   // Output batch and channel dimension can be obtained using utilities from
   // tensorflow/core/util/tensor_format.h.
   if (input_ty.hasRank()) {
@@ -2104,18 +2103,18 @@ LogicalResult DataFormatVecPermuteOp::verify() {
 
   if (rank == 1) {
     int64_t dim0 = input_ty.getDimSize(0);
-    if (dim0 != ShapedType::kDynamicSize && dim0 != 4 && dim0 != 2)
+    if (dim0 != ShapedType::kDynamic && dim0 != 4 && dim0 != 2)
       return op.emitOpError("requires 1D input of size 4 or size 2");
   }
 
   if (rank == 2) {
     int64_t dim0 = input_ty.getDimSize(0);
-    if (dim0 != ShapedType::kDynamicSize && dim0 != 4)
+    if (dim0 != ShapedType::kDynamic && dim0 != 4)
       return op.emitOpError(
           "requires first dimensions of 2D input to be of size 4");
 
     int64_t dim1 = input_ty.getDimSize(1);
-    if (dim1 != ShapedType::kDynamicSize && dim1 != 2)
+    if (dim1 != ShapedType::kDynamic && dim1 != 2)
       return op.emitOpError(
           "requires second dimensions of 2D input to be of size 2");
   }
@@ -2503,8 +2502,8 @@ OpFoldResult EnsureShapeOp::fold(llvm::ArrayRef<mlir::Attribute>) {
   if (shape_constraint.has_value() &&
       shape_constraint->size() == type.getShape().size()) {
     for (int i = 0; i < shape_constraint->size(); ++i) {
-      if (!ShapedType::isDynamic(shape_constraint.getValue()[i]) &&
-          type.getDimSize(i) != shape_constraint.getValue()[i]) {
+      if (!ShapedType::isDynamic(shape_constraint.value()[i]) &&
+          type.getDimSize(i) != shape_constraint.value()[i]) {
         return {};
       }
     }

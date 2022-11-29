@@ -497,7 +497,7 @@ llvm::SmallVector<int64_t> ConvertMlirShapeToTF(llvm::ArrayRef<int64_t> shape) {
 
 llvm::SmallVector<int64_t> ConvertTFShapeToMlir(llvm::ArrayRef<int64_t> shape) {
   return llvm::to_vector(llvm::map_range(shape, [](int64_t dim) {
-    return dim == -1 ? mlir::ShapedType::kDynamicSize : dim;
+    return dim == -1 ? mlir::ShapedType::kDynamic : dim;
   }));
 }
 

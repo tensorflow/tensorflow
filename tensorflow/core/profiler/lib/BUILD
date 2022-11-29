@@ -123,8 +123,6 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/compiler/xla/backends/profiler:profiler_backends",
-        "//tensorflow/core/profiler/backends/cpu:host_tracer",
-        "//tensorflow/core/profiler/backends/cpu:metadata_collector",
     ],
     alwayslink = True,
 )

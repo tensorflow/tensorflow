@@ -77,7 +77,7 @@ tf_proto_library(
     cc_api_version = 2,
     visibility = [
         "//tensorflow/compiler/xla/python:__pkg__",
-        "//tensorflow/core/profiler:__pkg__",
+        "//tensorflow/tsl/profiler:internal",
     ],
 )
 

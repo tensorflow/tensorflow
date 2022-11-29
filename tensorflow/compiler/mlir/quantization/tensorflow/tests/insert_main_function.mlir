@@ -34,7 +34,9 @@ module attributes {tf.versions = {producer = 930 : i32}, tf_saved_model.semantic
 // CHECK-NOT: f = @NoOp
 // CHECK:   %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %arg1) {config = "", config_proto = "", executor_type = "", f = @mul1} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
 // CHECK:   %[[PARTITIONEDCALL_1:.*]] = "tf.PartitionedCall"(%arg2, %arg3) {config = "", config_proto = "", executor_type = "", f = @mul2} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
-// CHECK:   return %[[PARTITIONEDCALL_0]], %[[PARTITIONEDCALL_1]] : tensor<1xf32>, tensor<1xf32>
+// CHECK:   %[[IDENTITY_0:.*]] = "tf.Identity"(%[[PARTITIONEDCALL_1]])
+// CHECK:   %[[IDENTITY_1:.*]] = "tf.Identity"(%[[PARTITIONEDCALL_0]])
+// CHECK:   return %[[IDENTITY_1]], %[[IDENTITY_0]] : tensor<1xf32>, tensor<1xf32>
 // CHECK: }
 }
 
@@ -84,5 +86,33 @@ module attributes {tf.versions = {producer = 1132 : i32}, tf_saved_model.semanti
 // CHECK-SAME: f = @add
 // CHECK-SAME: }
 // CHECK-SAME: : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
-// CHECK: return %[[CALL0]] : tensor<1xf32>
+// CHECK: %[[IDENTITY:.*]] = "tf.Identity"(%[[CALL0]])
+// CHECK: return %[[IDENTITY]] : tensor<1xf32>
 }
+
+// -----
+
+// Test a case where an entry function return multiple values
+module attributes {tf.versions = {producer = 930 : i32}, tf_saved_model.semantics, tfl.description = "MLIR Converted.", tfl.schema_version = 3 : i32}  {
+  "tf_saved_model.session_initializer"() {initializers = [@NoOp]} : () -> ()
+  func.func @NoOp() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp"]} {
+    func.return
+  }
+
+  func.func @topk(%arg0: tensor<16xf32> {tf_saved_model.index_path = ["input"]}, %arg1: tensor<i32> {tf_saved_model.index_path = ["k"]}) -> (tensor<?xf32> {tf_saved_model.index_path = ["values"]}, tensor<?xi32> {tf_saved_model.index_path = ["indices"]}) attributes {tf.entry_function = {inputs = "input:0,k:0", outputs = "TopK:0,TopK:1"}, tf_saved_model.exported_names = ["topk"]} {
+    %0:2 = "tf.TopKV2"(%arg0, %arg1): (tensor<16xf32>, tensor<i32>) -> (tensor<?xf32>, tensor<?xi32>)
+    func.return %0#0, %0#1: tensor<?xf32>, tensor<?xi32>
+  }
+
+// CHECK: func.func private @topk(%arg0: tensor<16xf32>, %arg1: tensor<i32>) -> (tensor<?xf32>, tensor<?xi32>)
+// CHECK-SAME: attributes {tf.entry_function = {inputs = "input:0,k:0", outputs = "TopK:0,TopK:1"}}
+
+// CHECK: func.func @main(%arg0: tensor<16xf32> {tf_saved_model.index_path = ["input:0"]}, %arg1: tensor<i32> {tf_saved_model.index_path = ["k:0"]})
+// CHECK-SAME: -> (tensor<?xf32> {tf_saved_model.index_path = ["TopK:0"]}, tensor<?xi32> {tf_saved_model.index_path = ["TopK:1"]})
+// CHECK-SAME: attributes {tf.entry_function = {inputs = "input:0,k:0", outputs = "TopK:0,TopK:1"}, tf_saved_model.exported_names = ["main"]}
+// CHECK: %[[CALL0:.*]]:2 = "tf.PartitionedCall"(%arg0, %arg1) {config = "", config_proto = "", executor_type = "", f = @topk}
+// Expects an IdentityN op to be created.
+// CHECK: %[[IDENTITY:.*]]:2 = "tf.IdentityN"(%[[CALL0]]#0, %[[CALL0]]#1) : (tensor<?xf32>, tensor<?xi32>) -> (tensor<?xf32>, tensor<?xi32>)
+// CHECK: return %[[IDENTITY]]#0, %[[IDENTITY]]#1 : tensor<?xf32>, tensor<?xi32>
+}
+

@@ -283,7 +283,7 @@ StatusOr<mlir::Attribute> ConvertTensorShapeProto(const TensorShapeProto& shape,
   llvm::SmallVector<int64_t, 4> dims;
   dims.reserve(shape.dim().size());
   for (const auto& dim : shape.dim()) {
-    dims.push_back(dim.size() == kTFDynamicSize ? ShapedType::kDynamicSize
+    dims.push_back(dim.size() == kTFDynamicSize ? ShapedType::kDynamic
                                                 : dim.size());
   }
   return mlir::TF::ShapeAttr::get(context, llvm::makeArrayRef(dims));

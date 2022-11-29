@@ -942,12 +942,11 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
         GetShape(conv_result), op.getBackendConfig().getResultLayout());
     descriptor.dnums = ConvertConvDimensionNumbers(op.getDimensionNumbers());
     descriptor.scratch_size = scratch_slice.size();
-    mlir::DenseIntElementsAttr window_strides =
-        op.getWindowStrides().getValue();
-    mlir::DenseIntElementsAttr padding = op.getPadding().getValue();
-    mlir::DenseIntElementsAttr lhs_dilation = op.getLhsDilation().getValue();
-    mlir::DenseIntElementsAttr rhs_dilation = op.getRhsDilation().getValue();
-    mlir::DenseElementsAttr window_reversal = op.getWindowReversal().getValue();
+    mlir::DenseIntElementsAttr window_strides = op.getWindowStrides().value();
+    mlir::DenseIntElementsAttr padding = op.getPadding().value();
+    mlir::DenseIntElementsAttr lhs_dilation = op.getLhsDilation().value();
+    mlir::DenseIntElementsAttr rhs_dilation = op.getRhsDilation().value();
+    mlir::DenseElementsAttr window_reversal = op.getWindowReversal().value();
     for (auto index : llvm::seq<int>(0, window_strides.getNumElements())) {
       WindowDimension* dim = descriptor.window.add_dimensions();
       // Window size for a convolution is the same as the kernel size.
@@ -1927,7 +1926,7 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
 
     DimensionVector window_size;
     mlir::DenseIntElementsAttr window_dimensions =
-        select_and_scatter_op.getWindowDimensions().getValue();
+        select_and_scatter_op.getWindowDimensions().value();
     for (const auto& dim : window_dimensions) {
       window_size.push_back(dim.getSExtValue());
       CHECK_GT(dim.getSExtValue(), 0);
@@ -3153,7 +3152,7 @@ IrEmitterUnnested::TryBuildConstantInitializerThunk(mlir::Operation* op,
       // If the initial value happens to be a constant, generate a specialized
       // thunk.
       const_init = global_memref.getInitialValue()
-                       .getValue()
+                       .value()
                        .cast<mlir::DenseElementsAttr>();
     }
   } else if (auto constant = mlir::dyn_cast_or_null<mlir::mhlo::ConstantOp>(
@@ -4336,7 +4335,8 @@ int64_t NumInputsWithMoreElementsThan(mlir::lmhlo::FusionOp fusion,
 bool IsUnrollingColumnReductionBeneficial(mlir::lmhlo::FusionOp fusion,
                                           HloComputation* fused_computation,
                                           const Shape& input_shape,
-                                          int64_t num_kept_minor) {
+                                          int64_t num_kept_minor,
+                                          bool reduction_is_race_free) {
   if (num_kept_minor % (WarpSize() * 2) != 0) {
     return false;
   }
@@ -4349,25 +4349,17 @@ bool IsUnrollingColumnReductionBeneficial(mlir::lmhlo::FusionOp fusion,
   int64_t cannot_be_vectorized = 0;
   llvm::SmallVector<mlir::Operation*> fusion_roots = fusion.getFusionRoots();
   absl::flat_hash_set<mlir::Operation*> use_chain_endings;
-  auto hlo_roots = GetFusionRoots(fused_computation);
+  std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fused_computation);
 
-  if (fusion_roots.size() == 1) {
-    if (IsReductionFromOrToContiguousDimensions(*hlo_roots[0])) {
-      use_chain_endings.insert(fusion_roots[0]);
-      // Atomic.add of the reduction result can't be vectorized.
+  for (int i = 0; i < fusion_roots.size(); i++) {
+    if (!reduction_is_race_free &&
+        IsReductionFromOrToContiguousDimensions(*hlo_roots[i])) {
+      // Atomics cannot be vectorized.
       cannot_be_vectorized++;
+    } else {
+      can_be_vectorized++;
     }
-  } else {
-    for (int i = 0; i < fusion_roots.size(); i++) {
-      if (IsReductionFromOrToContiguousDimensions(*hlo_roots[i])) {
-        // Atomic.add of the reduction result can't be vectorized.
-        cannot_be_vectorized++;
-      } else {
-        // Write of the non-reduction result can be vectorized.
-        can_be_vectorized++;
-      }
-      use_chain_endings.insert(fusion_roots[i]);
-    }
+    use_chain_endings.insert(fusion_roots[i]);
   }
   // Fusion inputs that have the same dimension as the reduce input and
   // only involve in elementwise operations can be vectorized.
@@ -4478,7 +4470,8 @@ static bool CanVectorizeReduction(
     se::CudaComputeCapability cc, mlir::lmhlo::FusionOp fusion,
     HloComputation* fused_computation,
     const ReductionDimensions& reduction_dimensions, int num_threads_x,
-    Vector3 reduction_tiling, const Shape& input_shape, int64_t shmem_usage) {
+    Vector3 reduction_tiling, const Shape& input_shape, int64_t shmem_usage,
+    bool reduction_is_race_free) {
   // Vectorization might cause us to run out of budget.
   if (shmem_usage * 2 > kSharedMemoryBudgetInBytes) {
     return false;
@@ -4486,7 +4479,7 @@ static bool CanVectorizeReduction(
   if (!reduction_dimensions.is_row_reduction) {
     return IsUnrollingColumnReductionBeneficial(
         fusion, fused_computation, input_shape,
-        reduction_dimensions.dimensions[kDimX]);
+        reduction_dimensions.dimensions[kDimX], reduction_is_race_free);
   }
 
   if (reduction_dimensions.dimensions[kDimX] % 2 != 0 ||
@@ -4586,9 +4579,10 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
                                             : kLinearIndexingX;
   int64_t shmem_usage =
       ProjectedShmemUsageBytes(reduction_dimensions, instr_index_groups);
+  bool reduction_is_race_free = ReductionIsRaceFree(reduction_dimensions);
   bool vectorize = CanVectorizeReduction(
       cc, fusion, fused_computation, reduction_dimensions, num_threads_x,
-      reduction_tiling, input_shape, shmem_usage);
+      reduction_tiling, input_shape, shmem_usage, reduction_is_race_free);
   int vector_size = vectorize ? 2 : 1;
 
   int num_partial_results = 1;
@@ -4634,7 +4628,7 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
                              virtual_thread_scaling_factor);
   return ReductionCodegenInfo(tiling_scheme, num_partial_results,
                               reduction_dimensions.is_row_reduction,
-                              ReductionIsRaceFree(reduction_dimensions));
+                              reduction_is_race_free);
 }
 
 // Generate a single element of the tile (update the accumulator state) for a

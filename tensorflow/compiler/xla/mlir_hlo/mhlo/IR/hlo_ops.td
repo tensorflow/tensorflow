@@ -1467,17 +1467,21 @@ def MHLO_ReduceScatterOp : MHLO_Op<"reduce_scatter",
 }
 
 def MHLO_AllToAllOp : MHLO_Op<"all_to_all",
-    [Pure, SameOperandsElementType, SameOperandsShape,
+    [Pure, SameOperandsElementType, SameOperandsShape, SameVariadicOperandSize,
      InferTensorType]> {
 
   let arguments = (ins
-    MHLO_Tensor:$operand,
-    I64Attr:$split_dimension,
-    I64Attr:$concat_dimension,
-    I64Attr:$split_count,
+    // ArrayAllToAll must have exactly one operand, TupleAllToAll at least one.
+    Variadic<MHLO_Tensor>:$operand,
+    // split_dimension, concat_dimension and split_count are present for array
+    // all-to-all, absent for tuple all-to-all.
+    OptionalAttr<I64Attr>:$split_dimension,
+    OptionalAttr<I64Attr>:$concat_dimension,
+    OptionalAttr<I64Attr>:$split_count,
     I64ElementsAttr:$replica_groups
   );
-  let results = (outs MHLO_Tensor);
+  let results = (outs Variadic<MHLO_Tensor>);
+  let hasCustomHLOConverter = 1;
 }
 
 def MHLO_ReduceOp: MHLO_ShapedInterfaceOp<"reduce", [

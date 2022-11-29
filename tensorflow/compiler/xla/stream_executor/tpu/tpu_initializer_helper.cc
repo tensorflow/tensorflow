@@ -181,8 +181,7 @@ stream_executor::port::Status TryAcquireTpuLock() {
             "The TPU is already in use by another process probably owned by "
             "another user. Run \"$ sudo lsof -w /dev/accel0\" to figure out "
             "which process is using the TPU. If you still get this message, "
-            "run \"$ sudo rm /tmp/libtpu_lockfile\". Not attempting to load "
-            "libtpu.so in this process.");
+            "run \"$ sudo rm /tmp/libtpu_lockfile\".");
       }
     } else {
       return ::tsl::OkStatus();

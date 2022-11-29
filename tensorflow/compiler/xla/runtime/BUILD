@@ -212,6 +212,7 @@ tf_cc_test(
         ":executable",
         ":jit_executable",
         ":results",
+        ":types",
         "//tensorflow/compiler/xla/mlir/runtime/transforms/tests:testlib_pipeline",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",

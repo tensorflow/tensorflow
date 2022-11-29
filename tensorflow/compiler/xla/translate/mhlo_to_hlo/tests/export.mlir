@@ -718,6 +718,24 @@ func.func @main(%arg0: tensor<2xi32>) -> tensor<2xf32> {
 // -----
 
 // CHECK:  HloModule
+func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.convert"(%arg0) : (tensor<2xf32>) -> tensor<2xf8E5M2>
+  %1 = "mhlo.convert"(%0) : (tensor<2xf8E5M2>) -> tensor<2xf32>
+  %2 = "mhlo.convert"(%1) : (tensor<2xf32>) -> tensor<2xf8E4M3FN>
+  %3 = "mhlo.convert"(%2) : (tensor<2xf8E4M3FN>) -> tensor<2xf32>
+  func.return %3 : tensor<2xf32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  %[[ARG:.*]] = f32[2] parameter(0)
+// CHECK:  %[[E5M2_VAL:.*]] = f8e5m2[2] convert(f32[2] %[[ARG]])
+// CHECK:  %[[F32_VAL:.*]] = f32[2] convert(f8e5m2[2] %[[E5M2_VAL]])
+// CHECK:  %[[E4M3_VAL:.*]] = f8e4m3fn[2] convert(f32[2] %[[F32_VAL]])
+// CHECK:  ROOT %[[RESULT:.*]] = f32[2] convert(f8e4m3fn[2] %[[E4M3_VAL]])
+
+// -----
+
+// CHECK:  HloModule
 func.func @main(%arg0: tensor<5x5xf32>, %arg1: tensor<5x5xui32>) -> tensor<5x5xi8> {
   %result = "mhlo.stochastic_convert"(%arg0, %arg1) : (tensor<5x5xf32>, tensor<5x5xui32>) -> tensor<5x5xi8>
   func.return %result : tensor<5x5xi8>
@@ -2103,3 +2121,24 @@ func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> attributes {execution_
   func.return %0 : tensor<3x4xf32>
 }
 // CHECK{LITERAL}: }, execution_thread="test_thread"
+
+// -----
+
+// CHECK:  HloModule
+func.func private @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+// CHECK: %[[ARG0:.*]] = s32[2,2] parameter(0)
+// CHECK: ROOT %[[RESULT:.*]] = s32[2,2] all-to-all(s32[2,2] %[[ARG0]]), replica_groups={{.}}{1,2},{0}}, dimensions={1}
+  %0 = "mhlo.all_to_all"(%arg0) {concat_dimension = 1 : i64, replica_groups = dense<[[1, 2], [0, -1]]> : tensor<2x2xi64>, split_count = 2 : i64, split_dimension = 1 : i64} : (tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
+}
+
+// -----
+
+func.func private @main(%arg0: tensor<128x4xf32>, %arg1: tensor<128x4xf32>) -> tuple<tensor<128x4xf32>, tensor<128x4xf32>> {
+// CHECK: %[[ARG0:.*]] = f32[128,4] parameter(0)
+// CHECK: %[[ARG1:.*]] = f32[128,4] parameter(1)
+// CHECK: (f32[128,4], f32[128,4]) all-to-all(f32[128,4] %[[ARG0]], f32[128,4] %[[ARG1]]), replica_groups={{.}}{0,1}}
+  %0:2 = "mhlo.all_to_all"(%arg0, %arg1) {replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>} : (tensor<128x4xf32>, tensor<128x4xf32>) -> (tensor<128x4xf32>, tensor<128x4xf32>)
+  %1 = mhlo.tuple %0#0, %0#1 {result_layout = [dense<[0, 1]> : tensor<2xindex>, dense<[1, 0]> : tensor<2xindex>], xla_shape = "(f32[128,4]{0,1}, f32[128,4]{1,0})"} : tuple<tensor<128x4xf32>, tensor<128x4xf32>>
+  return %1 : tuple<tensor<128x4xf32>, tensor<128x4xf32>>
+}

@@ -3,10 +3,6 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -110,7 +106,6 @@ cc_library(
         "@tf_runtime//:tensor_alwayslink",
         "@tf_runtime//backends/cpu:core_runtime_alwayslink",
         "@tf_runtime//backends/common:eigentype",
-        "@tf_runtime//:distributed_kernels_alwayslink",
         "//tensorflow/compiler/jit:common",
         "//tensorflow/core/tfrt/eager/backends/cpu:cpu_registration_alwayslink",
     ] + if_cuda([
@@ -191,7 +186,6 @@ tf_cc_test(
         "function_cache_test.cc",
     ],
     args = ["--heap_check="],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_oss"],
     deps = [
         ":c_api_tfrt",
@@ -222,7 +216,6 @@ tf_cc_test(
         "op_cache_test.cc",
     ],
     args = ["--heap_check="],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_oss"],
     deps = [
         ":c_api_tfrt",

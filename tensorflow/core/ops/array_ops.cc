@@ -17,6 +17,7 @@ limitations under the License.
 #include <ostream>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -1591,6 +1592,7 @@ REGISTER_OP("Shape")
     .Output("output: out_type")
     .Attr("T: type")
     .Attr("out_type: {int32, int64} = DT_INT32")
+    .SetTypeConstructor(full_type::Unary(TFT_SHAPE_TENSOR, "out_type"))
     .SetShapeFn(ShapeShapeFn);
 
 REGISTER_OP("ShapeN")

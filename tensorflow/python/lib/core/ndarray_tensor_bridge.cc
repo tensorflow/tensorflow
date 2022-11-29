@@ -15,7 +15,7 @@ limitations under the License.
 
 // clang-format off
 // Must be included first.
-#include "tensorflow/python/lib/core/numpy.h"
+#include "tensorflow/tsl/python/lib/core/numpy.h"
 // clang-format on
 
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"

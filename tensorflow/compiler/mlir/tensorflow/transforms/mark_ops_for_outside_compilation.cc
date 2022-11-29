@@ -413,7 +413,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   PatternApplicator(std::move(patterns))
       .walkAllPatterns([&](const Pattern& pattern) {
         Optional<OperationName> root_kind = pattern.getRootKind();
-        if (root_kind.has_value()) supported_ops.insert(root_kind.getValue());
+        if (root_kind.has_value()) supported_ops.insert(root_kind.value());
       });
   AddSupportedFunctionalOps(module.getContext(), &supported_ops);
   AddSupportedOpsUsingFolding(module.getContext(), &supported_ops);

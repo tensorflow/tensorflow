@@ -338,7 +338,6 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@tf_runtime//:basic_kernels_opdefs",
         "@tf_runtime//:core_runtime_opdefs",
-        "@tf_runtime//:distributed_kernels_opdefs",
     ],
 )
 
@@ -414,7 +413,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_async_opdefs",
         "@tf_runtime//:basic_kernels_opdefs",
         "@tf_runtime//:core_runtime_opdefs",
-        "@tf_runtime//:distributed_kernels_opdefs",
         "@tf_runtime//backends/jitrt:jitrt_opdefs",
         "@tf_runtime//:stream_analysis",
         "@tf_runtime//:test_kernels_opdefs",
@@ -759,7 +757,6 @@ cc_library(
         "tfrt_fallback_registration.h",
     ],
     visibility = [":friends"] + if_google([
-        "//learning/brain/experimental/tfrt/distributed_runtime:__pkg__",
         "//learning/brain/experimental/tfrt/visualization:__pkg__",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server:__pkg__",
@@ -807,5 +804,29 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@tf_runtime//:core_runtime_opdefs",
+    ],
+)
+
+cc_library(
+    name = "transform_utils",
+    srcs = [
+        "transforms/utils.cc",
+    ],
+    hdrs = [
+        "transforms/utils.h",
+    ],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
+        "@tf_runtime//:basic_kernels_opdefs",
+        "@tf_runtime//:core_runtime_opdefs",
+        "@tf_runtime//:support",
     ],
 )

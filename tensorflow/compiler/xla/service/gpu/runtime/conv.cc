@@ -277,16 +277,17 @@ template <CudnnConvKind kind>
 static bool ConvFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
                    void** rets) {
   static auto* handler =
-      BindConvAttributes(CustomCall::Bind("xla.gpu.conv")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const DebugOptions*>()
-                             .Arg<runtime::StridedMemrefView>()  // operand0
-                             .Arg<runtime::StridedMemrefView>()  // operand1
-                             .Value(std::nullopt)                // bias
-                             .Value(std::nullopt)                // side_input
-                             .Arg<runtime::StridedMemrefView>()  // output
-                             .Arg<runtime::FlatMemrefView>()     // scratch
-                         )
+      BindConvAttributes(
+          CustomCall::Bind("xla.gpu.conv")
+              .UserData<const ServiceExecutableRunOptions*>()
+              .UserData<const DebugOptions*>()
+              .Arg<runtime::StridedMemrefView>()                   // operand0
+              .Arg<runtime::StridedMemrefView>()                   // operand1
+              .Value(std::optional<runtime::FlatMemrefView>())     // bias
+              .Value(std::optional<runtime::StridedMemrefView>())  // side_input
+              .Arg<runtime::StridedMemrefView>()                   // output
+              .Arg<runtime::FlatMemrefView>()                      // scratch
+          )
           .To<checks>(Conv::Handler(kind))
           .release();
 
@@ -297,16 +298,17 @@ template <CudnnConvKind kind>
 static bool ConvFusedFn(runtime::ExecutionContext* ctx, void** args,
                         void** attrs, void** rets) {
   static auto* handler =
-      BindConvAttributes(CustomCall::Bind("xla.gpu.conv.fused")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const DebugOptions*>()
-                             .Arg<runtime::StridedMemrefView>()  // operand0
-                             .Arg<runtime::StridedMemrefView>()  // operand1
-                             .Arg<runtime::FlatMemrefView>()     // bias
-                             .Value(std::nullopt)                // side_input
-                             .Arg<runtime::StridedMemrefView>()  // output
-                             .Arg<runtime::FlatMemrefView>()     // scratch
-                         )
+      BindConvAttributes(
+          CustomCall::Bind("xla.gpu.conv.fused")
+              .UserData<const ServiceExecutableRunOptions*>()
+              .UserData<const DebugOptions*>()
+              .Arg<runtime::StridedMemrefView>()                   // operand0
+              .Arg<runtime::StridedMemrefView>()                   // operand1
+              .Arg<runtime::FlatMemrefView>()                      // bias
+              .Value(std::optional<runtime::StridedMemrefView>())  // side_input
+              .Arg<runtime::StridedMemrefView>()                   // output
+              .Arg<runtime::FlatMemrefView>()                      // scratch
+          )
           .Attr<se::dnn::ActivationMode>("activation_mode")
           .To<checks>(Conv::Handler(kind))
           .release();

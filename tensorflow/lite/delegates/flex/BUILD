@@ -43,6 +43,7 @@ cc_library(
         ":util",
         ":buffer_map_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:string",
         "//tensorflow/lite/kernels/internal:compatibility",
     ] + if_mobile([
@@ -62,6 +63,7 @@ cc_library(
     deps = [
         ":util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/experimental/resource",
     ] + if_mobile([
@@ -163,6 +165,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:macros",
         "//tensorflow/lite:minimal_logging",
@@ -214,6 +217,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@flatbuffers",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite:util",
@@ -242,6 +246,7 @@ tf_cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/testing:util",
         "@com_google_absl//absl/memory",
@@ -256,6 +261,7 @@ cc_library(
     features = tf_features_nolayering_check_if_ios(),
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:cc_api",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -280,6 +286,7 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/utils:simple_delegate",
         "//tensorflow/lite/kernels:kernel_util",
         "@com_google_googletest//:gtest_main",
@@ -310,6 +317,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:kernel_api",
         "@com_google_absl//absl/strings:str_format",
         "//tensorflow/lite/kernels/internal:tensor",
@@ -338,6 +346,7 @@ tf_cc_test(
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -408,6 +417,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
     ] + if_mobile([

@@ -388,6 +388,14 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
   }
 
   std::vector<ncclComm_t> nccl_comms(collective->num_local_devices);
+  VLOG(2) << "Created nccl Communicator with "
+          << "num_global_devices = " << collective->num_global_devices
+          << " num_local_devices = " << collective->num_local_devices
+          << " communicator_key ="
+          << absl::StrJoin(
+                 std::vector<int>{collective->communicator_key.begin(),
+                                  collective->communicator_key.end()},
+                 " ");
 #if NCCL_MAJOR >= 2
   // For NCCL 2, we always initialize using ncclCommInitRank guarded by NCCL
   // group primitives.

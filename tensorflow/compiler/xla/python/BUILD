@@ -257,16 +257,6 @@ cc_library(
 )
 
 cc_library(
-    name = "numpy",
-    srcs = ["numpy.cc"],
-    hdrs = ["numpy.h"],
-    deps = [
-        "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",
-    ],
-)
-
-cc_library(
     name = "py_client",
     srcs = [
         "callback.cc",
@@ -301,7 +291,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":exceptions",
-        ":numpy",
+        "//tensorflow/tsl/python/lib/core:numpy",
         ":pprof_profile_builder",
         ":python_ref_manager",
         ":python_utils",
@@ -496,6 +486,7 @@ cc_library(
         ":jax_jit",
         ":py_client",
         ":status_casters",
+        "//tensorflow/compiler/xla/pjrt:lru_cache",
         "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/synchronization",
         "@pybind11",
@@ -650,13 +641,13 @@ cc_library(
     deps = [
         ":types",
         "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla/backends/profiler:profiler_backends",
+        "//tensorflow/compiler/xla/backends/profiler/cpu:python_tracer",
         "//tensorflow/compiler/xla/python/profiler/internal:traceme_wrapper",
-        "//tensorflow/core/profiler/backends/cpu:python_tracer",
-        "//tensorflow/core/profiler/lib:profiler_backends",
-        "//tensorflow/core/profiler/lib:profiler_session",
-        "//tensorflow/core/profiler/rpc:profiler_server_impl",
-        "//tensorflow/core/profiler/rpc/client:capture_profile",
-        "//tensorflow/core/profiler/rpc/client:profiler_client",
+        "//tensorflow/tsl/profiler/lib:profiler_session",
+        "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
+        "//tensorflow/tsl/profiler/rpc/client:capture_profile",
+        "//tensorflow/tsl/profiler/rpc/client:profiler_client",
         "@pybind11",
     ],
 )
@@ -864,7 +855,7 @@ pybind_extension(
         ":custom_call_sharding",
         ":jax_jit",
         ":mlir",
-        ":numpy",
+        "//tensorflow/tsl/python/lib/core:numpy",
         ":ops",
         ":util",
         ":pmap_lib",

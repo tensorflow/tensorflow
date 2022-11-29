@@ -335,14 +335,14 @@ SmallVector<Value, 2> extractDynamicEinsumSizes(
       // Query from lhs vars.
       auto dimIndPos = dimIndIt - lhsLoopVec.begin();
       auto lhsShape = lhs.getType().dyn_cast<RankedTensorType>().getShape();
-      if (lhsShape[dimIndPos] != ShapedType::kDynamicSize) continue;
+      if (lhsShape[dimIndPos] != ShapedType::kDynamic) continue;
       dimSize = b.create<tensor::DimOp>(loc, lhs, dimIndPos);
     } else {
       // query from rhs vars.
       dimIndIt = std::find(rhsLoopVec.begin(), rhsLoopVec.end(), dimInd);
       auto dimIndPos = dimIndIt - rhsLoopVec.begin();
       auto rhsShape = rhs.getType().dyn_cast<RankedTensorType>().getShape();
-      if (rhsShape[dimIndPos] != ShapedType::kDynamicSize) continue;
+      if (rhsShape[dimIndPos] != ShapedType::kDynamic) continue;
       dimSize = b.create<tensor::DimOp>(loc, rhs, dimIndPos);
     }
     dynSizes.push_back(dimSize);
@@ -701,10 +701,9 @@ class BroadcastOpToBroadcastConverter
       ConversionPatternRewriter& rewriter) const override {
     auto resultTy = typeConverter->convertType(op.getType()).cast<ShapedType>();
 
-    int64_t inputRank = op.getOperand().getType().getRank();
     int64_t numPrependedDims = op.getBroadcastSizes().size();
-    SmallVector<int64_t> dimensions = llvm::to_vector(
-        llvm::seq<int64_t>(numPrependedDims, numPrependedDims + inputRank));
+    SmallVector<int64_t> dimensions =
+        llvm::to_vector(llvm::seq<int64_t>(0, numPrependedDims));
 
     auto loc = op.getLoc();
     Value emptyTensor =
@@ -859,8 +858,14 @@ class BroadcastInDimOpToBroadcastConverter
     Value emptyTensor =
         getEmptyTensorFor(rewriter, loc, resultTy, op, adaptor.getOperands());
 
+    SmallVector<int64_t> addedDimensions;
+    for (int64_t dim : llvm::seq<int64_t>(0, resultTy.getRank())) {
+      if (!llvm::is_contained(broadcastDimensions, dim))
+        addedDimensions.push_back(dim);
+    }
+
     rewriter.replaceOpWithNewOp<linalg::BroadcastOp>(
-        op, operand, emptyTensor, broadcastDimensions,
+        op, operand, emptyTensor, addedDimensions,
         linalg::getPrunedAttributeList(op));
     return success();
   }
@@ -968,10 +973,10 @@ class DynamicBroadcastInDimOpToBroadcastConverter
         typeConverter->convertType(op.getType()).dyn_cast<RankedTensorType>();
     if (!resultTy) return failure();
 
-    SmallVector<int64_t> dimensions =
+    SmallVector<int64_t> broadcastDimensions =
         llvm::to_vector(op.getBroadcastDimensions().getValues<int64_t>());
 
-    SmallVector<Optional<bool>> expansionBehavior(dimensions.size());
+    SmallVector<Optional<bool>> expansionBehavior(broadcastDimensions.size());
 
     // Use static type info.
     for (const auto& [idx, dim] : llvm::enumerate(operandTy.getShape())) {
@@ -1004,20 +1009,28 @@ class DynamicBroadcastInDimOpToBroadcastConverter
     // Use attribute information to insert 1s into operand type.
     operand = getBroadcastOperand(rewriter, loc, operand, isExpandingDim);
 
-    auto broadcastResultTy =
-        getBroadcastResultType(operand, resultTy, dimensions, isExpandingDim);
+    auto broadcastResultTy = getBroadcastResultType(
+        operand, resultTy, broadcastDimensions, isExpandingDim);
 
-    operand = collapseExpandingDims(rewriter, loc, operand, dimensions,
+    operand = collapseExpandingDims(rewriter, loc, operand, broadcastDimensions,
                                     isExpandingDim);
-    operand = transposeBroadcastOperand(rewriter, loc, operand, dimensions);
+    operand =
+        transposeBroadcastOperand(rewriter, loc, operand, broadcastDimensions);
 
     Value emptyTensor = getEmptyTensorFor(rewriter, loc, broadcastResultTy, op,
                                           adaptor.getOperands());
-    Value result =
-        rewriter
-            .create<linalg::BroadcastOp>(loc, operand, emptyTensor, dimensions,
-                                         linalg::getPrunedAttributeList(op))
-            .getResults()[0];
+
+    SmallVector<int64_t> addedDimensions;
+    for (int64_t dim : llvm::seq<int64_t>(0, resultTy.getRank())) {
+      if (!llvm::is_contained(broadcastDimensions, dim))
+        addedDimensions.push_back(dim);
+    }
+
+    Value result = rewriter
+                       .create<linalg::BroadcastOp>(
+                           loc, operand, emptyTensor, addedDimensions,
+                           linalg::getPrunedAttributeList(op))
+                       .getResults()[0];
 
     if (resultTy != broadcastResultTy) {
       result = rewriter.create<tensor::CastOp>(loc, resultTy, result);
@@ -1366,8 +1379,7 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
           // source.
           if (resultType.isDynamicDim(map.index())) continue;
           for (auto targetDim : map.value()) {
-            if (shape[targetDim] == ShapedType::kDynamicSize)
-              shape[targetDim] = 1;
+            if (shape[targetDim] == ShapedType::kDynamic) shape[targetDim] = 1;
           }
         }
         // Insert a cast if types are not the same (ignoring sparse encoding).
@@ -1774,8 +1786,7 @@ DotOperationType getDotOperationType(mhlo::DotOp dotOp) {
   ArrayRef<int64_t> rhsShape =
       dotOp.getRhs().getType().cast<ShapedType>().getShape();
   auto shapeMatches = [](int64_t a, int64_t b) {
-    return a == ShapedType::kDynamicSize || b == ShapedType::kDynamicSize ||
-           a == b;
+    return a == ShapedType::kDynamic || b == ShapedType::kDynamic || a == b;
   };
   if (lhsShape.size() == 1 && rhsShape.size() == 1 &&
       shapeMatches(lhsShape[0], rhsShape[0])) {
@@ -2422,6 +2433,13 @@ struct NormalConvolutionOpConversion
         typeConverter->convertType(op.getResult().getType()).cast<ShapedType>();
     int64_t rank = resultType.getRank();
 
+    // Immediately emit an EmptyOp for output tensors with zero dimension.
+    if (llvm::is_contained(resultType.getShape(), 0)) {
+      rewriter.replaceOpWithNewOp<tensor::EmptyOp>(op, resultType.getShape(),
+                                                   resultType.getElementType());
+      return success();
+    }
+
     // The output shape is N spatial_dims F.
     SmallVector<Value, 8> dynSizes;
     if (resultType.isDynamicDim(0)) {
@@ -2523,6 +2541,13 @@ struct ConvolutionOpGeneralConversion
         typeConverter->convertType(op.getResult().getType()).cast<ShapedType>();
     auto reshapedResultShape = resultType.getShape().vec();
     if (!resultType.hasStaticShape()) return failure();
+
+    // Immediately emit an EmptyOp for output tensors with zero dimension.
+    if (llvm::is_contained(reshapedResultShape, 0)) {
+      rewriter.replaceOpWithNewOp<tensor::EmptyOp>(op, reshapedResultShape,
+                                                   resultType.getElementType());
+      return success();
+    }
 
     auto dimensionNumbers = op.getDimensionNumbers();
     auto inputBatchDimension = dimensionNumbers.getInputBatchDimension();
@@ -2846,6 +2871,13 @@ struct DepthwiseConvolutionOpConversion
     if (!resultType.hasStaticShape()) {
       return rewriter.notifyMatchFailure(op,
                                          "expected output has static shapes");
+    }
+
+    // Immediately emit an EmptyOp for output tensors with zero dimension.
+    if (llvm::is_contained(resultType.getShape(), 0)) {
+      rewriter.replaceOpWithNewOp<tensor::EmptyOp>(op, resultType.getShape(),
+                                                   resultType.getElementType());
+      return success();
     }
 
     // Apply padding and input dilation.
@@ -3274,7 +3306,7 @@ struct ReduceWindowOpConversion
 
       SmallVector<Value> resultDynamicDims;
       for (auto& en : llvm::enumerate(resultType.getShape())) {
-        if (en.value() != ShapedType::kDynamicSize) continue;
+        if (en.value() != ShapedType::kDynamic) continue;
         Value dimSize = rewriter.create<tensor::DimOp>(loc, input, en.index());
         if (en.index() == 0 || static_cast<int64_t>(en.index()) == rank - 1) {
           // batch dims and channel dims can be derived from input dims
@@ -3523,12 +3555,6 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
     ArrayRef<int64_t> startIndexMap =
         gatherOp.getDimensionNumbers().getStartIndexMap();
 
-    auto extractAsIndex = [&](Value input, ArrayRef<Value> index) -> Value {
-      return rewriter.create<arith::IndexCastOp>(
-          loc, rewriter.getIndexType(),
-          rewriter.create<tensor::ExtractOp>(loc, input, index));
-    };
-
     // We'll need these later and creating them on demand we end up with
     // duplicates, which also makes lit tests really hard to write.
     SmallVector<Value> constants;
@@ -3537,25 +3563,8 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
           rewriter.create<arith::ConstantOp>(loc, rewriter.getIndexAttr(i)));
     }
 
-    // Create ops to calculate the dynamic dimensions of the return shape, which
-    // are needed for the init tensor.
-    SmallVector<Value> dynDimSizes;
-    if (!resultType.hasStaticShape()) {
-      SmallVector<Value> returnShapes;
-      if (failed(gatherOp.reifyReturnTypeShapes(rewriter, adaptor.getOperands(),
-                                                returnShapes)))
-        return rewriter.notifyMatchFailure(gatherOp,
-                                           "could not reify return shape");
-      assert(returnShapes.size() == 1);
-      Value returnShape = returnShapes[0];
-
-      for (int i = 0; i < resultRank; ++i)
-        if (resultType.isDynamicDim(i))
-          dynDimSizes.push_back(extractAsIndex(returnShape, constants[i]));
-    }
-
-    Value emptyOp = rewriter.create<tensor::EmptyOp>(
-        loc, resultType.getShape(), resultType.getElementType(), dynDimSizes);
+    auto emptyOp = getEmptyTensorFor(rewriter, loc, resultType, gatherOp,
+                                     adaptor.getOperands());
 
     ValueRange ins;
     SmallVector<AffineMap, 1> indexingMaps(
@@ -3679,7 +3688,7 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
       extractOperand = operand;
     } else {
       // Cannot extract from unranked tensors, cast to ranked first.
-      SmallVector<int64_t> dims(operandRank, ShapedType::kDynamicSize);
+      SmallVector<int64_t> dims(operandRank, ShapedType::kDynamic);
       auto type = RankedTensorType::get(
           dims, operand.getType().cast<TensorType>().getElementType());
       extractOperand = rewriter.create<tensor::CastOp>(loc, type, operand);
@@ -3937,6 +3946,43 @@ class PointwiseToLinalgMapConverter : public OpConversionPattern<OpTy> {
   }
 };
 
+class SetDimensionSizeConverter
+    : public OpConversionPattern<mhlo::SetDimensionSizeOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::SetDimensionSizeOp setDimensionSizeOp, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    // We can lower SetDimensionSize to tensor extract. This turns into a
+    // regular dynamic shape. Note that the bounds annotation is still around
+    // but may be no longer valid depending on choices made by bufferization.
+    Location loc = setDimensionSizeOp.getLoc();
+    auto resultType = setDimensionSizeOp.getType().cast<RankedTensorType>();
+
+    SmallVector<OpFoldResult> offsets(resultType.getRank(),
+                                      rewriter.getIndexAttr(0));
+    SmallVector<OpFoldResult> strides(resultType.getRank(),
+                                      rewriter.getIndexAttr(1));
+    SmallVector<OpFoldResult> sizes(llvm::map_range(
+        resultType.getShape(), [&](int64_t dim) -> OpFoldResult {
+          return rewriter.getIndexAttr(dim);
+        }));
+    Value dimensionSize =
+        rewriter.create<tensor::ExtractOp>(loc, setDimensionSizeOp.getSize());
+    sizes[setDimensionSizeOp.getDimension()] =
+        rewriter
+            .create<arith::IndexCastOp>(loc, rewriter.getIndexType(),
+                                        dimensionSize)
+            .getResult();
+
+    rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(
+        setDimensionSizeOp, resultType, adaptor.getOperand(), offsets, sizes,
+        strides);
+    return success();
+  }
+};
+
 struct HloLegalizeToLinalgPass
     : public impl::HloLegalizeToLinalgPassBase<HloLegalizeToLinalgPass> {
   using HloLegalizeToLinalgPassBase::HloLegalizeToLinalgPassBase;
@@ -3986,6 +4032,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       RealDynamicSliceConverter,
       ReshapeOpConverter,
       ReverseConverter,
+      SetDimensionSizeConverter,
       SliceConverter,
       DynamicSliceConverter,
       DynamicUpdateSliceConverter,

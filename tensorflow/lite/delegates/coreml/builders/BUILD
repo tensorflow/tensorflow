@@ -30,6 +30,7 @@ cc_library(
         ":util",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:tensor",
@@ -46,6 +47,7 @@ cc_library(
     hdrs = ["op_factory.h"],
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -54,6 +56,7 @@ cc_library(
     hdrs = ["op_validator.h"],
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -64,6 +67,7 @@ cc_library(
     deps = [
         ":op_validator",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
     ],
 )
@@ -74,6 +78,7 @@ cc_test(
     deps = [
         ":util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",
     ],
 )

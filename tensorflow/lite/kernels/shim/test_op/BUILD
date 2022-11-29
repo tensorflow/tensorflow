@@ -59,6 +59,7 @@ cc_library(
         ":simple_op",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/shim:tflite_op_shim",
     ],
 )
@@ -70,6 +71,7 @@ cc_test(
         ":simple_tflite_op",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",

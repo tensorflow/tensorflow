@@ -635,8 +635,8 @@ void TPUSpaceToDepthPass::runOnOperation() {
     if (arg_num_and_num_users.has_value()) {
       // Get block size for the first convolution.
       int64_t block_size = GetConv2DBlockSize(conv2d);
-      auto arg_num = arg_num_and_num_users.getValue().arg_num;
-      auto num_users = arg_num_and_num_users.getValue().num_users;
+      auto arg_num = arg_num_and_num_users.value().arg_num;
+      auto num_users = arg_num_and_num_users.value().num_users;
       argnum_and_convolutions[arg_num].emplace_back(conv2d, block_size);
       argnum_num_users[arg_num] = num_users;
       return WalkResult::interrupt();
@@ -690,7 +690,7 @@ void TPUSpaceToDepthPass::runOnOperation() {
     auto conv2d_and_block_sizes = argnum_and_convolution.getSecond();
     int64_t block_size = conv2d_and_block_sizes[0].second;
     // Apply space to depth transform to the input on the host.
-    HandleCluster(cluster_func.getValue(), block_size,
+    HandleCluster(cluster_func.value(), block_size,
                   argnum_and_convolution.getFirst());
     // Transform the convolution.
     for (auto conv2d_and_block_size : conv2d_and_block_sizes) {

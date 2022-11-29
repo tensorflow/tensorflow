@@ -24,6 +24,7 @@ limitations under the License.
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/rewriters.h"
 #include "gml_st/transforms/transforms.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "thlo/IR/thlo_ops.h"
 
@@ -214,6 +216,110 @@ struct FusionPass : public impl::FusionPassBase<FusionPass> {
   }
 };
 
+bool isEqualOp(const Operation* lhsC, const Operation* rhsC) {
+  return OperationEquivalence::isEquivalentTo(
+      const_cast<Operation*>(lhsC), const_cast<Operation*>(rhsC),
+      OperationEquivalence::exactValueMatch,
+      OperationEquivalence::ignoreValueEquivalence,
+      OperationEquivalence::IgnoreLocations);
+}
+
+template <class OpTy>
+void eliminateEqualOps(PatternRewriter& rewriter, Block& block) {
+  SmallVector<OpTy> uniqueOps;
+  for (auto op : llvm::make_early_inc_range(block.getOps<OpTy>())) {
+    auto* it = llvm::find_if(
+        uniqueOps, [&](OpTy uniqueOp) { return isEqualOp(uniqueOp, op); });
+    if (it == uniqueOps.end())
+      uniqueOps.push_back(op);
+    else
+      rewriter.replaceOp(op, it->getResult());
+  }
+}
+
+void eliminateTriviallyDeadUsers(PatternRewriter& rewriter, Operation* op) {
+  for (auto* user : llvm::make_early_inc_range(op->getUsers())) {
+    if (isOpTriviallyDead(user)) rewriter.eraseOp(user);
+  }
+}
+
+void reifyDimOp(PatternRewriter& rewriter, tensor::DimOp dimOp) {
+  OpResult dimValue = dimOp.getSource().template dyn_cast<OpResult>();
+  if (!dimValue) return;
+  auto rankedShapeTypeOp =
+      dyn_cast<ReifyRankedShapedTypeOpInterface>(dimValue.getOwner());
+  if (!rankedShapeTypeOp) return;
+
+  Optional<int64_t> dimIndex = dimOp.getConstantIndex();
+  if (!dimIndex) return;
+
+  SmallVector<SmallVector<Value>> reifiedResultShapes;
+  if (failed(
+          rankedShapeTypeOp.reifyResultShapes(rewriter, reifiedResultShapes)))
+    return;
+
+  if (reifiedResultShapes.size() != rankedShapeTypeOp->getNumResults()) return;
+
+  unsigned resultNumber = dimValue.getResultNumber();
+  auto sourceType = dimValue.getType().dyn_cast<RankedTensorType>();
+  if (reifiedResultShapes[resultNumber].size() !=
+      static_cast<size_t>(sourceType.getRank()))
+    return;
+
+  rewriter.replaceOp(dimOp, reifiedResultShapes[resultNumber][*dimIndex]);
+}
+
+void reifyDimOpsUsers(PatternRewriter& rewriter, Operation* op) {
+  for (auto* user : llvm::make_early_inc_range(op->getUsers())) {
+    auto dimOp = dyn_cast<tensor::DimOp>(user);
+    if (dimOp) reifyDimOp(rewriter, dimOp);
+  }
+}
+
+// Iterates over MaterializeOps inside the block, finds a suitable candidate for
+// fusion and fuses it. The fusion candidate should satisfy the filter function
+// and not have uses outside of the block. Fails if nothing can be fused.
+LogicalResult fuseGreedilyOneOpIntoBlock(
+    PatternRewriter& rewriter, Block& block,
+    llvm::function_ref<bool(Operation*)> filterFn) {
+  // Ad-hoc CSE to eliminate duplicate MatrializeOp that could have been added
+  // after previous fusions. Running the whole CSE pass would be to expensive
+  // here and unnecessary. Without removing those duplicate, some ops will be
+  // fused multiple times resulting in exponential code growth.
+  eliminateEqualOps<TileOp>(rewriter, block);
+  eliminateEqualOps<MaterializeOp>(rewriter, block);
+
+  for (auto materializeOp : block.getOps<MaterializeOp>()) {
+    auto* fusionCandidate = materializeOp.getSource().getDefiningOp();
+    // Do not fuse if there is no defining op. Of example if it's a materialize
+    // from a function argument.
+    if (!fusionCandidate) continue;
+
+    if (filterFn && !filterFn(fusionCandidate)) continue;
+
+    // Ad-hoc DCE to trim the fusion candidate from dead users that could have
+    // been added in the previous fusion cycles. Normally those ops would be
+    // garbage collected after the pattern rewriter driver finished working, but
+    // here it requires manual handling.
+    eliminateTriviallyDeadUsers(rewriter, fusionCandidate);
+
+    // Push tensor.dim ops 'above' the fusion candidate. This is normally done
+    // by canonicalization passes, but running the whole canonicalization
+    // pipeline here is too expensive.
+    reifyDimOpsUsers(rewriter, fusionCandidate);
+
+    // After the previous steps, materializeOp should be only one user of the
+    // fusion candidate. Otherwise this candidate should not be fused.
+    auto fusionCandidateUsers = llvm::to_vector(fusionCandidate->getUsers());
+    if (fusionCandidateUsers.size() != 1 ||
+        fusionCandidateUsers[0] != materializeOp)
+      continue;
+
+    if (succeeded(fuse(rewriter, materializeOp))) return success();
+  }
+  return failure();
+}
+
 }  // namespace
 
 FailureOr<Operation*> fuse(PatternRewriter& rewriter,
@@ -253,6 +359,12 @@ FailureOr<Operation*> fuse(PatternRewriter& rewriter,
 
   rewriter.replaceOp(materializeOp, fused);
   return fused.getDefiningOp();
+}
+
+void fuseGreedily(PatternRewriter& rewriter, Block& block,
+                  llvm::function_ref<bool(Operation*)> filterFn) {
+  while (succeeded(fuseGreedilyOneOpIntoBlock(rewriter, block, filterFn)))
+    ;
 }
 
 FailureOr<Value> createFusedOp(PatternRewriter& rewriter,

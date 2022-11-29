@@ -11,12 +11,11 @@ load(
     "tf_copts",
     "tf_cuda_library",
 )
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_grpc_cc_dependencies")
-
-# For platform specific build config
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
+    "//tensorflow:tensorflow.default.bzl",
+    "filegroup",
+    "tf_cuda_cc_test",
+    "tf_grpc_cc_dependencies",
 )
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -120,7 +119,6 @@ cc_library(
 tf_cc_test(
     name = "cluster_function_library_runtime_test",
     srcs = ["cluster_function_library_runtime_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = [
         "no_windows",
     ],
@@ -688,7 +686,6 @@ tf_cuda_cc_test(
     srcs = [
         "master_test.cc",
     ],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
         ":master",
@@ -724,7 +721,6 @@ tf_cuda_cc_test(
     name = "remote_device_test",
     size = "small",
     srcs = ["remote_device_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
         "manual",
         "notap",  # Memory leak due to b/62910646

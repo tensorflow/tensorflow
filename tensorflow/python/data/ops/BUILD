@@ -41,6 +41,11 @@ py_library(
 )
 
 py_library(
+    name = "scan_op",
+    srcs = ["scan_op.py"],
+)
+
+py_library(
     name = "rebatch_op",
     srcs = ["rebatch_op.py"],
     deps = [
@@ -82,11 +87,14 @@ py_library(
         ":map_op",
         ":options",
         ":padded_batch_op",
+        ":prefetch_op",
         ":ragged_batch_op",
+        ":random_op",
         ":range_op",
         ":rebatch_op",
         ":repeat_op",
         ":save_ops",
+        ":scan_op",
         ":shard_op",
         ":skip_op",
         ":snapshot_op",
@@ -176,6 +184,11 @@ py_library(
 )
 
 py_library(
+    name = "random_op",
+    srcs = ["random_op.py"],
+)
+
+py_library(
     name = "range_op",
     srcs = ["range_op.py"],
 )
@@ -232,6 +245,11 @@ py_library(
 py_library(
     name = "map_op",
     srcs = ["map_op.py"],
+)
+
+py_library(
+    name = "prefetch_op",
+    srcs = ["prefetch_op.py"],
 )
 
 py_library(
@@ -311,6 +329,7 @@ py_library(
         ":dataset_ops",
         ":iterator_ops",
         ":options",
+        ":prefetch_op",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dataset_ops_gen",

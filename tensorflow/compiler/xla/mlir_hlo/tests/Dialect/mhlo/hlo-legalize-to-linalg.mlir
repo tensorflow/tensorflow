@@ -29,6 +29,28 @@ func.func @float_add(%lhs: tensor<2x2xf32>,
 
 // -----
 
+// CHECK-LABEL: func @float_add_dynamic_encoding
+// CHECK-PRIMITIVE-LABEL: func @float_add_dynamic_encoding
+func.func @float_add_dynamic_encoding(
+  %lhs: tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>,
+  %rhs: tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>)
+    -> tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>> {
+  // CHECK: linalg.generic
+  // CHECK: arith.addf
+  // CHECK: linalg.yield
+
+  // CHECK-PRIMITIVE: linalg.map
+  // CHECK-PRIMITIVE: arith.addf
+  // CHECK-PRIMITIVE: linalg.yield
+  %0 = "mhlo.add"(%lhs, %rhs) {someattr}
+      : (tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>,
+         tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>)
+      -> tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
+  func.return %0 : tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
+}
+
+// -----
+
 // CHECK-LABEL: integer_add
 // CHECK-PRIMITIVE-LABEL: integer_add
 func.func @integer_add(%lhs: tensor<2x2xi32>,
@@ -921,7 +943,7 @@ func.func @broadcast_scalar(%arg: tensor<f32>) -> tensor<4x2x1xf32> {
 // CHECK-PRIMITIVE: linalg.broadcast
 // CHECK-PRIMITIVE-NEXT: ins(
 // CHECK-PRIMITIVE-NEXT: outs(
-// CHECK-PRIMITIVE-NEXT: dimensions = []
+// CHECK-PRIMITIVE-NEXT: dimensions = [0, 1, 2]
 
 // -----
 
@@ -944,7 +966,7 @@ func.func @broadcast(%arg: tensor<4x?x16xf32>) -> tensor<4x2x1x4x?x16xf32> {
 // CHECK-PRIMITIVE: %[[DIM:.*]] = tensor.dim %{{.*}}, %[[C1]] : tensor<4x?x16xf32>
 // CHECK-PRIMITIVE: %{{.*}} = tensor.empty(%[[DIM]]) : tensor<4x2x1x4x?x16xf32>
 // CHECK-PRIMITIVE: linalg.broadcast
-// CHECK-PRIMITIVE:   dimensions = [3, 4, 5]
+// CHECK-PRIMITIVE:   dimensions = [0, 1, 2]
 
 // -----
 
@@ -968,7 +990,7 @@ func.func @broadcast_in_dim(%operand: tensor<5x7x1xf32>) -> tensor<7x10x6x4x5xf3
 // CHECK-PRIMITIVE:   permutation = [1, 0]
 // CHECK-PRIMITIVE: tensor.empty() : tensor<7x10x6x4x5xf32>
 // CHECK-PRIMITIVE: linalg.broadcast
-// CHECK-PRIMITIVE:   dimensions = [0, 4]
+// CHECK-PRIMITIVE:   dimensions = [1, 2, 3]
 
 // -----
 
@@ -994,7 +1016,7 @@ func.func @broadcast_in_dim_ui32(%operand: tensor<5x7x1xui32>) -> tensor<7x10x6x
 // CHECK-PRIMITIVE:   permutation = [1, 0]
 // CHECK-PRIMITIVE: tensor.empty() : tensor<7x10x6x4x5xi32>
 // CHECK-PRIMITIVE: %[[RES:.*]] = linalg.broadcast
-// CHECK-PRIMITIVE:   dimensions = [0, 4]
+// CHECK-PRIMITIVE:   dimensions = [1, 2, 3]
 // CHECK-PRIMITIVE: builtin.unrealized_conversion_cast %[[RES]] : tensor<7x10x6x4x5xi32> to tensor<7x10x6x4x5xui32>
 
 // -----
@@ -1018,7 +1040,7 @@ func.func @broadcast_in_dim_with_one_to_one(
 // CHECK-PRIMITIVE-NOT: tensor.collapse_shape
 // CHECK-PRIMITIVE-NOT: linalg.transpose
 // CHECK-PRIMITIVE:     linalg.broadcast
-// CHECK-PRIMITIVE:       dimensions = [0]
+// CHECK-PRIMITIVE:       dimensions = [1]
 
 // -----
 
@@ -1043,7 +1065,7 @@ func.func @broadcast_in_dim_with_transpose(
 // CHECK-PRIMITIVE:   permutation = [1, 2, 0]
 // CHECK-PRIMITIVE: tensor.empty() : tensor<3x4x2x5xf32>
 // CHECK-PRIMITIVE: linalg.broadcast
-// CHECK-PRIMITIVE:   dimensions = [0, 1, 2]
+// CHECK-PRIMITIVE:   dimensions = [3]
 
 // -----
 
@@ -1064,7 +1086,7 @@ func.func @broadcast_in_dim_scalar(%operand: tensor<f32>) -> tensor<7x10x6xf32> 
 // CHECK-PRIMITIVE-LABEL: func @broadcast_in_dim_scalar
 // CHECK-PRIMITIVE: tensor.empty() : tensor<7x10x6xf32>
 // CHECK-PRIMITIVE: linalg.broadcast
-// CHECK-PRIMITIVE:   dimensions = []
+// CHECK-PRIMITIVE:   dimensions = [0, 1, 2]
 
 // -----
 
@@ -2351,7 +2373,7 @@ func.func @dynamic_broadcast_in_dim(%arg: tensor<?x?x?x?x1x42xf32>,
 // CHECK-PRIMITIVE:      %[[BROADCASTED:.*]] = linalg.broadcast
 // CHECK-PRIMITIVE-NEXT:   ins(%[[COLLAPSED]] : tensor<?x?x42xf32>)
 // CHECK-PRIMITIVE-NEXT:   outs(%[[INIT]] : tensor<?x?x?x?x?x?x42xf32>)
-// CHECK-PRIMITIVE-NEXT:   dimensions = [3, 4, 6]
+// CHECK-PRIMITIVE-NEXT:   dimensions = [0, 1, 2, 5]
 // CHECK-PRIMITIVE:      %[[RES:.*]] = tensor.cast %[[BROADCASTED]]
 // CHECK-PRIMITIVE-SAME:    tensor<?x?x?x?x?x?x42xf32> to tensor<?x?x?x?x?x?x?xf32>
 // CHECK-PRIMITIVE:      return %[[RES]]
@@ -5726,4 +5748,62 @@ func.func @convolution_without_reversing_and_stride(%arg0: tensor<2x14x12x2xf64>
     {batch_group_count = 1 : i64, feature_group_count = 2 : i64, precision_config = [#mhlo<precision HIGHEST>, #mhlo<precision HIGHEST>]}
     : (tensor<2x14x12x2xf64>, tensor<7x7x1x2xf64>) -> tensor<2x12x16x2xf64>
   return %0 : tensor<2x12x16x2xf64>
+}
+
+// -----
+
+// CHECK-LABEL: set_dimension_size
+// CHECK-SAME: %[[VALUE:.*]]: tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>
+func.func @set_dimension_size(
+  %value: tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>,
+  %dimension: tensor<i32>)
+  -> tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>> {
+  // CHECK: tensor.extract_slice %[[VALUE]][0, 0] [2, %{{.*}}] [1, 1] : tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>> to tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
+  %0 = "mhlo.set_dimension_size"(%value, %dimension) { dimension = 1 }
+    : (tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>, tensor<i32>)
+    -> tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
+  func.return %0 : tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
+}
+
+// -----
+// The following test checks that an EmptyOp is emitted for mhlo.convolution
+// when the output shape has a zero-sized dimension. This goes through
+// ConvolutionOpGeneralConversion rewrite pattern.
+
+// CHECK-LABEL: @general_convolution_with_zero_sized_dimension_in_output
+//  CHECK-SAME: %[[LHS:.*]]: tensor<2x4x9x0xi64>
+//  CHECK-SAME: %[[RHS:.*]]: tensor<4x5x2x4xi64>
+//  CHECK-SAME: -> tensor<2x5x0x4xi64>
+//  CHECK-NEXT: %[[RES:.*]] = tensor.empty
+//  CHECK-NEXT: return %[[RES]]
+
+func.func @general_convolution_with_zero_sized_dimension_in_output(%arg0: tensor<2x4x9x0xi64> {bufferization.writable = false, xla_framework.input_mapping = 2 : i32},
+%arg1: tensor<4x5x2x4xi64> {bufferization.writable = false, xla_framework.input_mapping = 0 : i32})
+-> tensor<2x5x0x4xi64> attributes {xla_framework.result_mapping = 1 : i32} {
+  %0 = mhlo.convolution(%arg0, %arg1) dim_numbers = [b, f, 0, 1]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {stride = [2, 1], pad = [[1, 2], [2, 0]], lhs_dilate = [1, 4], rhs_dilate = [1, 1], reverse = [0, 0]}
+    {batch_group_count = 1 : i64, feature_group_count = 2 : i64, precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}
+    : (tensor<2x4x9x0xi64>, tensor<4x5x2x4xi64>) -> tensor<2x5x0x4xi64>
+  return %0 : tensor<2x5x0x4xi64>
+}
+
+// -----
+// This test is similar to the previous one, but runs through a different
+// rewrite pattern (NormalConvolutionOpConversion).
+
+// CHECK-LABEL: @normal_convolution_with_zero_sized_dimension_in_output
+//  CHECK-SAME: %[[LHS:.*]]: tensor<3x9x0x2xi16>
+//  CHECK-SAME: %[[RHS:.*]]: tensor<4x5x2x2xi16>
+//  CHECK-SAME: -> tensor<3x9x0x2xi16>
+//  CHECK-NEXT: %[[RES:.*]] = tensor.empty
+//  CHECK-NEXT: return %[[RES]]
+
+func.func @normal_convolution_with_zero_sized_dimension_in_output(%arg0: tensor<3x9x0x2xi16> {bufferization.writable = false, xla_framework.input_mapping = 2 : i16},
+%arg1: tensor<4x5x2x2xi16> {bufferization.writable = false, xla_framework.input_mapping = 0 : i16})
+-> tensor<3x9x0x2xi16> attributes {xla_framework.result_mapping = 1 : i16} {
+  %0 = mhlo.convolution(%arg0, %arg1) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {stride = [1, 1], pad = [[1, 2], [2, 0]], lhs_dilate = [1, 2], rhs_dilate = [1, 4], reverse = [0, 0]}
+    {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}
+    : (tensor<3x9x0x2xi16>, tensor<4x5x2x2xi16>) -> tensor<3x9x0x2xi16>
+  return %0 : tensor<3x9x0x2xi16>
 }

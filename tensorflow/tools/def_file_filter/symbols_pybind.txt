@@ -276,9 +276,9 @@ tensorflow::GetHandleShapeAndType
 tensorflow::SetHandleShapeAndType
 tensorflow::AddWhileInputHack
 
-[//tensorflow/python:numpy_lib] # tf_session
-tensorflow::ImportNumpy
-_tensorflow_numpy_api
+[//tensorflow/tsl/python/lib/core:numpy] # tf_session
+tsl::ImportNumpy
+_tsl_numpy_api
 
 [//tensorflow/python/client:tf_session_helper] # tf_session
 tensorflow::TF_NewSessionRef

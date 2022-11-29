@@ -37,6 +37,9 @@ struct CpuPipelineOptions {
 #else
   bool math_avx2 = false;
 #endif
+
+  // Disables fast approximate math optimizations.
+  bool disable_math_optimizations = false;
 };
 
 // Registers dialects, interfaces and dialects translations with the registry

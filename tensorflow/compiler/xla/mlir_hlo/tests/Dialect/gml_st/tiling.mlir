@@ -336,9 +336,9 @@ func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
     -> tensor<?x?xi32> {
   %concat = thlo.concatenate
       ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>, %c : tensor<?x?xi32>)
-      outs(%init : tensor<?x?xi32>) {
-      dimension = 1 : i64,
-      op_label = "tile-2d" }
+      outs(%init : tensor<?x?xi32>)
+      dimension = 1
+      { op_label = "tile-2d" }
   func.return %concat : tensor<?x?xi32>
 }
 
@@ -387,7 +387,7 @@ func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
 // CHECK-FOR:         %[[CONCATENATE:.*]] = thlo.concatenate
 // CHECK-FOR-NEXT:        ins(%[[MATERIALIZE]] : tensor<?x?xi32>, %[[MATERIALIZE_0]] : tensor<?x?xi32>, %[[MATERIALIZE_1]] : tensor<?x?xi32>)
 // CHECK-FOR-NEXT:        outs(%[[MATERIALIZE_2]] : tensor<?x?xi32>)
-// CHECK-FOR-NEXT:        {dimension = 1 : i64}
+// CHECK-FOR-NEXT:        dimension = 1
 // CHECK-FOR:         gml_st.set_yield %[[CONCATENATE]] into %[[ARG6]][%[[TILE]]]
 // CHECK-FOR:       return %[[FOR]]
 
@@ -401,7 +401,9 @@ func.func @sort(%input1: tensor<?x?x?xf32>, %input2: tensor<?x?x?xi32>,
   %sorted1, %sorted2 = thlo.sort
       ins(%input1: tensor<?x?x?xf32>, %input2: tensor<?x?x?xi32>)
       outs(%init1: tensor<?x?x?xf32>, %init2: tensor<?x?x?xi32>)
-      { dimension = 1 : i64, is_stable = true, op_label = "tile-3d" }
+      dimension = 1
+      is_stable = true
+      {op_label = "tile-3d" }
       (%e11: f32, %e12: f32, %e21: i32, %e22: i32) {
         %gt = arith.cmpf ogt, %e11, %e12: f32
         thlo.yield %gt : i1
@@ -453,7 +455,9 @@ func.func @sort2(%input1: tensor<1024x2048x4096xf32>,
           %input2: tensor<1024x2048x4096xi32>)
       outs(%init1: tensor<1024x2048x4096xf32>,
            %init2: tensor<1024x2048x4096xi32>)
-      { dimension = 1 : i64, is_stable = true, op_label = "tile-3d" }
+      dimension = 1
+      is_stable = true
+      { op_label = "tile-3d" }
       (%e11: f32, %e12: f32, %e21: i32, %e22: i32) {
         %gt = arith.cmpf ogt, %e11, %e12: f32
         thlo.yield %gt : i1

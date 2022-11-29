@@ -5,10 +5,6 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
-)
 
 # copybara:uncomment_begin(google-only)
 # # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
@@ -95,7 +91,6 @@ tf_cc_test(
     name = "uniform_quantize_op_test",
     size = "small",
     srcs = ["uniform_quantize_op_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":kernels",
         "//tensorflow/core:framework",
@@ -109,7 +104,6 @@ tf_cc_test(
     name = "uniform_requantize_op_test",
     size = "small",
     srcs = ["uniform_requantize_op_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":kernels",
         "//tensorflow/core:framework",
@@ -123,7 +117,6 @@ tf_cc_test(
     name = "uniform_dequantize_op_test",
     size = "small",
     srcs = ["uniform_dequantize_op_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":kernels",
         "//tensorflow/core:framework",
@@ -137,7 +130,6 @@ tf_cc_test(
     name = "uniform_quantized_dot_ops_test",
     size = "small",
     srcs = ["uniform_quantized_dot_ops_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":kernels",
         "//tensorflow/core:framework",
@@ -151,7 +143,6 @@ tf_cc_test(
     name = "uniform_quantized_convolution_ops_test",
     size = "small",
     srcs = ["uniform_quantized_convolution_ops_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":kernels",
         "//tensorflow/core:framework",
@@ -167,7 +158,6 @@ tf_cc_test(
     name = "uniform_quantized_add_op_test",
     size = "small",
     srcs = ["uniform_quantized_add_op_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":kernels",
         "//tensorflow/core:framework",
@@ -181,7 +171,6 @@ tf_cc_test(
     name = "uniform_quantized_clip_by_value_op_test",
     size = "small",
     srcs = ["uniform_quantized_clip_by_value_op_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":kernels",
         "//tensorflow/core:framework",

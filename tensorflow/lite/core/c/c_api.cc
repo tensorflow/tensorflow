@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/c/common_internal.h"
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/create_op_resolver.h"
 #include "tensorflow/lite/delegates/interpreter_utils.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
@@ -61,8 +62,33 @@ TfLiteModel* TfLiteModelCreate(const void* model_data, size_t model_size) {
   return shared_model ? new TfLiteModel{std::move(shared_model)} : nullptr;
 }
 
+TfLiteModel* TfLiteModelCreateWithErrorReporter(
+    const void* model_data, size_t model_size,
+    void (*reporter)(void* user_data, const char* format, va_list args),
+    void* user_data) {
+  struct TfLiteErrorReporterCallback er_cb = {user_data, reporter};
+  auto error_reporter = std::make_unique<CallbackErrorReporter>(er_cb);
+  auto model = tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
+      static_cast<const char*>(model_data), model_size, nullptr,
+      error_reporter.get());
+  std::shared_ptr<const tflite::FlatBufferModel> shared_model(model.release());
+  return shared_model ? new TfLiteModel{std::move(shared_model)} : nullptr;
+}
+
 TfLiteModel* TfLiteModelCreateFromFile(const char* model_path) {
   auto model = tflite::FlatBufferModel::VerifyAndBuildFromFile(model_path);
+  std::shared_ptr<const tflite::FlatBufferModel> shared_model(model.release());
+  return shared_model ? new TfLiteModel{std::move(shared_model)} : nullptr;
+}
+
+TfLiteModel* TfLiteModelCreateFromFileWithErrorReporter(
+    const char* model_path,
+    void (*reporter)(void* user_data, const char* format, va_list args),
+    void* user_data) {
+  struct TfLiteErrorReporterCallback er_cb = {user_data, reporter};
+  auto error_reporter = std::make_unique<CallbackErrorReporter>(er_cb);
+  auto model = tflite::FlatBufferModel::VerifyAndBuildFromFile(
+      model_path, nullptr, error_reporter.get());
   std::shared_ptr<const tflite::FlatBufferModel> shared_model(model.release());
   return shared_model ? new TfLiteModel{std::move(shared_model)} : nullptr;
 }
@@ -202,6 +228,9 @@ TfLiteStatus TfLiteInterpreterCancel(const TfLiteInterpreter* interpreter) {
 TfLiteType TfLiteTensorType(const TfLiteTensor* tensor) { return tensor->type; }
 
 int32_t TfLiteTensorNumDims(const TfLiteTensor* tensor) {
+  if (!tensor->dims) {
+    return -1;
+  }
   return tensor->dims->size;
 }
 
@@ -314,6 +343,11 @@ void TfLiteRegistrationExternalSetInvoke(
 TfLiteBuiltinOperator TfLiteRegistrationExternalGetBuiltInCode(
     const TfLiteRegistrationExternal* registration) {
   return static_cast<TfLiteBuiltinOperator>(registration->builtin_code);
+}
+
+const char* TfLiteRegistrationExternalGetCustomName(
+    const TfLiteRegistrationExternal* registration) {
+  return registration->custom_name;
 }
 // LINT.ThenChange(//tensorflow/lite/experimental/examples/unity/TensorFlowLitePlugin/Assets/TensorFlowLite/SDK/Scripts/Interpreter.cs)
 

@@ -107,8 +107,7 @@ struct ExternalLinalgOpTilingInterface
           return tiledOperands[opOperand->getOperandNumber()].getType();
         }));
 
-    Operation *tiledOp =
-        linalgOp.clone(b, loc, resultTensorTypes, tiledOperands);
+    Operation *tiledOp = clone(b, linalgOp, resultTensorTypes, tiledOperands);
     offsetIndices(b, cast<linalg::LinalgOp>(tiledOp), offsets);
 
     return {tiledOp};
@@ -162,6 +161,8 @@ struct ExternalLinalgOpTilingInterface
 
 void registerGmlStTilingInterfaceExternalModels(DialectRegistry &registry) {
   registry.addExtension(+[](MLIRContext *ctx, linalg::LinalgDialect *) {
+    linalg::BroadcastOp::attachInterface<
+        ExternalLinalgOpTilingInterface<linalg::BroadcastOp>>(*ctx);
     linalg::FillOp::attachInterface<
         ExternalLinalgOpTilingInterface<linalg::FillOp>>(*ctx);
     linalg::GenericOp::attachInterface<
