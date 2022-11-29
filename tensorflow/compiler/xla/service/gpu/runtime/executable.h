@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
@@ -134,6 +135,9 @@ class GpuRuntimeExecutable {
 #if GOOGLE_CUDA
   // Keep matmul execution plans (only if cuBLASLt is available).
   MatmulPlans cublas_lt_matmul_plans_;
+
+  // Keep captured and instantiated CUDA graphs instances.
+  GraphInstances graph_instances_;
 #endif  // GOOGLE_CUDA
 };
 

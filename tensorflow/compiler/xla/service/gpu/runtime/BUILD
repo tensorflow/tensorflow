@@ -98,6 +98,7 @@ cc_library(
         ":conv",
         ":cublas_lt_matmul",
         ":gemm",
+        ":graph_launch",
         ":kernel_launch",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",

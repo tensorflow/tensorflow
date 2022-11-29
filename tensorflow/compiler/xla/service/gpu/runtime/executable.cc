@@ -208,8 +208,7 @@ Status GpuRuntimeExecutable::Execute(
   GemmConfigs::Snapshot gemm_configs = gemm_configs_.snapshot();
 
   // Pass auxiliary data to the custom call handlers.
-  runtime::CustomCall::UserData user_data;
-  user_data.insert_all(
+  runtime::CustomCall::UserData user_data(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
       &binary, &kernels, &gemm_configs, &conv_runners_cache_, &collectives_,
       // Null pointer will be interpreted as an absence of async collectives
@@ -219,7 +218,8 @@ Status GpuRuntimeExecutable::Execute(
 #if GOOGLE_CUDA
   // Add auxiliary data that is available only if compiled with CUDA support.
   MatmulPlans::Snapshot matmul_plans = cublas_lt_matmul_plans_.snapshot();
-  user_data.insert(&matmul_plans);
+  GraphInstances::Snapshot graph_instances = graph_instances_.snapshot();
+  user_data.insert_all(&matmul_plans, &graph_instances);
 #endif  // GOOGLE_CUDA
 
   // Collect all emitted diagnostic messages.
