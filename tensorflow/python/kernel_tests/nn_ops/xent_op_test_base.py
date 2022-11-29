@@ -88,7 +88,7 @@ class XentOpTestBase(test.TestCase):
     self.assertAllCloseAccordingToType(np_loss, tf_loss)
 
   def _testSingleClass(self, expected_gradient=[[2.0], [1.0], [0.0], [0.0]]):
-    for dtype in np.float16, np.float32:
+    for dtype in np.float16, np.float32, dtypes.bfloat16.as_numpy_dtype:
       loss, gradient = self._opFwdBwd(
           labels=np.array([[-1.], [0.], [1.], [1.]]).astype(dtype),
           logits=np.array([[1.], [-1.], [0.], [1.]]).astype(dtype))
@@ -170,6 +170,13 @@ class XentOpTestBase(test.TestCase):
   def testHalf(self):
     labels = np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float16)
     logits = np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float16)
+    self._testXent2D(labels, logits)
+
+  def testBfloat16(self):
+    labels = np.array([[0., 0., 0., 1.],
+                       [0., .5, .5, 0.]]).astype(dtypes.bfloat16.as_numpy_dtype)
+    logits = np.array([[1., 1., 1., 1.],
+                       [1., 2., 3., 4.]]).astype(dtypes.bfloat16.as_numpy_dtype)
     self._testXent2D(labels, logits)
 
   def testFloat(self):
