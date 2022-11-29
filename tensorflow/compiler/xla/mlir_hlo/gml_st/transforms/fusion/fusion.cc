@@ -270,6 +270,9 @@ void reifyDimOp(PatternRewriter& rewriter, tensor::DimOp dimOp) {
 }
 
 void reifyDimOpsUsers(PatternRewriter& rewriter, Operation* op) {
+  OpBuilder::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPointAfter(op);
+
   for (auto* user : llvm::make_early_inc_range(op->getUsers())) {
     auto dimOp = dyn_cast<tensor::DimOp>(user);
     if (dimOp) reifyDimOp(rewriter, dimOp);
