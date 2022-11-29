@@ -161,7 +161,8 @@ class ScatterTest(test.TestCase):
           if vtype == np.int32:
             threshold = 1
             sign = np.random.choice([-1, 1], updates.shape)
-          updates = np.where(np.abs(updates) < threshold, threshold * sign, updates)
+          updates = np.where(np.abs(updates) < threshold, threshold * sign,
+                             updates)
 
           old = _AsType(np.random.randn(*((first_dim,) + extra_shape)), vtype)
 

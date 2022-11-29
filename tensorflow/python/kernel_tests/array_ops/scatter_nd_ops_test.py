@@ -35,7 +35,8 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
-GRADIENT_TESTS_DTYPES = (dtypes.bfloat16, dtypes.float16, dtypes.float32, dtypes.float64)
+GRADIENT_TESTS_DTYPES = (dtypes.bfloat16, dtypes.float16, dtypes.float32,
+                         dtypes.float64)
 
 
 def _AsType(v, vtype):
