@@ -711,6 +711,7 @@ BUILTIN_KERNEL_DEPS = [
     "//tensorflow/lite:framework_stable",
     "//tensorflow/lite:minimal_logging",
     "//tensorflow/lite:string_util",
+    "//tensorflow/lite:tflite_kernel_use_xnnpack_optional",
     "//tensorflow/lite/core:subgraph",
     "//tensorflow/lite:util",
     "//tensorflow/lite/c:common",
@@ -733,6 +734,11 @@ BUILTIN_KERNEL_DEPS = [
     "//conditions:default": [
         ":eigen_support",
         "//tensorflow/lite/kernels/internal:optimized_eigen",
+    ],
+}) + select({
+    "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
+    "//conditions:default": [
+        "@XNNPACK//:xnnpack_for_tflite",
     ],
 })
 
