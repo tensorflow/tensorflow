@@ -138,9 +138,10 @@ tflite_cc_library_with_c_headers_test(
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
         ":c_api_opaque_internal",
-        ":c_api_types",
         ":c_api_without_op_resolver",
+        "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:c_api_without_op_resolver",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
