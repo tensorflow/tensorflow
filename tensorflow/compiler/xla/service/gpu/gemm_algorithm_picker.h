@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <optional>
 
+#include "tensorflow/compiler/xla/autotune_results.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
@@ -30,6 +31,10 @@ namespace gpu {
 
 class GemmAlgorithmPicker : public HloModulePass {
  public:
+  static void ClearAutotuneResults();
+  static Status WriteAutotuneResults(AutotuneResults* results);
+  static Status LoadAutotuneResults(const AutotuneResults& results);
+
   GemmAlgorithmPicker(se::StreamExecutor* stream_exec,
                       se::DeviceMemoryAllocator* allocator)
       : stream_exec_(stream_exec), allocator_(allocator) {}

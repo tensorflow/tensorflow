@@ -123,3 +123,17 @@ func.func @constant_with_layout() -> tensor<2x3xf32> {
 //       CHECK: %[[CST:.*]] = mhlo.constant {{.*}} : tensor<3x2xf32>
 //       CHECK: %[[TR:.*]] = "mhlo.transpose"(%[[CST]]) {{.*}} -> tensor<2x3xf32>
 //       CHECK: return %[[TR]]
+
+// -----
+
+func.func @non_tensor_inouts() -> !mhlo.token {
+  %0 = mhlo.create_token : !mhlo.token
+  %1 = "mhlo.custom_call"(%0) {
+      call_target_name = "yolo",
+      operand_layouts = [dense<> : tensor<0xindex>],
+      result_layouts = [dense<> : tensor<0xindex>]
+  } : (!mhlo.token) -> (!mhlo.token)
+  return %1 : !mhlo.token
+}
+
+// CHECK-LABEL: @non_tensor_inouts

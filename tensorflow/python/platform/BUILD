@@ -8,6 +8,7 @@ visibility = [
 ]
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = visibility,
     licenses = ["notice"],
 )
@@ -115,6 +116,8 @@ tf_py_test(
     ],
     python_version = "PY3",
     tags = [
+        "no_mac",  # TODO(b/259295275) re-enable after fixing sysconfig.get_path breakage
+        "no_oss",  # TODO(b/259295275) re-enable after fixing sysconfig.get_path breakage
         "no_pip",
         "no_windows",
     ],
@@ -130,6 +133,9 @@ tf_py_test(
     size = "small",
     srcs = ["flags_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_mac",  # TODO(b/259295275) re-enable after fixing sysconfig.get_path breakage
+    ],
     deps = [
         ":client_testlib",
         ":platform",

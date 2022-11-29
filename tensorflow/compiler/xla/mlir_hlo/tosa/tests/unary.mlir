@@ -126,3 +126,32 @@ func.func @transpose(%arg0: tensor<1x2x3xf32>) -> tensor<3x2x1xf32> {
   %0 = "mhlo.transpose"(%arg0) {permutation = dense<[2, 1, 0]> : tensor<3xi64>} : (tensor<1x2x3xf32>) -> tensor<3x2x1xf32>
   return %0 : tensor<3x2x1xf32>
 }
+
+// CHECK-LABEL: @while
+func.func @while(%arg0: tensor<i32>) -> tensor<i32> {
+  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<3> : tensor<i32>}
+  // CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<1> : tensor<i32>}
+  // CHECK:     %[[VAR2:.*]] = "tosa.while_loop"(%arg0) ({
+  // CHECK:     ^bb0(%[[ARG0:.+]]: tensor<i32>):
+  // CHECK:       %[[VAR3:.*]] = "tosa.equal"(%[[ARG0]], %[[VAR0]])
+  // CHECK:       "tosa.yield"(%[[VAR3]])
+  // CHECK:     }, {
+  // CHECK:     ^bb0(%[[ARG0:.+]]: tensor<i32>):
+  // CHECK:       %[[VAR4:.*]] = "tosa.add"(%[[ARG0]], %[[VAR1]])
+  // CHECK:       "tosa.yield"(%[[VAR4]])
+  // CHECK:     }) : (tensor<i32>) -> tensor<i32>
+  // CHECK:     return %[[VAR2]] : tensor<i32>
+  // CHECK:   }
+  %0 = "mhlo.while"(%arg0) ( {
+  ^bb0(%arg1: tensor<i32>):
+    %1 = "mhlo.constant"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
+    %2 = "mhlo.compare"(%arg1, %1) {comparison_direction = #mhlo<comparison_direction EQ>}: (tensor<i32>, tensor<i32>) -> tensor<i1>
+    "mhlo.return"(%2) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg1: tensor<i32>):
+    %1 = "mhlo.constant"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %2 = "mhlo.add"(%arg1, %1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    "mhlo.return"(%2) : (tensor<i32>) -> ()
+  }) : (tensor<i32>) -> (tensor<i32>)
+  return %0 : tensor<i32>
+}

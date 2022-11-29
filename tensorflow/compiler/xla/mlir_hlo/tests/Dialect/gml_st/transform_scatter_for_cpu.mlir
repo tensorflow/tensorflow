@@ -15,5 +15,6 @@ func.func @scatter_small_vector_dim(%indices: tensor<?x2xindex>,
 }
 
 // CHECK-LABEL: @scatter_small_vector_dim
-// CHECK: gml_st.for
-// CHECK: thlo.scatter ins(%{{.*}} : tensor<1x2xindex>, %{{.*}} : tensor<1x?x?xf32>)
+// CHECK:       gml_st.for
+// CHECK:       thlo.scatter
+// CHECK-NEXT:    ins(%{{.*}} : tensor<1x2xindex>, %{{.*}} : tensor<1x?x?xf32>)

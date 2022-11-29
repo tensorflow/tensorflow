@@ -26,6 +26,11 @@ limitations under the License.
 
 namespace xla {
 
+// The representation of frame->f_lasti changed from bytes to words in Python
+// 3.10, see https://docs.python.org/3/whatsnew/3.10.html#changes-in-the-c-api
+// This should match sizeof(_Py_CODEUNIT) which is unfortunately private.
+static constexpr int kLastiWordBytes = (PY_VERSION_HEX < 0x030a0000) ? 1 : 2;
+
 // Represents a Python traceback.
 class Traceback {
  public:

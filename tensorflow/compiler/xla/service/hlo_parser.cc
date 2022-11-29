@@ -1210,7 +1210,12 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
 
   // Add shared attributes like metadata to the instruction, if they were seen.
   if (sharding) {
-    instruction->set_sharding(HloSharding::FromProto(sharding.value()).value());
+    // TODO(b/257495070): Eliminate tuple sharding normalization in HLO parser.
+    // Allow existing HLO text with invalid sharding on tuple shapes by
+    // normalizing tuple sharding.
+    HloSharding hlo_sharding = HloSharding::FromProto(sharding.value()).value();
+    hlo_sharding = hlo_sharding.NormalizeTupleSharding(instruction->shape());
+    instruction->set_sharding(hlo_sharding);
   }
   if (parameter_replication) {
     int leaf_count = ShapeUtil::GetLeafCount(instruction->shape());
@@ -2428,12 +2433,24 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
                         &fusion_computation};
       optional<HloInstruction::FusionKind> fusion_kind;
       attrs["kind"] = {/*required=*/true, AttrTy::kFusionKind, &fusion_kind};
+      optional<
+          std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
+          output_to_operand_aliasing;
+      attrs["output_to_operand_aliasing"] = {/*required=*/false,
+                                             AttrTy::kInstructionAliasing,
+                                             &output_to_operand_aliasing};
       if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
         return nullptr;
       }
-      return builder->AddInstruction(HloInstruction::CreateFusion(
+      auto instr = builder->AddInstruction(HloInstruction::CreateFusion(
           *shape, *fusion_kind, operands, *fusion_computation));
+      auto fusion_instr = Cast<HloFusionInstruction>(instr);
+      if (output_to_operand_aliasing.has_value()) {
+        fusion_instr->set_output_to_operand_aliasing(
+            std::move(*output_to_operand_aliasing));
+      }
+      return instr;
     }
     case HloOpcode::kInfeed: {
       optional<std::string> config;

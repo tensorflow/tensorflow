@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -37,6 +38,9 @@ namespace mlir {
 namespace gml_st {
 
 namespace {
+
+static constexpr llvm::StringRef kTileGpuWarpAppliedLabel =
+    "__tile_gpu_warp_applied_label__";
 
 constexpr const char* kWarpDistributionLabel = "warp";
 constexpr const char* kThreadDistributionLabel = "thread";
@@ -64,7 +68,7 @@ struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
 
   LogicalResult matchAndRewrite(linalg::GenericOp genericOp,
                                 PatternRewriter& rewriter) const override {
-    if (hasTransformationAttr(genericOp)) {
+    if (hasLabel(genericOp, kTileGpuWarpAppliedLabel)) {
       return rewriter.notifyMatchFailure(genericOp, "already transformed");
     }
 
@@ -130,7 +134,7 @@ struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
           Value laneInit = b.create<gml_st::MaterializeOp>(loc, init, laneTile);
 
           // Create `gml_st.for` loop to iterate over the lane's tile.
-          auto sloopTy = ploopTy.clone({1, ShapedType::kDynamicSize});
+          auto sloopTy = ploopTy.clone({1, ShapedType::kDynamic});
           auto sloop = b.create<gml_st::ForOp>(
               loc, sloopTy, c0, laneTileSize, c1, laneInit,
               [&](OpBuilder& b, Location loc, ValueRange ivs, ValueRange aggr) {
@@ -185,7 +189,7 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
 
   LogicalResult matchAndRewrite(linalg::GenericOp genericOp,
                                 PatternRewriter& rewriter) const override {
-    if (hasTransformationAttr(genericOp)) {
+    if (hasLabel(genericOp, kTileGpuWarpAppliedLabel)) {
       return rewriter.notifyMatchFailure(genericOp, "already transformed");
     }
 
@@ -196,10 +200,9 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
 
     // Match only if it's a linalg.generic tensor<1x?xf32> -> tensor<1xf32> with
     // iterator_types = ["parallel", "reduction"].
-    auto itTypes = llvm::to_vector(
-        genericOp.getIteratorTypes().getAsValueRange<StringAttr>());
-    if (itTypes.size() != 2 || itTypes[0] != getParallelIteratorTypeName() ||
-        itTypes[1] != getReductionIteratorTypeName()) {
+    auto itTypes = genericOp.getIteratorTypesArray();
+    if (itTypes.size() != 2 || !linalg::isParallelIterator(itTypes[0]) ||
+        !linalg::isReductionIterator(itTypes[1])) {
       return rewriter.notifyMatchFailure(genericOp,
                                          "Expected ['parallel', 'reduction']");
     }
@@ -296,7 +299,7 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
     // Change existing linalg.generic to warp-reduce the partial results.
     rewriter.updateRootInPlace(genericOp, [&] {
       genericOp->setOperand(0, warpResult);
-      gml_st::setTransformationAttr(rewriter, genericOp);
+      setLabel(genericOp, kTileGpuWarpAppliedLabel);
     });
 
     return success();
@@ -336,7 +339,7 @@ struct TilingGPUWarpPass
     }
 
     // Clean up by removing temporary attributes.
-    func.walk([](Operation* op) { removeTransformationAttr(op); });
+    func.walk([](Operation* op) { removeLabel(op, kTileGpuWarpAppliedLabel); });
   }
 };
 

@@ -246,14 +246,14 @@ void IdentifyXlaShardingForComputationInputs(
     BlockArgument arg = std::get<1>(operand_and_arg);
 
     if (auto operand_sharding = GetXlaShardingFromOperand(operand)) {
-      sharding_for_args.push_back(operand_sharding.getValue());
+      sharding_for_args.push_back(operand_sharding.value());
       continue;
     }
 
     if (infer_from_computation) {
       auto arg_sharding = GetXlaShardingFromArg(arg, logical_device_vec);
       if (arg_sharding) {
-        sharding_for_args.push_back(arg_sharding.getValue());
+        sharding_for_args.push_back(arg_sharding.value());
         continue;
       }
     }
@@ -418,20 +418,20 @@ void IdentifyXlaShardingForComputationOutputs(
     OpOperand& retval = std::get<1>(result_and_retval);
 
     if (auto result_sharding = GetXlaShardingFromResult(result)) {
-      sharding_for_rets.push_back(result_sharding.getValue());
+      sharding_for_rets.push_back(result_sharding.value());
       continue;
     }
 
     if (auto from_alias =
             GetXlaShardingFromAlias(result, aliases, sharding_for_args)) {
-      sharding_for_rets.push_back(from_alias.getValue());
+      sharding_for_rets.push_back(from_alias.value());
       continue;
     }
 
     if (infer_from_computation) {
       if (auto retval_sharding =
               GetXlaShardingFromRetval(retval.get(), logical_device_vec)) {
-        sharding_for_rets.push_back(retval_sharding.getValue());
+        sharding_for_rets.push_back(retval_sharding.value());
         continue;
       }
     }

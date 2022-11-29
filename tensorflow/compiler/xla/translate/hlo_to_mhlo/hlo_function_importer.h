@@ -49,10 +49,11 @@ enum class DynamicShapeHandlingMode { kDynamic, kConvertToStatic };
 // Helper class for importing HloComputations.
 class HloFunctionImporter {
  public:
-  // Imports the given computation as a function in the given module. This also
-  // imports any computations referred by instructions in this computation.
-  static Status ImportAsFunc(
-      const xla::HloComputation& computation, mlir::ModuleOp module,
+  // Imports the given computation as a function in the given symbol table and
+  // returns the FuncOp. This also imports any computations referred by
+  // instructions in this computation.
+  static StatusOr<mlir::func::FuncOp> ImportAsFunc(
+      const xla::HloComputation& computation, mlir::SymbolTable& symbol_table,
       std::unordered_map<const xla::HloComputation*, mlir::func::FuncOp>*
           function_map,
       mlir::Builder* builder, bool is_main);
@@ -61,6 +62,7 @@ class HloFunctionImporter {
   // 'flatten_region_arg_tuple' is true, then flatten the tuple-typed region
   // argument(s) and return value(s).
   static Status ImportAsRegion(const xla::HloComputation& computation,
+                               mlir::SymbolTable& symbol_table,
                                mlir::Region* region, mlir::Builder* builder,
                                bool flatten_region_arg_tuple = false);
 
@@ -69,12 +71,12 @@ class HloFunctionImporter {
   static StatusOr<mlir::Value> ImportInstructions(
       const xla::HloComputation& computation,
       const llvm::SmallVectorImpl<mlir::Value>& arguments,
-      mlir::OpBuilder* builder);
+      mlir::SymbolTable& symbol_table, mlir::OpBuilder* builder);
 
   static StatusOr<mlir::Operation*> ImportInstruction(
       const xla::HloInstruction* instr,
       const llvm::SmallVectorImpl<mlir::Value>& operands,
-      mlir::OpBuilder* builder,
+      mlir::SymbolTable& symbol_table, mlir::OpBuilder* builder,
       DynamicShapeHandlingMode mode = DynamicShapeHandlingMode::kDynamic);
 
   static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape,
@@ -132,12 +134,12 @@ class HloFunctionImporter {
       llvm::MutableArrayRef<mlir::Value>& flatten_values, mlir::Type type);
 
  private:
-  HloFunctionImporter(mlir::ModuleOp module,
+  HloFunctionImporter(mlir::SymbolTable& symbol_table,
                       std::unordered_map<const xla::HloComputation*,
                                          mlir::func::FuncOp>* function_map,
                       mlir::Builder* builder)
-      : context_(module.getContext()),
-        module_(module),
+      : context_(symbol_table.getOp()->getContext()),
+        symbol_table_(symbol_table),
         builder_(builder),
         function_map_(function_map) {
     context_->loadDialect<mlir::arith::ArithDialect>();
@@ -260,7 +262,10 @@ class HloFunctionImporter {
       mlir::Type result_type, mlir::OpBuilder* func_builder);
 
   mlir::MLIRContext* context_;
-  mlir::ModuleOp module_;
+
+  // SymbolTable to which new functions should be inserted.
+  mlir::SymbolTable& symbol_table_;
+
   mlir::Builder* builder_;
 
   // Mapping from HloComputation to the created MLIR function.

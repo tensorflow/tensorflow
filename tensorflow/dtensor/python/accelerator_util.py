@@ -35,6 +35,12 @@ def is_initialized() -> bool:
   return bool(_INITIALIZED_ACCELERATOR_SYSTEM_TYPE)
 
 
+def set_initialized(value):
+  """Sets if accelerator system has been initialized."""
+  global _INITIALIZED_ACCELERATOR_SYSTEM_TYPE
+  _INITIALIZED_ACCELERATOR_SYSTEM_TYPE = value
+
+
 def initialize_multi_client_cluster(job_name: str,
                                     dtensor_jobs: List[str],
                                     client_id: int,

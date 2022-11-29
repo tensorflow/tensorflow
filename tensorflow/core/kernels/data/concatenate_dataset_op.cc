@@ -158,12 +158,16 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params), i_(0) {}
 
+    bool SymbolicCheckpointCompatible() const override { return true; }
+
     Status Initialize(IteratorContext* ctx) override {
       TF_ASSIGN_OR_RETURN(input_contexts_,
                           CreateInputIteratorContexts(ctx, dataset()));
-      return dataset()->input_->MakeIterator(&input_contexts_[0], this,
-                                             strings::StrCat(prefix(), "[0]"),
-                                             &input_impl_);
+      TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
+          &input_contexts_[0], this, strings::StrCat(prefix(), "[0]"),
+          &input_impl_));
+      ctx->MergeCheckpoint(input_contexts_[0].checkpoint());
+      return OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -177,6 +181,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       while (i_ < 2) {
         TF_RETURN_IF_ERROR(input_impl_->GetNext(&input_contexts_[i_],
                                                 out_tensors, end_of_sequence));
+        ctx->MergeCheckpoint(input_contexts_[i_].checkpoint());
         if (!*end_of_sequence) {
           return OkStatus();
         }
@@ -202,11 +207,11 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kIndex), i_));
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(full_name(kInputImplUninitialized),
+                              static_cast<int64_t>(!input_impl_)));
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-      } else {
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kInputImplUninitialized), ""));
       }
       return OkStatus();
     }
@@ -215,7 +220,10 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kIndex), &i_));
-      if (reader->Contains(full_name(kInputImplUninitialized))) {
+      int64_t input_uninitialized;
+      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kInputImplUninitialized),
+                                            &input_uninitialized));
+      if (static_cast<bool>(input_uninitialized)) {
         input_impl_.reset();
         return OkStatus();
       }

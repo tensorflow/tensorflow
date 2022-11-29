@@ -423,6 +423,8 @@ static std::atomic<bool> xla_compilation_disabled(false);
 
 void DisableXlaCompilation() { xla_compilation_disabled = true; }
 
+void EnableXlaCompilation() { xla_compilation_disabled = false; }
+
 bool FailOnXlaCompilation() { return xla_compilation_disabled; }
 
 }  // namespace tensorflow

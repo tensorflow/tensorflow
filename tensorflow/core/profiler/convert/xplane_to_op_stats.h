@@ -49,14 +49,6 @@ PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
 // Extracts PerfEnv from XPlane stats.
 PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane);
 
-// Converts and combines multiple XSpace protos into a single OpStats
-// <combined_op_stats>.
-// Return the first error status during conversion, or return OkStatus() if
-// there is no error.
-Status ConvertMultiXSpacesToCombinedOpStats(
-    const SessionSnapshot& session_snapshot, const OpStatsOptions& options,
-    OpStats* combined_op_stats);
-
 }  // namespace profiler
 }  // namespace tensorflow
 

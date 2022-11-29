@@ -34,8 +34,8 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 
 namespace tflite {
 

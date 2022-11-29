@@ -543,7 +543,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
       with self.cached_session():
         t = gen_nn_ops.avg_pool(
             value=np.ones([1, 1, 1, 1]),
-            ksize=[1, 1e20, 1, 1],
+            ksize=[1, 9223372036854775807, 1, 1],
             strides=[1, 1, 1, 1],
             padding="SAME",
             data_format="NHWC")
@@ -1017,6 +1017,32 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(out.ravel(),
                             [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
         self.assertAllEqual(argmax.ravel(), config.argmax)
+
+  def testDepthwiseMaxPoolingWithArgmax(self):
+    tensor_input = [89, 73, -109]
+    Config = collections.namedtuple("Config", ["use_gpu", "padding"])
+    configs = [
+        Config(False, "SAME"),
+        Config(False, "VALID"),
+        Config(True, "SAME"),
+        Config(True, "VALID"),
+    ]
+
+    for config in configs:
+      with GetDeviceScope(self, use_gpu=config.use_gpu):
+        t = constant_op.constant(tensor_input, shape=[1, 1, 1, 3])
+        out_op, argmax_op = nn_ops.max_pool_with_argmax(
+            t,
+            ksize=[1, 1, 1, 3],
+            strides=[1, 1, 1, 3],
+            padding=config.padding,
+        )
+        out, argmax = self.evaluate([out_op, argmax_op])
+        # TODO(b/259733542): Fix below asserts once bug is fixed.
+        # self.assertShapeEqual(out, out_op)
+        # self.assertShapeEqual(argmax, argmax_op)
+        self.assertAllClose(out.ravel(), [89, 73, -109])
+        self.assertAllClose(argmax.ravel(), [0, 1, 2])
 
   def testMaxPoolingGradWithArgmax(self):
     orig_input = [
@@ -2507,6 +2533,21 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
             ksize=[1, 2, 2, 1],
             strides=[1, 2, 2, 1],
             padding="VALID",
+            data_format="NHWC")
+        self.evaluate(t)
+
+  def testAvgPoolGradInvalidStrideRaiseErrorProperly(self):
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      with self.cached_session():
+        orig_input_shape = [11, 9, 78, 9]
+        grad = constant_op.constant(
+            0.1, shape=[16, 16, 16, 16], dtype=dtypes.float64)
+        t = gen_nn_ops.AvgPoolGrad(
+            orig_input_shape=orig_input_shape,
+            grad=grad,
+            ksize=[1, 40, 128, 1],
+            strides=[1, 128, 128, 30],
+            padding="SAME",
             data_format="NHWC")
         self.evaluate(t)
 

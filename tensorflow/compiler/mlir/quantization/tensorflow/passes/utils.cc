@@ -76,7 +76,7 @@ LogicalResult IsOperationFoldable(Operation* op) {
   // folded to preserve the original semantics.
   if (op->hasTrait<OpTrait::IsTerminator>() ||
       op->hasTrait<OpTrait::TF::NoConstantFold>() || op->getNumRegions() != 0 ||
-      !MemoryEffectOpInterface::hasNoEffect(op)) {
+      !isMemoryEffectFree(op)) {
     return failure();
   }
 

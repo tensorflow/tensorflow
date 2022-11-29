@@ -400,7 +400,7 @@ class ConcatV2OpClusteringPolicy
     // a known rank.
     for (auto value : op.getValues()) {
       operands.Insert(value,
-                      result_constraint.getValueOr(ValueConstraint::kRank));
+                      result_constraint.value_or(ValueConstraint::kRank));
     }
 
     // Force axis to be a constant.

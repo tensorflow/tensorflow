@@ -525,12 +525,18 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
 
   // We match the following patterns here:
   //  base := ViewOp(arg) | get_global_memref (global_memref) | arg
-  //  root := base | MemRefReinterpretCastOp(base)
+  //  root := base | MemRefReinterpretCastOp(base) | CollapseShapeOp(base)
 
   if (auto cast = mlir::dyn_cast_or_null<mlir::memref::ReinterpretCastOp>(
           v.getDefiningOp())) {
     v = cast.getViewSource();
   }
+  if (auto collapse_shape =
+          mlir::dyn_cast_or_null<mlir::memref::CollapseShapeOp>(
+              v.getDefiningOp())) {
+    v = collapse_shape.getSrc();
+  }
+
   if (auto view =
           mlir::dyn_cast_or_null<mlir::memref::ViewOp>(v.getDefiningOp())) {
     TF_RET_CHECK(view.getSource().isa<mlir::BlockArgument>());

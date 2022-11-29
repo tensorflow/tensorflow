@@ -57,9 +57,11 @@ typedef struct TfLiteMiniBenchmarkSettings {
   size_t flatbuffer_data_size;
   // Custom validation related info.
   TfLiteMiniBenchmarkCustomValidationInfo custom_validation_info;
-  // Custom error reporter to log error to. If the function is provided, errors
-  // will be log with this function.
+  // Arbitrary data that will be passed  to the `error_reporter_func`
+  // function via its `user_data` parameter.
   void* error_reporter_user_data;
+  // Custom error reporter to log error to. If the function is provided, errors
+  // will be logged with this function.
   int (*error_reporter_func)(void* user_data, const char* format, va_list args);
 } TfLiteMinibenchmarkSettings;
 

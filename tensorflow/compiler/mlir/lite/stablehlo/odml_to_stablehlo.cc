@@ -61,7 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_graph_optimization_pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
+#include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -355,7 +355,7 @@ void initAllPasses() {
   mlir::lmhlo::registerAllLmhloPasses();
   // These are in compiler/mlir/xla and not part of the above MHLO passes.
   mlir::mhlo::registerTfXlaPasses();
-  mlir::mhlo::registerXlaPasses();
+  mlir::mhlo::registerXlaFrameworkPasses();
   mlir::mhlo::registerLegalizeTFPass();
   mlir::mhlo::registerLegalizeTFControlFlowPass();
   mlir::mhlo::registerLegalizeTfTypesPassPass();

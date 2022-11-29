@@ -302,14 +302,15 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
         GetI64DenseElementsAttr(dimensions));
 
     TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-        *instr->called_computations()[0], &reduce_op.getBody(), &builder_,
+        *instr->called_computations()[0], symbol_table_, &reduce_op.getBody(),
+        &builder_,
         /*flatten_region_arg_tuple=*/true));
     op = reduce_op;
   } else {
-    TF_ASSIGN_OR_RETURN(
-        op,
-        xla::HloFunctionImporter::ImportInstruction(
-            instr, loads, &b, xla::DynamicShapeHandlingMode::kConvertToStatic));
+    TF_ASSIGN_OR_RETURN(op,
+                        xla::HloFunctionImporter::ImportInstruction(
+                            instr, loads, symbol_table_, &b,
+                            xla::DynamicShapeHandlingMode::kConvertToStatic));
   }
   TF_RET_CHECK(op->getNumResults() == num_results);
   for (int i = 0; i < results.size(); i++) {
@@ -474,7 +475,8 @@ tsl::StatusOr<lmhlo::SortOp> LhloDialectEmitter::EmitSortOp(
       builder_.getI64IntegerAttr(sort_instr->sort_dimension()));
   sort.setIsStableAttr(builder_.getBoolAttr(sort_instr->is_stable()));
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-      *sort_instr->called_computations()[0], &sort.getComparator(), &builder_));
+      *sort_instr->called_computations()[0], symbol_table_,
+      &sort.getComparator(), &builder_));
   return sort;
 }
 
@@ -564,7 +566,7 @@ tsl::StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
   TF_ASSIGN_OR_RETURN(Value result,
                       xla::HloFunctionImporter::ImportInstructions(
                           *fusion_instr->fused_instructions_computation(),
-                          arguments, &region_builder));
+                          arguments, symbol_table_, &region_builder));
   {
     int i = 0;
     llvm::SmallVector<Value, 4> output;
@@ -644,8 +646,8 @@ tsl::StatusOr<lmhlo::ScatterOp> LhloDialectEmitter::EmitScatterOp(
 
   // import update computation as region
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-      *scatter_instr->called_computations()[0], &scatter.getUpdateComputation(),
-      &builder_));
+      *scatter_instr->called_computations()[0], symbol_table_,
+      &scatter.getUpdateComputation(), &builder_));
 
   return scatter;
 }
@@ -680,11 +682,11 @@ LhloDialectEmitter::EmitSelectAndScatterOp(const HloInstruction* instr) {
 
   // import select and scatter computation as region
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-      *select_and_scatter_instr->select(), &select_and_scatter.getSelect(),
-      &builder_));
+      *select_and_scatter_instr->select(), symbol_table_,
+      &select_and_scatter.getSelect(), &builder_));
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-      *select_and_scatter_instr->scatter(), &select_and_scatter.getScatter(),
-      &builder_));
+      *select_and_scatter_instr->scatter(), symbol_table_,
+      &select_and_scatter.getScatter(), &builder_));
   return select_and_scatter;
 }
 
@@ -801,9 +803,10 @@ tsl::StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitSoftmax(
     arguments.push_back(arg);
   }
 
-  TF_ASSIGN_OR_RETURN(Value result,
-                      xla::HloFunctionImporter::ImportInstructions(
-                          *instr->to_apply(), arguments, &region_builder));
+  TF_ASSIGN_OR_RETURN(
+      Value result,
+      xla::HloFunctionImporter::ImportInstructions(
+          *instr->to_apply(), arguments, symbol_table_, &region_builder));
   llvm::SmallVector<Value, 4> output;
   TF_RETURN_IF_ERROR(GetOrCreateView(instr, &output));
   region_builder.create<memref::TensorStoreOp>(loc, result, output[0]);
@@ -1136,7 +1139,7 @@ tsl::StatusOr<mlir::memref::GetGlobalOp> LhloDialectEmitter::EmitConstant(
     auto global_var = builder_.create<memref::GlobalOp>(
         loc, constant_name, builder_.getStringAttr("private"), memref_type,
         initial_value, true, /*alignment=*/IntegerAttr());
-    SymbolTable(module_).insert(global_var);
+    symbol_table_.insert(global_var);
     global_var.getOperation()->moveBefore(&module_.front());
 
     // For operations that do not fold this constant value in their codegen, we
@@ -1227,8 +1230,8 @@ tsl::StatusOr<lmhlo::AllReduceOp> LhloDialectEmitter::EmitAllReduceOp(
   all_reduce_op.setUseGlobalDeviceIdsAttr(
       builder_.getBoolAttr(all_reduce->use_global_device_ids()));
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-      *instr->called_computations()[0], &all_reduce_op.getComputation(),
-      &builder_));
+      *instr->called_computations()[0], symbol_table_,
+      &all_reduce_op.getComputation(), &builder_));
   return all_reduce_op;
 }
 
@@ -1252,8 +1255,8 @@ LhloDialectEmitter::EmitAllReduceStartOp(const HloInstruction* instr) {
   all_reduce_start_op.setUseGlobalDeviceIdsAttr(
       builder_.getBoolAttr(all_reduce->use_global_device_ids()));
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-      *instr->called_computations()[0], &all_reduce_start_op.getComputation(),
-      &builder_));
+      *instr->called_computations()[0], symbol_table_,
+      &all_reduce_start_op.getComputation(), &builder_));
 
   TF_RET_CHECK(all_reduce_start_ops_.emplace(instr, all_reduce_start_op).second)
       << "all-reduce-start already lowered";
@@ -1288,8 +1291,8 @@ tsl::StatusOr<lmhlo::ReduceScatterOp> LhloDialectEmitter::EmitReduceScatterOp(
   reduce_scatter_op.setUseGlobalDeviceIdsAttr(
       builder_.getBoolAttr(ars->use_global_device_ids()));
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-      *instr->called_computations()[0], &reduce_scatter_op.getComputation(),
-      &builder_));
+      *instr->called_computations()[0], symbol_table_,
+      &reduce_scatter_op.getComputation(), &builder_));
   reduce_scatter_op.setScatterDimensionAttr(
       builder_.getI64IntegerAttr(ars->scatter_dimension()));
   return reduce_scatter_op;
@@ -1739,8 +1742,7 @@ tsl::Status LhloDialectEmitter::Initialize() {
   func_op.setType(function_type);
   func_op.setAllArgAttrs(args_attrs);
 
-  SymbolTable symbol_table(module_);
-  symbol_table.insert(func_op);
+  symbol_table_.insert(func_op);
   builder_.setInsertionPointToEnd(block);
 
   auto return_op =

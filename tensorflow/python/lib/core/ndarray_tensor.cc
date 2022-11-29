@@ -12,11 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// Must be included first
+// clang-format off
+#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+// clang-format on
 
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 
-#include <cstring>
-#include <optional>
+#include <cstring>   // NOLINT
+#include <optional>  // NOLINT
 
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/tf_tensor_internal.h"
@@ -26,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/bfloat16.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
-#include "tensorflow/python/lib/core/numpy.h"
 
 namespace tensorflow {
 namespace {

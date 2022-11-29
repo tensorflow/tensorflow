@@ -863,6 +863,65 @@ class PreemptionCheckpointHandler(object):
 
     return result
 
+  # TODO(wxinyi): maybe export as public API.
+  # Disabling line-too-long check since we do not want to break the line when
+  # converted to public documentation.
+  # pylint: disable=line-too-long
+  def _save_checkpoint_if_preempted(self, *args, **kwargs):
+    """Saves a checkpoint if a preemption signal has been made available.
+
+    This method works for both tf.distribute.MultiWorkerMirroredStrategy and
+    tf.distribute.TPUStrategy. However, this method will add a synchronization
+    point between worker and coordinator in the use case of TPUStrategy. If this
+    is a concern, use `watch_error_scope` and `run` instead.
+
+    ```python
+    strategy = tf.distribute.TPUStrategy()
+    # initialization omitted
+
+    with strategy.scope():
+      # Save in the checkpoint.
+      trained_step = tf.Variable(initial_value=tf.constant(0, dtype=tf.dtypes.int64), name='trained_step', aggregation=tf.VariableAggregation.ONLY_FIRST_REPLICA)
+
+      checkpoint_manager = tf.train.CheckpointManager(checkpoint, directory, max_to_keep=1)
+      preemption_handler = tf.distribute.experimental.PreemptionCheckpointHandler(cluster_resolver, checkpoint_manager)
+
+    while trained_step.numpy() < NUM_STEPS:
+      train_multi_step_function()
+      preemption_handler.save_checkpoint_if_preempted()
+    ```
+
+    Args:
+      *args: args for `tf.train.CheckpointManager.save()` to save checkpoint.
+      **kwargs: kwargs for `tf.train.CheckpointManager.save()` to save.
+    """
+    # pylint: enable=line-too-long
+    if (self._platform_device ==
+        failure_handling_util.PlatformDevice.INTERNAL_TPU):
+
+      try:
+        with context.async_scope():
+          gen_check_preemption_op.check_preemption(
+              preemption_key=PREEMPTION_KEY)
+      except errors.AbortedError as abort_error:
+        if abort_error.experimental_payloads.get(
+            b'type.googleapis.com/tensorflow.distributed_runtime.WorkerPreemption'
+        ):
+          logging.info('Clearing preemption error to save checkpoint...')
+
+          context.async_clear_error()
+          self._save_checkpoint(*args, **kwargs)
+
+          self._exit_fn(self._checkpoint_time)
+
+        else:
+          raise
+
+    else:
+      self._checkpoint_if_preempted(*args, **kwargs)
+      self._run_counter += 1
+      self._estimated_run_time = 0
+
   @tf_contextlib.contextmanager
   def _watch_error_scope(self):
     """Sync error and maybe save checkpoint."""
@@ -884,7 +943,7 @@ class PreemptionCheckpointHandler(object):
       else:
         raise
 
-  def _save_checkpoint(self):
+  def _save_checkpoint(self, *args, **kwargs):
     """Saves the checkpoint and exit program."""
     distribution_strategy_api_counter.get_cell(
         self._platform_device.name,
@@ -897,9 +956,9 @@ class PreemptionCheckpointHandler(object):
     start_time = time.monotonic()
 
     if self._save_fn:
-      self._save_fn()
+      self._save_fn(*args, **kwargs)
     else:
-      self._write_checkpoint_manager.save()
+      self._write_checkpoint_manager.save(*args, **kwargs)
 
     end_time = time.monotonic()
 
@@ -907,7 +966,7 @@ class PreemptionCheckpointHandler(object):
                  self._write_checkpoint_manager.directory)
     self._checkpoint_time = end_time - start_time
 
-  def _checkpoint_if_preempted(self):
+  def _checkpoint_if_preempted(self, *args, **kwargs):
     """Checkpoint if any worker has received a preemption signal.
 
     This function handles preemption signal reported by any worker in the
@@ -927,6 +986,10 @@ class PreemptionCheckpointHandler(object):
     info is available, if the worker has not finished these steps yet, keep
     training; otherwise, checkpoint and exit with a cluster-recognized restart
     code.
+
+    Args:
+      *args: args for `tf.train.CheckpointManager.save()` to save checkpoint.
+      **kwargs: kwargs for `tf.train.CheckpointManager.save()` to save.
     """
     if self._final_checkpoint_countdown:
       run_count_config_key = _FINAL_RUN_COUNT_KEY
@@ -937,7 +1000,7 @@ class PreemptionCheckpointHandler(object):
     if self._received_checkpoint_step.is_set():
 
       if self._step_to_checkpoint == str(self._run_counter):
-        self._save_checkpoint()
+        self._save_checkpoint(*args, **kwargs)
 
         if self._time_to_exit():
           self._stop_poll_termination_signal_thread()

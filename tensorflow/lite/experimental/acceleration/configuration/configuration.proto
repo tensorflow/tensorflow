@@ -49,6 +49,9 @@ enum ExecutionPreference {
 }
 
 // TFLite accelerator to use.
+//
+// STATUS: support library and the stable delegate loader settings are agnostic
+// to the actual accelerator.
 enum Delegate {
   NONE = 0;
 
@@ -309,6 +312,18 @@ message CoreMLSettings {
   optional int32 min_nodes_per_partition = 4 [default = 2];
 }
 
+// Stable delegate loader settings.
+//
+// See
+// tensorflow/lite/core/experimental/acceleration/configuration/c/stable_delegate.h
+// An example stable delegate:
+// tensorflow/lite/delegates/utils/experimental/sample_stable_delegate
+message StableDelegateLoaderSettings {
+  // The path of the stable delegate shared object file. Then the stable
+  // delegate provider can dynamically load the shared object file.
+  optional string delegate_path = 1;
+}
+
 // EdgeTPU device spec.
 //
 message EdgeTpuDeviceSpec {
@@ -476,7 +491,22 @@ message TFLiteSettings {
   optional FallbackSettings fallback_settings = 9;
 
   // Whether to disable default delegates (XNNPack).
+  // TODO(b/260405596): Update the comment to clarify the interaction between
+  // `disable_default_delegates` and `fallback_settings`.
   optional bool disable_default_delegates = 12;
+
+  // For loading a stable delegate. If an app supplies a delegate shared library
+  // (e.g. packaged with the app, or downloaded separately), the app can use
+  // this field for passing the path to the delegate shared library.
+  //
+  // The stable delegate loader settings field works together with the settings
+  // of other concrete stable delegates; the stable delegate loader is not a
+  // concrete delegate type but a mechanism for initializing the TF Lite stable
+  // delegates.
+  //
+  // See
+  // tensorflow/lite/delegates/utils/experimental/sample_stable_delegate
+  optional StableDelegateLoaderSettings stable_delegate_loader_settings = 13;
 }
 
 // Whether to automatically fallback to TFLite CPU path on delegation errors.

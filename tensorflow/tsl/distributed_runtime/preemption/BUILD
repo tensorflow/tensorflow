@@ -3,6 +3,7 @@ load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//tensorflow/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/tsl:internal",
     ],
@@ -52,6 +53,7 @@ cc_library(
         ":preemption_notifier",
         "//tensorflow/tsl/distributed_runtime:call_options",
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "//tensorflow/tsl/lib/monitoring:gauge",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:status",

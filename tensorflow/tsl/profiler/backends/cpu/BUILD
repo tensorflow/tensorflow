@@ -3,14 +3,15 @@ load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 cc_library(
     name = "traceme_recorder",
     hdrs = ["traceme_recorder.h"],
     copts = tf_profiler_copts(),
     visibility = [
-        "//tensorflow/compiler/xla/backends/profiler:friends",
-        "//tensorflow/core/profiler:internal",
         "//tensorflow/tsl/profiler:internal",
+        "//tensorflow/tsl/profiler:xla_profiler_backends",
     ],
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
@@ -31,12 +32,11 @@ cc_library(
     hdrs = ["traceme_recorder.h"],
     copts = tf_profiler_copts(),
     visibility = [
-        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
-        "//tensorflow/core/profiler:__pkg__",
-        "//tensorflow/core/profiler/backends/cpu:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/tsl/platform/cloud:__pkg__",
         "//tensorflow/tsl/profiler:__pkg__",
+        "//tensorflow/tsl/profiler:internal",
+        "//tensorflow/tsl/profiler:xla_internal",
     ],
     deps = [
         "//tensorflow/tsl/platform:env",
@@ -95,9 +95,7 @@ cc_library(
     ],
     copts = tf_profiler_copts(),
     visibility = [
-        "//tensorflow/core/profiler/backends/cpu:__pkg__",
-        "//tensorflow/tsl/profiler:__pkg__",
-        "//tensorflow/tsl/profiler/lib:__pkg__",
+        "//tensorflow/tsl/profiler:internal",
     ],
     deps = [
         "//tensorflow/tsl/platform:macros",
@@ -113,9 +111,8 @@ cc_library(
     hdrs = ["host_tracer_utils.h"],
     copts = tf_profiler_copts(),
     visibility = [
-        "//tensorflow/compiler/xla/backends/profiler:friends",
-        "//tensorflow/core/profiler:internal",
         "//tensorflow/tsl/profiler:internal",
+        "//tensorflow/tsl/profiler:xla_internal",
     ],
     deps = [
         ":traceme_recorder",

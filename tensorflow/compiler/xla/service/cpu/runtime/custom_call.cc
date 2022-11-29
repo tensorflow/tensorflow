@@ -58,14 +58,14 @@ static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
 namespace {
 struct XlaCustomCall {
   absl::Status operator()(CustomCall::RemainingArgs args, int32_t num_results,
-                          StringRef call_target_name,
+                          bool output_tuple, StringRef call_target_name,
                           int32_t api_version) const;
   static XlaCustomCall Handler() { return XlaCustomCall(); }
 };
 }  // namespace
 
 absl::Status XlaCustomCall::operator()(CustomCall::RemainingArgs args,
-                                       int32_t num_results,
+                                       int32_t num_results, bool output_tuple,
                                        StringRef call_target_name,
                                        int32_t api_version) const {
   // Find the Xla custom call handler.
@@ -99,7 +99,7 @@ absl::Status XlaCustomCall::operator()(CustomCall::RemainingArgs args,
   // Multiple result buffers are passed as a tuple, which is represented as a
   // buffer of pointers.
   void* result_buffer =
-      num_results <= 1 ? buffers.back() : buffers.end() - num_results;
+      !output_tuple ? buffers.back() : buffers.end() - num_results;
 
   // Original custom call API version that doesn't support returning status.
   if (api_version == CustomCallApiVersion::API_VERSION_ORIGINAL) {
@@ -135,6 +135,7 @@ static bool CustomCall(runtime::ExecutionContext* ctx, void** args,
   static auto* handler = CustomCall::Bind("xla.cpu.custom_call")
                              .Arg<CustomCall::RemainingArgs>()  // args
                              .Attr<int32_t>("num_results")
+                             .Attr<bool>("output_tuple")
                              .Attr<std::string_view>("call_target_name")
                              .Attr<int32_t>("api_version")
                              .To<RuntimeChecks()>(XlaCustomCall::Handler())

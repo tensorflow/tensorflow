@@ -83,6 +83,11 @@ Attribute convertAttr(Attribute hloAttr) {
         attr.getContext(), attr.getOffsetDims(), attr.getCollapsedSliceDims(),
         attr.getStartIndexMap(), attr.getIndexVectorDim());
   }
+  if (auto attr = hloAttr.dyn_cast<mhlo::OutputOperandAliasAttr>()) {
+    return stablehlo::OutputOperandAliasAttr::get(
+        attr.getContext(), attr.getOutputTupleIndices(), attr.getOperandIndex(),
+        attr.getOperandTupleIndices());
+  }
   if (auto attr = hloAttr.dyn_cast<mhlo::PrecisionAttr>()) {
     // This precision value is used to experiment with int4 support.
     // Needs more experimental data before we decide whether or not to propose
@@ -154,10 +159,11 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
       auto dimensionNumbers = debugString(hloOp.getDimensionNumbers());
       if (dimensionNumbers.find('?') != std::string::npos) return failure();
     }
-    if constexpr (std::is_same<HloOpTy, mhlo::CustomCallOp>::value) {
-      // Added to MHLO per feature request from JAX.
-      // Hasn't been proposed to StableHLO yet.
-      if (!hloOp.getOutputOperandAliases().empty()) return failure();
+
+    if constexpr (std::is_same<HloOpTy, mhlo::AllToAllOp>::value) {
+      // StableHLO AllToAll doesn't support the tuple form yet.
+      // Proposal: https://github.com/openxla/stablehlo/issues/574.
+      if (hloOp.getNumOperands() != 1) return failure();
     }
 
     // Convert MHLO types to StableHLO equivalents.

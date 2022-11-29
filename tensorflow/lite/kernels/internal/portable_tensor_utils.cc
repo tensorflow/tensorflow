@@ -21,7 +21,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 
 #if defined(_MSC_VER)
 #define __restrict__ __restrict

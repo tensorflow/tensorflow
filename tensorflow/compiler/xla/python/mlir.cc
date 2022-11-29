@@ -25,8 +25,8 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/mlir/utils/error_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
@@ -48,16 +48,16 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseModule(
   context->loadDialect<mlir::chlo::ChloDialect>();
   context->loadDialect<mlir::sparse_tensor::SparseTensorDialect>();
   context->loadDialect<mlir::stablehlo::StablehloDialect>();
-  mlir::StatusScopedDiagnosticHandler diagnostic_handler(context);
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
   module = mlir::parseSourceString<mlir::ModuleOp>(
       llvm::StringRef(str.data(), str.size()), context);
   if (!module) {
-    return diagnostic_handler.ConsumeStatus();
+    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
   }
   if (failed(module->verifyInvariants())) {
     VLOG(1) << "MLIR verification failed.";
     module->dump();
-    return diagnostic_handler.ConsumeStatus();
+    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
   }
   return module;
 }

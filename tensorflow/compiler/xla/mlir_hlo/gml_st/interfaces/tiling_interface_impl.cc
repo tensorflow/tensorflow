@@ -42,10 +42,7 @@ struct ExternalLinalgOpTilingInterface
   /// Return the loop iterator type.
   SmallVector<utils::IteratorType> getLoopIteratorTypes(Operation *op) const {
     auto linalgOp = cast<linalg::LinalgOp>(op);
-    return llvm::to_vector(llvm::map_range(
-        linalgOp.getIteratorTypesArray(), [](StringRef iteratorType) {
-          return utils::symbolizeIteratorType(iteratorType).value();
-        }));
+    return linalgOp.getIteratorTypesArray();
   }
 
   /// Return the iteration domain range.
@@ -110,8 +107,7 @@ struct ExternalLinalgOpTilingInterface
           return tiledOperands[opOperand->getOperandNumber()].getType();
         }));
 
-    Operation *tiledOp =
-        linalgOp.clone(b, loc, resultTensorTypes, tiledOperands);
+    Operation *tiledOp = clone(b, linalgOp, resultTensorTypes, tiledOperands);
     offsetIndices(b, cast<linalg::LinalgOp>(tiledOp), offsets);
 
     return {tiledOp};
@@ -165,6 +161,8 @@ struct ExternalLinalgOpTilingInterface
 
 void registerGmlStTilingInterfaceExternalModels(DialectRegistry &registry) {
   registry.addExtension(+[](MLIRContext *ctx, linalg::LinalgDialect *) {
+    linalg::BroadcastOp::attachInterface<
+        ExternalLinalgOpTilingInterface<linalg::BroadcastOp>>(*ctx);
     linalg::FillOp::attachInterface<
         ExternalLinalgOpTilingInterface<linalg::FillOp>>(*ctx);
     linalg::GenericOp::attachInterface<
@@ -173,6 +171,8 @@ void registerGmlStTilingInterfaceExternalModels(DialectRegistry &registry) {
         ExternalLinalgOpTilingInterface<linalg::MapOp>>(*ctx);
     linalg::MatmulOp::attachInterface<
         ExternalLinalgOpTilingInterface<linalg::MatmulOp>>(*ctx);
+    linalg::ReduceOp::attachInterface<
+        ExternalLinalgOpTilingInterface<linalg::ReduceOp>>(*ctx);
     linalg::TransposeOp::attachInterface<
         ExternalLinalgOpTilingInterface<linalg::TransposeOp>>(*ctx);
   });

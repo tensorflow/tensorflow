@@ -6,6 +6,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -111,23 +112,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "cpu_device_test",
-    srcs = ["cpu_device_test.cc"],
-    deps = [
-        ":cpu_device",
-        ":pjrt_client",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/client:executable_build_options",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/tsl/platform:random",
-        "//tensorflow/tsl/platform:test_main",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -425,26 +409,10 @@ cc_library(
 )
 
 cc_library(
-    name = "cpu_device",
-    srcs = ["cpu_device.cc"],
-    hdrs = ["cpu_device.h"],
-    compatible_with = [],
-    visibility = [":friends"],
-    deps = [
-        ":pjrt_stream_executor_client",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
-        "//tensorflow/compiler/xla/service:platform_util",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "pjrt_plugin_device_client",
     deps = [
         ":pjrt_plugin_device_client_headers",
-        "//tensorflow/compiler/plugin",
+        "//tensorflow/compiler/xla/pjrt/plugin",
     ],
 )
 
@@ -462,9 +430,9 @@ cc_library(
     hdrs = ["mlir_to_hlo.h"],
     visibility = [":friends"],
     deps = [
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/mlir/utils:error_util",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
@@ -665,6 +633,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/tpu:pjrt_api",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
         "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/strings",
         "@llvm-project//mlir:BytecodeWriter",
     ],
 )

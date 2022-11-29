@@ -31,7 +31,6 @@ limitations under the License.
 #include "tfrt/core_runtime/opdefs/attributes.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/core_runtime.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/types.h"  // from @tf_runtime
-#include "tfrt/distributed_runtime/opdefs/kernels.h"  // from @tf_runtime
 
 namespace tensorflow {
 
@@ -41,7 +40,6 @@ CoreRTConverter::CoreRTConverter(
     : builder_(context), side_effect_analysis_(*side_effect_analysis) {
   addConversion([](tfrt::compiler::ChainType type) { return type; });
   addConversion([](tfrt::corert::OpHandlerType type) { return type; });
-  addConversion([](tfrt::dist::DistributedContextType type) { return type; });
   addConversion([](tfrt::corert::TensorHandleType type) { return type; });
   addConversion([=](mlir::TensorType type) -> llvm::Optional<mlir::Type> {
     // Ref types are not supported in both compiler and runtime.
@@ -65,7 +63,7 @@ void CoreRTConverter::MaterializeDerivedAttributes(mlir::Operation *op) {
 }
 
 mlir::ArrayAttr CoreRTConverter::CreateOpFuncAttrs(
-    ArrayRef<NamedAttribute> attrs,
+    const mlir::SymbolTable &symbol_table, ArrayRef<NamedAttribute> attrs,
     llvm::SmallVector<mlir::StringAttr, 4> *func_attr_keys) {
   llvm::SmallVector<mlir::Attribute, 4> attr_array;
   for (auto key_and_value : attrs) {
@@ -74,7 +72,9 @@ mlir::ArrayAttr CoreRTConverter::CreateOpFuncAttrs(
     if (!IsUnusedTfrtAttribute(attr_key) &&
         attr_value.isa<mlir::FlatSymbolRefAttr, mlir::SymbolRefAttr>()) {
       auto func_attr = attr_value.dyn_cast<mlir::FlatSymbolRefAttr>();
-      auto converted = ConvertSymbolAttrToStringAttr(func_attr);
+      auto converted = ConvertSymbolAttrToStringAttr(symbol_table, func_attr);
+      if (!converted) return {};
+
       mlir::StringAttr key = builder_.getStringAttr(attr_key.strref());
       attr_array.push_back(builder_.getArrayAttr({key, converted}));
 
@@ -151,14 +151,7 @@ mlir::Value CoreRTConverter::GetDistributedContext(
   if (iter != distributed_context_by_func_.end()) {
     return iter->second;
   }
-  ConversionPatternRewriter::InsertionGuard insertion_guard(*rewriter);
-  rewriter->setInsertionPoint(op);
-  auto get_dist_ctx_op = rewriter->create<tfrt::dist::GetDistributedContextOp>(
-      op->getLoc(), distributed_context_type());
-
-  mlir::Value result = get_dist_ctx_op.getResult();
-  distributed_context_by_func_[func_op.getOperation()] = result;
-  return result;
+  return mlir::Value();
 }
 
 mlir::Value CoreRTConverter::GetRemoteChainManager(
@@ -168,18 +161,7 @@ mlir::Value CoreRTConverter::GetRemoteChainManager(
   if (iter != remote_chain_mgr_by_func_.end()) {
     return iter->second;
   }
-  ConversionPatternRewriter::InsertionGuard insertion_guard(*rewriter);
-  rewriter->setInsertionPoint(op);
-
-  mlir::Type remote_chain_mgr_type =
-      builder_.getType<::tfrt::dist::RemoteChainManagerType>();
-  mlir::Value dist_ctx = GetDistributedContext(op, rewriter);
-  auto create_mgr_op = rewriter->create<tfrt::dist::CreateRemoteChainManager>(
-      op->getLoc(), remote_chain_mgr_type, dist_ctx);
-
-  mlir::Value result = create_mgr_op.getResult();
-  remote_chain_mgr_by_func_[func_op.getOperation()] = result;
-  return result;
+  return mlir::Value();
 }
 
 mlir::Value CoreRTConverter::GetLocalSideEffectChain(
@@ -229,42 +211,36 @@ mlir::Value CoreRTConverter::GetTaskHandle(
     return iter->second;
   }
 
-  mlir::Value distributed_context = GetDistributedContext(op, rewriter);
-  auto task_handle_op = rewriter->create<tfrt::dist::GetTaskHandleOp>(
-      op->getLoc(), rewriter->getType<tfrt::dist::TaskHandleType>(),
-      distributed_context, task_name);
-
-  task_handle_by_name[task_name] = task_handle_op.getResult();
-  return task_handle_op.getResult();
-}
-
-mlir::Value CoreRTConverter::GetRemoteSideEffectChain(
-    mlir::Operation *op, StringRef remote_host,
-    mlir::ConversionPatternRewriter *rewriter) {
-  mlir::Value remote_chain_mgr = GetRemoteChainManager(op, rewriter);
-  mlir::Value local_chain = GetLocalSideEffectChain(op, rewriter);
-  mlir::Value task_handle = GetTaskHandle(op, remote_host, rewriter);
-  mlir::Type remote_obj_id_ty =
-      rewriter->getType<tfrt::dist::RemoteObjectIdType>();
-
-  // Get the remote chain using the tfrt_dist.get_chain_for_task_handle op.
-  auto get_chain_op = rewriter->create<tfrt::dist::GetChainForTaskHandleOp>(
-      op->getLoc(), remote_obj_id_ty, local_chain, remote_chain_mgr,
-      task_handle);
-  return get_chain_op.getResult();
+  return mlir::Value();
 }
 
 mlir::StringAttr CoreRTConverter::ConvertSymbolAttrToStringAttr(
+    const mlir::SymbolTable &symbol_table,
     mlir::FlatSymbolRefAttr symbol_attr) {
   // Currently in TF graph to MLIR importing, a "0" is appended to the original
-  // function name, so we pop it here. The renaming is for TF/XLA v1 bridge
-  // use cases. Refer to b/142268695, b/141617294 for more context.
+  // function name. The renaming is for TF/XLA v1 bridge use cases. Refer to
+  // b/142268695, b/141617294 for more context.
   //
-  // In TFRT use cases, in almost every case "0" is the only literal
-  // appended since TF Graph already guarantee function name uniqueness.
-  // TODO(b/172092902): Investigate a better way to make the tf_func_name to
-  // mlir_tf_func_name conversion reversible.
-  auto func_name = symbol_attr.getValue().drop_back().str();
+  // TFRT currently uses the original function library. Hence, we retrieve the
+  // original function name from the function attributes. Longer term, we
+  // probably want to export the MLIR functions.
+  func::FuncOp callee =
+      symbol_table.lookup<func::FuncOp>(symbol_attr.getValue());
+  if (!callee) return mlir::StringAttr();
+
+  mlir::StringAttr original_func_name =
+      callee->getAttrOfType<mlir::StringAttr>("tf._original_func_name");
+  std::string func_name;
+  if (!original_func_name) {
+    // If there is no function attribute "tf._original_func_name" in the callee,
+    // we use the workaround to recover the original function name by removing
+    // the last char of the MLIR function name.
+    // TODO(b/259138201): Remove this workwaround after we make sure
+    // "tf._original_func_name" is present in callees in all code paths.
+    func_name = symbol_attr.getValue().drop_back().str();
+  } else {
+    func_name = original_func_name.str();
+  }
 
   return mlir::StringAttr::get(builder_.getContext(), func_name);
 }

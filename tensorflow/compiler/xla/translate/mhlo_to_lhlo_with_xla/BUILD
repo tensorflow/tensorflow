@@ -2,6 +2,7 @@ load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -23,7 +24,6 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
         "//tensorflow/compiler/xla/service/gpu:cublas_cudnn",
@@ -70,8 +70,8 @@ tf_cc_binary(
     srcs = ["xla_translate_opt_main.cc"],
     deps = [
         ":mhlo_to_lhlo_with_xla",  # buildcleaner: keep
-        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
-        "//tensorflow/compiler/xla/mlir_hlo:all_passes",
+        "//tensorflow/compiler/xla/mlir/framework/ir:xla_framework",
+        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service/cpu:hlo_xla_runtime_pipeline",  # buildcleaner: keep
@@ -89,7 +89,8 @@ tf_cc_binary(
     srcs = ["xla_translate_opt_main.cc"],
     deps = [
         ":mhlo_to_lhlo_with_xla",  # buildcleaner: keep
-        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
+        "//tensorflow/compiler/xla/mlir/framework/ir:xla_framework",
+        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/compiler/xla/service:gpu_plugin",

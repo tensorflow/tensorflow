@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
+#include "tensorflow/core/profiler/protobuf/topology.pb.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/step_intersection.h"
@@ -89,7 +90,7 @@ void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
     dst->set_replica_count(std::max(src.replica_count(), dst->replica_count()));
     dst->set_num_cores_per_replica(
         std::max(src.num_cores_per_replica(), dst->num_cores_per_replica()));
-    *dst->mutable_topology() = src.topology();
+    *dst->mutable_system_topology() = src.system_topology();
   } else if (dst->device_type().empty()) {
     dst->set_device_type(src.device_type());
   }
@@ -211,6 +212,12 @@ StepIntersection ComputeStepIntersectionToMergeOpStats(
 void CombineAllOpStats(const std::vector<OpStatsInfo>& all_op_stats_info,
                        const StepIntersection& step_intersection,
                        OpStats* combined_op_stats) {
+  // A shortcut code path for a single OpStats. There is no need to merge.
+  if (all_op_stats_info.size() == 1) {
+    *combined_op_stats = *all_op_stats_info[0].op_stats;
+    return;
+  }
+
   StepDatabaseResult* combined_step_db = combined_op_stats->mutable_step_db();
   // Initialize the StepDatabaseResult field that depends on the number of
   // steps.

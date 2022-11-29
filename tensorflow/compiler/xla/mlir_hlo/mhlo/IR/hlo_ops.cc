@@ -50,8 +50,6 @@ limitations under the License.
 #include "mhlo/IR/hlo_ops.h.inc"
 #include "mhlo/IR/hlo_ops_common.h"
 #include "mhlo/IR/mhlo_bytecode.h"
-#include "mlir-hlo/utils/convert_op_folder.h"
-#include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -81,6 +79,8 @@ limitations under the License.
 #include "mlir/Transforms/InliningUtils.h"
 #include "stablehlo/dialect/AssemblyFormat.h"
 #include "stablehlo/dialect/TypeInference.h"
+#include "utils/convert_op_folder.h"
+#include "utils/hlo_utils.h"
 
 namespace mlir {
 #include "hlo_patterns.cc.inc"
@@ -152,6 +152,9 @@ void AsyncBundleType::getFlattenedTypes(SmallVectorImpl<Type>& types) {
 }
 
 namespace {
+
+static constexpr int64_t kDynamicPrintValue = -1;
+
 void createArgs(ArrayRef<OpAsmParser::UnresolvedOperand> operands,
                 ArrayRef<Type> types,
                 SmallVector<OpAsmParser::Argument>& args) {
@@ -260,7 +263,7 @@ static LogicalResult rngInferReturnTypeComponents(
       inferredReturnShapes.emplace_back(elementType);
       return success();
     }
-    shapeVector.resize(size, ShapedType::kDynamicSize);
+    shapeVector.resize(size, ShapedType::kDynamic);
     inferredReturnShapes.emplace_back(shapeVector, elementType);
     return success();
   }
@@ -1691,7 +1694,7 @@ LogicalResult reifyGatherShape(Op* op, OpBuilder& builder, ValueRange operands,
 
   Location loc = op->getLoc();
   int resultRank = resultTy.getRank();
-  Type shapeElTy = startIndices.getType().cast<ShapedType>().getElementType();
+  Type shapeElTy = builder.getIndexType();
   auto toShapeElType = [&](Value v) {
     return maybeCastTo(builder, loc, v, shapeElTy);
   };
@@ -1761,7 +1764,9 @@ LogicalResult GatherOp::inferReturnTypeComponents(
     return failure();
 
   auto getSliceDim = [&sliceSizesAttr](int64_t index) -> int64_t {
-    return sliceSizesAttr.getValues<int64_t>()[index];
+    return sliceSizesAttr.getValues<int64_t>()[index] == kDynamicPrintValue
+               ? ShapedType::kDynamic
+               : sliceSizesAttr.getValues<int64_t>()[index];
   };
 
   return inferGatherReturnTypeComponents(operandShape, startIndicesShape,
@@ -1824,7 +1829,7 @@ LogicalResult DynamicGatherOp::inferReturnTypeComponents(
                           errorEmitter)))
     return failure();
 
-  auto getSliceDim = [](int64_t index) { return ShapedType::kDynamicSize; };
+  auto getSliceDim = [](int64_t index) { return ShapedType::kDynamic; };
   return inferGatherReturnTypeComponents(operandShape, startIndicesShape,
                                          getSliceDim, dimensionNumbers,
                                          inferredReturnShapes, errorEmitter);
@@ -2361,7 +2366,7 @@ SmallVector<int64_t> inferConvolutionOpReturnShape(
                              .getKernelOutputFeatureDimension()];
 
   outputDimensions[op.getDimensionNumbers().getOutputBatchDimension()] =
-      hlo::isDynamicDimSize(inputBatch) ? ShapedType::kDynamicSize
+      hlo::isDynamicDimSize(inputBatch) ? ShapedType::kDynamic
                                         : inputBatch / op.getBatchGroupCount();
   outputDimensions[op.getDimensionNumbers().getOutputFeatureDimension()] =
       kernelOutputFeatures;
@@ -2751,7 +2756,33 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   AllToAllOp::Adaptor adaptor(operands, attributes, regions);
-  Type operandType = adaptor.getOperand().getType();
+
+  bool isArrayAllToAll = adaptor.getSplitDimension() &&
+                         adaptor.getConcatDimension() &&
+                         adaptor.getSplitCount();
+  if (!isArrayAllToAll) {
+    if (adaptor.getSplitDimension() || adaptor.getConcatDimension() ||
+        adaptor.getSplitCount()) {
+      return emitOptionalError(location,
+                               "TupleAllToAll should not have split_dimension, "
+                               "concat_dimension or split_count attributes");
+    }
+
+    // TupleAllToAll has identical result and operand shapes.
+    for (int64_t i = 0; i < operands.size(); ++i) {
+      inferredReturnShapes.emplace_back(
+          operands[i].getType().cast<ShapedType>());
+    }
+
+    return success();
+  }
+
+  if (adaptor.getOperand().size() != 1) {
+    return emitOptionalError(location,
+                             "ArrayAllToAll should have exactly one operand");
+  }
+
+  Type operandType = adaptor.getOperand()[0].getType();
   RankedTensorType operandRankedType = operandType.dyn_cast<RankedTensorType>();
   if (!operandRankedType) {
     inferredReturnShapes.emplace_back(
@@ -2760,8 +2791,8 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
   }
 
   int64_t inputRank = operandRankedType.getRank();
-  int64_t splitDimension = static_cast<int64_t>(adaptor.getSplitDimension());
-  int64_t concatDimension = static_cast<int64_t>(adaptor.getConcatDimension());
+  int64_t splitDimension = static_cast<int64_t>(*adaptor.getSplitDimension());
+  int64_t concatDimension = static_cast<int64_t>(*adaptor.getConcatDimension());
   if (splitDimension >= inputRank || splitDimension < 0) {
     return emitOptionalError(location, "AllToAll split_dimension ",
                              splitDimension,
@@ -2775,17 +2806,22 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
 
   // If operand is ranked, size of split dimension should be a multiple of split
   // count.
-  int64_t splitCount = adaptor.getSplitCount();
+  int64_t splitCount = *adaptor.getSplitCount();
   auto splitDimSize = operandRankedType.getDimSize(splitDimension);
-  if (splitDimSize % splitCount != 0) {
+  if (splitDimSize != ShapedType::kDynamic &&
+      (splitDimSize % splitCount != 0)) {
     return emitOptionalError(
         location, "split dimension has size ", splitDimSize,
         ", expected to be a multiple of split_count ", splitCount);
   }
   SmallVector<int64_t> resultShape(operandRankedType.getShape().begin(),
                                    operandRankedType.getShape().end());
-  resultShape[splitDimension] /= splitCount;
-  resultShape[concatDimension] *= splitCount;
+  if (resultShape[splitDimension] != ShapedType::kDynamic) {
+    resultShape[splitDimension] /= splitCount;
+  }
+  if (resultShape[concatDimension] != ShapedType::kDynamic) {
+    resultShape[concatDimension] *= splitCount;
+  }
   inferredReturnShapes.emplace_back(resultShape,
                                     operandRankedType.getElementType());
   return success();
@@ -2855,12 +2891,17 @@ LogicalResult verifyBatchNorm(Location loc, Value operand,
       scale.getType().cast<RankedTensorType>().getDimSize(0);
   // As ODS enforces `scale`, `mean`, `variance`, `offset` are AllShapesMatch,
   // this also infers that featureCount is aligned with them.
-  if (scaleShape != featureCount)
+  if (scaleShape != featureCount) {
+    auto dimToStr = [](int64_t dim) {
+      return ShapedType::isDynamic(dim) ? "?" : std::to_string(dim);
+    };
     return emitError(loc) << "expects the size of scale factor to be "
                              "same as the feature count,"
                              " but the size of scale factor is "
-                          << scaleShape << " and the feature count is "
-                          << featureCount << ".";
+                          << dimToStr(scaleShape)
+                          << " and the feature count is "
+                          << dimToStr(featureCount) << ".";
+  }
 
   return success();
 }
@@ -2928,6 +2969,27 @@ LogicalResult BatchNormInferenceOp::inferReturnTypeComponents(
   return hlo::inferBatchNormInferenceOp(
       location, adaptor.getOperand(), adaptor.getScale(),
       adaptor.getFeatureIndex(), inferredReturnShapes);
+}
+
+//===----------------------------------------------------------------------===//
+// BitcastOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult BitcastOp::fold(ArrayRef<Attribute>) {
+  if (getResult().getType() != getOperand().getType()) {
+    return {};
+  }
+
+  auto sourceLayout =
+      getOperation()->getAttrOfType<DenseIntElementsAttr>("source_layout");
+  auto resultLayout =
+      getOperation()->getAttrOfType<DenseIntElementsAttr>("result_layout");
+
+  if (sourceLayout == resultLayout) {
+    return getOperand();
+  }
+
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -3772,7 +3834,7 @@ LogicalResult ConcatenateOp::inferReturnTypes(
     // If the dimension is dynamic we know the output dimension is dynamic.
     auto dim = type.getShape()[dimension];
     if (ShapedType::isDynamic(dim)) {
-      outShape[dimension] = ShapedType::kDynamicSize;
+      outShape[dimension] = ShapedType::kDynamic;
       break;
     }
 
@@ -5305,7 +5367,7 @@ LogicalResult SelectOp::inferReturnTypeComponents(
     for (auto dim : llvm::zip(trueType.getShape(), falseType.getShape())) {
       dims.push_back(std::get<0>(dim) == std::get<1>(dim)
                          ? std::get<0>(dim)
-                         : ShapedType::kDynamicSize);
+                         : ShapedType::kDynamic);
     }
     outputType = ShapedTypeComponents(dims, trueType.getElementType());
   }
@@ -5374,13 +5436,13 @@ LogicalResult SetDimensionSizeOp::inferReturnTypes(
   }
 
   auto shape = llvm::to_vector<4>(inputType.getShape());
-  llvm::SmallVector<int64_t, 4> bounds(rank, ShapedType::kDynamicSize);
+  llvm::SmallVector<int64_t, 4> bounds(rank, ShapedType::kDynamic);
   if (auto encoding =
           inputType.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>())
     bounds = llvm::to_vector<4>(encoding.getBounds());
 
-  if (shape[dim] != ShapedType::kDynamicSize) bounds[dim] = shape[dim];
-  shape[dim] = ShapedType::kDynamicSize;
+  if (shape[dim] != ShapedType::kDynamic) bounds[dim] = shape[dim];
+  shape[dim] = ShapedType::kDynamic;
 
   DenseIntElementsAttr sizeAttr;
   if (matchPattern(adaptor.getSize(), m_Constant(&sizeAttr))) {
@@ -5388,14 +5450,13 @@ LogicalResult SetDimensionSizeOp::inferReturnTypes(
         sizeAttr.getSplatValue<IntegerAttr>().getValue().getSExtValue();
     if (splat == bounds[dim]) {
       shape[dim] = splat;
-      bounds[dim] = ShapedType::kDynamicSize;
+      bounds[dim] = ShapedType::kDynamic;
     }
   }
 
   auto extensions = TypeExtensionsAttr::get(context, bounds);
   auto resultType =
-      llvm::all_of(bounds,
-                   [](int64_t v) { return v == ShapedType::kDynamicSize; })
+      llvm::all_of(bounds, [](int64_t v) { return v == ShapedType::kDynamic; })
           ? RankedTensorType::get(shape, inputType.getElementType())
           : RankedTensorType::get(shape, inputType.getElementType(),
                                   extensions);
@@ -5453,7 +5514,7 @@ LogicalResult PadOp::inferReturnTypeComponents(
   SmallVector<int64_t> resultShape;
   for (int i = 0, e = inputShape.size(); i < e; i++) {
     if (hlo::isDynamicDimSize(inputShape[i])) {
-      resultShape.push_back(ShapedType::kDynamicSize);
+      resultShape.push_back(ShapedType::kDynamic);
       continue;
     }
 
@@ -6061,6 +6122,15 @@ struct Sign {
   Optional<FloatOrInt> operator()(const FloatOrInt& fi) { return compute(fi); }
 };
 
+template <typename FloatOrInt>
+struct Abs {
+  APFloat compute(const APFloat& f) { return abs(f); }
+
+  APInt compute(const APInt& i) { return i.abs(); }
+
+  Optional<FloatOrInt> operator()(const FloatOrInt& fi) { return compute(fi); }
+};
+
 double rsqrt(double d) { return 1.0 / std::sqrt(d); }
 
 double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
@@ -6068,6 +6138,11 @@ double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
 // NOLINTBEGIN(bugprone-macro-parentheses)
 #define UNARY_FOLDER(Op, Func)                                                \
   OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                          \
+    /* AbsOp could take complex but return float */                           \
+    if (getElementTypeOrSelf(getOperation()->getOperand(0).getType()) !=      \
+        getElementTypeOrSelf(getType())) {                                    \
+      return {};                                                              \
+    }                                                                         \
     if (getElementTypeOrSelf(getType()).isa<FloatType>())                     \
       return UnaryFolder<Op, FloatType, APFloat, Func<APFloat>>(this, attrs); \
     if (getElementTypeOrSelf(getType()).isa<IntegerType>())                   \
@@ -6115,6 +6190,7 @@ double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
 
 UNARY_FOLDER(NegOp, std::negate)
 UNARY_FOLDER(SignOp, Sign)
+UNARY_FOLDER(AbsOp, Abs)
 UNARY_FOLDER_INT(NotOp, std::bit_not)
 UNARY_FOLDER_FLOAT(RoundNearestEvenOp, RoundNearestEven)
 UNARY_FOLDER_FLOAT(RoundOp, Round)
@@ -6122,6 +6198,7 @@ UNARY_FOLDER_FLOAT(RoundOp, Round)
 UNARY_FOLDER_UPCAST_TO_F64(CosineOp, std::cos, AnyValue)
 UNARY_FOLDER_UPCAST_TO_F64(ExpOp, std::exp, AnyValue)
 UNARY_FOLDER_UPCAST_TO_F64(LogisticOp, logistic, AnyValue)
+UNARY_FOLDER_UPCAST_TO_F64(LogOp, std::log, PositiveValue)
 UNARY_FOLDER_UPCAST_TO_F64(RsqrtOp, rsqrt, PositiveValue)
 UNARY_FOLDER_UPCAST_TO_F64(SineOp, std::sin, AnyValue)
 UNARY_FOLDER_UPCAST_TO_F64(SqrtOp, std::sqrt, NonNegativeValue)
@@ -6473,7 +6550,7 @@ LogicalResult SliceOp::inferReturnTypes(
   shape.reserve(rank);
   for (int64_t i = 0, e = rank; i != e; i++) {
     if (hlo::isDynamicDimSize(rankedTy.getDimSize(i))) {
-      shape.push_back(ShapedType::kDynamicSize);
+      shape.push_back(ShapedType::kDynamic);
       continue;
     }
     // P3.
@@ -8280,6 +8357,57 @@ Attribute GatherDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
   return GatherDimensionNumbersAttr::get(parser.getContext(), offsetDims,
                                          collapsedSliceDims, startIndexMap,
                                          indexVectorDim);
+}
+
+namespace {
+
+void printCommaSeparatedDynamicShapes(AsmPrinter& printer,
+                                      llvm::ArrayRef<int64_t> shape) {
+  printer << '[';
+  auto printIntOrQuestion = [&](int64_t value) {
+    if (ShapedType::isDynamic(value))
+      printer << '?';
+    else
+      printer << value;
+  };
+  llvm::interleaveComma(shape, printer, printIntOrQuestion);
+  printer << ']';
+}
+
+ParseResult parseCommaSeparatedDynamicShapes(AsmParser& parser,
+                                             SmallVectorImpl<int64_t>& shape) {
+  auto parseElt = [&]() -> ParseResult {
+    if (!parser.parseOptionalQuestion()) {
+      shape.push_back(ShapedType::kDynamic);
+      return success();
+    }
+    return parser.parseInteger(shape.emplace_back());
+  };
+  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseElt);
+}
+
+}  // namespace
+
+void TypeExtensionsAttr::print(AsmPrinter& printer) const {
+  printer << "<bounds = ";
+  printCommaSeparatedDynamicShapes(printer, getBounds());
+  printer << ">";
+}
+
+Attribute TypeExtensionsAttr::parse(AsmParser& parser, mlir::Type) {
+  if (parser.parseLess() || parser.parseKeyword("bounds") ||
+      parser.parseEqual())
+    return {};
+
+  SmallVector<int64_t> resultBounds;
+  if (parseCommaSeparatedDynamicShapes(parser, resultBounds)) {
+    parser.emitError(parser.getCurrentLocation(),
+                     "failed to parse TypeExtensions parameter 'bounds' which "
+                     "is to be a `::llvm::ArrayRef<int64_t>`");
+    return {};
+  }
+  if (parser.parseGreater()) return {};
+  return TypeExtensionsAttr::get(parser.getContext(), resultBounds);
 }
 
 // Custom printer and parser for DotDimensionNumbersAttr.

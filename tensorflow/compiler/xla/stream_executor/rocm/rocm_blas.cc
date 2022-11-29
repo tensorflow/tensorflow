@@ -881,6 +881,17 @@ bool ROCMBlas::DoBlasGemmBatched(
 bool ROCMBlas::DoBlasGemmBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
     uint64_t n, uint64 k, float alpha,
+    const absl::Span<DeviceMemory<Eigen::bfloat16> *const> &a, int lda,
+    const absl::Span<DeviceMemory<Eigen::bfloat16> *const> &b, int ldb,
+    float beta, const absl::Span<DeviceMemory<Eigen::bfloat16> *const> &c,
+    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
+  LOG(ERROR) << "DoBlasGemmBatched not implemented for bfloat16";
+  return false;
+}
+
+bool ROCMBlas::DoBlasGemmBatched(
+    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
+    uint64_t n, uint64 k, float alpha,
     const absl::Span<DeviceMemory<float> *const> &a_array, int lda,
     const absl::Span<DeviceMemory<float> *const> &b_array, int ldb, float beta,
     const absl::Span<DeviceMemory<float> *const> &c_array, int ldc,

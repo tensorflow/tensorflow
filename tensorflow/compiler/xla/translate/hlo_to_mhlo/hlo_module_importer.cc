@@ -33,27 +33,32 @@ namespace xla {
 HloModuleImporter::HloModuleImporter(mlir::ModuleOp module,
                                      bool import_all_computation)
     : import_all_computation_(import_all_computation),
-      module_(module),
+      symbol_table_(module),
       builder_(module.getContext()) {
   module.getContext()->loadDialect<mlir::arith::ArithDialect>();
   module.getContext()->loadDialect<mlir::func::FuncDialect>();
   module.getContext()->loadDialect<mlir::mhlo::MhloDialect>();
 }
 
-Status HloModuleImporter::Import(const xla::HloModule& module) {
-  module_.setName(module.name());
+Status HloModuleImporter::Import(const xla::HloModule& hlo_module) {
+  llvm::cast<mlir::ModuleOp>(symbol_table_.getOp()).setName(hlo_module.name());
+
   if (!import_all_computation_)
     // Only import the entry computation, any reachable one will be imported
     // unless turned into a region operation.
-    return HloFunctionImporter::ImportAsFunc(*module.entry_computation(),
-                                             module_, &function_map_, &builder_,
-                                             /*is_main*/ true);
+    return HloFunctionImporter::ImportAsFunc(*hlo_module.entry_computation(),
+                                             symbol_table_, &function_map_,
+                                             &builder_,
+                                             /*is_main*/ true)
+        .status();
 
-  auto* module_entry_computation = module.entry_computation();
-  for (const auto* computation : module.computations())
+  auto* module_entry_computation = hlo_module.entry_computation();
+  for (const auto* computation : hlo_module.computations())
     TF_RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
-        *computation, module_, &function_map_, &builder_,
-        /*is_main*/ computation == module_entry_computation));
+                           *computation, symbol_table_, &function_map_,
+                           &builder_,
+                           /*is_main*/ computation == module_entry_computation)
+                           .status());
 
   return OkStatus();
 }

@@ -10,6 +10,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -61,6 +62,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:variable_ops",
         "//tensorflow/core/profiler/lib:traceme",
     ] + if_not_mobile([
         "//tensorflow/core/grappler:grappler_item",
@@ -72,6 +74,7 @@ cc_library(
     name = "compression_utils",
     srcs = ["compression_utils.cc"],
     hdrs = ["compression_utils.h"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",

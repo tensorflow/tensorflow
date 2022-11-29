@@ -28,11 +28,11 @@ load(
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
-    "tf_kernel_tests_linkstatic",
     "tf_proto_library",
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -171,7 +171,6 @@ tf_cc_test(
     name = "debug_io_utils_test",
     size = "small",
     srcs = ["debug_io_utils_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = [
         "no_oss",  # TODO(b/137652456): remove when fixed
     ],
@@ -200,7 +199,6 @@ tf_cc_test(
     name = "debug_graph_utils_test",
     size = "small",
     srcs = ["debug_graph_utils_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":debug_graph_utils",
         "//tensorflow/core:lib",
@@ -215,7 +213,6 @@ tf_cc_test(
     name = "grpc_session_debug_test",
     size = "medium",
     srcs = ["grpc_session_debug_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = [
         "no_oss",  # b/62956105: port conflicts.
         "nomac",  # b/38276817
@@ -249,7 +246,6 @@ tf_cc_test(
     name = "debug_grpc_io_utils_test",
     size = "small",
     srcs = ["debug_grpc_io_utils_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = [
         "no_oss",  # b/73962011
     ],

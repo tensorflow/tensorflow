@@ -27,7 +27,7 @@ void CheckWritesToStderr(ErrorReporter *error_reporter) {
 #endif
 
   // Run the code under test.
-  error_reporter->Report("Test: %d", 42);
+  TF_LITE_REPORT_ERROR(error_reporter, "Test: %d", 42);
 
 #ifndef TF_LITE_STRIP_ERROR_STRINGS
   EXPECT_EQ("ERROR: Test: 42\n", testing::internal::GetCapturedStderr());

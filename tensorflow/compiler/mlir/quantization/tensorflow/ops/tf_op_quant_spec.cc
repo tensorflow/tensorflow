@@ -58,6 +58,12 @@ std::unique_ptr<OpQuantSpec> GetTFOpQuantSpec(Operation* op) {
         spec->biases_params[2] = {{0, 1},
                                   quant::GetUniformQuantizedTypeForBias};
       }
+    } else if (function_name.contains("batch_matmul")) {
+      spec->coeff_op_quant_dim[1] = -1;
+      if (function_name.contains("with_bias")) {
+        spec->biases_params[2] = {{0, 1},
+                                  quant::GetUniformQuantizedTypeForBias};
+      }
     }
     for (auto quantizable_operand : spec->coeff_op_quant_dim) {
       spec->quantizable_operands.insert(quantizable_operand.first);
@@ -72,12 +78,18 @@ std::unique_ptr<OpQuantScaleSpec> GetTfQuantScaleSpec(Operation* op) {
           // clang-format off
           // go/keep-sorted start
           TF::AvgPoolOp,
+          TF::ConcatOp,
           TF::ConcatV2Op,
+          TF::ExpandDimsOp,
           TF::IdentityOp,
           TF::MaxPoolOp,
           TF::PadV2Op,
           TF::ReshapeOp,
-          TF::SqueezeOp
+          TF::SelectOp,
+          TF::SelectV2Op,
+          TF::ShapeOp,
+          TF::SqueezeOp,
+          TF::TransposeOp
           // go/keep-sorted end
           // clang-format on
           >(op)) {

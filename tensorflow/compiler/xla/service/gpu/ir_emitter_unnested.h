@@ -690,11 +690,10 @@ class IrEmitterUnnested : public IrEmitter {
 
   StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunk(
       mlir::Operation* op, mlir::ValueRange operands,
-      Thunk::ThunkInfo thunk_info, const LaunchDimensions& launch_dimensions);
+      const LaunchDimensions& launch_dimensions);
 
   StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunk(
-      mlir::Operation* op, Thunk::ThunkInfo thunk_info,
-      const LaunchDimensions& launch_dimensions);
+      mlir::Operation* op, const LaunchDimensions& launch_dimensions);
 
   // Returns a thunk that, given a reduce or select-and-scatter op,
   // initializes its memory to the appropriate initial value.

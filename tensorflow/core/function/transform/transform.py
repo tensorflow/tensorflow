@@ -44,7 +44,10 @@ def transform_function(
     mlir_pipeline: Optional[Union[str, List[str]]] = None,
     nested_fn_transforms: Optional[Dict[
         str, Optional[Union[_FunctionDefTransformerType,
-                            List[_FunctionDefTransformerType]]]]] = None
+                            List[_FunctionDefTransformerType]]]]] = None,
+    nested_mlir_transforms: Optional[Dict[str,
+                                          Optional[Union[str,
+                                                         List[str]]]]] = None,
 ) -> function_lib.ConcreteFunction:
   """Applies a transformation to a tf.function to produce a new callable.
 
@@ -59,7 +62,9 @@ def transform_function(
 
   Optionally, `transform_fn` could be a list of transformation functions and
   `mlir_pipeline` could be a a list of MLIR transformations. The transformations
-  will be applied in order of the list.
+  will be applied in order of the list. For each nested `FunctionDef`, MLIR
+  transformations will be applied before Python function based transformations.
+
 
   Example:
   ```python
@@ -92,9 +97,12 @@ def transform_function(
       functions to apply on the `FunctionDef`.
     mlir_pipeline: A single MLIR pass or a list of MLIR passes to transform the
       `FunctionDef`.
-    nested_fn_transforms: A dict of transformations to apply on functions in the
-      library of `f`. The keys are the names of the library functions being
-      targeted for transformation.
+    nested_fn_transforms: A dict of Python function based transformations to
+      apply on functions in the library of `f`. The keys are the names of the
+      library functions being targeted for transformation.
+    nested_mlir_transforms: A dict of MLIR pass based transformations to apply
+      on functions in the library of `f`. The keys are the names of the library
+      functions being targeted for transformation.
 
   Returns:
     The transformed function.
@@ -148,7 +156,11 @@ def transform_function(
 
   # Apply a transform to any of the nested _EagerDefinedFunctions(EDF) if
   # `nested_fn_transforms` is provided.
-  if nested_fn_transforms is not None:
+  nested_fn_transforms = (
+      nested_fn_transforms if nested_fn_transforms is not None else {})
+  nested_mlir_transforms = (
+      nested_mlir_transforms if nested_mlir_transforms is not None else {})
+  if nested_fn_transforms or nested_mlir_transforms:
     nested_functions = cf.graph._functions  # pylint: disable=protected-access
 
     # Store the new transformed functions.
@@ -158,11 +170,14 @@ def transform_function(
     # transformed function names.
     nested_transforms_map = {}
 
-    # Transform every nested function specified in `nested_fn_transforms`.
-    for edf_name, edf_transform in nested_fn_transforms.items():
+    # Transform every nested function specified in `nested_fn_transforms` and
+    # `nested_mlir_transforms`.
+    for edf_name in nested_mlir_transforms.keys() | nested_fn_transforms.keys():
       if edf_name in nested_functions:
+        edf_transform_fn = nested_fn_transforms.get(edf_name, [])
+        edf_mlir_pipeline = nested_mlir_transforms.get(edf_name, [])
         transformed_edf = transform_eager_defined_function(
-            rt, nested_functions[edf_name], edf_transform)
+            rt, nested_functions[edf_name], edf_transform_fn, edf_mlir_pipeline)
         transformed_edf.add_to_graph(graph)
         transformed_edf_name = compat.as_str(transformed_edf.name)
         transformed_nested_functions[transformed_edf_name] = transformed_edf
@@ -218,7 +233,7 @@ def transform_function(
   # pylint: enable=protected-access
 
   # Register the ConcreteFunction with the python Graph.
-  if nested_fn_transforms is not None:
+  if nested_fn_transforms or nested_mlir_transforms:
     for transformed_edf in transformed_nested_functions.values():
       transformed_edf.add_to_graph(updated_cf.graph)
   updated_cf.add_to_graph(graph)
@@ -227,15 +242,25 @@ def transform_function(
 
 
 def transform_eager_defined_function(
-    rt: runtime_client.Runtime, f: function_lib._EagerDefinedFunction,
+    rt: runtime_client.Runtime,
+    f: function_lib._EagerDefinedFunction,
     transform_fn: Union[_FunctionDefTransformerType,
-                        List[_FunctionDefTransformerType]]
+                        List[_FunctionDefTransformerType]],
+    mlir_pipeline: Union[str, List[str]],
 ) -> function_lib._EagerDefinedFunction:
-  """Applies a transform on an _EagerDefinedFunction."""
-  # Transform the `FunctionDef`
-  fndef = rt.GetFunctionProto(f.definition.signature.name)
+  """Applies transforms on an _EagerDefinedFunction."""
   transform_fns = (
       transform_fn if isinstance(transform_fn, list) else [transform_fn])
+  mlir_pipelines = (
+      mlir_pipeline if isinstance(mlir_pipeline, list) else [mlir_pipeline])
+  # First apply the MLIR based transformation.
+  for mlir_pipeline in mlir_pipelines:
+    rt.TransformFunction(f.signature.name, mlir_pipeline)
+
+  # Get the `FunctionDef` after MLIR transformation.
+  fndef = rt.GetFunctionProto(f.signature.name)
+
+  # Apply the Python function based transformation.
   for transform_fn in transform_fns:
     transform_fn(fndef)
   rt.CreateFunction(fndef)

@@ -52,9 +52,9 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
 // CHECK:      %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[INIT_TILE]]]
 // CHECK:      %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[ARG_TILE]]]
 // CHECK:      %[[DYNAMIC:.*]] = thlo.dynamic_broadcast_in_dim
-// CHECK-SAME:     ins(%[[ARG_SUB]] : tensor<?x?xf32>)
-// CHECK-SAME:     outs(%[[INIT_SUB]] : tensor<3x4x?xf32>)
-// CHECK-SAME:     broadcast_dimensions = [0, 2]
+// CHECK-NEXT:     ins(%[[ARG_SUB]] : tensor<?x?xf32>)
+// CHECK-NEXT:     outs(%[[INIT_SUB]] : tensor<3x4x?xf32>)
+// CHECK-NEXT:     broadcast_dimensions = [0, 2]
 // CHECK:      return {op_label = "consumer"} %[[DYNAMIC]]
 
 // -----
@@ -65,9 +65,9 @@ func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
   %tile = gml_st.tile [%i, %j] [%arg_dim0, %arg_dim1] [1, 1] : !gml_st.tile<?x?>
   %concat = thlo.concatenate
       ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>, %c : tensor<?x?xi32>)
-      outs(%init : tensor<?x?xi32>) {
-      dimension = 1 : i64,
-      op_label = "producer" }
+      outs(%init : tensor<?x?xi32>)
+      dimension = 1
+      { op_label = "producer" }
   %concat_sub = gml_st.materialize %concat[%tile]
       : tensor<?x?xi32>[!gml_st.tile<?x?>] to tensor<?x?xi32>
   func.return { op_label = "consumer" } %concat_sub : tensor<?x?xi32>
@@ -117,10 +117,10 @@ func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
 // CHECK:      %[[C_SUB:.*]] = gml_st.materialize %[[C]][%[[C_TILE]]]
 // CHECK:      %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[INIT_TILE]]]
 // CHECK:      %[[CONCATENATE:.*]] = thlo.concatenate
-// CHECK-SAME:     ins(%[[A_SUB]] : tensor<?x?xi32>, %[[B_SUB]] : tensor<?x?xi32>,
+// CHECK-NEXT:     ins(%[[A_SUB]] : tensor<?x?xi32>, %[[B_SUB]] : tensor<?x?xi32>,
 // CHECK-SAME:         %[[C_SUB]] : tensor<?x?xi32>)
-// CHECK-SAME:     outs(%[[INIT_SUB]] : tensor<?x?xi32>)
-// CHECK-SAME:     dimension = 1
+// CHECK-NEXT:     outs(%[[INIT_SUB]] : tensor<?x?xi32>)
+// CHECK-NEXT:     dimension = 1
 // CHECK:      return {op_label = "consumer"} %[[CONCATENATE]]
 
 // -----
@@ -296,7 +296,7 @@ func.func @dim_reification_concatenate(%init : tensor<?x?xi32>,
   %concat = thlo.concatenate
       ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>, %c : tensor<?x?xi32>)
       outs(%init : tensor<?x?xi32>)
-      {dimension = 1 : i64}
+      dimension = 1
   %dim = tensor.dim %concat, %c1 : tensor<?x?xi32>
   func.return %dim : index
 }

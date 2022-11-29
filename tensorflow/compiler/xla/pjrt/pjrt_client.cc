@@ -39,6 +39,15 @@ StatusOr<std::uintptr_t> PjRtClient::UnsafeBufferPointer(PjRtBuffer* buffer) {
   return absl::bit_cast<std::uintptr_t>(ptr);
 }
 
+PjRtFuture<Status> PjRtBuffer::CopyRawToHostFuture(
+    PjRtFuture<StatusOr<void*>> dst, int64_t offset, int64_t transfer_size) {
+  StatusOr<void*> awaited_dst = dst.Await();
+  if (!awaited_dst.ok()) {
+    return PjRtFuture<Status>(std::move(awaited_dst).status());
+  }
+  return CopyRawToHost(*awaited_dst, offset, transfer_size);
+}
+
 MultiSliceConfig::~MultiSliceConfig() {}
 
 std::string CompiledMemoryStats::DebugString() const {

@@ -21,6 +21,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include "lhlo/utils/lhlo_utils.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/IR/hlo_ops_common.h"
-#include "mlir-hlo/utils/lhlo_utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"

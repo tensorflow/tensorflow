@@ -1390,6 +1390,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     assert not self._function_spec, "already initialized"
     spec = self._pre_initialized_function_spec
     args = spec.fullargspec.args
+    # TODO(fmuham): Use annotate_type_constraint here instead.
     arg_specs, kwarg_specs = self.structured_input_signature
     vararg_indices = range(len(spec.arg_names), len(arg_specs))
     fullargspec = tf_inspect.FullArgSpec(

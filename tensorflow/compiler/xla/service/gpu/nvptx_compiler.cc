@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace xla {
 namespace gpu {
@@ -317,9 +318,7 @@ GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
 StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    llvm::Module* llvm_module,
-                                   GpuVersion gpu_version,
-                                   se::StreamExecutor* stream_exec,
-                                   bool relocatable,
+                                   GpuVersion gpu_version, bool relocatable,
                                    const HloModule* debug_module) {
   std::string libdevice_dir;
   {
@@ -360,8 +359,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   }
 
   std::vector<uint8_t> cubin = CompileGpuAsmOrGetCachedResult(
-      stream_exec, ptx, std::get<se::CudaComputeCapability>(gpu_version),
-      module_config,
+      ptx, std::get<se::CudaComputeCapability>(gpu_version), module_config,
       (debug_module != nullptr ? debug_module->name() : "(unknown)"),
       relocatable);
 
@@ -370,9 +368,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
 }
 
 std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
-    se::StreamExecutor* stream_exec, const std::string& ptx,
-    se::CudaComputeCapability cc, const HloModuleConfig& hlo_module_config,
-    absl::string_view module_name, bool relocatable) {
+    const std::string& ptx, se::CudaComputeCapability cc,
+    const HloModuleConfig& hlo_module_config, absl::string_view module_name,
+    bool relocatable) {
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "NVPTXCompiler::CompileGpuAsmOrGetCachedResult for ", module_name));
   tsl::profiler::TraceMe activity("PTX->CUBIN",
@@ -410,7 +408,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
         uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
         StatusOr<std::vector<uint8_t>> maybe_cubin = se::CompileGpuAsm(
-            stream_exec->device_ordinal(), cache_ptx->c_str(), ptxas_config);
+            cc.major, cc.minor, cache_ptx->c_str(), ptxas_config);
 
         if (maybe_cubin.ok()) {
           uint64_t end_usecs = tsl::Env::Default()->NowMicros();
@@ -477,8 +475,26 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   return cache_value->cubin_data;
 }
 
+static bool UseNvlink() {
+  const bool use_nvlink_by_default =
+#ifdef TF_DISABLE_NVLINK_BY_DEFAULT
+      false;
+#else
+      true;
+#endif
+  bool use_nvlink;
+  TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_NVLINK_FOR_PARALLEL_COMPILATION",
+                                      /*default_val=*/
+                                      use_nvlink_by_default, &use_nvlink));
+  return use_nvlink;
+}
+
 StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
     const HloModuleConfig& hlo_module_config) {
+  if (UseNvlink()) {
+    return true;
+  }
+
   // TODO(phawkins): rather than comparing version numbers, it might be more
   // robust if we simply tried to link something the first time we compile.
   auto ptxas_config =
@@ -511,16 +527,20 @@ StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
 }
 
 StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
-    se::StreamExecutor* stream_exec,
-    std::vector<std::vector<uint8_t>> modules) {
+    se::StreamExecutor* stream_exec, std::vector<std::vector<uint8_t>> modules,
+    const DebugOptions& debug_options) {
   std::vector<stream_executor::CubinOrPTXImage> images;
   images.reserve(modules.size());
   for (auto& module : modules) {
     images.push_back({"", std::move(module)});
   }
-  return LinkGpuAsm(static_cast<se::gpu::GpuContext*>(
-                        stream_exec->implementation()->GpuContextHack()),
-                    images);
+  auto context = static_cast<se::gpu::GpuContext*>(
+      stream_exec->implementation()->GpuContextHack());
+  if (UseNvlink()) {
+    return LinkUsingNvlink(debug_options.xla_gpu_cuda_data_dir(), context,
+                           images);
+  }
+  return LinkGpuAsm(context, images);
 }
 
 }  // namespace gpu

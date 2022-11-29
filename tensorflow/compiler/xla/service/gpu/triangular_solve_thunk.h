@@ -72,7 +72,7 @@ class TriangularSolveThunk : public Thunk {
   const int64_t b_batch_stride_;
 };
 
-Status RunTriangulatSolve(se::DeviceMemoryBase a_data,
+Status RunTriangularSolve(se::DeviceMemoryBase a_data,
                           se::DeviceMemoryBase b_data,
                           se::DeviceMemoryBase temp_data,
                           se::GpuAsmOpts asm_opts, se::blas::UpperLower uplo,

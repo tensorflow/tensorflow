@@ -69,7 +69,7 @@ bool TryPruneResultDefiningOp(TF::WhileRegionOp while_op, OpResult result) {
     if (TF::TensorFlowDialect::CanHaveSideEffects(candidate_op)) {
       return false;
     }
-  } else if (!MemoryEffectOpInterface::hasNoEffect(candidate_op)) {
+  } else if (!isMemoryEffectFree(candidate_op)) {
     return false;
   }
 

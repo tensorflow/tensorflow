@@ -111,10 +111,10 @@ Shape TfLiteShapeToShape(const TfLiteIntArray* tflite_shape);
 
 // An op kernel base class which is an adapter between an Op implementation
 // (OpKernelShim subclass) and TFLite runtime
-template <template <Runtime> typename Impl>
+template <template <Runtime, typename...> typename Impl, typename... Ts>
 class TfLiteOpKernel {
  public:
-  using ImplType = Impl<Runtime::kTfLite>;
+  using ImplType = Impl<Runtime::kTfLite, Ts...>;
 
   // Builds a TfLiteRegistration object to register this with the TfLite runtime
   static TfLiteRegistration* GetTfLiteRegistration() {

@@ -379,7 +379,7 @@ bool HandleReplicateOp(TF::WhileRegionOp while_op,
   auto devices_attr = replicate.getDevices();
   if (!devices_attr) return false;
 
-  auto device_map = devices_attr.getValue();
+  auto device_map = devices_attr.value();
   llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>> devices;
   devices.reserve(device_map.size());
 

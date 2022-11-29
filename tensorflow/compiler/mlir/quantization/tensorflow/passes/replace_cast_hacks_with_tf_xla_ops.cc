@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_format.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -74,27 +75,38 @@ void PrepareXlaConvParams(OpBuilder &builder, Location loc, ArrayAttr strides,
       CreateScalarConstValue<int32_t>(builder, loc, feature_group_cnt);
 }
 
-// Calculates zero-point offset by reducing weights and multiply it with zp.
-Value CalculateZeroPointOffset(OpBuilder &builder, Location loc, Value filter,
-                               int8_t input_zp, int output_dim) {
-  auto weight_shape = filter.getType().template cast<ShapedType>();
+// Calculates zero-point offset by reducing the weight and multiply it with zp.
+// Originally, we have:
+//   output = (int8_input - input_zp) * (int8_weight - weight_zp)
+// In order to use int8 XLA operations, we requires the weight to be
+// symmectrically quantized (`weight_zp` to be 0) and transform the above
+// formula to:
+//   output = int8_input * int8_weight - offset
+// Where: offset = input_zp * int8_weight
+// This function calculates the `offset` value mentioned above. Note that the
+// `output_dims` is the weight dimensions that are not contracted, so they
+// appear in the output shape.
+Value CalculateZeroPointOffset(OpBuilder &builder, Location loc, Value weight,
+                               int8_t input_zp,
+                               const SmallVector<int64_t> &output_dims) {
+  auto weight_shape = weight.getType().template cast<ShapedType>();
   SmallVector<int64_t> weight_non_output_indices;
   for (int64_t i : llvm::seq<int64_t>(0, weight_shape.getRank())) {
-    if (i != output_dim) weight_non_output_indices.push_back(i);
+    if (absl::c_count(output_dims, i) == 0) {
+      weight_non_output_indices.push_back(i);
+    }
   }
 
   Value reduction_indices_value =
       Create1DConstValue<int64_t>(builder, loc, weight_non_output_indices);
   Value zp = CreateScalarConstValue<int32_t>(builder, loc, input_zp);
 
-  TensorType filter_type = filter.getType().dyn_cast<TensorType>();
-  Value filter_i32 = builder.create<TF::CastOp>(
-      loc, filter_type.clone(builder.getIntegerType(32)), filter);
-  auto zp_mul_output_type = RankedTensorType::get(
-      {weight_shape.getDimSize(output_dim)}, builder.getIntegerType(32));
-  auto reduced = builder.create<TF::SumOp>(
-      loc, zp_mul_output_type, filter_i32, reduction_indices_value,
-      /*keep_dims=*/builder.getBoolAttr(false));
+  TensorType weight_type = weight.getType().dyn_cast<TensorType>();
+  Value weight_i32 = builder.create<TF::CastOp>(
+      loc, weight_type.clone(builder.getIntegerType(32)), weight);
+  auto reduced =
+      builder.create<TF::SumOp>(loc, weight_i32, reduction_indices_value,
+                                /*keep_dims=*/builder.getBoolAttr(true));
   TF::MulOp mul_op = builder.create<TF::MulOp>(loc, zp, reduced);
   llvm::SmallVector<Value> folded_results = ConstantFoldOpIfPossible(mul_op);
   return folded_results.front();
@@ -173,9 +185,9 @@ Value CreateXlaConvOp(OpBuilder &builder, Location loc, Value input,
           .getOutput();
   if (input_zp_value == 0) return xla_conv_output;
 
-  Value zp_offset = CalculateZeroPointOffset(builder, loc, /*filter=*/filter,
+  Value zp_offset = CalculateZeroPointOffset(builder, loc, /*weight=*/filter,
                                              /*input_zp=*/input_zp_value,
-                                             /*output_dim=*/num_dims - 1);
+                                             /*output_dims=*/{num_dims - 1});
   return builder.create<TF::SubOp>(loc, xla_conv_output, zp_offset).getZ();
 }
 
@@ -282,9 +294,12 @@ Value CreateXlaDotV2Op(OpBuilder &builder, Location loc, Value input,
               /*precision_config=*/builder.getStringAttr(precision_config_str))
           .getResult();
 
-  Value zp_offset =
-      CalculateZeroPointOffset(builder, loc, weight, input_zp_value,
-                               /*output_dim=*/1);
+  auto weight_shape = weight.getType().template cast<ShapedType>();
+  SmallVector<int64_t> output_dims(weight_shape.getRank() - 2);
+  absl::c_iota(output_dims, 0);
+  output_dims.push_back(weight_shape.getRank() - 1);
+  Value zp_offset = CalculateZeroPointOffset(builder, loc, weight,
+                                             input_zp_value, output_dims);
   return builder.create<TF::SubOp>(loc, dot_result, zp_offset);
 }
 
@@ -305,6 +320,38 @@ Value CreateXlaDotV2OpFromTfMatMulOp(OpBuilder &builder, Location loc,
     dnums.add_lhs_contracting_dimensions(0);
   } else {
     dnums.add_lhs_contracting_dimensions(1);
+  }
+
+  return CreateXlaDotV2Op(builder, loc, input, weight, input_zp, output, dnums);
+}
+
+Value CreateXlaDotV2OpFromTfBatchMatMulOp(OpBuilder &builder, Location loc,
+                                          Value input, Value weight,
+                                          Value input_zp, Value output,
+                                          BoolAttr adj_x, BoolAttr adj_y) {
+  ShapedType weight_shape = weight.getType().template cast<ShapedType>();
+  int num_batch_dim = weight_shape.getRank() - 2;
+  // Transpose and constant-fold the weight if needed.
+  if (adj_y.getValue()) {
+    SmallVector<int32_t> perm_values(num_batch_dim);
+    absl::c_iota(perm_values, 0);
+    perm_values.push_back(num_batch_dim + 1);
+    perm_values.push_back(num_batch_dim);
+    Value perm = Create1DConstValue<int32_t>(builder, loc, perm_values);
+    auto transpose_op = builder.create<TF::TransposeOp>(loc, weight, perm);
+    weight = ConstantFoldOpIfPossible(transpose_op).front();
+  }
+
+  xla::DotDimensionNumbers dnums;
+  for (int i : llvm::seq<int32_t>(0, num_batch_dim)) {
+    dnums.add_lhs_batch_dimensions(i);
+    dnums.add_rhs_batch_dimensions(i);
+  }
+  dnums.add_rhs_contracting_dimensions(num_batch_dim);
+  if (adj_x.getValue()) {
+    dnums.add_lhs_contracting_dimensions(num_batch_dim);
+  } else {
+    dnums.add_lhs_contracting_dimensions(num_batch_dim + 1);
   }
 
   return CreateXlaDotV2Op(builder, loc, input, weight, input_zp, output, dnums);

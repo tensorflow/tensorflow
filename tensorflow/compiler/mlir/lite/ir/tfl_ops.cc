@@ -762,21 +762,21 @@ LogicalResult VerifyConcatenationOpTypes(Operation *op,
   const int64_t output_rank = output_type.getRank();
 
   SmallVector<int64_t, 4> result_dim_sizes_loc(output_rank,
-                                               ShapedType::kDynamicSize);
+                                               ShapedType::kDynamic);
   SmallVector<int64_t, 4> result_dim_sizes(output_type.getShape().begin(),
                                            output_type.getShape().end());
   result_dim_sizes[axis] = 0;
 
   auto FormatLoc = [&result_dim_sizes_loc](int64_t dim) {
     const int64_t loc = result_dim_sizes_loc[dim];
-    if (loc == ShapedType::kDynamicSize) return std::string("output");
+    if (loc == ShapedType::kDynamic) return std::string("output");
     return llvm::formatv("operand #{0}", loc).str();
   };
 
   for (const auto &operand : llvm::enumerate(operand_types)) {
     auto operand_type = operand.value().dyn_cast<RankedTensorType>();
     if (!operand_type) {
-      result_dim_sizes[axis] = ShapedType::kDynamicSize;
+      result_dim_sizes[axis] = ShapedType::kDynamic;
       continue;
     }
 
@@ -793,7 +793,7 @@ LogicalResult VerifyConcatenationOpTypes(Operation *op,
       if (dim == axis) {
         if (ShapedType::isDynamic(operand_dim_size) ||
             ShapedType::isDynamic(result_dim_size)) {
-          result_dim_sizes[axis] = ShapedType::kDynamicSize;
+          result_dim_sizes[axis] = ShapedType::kDynamic;
         } else {
           result_dim_sizes[axis] += operand_dim_size;
         }
@@ -1262,7 +1262,7 @@ LogicalResult Conv2DOp::inferReturnTypes(
   // Output always have rank 4. All dimensions are initialized to
   // dynamic size and can be partially inferred.
   // TFL's conv2d is always NHWC format & the filter is OHWI.
-  SmallVector<int64_t, 4> return_shape(4, ShapedType::kDynamicSize);
+  SmallVector<int64_t, 4> return_shape(4, ShapedType::kDynamic);
   return_shape[0] = input_ty.getDimSize(0);
   return_shape[3] = filter_ty.getDimSize(0);
 
@@ -1787,7 +1787,7 @@ LogicalResult GetReshapeOutputType(Value input, Value shape,
     // shape.
     if (shape_ty.hasStaticShape()) {
       llvm::SmallVector<int64_t, 8> dynamic_shape(shape_ty.getDimSize(0),
-                                                  ShapedType::kDynamicSize);
+                                                  ShapedType::kDynamic);
       output_ty =
           tensorflow::GetTypeFromTFTensorShape(dynamic_shape, element_ty);
     }
@@ -1804,7 +1804,7 @@ LogicalResult GetReshapeOutputType(Value input, Value shape,
   for (const auto &dim : llvm::enumerate(shape_attr.getValues<APInt>())) {
     const int64_t size = dim.value().getSExtValue();
     if (size == tensorflow::kTFDynamicSize ||  // NOLINT
-        size == ShapedType::kDynamicSize) {    // NOLINT
+        size == ShapedType::kDynamic) {        // NOLINT
       if (unknown_index != -1)
         return error_handler(llvm::formatv(
             "requires 'shape' to have at most one dynamic dimension, but got "
@@ -2000,7 +2000,10 @@ struct ReplacePackWithReshape : public RewritePattern {
     // This is to workaround the unnecessary cast i64 -> i32.
     SmallVector<int32_t, 4> new_shape_array;
     for (auto size : output_type.getShape()) {
-      new_shape_array.push_back(static_cast<int32_t>(size));
+      // TODO(b/259719789): clean up dynamic shape check (e.g. into a
+      // discrete function) once bug is completely fixed.
+      new_shape_array.push_back(
+          mlir::ShapedType::isDynamic(size) ? -1 : static_cast<int32_t>(size));
     }
 
     auto new_shape = rewriter.create<TFL::ConstOp>(
@@ -2103,7 +2106,11 @@ TFL::ConstOp NarrowDownInt64InputValuesForOp(Operation *input_op,
   SmallVector<int32_t, 4> value_i32;
   value_i32.reserve(value_type.getRank());
   for (const auto &size : attr) {
-    value_i32.push_back(static_cast<int32_t>(size.getSExtValue()));
+    // TODO(b/259719789): clean up dynamic shape check (e.g. into a
+    // discrete function) once bug is completely fixed.
+    value_i32.push_back(mlir::ShapedType::isDynamic(size.getSExtValue())
+                            ? -1
+                            : static_cast<int32_t>(size.getSExtValue()));
   }
   auto new_value_i32_attr =
       mlir::DenseIntElementsAttr::get(value_shape_type, value_i32);
@@ -2393,7 +2400,7 @@ mlir::LogicalResult SplitOp::verify() {
   auto input_type = op.getValue().getType().dyn_cast<RankedTensorType>();
   if (!input_type) return success();
 
-  int64_t split_dim = split_dim_opt.getValue();
+  int64_t split_dim = split_dim_opt.value();
   const int64_t rank = input_type.getRank();
   if (split_dim < 0) split_dim += rank;
   if (split_dim < 0 || split_dim >= rank)
@@ -2430,7 +2437,7 @@ mlir::LogicalResult SplitVOp::verify() {
   auto input_type = op.getValue().getType().dyn_cast<RankedTensorType>();
   if (!input_type) return success();
 
-  int64_t split_dim = split_dim_opt.getValue();
+  int64_t split_dim = split_dim_opt.value();
   const int64_t rank = input_type.getRank();
   if (split_dim < 0) split_dim += rank;
   if (split_dim < 0 || split_dim >= rank)

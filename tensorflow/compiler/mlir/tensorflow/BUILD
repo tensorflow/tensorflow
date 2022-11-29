@@ -9,6 +9,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gen_op_wrapper_py")
 #
 # copybara:uncomment_end(google-only)
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -1274,6 +1275,7 @@ cc_library(
     ],
     hdrs = [
         "transforms/bridge.h",
+        "transforms/call_graph_util.h",
         "transforms/cluster_ops_by_policy.h",
         "transforms/collection_ops_util.h",
         "transforms/einsum.h",
@@ -2173,7 +2175,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/compiler/xla/translate/mhlo_to_hlo:layout_util",
     "//tensorflow/compiler/xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
     "//tensorflow/compiler/mlir/xla:tf_xla_passes",
-    "//tensorflow/compiler/mlir/xla:xla_passes",
+    "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
     "//tensorflow/compiler/xla/translate/mhlo_to_hlo:type_to_shape",
     "//tensorflow/compiler/mlir/xla:adjust_layout",
     "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
@@ -2255,6 +2257,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
+        "@stablehlo//:stablehlo_ops",
     ],
     alwayslink = 1,
 )

@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
@@ -725,12 +726,13 @@ int64_t GetDnnWorkspaceLimitOrDefault() {
 }
 
 template <typename T>
-void LaunchConv2DOp<GPUDevice, T>::operator()(
-    OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
-    const Tensor& input_param, const Tensor& filter, int row_dilation,
-    int col_dilation, int row_stride, int col_stride, const Padding& padding,
-    const std::vector<int64_t>& explicit_paddings, Tensor* output,
-    TensorFormat data_format) {
+void LaunchConv2DOpImpl(OpKernelContext* ctx, bool use_cudnn,
+                        bool cudnn_use_autotune, const Tensor& input_param,
+                        const Tensor& filter, int row_dilation,
+                        int col_dilation, int row_stride, int col_stride,
+                        const Padding& padding,
+                        const std::vector<int64_t>& explicit_paddings,
+                        Tensor* output, TensorFormat data_format) {
   using se::dnn::AlgorithmConfig;
   using se::dnn::AlgorithmDesc;
   using se::dnn::ProfileResult;
@@ -1030,26 +1032,26 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
 
   static int64_t ConvolveScratchSize = GetDnnWorkspaceLimitOrDefault();
 
-  int device_id = stream->parent()->device_ordinal();
-  DataType dtype = input.dtype();
-  ConvParameters conv_parameters = {in_batch,             // batch
-                                    in_depths,            // in_depths
-                                    {{in_rows,            // in_rows
-                                      in_cols}},          // in_cols
-                                    compute_data_format,  // compute_data_format
-                                    out_depths,           // out_depths
-                                    {{patch_rows,         // filter_rows
-                                      patch_cols,         // filter_cols
-                                      patch_depths}},     // filter_depths
-                                    {{row_dilation,       // dilation_rows
-                                      col_dilation}},     // dilation_cols
-                                    {{row_stride,         // stride_rows
-                                      col_stride}},       // stride_cols
-                                    {{common_padding_rows,    // padding_rows
-                                      common_padding_cols}},  // padding_cols
-                                    dtype,                    // tensor datatype
-                                    device_id,                // device_id
-                                    conv_desc.group_count()};
+  ConvParameters conv_parameters = {
+      stream->parent(),
+      in_batch,                 // batch
+      in_depths,                // in_depths
+      {{in_rows,                // in_rows
+        in_cols}},              // in_cols
+      compute_data_format,      // compute_data_format
+      out_depths,               // out_depths
+      {{patch_rows,             // filter_rows
+        patch_cols,             // filter_cols
+        patch_depths}},         // filter_depths
+      {{row_dilation,           // dilation_rows
+        col_dilation}},         // dilation_cols
+      {{row_stride,             // stride_rows
+        col_stride}},           // stride_cols
+      {{common_padding_rows,    // padding_rows
+        common_padding_cols}},  // padding_cols
+      input.dtype(),            // tensor datatype
+      conv_desc.group_count(),
+  };
 
   auto entry_or = AutotuneUnfusedConv(
       cudnn_use_autotune, ConvAutotuneMap::GetInstance(), conv_parameters, ctx,
@@ -1075,6 +1077,68 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         const_cast<const Tensor&>(transformed_output).tensor<T, 4>(),
         output->tensor<T, 4>());
   }
+}
+
+template <typename T>
+void LaunchConv2DOp<GPUDevice, T>::operator()(
+    OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
+    const Tensor& input_param, const Tensor& filter, int row_dilation,
+    int col_dilation, int row_stride, int col_stride, const Padding& padding,
+    const std::vector<int64_t>& explicit_paddings, Tensor* output,
+    TensorFormat data_format) {
+  LaunchConv2DOpImpl<T>(ctx, use_cudnn, cudnn_use_autotune, input_param, filter,
+                        row_dilation, col_dilation, row_stride, col_stride,
+                        padding, explicit_paddings, output, data_format);
+}
+
+template <>
+void LaunchConv2DOp<GPUDevice, Eigen::bfloat16>::operator()(
+    OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
+    const Tensor& input_param, const Tensor& filter, int row_dilation,
+    int col_dilation, int row_stride, int col_stride, const Padding& padding,
+    const std::vector<int64_t>& explicit_paddings, Tensor* output,
+    TensorFormat data_format) {
+  // Performant bfloat16 operations are supported for Ampere+ GPUs. For
+  // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
+  auto* stream = ctx->op_device_context()->stream();
+  const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
+      se::CudaComputeCapability::AMPERE);
+  Tensor casted_input = input_param;
+  Tensor casted_filter = filter;
+  Tensor casted_out = *output;
+
+  if (cast_to_float) {
+    const GPUDevice& device = ctx->eigen_device<GPUDevice>();
+    functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(DT_FLOAT, input_param.shape(), &casted_input));
+    cast(device, casted_input.template flat<float>(),
+         input_param.template flat<Eigen::bfloat16>());
+
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(DT_FLOAT, filter.shape(), &casted_filter));
+    cast(device, casted_filter.template flat<float>(),
+         filter.template flat<Eigen::bfloat16>());
+
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_temp(DT_FLOAT, output->shape(), &casted_out));
+
+    LaunchConv2DOpImpl<float>(ctx, use_cudnn, cudnn_use_autotune, casted_input,
+                              casted_filter, row_dilation, col_dilation,
+                              row_stride, col_stride, padding,
+                              explicit_paddings, &casted_out, data_format);
+
+    functor::CastFunctor<GPUDevice, Eigen::bfloat16, float> cast_back;
+    const Tensor& casted_out_const = casted_out;
+    cast_back(device, output->template flat<Eigen::bfloat16>(),
+              casted_out_const.template flat<float>());
+    return;
+  }
+
+  LaunchConv2DOpImpl<Eigen::bfloat16>(
+      ctx, use_cudnn, cudnn_use_autotune, casted_input, casted_filter,
+      row_dilation, col_dilation, row_stride, col_stride, padding,
+      explicit_paddings, &casted_out, data_format);
 }
 
 // Forward declarations of the functor specializations for GPU.
@@ -1122,6 +1186,7 @@ namespace functor {
 
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(Eigen::half);
+DECLARE_GPU_SPEC(Eigen::bfloat16);
 DECLARE_GPU_SPEC(double);
 DECLARE_GPU_SPEC(int32);
 #undef DECLARE_GPU_SPEC
@@ -1132,6 +1197,9 @@ DECLARE_GPU_SPEC(int32);
 REGISTER_KERNEL_BUILDER(
     Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
     Conv2DOp<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<Eigen::bfloat16>("T"),
+    Conv2DOp<GPUDevice, Eigen::bfloat16>);
 REGISTER_KERNEL_BUILDER(
     Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     Conv2DOp<GPUDevice, float>);

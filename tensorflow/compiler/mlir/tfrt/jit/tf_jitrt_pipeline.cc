@@ -95,7 +95,8 @@ void AddLinalgTransformations(OpPassManager& pm,
   }
   pm.addNestedPass<FuncOp>(CreateTileFillPass(options.vector_size));
   pm.addNestedPass<FuncOp>(mlir::gml_st::createCollapseMaterializeOpsPass());
-  pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeGmlStLoopsPass());
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeGmlStLoopsPass(true));
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createLoweringVectorContractPass());
 }
 
 void AddBufferizationPasses(OpPassManager& pm) {

@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <utility>
 
@@ -29,7 +30,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
-#include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
@@ -64,14 +64,17 @@ void printDstStyleOp(
     DstOpTy op, OpAsmPrinter &p,
     function_ref<SmallVector<StringRef>(DstOpTy op, OpAsmPrinter &)>
         printAttrsFn = nullptr) {
+  p.increaseIndent();
   if (op.getNumDpsInputs() != 0) {
-    p << " ins(";
+    p.printNewline();
+    p << "ins(";
     llvm::interleaveComma(
         op.getOperands().take_front(op.getNumDpsInputs()), p,
         [&](Value input) { p << input << " : " << input.getType(); });
     p << ")";
   }
-  p << " outs(";
+  p.printNewline();
+  p << "outs(";
   llvm::interleaveComma(
       op.getOperands().take_back(op.getNumDpsInits()), p,
       [&](Value output) { p << output << " : " << output.getType(); });
@@ -82,6 +85,7 @@ void printDstStyleOp(
   if (printAttrsFn) elidedAttrs = printAttrsFn(op, p);
 
   p.printOptionalAttrDict(op->getAttrs(), elidedAttrs);
+  p.decreaseIndent();
 }
 
 ParseResult parseKeywordOperandListWithTypes(
@@ -146,7 +150,7 @@ ParseResult parseDenseI64ArrayAttr(OpAsmParser &parser,
 
 void printDenseI64ArrayAttr(OpAsmPrinter &p, StringRef attributeName,
                             ArrayRef<int64_t> attributeValue) {
-  p << " " << attributeName << " = [" << attributeValue << "] ";
+  p << attributeName << " = [" << attributeValue << "] ";
 }
 
 SmallVector<utils::IteratorType> getParallelIteratorTypes(int64_t dimCount) {
@@ -252,7 +256,7 @@ namespace {
 // size in the concatenation dimension.
 Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
                                    Location loc, Value tile) {
-  uint64_t concatDim = op.getDimension();
+  int64_t concatDim = op.getDimension().getSExtValue();
   RankedTensorType resultTy = op.getType(0).cast<RankedTensorType>();
   int64_t rank = resultTy.getRank();
   OperandRange allOperands = op.getInputs();
@@ -288,10 +292,7 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
   }
 
   // Some shared values.
-  ArrayAttr allDynamicStridesOrOffsetsAttr = builder.getI64ArrayAttr(
-      SmallVector<int64_t>(rank, ShapedType::kDynamicStrideOrOffset));
-  ArrayAttr allDynamicSizesAttr = builder.getI64ArrayAttr(
-      SmallVector<int64_t>(rank, ShapedType::kDynamicSize));
+  SmallVector<int64_t> allDynamicSizes(rank, ShapedType::kDynamic);
   Value zeroCst = builder.create<arith::ConstantIndexOp>(loc, 0);
   Value concatDimCst = builder.create<arith::ConstantIndexOp>(loc, concatDim);
   Value maxTileSizeInConcatDim = tileSizes[concatDim];
@@ -326,9 +327,8 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
 
     // Create the operand tile and materialize the subset for this operand.
     Value tile = builder.create<gml_st::TileOp>(
-        loc, baseTileOffsets, baseTileSizes, sharedTileStrides,
-        allDynamicStridesOrOffsetsAttr, allDynamicSizesAttr,
-        allDynamicStridesOrOffsetsAttr);
+        loc, baseTileOffsets, baseTileSizes, sharedTileStrides, allDynamicSizes,
+        allDynamicSizes, allDynamicSizes);
     subOperands.push_back(
         builder.create<gml_st::MaterializeOp>(loc, operand, tile));
 
@@ -354,7 +354,7 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
       RankedTensorType::get(tileType.getShape(), resultTy.getElementType());
   return builder
       .create<thlo::ConcatenateOp>(loc, subResultType, subOperands, subInit,
-                                   concatDim)
+                                   builder.getIndexAttr(concatDim))
       ->getResult(0);
 }
 
@@ -372,12 +372,12 @@ Value fuseConcatenateOpThroughPointRecursively(
   if (remainingOperands.size() == 1) {
     // Create operand point.
     SmallVector<int64_t> allDynamicOffsets(rankedTy.getRank(),
-                                           ShapedType::kDynamicStrideOrOffset);
+                                           ShapedType::kDynamic);
 
-    auto sizeOrStride = builder.getI64ArrayAttr({1});
+    SmallVector<int64_t> sizeOrStride({1});
     Value operandPoint = builder.create<gml_st::TileOp>(
-        loc, remainingOffsets, ValueRange{}, ValueRange{},
-        builder.getI64ArrayAttr(allDynamicOffsets), sizeOrStride, sizeOrStride);
+        loc, remainingOffsets, ValueRange{}, ValueRange{}, allDynamicOffsets,
+        sizeOrStride, sizeOrStride);
 
     return builder.create<gml_st::MaterializeOp>(loc, rankedTy.getElementType(),
                                                  leadingOperand, operandPoint);
@@ -437,13 +437,32 @@ FailureOr<Value> ConcatenateOp::generateResultTileValue(
 }
 
 ParseResult ConcatenateOp::parse(OpAsmParser &parser, OperationState &result) {
-  return parseDstStyleOp(parser, result);
+  return parseDstStyleOp(
+      parser, result, [&](OpAsmParser &parser, NamedAttrList &attributes) {
+        int64_t dimension = 0;
+        if (parser.parseKeyword("dimension") || parser.parseEqual() ||
+            parser.parseInteger(dimension))
+          return failure();
+
+        attributes.set("dimension",
+                       parser.getBuilder().getIndexAttr(dimension));
+        return success();
+      });
 }
 
-void ConcatenateOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
+void ConcatenateOp::print(OpAsmPrinter &p) {
+  printDstStyleOp<ConcatenateOp>(
+      *this, p,
+      [](ConcatenateOp op, OpAsmPrinter &p) -> SmallVector<StringRef> {
+        p.printNewline();
+        p << op.getDimensionAttrName().str() << " = " << op.getDimension();
+
+        return {op.getDimensionAttrName()};
+      });
+}
 
 LogicalResult ConcatenateOp::verify() {
-  int64_t concatDim = getDimension();
+  int64_t concatDim = getDimension().getSExtValue();
 
   ShapedType inputType =
       getDpsInputOperand(0)->get().getType().cast<ShapedType>();
@@ -505,6 +524,7 @@ void DynamicBroadcastInDimOp::print(OpAsmPrinter &p) {
       *this, p,
       [](DynamicBroadcastInDimOp op,
          OpAsmPrinter &p) -> SmallVector<StringRef> {
+        p.printNewline();
         printDenseI64ArrayAttr(p, op.getBroadcastDimensionsAttrName(),
                                op.getBroadcastDimensions());
         return {op.getBroadcastDimensionsAttrName()};
@@ -560,8 +580,8 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
   operandDims.reserve(operandTy.getRank());
   for (const auto &it : llvm::enumerate(operandTy.getShape())) {
     int64_t d = it.value();
-    Value dim = d == ShapedType::kDynamicSize ? dynamicDims[dynamicDimsIdx++]
-                                              : getIndexConstant(d);
+    Value dim = d == ShapedType::kDynamic ? dynamicDims[dynamicDimsIdx++]
+                                          : getIndexConstant(d);
     operandDims.push_back(dim);
   }
 
@@ -582,8 +602,7 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
   auto tileOpOffsets =
       getValueOrCreateConstantIndexOp(b, loc, tile.getMixedOffsets());
   int64_t operandRank = operandTy.getRank();
-  auto staticOffsets = b.getI64ArrayAttr(
-      SmallVector<int64_t>(operandRank, ShapedType::kDynamicStrideOrOffset));
+  auto staticOffsets = SmallVector<int64_t>(operandRank, ShapedType::kDynamic);
   SmallVector<Value> operandOffsets;
   Value zero = getIndexConstant(0);
   for (int initId = 0, operandId = 0; initId < initRank; ++initId) {
@@ -595,8 +614,8 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
   }
 
   // Compute operand tile sizes.
-  auto staticTileSizes = b.getI64ArrayAttr(
-      SmallVector<int64_t>(operandRank, ShapedType::kDynamicSize));
+  auto staticTileSizes =
+      SmallVector<int64_t>(operandRank, ShapedType::kDynamic);
   SmallVector<Value> tileSizes;
   Value one = getIndexConstant(1);
   auto tileOpSizes =
@@ -610,11 +629,10 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
   }
 
   // Create operand tile.
-  auto staticTileStrides =
-      b.getI64ArrayAttr(SmallVector<int64_t>(operandRank, 1));
+  auto staticTileStrides = SmallVector<int64_t>(operandRank, 1);
   SmallVector<Value> tileStrides = {};
   auto operandTileTy = b.getType<gml_st::TileType>(
-      SmallVector<int64_t>(operandRank, ShapedType::kDynamicSize));
+      SmallVector<int64_t>(operandRank, ShapedType::kDynamic));
   auto operandTile = b.create<gml_st::TileOp>(
       loc, operandTileTy, operandOffsets, tileSizes, tileStrides, staticOffsets,
       staticTileSizes, staticTileStrides);
@@ -664,12 +682,15 @@ ParseResult ScatterOp::parse(OpAsmParser &parser, OperationState &result) {
 void ScatterOp::print(OpAsmPrinter &p) {
   printDstStyleOp<ScatterOp>(*this, p);
 
+  p.increaseIndent();
+  p.printNewline();
   p << "(";
   llvm::interleaveComma(getUpdateComputation().getArguments(), p,
                         [&](auto arg) { p.printRegionArgument(arg); });
   p << ") ";
 
   p.printRegion(getUpdateComputation(), /*printEntryBlockArgs=*/false);
+  p.decreaseIndent();
 }
 
 LogicalResult ScatterOp::verify() {
@@ -783,9 +804,8 @@ mlir::gml_st::TilingInterface ScatterOp::getTiledImplementation(
   Value init = this->getInit();
   Value initSlice = getFullSpace(b, loc, init);
 
-  auto dpsInterface = cast<DestinationStyleOpInterface>(this->getOperation());
-  return dpsInterface.clone(b, loc, TypeRange{initSlice.getType()},
-                            ValueRange{indicesSlice, updateSlice, initSlice});
+  return mlir::clone(b, this->getOperation(), TypeRange{initSlice.getType()},
+                     ValueRange{indicesSlice, updateSlice, initSlice});
 }
 
 FailureOr<Value> ScatterOp::generateResultTileValue(
@@ -881,8 +901,39 @@ FailureOr<Value> GatherOp::generateResultTileValue(
 // SortOp
 //===----------------------------------------------------------------------===//
 
+void SortOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
+  ResultRange results = getResults();
+  for (int i = 0; i < results.size(); i++) {
+    setNameFn(results[i], "sorted" + std::to_string(i));
+  }
+}
+
+void SortOp::getAsmBlockArgumentNames(Region &region,
+                                      OpAsmSetValueNameFn setNameFn) {
+  for (int i = 0, e = region.getNumArguments(); i < e; i += 2) {
+    setNameFn(region.getArgument(i), "lhs" + std::to_string(i / 2));
+    setNameFn(region.getArgument(i + 1), "rhs" + std::to_string(i / 2));
+  }
+}
+
 ParseResult SortOp::parse(OpAsmParser &parser, OperationState &result) {
-  if (parseDstStyleOp(parser, result)) return failure();
+  if (parseDstStyleOp(
+          parser, result, [&](OpAsmParser &parser, NamedAttrList &attributes) {
+            int64_t dimension = 0;
+            int64_t isStable = 0;
+            if (parser.parseKeyword("dimension") || parser.parseEqual() ||
+                parser.parseInteger(dimension) ||
+                parser.parseKeyword("is_stable") || parser.parseEqual() ||
+                parser.parseInteger(isStable))
+              return failure();
+
+            llvm::errs() << "is stable " << isStable << "\n";
+            Builder &b = parser.getBuilder();
+            attributes.set("dimension", b.getIndexAttr(dimension));
+            attributes.set("is_stable", b.getBoolAttr(isStable != 0));
+            return success();
+          }))
+    return failure();
 
   SmallVector<OpAsmParser::Argument> regionArgs;
   if (parser.parseArgumentList(regionArgs, OpAsmParser::Delimiter::Paren,
@@ -897,14 +948,25 @@ ParseResult SortOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void SortOp::print(OpAsmPrinter &p) {
-  printDstStyleOp<SortOp>(*this, p);
+  printDstStyleOp<SortOp>(
+      *this, p, [](SortOp op, OpAsmPrinter &p) -> SmallVector<StringRef> {
+        p.printNewline();
+        p << op.getDimensionAttrName().str() << " = " << op.getDimension();
 
+        p.printNewline();
+        p << op.getIsStableAttrName().str() << " = " << op.getIsStable();
+        return {op.getDimensionAttrName(), op.getIsStableAttrName()};
+      });
+
+  p.increaseIndent();
+  p.printNewline();
   p << "(";
   llvm::interleaveComma(getComparator().getArguments(), p,
                         [&](auto arg) { p.printRegionArgument(arg); });
   p << ") ";
 
   p.printRegion(getComparator(), /*printEntryBlockArgs=*/false);
+  p.decreaseIndent();
 }
 
 LogicalResult SortOp::verify() {
@@ -979,9 +1041,10 @@ LogicalResult SortOp::verify() {
   // is valid, since all inputs are known to have the same shape. `getDimension`
   // returns an unsigned int, so no need to check for negative values.
   size_t referenceRank = referenceShape.size();
-  if (getDimension() >= referenceRank) {
+  if (getDimension().getSExtValue() >= referenceRank) {
     return emitOpError() << "sorting dimension must be in range [0, "
-                         << referenceRank << ") but got " << getDimension();
+                         << referenceRank << ") but got "
+                         << getDimension().getSExtValue();
   }
 
   return verifyDestinationStyleOp(getOperation());
@@ -1004,7 +1067,7 @@ SmallVector<Range> SortOp::getIterationDomain(OpBuilder &b) {
 
   IntegerAttr zero = b.getIndexAttr(0);
   IntegerAttr one = b.getIndexAttr(1);
-  int64_t sortDimension = getDimension();
+  int64_t sortDimension = getDimension().getSExtValue();
 
   for (auto axis : llvm::seq<int64_t>(0, operandsRank - 1)) {
     int64_t operandAxis = (axis >= sortDimension) ? axis + 1 : axis;
@@ -1024,7 +1087,7 @@ mlir::gml_st::TilingInterface SortOp::getTiledImplementation(
   SmallVector<OpFoldResult> tileSizes = llvm::to_vector(sizes);
 
   size_t numOutputs = getNumDpsInits();
-  int64_t sortDimension = getDimension();
+  int64_t sortDimension = getDimension().getSExtValue();
 
   Value oneInput = getInputs().front();
 
@@ -1057,8 +1120,8 @@ mlir::gml_st::TilingInterface SortOp::getTiledImplementation(
         b.create<gml_st::MaterializeOp>(loc, init, tile));
   }
 
-  auto dpsInterface = cast<DestinationStyleOpInterface>(this->getOperation());
-  return dpsInterface.clone(b, loc, tiledResultTypes, tiledInputsAndInits);
+  return mlir::clone(b, this->getOperation(), tiledResultTypes,
+                     tiledInputsAndInits);
 }
 
 FailureOr<Value> SortOp::generateResultTileValue(OpBuilder &b,

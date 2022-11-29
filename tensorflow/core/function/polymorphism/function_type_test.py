@@ -105,11 +105,8 @@ class FunctionTypeTest(test.TestCase):
         constraint,
         function_type.FunctionType(
             (function_type.Parameter(
-                "self", function_type.Parameter.POSITIONAL_OR_KEYWORD, False,
+                "x", function_type.Parameter.POSITIONAL_OR_KEYWORD, False,
                 None),
-             function_type.Parameter(
-                 "x", function_type.Parameter.POSITIONAL_OR_KEYWORD, False,
-                 None),
              function_type.Parameter(
                  "y", function_type.Parameter.POSITIONAL_OR_KEYWORD, True,
                  None))))
