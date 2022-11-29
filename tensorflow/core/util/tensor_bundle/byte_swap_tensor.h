@@ -33,7 +33,16 @@ namespace tensorflow {
 Status ByteSwapTensor(Tensor *t);
 
 // Swap tensor_content field of Const Op Tensors in the named functions
-Status ByteSwapTensorContent(MetaGraphDef *meta_graph_def);
+// in NodeDef
+Status ByteSwapTensorContentInNode(NodeDef& node);
+
+// Swap tensor_content field of Const Op Tensors in the named functions
+// in MetaGraphDef
+Status ByteSwapTensorContentInMetaGraphDef(MetaGraphDef *meta_graph_def);
+
+// Swap tensor_content field of Const Op Tensors in the named functions
+// in GraphDef
+Status ByteSwapTensorContentInGraphDef(GraphDef* graph_def);
 
 }  // namespace tensorflow
 
