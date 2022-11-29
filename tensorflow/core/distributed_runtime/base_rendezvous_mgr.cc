@@ -537,9 +537,7 @@ void BaseRemoteRendezvous::DeregisterCall(BaseRecvTensorCall* call,
         removed = bucket.calls.erase(call);
       }
       if (removed) {
-        int num_calls_before_remove = it->second->num_calls.fetch_sub(1);
-        CHECK_GE(num_calls_before_remove, 1);  // Crash OK
-        is_last_call = num_calls_before_remove == 1;
+        is_last_call = it->second->num_calls.fetch_sub(1) == 1;
       }
     }
   }
@@ -548,9 +546,7 @@ void BaseRemoteRendezvous::DeregisterCall(BaseRecvTensorCall* call,
     // num_calls is accurate.
     mutex_lock l(calls_mu_);
     auto it = calls_.find(cm);
-    int num_calls = it->second->num_calls;
-    CHECK_GE(num_calls, 0);  // Crash OK
-    if (it != calls_.end() && num_calls == 0) {
+    if (it != calls_.end() && it->second->num_calls == 0) {
       if (cm != nullptr) {
         cm->TryDeregisterCallback(it->second->token);
       }
