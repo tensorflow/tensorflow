@@ -1342,6 +1342,7 @@ cc_library(
         ":hlo_module_config",
         ":hlo_module_group",
         ":logical_buffer",
+        ":metrics_hook_interface",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -1350,7 +1351,6 @@ cc_library(
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:protobuf",
-        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -6122,9 +6122,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:types",
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -6891,6 +6889,12 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/tsl/platform:test_main",
     ],
+)
+
+cc_library(
+    name = "metrics_hook_interface",
+    hdrs = ["metrics_hook_interface.h"],
+    deps = ["@com_google_absl//absl/strings"],
 )
 
 tf_cc_test(
