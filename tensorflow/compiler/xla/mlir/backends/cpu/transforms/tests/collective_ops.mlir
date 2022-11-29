@@ -208,3 +208,37 @@ func.func @all_to_all_tuple(%arg0: tensor<128x4xf32>, %arg1: tensor<128x4xf32>)
 //       CHECK: %[[DST0:.*]] = tensor.empty() : tensor<128x4xf32>
 //       CHECK: %[[DST1:.*]] = tensor.empty() : tensor<128x4xf32>
 //       CHECK: "xla_cpu.all_to_all"(%[[ARG0]], %[[ARG1]], %[[DST0]], %[[DST1]])
+
+func.func @outfeed_0_input(%token: !mhlo.token) -> !mhlo.token {
+  %res = "mhlo.outfeed"(%token) {outfeed_config = "foobar"} : (!mhlo.token) -> !mhlo.token
+  func.return %res : !mhlo.token
+}
+
+// CHECK-LABEL: @outfeed_0_input
+//       CHECK: "xla_cpu.outfeed"() {config = "foobar", resultType = []} : () -> ()
+
+func.func @outfeed_1_input(%data: tensor<2xui32>, %token: !mhlo.token)
+  -> !mhlo.token attributes {xlaframework.result_mapping = 1 : i32} {
+    %res = "mhlo.outfeed"(%data, %token) {
+      outfeed_config = "", xla_shape = "token[]"
+      } : (tensor<2xui32>, !mhlo.token) -> !mhlo.token
+    return %res : !mhlo.token
+}
+
+// CHECK-LABEL: @outfeed_1_input
+//  CHECK-SAME: %[[DATA:.*]]: tensor<2xui32>
+//  CHECK-SAME: %[[TOKEN:.*]]: !mhlo.token
+//       CHECK: "xla_cpu.outfeed"(%[[DATA]]) {config = "", resultType = [ui32]} : (tensor<2xui32>) -> ()
+//       CHECK: return %[[TOKEN]] : !mhlo.token
+
+func.func @outfeed_2_input(%data1: tensor<3xui32>, %data2: tensor<3xi32>, %token: !mhlo.token) -> !mhlo.token {
+  %res = "mhlo.outfeed"(%data1, %data2,  %token) {outfeed_config = "foobar"}
+    : (tensor<3xui32>, tensor<3xi32>, !mhlo.token) -> !mhlo.token
+  func.return %res : !mhlo.token
+}
+
+// CHECK-LABEL: @outfeed_2_input
+//  CHECK-SAME: %[[ARG0:.*]]: tensor<3xui32>
+//  CHECK-SAME: %[[ARG1:.*]]: tensor<3xi32>
+//       CHECK: "xla_cpu.outfeed"(%[[ARG0]], %[[ARG1]]) {config = "foobar", resultType = [ui32, i32]}
+//  CHECK-SAME: (tensor<3xui32>, tensor<3xi32>) 
