@@ -80,7 +80,7 @@ class RangeCounter {
       return -1;
     }
     *end_of_counter = false;
-    int result = next_;
+    int64_t result = next_;
     next_ += step_;
     return result;
   }
