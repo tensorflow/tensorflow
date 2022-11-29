@@ -681,7 +681,12 @@ struct VectorizeGmlStLoopsPass
       // block-level tiles, since it means we are inserting a
       // vector.transfer_read on the source, i.e., a block-level tile).
       Operation *sourceOp = op.getSource().getDefiningOp();
-      return sourceOp && isValidDistribution(sourceOp);
+      // Only vectorize MaterializeOp inside a loop, since we are only enabling
+      // this pattern when vectorizing ForOp and ParallelOp anyway.
+      Operation *parent = op->getParentOp();
+      bool opInsideLoop = isa<ParallelOp>(parent) || isa<ForOp>(parent);
+      return sourceOp != nullptr && opInsideLoop &&
+             isValidDistribution(sourceOp);
     };
     auto loopOpFilter = [&](Operation *op) {
       return isValidDistribution(op) &&
