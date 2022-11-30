@@ -2630,7 +2630,8 @@ def MHLO_ReverseOp: MHLO_Op<"reverse",
   let hasFolder = 1;
 }
 
-def MHLO_PartitionIdOp : MHLO_Op<"partition_id", []> {
+def MHLO_PartitionIdOp : MHLO_Op<"partition_id", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "PartitionId operator";
   let description = [{
     Returns the value of the partition id of the currently executing device.
