@@ -116,6 +116,7 @@ tf_cc_test(
         ":diagnostics",
         ":executable",
         ":jit_executable",
+        ":module",
         ":state",
         "//tensorflow/compiler/xla/mlir/runtime/ir/tests:testlib",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
@@ -342,6 +343,29 @@ cc_library(
         "memory_mapper",
         platform_dir = "//tensorflow/compiler/xla/runtime/",
     ),
+)
+
+cc_library(
+    name = "module",
+    hdrs = ["module.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        ":custom_call",
+        ":custom_call_registry",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+tf_cc_test(
+    name = "module_test",
+    srcs = ["module_test.cc"],
+    deps = [
+        ":custom_call",
+        ":module",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+    ],
 )
 
 cc_library(
