@@ -57,7 +57,8 @@ class CustomAggregatorTest(test.TestCase):
                                          dtypes.float32)
       aggregator2 = custom_aggregator_op_wrapper.custom_aggregator(
           input_tensor2, '3')
-      self.assertAllEqual(self.evaluate(aggregator2), [-1.0, -2.0, -3.0, -4.0, -5.0])
+      self.assertAllEqual(self.evaluate(aggregator2), 
+                          [-1.0, -2.0, -3.0, -4.0, -5.0])
 
       min_val = quantize_model_wrapper.get_min_from_calibrator('2')
       max_val = quantize_model_wrapper.get_max_from_calibrator('2')
@@ -78,7 +79,8 @@ class CustomAggregatorTest(test.TestCase):
                                          dtypes.float32)
       aggregator2 = custom_aggregator_op_wrapper.custom_aggregator(
           input_tensor2, '5')
-      self.assertAllEqual(self.evaluate(aggregator2), [-1.0, -2.0, -3.0, -4.0, -5.0])
+      self.assertAllEqual(self.evaluate(aggregator2),
+                          [-1.0, -2.0, -3.0, -4.0, -5.0])
 
       min_val = quantize_model_wrapper.get_min_from_calibrator('4')
       max_val = quantize_model_wrapper.get_max_from_calibrator('4')
