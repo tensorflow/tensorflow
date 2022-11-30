@@ -96,21 +96,25 @@ slice_sets:
           dockerfile_exclusive_name: "cpu"
           args:
               - TF_PACKAGE=tensorflow-cpu
+              - TF_IO_PACKAGE=tensorflow-io
           partials:
               - ubuntu/version
               - ubuntu/cpu
               - ubuntu/python
               - tensorflow
+              - tensorflow-io
               - shell
         - add_to_name: "-gpu"
           dockerfile_exclusive_name: "gpu"
           args:
               - TF_PACKAGE=tensorflow
+              - TF_IO_PACKAGE=tensorflow-io
           partials:
               - ubuntu/version
               - ubuntu/nvidia
               - ubuntu/python
               - tensorflow
+              - tensorflow-io
               - shell
           tests:
               - import-gpu.sh
@@ -168,11 +172,13 @@ slice_sets:
               - onednn/ubuntu/cpu
               - onednn/ubuntu/python3
               - tensorflow
+              - tensorflow-io
               - shell
           tests:
               - import-onednn.sh
           args:
               - TF_PACKAGE=intel-tensorflow
+              - TF_IO_PACKAGE=tensorflow-io
               - UBUNTU_VERSION=16.04
               - PYTHON=python3.6
         - add_to_name: "-ubuntu-18.04"
@@ -183,11 +189,13 @@ slice_sets:
               - onednn/ubuntu/cpu
               - onednn/ubuntu/python
               - tensorflow
+              - tensorflow-io
               - shell
           tests:
               - import-onednn.sh
           args:
               - TF_PACKAGE=intel-tensorflow
+              - TF_IO_PACKAGE=tensorflow-io
               - UBUNTU_VERSION=18.04
               - PYTHON=python3
         - add_to_name: "-ubuntu-20.04"
@@ -198,11 +206,13 @@ slice_sets:
               - onednn/ubuntu/cpu
               - onednn/ubuntu/python
               - tensorflow
+              - tensorflow-io
               - shell
           tests:
               - import-onednn.sh
           args:
               - TF_PACKAGE=intel-tensorflow
+              - TF_IO_PACKAGE=tensorflow-io
               - UBUNTU_VERSION=20.04
               - PYTHON=python3
         - add_to_name: "-centos-7"
@@ -214,11 +224,13 @@ slice_sets:
               - onednn/centos/python
               - onednn/centos/yum-py2
               - tensorflow
+              - tensorflow-io
               - shell
           tests:
               - import-onednn.sh
           args:
               - TF_PACKAGE=intel-tensorflow
+              - TF_IO_PACKAGE=tensorflow-io
               - CENTOS_VERSION=7
               - PYTHON=python3
               - HOROVOD_VERSION=v0.21.1
@@ -230,11 +242,13 @@ slice_sets:
               - onednn/centos/cpu
               - onednn/centos/python
               - tensorflow
+              - tensorflow-io
               - shell
           tests:
               - import-onednn.sh
           args:
               - TF_PACKAGE=intel-tensorflow
+              - TF_IO_PACKAGE=tensorflow-io
               - CENTOS_VERSION=8
               - PYTHON=python3
               - HOROVOD_VERSION=v0.21.1
@@ -246,11 +260,13 @@ slice_sets:
               - onednn/redhat/cpu
               - onednn/redhat/python
               - tensorflow
+              - tensorflow-io
               - shell
           tests:
               - import-onednn.sh
           args:
               - TF_PACKAGE=intel-tensorflow
+              - TF_IO_PACKAGE=tensorflow-io
               - REDHAT_VERSION=latest
               - PYTHON=python3
               - HOROVOD_VERSION=v0.21.1
@@ -369,6 +385,7 @@ slice_sets:
               - onednn/ubuntu/cpu
               - onednn/ubuntu/python3
               - tensorflow
+              - tensorflow-io
               - onednn/ubuntu/mpi
               - onednn/ubuntu/1604-horovod
               - shell
@@ -378,6 +395,7 @@ slice_sets:
               - UBUNTU_VERSION=16.04
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
+              - TF_IO_PACKAGE=intel-tensorflow-io
               - PYTHON=python3.6
         - add_to_name: "-ubuntu-18.04-mpi-horovod"
           dockerfile_exclusive_name: "ubuntu-18.04-mpi-horovod"
@@ -387,6 +405,7 @@ slice_sets:
               - onednn/ubuntu/cpu
               - onednn/ubuntu/python
               - tensorflow
+              - tensorflow-io
               - onednn/ubuntu/mpi
               - onednn/ubuntu/horovod
               - shell
@@ -396,6 +415,7 @@ slice_sets:
               - UBUNTU_VERSION=18.04
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
+              - TF_IO_PACKAGE=intel-tensorflow-io
               - PYTHON=python3
         - add_to_name: "-ubuntu-20.04-mpi-horovod"
           dockerfile_exclusive_name: "ubuntu-20.04-mpi-horovod"
@@ -405,6 +425,7 @@ slice_sets:
               - onednn/ubuntu/cpu
               - onednn/ubuntu/python
               - tensorflow
+              - tensorflow-io
               - onednn/ubuntu/mpi
               - onednn/ubuntu/2004-horovod
               - shell
@@ -414,6 +435,7 @@ slice_sets:
               - UBUNTU_VERSION=20.04
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
+              - TF_IO_PACKAGE=intel-tensorflow-io
               - PYTHON=python3
         - add_to_name: "-centos-7-mpi-horovod"
           dockerfile_exclusive_name: "centos-7-mpi-horovod"
@@ -424,6 +446,7 @@ slice_sets:
               - onednn/centos/python
               - onednn/centos/yum-py2
               - tensorflow
+              - tensorflow-io
               - onednn/centos/mpi
               - onednn/centos/horovod-7
               - shell
@@ -433,6 +456,7 @@ slice_sets:
               - CENTOS_VERSION=7
               - PYTHON=python3
               - TF_PACKAGE=intel-tensorflow
+              - TF_IO_PACKAGE=tensorflow-io
               - HOROVOD_VERSION=v0.21.1
         - add_to_name: "-centos-8-mpi-horovod"
           dockerfile_exclusive_name: "centos-8-mpi-horovod"
@@ -442,6 +466,7 @@ slice_sets:
               - onednn/centos/cpu
               - onednn/centos/python
               - tensorflow
+              - tensorflow-io
               - onednn/centos/mpi
               - onednn/centos/horovod
               - shell
@@ -451,6 +476,7 @@ slice_sets:
               - CENTOS_VERSION=8
               - PYTHON=python3
               - TF_PACKAGE=intel-tensorflow
+              - TF_IO_PACKAGE=intel-tensorflow-io
               - HOROVOD_VERSION=v0.21.1
         - add_to_name: "-redhat-8-mpi-horovod"
           dockerfile_exclusive_name: "redhat-8-mpi-horovod"
@@ -460,6 +486,7 @@ slice_sets:
               - onednn/redhat/cpu
               - onednn/redhat/python
               - tensorflow
+              - tensorflow-io
               - onednn/redhat/mpi
               - onednn/redhat/horovod
               - shell
@@ -469,6 +496,7 @@ slice_sets:
               - REDHAT_VERSION=latest
               - PYTHON=python3
               - TF_PACKAGE=intel-tensorflow
+              - TF_IO_PACKAGE=intel-tensorflow-io
               - HOROVOD_VERSION=v0.21.1
 
     devel-onednn-mpi-horovod:
@@ -600,6 +628,7 @@ slice_sets:
               - onednn/ubuntu/cpu
               - onednn/ubuntu/python3
               - tensorflow
+              - tensorflow-io
               - onednn/ubuntu/1604-mpich
               - onednn/ubuntu/1604-horovod
               - shell
@@ -609,6 +638,7 @@ slice_sets:
               - UBUNTU_VERSION=16.04
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
+              - TF_IO_PACKAGE=intel-tensorflow-io
               - PYTHON=python3.6
         - add_to_name: "-ubuntu-18.04-mpich-horovod"
           dockerfile_exclusive_name: "ubuntu-18.04-mpich-horovod"
@@ -618,6 +648,7 @@ slice_sets:
               - onednn/ubuntu/cpu
               - onednn/ubuntu/python
               - tensorflow
+              - tensorflow-io
               - onednn/ubuntu/mpich
               - onednn/ubuntu/horovod
               - shell
@@ -627,6 +658,7 @@ slice_sets:
               - UBUNTU_VERSION=18.04
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
+              - TF_IO_PACKAGE=intel-tensorflow-io
               - PYTHON=python3
         - add_to_name: "-ubuntu-20.04-mpich-horovod"
           dockerfile_exclusive_name: "ubuntu-20.04-mpich-horovod"
@@ -636,6 +668,7 @@ slice_sets:
               - onednn/ubuntu/cpu
               - onednn/ubuntu/python
               - tensorflow
+              - tensorflow-io
               - onednn/ubuntu/mpich
               - onednn/ubuntu/2004-horovod
               - shell
@@ -645,6 +678,7 @@ slice_sets:
               - UBUNTU_VERSION=20.04
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
+              - TF_IO_PACKAGE=intel-tensorflow-io
               - PYTHON=python3
         - add_to_name: "-centos-7-mpich-horovod"
           dockerfile_exclusive_name: "centos-7-mpich-horovod"
@@ -655,6 +689,7 @@ slice_sets:
               - onednn/centos/python
               - onednn/centos/yum-py2
               - tensorflow
+              - tensorflow-io
               - onednn/centos/mpich
               - onednn/centos/horovod-7
               - shell
@@ -664,6 +699,7 @@ slice_sets:
               - CENTOS_VERSION=7
               - PYTHON=python3
               - TF_PACKAGE=intel-tensorflow
+              - TF_IO_PACKAGE=intel-tensorflow-io
               - HOROVOD_VERSION=v0.21.1
         - add_to_name: "-centos-8-mpich-horovod"
           dockerfile_exclusive_name: "centos-8-mpich-horovod"
@@ -673,6 +709,7 @@ slice_sets:
               - onednn/centos/cpu
               - onednn/centos/python
               - tensorflow
+              - tensorflow-io
               - onednn/centos/mpich
               - onednn/centos/horovod
               - shell
@@ -682,6 +719,7 @@ slice_sets:
               - CENTOS_VERSION=8
               - PYTHON=python3
               - TF_PACKAGE=intel-tensorflow
+              - TF_IO_PACKAGE=intel-tensorflow-io
               - HOROVOD_VERSION=v0.21.1
         - add_to_name: "-redhat-8-mpich-horovod"
           dockerfile_exclusive_name: "redhat-8-mpich-horovod"
@@ -691,6 +729,7 @@ slice_sets:
               - onednn/redhat/cpu
               - onednn/redhat/python
               - tensorflow
+              - tensorflow-io
               - onednn/redhat/mpich
               - onednn/redhat/horovod
               - shell
@@ -700,6 +739,7 @@ slice_sets:
               - REDHAT_VERSION=latest
               - PYTHON=python3
               - TF_PACKAGE=intel-tensorflow
+              - TF_IO_PACKAGE=tensorflow-io
               - HOROVOD_VERSION=v0.21.1
 
     devel-onednn-mpich-horovod:
@@ -833,6 +873,7 @@ slice_sets:
               - ubuntu/cpu
               - ubuntu/python
               - tensorflow-ppc64le
+              - tensorflow-io
               - shell
         - add_to_name: "-gpu-ppc64le"
           dockerfile_exclusive_name: "gpu-ppc64le"
@@ -842,11 +883,13 @@ slice_sets:
               - ARCH=ppc64le
               - CUDA=10.0
               - TF_PACKAGE=tensorflow
+              - TF_IO_PACKAGE=tensorflow-io
           partials:
               - ubuntu/version
               - ubuntu/nvidia
               - ubuntu/python
               - tensorflow-ppc64le
+              - tensorflow-io
               - shell
           tests:
               - import-gpu.sh
@@ -893,9 +936,11 @@ slice_sets:
               - ubuntu/cpu
               - ubuntu/python
               - tensorflow
+              - tensorflow-io
               - shell
           args:
               - TF_PACKAGE=tf-nightly-cpu
+              - TF_IO_PACKAGE=tensorflow-io-nightly
           tests:
               - import.sh
         - add_to_name: "nightly-gpu"
@@ -904,9 +949,11 @@ slice_sets:
               - ubuntu/nvidia
               - ubuntu/python
               - tensorflow
+              - tensorflow-io
               - shell
           test_runtime: nvidia
           tests:
               - import-gpu.sh
           args:
               - TF_PACKAGE=tf-nightly
+              - TF_IO_PACKAGE=tensorflow-io-nightly

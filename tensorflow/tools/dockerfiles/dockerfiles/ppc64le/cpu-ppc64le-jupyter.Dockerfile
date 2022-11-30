@@ -70,6 +70,15 @@ RUN if [ ${TF_PACKAGE} = tensorflow-gpu ]; then \
     wget ${BASE}"artifact/tensorflow_pkg/"${PACKAGE}; \
     python3 -m pip install --no-cache-dir ${PACKAGE}
 
+# Options:
+#   tensorflow-io
+#   tensorflow-io-nightly
+# Set --build-arg TF_IO_PACKAGE_VERSION=0.25.0 to install a specific version.
+# Installs the latest version by default.
+ARG TF_IO_PACKAGE=tensorflow-io
+ARG TF_IO_PACKAGE_VERSION=
+RUN python3 -m pip install --no-cache-dir ${TF_IO_PACKAGE}${TF_IO_PACKAGE_VERSION:+==${TF_IO_PACKAGE_VERSION}}
+
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
 
