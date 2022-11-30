@@ -289,13 +289,13 @@ void SetOperatorPropertyBiasType(ModelT* model, const TensorType& bias_type) {
           options->quantized_bias_type = bias_type;
         }
       }
-      if (op_code && op_code->builtin_code == BuiltinOperator_CONV_2D) {
+      else if (op_code && op_code->builtin_code == BuiltinOperator_CONV_2D) {
         auto* options = op->builtin_options.AsConv2DOptions();
         if (options) {
           options->quantized_bias_type = bias_type;
         }
-      }
-      if (op_code && op_code->builtin_code == BuiltinOperator_TRANSPOSE_CONV) {
+      } else if (op_code &&
+                 op_code->builtin_code == BuiltinOperator_TRANSPOSE_CONV) {
         auto* options = op->builtin_options.AsTransposeConvOptions();
         if (options) {
           options->quantized_bias_type = bias_type;

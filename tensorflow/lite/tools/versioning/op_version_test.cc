@@ -599,7 +599,7 @@ TEST(OpVersionTest, VersioningFullyConnectedTest) {
       .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
   };
   fully_connected_params.quantized_bias_type = kTfLiteInt32;
-  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 10);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 11);
 }
 
 TEST(OpVersionTest, VersioningDequantizeTest) {
@@ -701,7 +701,7 @@ TEST(OpVersionTest, VersioningConv2DTest) {
       .builtin_data = reinterpret_cast<void*>(&conv_params),
   };
   conv_params.quantized_bias_type = kTfLiteInt32;
-  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 7);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 8);
 }
 
 TEST(OpVersionTest, VersioningFloorDivOperatorTest) {

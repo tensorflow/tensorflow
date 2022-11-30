@@ -61,9 +61,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
           op_sig.inputs.at(1).type == kTfLiteInt8 &&
           op_sig.outputs.at(0).type == kTfLiteInt16) {
-        // `quantized_bias_type` is supported at version 7.
+        // `quantized_bias_type` is supported at version 8.
         if (conv_params->quantized_bias_type) {
-          return 7;
+          return 8;
         }
       }
 
@@ -175,9 +175,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
           op_sig.inputs.at(1).type == kTfLiteInt8 &&
           op_sig.outputs.at(0).type == kTfLiteInt16) {
-        // `quantized_bias_type` is supported at version 10.
+        // `quantized_bias_type` is supported at version 11.
         if (fully_connected_params->quantized_bias_type) {
-          return 10;
+          return 11;
         }
       }
 

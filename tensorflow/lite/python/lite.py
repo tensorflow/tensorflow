@@ -541,6 +541,8 @@ class TFLiteConverterBase:
     self._experimental_tf_quantization_mode = None
     # If unset, bias:int32 is by default except 16x8 quant.
     # For 16x8 quant, bias:int64 is used to prevent any overflow by default.
+    # The accumulator type will be the same as bias type set by
+    # full_integer_quantization_bias_type.
     self._experimental_full_integer_quantization_bias_type = None
     # Initializes conversion metadata.
     self.exclude_conversion_metadata = False
