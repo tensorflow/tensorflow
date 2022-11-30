@@ -63,36 +63,36 @@ bool isWarpLevelOp(Operation* op) {
          *parentPloop.getDistributionType() == kWarpDistributionLabel;
 }
 
-struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
-  using OpRewritePattern<linalg::GenericOp>::OpRewritePattern;
+struct TilingCwisePattern : OpRewritePattern<linalg::MapOp> {
+  using OpRewritePattern<linalg::MapOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(linalg::GenericOp genericOp,
+  LogicalResult matchAndRewrite(linalg::MapOp mapOp,
                                 PatternRewriter& rewriter) const override {
-    if (hasLabel(genericOp, kTileGpuWarpAppliedLabel)) {
-      return rewriter.notifyMatchFailure(genericOp, "already transformed");
+    if (hasLabel(mapOp, kTileGpuWarpAppliedLabel)) {
+      return rewriter.notifyMatchFailure(mapOp, "already transformed");
     }
 
-    // Match only cwise `linalg.generic` ops on the shape 1x?.
-    if (!isCwiseGenericOp(genericOp)) {
-      return rewriter.notifyMatchFailure(genericOp, "not element-wise");
+    // Match only `linalg.map` ops on the shape 1x?.
+    if (mapOp.getNumDpsInits() != 1) {
+      return rewriter.notifyMatchFailure(mapOp, "not element-wise");
     }
-    Value genericOpResult = genericOp.getResult(0);
-    auto ploopTy = genericOpResult.getType().dyn_cast<RankedTensorType>();
+    Value mapOpResult = mapOp.getResult().front();
+    auto ploopTy = mapOpResult.getType().dyn_cast<RankedTensorType>();
     if (!ploopTy || ploopTy.getRank() != 2 || ploopTy.getDimSize(0) != 1) {
-      return rewriter.notifyMatchFailure(genericOp, "result no tensor<1x?>");
+      return rewriter.notifyMatchFailure(mapOp, "result no tensor<1x?>");
     }
 
     // Only tile root ops on the warp level.
-    if (!isWarpLevelOp(genericOp) || !genericOp->hasOneUse() ||
-        !llvm::isa<SetYieldOp>(*genericOp->getUsers().begin())) {
-      return rewriter.notifyMatchFailure(genericOp, "not a warp level root op");
+    if (!isWarpLevelOp(mapOp) || !mapOp->hasOneUse() ||
+        !llvm::isa<SetYieldOp>(*mapOp->getUsers().begin())) {
+      return rewriter.notifyMatchFailure(mapOp, "not a warp level root op");
     }
 
     // The number of threads per row (power of two, <= kWarpSize).
     int64_t groupSize = getGroupSize(ploopTy.getDimSize(1));
 
     // Constants and attributes.
-    Location loc = genericOp.getLoc();
+    Location loc = mapOp.getLoc();
     Value c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     Value c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
     Value cGroupSize = rewriter.create<arith::ConstantIndexOp>(loc, groupSize);
@@ -105,9 +105,8 @@ struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
         rewriter.getStringAttr(kThreadDistributionLabel);
 
     // Create `gml_st.parallel` loop to distribute among lanes.
-    Value init = genericOp.getOutputs().front();
-    Value dimSize =
-        rewriter.createOrFold<tensor::DimOp>(loc, genericOpResult, c1);
+    Value init = mapOp.getInit();
+    Value dimSize = rewriter.createOrFold<tensor::DimOp>(loc, mapOpResult, c1);
     Value dimSizePlusWarpSizeMinusOne =
         rewriter.createOrFold<arith::AddIOp>(loc, dimSize, cGroupSizeMinusOne);
     auto ploop = rewriter.create<gml_st::ParallelOp>(
@@ -151,24 +150,23 @@ struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
                 // Materialize scalar subsets per operand.
                 SmallVector<Value> iterOperands =
                     llvm::to_vector(llvm::map_range(
-                        genericOp.getInputs(), [&](Value arg) -> Value {
+                        mapOp.getInputs(), [&](Value arg) -> Value {
                           return b.create<gml_st::MaterializeOp>(
                               loc, ploopTy.getElementType(), arg, iterTile);
                         }));
 
-                // Create scalar computation from `linalg.generic` body by (i)
+                // Create scalar computation from `linalg.map` body by (i)
                 // mapping its block arguments to the newly materialized
                 // scalar operands, and (ii) cloning the body.
                 BlockAndValueMapping bvm;
-                bvm.map(genericOp.getBlock()->getArguments(), iterOperands);
-                for (auto& innerOp :
-                     genericOp.getBody()->without_terminator()) {
+                bvm.map(mapOp.getBlock()->getArguments(), iterOperands);
+                for (auto& innerOp : mapOp.getBody()->without_terminator()) {
                   rewriter.clone(innerOp, bvm);
                 }
 
                 // Yield iteration result.
-                Value iterResult = bvm.lookup(
-                    genericOp.getBody()->getTerminator()->getOperand(0));
+                Value iterResult =
+                    bvm.lookup(mapOp.getBody()->getTerminator()->getOperand(0));
                 Value iterTileInLaneTile =
                     b.create<gml_st::TileOp>(loc, OpFoldResults{zeroAttr, i},
                                              OpFoldResults{oneAttr, oneAttr},
@@ -179,46 +177,39 @@ struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
           b.create<gml_st::SetYieldOp>(loc, sloop.getResult(0), init, laneTile);
         });
 
-    rewriter.replaceOp(genericOp, ploop.getResults());
+    rewriter.replaceOp(mapOp, ploop.getResults());
     return success();
   }
 };
 
-struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
-  using OpRewritePattern<linalg::GenericOp>::OpRewritePattern;
+struct TilingReductionPattern : OpRewritePattern<linalg::ReduceOp> {
+  using OpRewritePattern<linalg::ReduceOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(linalg::GenericOp genericOp,
+  LogicalResult matchAndRewrite(linalg::ReduceOp reduceOp,
                                 PatternRewriter& rewriter) const override {
-    if (hasLabel(genericOp, kTileGpuWarpAppliedLabel)) {
-      return rewriter.notifyMatchFailure(genericOp, "already transformed");
+    if (hasLabel(reduceOp, kTileGpuWarpAppliedLabel)) {
+      return rewriter.notifyMatchFailure(reduceOp, "already transformed");
     }
 
     // Only tile ops on the warp level.
-    if (!isWarpLevelOp(genericOp)) {
-      return rewriter.notifyMatchFailure(genericOp, "not a warp level op");
+    if (!isWarpLevelOp(reduceOp)) {
+      return rewriter.notifyMatchFailure(reduceOp, "not a warp level op");
     }
 
-    // Match only if it's a linalg.generic tensor<1x?xf32> -> tensor<1xf32> with
-    // iterator_types = ["parallel", "reduction"].
-    auto itTypes = genericOp.getIteratorTypesArray();
-    if (itTypes.size() != 2 || !linalg::isParallelIterator(itTypes[0]) ||
-        !linalg::isReductionIterator(itTypes[1])) {
-      return rewriter.notifyMatchFailure(genericOp,
-                                         "Expected ['parallel', 'reduction']");
-    }
-    if (genericOp.getNumDpsInputs() != 1 || genericOp.getNumDpsInits() != 1) {
-      return rewriter.notifyMatchFailure(genericOp,
+    // Match only if it's a linalg.reduce tensor<1x?xf32> -> tensor<1xf32>
+    if (reduceOp.getNumDpsInputs() != 1 || reduceOp.getNumDpsInits() != 1) {
+      return rewriter.notifyMatchFailure(reduceOp,
                                          "Expected single input and output");
     }
 
     auto inputTy =
-        genericOp.getInputs().front().getType().dyn_cast<RankedTensorType>();
+        reduceOp.getInputs().front().getType().dyn_cast<RankedTensorType>();
 
     // The number of threads per row (power of two, <= kWarpSize).
     int64_t groupSize = getGroupSize(inputTy.getDimSize(1));
 
     // Attributes and constants.
-    Location loc = genericOp->getLoc();
+    Location loc = reduceOp->getLoc();
     Value c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     Value c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
     Value cGroupSize = rewriter.create<arith::ConstantIndexOp>(loc, groupSize);
@@ -228,8 +219,8 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
     StringAttr threadDistrLabel =
         rewriter.getStringAttr(kThreadDistributionLabel);
 
-    Value operand = genericOp.getInputs().front();
-    Value init = genericOp.getOutputs().front();
+    Value operand = reduceOp.getInputs().front();
+    Value init = reduceOp.getInits().front();
 
     Type scalarTy = inputTy.getElementType();
 
@@ -270,15 +261,15 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
         Value iterationResult = rewriter.create<MaterializeOp>(
             loc, scalarTy, laneAcc, iterationTile);
 
-        // Create scalar computation based on `linalg.generic` body.
+        // Create scalar computation based on `linalg.reduce` body.
         BlockAndValueMapping bvm;
-        bvm.map(genericOp.getBlock()->getArguments()[0], operandMaterialized);
-        bvm.map(genericOp.getBlock()->getArguments()[1], iterationResult);
-        for (Operation& inner : genericOp.getBody()->without_terminator()) {
+        bvm.map(reduceOp.getBlock()->getArguments()[0], operandMaterialized);
+        bvm.map(reduceOp.getBlock()->getArguments()[1], iterationResult);
+        for (Operation& inner : reduceOp.getBody()->without_terminator()) {
           rewriter.clone(inner, bvm);
         }
         iterationResult =
-            bvm.lookup(genericOp.getBody()->getTerminator()->getOperand(0));
+            bvm.lookup(reduceOp.getBody()->getTerminator()->getOperand(0));
 
         b.create<gml_st::SetYieldOp>(loc, iterationResult, laneAcc,
                                      iterationTile);
@@ -297,9 +288,9 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
                      .getResult(0);
 
     // Change existing linalg.generic to warp-reduce the partial results.
-    rewriter.updateRootInPlace(genericOp, [&] {
-      genericOp->setOperand(0, warpResult);
-      setLabel(genericOp, kTileGpuWarpAppliedLabel);
+    rewriter.updateRootInPlace(reduceOp, [&] {
+      reduceOp->setOperand(0, warpResult);
+      setLabel(reduceOp, kTileGpuWarpAppliedLabel);
     });
 
     return success();
@@ -326,8 +317,11 @@ struct TilingGPUWarpPass
       auto materializeOp = llvm::dyn_cast<MaterializeOp>(op);
       Operation* source = materializeOp.getSource().getDefiningOp();
 
-      // Do not fuse wap-level reductions.
-      if (isSimpleReduction(source) && isWarpLevelOp(source)) return failure();
+      // Do not fuse warp-level reductions.
+      auto reductionOp = llvm::dyn_cast_or_null<linalg::ReduceOp>(source);
+      if (reductionOp && reductionOp.getNumDpsInits() == 1 &&
+          isWarpLevelOp(source))
+        return failure();
 
       return success();
     };

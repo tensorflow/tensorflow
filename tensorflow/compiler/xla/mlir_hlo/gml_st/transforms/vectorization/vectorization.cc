@@ -35,10 +35,13 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
+using mlir::linalg::BroadcastOp;
 using mlir::linalg::FillOp;
-using mlir::linalg::GenericOp;
+using mlir::linalg::LinalgOp;
+using mlir::linalg::MapOp;
 using mlir::linalg::MatmulOp;
 using mlir::linalg::Mmt4DOp;
+using mlir::linalg::ReduceOp;
 using mlir::tensor::ExpandShapeOp;
 using mlir::vector::TransferReadOp;
 using mlir::vector::TransferWriteOp;
@@ -591,11 +594,11 @@ bool isFillTiledOrSmall(FillOp fill) {
          outputType.getNumElements() < kNumElementsThreshold;
 }
 
-bool isGenericOpTiledOrOneDimReduction(GenericOp generic) {
-  if (isInsideGmlStLoop(generic)) return true;
+bool isLinalgOpTiledOrOneDimReduction(LinalgOp op) {
+  if (isInsideGmlStLoop(op)) return true;
 
   // Allow vectorization of 1D reductions.
-  return generic.getNumLoops() == 1 && generic.getNumReductionLoops() == 1;
+  return op.getNumLoops() == 1 && op.getNumReductionLoops() == 1;
 }
 
 struct VectorizeGmlStLoopsPass
@@ -628,8 +631,8 @@ struct VectorizeGmlStLoopsPass
     auto fillOpFilter = [&](FillOp op) {
       return isValidDistribution(op) && isFillTiledOrSmall(op);
     };
-    auto genericOpFilter = [&](GenericOp op) {
-      return isValidDistribution(op) && isGenericOpTiledOrOneDimReduction(op);
+    auto linalgOpFilter = [&](LinalgOp op) {
+      return isValidDistribution(op) && isLinalgOpTiledOrOneDimReduction(op);
     };
     auto matmulOpFilter = [&](MatmulOp op) {
       if (isInsideGmlStLoop(op)) return true;
@@ -671,7 +674,9 @@ struct VectorizeGmlStLoopsPass
                    MaterializeFromSingleElementToExtractPattern,
                    SetYieldOfScalarToVectorPattern>(ctx);
       patterns.add<VectorizationPattern<FillOp>>(ctx, fillOpFilter);
-      patterns.add<VectorizationPattern<GenericOp>>(ctx, genericOpFilter);
+      patterns.add<VectorizationPattern<BroadcastOp>,
+                   VectorizationPattern<MapOp>, VectorizationPattern<ReduceOp>>(
+          ctx, linalgOpFilter);
       patterns.add<VectorizationPattern<MatmulOp>>(ctx, matmulOpFilter);
       patterns.add<VectorizationPattern<Mmt4DOp>>(ctx, mmt4dOpFilter);
       patterns.add<TensorToElementVectorizationPattern,
