@@ -40,39 +40,36 @@ In other words, for an `1-D` tensor `x` with `axis = None:
 
 For example:
 
->>> x = tf.constant([1, 1, 2, 4, 4, 4, 7, 8, 8])
->>> y, idx = tf.raw_ops.UniqueV2(x=x, axis=[0])
->>> y
-<tf.Tensor: shape=(5,), dtype=int32, numpy=array([1, 2, 4, 7, 8], dtype=int32)>
->>> idx
-<tf.Tensor: shape=(9,), dtype=int32, numpy=array([0, 0, 1, 2, 2, 2, 3, 4, 4], dtype=int32)>
+```
+x = tf.constant([1, 1, 2, 4, 4, 4, 7, 8, 8])
+y, idx = tf.raw_ops.UniqueV2(x=x, axis=[0])
+y ==> [1, 2, 4, 7, 8]
+idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
+```
 
 For an `2-D` tensor `x` with `axis = 0`:
 
->>> x = tf.constant([[1, 0, 0],
-...                 [1, 0, 0],
-...                 [2, 0, 0]])
->>> y, idx = tf.raw_ops.UniqueV2(x=x, axis=[0])
->>> y
-<tf.Tensor: shape=(2, 3), dtype=int32, numpy=
-    array([[1, 0, 0],
-    [2, 0, 0]], dtype=int32)>
->>> idx
-<tf.Tensor: shape=(3,), dtype=int32, numpy=array([0, 0, 1], dtype=int32)>
+```
+x = tf.constant([[1, 0, 0],
+                 [1, 0, 0],
+                 [2, 0, 0]])
+y, idx = tf.raw_ops.UniqueV2(x=x, axis=[0])
+y ==> [[1, 0, 0],
+       [2, 0, 0]]
+idx ==> [0, 0, 1]
+```
 
 For an `2-D` tensor `x` with `axis = 1`:
 
->>> x = tf.constant([[1, 0, 0],
-...                [1, 0, 0],
-...                [2, 0, 0]])
->>> y, idx = tf.raw_ops.UniqueV2(x=x, axis=[1])
->>> y
-<tf.Tensor: shape=(3, 2), dtype=int32, numpy=
-  array([[1, 0],
-        [1, 0],
-        [2, 0]], dtype=int32)>
->>> idx
-<tf.Tensor: shape=(3,), dtype=int32, numpy=array([0, 1, 1], dtype=int32)>
-
+```
+x = tf.constant([[1, 0, 0],
+                 [1, 0, 0],
+                 [2, 0, 0]])
+y, idx = tf.raw_ops.UniqueV2(x=x, axis=[1])
+y ==> [[1, 0],
+       [1, 0],
+       [2, 0]]
+idx ==> [0, 1, 1]
+```
 END
 }
