@@ -53,7 +53,7 @@ class FuseTensorExtractPattern : public OpRewritePattern<tensor::ExtractOp> {
     ParallelOp outerMostParallelOp;
     for (auto *user : extractOp->getUsers()) {
       ParallelOp parallelOp = user->getParentOfType<gml_st::ParallelOp>();
-      while (parallelOp->getParentOfType<gml_st::ParallelOp>())
+      while (parallelOp && parallelOp->getParentOfType<gml_st::ParallelOp>())
         parallelOp = parallelOp->getParentOfType<gml_st::ParallelOp>();
 
       if (!parallelOp)
