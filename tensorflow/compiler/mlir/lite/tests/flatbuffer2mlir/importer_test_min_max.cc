@@ -99,13 +99,14 @@ Optional<std::unique_ptr<tflite::ModelT>> InjectStatsToFullyConnected(
 
   // CHECK-LABEL: func @main(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>)
   // CHECK-SAME:      -> tensor<40x40xf32>
-  // CHECK:         %[[stat:.*]] = "quant.stats"(%arg0) {layerStats = dense<
+  // CHECK:         %[[stat:.*]] = "quantfork.stats"(%arg0) {layerStats = dense<
   // CHECK-SAME:      [-1.000000e+00, 1.000000e+00]> : tensor<2xf32>}
   // CHECK-SAME:      : (tensor<40x37xf32>) -> tensor<40x37xf32>
   // CHECK-NEXT:    %[[cst:.*]] = "tfl.pseudo_const"() {value = dense<
   // CHECK-SAME:      1.000000e+00> : tensor<40xf32>} : () -> tensor<40xf32>
   // CHECK-NEXT:    %[[fc:.*]]:2 = "tfl.fully_connected"(%[[stat]], %arg1,
-  // CHECK-NEXT:    %[[stat1:.*]] = "quant.stats"(%[[fc]]#0) {axis = 1 : i64,
+  // CHECK-NEXT:    %[[stat1:.*]] = "quantfork.stats"(%[[fc]]#0)
+  // CHECK-SAME:    {axis = 1 : i64,
   // CHECK-SAME:      axisStats = dense<{{\[}}[-0.000000e+00, 0.000000e+00],
   // CHECK-SAME:      [-1.000000e+00, 1.000000e+00],
   // CHECK-SAME:      [-2.000000e+00, 2.000000e+00]

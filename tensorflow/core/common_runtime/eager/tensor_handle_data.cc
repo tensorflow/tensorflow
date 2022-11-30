@@ -18,9 +18,11 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
-namespace tensorflow {
-
+namespace tsl {
 class Status;
+}
+namespace tensorflow {
+using tsl::Status;
 
 Status LocalTensorHandleData::Tensor(const tensorflow::Tensor** t) const {
   TF_RETURN_IF_ERROR(WaitReady("Tensor"));

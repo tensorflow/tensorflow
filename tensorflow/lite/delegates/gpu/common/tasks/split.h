@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_STRIDED_SPLIT_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_STRIDED_SPLIT_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_SPLIT_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_SPLIT_H_
 
 #include <string>
 
@@ -52,4 +52,4 @@ Split CreateSplit(const GpuInfo& gpu_info, const OperationDef& definition,
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_STRIDED_SPLIT_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_SPLIT_H_

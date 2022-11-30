@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_REDUCE_OPS_H_
-#define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_REDUCE_OPS_H_
+#ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_REDUCE_H_
+#define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_REDUCE_H_
 
 #include <stdint.h>
 
@@ -802,4 +802,4 @@ inline bool ReduceGeneric(const T* input_data, const int* input_dims,
 }  // namespace optimized_ops
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_OPTIMIZED_OPS_H_
+#endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_REDUCE_H_

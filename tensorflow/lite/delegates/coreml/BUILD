@@ -13,9 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-package(default_visibility = [
-    "//visibility:public",
-])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [
+        "//visibility:public",
+    ],
+)
 
 licenses(["notice"])
 
@@ -27,6 +30,10 @@ objc_library(
     hdrs = ["coreml_executor.h"],
     copts = ["-std=c++17"],
     features = ["-layering_check"],
+    sdk_frameworks = [
+        "CoreML",
+        "Foundation",
+    ],
     deps = [":mlmodel_proto_cc"],
 )
 
@@ -43,10 +50,6 @@ objc_library(
     hdrs = ["coreml_delegate.h"],
     copts = ["-std=c++17"],
     module_name = "TensorFlowLiteCCoreML",
-    # By setting CoreML as weak_framework, the TensorFlow Lite can be built for older iOS versions.
-    weak_sdk_frameworks = [
-        "CoreML",
-    ],
     deps = [
         ":coreml_delegate_kernel",
         ":mlmodel_proto_cc",
@@ -59,6 +62,7 @@ objc_library(
         "//tensorflow/lite/delegates/coreml/builders:util",
         "//tensorflow/lite/kernels:kernel_util",
     ],
+    alwayslink = 1,
 )
 
 objc_library(

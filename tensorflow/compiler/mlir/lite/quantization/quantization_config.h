@@ -161,12 +161,17 @@ struct QuantizationSpecs {
   // quantization type.
   int64_t GetQuantizationTypeWidth() const {
     switch (inference_type) {
+      case tensorflow::DT_INT8:
+      case tensorflow::DT_UINT8:
       case tensorflow::DT_QINT8:
       case tensorflow::DT_QUINT8:
         return 8;
+      case tensorflow::DT_INT16:
+      case tensorflow::DT_UINT16:
       case tensorflow::DT_QINT16:
       case tensorflow::DT_QUINT16:
         return 16;
+      case tensorflow::DT_INT32:
       case tensorflow::DT_QINT32:
         return 32;
       default:

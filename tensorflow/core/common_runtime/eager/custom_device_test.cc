@@ -60,6 +60,12 @@ class TestCustomDevice : public CustomDevice {
     return errors::Unimplemented("Packing is not implemented");
   }
 
+  // Pins `op` to `device`.
+  StatusOr<bool> ShallPinToThisDevice(
+      const ImmediateExecutionOperation* op) override {
+    return errors::Unimplemented("No preference in custom device pinning.");
+  }
+
  private:
   std::string name_;
 };

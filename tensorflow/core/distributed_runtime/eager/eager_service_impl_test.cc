@@ -155,7 +155,8 @@ class EagerServiceImplTest : public ::testing::Test {
                WorkerCacheInterface** worker_cache) {
               *worker_cache = new FakeCache;
               return OkStatus();
-            })) {
+            },
+            /*coordination_handler=*/nullptr)) {
     worker_env_.env = Env::Default();
 
     worker_env_.rendezvous_mgr = &rendezvous_mgr_;

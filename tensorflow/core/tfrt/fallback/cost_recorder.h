@@ -38,16 +38,16 @@ class CostRecorder : public tfrt::SharedContext {
  public:
   explicit CostRecorder(tfrt::HostContext* host) {}
 
-  void RecordCost(absl::string_view op_name, const uint64_t execution_time);
+  void RecordCost(int64_t op_key, const uint64_t execution_time);
 
   size_t size();
-  Status WriteToFile(const std::string& file_path);
+  Status WriteToFile();
 
  private:
   tensorflow::mutex op_cost_map_mutex_;
-  // Map op name to {sum of op execution time in microseconds, number of op}.
-  absl::flat_hash_map<absl::string_view, std::pair<uint64_t, uint64_t>>
-      op_cost_map_ TF_GUARDED_BY(op_cost_map_mutex_);
+  // Map op key to {sum of op execution time in microseconds, number of op}.
+  absl::flat_hash_map<int64_t, std::pair<uint64_t, uint64_t>> op_cost_map_
+      TF_GUARDED_BY(op_cost_map_mutex_);
 };
 }  // namespace tfrt_stub
 }  // namespace tensorflow

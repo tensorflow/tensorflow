@@ -14,15 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include <atomic>
+#include <iterator>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -34,13 +35,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
@@ -49,7 +44,6 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dtensor_attributes.h"
 #include "tensorflow/dtensor/mlir/dtensor_location.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/group_assignment.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
@@ -60,6 +54,11 @@ namespace tensorflow {
 namespace dtensor {
 
 namespace {
+#define GEN_PASS_DEF_DTENSORALLREDUCELOWERING
+#define GEN_PASS_DEF_DTENSORREDUCESCATTERLOWERING
+#define GEN_PASS_DEF_DTENSORALLGATHERLOWERING
+#define GEN_PASS_DEF_DTENSORALLSCATTERLOWERING
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 namespace ops_util = ::mlir::TF::collection_ops_util;
 constexpr int32 kUninitializedGroupKey = 0;
@@ -93,9 +92,9 @@ mlir::LogicalResult EmitAllReduceForXla(
     mlir::Operation** final_op) {
   // For TPUs, lower to XlaAllReduce straightforwardly.
   *final_op = builder.create<mlir::TF::XlaAllReduceOp>(
-      all_reduce.getLoc(), all_reduce.getResult().getType(), all_reduce.input(),
-      all_reduce.group_assignment(), all_reduce.reduce_opAttr(),
-      builder.getStringAttr(kCrossReplica));
+      all_reduce.getLoc(), all_reduce.getResult().getType(),
+      all_reduce.getInput(), all_reduce.getGroupAssignment(),
+      all_reduce.getReduceOpAttr(), builder.getStringAttr(kCrossReplica));
   return mlir::success();
 }
 }  // namespace
@@ -163,23 +162,24 @@ mlir::Operation* EmitCollectiveReduce(
 
   // Create a scalar group key by slicing device_id_to_group_key with
   // device_id.
+  auto group_key_loc = DT_LOC2(loc, "group_key");
   auto group_key_slice = builder.create<mlir::TF::SliceOp>(
-      loc, EffectivelyScalarR1Type(builder.getIntegerType(32)),
+      group_key_loc, EffectivelyScalarR1Type(builder.getIntegerType(32)),
       /*input=*/IntConst(builder, loc, device_id_to_group_key),
       /*begin=*/device_id,
       /*size=*/IntConst(builder, loc, {1}));
   auto group_key_reshape = builder.create<mlir::TF::ReshapeOp>(
-      loc, /*tensor=*/group_key_slice.getResult(),
+      group_key_loc, /*tensor=*/group_key_slice.getResult(),
       /*shape=*/ops_util::GetR1Const({}, builder, loc));
   group_key_scalar = group_key_reshape.getResult();
 
   // Generate a unique instance key for this collective.
-  mlir::Value instance_key_scalar =
-      ops_util::CreateScalarConst(static_cast<int32>(key_base), builder, loc);
+  mlir::Value instance_key_scalar = ops_util::CreateScalarConst(
+      static_cast<int32>(key_base), builder, DT_LOC2(loc, "instance_key"));
 
   const bool is_mean_op = reduce_op_str == kReduceOpMean;
-  mlir::Value group_size_scalar =
-      ops_util::CreateScalarConst(host_group_size, builder, loc);
+  mlir::Value group_size_scalar = ops_util::CreateScalarConst(
+      host_group_size, builder, DT_LOC2(loc, "group_size"));
   auto collective_reduce = builder.create<mlir::TF::CollectiveReduceV2Op>(
       loc, /*output_type=*/input.getType(), input, group_size_scalar,
       group_key_scalar, instance_key_scalar,
@@ -210,7 +210,7 @@ mlir::LogicalResult LowerAllReduceOpImpl(
     return all_reduce.emitOpError(output_layout.status().error_message());
   }
   mlir::DenseIntElementsAttr group_assignment_attr;
-  if (!matchPattern(all_reduce.group_assignment(),
+  if (!matchPattern(all_reduce.getGroupAssignment(),
                     m_Constant(&group_assignment_attr)))
     return mlir::emitError(loc, "group_assigment must be a constant.");
   if (group_assignment_attr.getType().getRank() != 2)
@@ -218,7 +218,7 @@ mlir::LogicalResult LowerAllReduceOpImpl(
   int32 group_size = group_assignment_attr.getType().getShape()[1];
 
   // This will become more general when Topology is properly defined.
-  const bool is_tpu = all_reduce.device_type().endswith("TPU");
+  const bool is_tpu = all_reduce.getDeviceType().endswith("TPU");
   // Use an atomic counter to generate bases for group and instance keys.
   int32 key_base = tf_collective_key_base++;
 
@@ -240,7 +240,7 @@ mlir::LogicalResult LowerAllReduceOpImpl(
     // groups in one program reducing over all hosts and reducing over pairs
     // of hosts, we need unique ids for each case.
     mlir::Value device_id = ops_util::ReshapeScalarToSizeType(
-        builder, DeviceId(all_reduce.getResult()).ValueOrDie(), loc);
+        builder, DeviceId(all_reduce.getResult()).value(), loc);
     // TODO(b/188076080): Clean up device id.
     mlir::Value start_device_id = ops_util::GetR1Const(
         {(*output_layout).mesh().min_global_device_id()}, builder, loc);
@@ -248,9 +248,9 @@ mlir::LogicalResult LowerAllReduceOpImpl(
         builder.create<mlir::TF::SubOp>(loc, device_id, start_device_id);
 
     final_op = EmitCollectiveReduce(
-        builder, loc, all_reduce.input(), all_reduce.reduce_op().str(),
+        builder, loc, all_reduce.getInput(), all_reduce.getReduceOp().str(),
         group_assignment_attr, key_base, relative_device_id,
-        /*host_group_size=*/group_size, all_reduce.device_type().str());
+        /*host_group_size=*/group_size, all_reduce.getDeviceType().str());
   }
   SetSingleLayoutOnOp(final_op, *output_layout);
   *value = final_op->getResult(0);
@@ -271,26 +271,28 @@ mlir::LogicalResult ConvertBoolReduce(ReduceOpType reduce_op) {
       output_type.dyn_cast<mlir::TensorType>();
   if (tensor_input_type && tensor_output_type &&
       tensor_input_type.getElementType().isInteger(1)) {
-    if (reduce_op.reduce_opAttr().getValue().str() == kReduceOpAll)
-      reduce_op.reduce_opAttr(builder.getStringAttr(std::string(kReduceOpMin)));
-    else if (reduce_op.reduce_opAttr().getValue().str() == kReduceOpAny)
-      reduce_op.reduce_opAttr(builder.getStringAttr(std::string(kReduceOpMax)));
+    if (reduce_op.getReduceOpAttr().getValue().str() == kReduceOpAll)
+      reduce_op.setReduceOpAttr(
+          builder.getStringAttr(std::string(kReduceOpMin)));
+    else if (reduce_op.getReduceOpAttr().getValue().str() == kReduceOpAny)
+      reduce_op.setReduceOpAttr(
+          builder.getStringAttr(std::string(kReduceOpMax)));
     else
       return reduce_op.emitOpError()
              << "reduce for boolean only supports 'All' or 'Any' reduction. "
-             << "Received '" << reduce_op.reduce_opAttr().getValue().str()
+             << "Received '" << reduce_op.getReduceOpAttr().getValue().str()
              << "'";
     const mlir::Type integer_input_type = mlir::RankedTensorType::get(
         tensor_input_type.getShape(), builder.getIntegerType(32));
     mlir::TF::CastOp cast_to_int32 = builder.create<mlir::TF::CastOp>(
-        loc, integer_input_type, reduce_op.input());
-    reduce_op.setOperand(0, cast_to_int32.y());
+        loc, integer_input_type, reduce_op.getInput());
+    reduce_op.setOperand(0, cast_to_int32.getY());
     const mlir::Type integer_output_type = mlir::RankedTensorType::get(
         tensor_output_type.getShape(), builder.getIntegerType(32));
-    reduce_op.output().setType(integer_output_type);
+    reduce_op.getOutput().setType(integer_output_type);
 
     // Add cast back to boolean after reduction.
-    mlir::Value result = reduce_op.output();
+    mlir::Value result = reduce_op.getOutput();
     builder.setInsertionPointAfter(reduce_op);
     mlir::TF::CastOp cast_to_bool =
         builder.create<mlir::TF::CastOp>(loc, output_type, result);
@@ -300,7 +302,8 @@ mlir::LogicalResult ConvertBoolReduce(ReduceOpType reduce_op) {
       return reduce_op.emitOpError(result_layout.status().error_message());
     }
     SetSingleLayoutOnOp(cast_to_bool, *result_layout);
-    reduce_op.output().replaceAllUsesExcept(cast_to_bool.y(), cast_to_bool);
+    reduce_op.getOutput().replaceAllUsesExcept(cast_to_bool.getY(),
+                                               cast_to_bool);
   }
 
   return mlir::success();
@@ -331,7 +334,7 @@ mlir::LogicalResult LowerReduceScatterOp(
     return reduce_scatter.emitOpError(output_layout.status().error_message());
   }
   mlir::DenseIntElementsAttr group_assignment_attr;
-  if (!matchPattern(reduce_scatter.group_assignment(),
+  if (!matchPattern(reduce_scatter.getGroupAssignment(),
                     m_Constant(&group_assignment_attr)))
     return reduce_scatter.emitOpError("group_assigment must be a constant.");
   if (group_assignment_attr.getType().getRank() != 2)
@@ -339,27 +342,28 @@ mlir::LogicalResult LowerReduceScatterOp(
         "group_assignment should have two dimensions.");
 
   mlir::OpBuilder builder(reduce_scatter);
-  if (reduce_scatter.device_type().endswith("TPU")) {
+  if (reduce_scatter.getDeviceType().endswith("TPU")) {
     if (mlir::failed(ConvertBoolReduce<mlir::TF::DTensorReduceScatterOp>(
             reduce_scatter)))
       return mlir::failure();
     // For TPUs, lower to XlaReduceScatter straightforwardly.
     mlir::Operation* xla_reduce_scatter =
         builder.create<mlir::TF::XlaReduceScatterOp>(
-            loc, reduce_scatter.getResult().getType(), reduce_scatter.input(),
-            reduce_scatter.group_assignment(),
-            reduce_scatter.scatter_dimension(), reduce_scatter.reduce_opAttr());
+            loc, reduce_scatter.getResult().getType(),
+            reduce_scatter.getInput(), reduce_scatter.getGroupAssignment(),
+            reduce_scatter.getScatterDimension(),
+            reduce_scatter.getReduceOpAttr());
     SetSingleLayoutOnOp(xla_reduce_scatter, *output_layout);
     reduce_scatter.replaceAllUsesWith(xla_reduce_scatter);
   } else {
     // For non TPUs device, decompose to DTensorAllReduce+DTensorAllScatter.
     StatusOr<Layout> input_layout =
-        ExtractRequiredLayoutFromOperand(reduce_scatter.input());
+        ExtractRequiredLayoutFromOperand(reduce_scatter.getInput());
     if (!input_layout.ok()) {
       // If input layout is not defined, modify the output_layout based on the
       // scattered dimension.
       mlir::DenseIntElementsAttr scatter_attr;
-      if (!matchPattern(reduce_scatter.scatter_dimension(),
+      if (!matchPattern(reduce_scatter.getScatterDimension(),
                         m_Constant(&scatter_attr))) {
         return reduce_scatter.emitOpError(
             "Scatter dimension not constant integer array.");
@@ -378,8 +382,8 @@ mlir::LogicalResult LowerReduceScatterOp(
 
     auto dtensor_allreduce = builder.create<mlir::TF::DTensorAllReduceOp>(
         reduce_scatter.getLoc(), reduce_scatter.getOperand(0).getType(),
-        reduce_scatter.getOperand(0), reduce_scatter.group_assignment(),
-        reduce_scatter.reduce_op(), reduce_scatter.device_type());
+        reduce_scatter.getOperand(0), reduce_scatter.getGroupAssignment(),
+        reduce_scatter.getReduceOp(), reduce_scatter.getDeviceType());
     SetSingleLayoutOnOp(dtensor_allreduce, *input_layout);
 
     mlir::Operation* dtensor_all_scatter =
@@ -440,8 +444,8 @@ mlir::Value SelectElementsBasedOnId(
 }
 
 mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
-  const Layout src_layout = all_gather.input_layout();
-  const Layout tgt_layout = all_gather.output_layout();
+  const Layout src_layout = all_gather.getInputLayout();
+  const Layout tgt_layout = all_gather.getOutputLayout();
 
   llvm::SmallVector<int64, 4> concat_dims;
   for (int64 i = 0; i < src_layout.rank(); ++i)
@@ -454,18 +458,19 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
 
   if (concat_dims.empty()) {
     mlir::TF::IdentityOp identity = builder.create<mlir::TF::IdentityOp>(
-        all_gather.getLoc(), all_gather.input().getType(), all_gather.input());
+        all_gather.getLoc(), all_gather.getInput().getType(),
+        all_gather.getInput());
     SetSingleLayoutOnOp(identity, tgt_layout);
 
-    all_gather.output().replaceAllUsesWith(identity);
+    all_gather.getOutput().replaceAllUsesWith(identity);
     all_gather.erase();
     return mlir::success();
   }
 
   const mlir::RankedTensorType input_type =
-      all_gather.input().getType().dyn_cast<mlir::RankedTensorType>();
+      all_gather.getInput().getType().dyn_cast<mlir::RankedTensorType>();
   const mlir::RankedTensorType output_type =
-      all_gather.output().getType().dyn_cast<mlir::RankedTensorType>();
+      all_gather.getOutput().getType().dyn_cast<mlir::RankedTensorType>();
 
   if (!input_type)
     return all_gather.emitOpError() << "input type is not a RankedTensorType";
@@ -505,10 +510,9 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
         if (!device_loc_or_status.ok())
           return all_gather.emitOpError()
                  << device_loc_or_status.status().error_message();
-        const DeviceLocation device_loc = device_loc_or_status.ValueOrDie();
-        const int32 mesh_idx = src_layout.mesh()
-                                   .idx_for_dim(src_layout.sharding_spec(i))
-                                   .ValueOrDie();
+        const DeviceLocation device_loc = device_loc_or_status.value();
+        const int32 mesh_idx =
+            src_layout.mesh().idx_for_dim(src_layout.sharding_spec(i)).value();
         const int64 device_offset = device_loc[mesh_idx];
         const int64 step = output_shape[i] / src_layout.num_shards()[i];
         device_id_to_begin_flat.push_back(step * device_offset);
@@ -523,11 +527,11 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
   // Resize three flat lists to 2D matrices and select one vertical vector out
   // of every matrix based on device ID.
   StatusOr<mlir::Value> device_id_scalar_or_status =
-      DeviceId(all_gather.input());
+      DeviceId(all_gather.getInput());
   if (!device_id_scalar_or_status.ok())
     return all_gather.emitOpError()
            << device_id_scalar_or_status.status().error_message();
-  const mlir::Value device_id_scalar = device_id_scalar_or_status.ValueOrDie();
+  const mlir::Value device_id_scalar = device_id_scalar_or_status.value();
   const mlir::Value device_id =
       ops_util::ReshapeScalarToSizeType(builder, device_id_scalar, loc);
   // TODO(b/188076080): Clean up device id.
@@ -553,12 +557,12 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
              << "source and target layout are not both on tpu";
     update_result = builder.create<mlir::TF::XlaDynamicUpdateSliceOp>(
         loc, zeros.getType(), /*input=*/zeros,
-        /*update=*/all_gather.input(), /*indices=*/begin);
+        /*update=*/all_gather.getInput(), /*indices=*/begin);
   } else {
     update_result = builder.create<mlir::TF::TensorStridedSliceUpdateOp>(
         loc, zeros.getType(),
         /*input=*/zeros, begin, end, strides,
-        /*value=*/all_gather.input());
+        /*value=*/all_gather.getInput());
   }
 
   // All reduce among concatenated dimensions.
@@ -570,7 +574,7 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
   if (!partitions_or_status.ok())
     return all_gather.emitOpError()
            << partitions_or_status.status().error_message();
-  auto partitions = partitions_or_status.ValueOrDie();
+  auto partitions = partitions_or_status.value();
   const int32 num_partitions = partitions.size();
   assert(num_partitions <= num_devices);
   if (num_partitions == num_devices) {
@@ -580,7 +584,7 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
     // If every device lives in its own partition, we don't need to emit a
     // collective.
     SetSingleLayoutOnOp(update_result.getDefiningOp(), tgt_layout);
-    all_gather.output().replaceAllUsesWith(update_result);
+    all_gather.getOutput().replaceAllUsesWith(update_result);
     all_gather.erase();
     return mlir::success();
   }
@@ -604,7 +608,7 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
   if (!device_type_or_status.ok())
     return all_gather.emitOpError()
            << device_type_or_status.status().error_message();
-  const std::string device_type = device_type_or_status.ValueOrDie();
+  const std::string device_type = device_type_or_status.value();
 
   // Support bool types by switching to Any reduce rather than Add. For each
   // position in the tensor, only one task in the reduction group can have a 1.
@@ -621,15 +625,15 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
           builder.getStringAttr(device_type));
   SetSingleLayoutOnOp(all_reduce, tgt_layout);
 
-  all_gather.output().replaceAllUsesWith(all_reduce.getResult());
+  all_gather.getOutput().replaceAllUsesWith(all_reduce.getResult());
   all_gather.erase();
   return mlir::LogicalResult::success();
 }
 
 mlir::LogicalResult LowerAllScatterOp(
     mlir::TF::DTensorAllScatterOp all_scatter) {
-  const Layout original_layout = all_scatter.input_layout();
-  const Layout desired_layout = all_scatter.output_layout();
+  const Layout original_layout = all_scatter.getInputLayout();
+  const Layout desired_layout = all_scatter.getOutputLayout();
 
   mlir::tf_device::ClusterOp cluster =
       all_scatter->getParentOfType<mlir::tf_device::ClusterOp>();
@@ -638,7 +642,7 @@ mlir::LogicalResult LowerAllScatterOp(
   if (!mesh_coordinates_status.ok())
     return all_scatter.emitOpError()
            << mesh_coordinates_status.status().error_message();
-  mlir::Value mesh_coordinates = mesh_coordinates_status.ValueOrDie();
+  mlir::Value mesh_coordinates = mesh_coordinates_status.value();
 
   // We need to compute the slice offset, which is dynamic based on the id.
   //
@@ -652,7 +656,7 @@ mlir::LogicalResult LowerAllScatterOp(
   // sharding_spec[j]=i and this is a dimension with split and 0 otherwise.
 
   mlir::RankedTensorType output_type =
-      all_scatter.output().getType().dyn_cast<mlir::RankedTensorType>();
+      all_scatter.getOutput().getType().dyn_cast<mlir::RankedTensorType>();
   if (!output_type)
     return all_scatter.emitOpError() << "input must have static rank";
 
@@ -713,22 +717,22 @@ mlir::LogicalResult LowerAllScatterOp(
       all_scatter.getLoc(),
       mlir::RankedTensorType::get({original_layout.rank()},
                                   builder.getIntegerType(32)),
-      offset.product(), builder.getI64ArrayAttr({0}));
+      offset.getProduct(), builder.getI64ArrayAttr({0}));
 
   auto result = builder.create<mlir::TF::SliceOp>(
-      all_scatter.getLoc(), output_type, all_scatter.input(),
-      offset_squeezed.output(), slice_shape_value);
+      all_scatter.getLoc(), output_type, all_scatter.getInput(),
+      offset_squeezed.getOutput(), slice_shape_value);
 
   SetSingleLayoutOnOp(result, desired_layout);
 
-  all_scatter.output().replaceAllUsesExcept(result.output(), result);
+  all_scatter.getOutput().replaceAllUsesExcept(result.getOutput(), result);
   all_scatter.erase();
 
   return mlir::LogicalResult::success();
 }
 
 struct DTensorAllReduceLowering
-    : public DTensorAllReduceLoweringBase<DTensorAllReduceLowering> {
+    : public impl::DTensorAllReduceLoweringBase<DTensorAllReduceLowering> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();
     mlir::ModuleOp module = getOperation();
@@ -747,7 +751,8 @@ struct DTensorAllReduceLowering
 };
 
 struct DTensorReduceScatterLowering
-    : public DTensorReduceScatterLoweringBase<DTensorReduceScatterLowering> {
+    : public impl::DTensorReduceScatterLoweringBase<
+          DTensorReduceScatterLowering> {
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
     registry.insert<mlir::dtensor::DTensorDialect>();
   }
@@ -769,7 +774,7 @@ struct DTensorReduceScatterLowering
 };
 
 struct DTensorAllGatherLowering
-    : public DTensorAllGatherLoweringBase<DTensorAllGatherLowering> {
+    : public impl::DTensorAllGatherLoweringBase<DTensorAllGatherLowering> {
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
 
@@ -786,7 +791,7 @@ struct DTensorAllGatherLowering
 };
 
 struct DTensorAllScatterLowering
-    : public DTensorAllScatterLoweringBase<DTensorAllScatterLowering> {
+    : public impl::DTensorAllScatterLoweringBase<DTensorAllScatterLowering> {
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
 

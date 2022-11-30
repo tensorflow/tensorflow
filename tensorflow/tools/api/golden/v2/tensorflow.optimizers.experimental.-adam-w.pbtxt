@@ -1,8 +1,8 @@
 path: "tensorflow.optimizers.experimental.AdamW"
 tf_class {
-  is_instance: "<class \'keras.optimizers.optimizer_experimental.adamw.AdamW\'>"
-  is_instance: "<class \'keras.optimizers.optimizer_experimental.optimizer.Optimizer\'>"
-  is_instance: "<class \'keras.optimizers.optimizer_experimental.optimizer._BaseOptimizer\'>"
+  is_instance: "<class \'keras.optimizers.adamw.AdamW\'>"
+  is_instance: "<class \'keras.optimizers.optimizer.Optimizer\'>"
+  is_instance: "<class \'keras.optimizers.optimizer._BaseOptimizer\'>"
   is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
@@ -36,7 +36,7 @@ tf_class {
   }
   member_method {
     name: "apply_gradients"
-    argspec: "args=[\'self\', \'grads_and_vars\', \'skip_gradients_aggregation\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'self\', \'grads_and_vars\', \'name\', \'skip_gradients_aggregation\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'False\'], "
   }
   member_method {
     name: "build"
@@ -56,7 +56,7 @@ tf_class {
   }
   member_method {
     name: "from_config"
-    argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'cls\', \'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "get_config"
@@ -65,6 +65,10 @@ tf_class {
   member_method {
     name: "minimize"
     argspec: "args=[\'self\', \'loss\', \'var_list\', \'tape\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "set_weights"
+    argspec: "args=[\'self\', \'weights\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "update_step"

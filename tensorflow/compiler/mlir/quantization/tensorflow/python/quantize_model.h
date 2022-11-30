@@ -19,31 +19,29 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 
 namespace tensorflow {
 namespace quantization {
 namespace internal {
 
-absl::StatusOr<GraphDef> QuantizeQATModel(
-    const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
-    const std::string& quant_opts_serialized);
+absl::StatusOr<ExportedModel> QuantizeQatModel(
+    absl::string_view saved_model_path, absl::string_view exported_names_str,
+    absl::string_view tags, absl::string_view quant_opts_serialized);
 
 // Apply post-training dynamic range quantization to the model.
-absl::StatusOr<GraphDef> QuantizePTQDynamicRange(
-    const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
-    const std::string& quant_opts_serialized);
+absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
+    absl::string_view saved_model_path, absl::string_view exported_names_str,
+    absl::string_view tags, absl::string_view quant_opts_serialized);
 
-absl::StatusOr<GraphDef> QuantizePTQModelPreCalibration(
-    const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags);
+absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
+    absl::string_view saved_model_path, absl::string_view exported_names_str,
+    absl::string_view tags, absl::string_view quant_opts_serialized);
 
-absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
-    const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
-    const std::string& quant_opts_serialized);
+absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
+    absl::string_view saved_model_path, absl::string_view exported_names_str,
+    absl::string_view tags, absl::string_view quant_opts_serialized);
 
 }  // namespace internal
 }  // namespace quantization

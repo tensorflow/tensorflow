@@ -16,26 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_BLAS_UTILS_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_BLAS_UTILS_H_
 
-#include <string>
-
-#include "third_party/gpus/cuda/include/cublas_v2.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/stream_executor/blas.h"
-#include "tensorflow/stream_executor/lib/status.h"
-
-#define SE_CUBLAS_RETURN_IF_ERROR(expr) \
-  TF_RETURN_IF_ERROR(::stream_executor::cuda::ToStatus(expr, #expr))
-
-namespace stream_executor {
-namespace cuda {
-
-const char* ToString(cublasStatus_t status);
-port::Status ToStatus(cublasStatus_t status, const char* prefix = "cublasLt");
-cudaDataType_t AsCudaDataType(blas::DataType type);
-cublasComputeType_t AsCublasComputeType(blas::ComputationType type);
-cublasOperation_t AsCublasOperation(blas::Transpose trans);
-
-}  // namespace cuda
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_utils.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_BLAS_UTILS_H_

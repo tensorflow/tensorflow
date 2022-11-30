@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H
-#define TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H
+#ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H_
 
 #include <climits>
 #include <cstddef>
@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/util/padding.h"
@@ -38,6 +39,15 @@ limitations under the License.
 
 namespace mlir {
 namespace tosa {
+
+LogicalResult getDynamicDims(PatternRewriter& rewriter, Value value,
+                             llvm::SmallVector<Value>& dims);
+
+llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
+                                                  Operation* op,
+                                                  Value input_value,
+                                                  ShapedType output_type,
+                                                  llvm::ArrayRef<Value> dims);
 
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
@@ -76,7 +86,8 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
 void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
                             double input_scale, int32_t input_zp,
                             std::function<double(double)> func,
-                            Value& upper_const, Value& lower_const);
+                            Value& first_const, Value& second_const,
+                            Value& third_const, Value& fourth_const);
 
 // Create a 32-bit float constant operator from a float
 Value getTosaConstTensorSingleF32(PatternRewriter& rewriter, Operation* op,
@@ -169,7 +180,11 @@ TosaOp CreateOpAndInfer(PatternRewriter& rewriter, Location loc, Type result_ty,
 
   // Compute the new type based on the joined version.
   auto newKnowledge = ValueKnowledge::join(currentKnowledge, inferredKnowledge);
-  auto new_ty = newKnowledge.getType();
+  Type new_ty =
+      newKnowledge.hasRank
+          ? Type{tensorflow::GetTypeFromTFTensorShape(
+                llvm::makeArrayRef(newKnowledge.sizes), newKnowledge.dtype)}
+          : Type{mlir::UnrankedTensorType::get(newKnowledge.dtype)};
   result.setType(new_ty);
   return op;
 }
@@ -185,4 +200,4 @@ void CreateReplaceOpAndInfer(PatternRewriter& rewriter, Operation* op,
 }  // namespace tosa
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H
+#endif  // TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H_

@@ -91,8 +91,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   TF_LITE_ENSURE_EQ(context, op_context.input->bytes, op_context.output->bytes);
-  memcpy(op_context.output->data.raw, op_context.input->data.raw,
-         op_context.input->bytes);
+  // Only copy data if input and output do not share a buffer.
+  if (op_context.output->data.data != op_context.input->data.data) {
+    memcpy(op_context.output->data.data, op_context.input->data.data,
+           op_context.input->bytes);
+  }
   return kTfLiteOk;
 }
 

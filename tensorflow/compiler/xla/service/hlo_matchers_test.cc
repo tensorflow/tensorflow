@@ -122,7 +122,7 @@ TEST_F(HloMatchersTest, CustomCallMatcher) {
 
 TEST_F(HloMatchersTest, ShapeMatcher) {
   auto p0 = HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShapeWithLayout(F32, {5, 7}, {0, 1}), "param");
+      0, ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 7}, {0, 1}), "param");
 
   EXPECT_THAT(p0.get(), op::Shape(ShapeUtil::MakeShape(F32, {5, 7})));
   EXPECT_THAT(p0.get(), op::Shape("f32[5,7]"));
@@ -137,22 +137,22 @@ TEST_F(HloMatchersTest, ShapeMatcher) {
       p0.get(),
       ::testing::Not(op::ShapeWithLayout(ShapeUtil::MakeShape(F32, {7, 5}))));
   EXPECT_THAT(p0.get(), ::testing::Not(op::ShapeWithLayout("f32[7,5]")));
-  EXPECT_THAT(p0.get(),
-              op::Shape(ShapeUtil::MakeShapeWithLayout(F32, {5, 7}, {0, 1})));
+  EXPECT_THAT(p0.get(), op::Shape(ShapeUtil::MakeShapeWithDenseLayout(
+                            F32, {5, 7}, {0, 1})));
   EXPECT_THAT(p0.get(), op::Shape("f32[5,7]{0,1}"));
-  EXPECT_THAT(p0.get(), op::ShapeWithLayout(ShapeUtil::MakeShapeWithLayout(
+  EXPECT_THAT(p0.get(), op::ShapeWithLayout(ShapeUtil::MakeShapeWithDenseLayout(
                             F32, {5, 7}, {0, 1})));
   EXPECT_THAT(p0.get(), op::ShapeWithLayout("f32[5,7]{0,1}"));
   EXPECT_THAT(p0.get(),
               ::testing::Not(op::ShapeWithLayout(
-                  ShapeUtil::MakeShapeWithLayout(F32, {5, 7}, {1, 0}))));
+                  ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 7}, {1, 0}))));
   EXPECT_THAT(p0.get(), ::testing::Not(op::ShapeWithLayout("f32[5,7]{1,0}")));
 
   EXPECT_THAT(Explain(p0.get(), op::Shape(ShapeUtil::MakeShape(F32, {7, 5}))),
               "%param = f32[5,7]{0,1} parameter(0) has incorrect shape "
               "(expected: f32[7,5])");
   EXPECT_THAT(
-      Explain(p0.get(), op::ShapeWithLayout(ShapeUtil::MakeShapeWithLayout(
+      Explain(p0.get(), op::ShapeWithLayout(ShapeUtil::MakeShapeWithDenseLayout(
                             F32, {7, 5}, {1, 0}))),
       "%param = f32[5,7]{0,1} parameter(0) has incorrect shape "
       "(expected: f32[7,5]{1,0})");
@@ -269,12 +269,12 @@ TEST_F(HloMatchersTest, ComparisonMatcher) {
 }
 
 TEST_F(HloMatchersTest, AsyncCopyMatcher) {
-  Shape shape_memspace1 = ShapeUtil::MakeShapeWithLayout(
+  Shape shape_memspace1 = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {16}, /*minor_to_major=*/{0}, /*tiles=*/{},
-      /*element_size_in_bits=*/0, /*memory_space=*/1);
-  Shape shape_memspace2 = ShapeUtil::MakeShapeWithLayout(
+      /*memory_space=*/1);
+  Shape shape_memspace2 = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {16}, /*minor_to_major=*/{0}, /*tiles=*/{},
-      /*element_size_in_bits=*/0, /*memory_space=*/2);
+      /*memory_space=*/2);
 
   auto p0 = HloInstruction::CreateParameter(0, shape_memspace1, "p0");
   auto copy_start = HloInstruction::CreateCopyStart(

@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
@@ -43,17 +44,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/tsl/framework/allocator.h"
+#include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -74,9 +74,10 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
   void SetClient(PjRtClient* client) {
     CHECK(client_ == nullptr);
     client_ = client;
-    // We have to define debug_string_ here, because platform_name() requires
-    // client_ to be set.
+    // We have to define debug_string_ and to_string_ here, because
+    // platform_name() requires client_ to be set.
     debug_string_ = absl::StrCat(platform_name(), ":", id());
+    to_string_ = absl::StrCat(platform_name(), "(id=", id(), ")");
   }
 
   int process_index() const override { return process_index_; }
@@ -109,7 +110,7 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   absl::string_view device_kind() const override { return device_kind_; }
 
-  std::string ToString() const override;
+  absl::string_view ToString() const override;
 
   absl::string_view DebugString() const override;
 
@@ -137,6 +138,7 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
   const int process_index_;
   const std::string device_kind_;
   std::string debug_string_;
+  std::string to_string_;
   PjRtClient* client_ = nullptr;
 };
 
@@ -147,7 +149,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
       std::string platform_name, LocalClient* client,
       std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
       int process_index, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
-      std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
+      std::unique_ptr<tsl::Allocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
   ~PjRtStreamExecutorClient() override = default;
@@ -199,16 +201,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
   }
 
   StatusOr<std::string> SerializeExecutable(
-      const PjRtLoadedExecutable& executable) const override {
-    return Unimplemented("SerializeExecutable not implemented on %s",
-                         platform_name());
-  }
+      const PjRtLoadedExecutable& executable) const override;
 
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
-      absl::string_view serialized, CompileOptions options) override {
-    return Unimplemented("DeserializeExecutable not implemented on %s",
-                         platform_name());
-  }
+      absl::string_view serialized, CompileOptions options) override;
 
   StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() override;
 
@@ -222,9 +218,9 @@ class PjRtStreamExecutorClient : public PjRtClient {
       const Shape& shape, PjRtDevice* device,
       std::shared_ptr<BufferSequencingEvent> definition_event);
 
-  StatusOr<std::unique_ptr<PjRtClient::AsyncBufferTransferManager>>
-  CreateBuffersForAsyncTransfer(absl::Span<const Shape> shapes,
-                                PjRtDevice* device) override {
+  StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
+                                    PjRtDevice* device) override {
     return Unimplemented("Async transfer to buffers not implemented");
   };
 
@@ -269,12 +265,12 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   LocalDeviceState& device_state(int device_ordinal) const {
     return *tensorflow::down_cast<PjRtStreamExecutorDevice*>(
-                LookupAddressableDevice(device_ordinal).ValueOrDie())
+                LookupAddressableDevice(device_ordinal).value())
                 ->local_device_state();
   }
   LocalClient* client() const { return client_; }
   se::DeviceMemoryAllocator* allocator() const { return allocator_; }
-  tensorflow::Allocator* host_memory_allocator() const {
+  tsl::Allocator* host_memory_allocator() const {
     return host_memory_allocator_.get();
   }
   bool should_stage_host_to_device_transfers() const {
@@ -285,7 +281,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return gpu_run_options_.get();
   }
 
-  tensorflow::thread::ThreadPool* thread_pool() { return &thread_pool_; }
+  tsl::thread::ThreadPool* thread_pool() { return &thread_pool_; }
 
  protected:
   friend class PjRtStreamExecutorBuffer;
@@ -339,7 +335,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   LocalClient* client_;
 
   // Allocator to be used for staging memory transfers to devices.
-  std::unique_ptr<tensorflow::Allocator> host_memory_allocator_;
+  std::unique_ptr<tsl::Allocator> host_memory_allocator_;
 
   // Device memory allocator. If owned, the allocator must outlive the devices,
   // because it is the device destructor that waits for any outstanding work to
@@ -364,7 +360,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
 
-  tensorflow::thread::ThreadPool thread_pool_;
+  tsl::thread::ThreadPool thread_pool_;
 
   absl::Mutex transpose_mu_;
   TransposePlanCache transpose_cache_ ABSL_GUARDED_BY(transpose_mu_);
@@ -545,7 +541,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
     const Type type_;
 
     // There is an invariant that if ok() then
-    // buffer_.ValueOrDie() != nullptr.
+    // buffer_.value() != nullptr.
     State state_;
     Status status_;
     std::shared_ptr<TrackedDeviceBuffer> buffer_;
@@ -737,6 +733,21 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
     return size;
   }
 
+  StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
+    if (executables_.size() != 1) {
+      return Unimplemented(
+          "Retrieving CompiledMemoryStats is not supported for multiple "
+          "executables.");
+    }
+    CompiledMemoryStats memory_stats = CompiledMemoryStats();
+    memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
+    const HloProto* proto = executables_[0]->executable()->hlo_proto();
+    if (proto != nullptr) {
+      memory_stats.serialized_hlo_proto = proto->SerializeAsString();
+    }
+    return memory_stats;
+  }
+
   const DeviceAssignment& device_assignment() const override {
     return *device_assignment_;
   }
@@ -778,6 +789,8 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
   void Delete() override { executables_.clear(); }
 
   bool IsDeleted() override { return executables_.empty(); }
+
+  bool IsReturnedFutureSupported() const override { return true; }
 
   absl::Span<const std::shared_ptr<LocalExecutable>> executables() const {
     return executables_;

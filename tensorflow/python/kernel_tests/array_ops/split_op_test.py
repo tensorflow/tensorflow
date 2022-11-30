@@ -26,8 +26,8 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
-_TEST_DTYPES = (dtypes.float32, dtypes.float64, dtypes.complex64,
-                dtypes.complex128)
+_TEST_DTYPES = (dtypes.int8, dtypes.float32, dtypes.float64, dtypes.complex64,
+                dtypes.complex128, dtypes.bfloat16)
 
 
 class SplitOpTest(test.TestCase):
@@ -325,8 +325,9 @@ class SplitOpTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testGradientsAll(self):
     for dtype in _TEST_DTYPES:
-      self._testGradientsSimple(dtype)
-      self._testGradientsSimpleVariable(dtype)
+      if not dtype.is_integer:
+        self._testGradientsSimple(dtype)
+        self._testGradientsSimpleVariable(dtype)
 
   @test_util.run_deprecated_v1
   def testShapeFunctionEdgeCases(self):

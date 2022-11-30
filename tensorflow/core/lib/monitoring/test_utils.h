@@ -20,75 +20,16 @@ limitations under the License.
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/monitoring/types.h"
 #include "tensorflow/core/platform/statusor.h"
-
+#include "tensorflow/tsl/lib/monitoring/test_utils.h"
+// NOLINTBEGIN(misc-unused-using-decls)
 namespace tensorflow {
 namespace monitoring {
 namespace testing {
-
-// Represents a `HistogramProto` but with a restricted API. This is used by
-// a `CellReader` to return collected histograms in unit tests.
-// Refer to core/framework/summary.proto for documentation of relevant fields.
-class Histogram final {
- public:
-  Histogram() = default;
-  explicit Histogram(const HistogramProto& histogram_proto)
-      : histogram_proto_(histogram_proto) {}
-
-  // Returns the number of samples.
-  double num() const;
-
-  // Returns the number of samples in the `bucket`-th bucket.
-  //
-  // The range for a bucket is:
-  //   bucket == 0:  -DBL_MAX .. bucket_limit(0)
-  //   bucket != 0:  bucket_limit(bucket - 1) .. bucket_limit(bucket)
-  double num(size_t bucket) const;
-
-  // Returns the sum of the samples.
-  double sum() const;
-
-  // Returns the sum of squares of the samples.
-  double sum_squares() const;
-
-  // Subtracts the histogram by `other`. This is used by `CellReader` to compute
-  // the delta of the metrics.
-  //
-  // REQUIRES:
-  //   - The histograms have the same bucket boundaries.
-  //   - This histogram has more or equal number of samples than `other` in
-  //     every bucket.
-  // Returns an InvalidArgument error if the requirements are violated.
-  StatusOr<Histogram> Subtract(const Histogram& other) const;
-
- private:
-  HistogramProto histogram_proto_;
-};
-
-// Represents a collected `Percentiles` but with a restricted API. Subtracting
-// two `Percentiles` does not produce a meaningful `Percentiles`, so we only
-// expose a limited API that supports testing the number and sum of the samples.
-class Percentiles final {
- public:
-  Percentiles() = default;
-  explicit Percentiles(const tensorflow::monitoring::Percentiles& percentiles)
-      : percentiles_(percentiles) {}
-
-  // Returns the number of samples.
-  size_t num() const;
-
-  // Returns the sum of samples.
-  double sum() const;
-
-  // Subtracts the percentiles by `other`. This is used by `CellReader` to
-  // compute the delta of the metrics.
-  Percentiles Subtract(const Percentiles& other) const;
-
- private:
-  tensorflow::monitoring::Percentiles percentiles_;
-};
+using tsl::monitoring::testing::Histogram;
+using tsl::monitoring::testing::Percentiles;
 
 }  // namespace testing
 }  // namespace monitoring
 }  // namespace tensorflow
-
+// NOLINTEND(misc-unused-using-decls)
 #endif  // TENSORFLOW_CORE_LIB_MONITORING_TEST_UTILS_H_

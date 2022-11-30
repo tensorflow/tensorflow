@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <fstream>
 #include <memory>
+#include <string>
 #include <unordered_map>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
@@ -1010,10 +1013,16 @@ std::unordered_map<string, DeviceProperties> GetDevices(Cluster* cluster) {
   std::unordered_map<string, DeviceProperties> devices(cluster->GetDevices());
   DeviceProperties gpu_device_properies;
   gpu_device_properies.set_type("GPU");
+#if GOOGLE_CUDA
   gpu_device_properies.set_vendor("NVIDIA");
   gpu_device_properies.mutable_environment()->insert({"architecture", "8.0"});
   gpu_device_properies.mutable_environment()->insert({"cuda", "11050"});
   gpu_device_properies.mutable_environment()->insert({"cudnn", "8302"});
+#elif TENSORFLOW_USE_ROCM
+  gpu_device_properies.set_vendor("Advanced Micro Devices, Inc");
+  gpu_device_properies.mutable_environment()->insert(
+      {"architecture", "gfx908"});
+#endif
   devices.emplace(std::make_pair("/job:localhost/replica:0/task:0/device:GPU:0",
                                  gpu_device_properies));
   return devices;
@@ -1105,8 +1114,7 @@ class AutoMixedPrecisionImpl {
       absl::flat_hash_set<int>* allow_set) const;
   void MakeCastsAllowIfAllOutputsAllow(
       absl::flat_hash_set<int>* allow_set) const;
-  NodeDef BuildCastNode(const MutableGraphView::OutputPort& src,
-                        const MutableGraphView::InputPort& dst, bool to_f16,
+  NodeDef BuildCastNode(const MutableGraphView::OutputPort& src, bool to_f16,
                         const string& device) const;
   StatusOr<NodeDef*> InsertCastNodeAtFanout(
       const absl::flat_hash_set<int>& allow_set, const bool src_is_allow,
@@ -1142,17 +1150,23 @@ class AutoMixedPrecisionImpl {
 };
 
 NodeDef AutoMixedPrecisionImpl::BuildCastNode(
-    const MutableGraphView::OutputPort& src,
-    const MutableGraphView::InputPort& dst, bool to_f16,
+    const MutableGraphView::OutputPort& src, bool to_f16,
     const string& device) const {
   DataType src_type = to_f16 ? DT_FLOAT : target_dtype_;
   DataType dst_type = to_f16 ? target_dtype_ : DT_FLOAT;
   const char* cast_string = !to_f16                    ? kCastToFp32
                             : target_dtype_ == DT_HALF ? kCastToFp16
                                                        : kCastToBf16;
-  string name =
-      strings::StrCat(src.node->name(), "-", src.port_id, "-", dst.node->name(),
-                      "-", dst.port_id, "-", cast_string, "-", kSuffix);
+
+  // Generates a unique name by adding a sequence id.
+  int id = 0;
+  std::string name;
+  do {
+    name = absl::StrCat(src.node->name(), "-", src.port_id, "-", cast_string,
+                        "-", id, "-", kSuffix);
+    ++id;
+  } while (graph_view_.GetNode(name));
+
   NodeDef node;
   node.set_name(name);
   node.set_op("Cast");
@@ -2110,8 +2124,8 @@ StatusOr<NodeDef*> AutoMixedPrecisionImpl::InsertCastNodeAtFanout(
               << (to_f16 ? DataTypeString(target_dtype_) : "DT_FLOAT") << " at "
               << src.node->op() << " " << src.node->name() << ":"
               << src.port_id;
-      added_cast_node = graph_view_.AddNode(
-          BuildCastNode(src, dst, to_f16, src.node->device()));
+      added_cast_node =
+          graph_view_.AddNode(BuildCastNode(src, to_f16, src.node->device()));
       if (to_f16 && !IsConstant(*src.node) && !IsVariable(*src.node) &&
           !NodeImplicitlyReadsNonResourceVariable(*src.node)) {
         ++num_nonvar_casts_to_f16_;
@@ -2190,7 +2204,7 @@ Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
             MutableGraphView::InputPort dst(node, port_id);
             MutableGraphView::OutputPort src = graph_view_.GetRegularFanin(dst);
             NodeDef* added_cast_node = graph_view_.AddNode(
-                BuildCastNode(src, dst, /*to_f16=*/false, src.node->device()));
+                BuildCastNode(src, /*to_f16=*/false, src.node->device()));
             VLOG(1) << "Inserting cast to DT_FLOAT at " << src.node->op() << " "
                     << src.node->name() << ":" << src.port_id;
             TF_RETURN_IF_ERROR(graph_view_.UpdateRegularFaninByPort(

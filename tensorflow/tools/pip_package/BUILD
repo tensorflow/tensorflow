@@ -64,6 +64,7 @@ transitive_hdrs(
         "//tensorflow/python/framework:python_op_gen",
         "//tensorflow/python/client:tf_session_helper",
         "//third_party/eigen3",
+        "//tensorflow/stream_executor:stream_executor_headers",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
     ]),
@@ -130,8 +131,9 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/ops/ragged:ragged_tensor_test_ops",
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/distribute:combinations",
+    "//tensorflow/python/distribute/failure_handling:check_preemption_py",
     "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
-    "//tensorflow/python/distribute/failure_handling:gce_util",
+    "//tensorflow/python/distribute/failure_handling:failure_handling_util",
     "//tensorflow/python/distribute:multi_process_runner",
     "//tensorflow/python/eager:eager_pip",
     "//tensorflow/python/keras:combinations",
@@ -191,7 +193,6 @@ filegroup(
         "@FP16//:LICENSE",
         "@FXdiv//:LICENSE",
         "@XNNPACK//:LICENSE",
-        "@arm_neon_2_x86_sse//:LICENSE",
         "@astunparse_archive//:LICENSE",
         "@boringssl//:LICENSE",
         "@com_google_absl//:LICENSE",
@@ -218,7 +219,6 @@ filegroup(
         "@llvm-project//mlir:LICENSE.TXT",
         "@lmdb//:LICENSE",
         "@local_config_tensorrt//:LICENSE",
-        "@nasm//:LICENSE",
         "@nsync//:LICENSE",
         "@opt_einsum_archive//:LICENSE",
         "@pasta//:LICENSE",
@@ -228,16 +228,19 @@ filegroup(
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
         "@sobol_data//:LICENSE",
+        "@stablehlo//:LICENSE",
         "@tblib_archive//:LICENSE",
         "@termcolor_archive//:COPYING.txt",
+        "@tf_runtime//:LICENSE",
+        "@tf_runtime//third_party/llvm_derived:LICENSE",
         "@typing_extensions_archive//:LICENSE",
         "@zlib//:zlib.h",
     ] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": [],
+        "//tensorflow:linux_aarch64": [],
+        "//conditions:default": [
+            "@arm_neon_2_x86_sse//:LICENSE",
+            "@nasm//:LICENSE",
+        ],
     }) + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -247,12 +250,7 @@ filegroup(
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
     }) + select({
-        "//tensorflow/core/kernels:xsmm": [
-            "@libxsmm_archive//:LICENSE.md",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_numa_support": [
+        "//tensorflow/tsl:with_numa_support": [
             "@hwloc//:COPYING",
         ],
         "//conditions:default": [],

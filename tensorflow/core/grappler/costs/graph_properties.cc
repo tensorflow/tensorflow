@@ -2142,7 +2142,7 @@ Status ValidateSymbolicShapeManager(const GraphDef& graph_def,
     return OkStatus();
   }
 
-  VLOG(1) << "Checking any conflics in shapes and dimensions ...";
+  VLOG(1) << "Checking any conflicts in shapes and dimensions ...";
   int64_t num_incompatible_shapes = 0;
   for (const NodeDef& node : graph_def.node()) {
     auto ctx = refiner->GetNodeContext(&node);

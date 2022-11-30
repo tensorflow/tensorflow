@@ -1,23 +1,14 @@
 # platform package
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_build_info_genrule")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_py_build_info_genrule", "tf_py_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 visibility = [
     "//tensorflow:__subpackages__",
 ]
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = visibility,
     licenses = ["notice"],
 )
@@ -59,7 +50,6 @@ py_library(
         "@absl_py//absl/flags",
         "@absl_py//absl/logging",
         "@rules_python//python/runfiles",
-        "@six_archive//:six",
     ],
 )
 
@@ -70,7 +60,6 @@ py_library(
     deps = [
         ":platform",
         "//tensorflow/python:client",
-        "@six_archive//:six",
     ],
 )
 
@@ -127,6 +116,7 @@ tf_py_test(
     ],
     python_version = "PY3",
     tags = [
+        "no_mac",  # TODO(b/259295275) re-enable after fixing sysconfig.get_path breakage
         "no_pip",
         "no_windows",
     ],
@@ -178,7 +168,10 @@ tf_py_test(
 tf_python_pybind_extension(
     name = "_pywrap_stacktrace_handler",
     srcs = ["stacktrace_handler_wrapper.cc"],
-    hdrs = ["//tensorflow/core/platform:stacktrace_handler_hdrs"],
+    hdrs = [
+        "//tensorflow/core/platform:stacktrace_handler_hdrs",
+        "//tensorflow/tsl/platform:stacktrace_handler_hdrs",
+    ],
     deps = [
         "//third_party/python_runtime:headers",
         "@pybind11",

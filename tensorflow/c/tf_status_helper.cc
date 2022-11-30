@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/platform/errors.h"
 
-namespace tensorflow {
+namespace tsl {
 
 void Set_TF_Status_from_Status(TF_Status* tf_status, const Status& status) {
   tensorflow::error::Code code = status.code();
@@ -88,4 +88,4 @@ Status StatusFromTF_Status(const TF_Status* tf_status) {
   return tf_status->status;
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

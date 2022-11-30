@@ -36,7 +36,7 @@ bool IsResource(Value value) {
 bool IsCastOfResource(Operation &op) {
   auto cast = dyn_cast<TF::CastOp>(op);
   if (!cast) return false;
-  return IsResource(cast.x());
+  return IsResource(cast.getX());
 }
 
 // Removes passthrough ops in the block. The device computation does not need
@@ -60,7 +60,7 @@ void RemoveDeadLocalVariables(Block &block) {
     }
   }
   for (auto local_var : local_vars) {
-    auto users = local_var.resource().getUsers();
+    auto users = local_var.getResource().getUsers();
     if (llvm::all_of(users, [](const Operation *user) {
           return isa<TF::AssignVariableOp>(user);
         })) {
@@ -220,8 +220,10 @@ void EliminateUnusedResultsForWhile(TF::WhileOp op) {
 
   func::FuncOp cloned_cond = CloneFunctionIfNeeded(cond);
   func::FuncOp cloned_body = CloneFunctionIfNeeded(body);
-  op.condAttr(FlatSymbolRefAttr::get(op.getContext(), cloned_cond.getName()));
-  op.bodyAttr(FlatSymbolRefAttr::get(op.getContext(), cloned_body.getName()));
+  op.setCondAttr(
+      FlatSymbolRefAttr::get(op.getContext(), cloned_cond.getName()));
+  op.setBodyAttr(
+      FlatSymbolRefAttr::get(op.getContext(), cloned_body.getName()));
 
   // Drop cond/body args and return value. WhileOp result will be dropped later
   // in EliminateUnusedResults. Traverse in reverse order so that indices to be
@@ -373,8 +375,8 @@ LogicalResult CanonicalizeRegionIfCaseCluster(Operation *op) {
 // the body, the result is replaced with the operand and all argument/results
 // and retuns values corresponding to that result are dropped.
 LogicalResult CanonicalizeWhileRegion(TF::WhileRegionOp op) {
-  Region &body = op.body();
-  Region &cond = op.cond();
+  Region &body = op.getBody();
+  Region &cond = op.getCond();
   llvm::BitVector can_eliminate(op.getNumResults());
 
   // Traverse in reverse order so that indices to be deleted stay unchanged.
@@ -423,11 +425,12 @@ LogicalResult CleanupAndCanonicalize(Operation *parent_op) {
 
     if (auto if_op = dyn_cast<TF::IfOp>(op)) {
       result = CanonicalizeFunctionalIfCase(
-          op, {if_op.then_function(), if_op.else_function()}, if_op.input());
+          op, {if_op.then_function(), if_op.else_function()}, if_op.getInput());
     } else if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
       SmallVector<func::FuncOp, 4> branches;
       case_op.get_branch_functions(branches);
-      result = CanonicalizeFunctionalIfCase(case_op, branches, case_op.input());
+      result =
+          CanonicalizeFunctionalIfCase(case_op, branches, case_op.getInput());
     } else if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
       if (while_op.cond_function().walk(check_while_cond).wasInterrupted())
         return WalkResult::interrupt();
@@ -436,7 +439,7 @@ LogicalResult CleanupAndCanonicalize(Operation *parent_op) {
                    op)) {
       result = CanonicalizeRegionIfCaseCluster(op);
     } else if (auto while_region = dyn_cast<TF::WhileRegionOp>(op)) {
-      if (while_region.cond().walk(check_while_cond).wasInterrupted())
+      if (while_region.getCond().walk(check_while_cond).wasInterrupted())
         return WalkResult::interrupt();
       // For while region, the body input and output arg should match.
       result = CanonicalizeWhileRegion(while_region);

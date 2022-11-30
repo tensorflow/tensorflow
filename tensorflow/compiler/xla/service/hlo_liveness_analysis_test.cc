@@ -15,16 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_liveness_analysis.h"
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -65,7 +65,7 @@ TEST_F(HloLivenessAnalysisTest, AddAtEntryRoot) {
     constant.2 = s32[] constant(1)
     ROOT add = s32[] add(constant.1, constant.2)
   })")
-                    .ValueOrDie();
+                    .value();
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "add"), {}));
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "constant.1"), {}));
@@ -82,7 +82,7 @@ TEST_F(HloLivenessAnalysisTest, DeadAdd) {
     add.1 = s32[] add(constant.1, constant.2)
     ROOT add.2 = s32[] add(constant.1, constant.2)
   })")
-                    .ValueOrDie();
+                    .value();
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "add.2"), {}));
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "constant.1"), {}));
@@ -100,7 +100,7 @@ TEST_F(HloLivenessAnalysisTest, TupleAtEntryRoot) {
     constant.2 = s32[] constant(1)
     ROOT tuple.1 = (s32[], s32[]) tuple(constant.1, constant.2)
   })")
-                    .ValueOrDie();
+                    .value();
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "tuple.1"), {}));
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "tuple.1"), {0}));
@@ -121,7 +121,7 @@ TEST_F(HloLivenessAnalysisTest, NestedTupleAtEntryRoot) {
     tuple.1 = (s32[], s32[]) tuple(constant.2, constant.3)
     ROOT tuple.2 = (s32[], (s32[], s32[])) tuple(constant.1, tuple.1)
   })")
-                    .ValueOrDie();
+                    .value();
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "tuple.1"), {}));
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "tuple.1"), {0}));
@@ -147,7 +147,7 @@ TEST_F(HloLivenessAnalysisTest, GteOfTuple) {
     tuple.1 = (s32[], s32[]) tuple(constant.1, constant.2)
     ROOT get-tuple-element.1 = s32[] get-tuple-element(tuple.1), index=0
   })")
-                    .ValueOrDie();
+                    .value();
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(
       liveness.IsLive(GetInstruction(module.get(), "get-tuple-element.1"), {}));
@@ -171,7 +171,7 @@ TEST_F(HloLivenessAnalysisTest, GteOfNestedTuple) {
     tuple.2 = (s32[], (s32[], s32[])) tuple(constant.1, tuple.1)
     ROOT get-tuple-element.1 = (s32[], s32[]) get-tuple-element(tuple.2), index=1
   })")
-                    .ValueOrDie();
+                    .value();
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(
       liveness.IsLive(GetInstruction(module.get(), "get-tuple-element.1"), {}));
@@ -209,7 +209,7 @@ TEST_F(HloLivenessAnalysisTest, GteOfGteOfNestedTuple) {
     get-tuple-element.1 = (s32[], s32[]) get-tuple-element(tuple.2), index=1
     ROOT get-tuple-element.2 = s32[] get-tuple-element(get-tuple-element.1), index=0
   })")
-                    .ValueOrDie();
+                    .value();
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(
       liveness.IsLive(GetInstruction(module.get(), "get-tuple-element.2"), {}));
@@ -264,7 +264,7 @@ TEST_F(HloLivenessAnalysisTest, WhileWithDeadTupleElement) {
       SimpleLoop.condition, body=SimpleLoop.body
     ROOT get-tuple-element.4 = s32[] get-tuple-element(while.0), index=0
   })")
-                    .ValueOrDie();
+                    .value();
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(
       liveness.IsLive(GetInstruction(module.get(), "get-tuple-element.4"), {}));
@@ -324,7 +324,7 @@ TEST_F(HloLivenessAnalysisTest, WhileCondPropagatesLiveness) {
       SimpleLoop.condition, body=SimpleLoop.body
     ROOT get-tuple-element.5 = s32[] get-tuple-element(while.0), index=0
   })")
-                    .ValueOrDie();
+                    .value();
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(
       liveness.IsLive(GetInstruction(module.get(), "get-tuple-element.5"), {}));
@@ -377,7 +377,7 @@ TEST_F(HloLivenessAnalysisTest, WhileWithLiveTupleElements) {
       SimpleLoop.condition, body=SimpleLoop.body
     ROOT get-tuple-element.5 = s32[] get-tuple-element(while.1), index=0
   })")
-                    .ValueOrDie();
+                    .value();
 
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(
@@ -430,7 +430,7 @@ TEST_F(HloLivenessAnalysisTest, WhileWithOutfeed) {
       body=WhileBody
     ROOT rtuple = () tuple()
   })")
-                    .ValueOrDie();
+                    .value();
 
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "add"), {}));
@@ -480,7 +480,7 @@ TEST_F(HloLivenessAnalysisTest, NestedWhileWithOutfeed) {
       body=OuterWhileBody
     ROOT rtuple = () tuple()
   })")
-                    .ValueOrDie();
+                    .value();
 
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "add"), {}));
@@ -532,8 +532,8 @@ HloModule main.67
   %minimum.55 = f32[3,32,32,3]{3,2,1,0} minimum(f32[3,32,32,3]{3,2,1,0} %maximum.54, f32[3,32,32,3]{3,2,1,0} %broadcast.46), metadata={op_name="image_sample/write_summary/summary_cond/convert_image/Minimum"}
   %convert.56 = u8[3,32,32,3]{3,2,1,0} convert(f32[3,32,32,3]{3,2,1,0} %minimum.55), metadata={op_name="image_sample/write_summary/summary_cond/convert_image"}
   %get-tuple-element.51 = token[] get-tuple-element((f32[3,32,32,3]{3,2,1,0}, token[]) %Arg_0.43), index=1, metadata={op_name="image_sample/write_summary/summary_cond"}
-  %send.57 = (u8[3,32,32,3]{3,2,1,0}, u32[], token[]) send(u8[3,32,32,3]{3,2,1,0} %convert.56, token[] %get-tuple-element.51), channel_id=2, is_host_transfer=true, sharding={maximal device=0}, frontend_attributes={_xla_host_transfer_original_type="u8",_xla_host_transfer_rendezvous="host_compute_channel_0_args_dtoh_0"}, metadata={op_name="image_sample/write_summary/summary_cond/encode_each_image/TensorArrayUnstack/TensorListFromTensor"}
-  %send-done.58 = token[] send-done((u8[3,32,32,3]{3,2,1,0}, u32[], token[]) %send.57), channel_id=2, is_host_transfer=true, sharding={maximal device=0}, frontend_attributes={_xla_host_transfer_original_type="u8",_xla_host_transfer_rendezvous="host_compute_channel_0_args_dtoh_0"}, metadata={op_name="image_sample/write_summary/summary_cond/encode_each_image/TensorArrayUnstack/TensorListFromTensor"}
+  %send.57 = (u8[3,32,32,3]{3,2,1,0}, u32[], token[]) send(u8[3,32,32,3]{3,2,1,0} %convert.56, token[] %get-tuple-element.51), channel_id=2, is_host_transfer=true, frontend_attributes={_xla_host_transfer_original_type="u8",_xla_host_transfer_rendezvous="host_compute_channel_0_args_dtoh_0"}, metadata={op_name="image_sample/write_summary/summary_cond/encode_each_image/TensorArrayUnstack/TensorListFromTensor"}
+  %send-done.58 = token[] send-done((u8[3,32,32,3]{3,2,1,0}, u32[], token[]) %send.57), channel_id=2, is_host_transfer=true, frontend_attributes={_xla_host_transfer_original_type="u8",_xla_host_transfer_rendezvous="host_compute_channel_0_args_dtoh_0"}, metadata={op_name="image_sample/write_summary/summary_cond/encode_each_image/TensorArrayUnstack/TensorListFromTensor"}
   ROOT %tuple.59 = (pred[], token[]) tuple(pred[] %constant.44, token[] %send-done.58), metadata={op_name="image_sample/write_summary/summary_cond"}
 }
 
@@ -545,8 +545,8 @@ HloModule main.67
 }
 
 ENTRY %main.67 (arg_tuple.1: (s32[])) -> () {
-  %arg_tuple.1 = (s32[]{:T(256)}) parameter(0), sharding={{maximal device=0}}
-  %get-tuple-element.2 = s32[]{:T(256)} get-tuple-element((s32[]{:T(256)}) %arg_tuple.1), index=0, sharding={maximal device=0}
+  %arg_tuple.1 = (s32[]{:T(256)}) parameter(0)
+  %get-tuple-element.2 = s32[]{:T(256)} get-tuple-element((s32[]{:T(256)}) %arg_tuple.1), index=0
   %constant.3 = s32[] constant(0)
   %compare.8 = pred[]{:T(256)} compare(s32[]{:T(256)} %get-tuple-element.2, s32[] %constant.3), direction=EQ, metadata={op_name="image_sample/write_summary/Equal"}
   %constant.5 = f32[] constant(0)
@@ -561,14 +561,14 @@ ENTRY %main.67 (arg_tuple.1: (s32[])) -> () {
   %reshape.37 = f32[3,32,32]{2,1,0} reshape(f32[3,32,32,1]{3,2,1,0} %broadcast.36), metadata={op_name="Tile"}
   %broadcast.38 = f32[3,32,32,3]{3,2,1,0} broadcast(f32[3,32,32]{2,1,0} %reshape.37), dimensions={0,1,2}, metadata={op_name="Tile"}
   %after-all.7 = token[] after-all(), metadata={op_name="image_sample/write_summary/summary_cond"}
-  %send.39 = (pred[]{:T(256)}, u32[], token[]) send(pred[]{:T(256)} %compare.8, token[] %after-all.7), channel_id=1, is_host_transfer=true, sharding={maximal device=0}, frontend_attributes={_xla_host_transfer_original_type="pred",_xla_host_transfer_rendezvous="if_predicate_channel_1_dtoh_0"}, metadata={op_name="image_sample/write_summary/summary_cond"}
-  %send-done.40 = token[] send-done((pred[]{:T(256)}, u32[], token[]) %send.39), channel_id=1, is_host_transfer=true, sharding={maximal device=0}, frontend_attributes={_xla_host_transfer_original_type="pred",_xla_host_transfer_rendezvous="if_predicate_channel_1_dtoh_0"}, metadata={op_name="image_sample/write_summary/summary_cond"}
+  %send.39 = (pred[]{:T(256)}, u32[], token[]) send(pred[]{:T(256)} %compare.8, token[] %after-all.7), channel_id=1, is_host_transfer=true, frontend_attributes={_xla_host_transfer_original_type="pred",_xla_host_transfer_rendezvous="if_predicate_channel_1_dtoh_0"}, metadata={op_name="image_sample/write_summary/summary_cond"}
+  %send-done.40 = token[] send-done((pred[]{:T(256)}, u32[], token[]) %send.39), channel_id=1, is_host_transfer=true, frontend_attributes={_xla_host_transfer_original_type="pred",_xla_host_transfer_rendezvous="if_predicate_channel_1_dtoh_0"}, metadata={op_name="image_sample/write_summary/summary_cond"}
   %tuple.41 = (f32[3,32,32,3]{3,2,1,0}, token[]) tuple(f32[3,32,32,3]{3,2,1,0} %broadcast.38, token[] %send-done.40), metadata={op_name="image_sample/write_summary/summary_cond"}
   %conditional.65 = (pred[], token[]) conditional(pred[]{:T(256)} %compare.8, (f32[3,32,32,3]{3,2,1,0}, token[]) %tuple.41, (f32[3,32,32,3]{3,2,1,0}, token[]) %tuple.41), true_computation=%region_2.42, false_computation=%region_3.60, metadata={op_name="image_sample/write_summary/summary_cond"}
   ROOT %tuple.66 = () tuple()
 }
 )")
-                    .ValueOrDie();
+                    .value();
 
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(

@@ -99,7 +99,7 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
       case XlaExpression::Kind::kTensorList: {
         arg.kind = XlaCompiler::Argument::kTensorList;
         const xla::XlaOp& tensor_list = expressions[i]->handle();
-        arg.shape = tensor_list.builder()->GetShape(tensor_list).ValueOrDie();
+        arg.shape = tensor_list.builder()->GetShape(tensor_list).value();
         break;
       }
       case XlaExpression::Kind::kInvalid:

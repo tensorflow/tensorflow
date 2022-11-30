@@ -256,6 +256,13 @@ PARSE_VALUE(ParseFloatValue, float, PyFloat_Check, PyFloat_AsDouble)
 #if PY_MAJOR_VERSION < 3
 bool ParseInt64Value(const string& key, PyObject* py_value, TF_Status* status,
                      int64_t* value) {
+  if (py_value == nullptr) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 tensorflow::strings::StrCat(
+                     "Expecting int or long value for attr ", key, "."))
+        .c_str();
+    return false;
+  }
   if (PyInt_Check(py_value)) {
     *value = static_cast<int64_t>(PyInt_AsLong(py_value));
     return true;
@@ -397,11 +404,24 @@ bool SetOpAttrList(TFE_Context* ctx, TFE_Op* op, const char* key,
   const int num_values = PySequence_Size(py_list);
   if (attr_list_sizes != nullptr) (*attr_list_sizes)[key] = num_values;
 
-#define PARSE_LIST(c_type, parse_fn)                                      \
-  std::unique_ptr<c_type[]> values(new c_type[num_values]);               \
-  for (int i = 0; i < num_values; ++i) {                                  \
-    tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i));   \
-    if (!parse_fn(key, py_value.get(), status, &values[i])) return false; \
+#define SEQUENCE_ITEM_NULL_CHECK(c_type, item)                           \
+  if (!item) {                                                           \
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,                            \
+                 tensorflow::strings::StrCat(                            \
+                     "Expecting sequence of " #c_type " for attr ", key, \
+                     ", got ", py_list->ob_type->tp_name)                \
+                     .c_str());                                          \
+    return false;                                                        \
+  }
+
+#define PARSE_LIST(c_type, parse_fn)                                    \
+  std::unique_ptr<c_type[]> values(new c_type[num_values]);             \
+  for (int i = 0; i < num_values; ++i) {                                \
+    tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i)); \
+    SEQUENCE_ITEM_NULL_CHECK(c_type, py_value);                         \
+    if (!parse_fn(key, py_value.get(), status, &values[i])) {           \
+      return false;                                                     \
+    }                                                                   \
   }
 
   if (type == TF_ATTR_STRING) {
@@ -410,6 +430,7 @@ bool SetOpAttrList(TFE_Context* ctx, TFE_Op* op, const char* key,
     for (int i = 0; i < num_values; ++i) {
       tensorflow::StringPiece value;
       tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i));
+      SEQUENCE_ITEM_NULL_CHECK(string, py_value);
       if (!ParseStringValue(key, py_value.get(), status, &value)) return false;
       values[i] = value.data();
       lengths[i] = value.size();
@@ -835,7 +856,7 @@ PyObject* gradient_function = nullptr;
 // Python function that returns output gradients given input gradients.
 PyObject* forward_gradient_function = nullptr;
 
-static std::atomic<int64_t> _uid;
+static std::atomic<int64_t> _uid = ATOMIC_VAR_INIT(int64_t{0});
 
 // This struct is responsible for marking thread_local storage as destroyed.
 // Access to the `alive` field in already-destroyed ThreadLocalDestructionMarker
@@ -910,10 +931,9 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
   if (out_status->status.ok()) {
     outputs->resize(num_outputs);
   } else {
-    TF_SetStatus(out_status, TF_GetCode(out_status),
-                 tensorflow::strings::StrCat(TF_Message(out_status),
-                                             " [Op:", op_name, "]")
-                     .c_str());
+    out_status->status = tensorflow::errors::CreateWithUpdatedMessage(
+        out_status->status, tensorflow::strings::StrCat(TF_Message(out_status),
+                                                        " [Op:", op_name, "]"));
   }
 
   Py_END_ALLOW_THREADS;

@@ -13,13 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Common helper functions used for dealing with CUDA API datatypes.
-//
-// These are typically placed here for use by multiple source components (for
-// example, BLAS and executor components).
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_HELPERS_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_HELPERS_H_
 
-#include "tensorflow/stream_executor/gpu/gpu_helpers.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_helpers.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_HELPERS_H_

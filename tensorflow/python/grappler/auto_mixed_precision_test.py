@@ -15,6 +15,7 @@
 """Tests for Grappler AutoMixedPrecision."""
 
 import os
+import re
 
 from absl.testing import parameterized
 import numpy as np
@@ -266,15 +267,15 @@ def _get_device(auto_mixed_precision_mode):
 
 
 def _is_cast_to_fp16(node_name):
-  return node_name.endswith('-CastToFp16-AutoMixedPrecision')
+  return re.match('.*-CastToFp16-[0-9]-AutoMixedPrecision$', node_name)
 
 
 def _is_cast_to_bf16(node_name):
-  return node_name.endswith('-CastToBf16-AutoMixedPrecision')
+  return re.match('.*-CastToBf16-[0-9]-AutoMixedPrecision$', node_name)
 
 
 def _is_cast_to_fp32(node_name):
-  return node_name.endswith('-CastToFp32-AutoMixedPrecision')
+  return re.match('.*-CastToFp32-[0-9]-AutoMixedPrecision$', node_name)
 
 
 def _count_casts(mode, nodes):

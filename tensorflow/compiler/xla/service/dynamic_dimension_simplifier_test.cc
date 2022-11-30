@@ -20,14 +20,14 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -62,7 +62,7 @@ TEST_F(DynamicDimensionSimplifierTest, ForwardConcat) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   DynamicDimensionSimplifier simplifier;
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Concatenate(m::Parameter(0), m::Parameter(1),
                                         m::Parameter(2))));
@@ -81,7 +81,7 @@ TEST_F(DynamicDimensionSimplifierTest, DoNotForwardConcatMultipleDims) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   DynamicDimensionSimplifier simplifier;
-  ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(simplifier.Run(m.get()).value());
 }
 
 TEST_F(DynamicDimensionSimplifierTest, ForwardConcatSlice) {
@@ -97,7 +97,7 @@ TEST_F(DynamicDimensionSimplifierTest, ForwardConcatSlice) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   DynamicDimensionSimplifier simplifier;
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Parameter(1)));
 }
@@ -115,7 +115,7 @@ TEST_F(DynamicDimensionSimplifierTest, DoNotForwardConcatSliceSizeMismatch) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   DynamicDimensionSimplifier simplifier;
-  ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(simplifier.Run(m.get()).value());
 }
 
 TEST_F(DynamicDimensionSimplifierTest, DoNotForwardConcatSliceStrided) {
@@ -131,7 +131,7 @@ TEST_F(DynamicDimensionSimplifierTest, DoNotForwardConcatSliceStrided) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   DynamicDimensionSimplifier simplifier;
-  ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(simplifier.Run(m.get()).value());
 }
 
 TEST_F(DynamicDimensionSimplifierTest, BroadcastReshapeForwarding) {
@@ -145,7 +145,7 @@ TEST_F(DynamicDimensionSimplifierTest, BroadcastReshapeForwarding) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   DynamicDimensionSimplifier simplifier;
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Parameter(0)));
 }
@@ -161,7 +161,7 @@ TEST_F(DynamicDimensionSimplifierTest, ReshapeReshapeForwarding) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   DynamicDimensionSimplifier simplifier;
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Parameter(0)));
 }
@@ -178,7 +178,7 @@ TEST_F(DynamicDimensionSimplifierTest,
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   DynamicDimensionSimplifier simplifier;
-  ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(simplifier.Run(m.get()).value());
 }
 
 TEST_F(DynamicDimensionSimplifierTest, IdConvertRemoving) {
@@ -191,7 +191,7 @@ TEST_F(DynamicDimensionSimplifierTest, IdConvertRemoving) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   DynamicDimensionSimplifier simplifier;
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Parameter(0)));
 }

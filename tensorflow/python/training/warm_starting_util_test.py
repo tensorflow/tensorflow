@@ -17,7 +17,7 @@
 import os
 
 import numpy as np
-import six
+
 from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.feature_column import feature_column_lib as fc
 from tensorflow.python.framework import dtypes
@@ -107,7 +107,7 @@ class WarmStartingUtilTest(test.TestCase):
     return cols_to_vars
 
   def _assert_cols_to_vars(self, cols_to_vars, cols_to_expected_values, sess):
-    for col, expected_values in six.iteritems(cols_to_expected_values):
+    for col, expected_values in cols_to_expected_values.items():
       for i, var in enumerate(cols_to_vars[col]):
         self.assertAllClose(expected_values[i], var.eval(sess))
 

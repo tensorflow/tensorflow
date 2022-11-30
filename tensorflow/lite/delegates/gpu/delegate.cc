@@ -24,23 +24,16 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/gpu/api.h"
 #include "tensorflow/lite/delegates/gpu/cl/api.h"
-#include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type_util.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
-#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
-#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/serialization.h"
-#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/minimal_logging.h"
 
@@ -591,22 +584,6 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 }  // namespace
 }  // namespace gpu
 }  // namespace tflite
-
-TfLiteGpuDelegateOptionsV2 TfLiteGpuDelegateOptionsV2Default() {
-  TfLiteGpuDelegateOptionsV2 options;
-  // set it to -1 to detect whether it was later adjusted.
-  options.is_precision_loss_allowed = -1;
-  options.inference_preference =
-      TFLITE_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
-  options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
-  options.inference_priority2 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO;
-  options.inference_priority3 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO;
-  options.experimental_flags = TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT;
-  options.max_delegated_partitions = 1;
-  options.model_token = nullptr;
-  options.serialization_dir = nullptr;
-  return options;
-}
 
 TfLiteDelegate* TfLiteGpuDelegateV2Create(
     const TfLiteGpuDelegateOptionsV2* options) {

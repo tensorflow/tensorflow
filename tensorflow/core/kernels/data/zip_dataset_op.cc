@@ -164,6 +164,8 @@ class ZipDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
 
+    bool SymbolicCheckpointCompatible() const override { return true; }
+
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
       TF_ASSIGN_OR_RETURN(input_contexts_,
@@ -173,6 +175,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(dataset()->inputs_[i]->MakeIterator(
             &input_contexts_[i], this, strings::StrCat(prefix(), "[", i, "]"),
             &input_impls_[i]));
+        ctx->MergeCheckpoint(input_contexts_[i].checkpoint());
       }
       return OkStatus();
     }
@@ -195,6 +198,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
         bool component_end_of_sequence = false;
         status.Update(input_impl->GetNext(&input_contexts_[i], &input_tensors,
                                           &component_end_of_sequence));
+        ctx->MergeCheckpoint(input_contexts_[i].checkpoint());
         *end_of_sequence |= component_end_of_sequence;
         // Even if an error is encountered for one of the components,
         // we need to make sure to advance all components, to keep them in sync.
@@ -209,6 +213,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
             Status s =
                 input_impls_[j]->GetNext(&input_contexts_[j], &input_tensors,
                                          &component_end_of_sequence);
+            ctx->MergeCheckpoint(input_contexts_[j].checkpoint());
           }
           break;
         }
@@ -236,12 +241,11 @@ class ZipDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      if (input_impls_.empty()) {
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kInputImplsEmpty), ""));
-      } else {
-        for (auto& input_impl : input_impls_)
-          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl));
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(full_name(kInputImplsEmpty),
+                              static_cast<int64_t>(input_impls_.empty())));
+      for (auto& input_impl : input_impls_) {
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl));
       }
       return OkStatus();
     }
@@ -249,7 +253,10 @@ class ZipDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      if (reader->Contains(full_name(kInputImplsEmpty))) {
+      int64_t inputs_empty;
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(full_name(kInputImplsEmpty), &inputs_empty));
+      if (static_cast<bool>(inputs_empty)) {
         input_impls_.clear();
       } else {
         DCHECK_EQ(input_impls_.size(), dataset()->inputs_.size());

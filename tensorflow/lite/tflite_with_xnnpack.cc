@@ -21,10 +21,8 @@ namespace tflite {
 // Corresponding weak declaration found in lite/tflite_with_xnnpack_optional.cc
 // when TFLITE_BUILD_WITH_XNNPACK_DELEGATE macro isn't defined.
 std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>
-AcquireXNNPACKDelegate(int num_threads) {
+AcquireXNNPACKDelegate() {
   auto opts = TfLiteXNNPackDelegateOptionsDefault();
-  // Note that we don't want to use the thread pool for num_threads == 1.
-  opts.num_threads = num_threads > 1 ? num_threads : 0;
   return std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>(
       TfLiteXNNPackDelegateCreate(&opts), TfLiteXNNPackDelegateDelete);
 }

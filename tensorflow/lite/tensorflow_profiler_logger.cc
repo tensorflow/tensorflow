@@ -33,11 +33,13 @@ struct Statistics {
   uint64_t total_bytes_allocated = 0LL;
   uint64_t peak_bytes_in_use = 0LL;
 };
-static Statistics g_stat;
+static Statistics g_stat_dynamic;
+static Statistics g_stat_arena;
 
 static char g_current_op_name[256];
 
 // Adds memory trace information for TensorFlow profiler.
+// `stat`: Statistics object for the (de)allocation.
 // `is_allocating`: Whether memory is being allocated or deallocated.
 // `allocation_bytes`: The number of bytes being allocated or deallocated.
 // `requested_bytes`: The number of bytes requested for allocation/deallocation.
@@ -45,21 +47,21 @@ static char g_current_op_name[256];
 //              Usually the memory address should be used.
 // `name`: The name of the tensor being allocated or deallocated.
 // `dims`: The dimension of the tensor in a string form.
-std::string AddTraceMeInternal(bool is_allocating,
+std::string AddTraceMeInternal(Statistics* stat, bool is_allocating,
                                const std::string& allocator_name,
                                int64_t tensor_id, const std::string& name,
                                const std::string& dims,
                                int64_t allocation_bytes,
                                int64_t requested_bytes) {
   if (is_allocating) {
-    g_stat.total_bytes_allocated += allocation_bytes;
+    stat->total_bytes_allocated += allocation_bytes;
   } else {
-    g_stat.total_bytes_allocated -= allocation_bytes;
+    stat->total_bytes_allocated -= allocation_bytes;
   }
-  g_stat.peak_bytes_in_use =
-      std::max(g_stat.peak_bytes_in_use, g_stat.total_bytes_allocated);
-  int64_t total_bytes_allocated = g_stat.total_bytes_allocated;
-  int64_t peak_bytes_in_use = g_stat.peak_bytes_in_use;
+  stat->peak_bytes_in_use =
+      std::max(stat->peak_bytes_in_use, stat->total_bytes_allocated);
+  int64_t total_bytes_allocated = stat->total_bytes_allocated;
+  int64_t peak_bytes_in_use = stat->peak_bytes_in_use;
 
   std::string res = tensorflow::profiler::TraceMeEncode(
       is_allocating ? "MemoryAllocation" : "MemoryDeallocation",
@@ -98,16 +100,17 @@ void AddTraceMe(bool is_allocating, TfLiteTensor* tensor,
   tensorflow::profiler::TraceMe::InstantActivity(
       [is_allocating, allocator_name, tensor_id, name, dims, allocation_bytes,
        requested_bytes]() {
-        return AddTraceMeInternal(is_allocating, allocator_name, tensor_id,
-                                  name, dims, allocation_bytes,
-                                  requested_bytes);
+        return AddTraceMeInternal(&g_stat_dynamic, is_allocating,
+                                  allocator_name, tensor_id, name, dims,
+                                  allocation_bytes, requested_bytes);
       },
       /*level=*/tensorflow::profiler::TraceMeLevel::kInfo);
 }
 
 }  // namespace
 
-void OnTfLiteOpPrepare(const char* op_name, const int node_index) {
+void OnTfLiteOpPrepare(const char* op_name, int subgraph_index,
+                       int node_index) {
   snprintf(g_current_op_name, sizeof(g_current_op_name), "%sPrepare_%d",
            op_name, node_index);
   // Updates TF's current annotation object by creating scoped annotation obj.
@@ -115,12 +118,46 @@ void OnTfLiteOpPrepare(const char* op_name, const int node_index) {
       g_current_op_name);
 }
 
-void OnTfLiteOpInvoke(const char* op_name, const int node_index) {
+tensorflow::profiler::TraceMe* OnTfLiteSubgraphInvoke(const char* name,
+                                                      int index) {
+  tensorflow::profiler::TraceMe* trace_me =
+      new tensorflow::profiler::TraceMe([name, index]() {
+        char eventName[256];
+        snprintf(eventName, sizeof(eventName), "Subgraph%d", index);
+        return tensorflow::profiler::TraceMeEncode(
+            eventName, {{"subgraph_name", name}, {"subgraph_index", index}});
+      });
+  return trace_me;
+}
+
+void OnTfLiteSubgraphInvokeEnd(tensorflow::profiler::TraceMe* trace_me) {
+  delete trace_me;
+}
+
+tensorflow::profiler::TraceMe* OnTfLiteOpInvoke(const char* op_name,
+                                                int subgraph_index,
+                                                int node_index) {
   snprintf(g_current_op_name, sizeof(g_current_op_name), "%s_%d", op_name,
            node_index);
   // Updates TF's current annotation object by creating scoped annotation obj.
   tensorflow::profiler::ScopedMemoryDebugAnnotation annotation(
       g_current_op_name);
+
+  tensorflow::profiler::TraceMe* trace_me = new tensorflow::profiler::TraceMe(
+      [op_name, subgraph_index, node_index]() {
+        char eventName[256];
+        // TF ops should have "<detail>:<op_name>" format.
+        snprintf(eventName, sizeof(eventName), "%s:%s", op_name, op_name);
+        return tensorflow::profiler::TraceMeEncode(
+            eventName, {{"is_eager", 0},
+                        {"subgraph_index", subgraph_index},
+                        {"node_index", node_index}});
+      });
+  return trace_me;
+}
+
+void OnTfLiteOpInvokeEnd(tensorflow::profiler::TraceMe* trace_me) {
+  delete trace_me;
 }
 
 void OnTfLiteTensorAlloc(TfLiteTensor* tensor, size_t num_bytes) {
@@ -132,6 +169,34 @@ void OnTfLiteTensorDealloc(TfLiteTensor* tensor) {
     size_t num_bytes = tensor->bytes;
     AddTraceMe(/*is_allocating=*/false, tensor, num_bytes);
   }
+}
+
+void AddArenaTrace(bool is_allocating, int subgraph_index, int arena_id,
+                   size_t allocation_bytes) {
+  std::string name = "Subgraph" + std::to_string(subgraph_index);
+  int64_t tensor_id = arena_id;
+  std::string dims = "";
+  int64_t requested_bytes = is_allocating ? allocation_bytes : 0;
+  const std::string allocator_name = "_tflite_arena";
+
+  tensorflow::profiler::TraceMe::InstantActivity(
+      [is_allocating, allocator_name, tensor_id, name, dims, allocation_bytes,
+       requested_bytes]() {
+        return AddTraceMeInternal(&g_stat_arena, is_allocating, allocator_name,
+                                  tensor_id, name, dims, allocation_bytes,
+                                  requested_bytes);
+      },
+      /*level=*/tensorflow::profiler::TraceMeLevel::kInfo);
+}
+
+void OnTfLiteArenaAlloc(int subgraph_index, int arena_id, size_t num_bytes) {
+  if (num_bytes == 0) return;
+  AddArenaTrace(/*is_allocating=*/true, subgraph_index, arena_id, num_bytes);
+}
+
+void OnTfLiteArenaDealloc(int subgraph_index, int arena_id, size_t num_bytes) {
+  if (num_bytes == 0) return;
+  AddArenaTrace(/*is_allocating=*/false, subgraph_index, arena_id, num_bytes);
 }
 
 }  // namespace tflite

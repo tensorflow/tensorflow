@@ -17,9 +17,15 @@ limitations under the License.
 
 #include <limits>
 #include <list>
+#include <set>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -65,7 +71,7 @@ TEST(UtilTest, VectorString) {
 
 TEST(UtilTest, LogLines) {
   // Just make sure this code runs (not verifying the output).
-  LogLines(tensorflow::INFO, "hello\n\nworld", __FILE__, __LINE__);
+  LogLines(tsl::INFO, "hello\n\nworld", __FILE__, __LINE__);
 }
 
 TEST(UtilTest, CommonFactors) {

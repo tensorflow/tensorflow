@@ -25,7 +25,7 @@ namespace dtensor {
 StatusOr<mlir::Operation*> MatMulSparseExpander::ExpandOp(mlir::Operation* op) {
   mlir::TF::MatMulOp mm = mlir::cast<mlir::TF::MatMulOp>(op);
   // If any of the transpose attributes are true, then return original op.
-  if (mm.transpose_a() || mm.transpose_b()) return op;
+  if (mm.getTransposeA() || mm.getTransposeB()) return op;
 
   // Expand to SparseTensorDenseMatMul Op only if the left operand
   // is a SparseTensor.
@@ -37,9 +37,9 @@ StatusOr<mlir::Operation*> MatMulSparseExpander::ExpandOp(mlir::Operation* op) {
         builder.create<mlir::TF::SparseTensorDenseMatMulOp>(
             op->getLoc(), op->getResultTypes(),
             mlir::ValueRange{
-                GetIndicesFromSparseTensor(op->getOperand(0)).ValueOrDie(),
-                GetValuesFromSparseTensor(op->getOperand(0)).ValueOrDie(),
-                GetDenseShapesFromSparseTensor(op->getOperand(0)).ValueOrDie(),
+                GetIndicesFromSparseTensor(op->getOperand(0)).value(),
+                GetValuesFromSparseTensor(op->getOperand(0)).value(),
+                GetDenseShapesFromSparseTensor(op->getOperand(0)).value(),
                 op->getOperand(1)});
 
     op->getResult(0).replaceAllUsesWith(new_op.getResult());

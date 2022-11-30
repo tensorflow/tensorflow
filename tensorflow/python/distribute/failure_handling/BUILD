@@ -1,6 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_library", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -14,25 +15,29 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        ":gce_util",
+        ":failure_handling_util",
         "//tensorflow/python:lib",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/distribute/failure_handling:check_preemption_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/platform",
+        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
     ],
 )
 
 py_library(
-    name = "gce_util",
+    name = "failure_handling_util",
     srcs = [
-        "gce_util.py",
+        "failure_handling_util.py",
     ],
     srcs_version = "PY3",
     deps = [
@@ -41,8 +46,9 @@ py_library(
 
 tf_py_test(
     name = "failure_handler_test",
+    timeout = "long",
     srcs = ["failure_handler_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     tags = [
         "no_windows",  # TODO(b/197981388)
     ],
@@ -78,11 +84,24 @@ tf_py_test(
     ],
     deps = [
         ":failure_handling_lib",
-        ":gce_util",
+        ":failure_handling_util",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:test_util",
+    ],
+)
+
+tf_custom_op_py_library(
+    name = "check_preemption_py",
+    kernels = [
+        "//tensorflow/core/distributed_runtime/preemption:check_preemption_op_kernel",
+        "//tensorflow/core/distributed_runtime/preemption:check_preemption_op_op_lib",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core/distributed_runtime/preemption:gen_check_preemption_op",
+        "//tensorflow/python:framework_for_generated_wrappers",
     ],
 )

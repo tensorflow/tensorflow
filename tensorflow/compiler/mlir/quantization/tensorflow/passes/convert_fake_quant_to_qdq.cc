@@ -16,6 +16,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
@@ -45,7 +46,8 @@ class ConvertFakeQuantToQdqPass
 
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect>();
-    registry.insert<QuantizationDialect>();
+    registry.insert<quant::QuantizationDialect>();
+    registry.insert<quantfork::QuantizationForkDialect>();
   }
 
   void runOnOperation() override;

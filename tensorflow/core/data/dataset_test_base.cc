@@ -25,7 +25,6 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -79,6 +78,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
+#include "tensorflow/tsl/framework/fixedpoint/FixedPoint.h"
 
 namespace tensorflow {
 namespace data {
@@ -209,6 +209,10 @@ DatasetOpsTestBase::~DatasetOpsTestBase() {
 }
 
 Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
+  if (a.dtype() != b.dtype()) {
+    return errors::Internal("Tensor dtypes don't match:\n", a.DebugString(),
+                            "\n", b.DebugString());
+  }
   switch (a.dtype()) {
 #define CASE(DT)                           \
   case DataTypeToEnum<DT>::value:          \
@@ -216,8 +220,26 @@ Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
     break;
     TF_CALL_NUMBER_TYPES(CASE);
     TF_CALL_tstring(CASE);
-    // TODO(feihugis): figure out how to support variant tensors.
 #undef CASE
+    case DT_VARIANT: {
+      if (!TensorShapeUtils::IsScalar(a.shape()) ||
+          !TensorShapeUtils::IsScalar(b.shape())) {
+        return errors::Internal("Variant tensors must be scalars:\n",
+                                a.DebugString(), "\n", b.DebugString());
+      }
+      const TestVariant* a_object = a.scalar<Variant>()().get<TestVariant>();
+      const TestVariant* b_object = b.scalar<Variant>()().get<TestVariant>();
+      if (a_object == nullptr || b_object == nullptr) {
+        return errors::Internal("Variant types must be `TestVariant`:\n",
+                                a.scalar<Variant>()().TypeName(), "\n",
+                                b.scalar<Variant>()().TypeName());
+      }
+      if (*a_object != *b_object) {
+        return errors::Internal("Variant tensors aren't equal:\n",
+                                a.DebugString(), "\n", b.DebugString());
+      }
+      break;
+    }
     default:
       return errors::Internal("Unsupported dtype: ", a.dtype());
   }
@@ -1202,6 +1224,10 @@ Status OptionsDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
 }
 
 string OptionsDatasetParams::dataset_type() const { return "Options"; }
+
+REGISTER_UNARY_VARIANT_DECODE_FUNCTION(
+    DatasetOpsTestBase::TestVariant,
+    DatasetOpsTestBase::TestVariant::kTypeName);
 
 }  // namespace data
 }  // namespace tensorflow

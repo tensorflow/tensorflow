@@ -32,7 +32,7 @@ namespace tflite {
 namespace acceleration {
 
 MinibenchmarkStatus ModelLoader::Init() {
-  if (model_) {
+  if (model_ && model_->initialized()) {
     // Already done.
     return kMinibenchmarkSuccess;
   }
@@ -40,7 +40,7 @@ MinibenchmarkStatus ModelLoader::Init() {
   if (status != kMinibenchmarkSuccess) {
     return status;
   }
-  if (!model_) {
+  if (!model_ || !model_->initialized()) {
     return kMinibenchmarkModelBuildFailed;
   }
   return kMinibenchmarkSuccess;
@@ -58,7 +58,7 @@ MinibenchmarkStatus PathModelLoader::InitInternal() {
 
 MinibenchmarkStatus MmapModelLoader::InitInternal() {
   if (model_fd_ < 0 || model_offset_ < 0 || model_size_ < 0) {
-    return kMinibenchmarkModelReadFailed;
+    return kMinibenchmarkPreconditionNotMet;
   }
   if (!MMAPAllocation::IsSupported()) {
     return kMinibenchmarkUnsupportedPlatform;
@@ -74,7 +74,7 @@ MinibenchmarkStatus MmapModelLoader::InitInternal() {
 
 MinibenchmarkStatus PipeModelLoader::InitInternal() {
   if (pipe_fd_ < 0) {
-    return kMinibenchmarkModelReadFailed;
+    return kMinibenchmarkPreconditionNotMet;
   }
 
   std::free(model_buffer_);
@@ -133,8 +133,10 @@ std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path) {
         !absl::SimpleAtoi(parts[3], &model_size)) {
       return nullptr;
     }
-    // Close the write pipe for the read process / thread.
-    close(write_fd);
+    // If set, close the write pipe for the read process / thread.
+    if (write_fd >= 0) {
+      close(write_fd);
+    }
     return std::make_unique<PipeModelLoader>(read_fd, model_size);
   }
   return std::make_unique<PathModelLoader>(path);

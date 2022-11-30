@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_TPU_TPU_EMBEDDING_CONFIGURATION_ERRORS_H_
-#define TENSORFLOW_CORE_TPU_TPU_EMBEDDING_CONFIGURATION_ERRORS_H_
+#ifndef TENSORFLOW_CORE_TPU_TPU_EMBEDDING_ERRORS_H_
+#define TENSORFLOW_CORE_TPU_TPU_EMBEDDING_ERRORS_H_
 
 #include <string>
 
@@ -65,4 +65,4 @@ bool HasTpuEmbeddingErrorMessage(const Status& status);
 
 }  // namespace tensorflow::tpu
 
-#endif  // TENSORFLOW_CORE_TPU_TPU_EMBEDDING_CONFIGURATION_ERRORS_H_
+#endif  // TENSORFLOW_CORE_TPU_TPU_EMBEDDING_ERRORS_H_

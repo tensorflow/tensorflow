@@ -17,9 +17,7 @@
 import abc
 import sys
 
-from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import composite_tensor
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
@@ -34,7 +32,7 @@ else:
 
 
 # TODO(xjun): Add CompositeTensorGradient support for SparseTensor,
-# IndexedSlices, StructuredTensor, and MaskedTensor.
+# StructuredTensor, and MaskedTensor.
 class CompositeTensorGradient(object, metaclass=abc.ABCMeta):
   """Class used to help compute gradients for CompositeTensors.
 
@@ -64,7 +62,7 @@ class CompositeTensorGradient(object, metaclass=abc.ABCMeta):
       value: A `CompositeTensor` value.
 
     Returns:
-      A nested structure of `Tensor` or `CompositeTensor`.
+      A nested structure of `Tensor` or `IndexedSlices`.
     """
     raise NotImplementedError(
         f"{type(self).__name__}.get_gradient_components()")
@@ -73,13 +71,10 @@ class CompositeTensorGradient(object, metaclass=abc.ABCMeta):
   def replace_gradient_components(self, value, component_grads):
     """Replaces the gradient components in `value` with `component_grads`.
 
-    This method may not call TensorFlow ops, since any new ops added to the
-    graph would not be propertly tracked by the gradient mechanisms.
-
     Args:
       value: A value with its gradient components compatible with
         `component_grads`.
-      component_grads: A nested structure of `Tensor` or `CompositeTensor` or
+      component_grads: A nested structure of `Tensor` or `IndexedSlices` or
         `None` (for unconnected gradients).
 
     Returns:
@@ -124,8 +119,10 @@ def _get_tensors_for_gradient(x):
         f"Type {type(x).__name__} is not supported as a gradient source or "
         "gradient target.")
   composite_gradient = x.__composite_gradient__
-  return nest.map_structure(_get_tensors_for_gradient,
-                            composite_gradient.get_gradient_components(x))
+  gradient_components = composite_gradient.get_gradient_components(x)
+  if gradient_components is x:
+    return x
+  return nest.map_structure(_get_tensors_for_gradient, gradient_components)
 
 
 def _replace_tensors_for_gradient(x, grad):
@@ -148,9 +145,12 @@ def _replace_tensors_for_gradient(x, grad):
 
   composite_gradient = x.__composite_gradient__
   x_components = composite_gradient.get_gradient_components(x)
-  grad_components = nest.map_structure_up_to(x_components,
-                                             _replace_tensors_for_gradient,
-                                             x_components, grad)
+  if x_components is x:
+    grad_components = grad
+  else:
+    grad_components = nest.map_structure_up_to(x_components,
+                                               _replace_tensors_for_gradient,
+                                               x_components, grad)
   if grad_components is None:
     return None
   return composite_gradient.replace_gradient_components(x, grad_components)
@@ -167,22 +167,7 @@ def get_flat_tensors_for_gradients(xs):
     left as-is, and `CompositeTensor`s are replaced with
     `_get_tensors_for_gradient(x)`.
   """
-  # Note: we could just return
-  # nest.flatten([_get_tensors_for_gradient(x) for x in xs]), but we
-  # manually walk over the results to give better warning messages.
-  result = []
-  for x in xs:
-    if not isinstance(x, composite_tensor.CompositeTensor):
-      result.append(x)
-    else:
-      x_tensors = nest.flatten(_get_tensors_for_gradient(x))
-      for t in x_tensors:
-        if not backprop_util.IsTrainable(t):
-          logging.log_first_n(
-              logging.WARN, "The dtype of differentiable component %s in %s "
-              "must be floating (e.g., tf.float32), got %r.", 5, t, x, t.dtype)
-      result.extend(x_tensors)
-  return result
+  return nest.flatten([_get_tensors_for_gradient(x) for x in xs])
 
 
 def replace_flat_tensors_for_gradients(xs, flat_grads):

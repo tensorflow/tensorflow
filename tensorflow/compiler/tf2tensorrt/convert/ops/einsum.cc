@@ -58,7 +58,7 @@ Status FindIndicesoOfAllValuesInSrc(absl::Span<const T> values,
     int idx = std::distance(src.begin(), iter);
     indices->push_back(idx);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Layout of the einsum dimensions: Batch, Free and Contraction indices.
@@ -137,7 +137,7 @@ class EinsumDescriptor {
         }
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CalculateMixedLayoutPermutation(
@@ -172,7 +172,7 @@ class EinsumDescriptor {
             absl::MakeConstSpan(input_labels.begin(), input_labels.size()),
             /*indices=*/&permute));
       }
-      return Status::OK();
+      return OkStatus();
     }
     if (other == nullptr) {
       AppendMatchingIndicesToPermute(types, kContract);
@@ -184,7 +184,7 @@ class EinsumDescriptor {
           /*indices=*/&permute));
     }
     AppendMatchingIndicesToPermute(types, kFree);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Initialize(const TRT_TensorOrWeights& operand, Labels input_labels,
@@ -242,7 +242,7 @@ class EinsumDescriptor {
       }
     }
     size_tensors.resize(dims.nbDims, nullptr);
-    return Status::OK();
+    return OkStatus();
   }
 
  public:
@@ -303,7 +303,7 @@ class EinsumDescriptor {
         TRT_ENSURE_PTR_OK(size_tensor);
         size_tensors[i] = (*size_tensor)->getOutput(0);
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     // If the operand is a dynamic tensor, compute the shape value dynamically.
@@ -318,7 +318,7 @@ class EinsumDescriptor {
       TRT_ENSURE_PTR_OK(slice_layer);
       size_tensors[i] = (*slice_layer)->getOutput(0);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   EinsumLayout layout;
@@ -367,7 +367,7 @@ Status GetEinsumNewDynamicShape(TRTNetworkBuilder* builder,
       builder->Concat(size, /*axis=*/0);
   TRT_ENSURE_PTR_OK(layer);
   *new_shape = (*layer)->getOutput(0);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Reshapes operand so that the free dimensions are combined into a single dim,
@@ -400,7 +400,7 @@ Status GetEinsumNewStaticShape(const EinsumDescriptor& desc,
   adap.dim(idx_f) = vol_f;
   adap.dim(idx_c) = vol_c;
   *new_dims = adap.AsTrtDims();
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<TRT_TensorOrWeights> ConditionEinsumWeights(
@@ -455,7 +455,7 @@ Status ConditionEinsumTensor(TRTNetworkBuilder* builder,
   StatusOr<nvinfer1::ITensor*> shuffle_out = shuffle->Output();
   TRT_ENSURE_PTR_OK(shuffle_out);
   *operand = std::make_unique<TRT_TensorOrWeights>(*shuffle_out);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Handles einsum operand conditioning for both constant and non-constant
@@ -479,13 +479,13 @@ Status ConditionEinsumOperand(TRTNetworkBuilder* builder,
 
   // If we didn't convert the operand to a tensor, we can return here.
   if ((*operand)->is_weights()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   TF_RETURN_IF_ERROR(ConditionEinsumTensor(builder, operand, desc,
                                            need_transpose, need_reshape));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Combines output dims/labels by copying batch and free dims/labels from input
@@ -510,12 +510,12 @@ void AssembleOutput(InputIterator begin_a, InputIterator begin_b,
 // to expand x into and y the original free dims, e.g. C is reshaped to
 // [B, f_a1, f_a2, f_a3, f_b1, f_b2]. Finally, a permutation is applied to
 // transform the shape to the shape of the original Einsum output.
-Status ShuffleEinsumOutput(OpConverterParams* params, EinsumDescriptor desc_a,
-                           EinsumDescriptor desc_b,
+Status ShuffleEinsumOutput(const OpConverterParams* params,
+                           EinsumDescriptor desc_a, EinsumDescriptor desc_b,
                            const std::vector<int>& permutation,
                            ITensorProxyPtr* output) {
   if (permutation.empty() && (desc_a.f == 1 && desc_b.f == 1)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   nvinfer1::IShuffleLayer* layer =
@@ -555,7 +555,7 @@ Status ShuffleEinsumOutput(OpConverterParams* params, EinsumDescriptor desc_a,
     layer->setSecondTranspose(p);
   }
   *output = layer->getOutput(0);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Updates "final_transpose" according to the given descriptors and output
@@ -659,17 +659,13 @@ Status ParseEquation(const std::string& equation,
 
   TRT_ENSURE_OK(out_transpose)
   *final_transpose = std::move(out_transpose).value();
-  return Status::OK();
+  return OkStatus();
 }
 
 class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
  public:
-  explicit ConvertEinsum(OpConverterParams* params)
+  explicit ConvertEinsum(const OpConverterParams* params)
       : OpConverterBase<ConvertEinsum>(params) {}
-
-  static constexpr std::array<DataType, 3> AllowedDataTypes() {
-    return {DataType::DT_FLOAT, DataType::DT_HALF};
-  }
 
   static constexpr std::array<InputArgSpec, 2> InputSpec() {
     return {InputArgSpec::Create("input_a", TrtInputArg::kBoth),
@@ -677,12 +673,8 @@ class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
   }
 
   Status Validate() {
+    TF_RETURN_IF_ERROR(NotSupportedInImplicitBatch());
     const auto& inputs = params_->inputs;
-    if (params_->use_implicit_batch) {
-      return errors::Unimplemented(
-          "Einsum converter requires dynamic shape mode");
-    }
-
     input_a = std::make_unique<TRT_TensorOrWeights>(inputs.at(0));
     input_b = std::make_unique<TRT_TensorOrWeights>(inputs.at(1));
 
@@ -690,8 +682,7 @@ class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
     TRT_ENSURE_OK(eq);
     TF_RETURN_IF_ERROR(ParseEquation(*eq, &input_a, &input_b, &descriptor_a,
                                      &descriptor_b, &final_transpose));
-
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Convert() {
@@ -716,13 +707,13 @@ class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
         params_, *input_a, *input_b, descriptor_a->layout == EinsumLayout::BCF,
         descriptor_b->layout == EinsumLayout::BFC);
     TF_RETURN_IF_ERROR(result.status());
-    ITensorProxyPtr output = result.ValueOrDie();
+    ITensorProxyPtr output = result.value();
 
     // Reshape and permute the output.
     TF_RETURN_IF_ERROR(ShuffleEinsumOutput(
         params_, *descriptor_a, *descriptor_b, final_transpose, &output));
     this->AddOutput(output);
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -786,16 +777,12 @@ class ReIndexer {
 
 class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
  public:
-  explicit ConvertEinsum(OpConverterParams* params)
+  explicit ConvertEinsum(const OpConverterParams* params)
       : OpConverterBase<ConvertEinsum>(params) {}
-
-  static constexpr std::array<DataType, 3> AllowedDataTypes() {
-    return {DataType::DT_FLOAT, DataType::DT_HALF};
-  }
 
   Status ValidateInputs() {
     TRT_ENSURE(params_->inputs.size() <= 2);
-    return Status::OK();
+    return OkStatus();
   }
   static constexpr bool HasFixNumberOfInputs() { return false; }
 
@@ -854,17 +841,13 @@ class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
       VLOG(2) << "Outer product not supported";
       return unimplemented;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Validate() {
     VLOG(2) << "Running validation using the new einsum "
                "converter";
-    if (params_->use_implicit_batch) {
-      return errors::Unimplemented(
-          "Einsum converter requires dynamic shape mode");
-    }
-
+    TF_RETURN_IF_ERROR(NotSupportedInImplicitBatch());
     StatusOr<std::string> eq = GetAttrValue<std::string>("equation");
     TRT_ENSURE_OK(eq);
 
@@ -875,7 +858,7 @@ class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
     // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#einsum-layer
     equation = MakeLowerCase(*eq);
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Convert() {
@@ -903,7 +886,7 @@ class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
 
     ITensorProxyPtr output = layer->getOutput(0);
     this->AddOutput(output);
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

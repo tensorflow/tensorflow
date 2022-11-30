@@ -38,10 +38,11 @@ namespace full_type {
 // used the correct ops), use Status - an incorrect graph is considered a user
 // error.
 
-ForwardTypeInferenceFn KeepExisting() { return nullptr; }
+TypeInferenceFn KeepExisting() { return nullptr; }
 
-ForwardTypeInferenceFn ReplicateInput(int i, int n) {
-  return [i, n](const TypeRefVector& input_types, const TypeRefMap& type_vars) {
+TypeInferenceFn ReplicateInput(int i, int n) {
+  return [i, n](const TypeRefVector& input_types,
+                const FunctionTypeInferrer& infer_function_rets) {
     const FullTypeDef& in_type = input_types.at(i).get();
     FullTypeDef ret_type;
     if (in_type.type_id() != TFT_UNSET) {
@@ -54,9 +55,10 @@ ForwardTypeInferenceFn ReplicateInput(int i, int n) {
   };
 }
 
-ForwardTypeInferenceFn Merge() {
+TypeInferenceFn Merge() {
   return [](const TypeRefVector& input_types,
-            const TypeRefMap& type_vars) -> StatusOr<FullTypeDef> {
+            const FunctionTypeInferrer& infer_function_rets)
+             -> StatusOr<FullTypeDef> {
     DCHECK(!input_types.empty());
 
     FullTypeDef merged;
@@ -92,9 +94,10 @@ ForwardTypeInferenceFn Merge() {
   };
 }
 
-ForwardTypeInferenceFn Encode(FullTypeId t, int i) {
+TypeInferenceFn Encode(FullTypeId t, int i) {
   return [t, i](const TypeRefVector& input_types,
-                const TypeRefMap& type_vars) -> StatusOr<FullTypeDef> {
+                const FunctionTypeInferrer& infer_function_rets)
+             -> StatusOr<FullTypeDef> {
     DCHECK(input_types.size() >= i);
 
     FullTypeDef ret_type;
@@ -113,9 +116,10 @@ ForwardTypeInferenceFn Encode(FullTypeId t, int i) {
   };
 }
 
-ForwardTypeInferenceFn Decode(FullTypeId t, int i) {
+TypeInferenceFn Decode(FullTypeId t, int i) {
   return [t, i](const TypeRefVector& input_types,
-                const TypeRefMap& type_vars) -> StatusOr<FullTypeDef> {
+                const FunctionTypeInferrer& infer_function_rets)
+             -> StatusOr<FullTypeDef> {
     DCHECK(input_types.size() >= i);
 
     const FullTypeDef& in_t = input_types[i].get();
@@ -140,27 +144,28 @@ ForwardTypeInferenceFn Decode(FullTypeId t, int i) {
   };
 }
 
-ForwardTypeInferenceFn UnaryContainerCreate(FullTypeId t, int element_idx) {
-  return
-      [t, element_idx](const TypeRefVector& input_types,
-                       const TypeRefMap& type_vars) -> StatusOr<FullTypeDef> {
-        DCHECK(input_types.size() >= element_idx);
+TypeInferenceFn UnaryContainerCreate(FullTypeId t, int element_idx) {
+  return [t, element_idx](const TypeRefVector& input_types,
+                          const FunctionTypeInferrer& infer_function_rets)
+             -> StatusOr<FullTypeDef> {
+    DCHECK(input_types.size() >= element_idx);
 
-        FullTypeDef ret_type;
-        ret_type.set_type_id(TFT_PRODUCT);
-        FullTypeDef* arg_t = ret_type.add_args();
-        arg_t->set_type_id(t);
-        *(arg_t->add_args()) = input_types[element_idx].get();
+    FullTypeDef ret_type;
+    ret_type.set_type_id(TFT_PRODUCT);
+    FullTypeDef* arg_t = ret_type.add_args();
+    arg_t->set_type_id(t);
+    *(arg_t->add_args()) = input_types[element_idx].get();
 
-        return ret_type;
-      };
+    return ret_type;
+  };
 }
 
-ForwardTypeInferenceFn UnaryContainerAdd(FullTypeId t, int container_idx,
-                                         int element_idx, bool homogeneous) {
+TypeInferenceFn UnaryContainerAdd(FullTypeId t, int container_idx,
+                                  int element_idx, bool homogeneous) {
   return [t, container_idx, element_idx, homogeneous](
              const TypeRefVector& input_types,
-             const TypeRefMap& type_vars) -> StatusOr<FullTypeDef> {
+             const FunctionTypeInferrer& infer_function_rets)
+             -> StatusOr<FullTypeDef> {
     DCHECK(input_types.size() >= container_idx);
     DCHECK(input_types.size() >= element_idx);
 
@@ -225,10 +230,11 @@ ForwardTypeInferenceFn UnaryContainerAdd(FullTypeId t, int container_idx,
   };
 }
 
-ForwardTypeInferenceFn MultiaryUnstack(
+TypeInferenceFn MultiaryUnstack(
     FullTypeId t, std::function<FullTypeDef(const FullTypeDef&)> unstack) {
   return [t, unstack](const TypeRefVector& input_types,
-                      const TypeRefMap& type_vars) -> StatusOr<FullTypeDef> {
+                      const FunctionTypeInferrer& infer_function_rets)
+             -> StatusOr<FullTypeDef> {
     FullTypeDef ret_type;
     ret_type.set_type_id(TFT_PRODUCT);
     FullTypeDef* cont_t = ret_type.add_args();
@@ -256,12 +262,12 @@ FullTypeDef UnstackTensor(const FullTypeDef& t) {
   return t;
 }
 
-ForwardTypeInferenceFn ContainerMap(
+TypeInferenceFn ContainerMap(
     FullTypeId t, int input_idx,
     std::function<FullTypeDef(const FullTypeDef&)> map) {
-  return [t, input_idx, map](
-             const TypeRefVector& input_types,
-             const TypeRefMap& type_vars) -> StatusOr<FullTypeDef> {
+  return [t, input_idx, map](const TypeRefVector& input_types,
+                             const FunctionTypeInferrer& infer_function_rets)
+             -> StatusOr<FullTypeDef> {
     DCHECK_GE(input_types.size(), input_idx);
     const FullTypeDef& in_cont_t = input_types.at(input_idx).get();
     FullTypeDef ret_type;
@@ -294,10 +300,11 @@ ForwardTypeInferenceFn ContainerMap(
   };
 }
 
-ForwardTypeInferenceFn MapCovariant(FullTypeId t, FullTypeId u, int input_idx) {
+TypeInferenceFn MapCovariant(FullTypeId t, FullTypeId u, int input_idx) {
   return
       [t, u, input_idx](const TypeRefVector& input_types,
-                        const TypeRefMap& type_vars) -> StatusOr<FullTypeDef> {
+                        const FunctionTypeInferrer& infer_function_rets)
+          -> StatusOr<FullTypeDef> {
         DCHECK_GE(input_types.size(), input_idx);
         const FullTypeDef& in_t = input_types.at(input_idx).get();
         FullTypeDef ret_type;
@@ -315,6 +322,18 @@ ForwardTypeInferenceFn MapCovariant(FullTypeId t, FullTypeId u, int input_idx) {
         *t->mutable_args() = in_t.args();
         return ret_type;
       };
+}
+
+TypeInferenceFn FunctionCall(const string& func_attr_name) {
+  return [func_attr_name](const TypeRefVector& input_types,
+                          const FunctionTypeInferrer& infer_function_rets)
+             -> StatusOr<FullTypeDef> {
+    // TODO(b/224776031): Look up function name from attribute here.
+    // This could be done by passing the node attributes to the lambda.
+    // TODO(b/224776031): Is there a cleaner way to represent these
+    // function-dependent types?
+    return infer_function_rets(func_attr_name, input_types);
+  };
 }
 
 FullTypeDef BatchTensor(const FullTypeDef& t) {

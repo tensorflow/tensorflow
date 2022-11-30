@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_binary", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/lite:__subpackages__",
         "//tensorflow/tools/pip_package:__subpackages__",

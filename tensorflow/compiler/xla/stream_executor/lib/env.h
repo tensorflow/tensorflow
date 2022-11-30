@@ -16,16 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LIB_ENV_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LIB_ENV_H_
 
+#include <string>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace stream_executor {
 namespace port {
 
-using tensorflow::Env;
-using tensorflow::Thread;
+using tsl::Env;     // NOLINT(misc-unused-using-decls)
+using tsl::Thread;  // NOLINT(misc-unused-using-decls)
 
 inline Status FileExists(const std::string& filename) {
   return Env::Default()->FileExists(filename);

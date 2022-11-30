@@ -91,7 +91,7 @@ def _get_checkpoint_size(prefix):
   return size
 
 
-class BaseSaverBuilder(object):
+class BaseSaverBuilder:
   """Base class for Savers.
 
   Can be extended to create different Ops.
@@ -636,7 +636,7 @@ def _get_saver_or_default():
 
 
 @tf_export(v1=["train.Saver"])
-class Saver(object):
+class Saver:
   # pylint: disable=line-too-long
   """Saves and restores variables.
 

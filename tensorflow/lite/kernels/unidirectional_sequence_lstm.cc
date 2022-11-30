@@ -1151,6 +1151,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context,
                       GetTemporarySafe(context, node, kRowSums, &row_sums));
     row_sums->type = kTfLiteInt32;
+    row_sums->name = "Lstm_row_sums";
     row_sums->allocation_type = kTfLiteArenaRwPersistent;
     int row_sums_rows = use_cifg ? 6 : 8;
     const TfLiteTensor* projection_weights = GetOptionalInputTensor(

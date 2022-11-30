@@ -13,12 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// IWYU pragma: private, include "third_party/tensorflow/stream_executor/stream_executor.h"
 
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LIB_ERROR_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LIB_ERROR_H_
 
-#include "tensorflow/core/protobuf/error_codes.pb.h"  // IWYU pragma: export
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"  // IWYU pragma: export
 
 namespace stream_executor {
 namespace port {

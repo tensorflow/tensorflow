@@ -351,8 +351,9 @@ class TRTNetworkBuilder {
     } else {
       *pTensor = input.tensor();
     }
-    return Status::OK();
+    return OkStatus();
   }
+
   // Creates a nvinfer1::Weights object containing a single scalar.
   template <typename T,
             typename std::enable_if<std::is_pod<T>::value>::type* = nullptr>

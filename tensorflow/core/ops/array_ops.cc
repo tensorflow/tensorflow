@@ -606,7 +606,7 @@ REGISTER_OP("SplitV")
     .Output("output: num_split * T")
     .Attr("num_split: int >= 1")
     .Attr("T: type")
-    .Attr("Tlen: {int32, int64} = DT_INT64")
+    .Attr("Tlen: {int8, int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       DimensionHandle split_dimension;
       ShapeHandle input = c->input(0);
@@ -2811,7 +2811,7 @@ REGISTER_OP("OneHot")
     .Attr("axis: int = -1")
     .Output("output: T")
     .Attr("T: type")
-    .Attr("TI: {uint8, int32, int64} = DT_INT64")
+    .Attr("TI: {uint8, int8, int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       int32_t axis;
       TF_RETURN_IF_ERROR(c->GetAttr("axis", &axis));
@@ -2879,6 +2879,10 @@ REGISTER_OP("QuantizeAndDequantizeV2")
                                        axis);
       } else if (axis != -1) {
         ShapeHandle input;
+        if (axis >= kint32max) {
+          return errors::InvalidArgument(
+              "Axis cannot be >= kint32max value, got ", axis);
+        }
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
         DimensionHandle depth;
         TF_RETURN_IF_ERROR(
@@ -2914,6 +2918,10 @@ REGISTER_OP("QuantizeAndDequantizeV4")
                                        axis);
       } else if (axis != -1) {
         ShapeHandle input;
+        if (axis >= kint32max) {
+          return errors::InvalidArgument(
+              "Axis cannot be >= kint32max value, got ", axis);
+        }
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
         DimensionHandle depth;
         TF_RETURN_IF_ERROR(
@@ -2945,6 +2953,10 @@ REGISTER_OP("QuantizeAndDequantizeV4Grad")
                                        axis);
       } else if (axis != -1) {
         ShapeHandle input;
+        if (axis >= kint32max) {
+          return errors::InvalidArgument(
+              "Axis cannot be >= kint32max value, got ", axis);
+        }
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
         DimensionHandle depth;
         TF_RETURN_IF_ERROR(
@@ -2981,6 +2993,10 @@ REGISTER_OP("QuantizeAndDequantizeV3")
                                        axis);
       } else if (axis != -1) {
         ShapeHandle input;
+        if (axis >= kint32max) {
+          return errors::InvalidArgument(
+              "Axis cannot be >= kint32max value, got ", axis);
+        }
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
         DimensionHandle depth;
         TF_RETURN_IF_ERROR(

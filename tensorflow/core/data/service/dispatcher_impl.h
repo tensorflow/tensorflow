@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/time.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dataset_store.h"
@@ -343,7 +342,7 @@ class DataServiceDispatcherImpl {
   absl::flat_hash_map<int64_t, absl::Time> latest_client_heartbeats_time_
       TF_GUARDED_BY(mu_);
 
-  absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
+  std::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);
   DispatcherState state_ TF_GUARDED_BY(mu_);
   // Condition variable for waking up the iteration gc thread.

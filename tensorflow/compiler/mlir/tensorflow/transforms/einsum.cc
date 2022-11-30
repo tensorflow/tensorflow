@@ -35,7 +35,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Regex.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -47,7 +47,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
@@ -100,7 +100,8 @@ TF::TransposeOp createTransposeOp(Value value, Location loc,
 TF::ReshapeOp createReshapeOp(Value value, ArrayRef<int64_t> shape,
                               Type element_type, Location loc,
                               PatternRewriter* rewriter) {
-  auto shape_tensor = createI64ConstantOp(shape, loc, rewriter);
+  auto shape_tensor = createI64ConstantOp(
+      tensorflow::ConvertMlirShapeToTF(shape), loc, rewriter);
   Type resultType = RankedTensorType::get(shape, element_type);
   return rewriter->create<TF::ReshapeOp>(loc, resultType, /*tensor=*/value,
                                          /*shape=*/shape_tensor);
@@ -357,13 +358,13 @@ llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
 
   // Try to flatten the "..." if possible.
   int lhs_named_label, rhs_named_label;
-  auto avaiable_labels =
+  auto available_labels =
       GetAvailableLabels(lhs, rhs, &lhs_named_label, &rhs_named_label);
-  if (!avaiable_labels.has_value()) return llvm::None;
+  if (!available_labels.has_value()) return llvm::None;
 
   auto flattended_labels =
       FlattenEllipsis(lhs, lhs_named_label, rhs, rhs_named_label, out, lhs_ty,
-                      rhs_ty, avaiable_labels.getValue());
+                      rhs_ty, available_labels.getValue());
 
   lhs = std::get<0>(flattended_labels);
   rhs = std::get<1>(flattended_labels);
@@ -630,7 +631,7 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
                                    PatternRewriter& rewriter) {
   if (!dnums.lhs.empty() || !dnums.rhs.empty()) return failure();
 
-  auto inputs = op.inputs();
+  auto inputs = op.getInputs();
   if (inputs.size() != 2) return failure();
   Value lhs = inputs.front();
   Value rhs = inputs.back();
@@ -680,9 +681,12 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
   return success();
 }
 
+#define GEN_PASS_DEF_TRANSFORMEINSUMPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Transform Einsum to other TF Ops for the supported variants.
 struct TransformEinsumPass
-    : public TransformEinsumPassBase<TransformEinsumPass> {
+    : public impl::TransformEinsumPassBase<TransformEinsumPass> {
   void runOnOperation() override;
 };
 
@@ -710,7 +714,8 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
   // dynamic dimension is always supported. If there are two or more dynamic
   // dimensions, it is supported if they only exist in a single component
   // among: L0,...,Ln R0,...,Rn or C0,...,Cn.
-  if (const auto dnums_or = GetEinsumDimensionNumbers(op.equation(), lhs, rhs))
+  if (const auto dnums_or =
+          GetEinsumDimensionNumbers(op.getEquation(), lhs, rhs))
     return rewriteToBatchMatmul(op, dnums_or.getValue(), rewriter);
   return rewriter.notifyMatchFailure(op, "unsupported einsum lowering");
 }

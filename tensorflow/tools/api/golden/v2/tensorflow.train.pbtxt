@@ -17,6 +17,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CheckpointView"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "ClusterDef"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }

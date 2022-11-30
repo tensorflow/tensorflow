@@ -96,7 +96,7 @@ Status StackNonRaggedTensors(
     RaggedTensorVariant* output_ragged) {
   if (ragged_components.empty()) {
     output_ragged->set_values(Tensor(DataTypeToEnum<VALUE_TYPE>::value, {0}));
-    return Status::OK();
+    return OkStatus();
   }
 
   TensorShape component_values_shape = ragged_components[0].values().shape();
@@ -120,7 +120,7 @@ Status StackNonRaggedTensors(
       output_values_flat(values_index++) = component_values_flat(j);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename VALUE_TYPE, typename SPLIT_TYPE>

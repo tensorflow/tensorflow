@@ -60,6 +60,16 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
+  HloVerifierOpts&& VerifyCustomCallNestedComputationThreadName() {
+    verify_custom_call_nested_computation_thread_name = true;
+    return std::move(*this);
+  }
+
+  HloVerifierOpts&& WithAllowBitcastToHaveDifferentSize(bool allow) {
+    allow_bitcast_to_have_different_size = allow;
+    return std::move(*this);
+  }
+
   HloVerifierOpts&& WithInstructionCanChangeLayout(
       const HloPredicate& instruction_can_change_layout_p) {
     instruction_can_change_layout = instruction_can_change_layout_p;
@@ -68,6 +78,11 @@ struct HloVerifierOpts {
 
   HloVerifierOpts&& WithCustomShapeSize(const ShapeSizeFn& shape_size_p) {
     shape_size = shape_size_p;
+    return std::move(*this);
+  }
+
+  HloVerifierOpts&& WithVerifyShardingDeviceNumbers(bool verify) {
+    verify_sharding_device_numbers = verify;
     return std::move(*this);
   }
 
@@ -101,6 +116,16 @@ struct HloVerifierOpts {
   // Check that reshape is a physical bitcast.
   bool verify_reshape_is_bitcast = false;
 
+  // Check that custom call's called computations have same thread name as
+  // parent computation.
+  bool verify_custom_call_nested_computation_thread_name = true;
+
+  // Check device numbers in sharding verification.
+  bool verify_sharding_device_numbers = true;
+
+  // Whether bitcast should have the same size, including all paddings.
+  bool allow_bitcast_to_have_different_size = false;
+
   HloPredicate instruction_can_change_layout;
 
   // Returns a target-specific shape size.
@@ -129,6 +154,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleIota(HloInstruction* hlo) override;
   Status HandleConvert(HloInstruction* convert) override;
   Status HandleBitcastConvert(HloInstruction* convert) override;
+  Status HandleStochasticConvert(HloInstruction* convert) override;
   Status HandleCopy(HloInstruction* copy) override;
   Status HandleDot(HloInstruction* dot) override;
   Status HandleConvolution(HloInstruction* convolution) override;

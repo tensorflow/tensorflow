@@ -17,9 +17,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -69,14 +69,14 @@ void TestWithDeviceCount(const int device_count) {
       auto executables,
       client->Compile(xla_computation, {}, xla::ExecutableBuildOptions{}));
   std::unique_ptr<LocalExecutable> executable = std::move(executables[0]);
-  std::vector<tensorflow::Thread*> threads;
+  std::vector<tsl::Thread*> threads;
   absl::Mutex results_mutex;
   std::vector<std::pair<int, StatusOr<ScopedShapedBuffer>>> results;
-  tensorflow::Env* env = tensorflow::Env::Default();
+  tsl::Env* env = tsl::Env::Default();
   for (int device_ordinal = 0; device_ordinal < device_count;
        device_ordinal++) {
-    tensorflow::Thread* t = env->StartThread(
-        tensorflow::ThreadOptions{}, absl::StrCat("thread-", device_ordinal),
+    tsl::Thread* t = env->StartThread(
+        tsl::ThreadOptions{}, absl::StrCat("thread-", device_ordinal),
         [&executable, device_ordinal, client, &results_mutex, &results] {
           CompileAndExecute(executable.get(), device_ordinal, client,
                             &results_mutex, &results);

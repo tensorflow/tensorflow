@@ -32,8 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 // Parallel two-sided Jacobi symmetric eigendecomposition.
 //
@@ -146,7 +145,7 @@ StatusOr<Eigh2x2> HermitianEigenDecomposition2x2(XlaOp w_tl, XlaOp w_tr,
 // )
 void ApplyJacobiRotationOverRows(Eigh2x2 rotation, XlaOp& tl, XlaOp& tr,
                                  XlaOp& bl, XlaOp& br) {
-  Shape shape = tl.builder()->GetShape(tl).ValueOrDie();
+  Shape shape = tl.builder()->GetShape(tl).value();
   std::vector<int64_t> broadcast_dims(shape.dimensions().size() - 1);
   absl::c_iota(broadcast_dims, 0);
   auto c = BroadcastInDim(rotation.c, shape.dimensions(), broadcast_dims);
@@ -166,7 +165,7 @@ void ApplyJacobiRotationOverRows(Eigh2x2 rotation, XlaOp& tl, XlaOp& tr,
 // )
 void ApplyJacobiRotationOverCols(Eigh2x2 rotation, XlaOp& tl, XlaOp& tr,
                                  XlaOp& bl, XlaOp& br) {
-  Shape shape = tl.builder()->GetShape(tl).ValueOrDie();
+  Shape shape = tl.builder()->GetShape(tl).value();
   std::vector<int64_t> broadcast_dims(shape.dimensions().size() - 1);
   absl::c_iota(broadcast_dims, 0);
   broadcast_dims.back() = shape.dimensions().size() - 1;
@@ -190,7 +189,7 @@ void ApplyJacobiRotationOverCols(Eigh2x2 rotation, XlaOp& tl, XlaOp& tr,
 //   return top_out, bottom_out
 void PermuteRowsInColumn(XlaOp& top, XlaOp& bottom) {
   XlaBuilder* builder = top.builder();
-  Shape shape = builder->GetShape(top).ValueOrDie();
+  Shape shape = builder->GetShape(top).value();
   int64_t k = ShapeUtil::GetDimension(shape, -1);
   if (k <= 1) {
     return;
@@ -210,7 +209,7 @@ void PermuteRowsInColumn(XlaOp& top, XlaOp& bottom) {
 
 void PermuteColumnsInRow(XlaOp& left, XlaOp& right) {
   XlaBuilder* builder = left.builder();
-  Shape shape = builder->GetShape(left).ValueOrDie();
+  Shape shape = builder->GetShape(left).value();
   int64_t k = ShapeUtil::GetDimension(shape, -1);
   if (k <= 1) {
     return;
@@ -548,7 +547,7 @@ StatusOr<HloInstruction*> EighExpander::ExpandInstruction(
       absl::StrFormat("xla.%s_%s", instruction->custom_call_target(),
                       instruction->operand(0)->shape().ToString());
 
-  HloModule* module = instruction->parent()->parent();
+  HloModule* module = instruction->GetModule();
 
   HloComputation*& computation =
       computation_cache_.emplace(name, nullptr).first->second;

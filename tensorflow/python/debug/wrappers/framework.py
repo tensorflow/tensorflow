@@ -98,8 +98,6 @@ import abc
 import re
 import threading
 
-import six
-
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.lib import debug_utils
@@ -128,7 +126,7 @@ def _check_type(obj, expected_types):
                     (expected_types, type(obj)))
 
 
-class OnSessionInitRequest(object):
+class OnSessionInitRequest:
   """Request to an on-session-init callback.
 
   This callback is invoked during the __init__ call to a debug-wrapper session.
@@ -145,7 +143,7 @@ class OnSessionInitRequest(object):
     self.session = sess
 
 
-class OnSessionInitAction(object):
+class OnSessionInitAction:
   """Enum-like values for possible action to take on session init."""
 
   # Proceed, without special actions, in the wrapper session initialization.
@@ -161,7 +159,7 @@ class OnSessionInitAction(object):
   REMOTE_INSTR_LOOP = "remote_instr_loop"
 
 
-class OnSessionInitResponse(object):
+class OnSessionInitResponse:
   """Response from an on-session-init callback."""
 
   def __init__(self, action):
@@ -174,7 +172,7 @@ class OnSessionInitResponse(object):
     self.action = action
 
 
-class OnRunStartRequest(object):
+class OnRunStartRequest:
   """Request to an on-run-start callback.
 
   This callback is invoked during a run() call of the debug-wrapper
@@ -205,7 +203,7 @@ class OnRunStartRequest(object):
     self.is_callable_runner = is_callable_runner
 
 
-class OnRunStartAction(object):
+class OnRunStartAction:
   """Enum-like values for possible action to take on start of a run() call."""
 
   # Run once with debug tensor-watching.
@@ -219,7 +217,7 @@ class OnRunStartAction(object):
 
 
 
-class OnRunStartResponse(object):
+class OnRunStartResponse:
   """Request from an on-run-start callback.
 
   The caller of the callback can use this response object to specify what
@@ -267,7 +265,7 @@ class OnRunStartResponse(object):
         tolerate_debug_op_creation_failures)
 
 
-class OnRunEndRequest(object):
+class OnRunEndRequest:
   """Request to an on-run-end callback.
 
   The callback is invoked immediately before the wrapped run() call ends.
@@ -301,7 +299,7 @@ class OnRunEndRequest(object):
     self.tf_error = tf_error
 
 
-class OnRunEndResponse(object):
+class OnRunEndResponse:
   """Response from an on-run-end callback."""
 
   def __init__(self):
@@ -310,8 +308,7 @@ class OnRunEndResponse(object):
     pass
 
 
-@six.add_metaclass(abc.ABCMeta)
-class BaseDebugWrapperSession(session.SessionInterface):
+class BaseDebugWrapperSession(session.SessionInterface, metaclass=abc.ABCMeta):
   """Base class of debug-wrapper session classes.
 
   Concrete classes that inherit from this class need to implement the abstract
@@ -828,7 +825,7 @@ class BaseDebugWrapperSession(session.SessionInterface):
           "Do you intend to wrap a tf.MonitoredSession instead?" % self._sess)
 
 
-class WatchOptions(object):
+class WatchOptions:
   """Type for return values of watch_fn."""
 
   def __init__(self,

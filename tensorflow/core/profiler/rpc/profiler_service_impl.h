@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 
 namespace tensorflow {
 namespace profiler {

@@ -19,7 +19,6 @@ import unittest
 
 from absl.testing import parameterized
 import numpy as np
-import six
 
 from tensorflow.python import tf2
 from tensorflow.python.checkpoint import checkpoint as trackable
@@ -31,7 +30,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -461,7 +459,7 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
         "n/a",
         experimental_is_anonymous=is_anonymous)
 
-    @function.defun()
+    @def_function.function
     def lookup_table_func(k):
       return table.lookup(k)
 
@@ -476,7 +474,7 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     keys = constant_op.constant([0, 1, 2], dtypes.int32)
     values = constant_op.constant(["brain", "salad", "surgery"])
 
-    @function.defun()
+    @def_function.function
     def lookup_table_func(k):
       table = self.getHashTable()(
           lookup_ops.KeyValueTensorInitializer(keys, values),
@@ -1863,7 +1861,7 @@ class DenseHashTableOpTest(test.TestCase):
       self.assertAllEqual(32, len(table.export()[0].eval()))
 
       val = save.save(sess, save_path)
-      self.assertIsInstance(val, six.string_types)
+      self.assertIsInstance(val, str)
       self.assertEqual(save_path, val)
 
     with self.session(graph=ops.Graph()) as sess:
@@ -1932,7 +1930,7 @@ class DenseHashTableOpTest(test.TestCase):
       self.assertAllEqual(32, len(table.export()[0].eval()))
 
       val = save.save(sess, save_path)
-      self.assertIsInstance(val, six.string_types)
+      self.assertIsInstance(val, str)
       self.assertEqual(save_path, val)
 
     with self.session(graph=ops.Graph()) as sess:
@@ -2123,7 +2121,7 @@ class DenseHashTableOpTest(test.TestCase):
       self.assertAllEqual(32, len(table.export()[0].eval()))
 
       val = save.save(sess, save_path)
-      self.assertIsInstance(val, six.string_types)
+      self.assertIsInstance(val, str)
       self.assertEqual(save_path, val)
 
     with self.session(graph=ops.Graph()) as sess:
@@ -2198,7 +2196,7 @@ class DenseHashTableOpTest(test.TestCase):
       self.assertAllEqual(32, len(table.export()[0].eval()))
 
       val = save.save(sess, save_path)
-      self.assertIsInstance(val, six.string_types)
+      self.assertIsInstance(val, str)
       self.assertEqual(save_path, val)
 
     with self.session(graph=ops.Graph()) as sess:
@@ -3415,7 +3413,7 @@ class MutableHashTableOpTest(test.TestCase):
       self.assertAllEqual(3, self.evaluate(table.size()))
 
       val = save.save(sess, save_path)
-      self.assertIsInstance(val, six.string_types)
+      self.assertIsInstance(val, str)
       self.assertEqual(save_path, val)
 
     with self.session(graph=ops.Graph()) as sess:
@@ -3484,7 +3482,7 @@ class MutableHashTableOpTest(test.TestCase):
       self.assertAllEqual(3, self.evaluate(table.size()))
 
       val = save.save(sess, save_path)
-      self.assertIsInstance(val, six.string_types)
+      self.assertIsInstance(val, str)
       self.assertEqual(save_path, val)
 
     with self.session(graph=ops.Graph()) as sess:

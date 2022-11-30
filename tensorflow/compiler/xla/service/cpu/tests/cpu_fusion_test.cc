@@ -17,17 +17,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace cpu {
@@ -67,7 +67,7 @@ TEST_F(CpuFusionTest, FuseTwoElementwiseOps) {
   module->AddEntryComputation(builder.Build());
 
   CpuInstructionFusion fusion;
-  EXPECT_TRUE(fusion.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(fusion.Run(module.get()).value());
 
   // The computation root instruction was fused. Verify the fusion instruction
   // is now the root.
@@ -114,7 +114,7 @@ TEST_F(CpuFusionTest, FuseElementwiseOpChain) {
   module->AddEntryComputation(builder.Build());
 
   CpuInstructionFusion fusion;
-  EXPECT_TRUE(fusion.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(fusion.Run(module.get()).value());
 
   // The computation root instruction was fused. Verify the fusion instruction
   // is now the root.
@@ -189,7 +189,7 @@ TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusibleInstruction) {
   module->AddEntryComputation(builder.Build());
 
   CpuInstructionFusion fusion;
-  EXPECT_TRUE(fusion.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(fusion.Run(module.get()).value());
 
   // The computation root instruction was fused. Verify the fusion instruction
   // is now the root.
@@ -261,7 +261,7 @@ TEST_F(CpuFusionTest, TestOperandOrderToAvoidDuplication) {
 
   // Run fusion.
   CpuInstructionFusion fusion;
-  EXPECT_TRUE(fusion.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(fusion.Run(module.get()).value());
 
   auto fusion1 = result->operand(0);
   auto fusion2 = result->operand(1);
@@ -317,7 +317,7 @@ TEST_F(CpuFusionTest, DoNotDuplicateExpensiveOps) {
   module->AddEntryComputation(builder.Build());
 
   CpuInstructionFusion fusion;
-  EXPECT_TRUE(fusion.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(fusion.Run(module.get()).value());
 
   // The only fusion instruction should be operand 0 of the tuple (formerly
   // negate1).

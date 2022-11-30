@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -163,7 +164,8 @@ void ConvertToMlirShape(const TensorShape& input_shape,
                         llvm::SmallVectorImpl<int64_t>* shape) {
   shape->reserve(input_shape.dims());
   for (const auto& d : input_shape) {
-    shape->push_back(d.size);
+    shape->push_back(d.size == kTFDynamicSize ? ShapedType::kDynamicSize
+                                              : d.size);
   }
 }
 
@@ -175,7 +177,8 @@ Status ConvertToMlirShape(const TensorShapeProto& input_shape,
     if (d.size() > std::numeric_limits<int64_t>::max()) {
       return errors::InvalidArgument("Shape element overflows");
     }
-    shape->push_back(d.size());
+    shape->push_back(d.size() == kTFDynamicSize ? ShapedType::kDynamicSize
+                                                : d.size());
   }
   return OkStatus();
 }
@@ -190,7 +193,7 @@ StatusOr<mlir::Type> ConvertToMlirTensorType(const TensorShapeProto& shape,
   }
   llvm::SmallVector<int64_t, 4> shape_dims;
   TF_RETURN_IF_ERROR(ConvertToMlirShape(shape, &shape_dims));
-  return mlir::RankedTensorType::get(shape_dims, element_type);
+  return GetTypeFromTFTensorShape(shape_dims, element_type);
 }
 
 }  // namespace tensorflow

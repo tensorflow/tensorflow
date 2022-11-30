@@ -667,8 +667,11 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
       st.height_scale = 1.0f;
       st.width_scale = 1.0f;
     }
-    TensorShape resized_shape(
-        {input.dim_size(0), st.out_height, st.out_width, input.dim_size(3)});
+    TensorShape resized_shape;
+    OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(
+                                {input.dim_size(0), st.out_height, st.out_width,
+                                 input.dim_size(3)},
+                                &resized_shape));
     int paddings_index;
     int filter_index;
     if (DoResize) {

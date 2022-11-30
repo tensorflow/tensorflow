@@ -19,10 +19,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 
@@ -40,7 +40,7 @@ void VerifiedHloModule::VerifyOrAddFailure(absl::string_view message) {
                   << (message.empty() ? "" : absl::StrCat(" (", message, ")"))
                   << ": " << status;
     LOG(ERROR) << "Contents of bad module:";
-    XLA_LOG_LINES(tensorflow::ERROR, ToString());
+    XLA_LOG_LINES(tsl::ERROR, ToString());
   }
 }
 

@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LIB_NUMBERS_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LIB_NUMBERS_H_
 
+#include <cstdint>
+#include <string>
+
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 
 namespace stream_executor {
@@ -24,7 +27,7 @@ namespace port {
 // Convert strings to floating point values.
 // Leading and trailing spaces are allowed.
 // Values may be rounded on over- and underflow.
-bool safe_strto32(const std::string& str, int32* value);
+bool safe_strto32(const std::string& str, int32_t* value);
 
 }  // namespace port
 }  // namespace stream_executor

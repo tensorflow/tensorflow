@@ -16,24 +16,23 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
 #define TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
 
-#include <string>
-
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/platform/types.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
-#include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/protobuf/saved_model.pb.h"
 
-namespace tensorflow::fingerprinting {
+namespace tensorflow::saved_model::fingerprinting {
 
-// Computes the Fingerprint64 hash of the GraphDef.
-uint64 ComputeHash(const GraphDef& graph_def);
+// Creates a FingerprintDef proto from a SavedModel and the checkpoint meta file
+// (.index) in `export_dir`.
+FingerprintDef CreateFingerprintDef(const SavedModel& saved_model,
+                                    absl::string_view export_dir);
 
-// Creates a FingerprintDef proto from a MetaGraph.
-FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph);
+// Loads the `fingerprint.pb` from `export_dir`, returns an error if there is
+// none.
+StatusOr<FingerprintDef> ReadSavedModelFingerprint(
+    absl::string_view export_dir);
 
-// Canonicalizes the GraphDef in order to remove sources of non-determinism.
-void CanonicalizeGraphDef(GraphDef& graph_def);
-
-}  // namespace tensorflow::fingerprinting
+}  // namespace tensorflow::saved_model::fingerprinting
 
 #endif  // TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_

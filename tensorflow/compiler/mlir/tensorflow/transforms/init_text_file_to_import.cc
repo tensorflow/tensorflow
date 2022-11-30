@@ -18,7 +18,7 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -27,7 +27,7 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/core/lib/io/path.h"
 
 namespace mlir {
@@ -37,10 +37,13 @@ namespace {
 static constexpr int kTextFileIndex_WholeLine = -2;
 static constexpr int kTextFileIndex_LineNumber = -1;
 
+#define GEN_PASS_DEF_INITTEXTFILETOIMPORTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // InitTextFileToImportPass converts InitializeTableFromTextFileV2Op to the
 // corresponding LookupTableImportV2Op if possible.
 class InitTextFileToImportPass
-    : public InitTextFileToImportPassBase<InitTextFileToImportPass> {
+    : public impl::InitTextFileToImportPassBase<InitTextFileToImportPass> {
  public:
   InitTextFileToImportPass() {}
   InitTextFileToImportPass(const InitTextFileToImportPass&) {}
@@ -71,14 +74,14 @@ class ConvertInitializeTableFromTextFileV2
     //
     // In the above case, the delimiter will be not used since the key is just a
     // whole line and value is a line number.
-    if (op.key_index() != kTextFileIndex_WholeLine ||
-        op.value_index() != kTextFileIndex_LineNumber) {
+    if (op.getKeyIndex() != kTextFileIndex_WholeLine ||
+        op.getValueIndex() != kTextFileIndex_LineNumber) {
       return failure();
     }
 
     // Try to find filename from constant op.
     DenseStringElementsAttr filename_attr;
-    if (!matchPattern(op.filename().getDefiningOp(),
+    if (!matchPattern(op.getFilename().getDefiningOp(),
                       m_Constant(&filename_attr))) {
       return failure();
     }
@@ -108,7 +111,7 @@ class ConvertInitializeTableFromTextFileV2
     file->getBuffer().split(lines, "\n", -1, false);
     // The resize method is used since split operator puts tail value in the end
     // without splitting the leftovers.
-    if (op.vocab_size() != -1) lines.resize(op.vocab_size());
+    if (op.getVocabSize() != -1) lines.resize(op.getVocabSize());
 
     // Map each line to line number, starting from zero.
     SmallVector<int64_t, 8> line_nums;
@@ -127,7 +130,7 @@ class ConvertInitializeTableFromTextFileV2
         op.getLoc(), rewriter.getI64TensorAttr(line_nums));
 
     // Replace the given op with LookupTableImportV2Op.
-    rewriter.create<LookupTableImportV2Op>(op.getLoc(), op.table_handle(),
+    rewriter.create<LookupTableImportV2Op>(op.getLoc(), op.getTableHandle(),
                                            key_constant_tensor,
                                            value_constant_tensor);
     rewriter.eraseOp(op);

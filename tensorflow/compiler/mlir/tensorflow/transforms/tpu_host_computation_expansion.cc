@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -62,7 +61,7 @@ bool IsTrivialUnaryOperation(Operation* op) {
 // TODO(b/158691733): Also handle ops inside function calls/control flows.
 void ExpandHeadOutsideCompiledOps(tf_device::ClusterOp cluster,
                                   OpBuilder* builder) {
-  Region* cluster_region = &cluster.body();
+  Region* cluster_region = &cluster.getBody();
   llvm::SmallSetVector<Operation*, 4> head_outside_compiled_ops;
 
   // Traverse the graph in topological order to find all outside compiled ops
@@ -110,8 +109,11 @@ void ExpandHeadOutsideCompiledOps(tf_device::ClusterOp cluster,
   }
 }
 
+#define GEN_PASS_DEF_TPUHOSTCOMPUTATIONEXPANSIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TPUHostComputationExpansionPass
-    : public TF::TPUHostComputationExpansionPassBase<
+    : public impl::TPUHostComputationExpansionPassBase<
           TPUHostComputationExpansionPass> {
   void runOnOperation() override;
 };

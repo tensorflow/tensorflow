@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_TPU_CLUSTER_UTIL_H_
-#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_TPU_CLUSTER_UTIL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_TPU_CLUSTER_UTIL_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_TPU_CLUSTER_UTIL_H_
 
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
@@ -44,4 +44,4 @@ mlir::LogicalResult WalkReachableFromTpuCluster(
 }  // namespace TFTPU
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_TPU_CLUSTER_UTIL_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_TPU_CLUSTER_UTIL_H_

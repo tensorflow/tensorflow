@@ -18,6 +18,8 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"
@@ -26,8 +28,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_ordinal_selector.h"
-#include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
 #include "absl/container/flat_hash_map.h"
 
@@ -120,7 +120,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
     if (!status.ok()) {
       autotuner_thresh_ = 0;
     }
-    tensorflow::tpu::OpsApiFn()->TfTpu_GetTpuPartitionedCallParamsFn(
+    stream_executor::tpu::OpsApiFn()->TfTpu_GetTpuPartitionedCallParamsFn(
         &runtime_params_);
   }
 
@@ -195,7 +195,9 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
       ResourceHandle& handle, Node* variable, const TPUMetadata& tpu_metadata)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  Status ShardInputsWithXlaSharding(Graph* graph, int num_cores_per_replica,
+  Status ShardInputsWithXlaSharding(Graph* graph,
+                                    const std::string& cluster_name,
+                                    int num_cores_per_replica,
                                     OpKernelContext* ctx)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 

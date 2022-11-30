@@ -18,10 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_op_metadata.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-
-namespace xla {
-std::string OpMetadataToString(const OpMetadata& metadata);
-}  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_OP_METADATA_H_

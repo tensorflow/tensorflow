@@ -21,9 +21,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -495,6 +495,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   // Tries to use a kDot in place of the given convolution.
   StatusOr<bool> SimplifyConvToDot(HloInstruction* convolution);
+  // Tries to use a multiplication in place of the given convolution.
+  StatusOr<bool> SimplifyConvToMultiply(HloInstruction* convolution);
 
   // Tries to simplify a slice where the result of the slice is a scalar.
   StatusOr<bool> TrySimplifyScalarSlice(HloInstruction* slice);

@@ -203,6 +203,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, /*index=*/3,
                                                 &float_weights_time));
     float_weights_time->type = kTfLiteFloat32;
+    float_weights_time->name = "Svdf_float_weights_time";
     // Persistent so that we can compute the dequantized weights only once.
     float_weights_time->allocation_type = kTfLiteArenaRwPersistent;
     if (!TfLiteIntArrayEqual(float_weights_time->dims, weights_time->dims)) {
@@ -232,6 +233,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context,
                       GetTemporarySafe(context, node, /*index=*/5, &row_sums));
     row_sums->type = kTfLiteFloat32;
+    float_weights_time->name = "Svdf_row_sums";
     row_sums->allocation_type = kTfLiteArenaRwPersistent;
     int row_sums_dims[1] = {num_filters};
     if (!TfLiteIntArrayEqualsArray(row_sums->dims, 1, row_sums_dims)) {

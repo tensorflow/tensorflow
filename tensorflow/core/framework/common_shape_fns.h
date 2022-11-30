@@ -206,7 +206,7 @@ Status UnknownShape(shape_inference::InferenceContext* c);
 Status ReductionShape(shape_inference::InferenceContext* c);
 
 // Shape function for unsorted segment operations.
-Status UnsortedSegmentReductionShapeFn(InferenceContext* c);
+Status SegmentReductionWithNumSegmentsShapeFn(InferenceContext* c);
 
 // Shape function for concat operations.
 // <num_inputs_to_concat> is the number of inputs to concatenate and are taken
@@ -278,6 +278,12 @@ Status SparseReduceShapeFn(InferenceContext* c);
 
 // Shape function for QuantizedConv2D op.
 Status QuantizedConv2DShape(InferenceContext* c);
+
+// Shape function for _QuantizedConv2D op/fusion.
+Status FusedQuantizedConv2DShape(InferenceContext* c);
+
+// Shape function for _QuantizedDepthwiseConv2D op/fusion.
+Status FusedQuantizedDepthwiseConv2D(InferenceContext* c);
 
 // Shape function for QuantizedAvgPool op
 Status QuantizedAvgPoolShape(InferenceContext* c);

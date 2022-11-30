@@ -266,7 +266,7 @@ Status KernelAndDeviceOp::Run(
     CancellationManager* cancellation_manager,
     const absl::optional<EagerFunctionParams>& eager_func_params,
     const absl::optional<ManagedStackTrace>& stack_trace,
-    CoordinationServiceAgent* coordination_service_agent) {
+    tsl::CoordinationServiceAgent* coordination_service_agent) {
   OpKernelContext::Params params;
   params.device = device_;
   params.frame_iter = FrameAndIter(0, 0);
@@ -354,7 +354,7 @@ KernelAndDeviceFunc::PrepareForRun(
     CancellationManager* cancellation_manager,
     const absl::optional<EagerFunctionParams>& eager_func_params,
     const absl::optional<ManagedStackTrace>& stack_trace,
-    CoordinationServiceAgent* coordination_service_agent) {
+    tsl::CoordinationServiceAgent* coordination_service_agent) {
   std::shared_ptr<FunctionLibraryRuntime::Options> opts = nullptr;
   if (eager_func_params.has_value()) {
     const EagerFunctionParams& params = eager_func_params.value();
@@ -415,7 +415,7 @@ Status KernelAndDeviceFunc::Run(
     CancellationManager* cancellation_manager,
     const absl::optional<EagerFunctionParams>& eager_func_params,
     const absl::optional<ManagedStackTrace>& stack_trace,
-    CoordinationServiceAgent* coordination_service_agent) {
+    tsl::CoordinationServiceAgent* coordination_service_agent) {
   profiler::TraceMe activity("KernelAndDeviceFunc::Run",
                              profiler::TraceMeLevel::kInfo);
   // Don't try to handle packed or remote inputs synchronously.
@@ -459,7 +459,7 @@ void KernelAndDeviceFunc::RunAsync(
     std::vector<EagerKernelRet>* outputs,
     CancellationManager* cancellation_manager,
     const absl::optional<EagerFunctionParams>& eager_func_params,
-    CoordinationServiceAgent* coordination_service_agent,
+    tsl::CoordinationServiceAgent* coordination_service_agent,
     std::function<void(const Status&)> done) {
   profiler::TraceMe activity("KernelAndDeviceFunc::RunAsync",
                              profiler::TraceMeLevel::kInfo);

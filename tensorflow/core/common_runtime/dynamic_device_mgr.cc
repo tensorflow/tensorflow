@@ -142,6 +142,11 @@ int DynamicDeviceMgr::NumDeviceType(const string& type) const {
   return 0;
 }
 
+int DynamicDeviceMgr::NumDevices() const {
+  tf_shared_lock l(devices_mu_);
+  return dynamic_devices_.size();
+}
+
 Status DynamicDeviceMgr::AddDevices(
     std::vector<std::unique_ptr<Device>> devices) {
   mutex_lock l(devices_mu_);

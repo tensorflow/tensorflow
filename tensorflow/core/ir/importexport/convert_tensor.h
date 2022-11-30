@@ -25,20 +25,18 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/types/dialect.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace mlir {
 namespace tfg {
 
 // Converts an TensorFlow tensor proto into an MLIR elements attribute.
 tensorflow::StatusOr<ElementsAttr> ConvertTensorProto(
-    const tensorflow::TensorProto& input_tensor, Builder builder,
-    TFGraphDialect* tfgDialect);
+    const tensorflow::TensorProto& input_tensor, Builder builder);
 
 // Converts an TensorFlow tensor into an MLIR elements attribute.
 tensorflow::StatusOr<ElementsAttr> ConvertTensor(
-    const tensorflow::Tensor& input_tensor, Builder builder,
-    TFGraphDialect* tfgDialect);
+    const tensorflow::Tensor& input_tensor, Builder builder);
 
 // Converts a shape from MLIR to a TensorFlow tensor shape proto.
 void ConvertToTensorShapeProto(ArrayRef<int64_t> shape,
@@ -61,7 +59,9 @@ void SetTensorShapeProto(ShapeContainerT shape,
                          tensorflow::TensorShapeProto* proto) {
   if (shape.hasRank()) {
     for (int64_t dim : shape.getShape()) {
-      proto->add_dim()->set_size(dim);
+      // TODO(hinsu): Use tensorflow::kTFDynamicSize instead of -1 without
+      // depending on tensorflow/compiler
+      proto->add_dim()->set_size(mlir::ShapedType::isDynamic(dim) ? -1 : dim);
     }
   } else {
     proto->set_unknown_rank(true);
@@ -75,6 +75,17 @@ tensorflow::Status ConvertToTensorProto(ElementsAttr attr,
 // Converts an MLIR elements attribute to a TensorFlow tensor.
 tensorflow::Status ConvertToTensor(ElementsAttr attr,
                                    tensorflow::Tensor* output_tensor);
+
+// Converts a TF shape to MLIR shape, i.e. -1 becomes kDynamicSize.
+llvm::SmallVector<int64_t> ConvertTFShapeToMlir(llvm::ArrayRef<int64_t> shape);
+
+// Converts an MLIR shape to TF shape, i.e. kDynamicSize becomes -1.
+llvm::SmallVector<int64_t> ConvertMlirShapeToTF(llvm::ArrayRef<int64_t> shape);
+
+// Creates a TF TensorShape using MLIR shape, element type and encoding.
+mlir::RankedTensorType GetTypeFromTFTensorShape(llvm::ArrayRef<int64_t> shape,
+                                                mlir::Type elementType,
+                                                mlir::Attribute encoding = {});
 
 }  // namespace tfg
 }  // namespace mlir

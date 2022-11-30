@@ -21,14 +21,15 @@ on:
       - master
       - r2.**
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [labeled, opened, synchronize, reopened]
     branches:
       - master
       - r2.**
 
 jobs:
   build:
-    if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
+    # Don't do this in forks, and if labeled, only for 'kokoro:force-run'
+    if: github.repository == 'tensorflow/tensorflow' && (github.event.action != 'labeled' || (github.event.action == 'labeled' && github.event.label.name == 'kokoro:force-run'))
     runs-on: [self-hosted, linux, ARM64]
     strategy:
       matrix:

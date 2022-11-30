@@ -1,10 +1,7 @@
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pybind_extension")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -58,6 +55,7 @@ cc_test(
     deps = [
         ":bcast_grad_args_op",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/kernels:test_main",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/testing:util",

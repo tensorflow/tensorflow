@@ -270,10 +270,7 @@ def contains_saved_model(export_dir):
 @tf_export(v1=["saved_model.load", "saved_model.loader.load"])
 @deprecation.deprecated(
     None,
-    "This function will only be available through the v1 compatibility "
-    "library as tf.compat.v1.saved_model.loader.load or "
-    "tf.compat.v1.saved_model.load. There will be a new function for importing "
-    "SavedModels in Tensorflow 2.0.")
+    "Use `tf.saved_model.load` instead.")
 def load(sess, tags, export_dir, import_scope=None, **saver_kwargs):
   """Loads the model from a SavedModel as specified by tags.
 

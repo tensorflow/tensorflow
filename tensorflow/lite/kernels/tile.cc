@@ -261,6 +261,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
   }
   if (GetTensorShape(output).FlatSize() == 0) {
+    if (output->type == kTfLiteString) {
+      // For safety, ensure that we write to the output tensor.
+      DynamicBuffer buffer;
+      buffer.WriteToTensor(output, /*new_shape=*/nullptr);
+    }
     return kTfLiteOk;
   }
 

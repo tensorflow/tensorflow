@@ -14,7 +14,7 @@
 # ==============================================================================
 """Test configs for unsorted_segment ops."""
 
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -74,6 +74,19 @@ def make_unsorted_segment_tests(options, unsorted_segment_op):
       "segment_id_2": [[0, 0]],
       "num_segments_2": [1],
       "multi_node": [1]
+  }, {
+      "data_shape": [[2, 2, 3]],
+      "segment_id": [[[1, 2], [3, 4]], [4, 5],
+                     [[[1, 2, 3], [3, 4, 5]], [[1, 2, 4], [0, 0, -1]]]],
+      "num_segments": [10],
+      "dtype": [tf.int32, tf.float32],
+      "multi_node": [0]
+  }, {
+      "data_shape": [[2, 0, 3]],
+      "segment_id": [[1, 1]],
+      "num_segments": [2],
+      "dtype": [tf.int32, tf.float32],
+      "multi_node": [0]
   }]
 
   def build_graph_one_node(parameters):
@@ -159,6 +172,11 @@ def make_unsorted_segment_prod_tests(options):
 @register_make_test_function()
 def make_unsorted_segment_max_tests(options):
   make_unsorted_segment_tests(options, tf.math.unsorted_segment_max)
+
+
+@register_make_test_function()
+def make_unsorted_segment_min_tests(options):
+  make_unsorted_segment_tests(options, tf.math.unsorted_segment_min)
 
 
 @register_make_test_function()

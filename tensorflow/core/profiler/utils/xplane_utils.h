@@ -20,190 +20,44 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
-#include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
-#include "tensorflow/core/profiler/utils/trace_utils.h"
-#include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 
-// Returns a Timespan from an XEvent.
-// WARNING: This should only be used when comparing events from the same XLine.
-inline Timespan XEventTimespan(const XEvent& event) {
-  return Timespan(event.offset_ps(), event.duration_ps());
-}
-
-// Returns the planes with the given predicate.
-template <typename F>
-std::vector<const XPlane*> FindPlanes(const XSpace& space, const F& predicate) {
-  std::vector<const XPlane*> result;
-  for (const XPlane& plane : space.planes()) {
-    if (predicate(plane)) {
-      result.push_back(&plane);
-    }
-  }
-  return result;
-}
-
-// Returns mutable planes with the given predicate.
-template <typename F>
-std::vector<XPlane*> FindMutablePlanes(XSpace* space, const F& predicate) {
-  std::vector<XPlane*> result;
-  for (XPlane& plane : *space->mutable_planes()) {
-    if (predicate(plane)) {
-      result.push_back(&plane);
-    }
-  }
-  return result;
-}
-
-// Returns the plane with the given name or nullptr if not found.
-const XPlane* FindPlaneWithName(const XSpace& space, absl::string_view name);
-XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name);
-
-// Returns the planes with the given names, if found.
-std::vector<const XPlane*> FindPlanesWithNames(
-    const XSpace& space, const std::vector<absl::string_view>& names);
-
-// Returns the plane with the given name in the container. If necessary, adds a
-// new plane to the container.
-XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name);
-
-// Returns all the planes with a given prefix.
-std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
-                                                absl::string_view prefix);
-std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
-                                                 absl::string_view prefix);
-
-// Returns the plane with the given id/name or nullptr if not found.
-const XLine* FindLineWithId(const XPlane& plane, int64_t id);
-const XLine* FindLineWithName(const XPlane& plane, absl::string_view name);
-
-XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event);
-
-void RemovePlane(XSpace* space, const XPlane* plane);
-void RemovePlanes(XSpace* space, const std::vector<const XPlane*>& planes);
-void RemoveLine(XPlane* plane, const XLine* line);
-void RemoveEvents(XLine* line,
-                  const absl::flat_hash_set<const XEvent*>& events);
-
-void RemoveEmptyPlanes(XSpace* space);
-void RemoveEmptyLines(XPlane* plane);
-
-// Sort lines in plane with a provided comparator.
-template <class Compare>
-void SortXLinesBy(XPlane* plane, Compare comp) {
-  std::sort(plane->mutable_lines()->pointer_begin(),
-            plane->mutable_lines()->pointer_end(), comp);
-}
-
-class XLinesComparatorByName {
- public:
-  bool operator()(const XLine* a, const XLine* b) const {
-    auto& line_a = a->display_name().empty() ? a->name() : a->display_name();
-    auto& line_b = b->display_name().empty() ? b->name() : b->display_name();
-    return line_a < line_b;
-  }
-};
-
-// Sorts each XLine's XEvents by offset_ps (ascending) and duration_ps
-// (descending) so nested events are sorted from outer to innermost.
-void SortXPlane(XPlane* plane);
-// Sorts each plane of the XSpace.
-void SortXSpace(XSpace* space);
-
-// Functor that compares XEvents for sorting by timespan.
-struct XEventsComparator {
-  bool operator()(const XEvent* a, const XEvent* b) const;
-};
-
-// Returns a sorted vector of all XEvents in the given XPlane.
-// This template can be used with either XPlaneVisitor or XPlaneBuilder.
-template <typename Event, typename Plane>
-inline std::vector<Event> GetSortedEvents(Plane& plane,
-                                          bool include_derived_events = false) {
-  std::vector<Event> events;
-  plane.ForEachLine([&events, include_derived_events](auto line) {
-    if (!include_derived_events && IsDerivedThreadId(line.Id())) return;
-    line.ForEachEvent(
-        [&events](auto event) { events.emplace_back(std::move(event)); });
-  });
-  absl::c_sort(events);
-  return events;
-}
-
-// Normalize timestamps by time-shifting to start_time_ns_ as origin.
-void NormalizeTimestamps(XPlane* plane, uint64 start_time_ns);
-void NormalizeTimestamps(XSpace* space, uint64 start_time_ns);
-
-// Merges src_plane into dst_plane. Both plane level stats, lines, events and
-// event level stats are merged. If src_plane and dst_plane both have the same
-// line, which have different start timestamps, we will normalize the events
-// offset timestamp correspondingly.
-void MergePlanes(const XPlane& src_plane, XPlane* dst_plane);
-
-// Merges each plane with a src_planes, into the dst_plane.
-void MergePlanes(const std::vector<const XPlane*>& src_planes,
-                 XPlane* dst_plane);
-
-// Plane's start timestamp is defined as the minimum of all lines' start
-// timestamps. If zero line exists, return 0;
-int64_t GetStartTimestampNs(const XPlane& plane);
-
-// Returns true if there are no XEvents.
-bool IsEmpty(const XSpace& space);
-
-// Mutate the XPlane by adding predefined XFlow. e.g. GPU kernel launches =>
-// GPU kernel events.
-void AddFlowsToXplane(int32_t host_id, bool is_host_plane, bool connect_traceme,
-                      XPlane* plane);
-
-// Get a fingerprint of device plane for deduplicating derived lines in similar
-// device planes. The fingerprint is a hash of sorted HLO modules name which
-// were appeared on current plane.
-// Returns 0 when such "Xla Modules" line don't exist.
-uint64_t GetDevicePlaneFingerprint(const XPlane& plane);
-template <typename XPlanePointerIterator>
-void SortPlanesById(XPlanePointerIterator begin, XPlanePointerIterator end) {
-  std::sort(begin, end, [&](const XPlane* a, const XPlane* b) {
-    return a->id() < b->id();  // ascending order of device xplane id.
-  });
-}
-
-// When certain event context only exists from event from other line, which
-// "encloses" current event in timeline, we need to find out quickly which
-// enclosing event is (or if there is one).
-// To Avoid O(N) search overhead, assume the event are processed in the order
-// of "XLine default sorting order".
-class XEventContextTracker {
- public:
-  // The events on line need to be sorted and disjointed.
-  XEventContextTracker(const XPlaneVisitor* plane, const XLine* line)
-      : plane_(plane), line_(line) {}
-
-  // Returns the event that encloses/contains the specified input event.
-  // Expects called with events with start timestamps sorted incrementingly.
-  std::optional<XEventVisitor> GetContainingEvent(const Timespan& event);
-
-  // Returns the event that overlaps the specified input event.
-  // Expects called with events with start timestamps sorted incrementingly.
-  std::optional<XEventVisitor> GetOverlappingEvent(const Timespan& event);
-
- private:
-  const XPlaneVisitor* plane_;
-  const XLine* line_;
-  int64_t current_index_ = -1;
-};
-
-// Aggregate traces on full_trace xplane and add them onto the aggregated_trace
-// xplane.
-void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace);
+using tsl::profiler::AddFlowsToXplane;               // NOLINT
+using tsl::profiler::AggregateXPlane;                // NOLINT
+using tsl::profiler::FindLineWithId;                 // NOLINT
+using tsl::profiler::FindLineWithName;               // NOLINT
+using tsl::profiler::FindMutablePlanes;              // NOLINT
+using tsl::profiler::FindMutablePlanesWithPrefix;    // NOLINT
+using tsl::profiler::FindMutablePlaneWithName;       // NOLINT
+using tsl::profiler::FindOrAddMutablePlaneWithName;  // NOLINT
+using tsl::profiler::FindOrAddMutableStat;           // NOLINT
+using tsl::profiler::FindPlanes;                     // NOLINT
+using tsl::profiler::FindPlanesWithNames;            // NOLINT
+using tsl::profiler::FindPlanesWithPrefix;           // NOLINT
+using tsl::profiler::FindPlaneWithName;              // NOLINT
+using tsl::profiler::GetDevicePlaneFingerprint;      // NOLINT
+using tsl::profiler::GetSortedEvents;                // NOLINT
+using tsl::profiler::GetStartTimestampNs;            // NOLINT
+using tsl::profiler::IsEmpty;                        // NOLINT
+using tsl::profiler::MergePlanes;                    // NOLINT
+using tsl::profiler::NormalizeTimestamps;            // NOLINT
+using tsl::profiler::RemoveEmptyLines;               // NOLINT
+using tsl::profiler::RemoveEmptyPlanes;              // NOLINT
+using tsl::profiler::RemoveEvents;                   // NOLINT
+using tsl::profiler::RemoveLine;                     // NOLINT
+using tsl::profiler::RemovePlane;                    // NOLINT
+using tsl::profiler::RemovePlanes;                   // NOLINT
+using tsl::profiler::SortPlanesById;                 // NOLINT
+using tsl::profiler::SortXLinesBy;                   // NOLINT
+using tsl::profiler::SortXPlane;                     // NOLINT
+using tsl::profiler::SortXSpace;                     // NOLINT
+using tsl::profiler::XEventContextTracker;           // NOLINT
+using tsl::profiler::XEventsComparator;              // NOLINT
+using tsl::profiler::XEventTimespan;                 // NOLINT
+using tsl::profiler::XLinesComparatorByName;         // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

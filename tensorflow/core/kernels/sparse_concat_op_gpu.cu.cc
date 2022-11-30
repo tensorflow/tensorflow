@@ -248,7 +248,7 @@ struct SparseConcatFunctor<GPUDevice, T> {
     TF_RETURN_IF_ERROR(
         context->allocate_output(1, TensorShape({output_nnz}), &output_vals));
     *output_vals_ptr = output_vals->vec<T>().data();
-    return Status::OK();
+    return OkStatus();
   }
 };
 

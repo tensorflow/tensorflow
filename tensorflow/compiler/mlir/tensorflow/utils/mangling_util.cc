@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/ir/importexport/mangling.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -30,35 +31,12 @@ namespace tensorflow {
 namespace mangling_util {
 namespace {
 
+using ::mlir::tfg::mangling_util::PrintShortTextProto;
+
 const char kAttributePrefix[] = "tf.";
 const char kDataTypePrefix[] = "tfdtype$";
 const char kTensorShapePrefix[] = "tfshape$";
 const char kTensorPrefix[] = "tftensor$";
-
-std::string PrintShortTextProto(
-    const ::tensorflow::protobuf::MessageLite& message) {
-  // proto2::TextFormat::Printer::PrintToString does not have
-  // a overload for MessageLite so here to be consistent with the existing
-  // behavior we use MessageLite::ShortDebugString().
-  return message.ShortDebugString();
-}
-
-std::string PrintShortTextProto(
-    const ::tensorflow::protobuf::Message& message) {
-  std::string message_short_text;
-
-  ::tensorflow::protobuf::TextFormat::Printer printer;
-  printer.SetSingleLineMode(true);
-  printer.SetExpandAny(true);
-
-  printer.PrintToString(message, &message_short_text);
-  // Single line mode currently might have an extra space at the end.
-  if (!message_short_text.empty() && message_short_text.back() == ' ') {
-    message_short_text.pop_back();
-  }
-
-  return message_short_text;
-}
 
 }  // namespace
 

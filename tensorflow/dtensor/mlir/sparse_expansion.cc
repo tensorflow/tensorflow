@@ -20,20 +20,17 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
-#include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/sparse_expander.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORSPARSEEXPANSION
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 constexpr char kMainFunctionName[] = "main";
 
@@ -99,7 +96,7 @@ void RemoveUnusedSparseToDenseOps(mlir::ModuleOp module) {
 }
 
 struct DTensorSparseExpansion
-    : public DTensorSparseExpansionBase<DTensorSparseExpansion> {
+    : public impl::DTensorSparseExpansionBase<DTensorSparseExpansion> {
   void runOnOperation() override {
     auto module = getOperation();
     if (failed(ConductSparseExpansion(module))) return signalPassFailure();

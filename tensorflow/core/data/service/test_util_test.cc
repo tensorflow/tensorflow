@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/test_util.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -157,7 +158,7 @@ TEST(TestUtilTest, InterleaveTextlineWithNewLines) {
   TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<Tensor>> result,
                           GetIteratorOutput(*iterator));
   ASSERT_THAT(result, SizeIs(10));
-  for (int64 i = 0; i < 10; ++i) {
+  for (int64_t i = 0; i < 10; ++i) {
     test::ExpectEqual(result[i][0], Tensor(absl::StrCat(i)));
   }
 }

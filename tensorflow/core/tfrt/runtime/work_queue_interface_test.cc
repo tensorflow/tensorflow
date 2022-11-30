@@ -85,13 +85,10 @@ TEST(DefaultWorkQueueWrapperTest, IntraOpThreadPool) {
   auto work_queue_wrapper =
       WrapDefaultWorkQueue(std::move(work_queue), &intra_op_thread_pool);
 
-  thread::ThreadPoolInterface* got_intra_op_threadpool;
-  auto statusor_queue = work_queue_wrapper->InitializeRequest(
-      /*request_context_builder=*/nullptr, &got_intra_op_threadpool);
-  TF_ASSERT_OK(statusor_queue.status());
-  EXPECT_NE(statusor_queue.ValueOrDie(), nullptr);
-
-  EXPECT_EQ(got_intra_op_threadpool, &intra_op_thread_pool);
+  TF_ASSERT_OK_AND_ASSIGN(auto queue, work_queue_wrapper->InitializeRequest(
+                                          /*request_id=*/0));
+  EXPECT_NE(queue, nullptr);
+  EXPECT_EQ(queue->GetIntraOpThreadPool(), &intra_op_thread_pool);
 }
 
 }  // namespace

@@ -70,7 +70,7 @@ int PluggableDeviceProcessState::BusIdForPluggableDevice(
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
   se::StreamExecutor* se = DeviceIdUtil::ExecutorForTfDeviceId(
                                DeviceType(device_type_), platform, tf_device_id)
-                               .ValueOrDie();
+                               .value();
   int numa_node = se->GetDeviceDescription().numa_node();
   // `bus_id` must be non-negative. If the `numa_node` is unknown, use 0.
   return numa_node >= 0 ? numa_node : 0;
@@ -112,7 +112,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
                               options.experimental().use_unified_memory();
     DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
         DeviceIdUtil::ExecutorForPlatformDeviceId(platform, platform_device_id)
-            .ValueOrDie(),
+            .value(),
         platform_device_id, use_unified_memory,
         pluggable_device_visitors_[bus_id], {});
 
@@ -168,7 +168,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
     if (pluggable_device_allocators_[i].allocator != nullptr) {
       se = DeviceIdUtil::ExecutorForTfDeviceId(DeviceType(device_type_),
                                                platform, TfDeviceId(i))
-               .ValueOrDie();
+               .value();
       break;
     }
   }

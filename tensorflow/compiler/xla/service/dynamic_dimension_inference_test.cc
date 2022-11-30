@@ -16,14 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_runner.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -1380,9 +1380,9 @@ ENTRY computation {
   StatusOr<bool> filecheck_result = RunFileCheck(module_->ToString({}),
                                                  R"(
 // CHECK: compare = pred[] compare(s32[] %a_size_1, s32[] %b_size_1), direction=EQ
-// CHECK: compare.1 = pred[] compare(s32[] %a_size_2, s32[] %b_size_2), direction=EQ
-// CHECK: and = pred[] and(pred[] %compare, pred[] %compare.1)
-// CHECK: custom-call(pred[] %and), custom_call_target="__xla__assert"
+// CHECK: compare.5 = pred[] compare(s32[] %a_size_2, s32[] %b_size_2), direction=EQ
+// CHECK: and.2 = pred[] and(pred[] %compare, pred[] %compare.5)
+// CHECK: custom-call(pred[] %and.2), custom_call_target="__xla__assert"
                    )");
   TF_ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(*filecheck_result);

@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
@@ -126,8 +126,10 @@ bool CheckCanonical(HloDotInstruction* dot) {
           dot->operand(0)->shape().rank() ||
       dimension_numbers.rhs_batch_dimensions_size() + 2 !=
           dot->operand(1)->shape().rank()) {
-    LOG(ERROR) << "Dot is not canonical: Expected all dimensions but 2 to be "
-                  "batch_dimensions.";
+    VLOG(2)
+        << dot->ToString()
+        << " is not canonical: Expected all dimensions but 2 to be "
+           "batch_dimensions. Hence, this dot is not a candidate for padding.";
     return false;
   }
 
@@ -138,8 +140,11 @@ bool CheckCanonical(HloDotInstruction* dot) {
                      canonical_batch_dims) ||
       !absl::c_equal(dimension_numbers.rhs_batch_dimensions(),
                      canonical_batch_dims)) {
-    LOG(ERROR) << "Dot is not canonical: Expected batch dimensions to be all "
-                  "dimensions except for the last 2 ones.";
+    VLOG(2)
+        << dot->ToString()
+        << " is not canonical: Expected batch dimensions to be all "
+           "dimensions except for the last 2 ones. Hence, this dot is not a "
+           "candidate for padding.";
     return false;
   }
 

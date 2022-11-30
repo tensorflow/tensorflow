@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/match.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 
 namespace tflite {
@@ -168,6 +169,7 @@ enum class AppleGpu {
   kA13,
   kA14,
   kA15,
+  kA16,
   kM1,
   kM1Pro,
   kM1Max,
@@ -384,6 +386,8 @@ struct OpenClInfo {
   SupportedImage2dTypes supported_images_2d;
 
   bool IsImage2dFromBufferSupported() const;
+
+  bool IsCLVK() const { return absl::StrContains(platform_version, "clvk"); }
 };
 
 enum class MetalLanguageVersion {

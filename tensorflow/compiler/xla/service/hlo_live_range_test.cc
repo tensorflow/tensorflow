@@ -19,16 +19,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -40,10 +40,10 @@ class HloLiveRangeTest : public HloTestBase {
   ~HloLiveRangeTest() override {}
 
   void Analyze(const HloSchedule& schedule) {
-    alias_analysis_ = HloAliasAnalysis::Run(module_.get()).ValueOrDie();
+    alias_analysis_ = HloAliasAnalysis::Run(module_.get()).value();
     hlo_live_range_ = HloLiveRange::Run(schedule, *alias_analysis_,
                                         module_->entry_computation())
-                          .ValueOrDie();
+                          .value();
   }
 
   std::unique_ptr<HloModule> module_;
@@ -337,6 +337,77 @@ TEST_F(HloLiveRangeTest, While) {
   EXPECT_EQ(LiveRangeAt(iter).end, LiveRangeAt(cond_iter).start);
   EXPECT_EQ(LiveRangeAt(cond_iter).end, LiveRangeAt(body_iter).start);
   EXPECT_EQ(LiveRangeAt(body_iter).end, LiveRangeAt(body_iter_next).start);
+}
+
+TEST_F(HloLiveRangeTest, Determinism) {
+  std::string hlo_string = R"(
+HloModule While, is_scheduled=true
+
+%WhileBody {
+  %body_param = (f32[2,3]{1,0}, f32[], f32[2,3]{1,0}) parameter(0)
+  %get-tuple-element.2 = f32[2,3]{1,0} get-tuple-element(%body_param), index=0
+  %constant.2 = f32[2,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 } })
+  %add.1 = f32[2,3]{1,0} add(f32[2,3]{1,0} %get-tuple-element.2, f32[2,3]{1,0} %constant.2)
+  %multiply = f32[2,3]{1,0} multiply(f32[2,3]{1,0} %get-tuple-element.2, f32[2,3]{1,0} %get-tuple-element.2)
+  %add.2 = f32[2,3]{1,0} add(f32[2,3]{1,0} %add.1, f32[2,3]{1,0} %multiply)
+  %get-tuple-element.1 = f32[] get-tuple-element(%body_param), index=1
+  %constant.1 = f32[] constant(1)
+  %add = f32[] add(f32[] %get-tuple-element.1, f32[] %constant.1)
+  %get-tuple-element.3 = f32[2,3]{1,0} get-tuple-element(%body_param), index=2
+  %add.3 = f32[2,3]{1,0} add(f32[2,3]{1,0} %get-tuple-element.3, f32[2,3]{1,0} %constant.2)
+  ROOT %tuple = (f32[2,3]{1,0}, f32[], f32[2,3]{1,0}) tuple(f32[2,3]{1,0} %add.2, f32[] %add, f32[2,3]{1,0} %add.3)
+}
+
+%WhileCond {
+  %cond_param = (f32[2,3]{1,0}, f32[], f32[2,3]{1,0}) parameter(0)
+  %get-tuple-element = f32[] get-tuple-element(%cond_param), index=1
+  %constant = f32[] constant(50)
+  ROOT %compare = pred[] compare(f32[] %get-tuple-element, f32[] %constant), direction=LT
+}
+
+ENTRY %While {
+  %param_iter = f32[2,3]{1,0} parameter(0)
+  %param_data = f32[] parameter(1)
+  %tuple.1 = (f32[2,3]{1,0}, f32[], f32[2,3]{1,0}) tuple(f32[2,3]{1,0} %param_iter, f32[] %param_data, f32[2,3]{1,0} %param_iter)
+  %while = (f32[2,3]{1,0}, f32[], f32[2,3]{1,0}) while(%tuple.1), condition=%WhileCond, body=%WhileBody
+  ROOT %get-tuple-element.4 = f32[2,3]{1,0} get-tuple-element(%while), index=0
+}
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  const HloSchedule& schedule = module_->schedule();
+
+  const int32_t num_runs = 20;
+  std::vector<std::unique_ptr<HloLiveRange>> hlo_live_ranges;
+  std::unique_ptr<HloAliasAnalysis> alias_analysis =
+      HloAliasAnalysis::Run(module_.get()).value();
+
+  for (int i = 0; i < num_runs; ++i) {
+    hlo_live_ranges.push_back(HloLiveRange::Run(schedule, *alias_analysis,
+                                                module_->entry_computation())
+                                  .value());
+  }
+
+  absl::flat_hash_map<const HloValue*, HloLiveRange::TimeBound>&
+      buffer_live_ranges_0 = hlo_live_ranges[0]->buffer_live_ranges();
+  for (const auto& iter : buffer_live_ranges_0) {
+    for (size_t i = 1; i < num_runs; i++) {
+      absl::flat_hash_map<const HloValue*, HloLiveRange::TimeBound>&
+          buffer_live_ranges_i = hlo_live_ranges[i]->buffer_live_ranges();
+      auto found_iter = buffer_live_ranges_i.find(iter.first);
+      EXPECT_TRUE(found_iter != buffer_live_ranges_i.end())
+          << "value does not exist: " << iter.first->ToString();
+      EXPECT_EQ(found_iter->second.start, iter.second.start)
+          << "value " << iter.first->ToString()
+          << " has different start: " << found_iter->second.start << " vs "
+          << iter.second.start;
+      EXPECT_EQ(found_iter->second.end, iter.second.end)
+          << "value " << iter.first->ToString()
+          << " has different end: " << found_iter->second.end << " vs "
+          << iter.second.end;
+    }
+  }
 }
 
 TEST_F(HloLiveRangeTest, AsyncCall) {

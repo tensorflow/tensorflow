@@ -16,20 +16,19 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/metrics.h"
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/tsl/lib/monitoring/counter.h"
 
 namespace xla {
 namespace {
 
-auto* pjrt_executable_executions = tensorflow::monitoring::Counter<0>::New(
+auto* pjrt_executable_executions = tsl::monitoring::Counter<0>::New(
     "/jax/pjrt/pjrt_executable_executions",
     "The number of PjRtExecutable::ExecuteHelper calls.");
 
-auto* pjrt_executable_execution_time_usecs =
-    tensorflow::monitoring::Counter<0>::New(
-        "/jax/pjrt/pjrt_executable_execution_time_usecs",
-        "The total time spent on PjRtExecutable::ExecuteHelper in "
-        "microseconds.");
+auto* pjrt_executable_execution_time_usecs = tsl::monitoring::Counter<0>::New(
+    "/jax/pjrt/pjrt_executable_execution_time_usecs",
+    "The total time spent on PjRtExecutable::ExecuteHelper in "
+    "microseconds.");
 
 }  // namespace
 

@@ -16,8 +16,6 @@
 
 import re
 
-import six
-
 from tensorflow.python import tf2
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
@@ -38,7 +36,7 @@ class Module(autotrackable.AutoTrackable):
 
   >>> class Dense(tf.Module):
   ...   def __init__(self, input_dim, output_size, name=None):
-  ...     super(Dense, self).__init__(name=name)
+  ...     super().__init__(name=name)
   ...     self.w = tf.Variable(
   ...       tf.random.normal([input_dim, output_size]), name='w')
   ...     self.b = tf.Variable(tf.zeros([output_size]), name='b')
@@ -76,7 +74,7 @@ class Module(autotrackable.AutoTrackable):
 
   >>> class MLP(tf.Module):
   ...   def __init__(self, input_size, sizes, name=None):
-  ...     super(MLP, self).__init__(name=name)
+  ...     super().__init__(name=name)
   ...     self.layers = []
   ...     with self.name_scope:
   ...       for size in sizes:
@@ -229,7 +227,7 @@ class Module(autotrackable.AutoTrackable):
     ```
     class Foo(tf.Module):
       def __init__(self):
-        super(Foo, self).__init__()
+        super().__init__()
         self.x = [tf.constant('a'), tf.constant('b')]
         self.y = {'i': tf.constant('c'), 'j': tf.constant('d')}
         self.z = tf.constant('e')
@@ -425,10 +423,8 @@ def _flatten_module(module,
       else:
         leaves = nest.flatten_with_tuple_paths(prop)
     except Exception as cause:  # pylint: disable=broad-except
-      six.raise_from(
-          ValueError(
-              "Error processing property {!r} of {!r}".format(key, prop)),
-          cause)
+      raise ValueError("Error processing property {!r} of {!r}".format(
+          key, prop)) from cause
 
     for leaf_path, leaf in leaves:
       leaf_path = (key,) + leaf_path

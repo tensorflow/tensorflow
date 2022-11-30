@@ -16,12 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/profiler.h"
 
 #include "pybind11/pybind11.h"
+#include "tensorflow/compiler/xla/python/profiler/internal/traceme_wrapper.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
-#include "tensorflow/python/profiler/internal/traceme_wrapper.h"
 
 namespace xla {
 
@@ -30,9 +30,9 @@ namespace py = pybind11;
 namespace {
 // Adds a trivial forwarding class so these Python bindings and TensorFlow's
 // bindings of the same thing don't register the same class with pybind11.
-class TraceMeWrapper : public tensorflow::profiler::TraceMeWrapper {
+class TraceMeWrapper : public xla::profiler::TraceMeWrapper {
  public:
-  using tensorflow::profiler::TraceMeWrapper::TraceMeWrapper;
+  using xla::profiler::TraceMeWrapper::TraceMeWrapper;
 };
 
 tensorflow::ProfileOptions DefaultPythonProfileOptions() {

@@ -152,7 +152,7 @@ class HostComputeOp : public XlaOpKernel {
     for (auto& token_input_node : token_input_nodes_) {
       auto token_or = compiler->GetNodeToken(token_input_node);
       OP_REQUIRES_OK(ctx, token_or.status());
-      input_tokens.push_back(token_or.ValueOrDie());
+      input_tokens.push_back(token_or.value());
     }
     xla::XlaOp token = xla::AfterAll(b, input_tokens);
 
@@ -433,7 +433,7 @@ class SendToHostOp : public XlaOpKernel {
     for (auto& token_input_node : token_input_nodes_) {
       auto token_or = compiler->GetNodeToken(token_input_node);
       OP_REQUIRES_OK(ctx, token_or.status());
-      input_tokens.push_back(token_or.ValueOrDie());
+      input_tokens.push_back(token_or.value());
     }
     xla::XlaOp token = xla::AfterAll(b, input_tokens);
     xla::Shape xla_shape;
@@ -491,7 +491,7 @@ class RecvFromHostOp : public XlaOpKernel {
     for (auto& token_input_node : token_input_nodes_) {
       auto token_or = compiler->GetNodeToken(token_input_node);
       OP_REQUIRES_OK(ctx, token_or.status());
-      input_tokens.push_back(token_or.ValueOrDie());
+      input_tokens.push_back(token_or.value());
     }
     xla::XlaOp token = xla::AfterAll(b, input_tokens);
     xla::Shape xla_shape;

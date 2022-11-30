@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_GPU_TF_KERNEL_CUSTOM_CALL_H_
-#define TENSORFLOW_COMPILER_TF2XLA_KERNELS_GPU_TF_KERNEL_CUSTOM_CALL_H_
+#ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_LIGHT_OUTSIDE_COMPILATION_H_
+#define TENSORFLOW_COMPILER_TF2XLA_KERNELS_LIGHT_OUTSIDE_COMPILATION_H_
 
 #include <functional>
 
@@ -61,4 +61,4 @@ class LightOutsideCompilationOp : public XlaOpKernel {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_TF2XLA_KERNELS_GPU_TF_KERNEL_CUSTOM_CALL_H_
+#endif  // TENSORFLOW_COMPILER_TF2XLA_KERNELS_LIGHT_OUTSIDE_COMPILATION_H_

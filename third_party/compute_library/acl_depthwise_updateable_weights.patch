@@ -1,0 +1,101 @@
+ *******************************************************************************
+ Copyright 2022 Arm Limited and affiliates.
+ SPDX-License-Identifier: Apache-2.0
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ *******************************************************************************
+
+diff --git a/src/cpu/operators/CpuDepthwiseConv2d.cpp b/src/cpu/operators/CpuDepthwiseConv2d.cpp
+index c93ffb113..9e1baecf6 100644
+--- a/src/cpu/operators/CpuDepthwiseConv2d.cpp
++++ b/src/cpu/operators/CpuDepthwiseConv2d.cpp
+@@ -88,6 +88,7 @@ void CpuDepthwiseConv2d::CpuDepthwiseConv2dOptimizedInternal::configure(ITensorI
+     _is_nchw      = src->data_layout() == DataLayout::NCHW;
+     _permute      = _is_nchw;
+     _is_prepared  = false;
++    _are_weights_const = weights->are_values_constant();
+ 
+     // Configure pipeline
+     _is_activationlayer_enabled = info.act_info.enabled() && !CpuDepthwiseConv2dAssemblyDispatch::is_activation_supported(info.act_info);
+@@ -218,6 +219,25 @@ void CpuDepthwiseConv2d::CpuDepthwiseConv2dOptimizedInternal::run(ITensorPack &t
+ 
+ void CpuDepthwiseConv2d::CpuDepthwiseConv2dOptimizedInternal::prepare(ITensorPack &tensors)
+ {
++    // if weights are not constant then we need to repack so that weights
++    // can be updated in-place
++    if(!_are_weights_const)
++    {
++        auto weights        = tensors.get_const_tensor(TensorType::ACL_SRC_1);
++        auto bias           = tensors.get_const_tensor(TensorType::ACL_SRC_2);
++        auto packed_weights = tensors.get_tensor(TensorType::ACL_INT_4);
++
++        ITensorPack pack_opt;
++        pack_opt.add_tensor(TensorType::ACL_SRC_1, weights);
++        pack_opt.add_tensor(TensorType::ACL_SRC_2, bias);
++        pack_opt.add_tensor(TensorType::ACL_INT_1, packed_weights);
++
++        // Prepare optimized function
++        _dwc_optimized_func->prepare(pack_opt);
++
++        return;
++    }
++
+     if(!_is_prepared)
+     {
+         auto weights        = tensors.get_const_tensor(TensorType::ACL_SRC_1);
+diff --git a/src/cpu/operators/CpuDepthwiseConv2d.h b/src/cpu/operators/CpuDepthwiseConv2d.h
+index 15e52ef51..61dc8978c 100644
+--- a/src/cpu/operators/CpuDepthwiseConv2d.h
++++ b/src/cpu/operators/CpuDepthwiseConv2d.h
+@@ -143,6 +143,7 @@ private:
+         bool                                                _permute{ false };
+         bool                                                _is_activationlayer_enabled{ false };
+         bool                                                _is_prepared{ false };
++        bool                                                _are_weights_const{ true };
+     };
+ 
+     /** Basic function to execute a generic depthwise convolution. This function calls the following kernel:
+diff --git a/src/cpu/operators/CpuDepthwiseConv2dAssemblyDispatch.cpp b/src/cpu/operators/CpuDepthwiseConv2dAssemblyDispatch.cpp
+index e75b082ca..0d02834c2 100644
+--- a/src/cpu/operators/CpuDepthwiseConv2dAssemblyDispatch.cpp
++++ b/src/cpu/operators/CpuDepthwiseConv2dAssemblyDispatch.cpp
+@@ -40,6 +40,7 @@ struct CpuDepthwiseConv2dAssemblyDispatch::LocalImpl
+ {
+     std::unique_ptr<kernels::CpuDepthwiseConv2dAssemblyWrapperKernel> asm_kernel{ nullptr };
+     bool                                                              is_prepared{ false };
++    bool                                                              are_weights_const{ true };
+     experimental::MemoryRequirements                                  mem_req{};
+ };
+ 
+@@ -62,6 +63,7 @@ void CpuDepthwiseConv2dAssemblyDispatch::configure(const ITensorInfo     *src,
+     const CPUInfo     &ci          = NEScheduler::get().cpu_info();
+     const unsigned int num_threads = NEScheduler::get().num_threads();
+     _pImpl->is_prepared            = false;
++    _pImpl->are_weights_const      = weights->are_values_constant();
+ 
+     // If we don't support a combination of data types, silently return: it is the caller's responsibility to check if configure() was successful via is_configured()
+     if(!CpuDepthwiseConv2dAssemblyDispatch::validate(src, weights, bias, dst, info))
+@@ -107,10 +109,11 @@ void CpuDepthwiseConv2dAssemblyDispatch::run(ITensorPack &tensors)
+ 
+ void CpuDepthwiseConv2dAssemblyDispatch::prepare(ITensorPack &tensors)
+ {
+-    if(!_pImpl->is_prepared)
++    const ITensor *weights = tensors.get_const_tensor(TensorType::ACL_SRC_1);
++
++    if((!_pImpl->are_weights_const && weights != nullptr) || !_pImpl->is_prepared)
+     {
+         // Pack weights and bias
+-        const ITensor *weights = tensors.get_const_tensor(TensorType::ACL_SRC_1);
+         const ITensor *bias    = tensors.get_const_tensor(TensorType::ACL_SRC_2);
+         ITensor       *storage = tensors.get_tensor(TensorType::ACL_INT_1);
+ 

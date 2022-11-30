@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -38,7 +38,7 @@ TEST(HloOpcodeTest, OpcodeProperties) {
   for (int i = 0; i < HloOpcodeCount(); ++i) {
     auto opcode = static_cast<HloOpcode>(i);
     // Test round-trip conversion to and from string.
-    EXPECT_EQ(opcode, StringToHloOpcode(HloOpcodeString(opcode)).ValueOrDie());
+    EXPECT_EQ(opcode, StringToHloOpcode(HloOpcodeString(opcode)).value());
 
     // Test some properties.
     switch (opcode) {

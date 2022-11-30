@@ -4,7 +4,7 @@ The machine learning (ML) models you use with TensorFlow Lite are originally
 built and trained using TensorFlow core libraries and tools. Once you've built
 a model with TensorFlow core, you can convert it to a smaller, more
 efficient ML model format called a TensorFlow Lite model.
-This page provides guidance for converting
+This section provides guidance for converting
 your TensorFlow models to the TensorFlow Lite model format.
 
 Note: If you don't have a model to convert yet, see the
@@ -19,7 +19,7 @@ depending on the content of your ML model. As the first step of that process,
 you should evaluate your model to determine if it can be directly converted.
 This evaluation determines if the content of the model is supported by the
 standard TensorFlow Lite runtime environments based on the TensorFlow operations
-it uses. If you model uses operations outside of the supported set, you have
+it uses. If your model uses operations outside of the supported set, you have
 the option to refactor your model or use advanced conversion techniques.
 
 The diagram below shows the high level steps in converting a model.
@@ -45,9 +45,18 @@ You can use the converter with the following input model formats:
 *   [Models built from concrete functions](https://www.tensorflow.org/guide/intro_to_graphs):
     A model created using the low level TensorFlow API.
 
+You can save both the Keras and concrete function models as a SavedModel
+and convert using the recommeded path.
+
+Note: To avoid errors during inference, include signatures when exporting to the
+      SavedModel format.
+      The TensorFlow converter supports converting TensorFlow model's
+      input/output specifications to TensorFlow Lite models. See the topic
+      on [adding signatures](https://tensorflow.org/lite/guide/signatures).
+
 If you have a Jax model, you can use the `TFLiteConverter.experimental_from_jax`
-API to convert it to the TensorFlow Lite format. Note that this API is subjct to
-change while in experimental mode.
+API to convert it to the TensorFlow Lite format. Note that this API is subject
+to change while in experimental mode.
 
 ### Conversion evaluation
 
@@ -80,9 +89,22 @@ TensorFlow Lite model (an optimized
 `.tflite` file extension). You can load
 a SavedModel or directly convert a model you create in code.
 
+The converter takes 3 main flags (or options) that customize the conversion
+for your model:
+
+1. [Compatibility flags](../../guide/ops_compatibility) allow you to specify
+   whether the conversion should allow custom operators.
+1. [Optimization flags](../../performance/model_optimization) allow you to
+   specify the type of optimization to apply
+   during conversion. The most commonly used optimization technique is
+   [post-training quanitization]().
+1. [Metadata flags](metadata) allow you to add metadata to the converted model
+   which makes it easier to create platform specific wrapper code when deploying
+   models on devices.
+
 You can convert your model using the [Python API](convert_models#python_api) or
 the [Command line](convert_models#cmdline) tool. See the
-[TensorFlow Lite Converter](convert_models) guide for step by step
+[Convert TF model](convert_models) guide for step by step
 instructions on running the converter on your model.
 
 Typically you would convert your model for the standard TensorFlow Lite
@@ -116,13 +138,11 @@ format model and a custom runtime environment for that model.
 
 ## Next steps
 
+* See the [convert TF models](convert_models) guide to quickly get started on
+  converting your model.
 * See the [optimization overview](../../performance/model_optimization) for
   guidance on how to optimize your converted model using techniques like
   [post-training quanitization](../../performance/post_training_quantization).
-* See the
-  [Model Analyzer guide](https://www.tensorflow.org/lite/guide/model_analyzer)
-  to use the API to analyze your model for issues such as delegate
-  compatibility.
 * See the [Adding metadata overview](metadata) to learn how to add metadata to
   your models. Metadata provides other uses a description of your model as well
   as information that can be leveraged by code generators.

@@ -63,7 +63,7 @@ class LayoutTest : public ::testing::Test {
  protected:
   Layout BatchLayout() {
     return Layout::FromString("sharding_specs:x,batch, mesh:|x=4,batch=8|*TPU")
-        .ValueOrDie();
+        .value();
   }
 };
 
@@ -76,17 +76,15 @@ TEST_F(LayoutTest, FromStringEmptyMesh) {
 TEST_F(LayoutTest, FromStringEmptyLayout) {
   Layout layout = Layout::Empty();
   std::string layout_str = layout.ToString();
-  EXPECT_THAT(
-      layout.ToProto(),
-      EqualsProto(Layout::FromString(layout_str).ValueOrDie().ToProto()));
+  EXPECT_THAT(layout.ToProto(),
+              EqualsProto(Layout::FromString(layout_str).value().ToProto()));
 }
 
 TEST_F(LayoutTest, LayoutToFromString) {
   Layout layout = BatchLayout();
   std::string layout_str = layout.ToString();
-  EXPECT_THAT(
-      layout.ToProto(),
-      EqualsProto(Layout::FromString(layout_str).ValueOrDie().ToProto()));
+  EXPECT_THAT(layout.ToProto(),
+              EqualsProto(Layout::FromString(layout_str).value().ToProto()));
 }
 
 TEST_F(LayoutTest, LayoutToFromStringNotSharded) {
@@ -115,7 +113,7 @@ TEST_F(LayoutTest, MeshToFromString) {
   Mesh mesh = BatchLayout().mesh();
   std::string mesh_str = mesh.ToString();
   EXPECT_THAT(mesh.ToProto(),
-              EqualsProto(Mesh::FromString(mesh_str).ValueOrDie().ToProto()));
+              EqualsProto(Mesh::FromString(mesh_str).value().ToProto()));
 }
 
 TEST_F(LayoutTest, GetType) {
@@ -140,11 +138,11 @@ TEST_F(LayoutTest, IsReplicated) {
 TEST_F(LayoutTest, LayoutDimLocations) {
   Layout layout = BatchLayout();
   absl::InlinedVector<int64, 4> offset = {1, 2};
-  EXPECT_EQ(layout.device_location(10).ValueOrDie(), offset);
+  EXPECT_EQ(layout.device_location(10).value(), offset);
   offset = {2, 2};
-  EXPECT_EQ(layout.device_location(18).ValueOrDie(), offset);
+  EXPECT_EQ(layout.device_location(18).value(), offset);
   offset = {3, 7};
-  EXPECT_EQ(layout.device_location(31).ValueOrDie(), offset);
+  EXPECT_EQ(layout.device_location(31).value(), offset);
 
   EXPECT_FALSE(layout.device_location(32).ok());
   EXPECT_FALSE(layout.device_location(-1).ok());
@@ -152,8 +150,7 @@ TEST_F(LayoutTest, LayoutDimLocations) {
 
 TEST_F(LayoutTest, ScalarLayout) {
   Layout layout =
-      Layout::FromString("sharding_specs:scalar, mesh:|x=4,y=4|*TPU")
-          .ValueOrDie();
+      Layout::FromString("sharding_specs:scalar, mesh:|x=4,y=4|*TPU").value();
   EXPECT_EQ(layout.num_devices(), 16);
   EXPECT_TRUE(layout.mesh().is_tpu_mesh());
   EXPECT_EQ(layout.ToProto().mesh_config().mesh_dimensions(0).size(), 4);
@@ -162,7 +159,7 @@ TEST_F(LayoutTest, ScalarLayout) {
 
 TEST_F(LayoutTest, ParseSimpleTpuMesh) {
   Layout layout =
-      Layout::FromString("sharding_specs:x, mesh:|x=4,y=4|*TPU").ValueOrDie();
+      Layout::FromString("sharding_specs:x, mesh:|x=4,y=4|*TPU").value();
   EXPECT_EQ(layout.num_devices(), 16);
   EXPECT_TRUE(layout.mesh().is_tpu_mesh());
   EXPECT_EQ(layout.ToProto().mesh_config().mesh_dimensions(0).size(), 4);
@@ -171,7 +168,7 @@ TEST_F(LayoutTest, ParseSimpleTpuMesh) {
 TEST_F(LayoutTest, ParseSimpleCpuMesh) {
   auto layout =
       Layout::FromString("sharding_specs:x,unsharded, mesh:|x=4,y=4|*CPU")
-          .ValueOrDie();
+          .value();
   EXPECT_EQ(layout.num_devices(), 16);
   EXPECT_FALSE(layout.mesh().is_tpu_mesh());
 
@@ -205,7 +202,7 @@ TEST_F(LayoutTest, ParseFailsOnBadDeviceString) {
 TEST_F(LayoutTest, ParseReplicatedLayout) {
   auto layout = Layout::FromString(
                     "sharding_specs:unsharded,unsharded, mesh:|x=4,y=4|*CPU")
-                    .ValueOrDie();
+                    .value();
   EXPECT_EQ(layout.num_devices(), 16);
   EXPECT_FALSE(layout.mesh().is_tpu_mesh());
   EXPECT_TRUE(layout.IsFullyReplicated());
@@ -216,7 +213,7 @@ TEST_F(LayoutTest, SingleHostFullyReplicatedReducedMesh) {
   Layout replicated_layout =
       Layout::FromString(
           "sharding_specs:unsharded,unsharded, mesh:|x=2,y=2|*CPU")
-          .ValueOrDie();
+          .value();
   Mesh reduced_mesh = replicated_layout.ReducedMesh();
   EXPECT_EQ(reduced_mesh.size(), 1);
   EXPECT_THAT(reduced_mesh.hosts(), SizeIs(1));
@@ -357,7 +354,7 @@ TEST_F(LayoutTest, ShardEqualityTwoDims) {
 
 TEST_F(LayoutTest, Shards) {
   Layout layout =
-      Layout::FromString("sharding_specs:x,y, mesh:|x=2,y=3|*CPU").ValueOrDie();
+      Layout::FromString("sharding_specs:x,y, mesh:|x=2,y=3|*CPU").value();
   ShardVector shard_vec = layout.GetShardVector();
 
   std::string expected_shard_vec_str =
@@ -367,7 +364,7 @@ TEST_F(LayoutTest, Shards) {
 
 TEST_F(LayoutTest, ShardsInverted) {
   Layout layout =
-      Layout::FromString("sharding_specs:y,x, mesh:|x=2,y=3|*CPU").ValueOrDie();
+      Layout::FromString("sharding_specs:y,x, mesh:|x=2,y=3|*CPU").value();
   ShardVector shards = layout.GetShardVector();
   std::string expected_shards =
       "shards:[(1,1),(2,1),(3,1),(1,2),(2,2),(3,2)] num_shards_per_dim:(3,2)";
@@ -376,8 +373,7 @@ TEST_F(LayoutTest, ShardsInverted) {
 
 TEST_F(LayoutTest, HostShardMap) {
   Layout layout =
-      Layout::FromString("sharding_specs:x,y, mesh:TPU|x=2,y=2|*TPU")
-          .ValueOrDie();
+      Layout::FromString("sharding_specs:x,y, mesh:TPU|x=2,y=2|*TPU").value();
   std::string host_name = layout.mesh().hosts()[0];
   auto host_map = layout.HostShardMap();
 
@@ -396,7 +392,7 @@ TEST_F(LayoutTest, MultiHostMultiDeviceShards) {
           "sharding_specs:x,unsharded, mesh:TPU|x=4,y=1|0,1,2,3|0,1,2,3|" +
           host1 + device1 + "," + host1 + device2 + "," + host2 + device1 +
           "," + host2 + device2)
-          .ValueOrDie();
+          .value();
   std::string expected_shard_vec =
       "shards:[(1,1),(2,1),(3,1),(4,1)] num_shards_per_dim:(4,1)";
   EXPECT_EQ(layout.GetShardVector().ToString(), expected_shard_vec);
@@ -464,74 +460,70 @@ TEST_F(LayoutTest, MultiHostCommXSharded) {
 
 TEST_F(LayoutTest, Transposed2DLayout) {
   auto layout =
-      Layout::FromString("sharding_specs:x,y, mesh:|x=2,y=2|*CPU").ValueOrDie();
+      Layout::FromString("sharding_specs:x,y, mesh:|x=2,y=2|*CPU").value();
   auto expected_layout =
-      Layout::FromString("sharding_specs:y,x, mesh:|x=2,y=2|*CPU").ValueOrDie();
-  EXPECT_EQ(Layout::Transposed2D(layout).ValueOrDie(), expected_layout);
+      Layout::FromString("sharding_specs:y,x, mesh:|x=2,y=2|*CPU").value();
+  EXPECT_EQ(Layout::Transposed2D(layout).value(), expected_layout);
 }
 
 TEST_F(LayoutTest, Transposed2DLayoutWithBatch) {
   auto layout = Layout::FromString(
                     "sharding_specs:b1,b2,x,y, mesh:|x=2,y=2,b1=2,b2=2|*CPU")
-                    .ValueOrDie();
+                    .value();
   auto expected_layout =
       Layout::FromString(
           "sharding_specs:b1,b2,y,x, mesh:|x=2,y=2,b1=2,b2=2|*CPU")
-          .ValueOrDie();
-  EXPECT_EQ(Layout::Transposed2D(layout).ValueOrDie(), expected_layout);
+          .value();
+  EXPECT_EQ(Layout::Transposed2D(layout).value(), expected_layout);
 }
 
 TEST_F(LayoutTest, MeshDimensionIndex) {
   auto layout =
-      Layout::FromString("sharding_specs:x,y, mesh:|x=2,y=2|*CPU").ValueOrDie();
-  EXPECT_EQ(layout.mesh().idx_for_dim("x").ValueOrDie(), 0);
-  EXPECT_EQ(layout.mesh().idx_for_dim("y").ValueOrDie(), 1);
+      Layout::FromString("sharding_specs:x,y, mesh:|x=2,y=2|*CPU").value();
+  EXPECT_EQ(layout.mesh().idx_for_dim("x").value(), 0);
+  EXPECT_EQ(layout.mesh().idx_for_dim("y").value(), 1);
 }
 
 TEST_F(LayoutTest, TruncateBeginning) {
-  auto layout = Layout::FromString("sharding_specs:x,y, mesh:CPU|x=2,y=2|*CPU")
-                    .ValueOrDie();
+  auto layout =
+      Layout::FromString("sharding_specs:x,y, mesh:CPU|x=2,y=2|*CPU").value();
   auto expected_layout =
-      Layout::FromString("sharding_specs:x, mesh:CPU|x=2,y=2|*CPU")
-          .ValueOrDie();
+      Layout::FromString("sharding_specs:x, mesh:CPU|x=2,y=2|*CPU").value();
   EXPECT_EQ(layout.Truncate(/*split_point=*/1), expected_layout);
 }
 
 TEST_F(LayoutTest, TruncateEnd) {
-  auto layout = Layout::FromString("sharding_specs:x,y, mesh:CPU|x=2,y=2|*CPU")
-                    .ValueOrDie();
+  auto layout =
+      Layout::FromString("sharding_specs:x,y, mesh:CPU|x=2,y=2|*CPU").value();
   auto expected_layout =
-      Layout::FromString("sharding_specs:y, mesh:CPU|x=2,y=2|*CPU")
-          .ValueOrDie();
+      Layout::FromString("sharding_specs:y, mesh:CPU|x=2,y=2|*CPU").value();
   EXPECT_EQ(layout.Truncate(/*split_point=*/1, /*end=*/true), expected_layout);
 }
 
 TEST_F(LayoutTest, Concatenate) {
-  auto layout_1 = Layout::FromString("sharding_specs:x, mesh:CPU|x=2,y=2|*CPU")
-                      .ValueOrDie();
-  auto layout_2 = Layout::FromString("sharding_specs:y, mesh:CPU|x=2,y=2|*CPU")
-                      .ValueOrDie();
+  auto layout_1 =
+      Layout::FromString("sharding_specs:x, mesh:CPU|x=2,y=2|*CPU").value();
+  auto layout_2 =
+      Layout::FromString("sharding_specs:y, mesh:CPU|x=2,y=2|*CPU").value();
   auto expected_layout =
-      Layout::FromString("sharding_specs:x,y, mesh:CPU|x=2,y=2|*CPU")
-          .ValueOrDie();
-  EXPECT_EQ(ConcatenateLayouts(layout_1, layout_2).ValueOrDie(),
-            expected_layout);
+      Layout::FromString("sharding_specs:x,y, mesh:CPU|x=2,y=2|*CPU").value();
+  EXPECT_EQ(ConcatenateLayouts(layout_1, layout_2).value(), expected_layout);
 }
 
 TEST_F(LayoutTest, ConcatenateDifferentMesh) {
   auto layout_1 =
-      Layout::FromString("sharding_specs:x, mesh:CPU|x=2|*CPU").ValueOrDie();
+      Layout::FromString("sharding_specs:x, mesh:CPU|x=2|*CPU").value();
   auto layout_2 =
-      Layout::FromString("sharding_specs:y, mesh:CPU|y=2|*CPU").ValueOrDie();
+      Layout::FromString("sharding_specs:y, mesh:CPU|y=2|*CPU").value();
   auto layout = ConcatenateLayouts(layout_1, layout_2);
   EXPECT_FALSE(layout.ok()) << layout.status();
 }
 
 TEST_F(LayoutTest, ConcatenateSameDimension) {
-  auto layout_1 = Layout::FromString("sharding_specs:x, mesh:CPU|x=2,y=2|*CPU")
-                      .ValueOrDie();
-  auto layout_2 = Layout::FromString("sharding_specs:x, mesh:CPU|x=2,y=2|*CPU")
-                      .ValueOrDie();
+  auto layout_1 =
+      Layout::FromString("sharding_specs:x, mesh:CPU|x=2,y=2|*CPU").value();
+  auto layout_2 =
+      Layout::FromString("sharding_specs:x, mesh:CPU|x=2,y=2|*CPU").value();
   auto layout = ConcatenateLayouts(layout_1, layout_2);
   EXPECT_FALSE(layout.ok()) << layout.status();
 }
@@ -542,27 +534,27 @@ TEST_F(LayoutTest, EmptyMeshDeviceType) {
 }
 
 TEST_F(LayoutTest, ConvertMeshDeviceType) {
-  Mesh mesh = Mesh::FromString("mesh:|x=2,batch=1|*TPU").ValueOrDie();
-  Mesh cpu_mesh = mesh.ToDeviceType("CPU").ValueOrDie();
+  Mesh mesh = Mesh::FromString("mesh:|x=2,batch=1|*TPU").value();
+  Mesh cpu_mesh = mesh.ToDeviceType("CPU").value();
   EXPECT_TRUE(cpu_mesh.is_cpu_mesh());
 
   std::string expected_task_name = "/job:localhost/replica:0/task:0/";
   Mesh expected_mesh =
       Mesh::FromString("mesh:|x=2,batch=1|0,1|0,1|" + expected_task_name +
                        "device:CPU:0," + expected_task_name + "device:CPU:1")
-          .ValueOrDie();
+          .value();
   EXPECT_EQ(cpu_mesh, expected_mesh);
 }
 
 TEST_F(LayoutTest, EquivalentLayout) {
   Layout fully_sharded =
-      Layout::FromString("sharding_specs:x,y, mesh:|x=2,y=1|*TPU").ValueOrDie();
+      Layout::FromString("sharding_specs:x,y, mesh:|x=2,y=1|*TPU").value();
   Layout x_sharded =
       Layout::FromString("sharding_specs:x,unsharded, mesh:|x=2,y=1|*TPU")
-          .ValueOrDie();
+          .value();
   Layout y_sharded =
       Layout::FromString("sharding_specs:unsharded,y, mesh:|x=2,y=1|*TPU")
-          .ValueOrDie();
+          .value();
 
   EXPECT_TRUE(fully_sharded.IsEquivalent(x_sharded));
   EXPECT_TRUE(x_sharded.IsEquivalent(fully_sharded));

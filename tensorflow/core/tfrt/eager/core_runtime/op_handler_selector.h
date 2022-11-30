@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_TFRT_EAGER_CORE_RUNTIME_PLACER_H_
-#define TENSORFLOW_CORE_TFRT_EAGER_CORE_RUNTIME_PLACER_H_
+#ifndef TENSORFLOW_CORE_TFRT_EAGER_CORE_RUNTIME_OP_HANDLER_SELECTOR_H_
+#define TENSORFLOW_CORE_TFRT_EAGER_CORE_RUNTIME_OP_HANDLER_SELECTOR_H_
 
 #include "tensorflow/core/platform/status.h"
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
@@ -71,4 +71,4 @@ class EagerOpHandlerSelector final {
 }  // namespace tf
 }  // namespace tfrt
 
-#endif  // TENSORFLOW_CORE_TFRT_EAGER_CORE_RUNTIME_PLACER_H_
+#endif  // TENSORFLOW_CORE_TFRT_EAGER_CORE_RUNTIME_OP_HANDLER_SELECTOR_H_

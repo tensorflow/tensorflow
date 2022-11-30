@@ -44,7 +44,7 @@ class DenseBincountOp : public XlaOpKernel {
     StatusOr<xla::Shape> output_shape_or =
         ctx->builder()->GetShape(output_size_param);
     OP_REQUIRES_OK(ctx, output_shape_or.status());
-    auto output_shape_param = output_shape_or.ValueOrDie();
+    auto output_shape_param = output_shape_or.value();
     auto output_rank = output_shape_param.rank();
     OP_REQUIRES(ctx, output_rank == 0,
                 errors::InvalidArgument("Shape must be rank 0 but is rank ",
@@ -61,7 +61,7 @@ class DenseBincountOp : public XlaOpKernel {
     auto one = xla::One(ctx->builder(), dtype);
     StatusOr<xla::Shape> input_shape_or = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, input_shape_or.status());
-    auto input_shape = input_shape_or.ValueOrDie();
+    auto input_shape = input_shape_or.value();
     auto size = input_shape.dimensions(0);
 
     if (!size) {
@@ -79,7 +79,7 @@ class DenseBincountOp : public XlaOpKernel {
     StatusOr<xla::Shape> weights_shape_or = ctx->builder()->GetShape(weights);
     OP_REQUIRES_OK(ctx, weights_shape_or.status());
 
-    auto weights_shape = weights_shape_or.ValueOrDie();
+    auto weights_shape = weights_shape_or.value();
     OP_REQUIRES(ctx,
                 xla::ShapeUtil::CompatibleIgnoringElementType(weights_shape,
                                                               input_shape) ||

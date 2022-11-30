@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
@@ -110,7 +110,9 @@ std::unique_ptr<Interpreter> CreateInterpreter(
 
 PyObject* PyArrayFromFloatVector(const float* data, npy_intp size) {
   void* pydata = malloc(size * sizeof(float));
-  memcpy(pydata, data, size * sizeof(float));
+  if (data != nullptr) {
+    memcpy(pydata, data, size * sizeof(float));
+  }
   PyObject* obj = PyArray_SimpleNewFromData(1, &size, NPY_FLOAT32, pydata);
   PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(obj), NPY_ARRAY_OWNDATA);
   return obj;
@@ -118,7 +120,9 @@ PyObject* PyArrayFromFloatVector(const float* data, npy_intp size) {
 
 PyObject* PyArrayFromIntVector(const int* data, npy_intp size) {
   void* pydata = malloc(size * sizeof(int));
-  memcpy(pydata, data, size * sizeof(int));
+  if (data != nullptr) {
+    memcpy(pydata, data, size * sizeof(int));
+  }
   PyObject* obj = PyArray_SimpleNewFromData(1, &size, NPY_INT32, pydata);
   PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(obj), NPY_ARRAY_OWNDATA);
   return obj;

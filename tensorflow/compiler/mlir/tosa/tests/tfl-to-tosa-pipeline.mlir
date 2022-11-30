@@ -111,6 +111,77 @@ func.func @test_depthwise_conv2d_bias_inferred(%arg0: tensor<?x32x32x8xf32>, %ar
 
 // -----
 
+// CHECK-LABEL: test_conv3d
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<2x2x7x7x2xf32>
+// CHECK-SAME: %[[VAL_1:.*]]: tensor<2x3x3x2x4xf32>
+// CHECK-DAG: %[[VAL_2:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<4xf32>}
+// CHECK-DAG: %[[VAL_3:.*]] = "tosa.const"() {value = dense<[4, 0, 1, 2, 3]> : tensor<5xi32>}
+// CHECK: %[[VAL_4:.*]] = "tosa.transpose"(%[[VAL_1]], %[[VAL_3]])
+// CHECK: %[[VAL_5:.*]] = "tosa.conv3d"(%[[VAL_0]], %[[VAL_4]], %[[VAL_2]]) {dilation = [1, 1, 1], pad = [0, 1, 1, 1, 1, 1], stride = [1, 1, 1]}
+func.func @test_conv3d(%arg0: tensor<2x2x7x7x2xf32>, %arg1: tensor<2x3x3x2x4xf32>) -> tensor<2x2x7x7x4xf32> {
+  %cst = "tfl.no_value"() {value} : () -> none
+  %0 = "tfl.conv_3d"(%arg0, %arg1, %cst) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<2x2x7x7x2xf32>, tensor<2x3x3x2x4xf32>, none) -> tensor<2x2x7x7x4xf32>
+  func.return %0 : tensor<2x2x7x7x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_conv3d_dynamic
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<?x11x32x32x8xf32>
+// CHECK-SAME: %[[VAL_1:.*]]: tensor<3x1x1x8x16xf32>
+// CHECK-DAG: %[[VAL_2:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<16xf32>}
+// CHECK-DAG: %[[VAL_3:.*]] = "tosa.const"() {value = dense<[4, 0, 1, 2, 3]> : tensor<5xi32>}
+// CHECK: %[[VAL_4:.*]] = "tosa.transpose"(%[[VAL_1]], %[[VAL_3]])
+// CHECK: %[[VAL_5:.*]] = "tosa.conv3d"(%[[VAL_0]], %[[VAL_4]], %[[VAL_2]]) {dilation = [1, 1, 1], pad = [1, 1, 0, 0, 0, 0], stride = [1, 1, 1]}
+func.func @test_conv3d_dynamic(%arg0: tensor<?x11x32x32x8xf32>, %arg1: tensor<3x1x1x8x16xf32>) -> tensor<*xf32> {
+  %cst = "tfl.no_value"() {value} : () -> none
+  %0 = "tfl.conv_3d"(%arg0, %arg1, %cst) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<?x11x32x32x8xf32>, tensor<3x1x1x8x16xf32>, none) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_conv3d_bias
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<10x3x64x64x12xf32>
+// CHECK-SAME: %[[VAL_1:.*]]: tensor<16x2x2x12x8xf32>
+// CHECK-SAME: %[[VAL_2:.*]]: tensor<8xf32>
+// CHECK-DAG: %[[VAL_3:.*]] = "tosa.const"() {value = dense<[4, 0, 1, 2, 3]>
+// CHECK: %[[VAL_4:.*]] = "tosa.transpose"(%[[VAL_1]], %[[VAL_3]])
+// CHECK: %[[VAL_5:.*]] = "tosa.conv3d"(%[[VAL_0]], %[[VAL_4]], %[[VAL_2]]) {dilation = [1, 1, 1], pad = [7, 8, 0, 1, 0, 1], stride = [1, 1, 1]}
+func.func @test_conv3d_bias(%arg0: tensor<10x3x64x64x12xf32>, %arg1: tensor<16x2x2x12x8xf32>, %cst: tensor<8xf32>) -> tensor<10x3x64x64x8xf32> {
+  %0 = "tfl.conv_3d"(%arg0, %arg1, %cst) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<10x3x64x64x12xf32>, tensor<16x2x2x12x8xf32>, tensor<8xf32>) -> tensor<10x3x64x64x8xf32>
+  func.return %0 : tensor<10x3x64x64x8xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_conv3d_qi8(
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<1x4x8x21x17x!quant.uniform<i8:f32, 0.015686264261603355>>
+// CHECK-SAME: %[[VAL_1:.*]]: tensor<2x3x3x17x34xf32>) -> tensor<1x4x8x11x34x!quant.uniform<i8:f32, 0.8929935097694397:-4>>
+// CHECK-DAG: %[[VAL_2:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<1x1x1x1x1xf32>}
+// CHECK-DAG: %[[VAL_3:.*]] = "tosa.const"() {value = dense<0.0156862643> : tensor<1x1x1x1x1xf32>}
+// CHECK-DAG: %[[VAL_4:.*]] = "tosa.const"() {value = dense<1.11982894> : tensor<1x1x1x1x1xf32>}
+// CHECK-DAG: %[[VAL_5:.*]] = "tosa.const"() {value = dense<-4.000000e+00> : tensor<1x1x1x1x1xf32>}
+// CHECK-DAG: %[[VAL_6:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<34xf32>}
+// CHECK-DAG: %[[VAL_7:.*]] = "tosa.const"() {value = dense<[4, 0, 1, 2, 3]> : tensor<5xi32>}
+// CHECK: %[[VAL_8:.*]] = "tosa.cast"(%[[VAL_0]])
+// CHECK: %[[VAL_9:.*]] = "tosa.sub"(%[[VAL_8]], %[[VAL_2]])
+// CHECK: %[[VAL_10:.*]] = "tosa.mul"(%[[VAL_9]], %[[VAL_3]]) {shift = 0 : i32}
+// CHECK: %[[VAL_11:.*]] = "tosa.transpose"(%[[VAL_1]], %[[VAL_7]])
+// CHECK: %[[VAL_12:.*]] = "tosa.conv3d"(%[[VAL_10]], %[[VAL_11]], %[[VAL_6]]) {dilation = [1, 1, 1], pad = [0, 1, 1, 1, 1, 1], stride = [1, 1, 2]}
+// CHECK: %[[VAL_13:.*]] = "tosa.mul"(%[[VAL_12]], %[[VAL_4]]) {shift = 0 : i32}
+// CHECK: %[[VAL_14:.*]] = "tosa.add"(%[[VAL_13]], %[[VAL_5]])
+// CHECK: %[[VAL_15:.*]] = "tosa.cast"(%[[VAL_14]])
+func.func @test_conv3d_qi8(%arg0: tensor<1x4x8x21x17x!quant.uniform<i8:f32, 0.015686264261603355>>, %arg1: tensor<2x3x3x17x34xf32>) -> (tensor<1x4x8x11x34x!quant.uniform<i8:f32, 0.8929935097694397:-4>>) {
+  %0 = "tfl.dequantize"(%arg0) : (tensor<1x4x8x21x17x!quant.uniform<i8:f32, 0.015686264261603355>>) -> tensor<1x4x8x21x17xf32>
+  %2 = "tfl.no_value"() {value} : () -> none
+  %3 = "tfl.conv_3d"(%0, %arg1, %2) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 2 : i32} : (tensor<1x4x8x21x17xf32>, tensor<2x3x3x17x34xf32>, none) -> tensor<1x4x8x11x34xf32>
+  %4 = "tfl.quantize"(%3) {qtype = tensor<1x4x8x11x34x!quant.uniform<i8:f32, 0.8929935097694397:-4>>} : (tensor<1x4x8x11x34xf32>) -> tensor<1x4x8x11x34x!quant.uniform<i8:f32, 0.8929935097694397:-4>>
+  return %4 : tensor<1x4x8x11x34x!quant.uniform<i8:f32, 0.8929935097694397:-4>>
+}
+
+// -----
+
 // CHECK-LABEL: test_add
 // CHECK: %[[VAR0:.*]] = "tosa.add"(%arg0, %arg1)
 func.func @test_add(%arg0: tensor<13x21x1xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
@@ -200,6 +271,15 @@ func.func @test_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<i32>) -> tensor<*x
 func.func @test_floor_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<i32>) -> tensor<*xi32> {
   %0 = "tfl.floor_div"(%arg0, %arg1)  {fused_activation_function = "NONE"}  : (tensor<13x21x3xi32>, tensor<i32>) -> tensor<*xi32>
   func.return %0 : tensor<*xi32>
+}
+
+// -----
+
+// CHECK-LABEL: test_relu1
+// CHECK: %[[VAL0:.*]] = "tosa.clamp"(%arg0) {max_fp = 1.000000e+00 : f32, max_int = 1 : i64, min_fp = -1.000000e+00 : f32, min_int = -1 : i64}
+func.func @test_relu1(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
+  %0 = "tfl.relu_n1_to_1"(%arg0) : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+  func.return %0 : tensor<13x21x3xf32>
 }
 
 // -----
@@ -651,11 +731,23 @@ func.func @test_reshape(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 
 // -----
 
-// CHECK-LABEL: test_reshape_dynamic
-// CHECK: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, -1]}
-func.func @test_reshape_dynamic(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %cst = arith.constant dense<[1, -1]> : tensor<2xi32>
+// CHECK-LABEL: test_reshape_unknown
+// CHECK: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = [9, -1]}
+// CHECK-SAME: -> tensor<9x91xf32>
+func.func @test_reshape_unknown(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
+  %cst = arith.constant dense<[9, -1]> : tensor<2xi32>
   %0 = "tfl.reshape"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<2xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_reshape_dynamic
+// CHECK: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = [3, -1]}
+// CHECK-SAME: -> tensor<3x?xf32>
+func.func @test_reshape_dynamic(%arg0: tensor<13x21x?xf32>) -> tensor<*xf32> {
+  %cst = arith.constant dense<[3, -1]> : tensor<2xi32>
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<13x21x?xf32>, tensor<2xi32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
@@ -836,6 +928,16 @@ func.func @test_strided_slice_dynamic_end(%arg0: tensor<10x?x?xf32>) -> tensor<*
 func.func @test_select(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>, %arg2: tensor<1xi1>) -> tensor<13x21x3xf32> {
   %0 = "tfl.select_v2"(%arg2, %arg0, %arg1) : (tensor<1xi1>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   func.return %0 : tensor<13x21x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_select_with_unranked
+func.func @test_select_with_unranked(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<*xf32> {
+  // CHECK: "tosa.select"
+  // CHECK-SAME: (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  %57 = "tfl.select"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<*xf32>
+  return %57 : tensor<*xf32>
 }
 
 // -----
@@ -1401,10 +1503,10 @@ func.func @test_dequantize_quant_per_axis(%arg0: tensor<1x4x!quant.uniform<i8:f3
 
 // -----
 
-// CHECK-LABEL: test_quant_stats
-func.func @test_quant_stats(%arg0: tensor<2x1xf32>) -> (tensor<2x1xf32>) {
-  // CHECK-NOT: quant.stats
-  %0 = "quant.stats"(%arg0) {layerStats = dense<[1.0, 1.0]> : tensor<2xf32>}: (tensor<2x1xf32>) -> tensor<2x1xf32>
+// CHECK-LABEL: test_quantfork.stats
+func.func @test_quantfork.stats(%arg0: tensor<2x1xf32>) -> (tensor<2x1xf32>) {
+  // CHECK-NOT: quantfork.stats
+  %0 = "quantfork.stats"(%arg0) {layerStats = dense<[1.0, 1.0]> : tensor<2xf32>}: (tensor<2x1xf32>) -> tensor<2x1xf32>
   func.return %0 : tensor<2x1xf32>
 }
 
@@ -1478,56 +1580,63 @@ func.func @test_max_pool2d_qi8(%arg0: tensor<1x32x32x8x!quant.uniform<i8:f32, 0.
 // -----
 
 // CHECK-LABEL: test_softmax_qi8
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<"0x5{{.*}}> : tensor<513xi16>}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.const"() {value = dense<"0xE{{.*}}> : tensor<513xi16>}
-// CHECK-DAG: %[[VAR3:.*]] = "tosa.const"() {value = dense<9> : tensor<1x1x1xi32>}
-// CHECK-DAG: %[[VAR4:.*]] = "tosa.const"() {value = dense<7> : tensor<1x1x1xi32>}
-// CHECK-DAG: %[[VAR5:.*]] = "tosa.const"() {value = dense<32768> : tensor<1x1x1xi32>}
-// CHECK-DAG: %[[VAR6:.*]] = "tosa.const"() {value = dense<12> : tensor<1x1x1xi32>}
-// CHECK-DAG: %[[VAR7:.*]] = "tosa.const"() {value = dense<1> : tensor<1x1x1xi32>}
-// CHECK-DAG: %[[VAR8:.*]] = "tosa.const"() {value = dense<4> : tensor<1x1x1xi32>}
-// CHECK-DAG: %[[VAR9:.*]] = "tosa.const"() {value = dense<536870912> : tensor<1x1x1xi32>}
-// CHECK-DAG: %[[VAR10:.*]] = "tosa.const"() {value = dense<1515870810> : tensor<1x1x1xi32>}
-// CHECK-DAG: %[[VAR11:.*]] = "tosa.const"() {value = dense<-1010580540> : tensor<1x1x1xi32>}
-// CHECK-DAG: %[[VAR12:.*]] = "tosa.const"() {value = dense<35> : tensor<1x1x1xi32>}
-// CHECK-DAG: %[[VAR13:.*]] = "tosa.rescale"(%arg0) {double_round = false, input_zp = 0 : i32, multiplier = [1073741824 : i32], output_zp = 0 : i32, per_channel = false, scale32 = true, shift = [30 : i32]}
-// CHECK-DAG: %[[VAR14:.*]] = "tosa.reduce_max"(%[[VAR13]]) {axis = 2 : i64}
-// CHECK-DAG: %[[VAR15:.*]] = "tosa.sub"(%[[VAR13]], %[[VAR14]])
-// CHECK-DAG: %[[VAR16:.*]] = "tosa.rescale"(%[[VAR15]]) {double_round = false, input_zp = 0 : i32, multiplier = [1073741824 : i32], output_zp = 0 : i32, per_channel = false, scale32 = true, shift = [23 : i32]}
-// CHECK-DAG: %[[VAR17:.*]] = "tosa.table"(%[[VAR16]], %[[VAR1]])
-// CHECK-DAG: %[[VAR18:.*]] = "tosa.table"(%[[VAR16]], %[[VAR2]])
-// CHECK-DAG: %[[VAR20:.*]] = "tosa.logical_left_shift"(%[[VAR17]], %[[VAR3]])
-// CHECK-DAG: %[[VAR22:.*]] = "tosa.arithmetic_right_shift"(%[[VAR18]], %[[VAR4]]) {round = true}
-// CHECK-DAG: %[[VAR24:.*]] = "tosa.add"(%[[VAR22]], %[[VAR5]])
-// CHECK-DAG: %[[VAR25:.*]] = "tosa.add"(%[[VAR20]], %[[VAR24]])
-// CHECK-DAG: %[[VAR27:.*]] = "tosa.arithmetic_right_shift"(%[[VAR25]], %[[VAR6]]) {round = true}
-// CHECK-DAG: %[[VAR28:.*]] = "tosa.reduce_sum"(%[[VAR27]]) {axis = 2 : i64}
-// CHECK-DAG: %[[VAR29:.*]] = "tosa.clz"(%[[VAR28]])
-// CHECK-DAG: %[[VAR31:.*]] = "tosa.sub"(%[[VAR29]], %[[VAR7]])
-// CHECK-DAG: %[[VAR32:.*]] = "tosa.logical_left_shift"(%[[VAR28]], %[[VAR31]])
-// CHECK-DAG: %[[VAR34:.*]] = "tosa.mul"(%[[VAR32]], %[[VAR11]]) {shift = 31 : i32}
-// CHECK-DAG: %[[VAR36:.*]] = "tosa.add"(%[[VAR34]], %[[VAR10]])
-// CHECK-DAG: %[[VAR37:.*]] = "tosa.mul"(%[[VAR36]], %[[VAR32]]) {shift = 31 : i32}
-// CHECK-DAG: %[[VAR39:.*]] = "tosa.sub"(%[[VAR9]], %[[VAR37]])
-// CHECK-DAG: %[[VAR40:.*]] = "tosa.mul"(%[[VAR36]], %[[VAR39]]) {shift = 31 : i32}
-// CHECK-DAG: %[[VAR42:.*]] = "tosa.mul"(%[[VAR40]], %[[VAR8]]) {shift = 0 : i32}
-// CHECK-DAG: %[[VAR43:.*]] = "tosa.add"(%[[VAR36]], %[[VAR42]])
-// CHECK-DAG: %[[VAR44:.*]] = "tosa.mul"(%[[VAR43]], %[[VAR32]]) {shift = 31 : i32}
-// CHECK-DAG: %[[VAR46:.*]] = "tosa.sub"(%[[VAR9]], %[[VAR44]])
-// CHECK-DAG: %[[VAR47:.*]] = "tosa.mul"(%[[VAR43]], %[[VAR46]]) {shift = 31 : i32}
-// CHECK-DAG: %[[VAR49:.*]] = "tosa.mul"(%[[VAR47]], %[[VAR8]]) {shift = 0 : i32}
-// CHECK-DAG: %[[VAR50:.*]] = "tosa.add"(%[[VAR43]], %[[VAR49]])
-// CHECK-DAG: %[[VAR51:.*]] = "tosa.mul"(%[[VAR50]], %[[VAR32]]) {shift = 31 : i32}
-// CHECK-DAG: %[[VAR53:.*]] = "tosa.sub"(%[[VAR9]], %[[VAR51]])
-// CHECK-DAG: %[[VAR54:.*]] = "tosa.mul"(%[[VAR50]], %[[VAR53]]) {shift = 31 : i32}
-// CHECK-DAG: %[[VAR56:.*]] = "tosa.mul"(%[[VAR54]], %[[VAR8]]) {shift = 0 : i32}
-// CHECK-DAG: %[[VAR57:.*]] = "tosa.add"(%[[VAR50]], %[[VAR56]])
-// CHECK-DAG: %[[VAR58:.*]] = "tosa.mul"(%[[VAR25]], %[[VAR57]]) {shift = 30 : i32}
-// CHECK-DAG: %[[VAR60:.*]] = "tosa.sub"(%[[VAR12]], %[[VAR29]])
-// CHECK-DAG: %[[VAR61:.*]] = "tosa.arithmetic_right_shift"(%[[VAR58]], %[[VAR60]]) {round = true}
-// CHECK: %[[VAR62:.*]] = "tosa.rescale"(%[[VAR61]]) {double_round = false, input_zp = 0 : i32, multiplier = [1073741824 : i32], output_zp = -128 : i32, per_channel = false, scale32 = true, shift = [30 : i32]}
-func.func @test_softmax_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.0156164625659585>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 3.906250e-03:-128>> {
-  %0 = "tfl.softmax"(%arg0)  {beta = 1.000000e+00 : f32}  : (tensor<13x21x3x!quant.uniform<i8:f32, 0.0156164625659585>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 3.906250e-03:-128>>
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<35> : tensor<1x1x1xi32>}
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.const"() {value = dense<4> : tensor<1x1x1xi32>}
+// CHECK-DAG: %[[VAR3:.*]] = "tosa.const"() {value = dense<536870912> : tensor<1x1x1xi32>}
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.const"() {value = dense<1515870810> : tensor<1x1x1xi32>}
+// CHECK-DAG: %[[VAR5:.*]] = "tosa.const"() {value = dense<-1010580540> : tensor<1x1x1xi32>}
+// CHECK-DAG: %[[VAR6:.*]] = "tosa.const"() {value = dense<1> : tensor<1x1x1xi32>}
+// CHECK-DAG: %[[VAR7:.*]] = "tosa.const"() {value = dense<12> : tensor<1x1x1xi32>}
+// CHECK-DAG: %[[VAR8:.*]] = "tosa.const"() {value = dense<7> : tensor<1x1x1xi32>}
+// CHECK-DAG: %[[VAR9:.*]] = "tosa.const"() {value = dense<9> : tensor<1x1x1xi32>}
+// CHECK-DAG: %[[VAR10:.*]] = "tosa.const"() {value = dense<17> : tensor<1x1x1xi32>}
+// CHECK-DAG: %[[VAR11:.*]] = "tosa.const"() {value = dense<"0x5{{.*}}"> : tensor<513xi16>}
+// CHECK-DAG: %[[VAR12:.*]] = "tosa.const"() {value = dense<"0xE{{.*}}"> : tensor<513xi16>}
+// CHECK-DAG: %[[VAR13:.*]] = "tosa.const"() {value = dense<"0x4{{.*}}"> : tensor<513xi16>}
+// CHECK-DAG: %[[VAR14:.*]] = "tosa.const"() {value = dense<"0x0{{.*}}"> : tensor<513xi16>}
+// CHECK-DAG: %[[VAR15:.*]] = "tosa.rescale"(%arg0) {double_round = false, input_zp = -1 : i32, multiplier = [1073741824 : i32], output_zp = 0 : i32, per_channel = false, scale32 = true, shift = [30 : i32]}
+// CHECK-DAG: %[[VAR16:.*]] = "tosa.reduce_max"(%[[VAR15]]) {axis = 2 : i64}
+// CHECK-DAG: %[[VAR17:.*]] = "tosa.sub"(%[[VAR15]], %[[VAR16]])
+// CHECK-DAG: %[[VAR18:.*]] = "tosa.rescale"(%[[VAR17]]) {double_round = false, input_zp = 0 : i32, multiplier = [1073741824 : i32], output_zp = 0 : i32, per_channel = false, scale32 = true, shift = [23 : i32]}
+// CHECK-DAG: %[[VAR19:.*]] = "tosa.table"(%[[VAR18]], %[[VAR14]])
+// CHECK-DAG: %[[VAR20:.*]] = "tosa.table"(%[[VAR18]], %[[VAR13]])
+// CHECK-DAG: %[[VAR21:.*]] = "tosa.table"(%[[VAR18]], %[[VAR12]])
+// CHECK-DAG: %[[VAR22:.*]] = "tosa.table"(%[[VAR18]], %[[VAR11]])
+// CHECK-DAG: %[[VAR23:.*]] = "tosa.logical_left_shift"(%[[VAR19]], %[[VAR10]])
+// CHECK-DAG: %[[VAR24:.*]] = "tosa.logical_left_shift"(%[[VAR20]], %[[VAR9]])
+// CHECK-DAG: %[[VAR25:.*]] = "tosa.logical_left_shift"(%[[VAR21]], %[[VAR6]])
+// CHECK-DAG: %[[VAR26:.*]] = "tosa.arithmetic_right_shift"(%[[VAR22]], %[[VAR8]]) {round = true}
+// CHECK-DAG: %[[VAR27:.*]] = "tosa.add"(%[[VAR23]], %[[VAR24]])
+// CHECK-DAG: %[[VAR28:.*]] = "tosa.add"(%[[VAR27]], %[[VAR25]])
+// CHECK-DAG: %[[VAR29:.*]] = "tosa.add"(%[[VAR28]], %[[VAR26]])
+// CHECK-DAG: %[[VAR30:.*]] = "tosa.arithmetic_right_shift"(%[[VAR29]], %[[VAR7]]) {round = true}
+// CHECK-DAG: %[[VAR31:.*]] = "tosa.reduce_sum"(%[[VAR30]]) {axis = 2 : i64}
+// CHECK-DAG: %[[VAR32:.*]] = "tosa.clz"(%[[VAR31]])
+// CHECK-DAG: %[[VAR33:.*]] = "tosa.sub"(%[[VAR32]], %[[VAR6]])
+// CHECK-DAG: %[[VAR34:.*]] = "tosa.logical_left_shift"(%[[VAR31]], %[[VAR33]])
+// CHECK-DAG: %[[VAR35:.*]] = "tosa.mul"(%[[VAR34]], %[[VAR5]]) {shift = 31 : i32}
+// CHECK-DAG: %[[VAR36:.*]] = "tosa.add"(%[[VAR35]], %[[VAR4]])
+// CHECK-DAG: %[[VAR37:.*]] = "tosa.mul"(%[[VAR36]], %[[VAR34]]) {shift = 31 : i32}
+// CHECK-DAG: %[[VAR38:.*]] = "tosa.sub"(%[[VAR3]], %[[VAR37]])
+// CHECK-DAG: %[[VAR39:.*]] = "tosa.mul"(%[[VAR36]], %[[VAR38]]) {shift = 31 : i32}
+// CHECK-DAG: %[[VAR40:.*]] = "tosa.mul"(%[[VAR39]], %[[VAR2]]) {shift = 0 : i32}
+// CHECK-DAG: %[[VAR41:.*]] = "tosa.add"(%[[VAR36]], %[[VAR40]])
+// CHECK-DAG: %[[VAR42:.*]] = "tosa.mul"(%[[VAR41]], %[[VAR34]]) {shift = 31 : i32}
+// CHECK-DAG: %[[VAR43:.*]] = "tosa.sub"(%[[VAR3]], %[[VAR42]])
+// CHECK-DAG: %[[VAR44:.*]] = "tosa.mul"(%[[VAR41]], %[[VAR43]]) {shift = 31 : i32}
+// CHECK-DAG: %[[VAR45:.*]] = "tosa.mul"(%[[VAR44]], %[[VAR2]]) {shift = 0 : i32}
+// CHECK-DAG: %[[VAR46:.*]] = "tosa.add"(%[[VAR41]], %[[VAR45]])
+// CHECK-DAG: %[[VAR47:.*]] = "tosa.mul"(%[[VAR46]], %[[VAR34]]) {shift = 31 : i32}
+// CHECK-DAG: %[[VAR48:.*]] = "tosa.sub"(%[[VAR3]], %[[VAR47]])
+// CHECK-DAG: %[[VAR49:.*]] = "tosa.mul"(%[[VAR46]], %[[VAR48]]) {shift = 31 : i32}
+// CHECK-DAG: %[[VAR50:.*]] = "tosa.mul"(%[[VAR49]], %[[VAR2]]) {shift = 0 : i32}
+// CHECK-DAG: %[[VAR51:.*]] = "tosa.add"(%[[VAR46]], %[[VAR50]])
+// CHECK-DAG: %[[VAR52:.*]] = "tosa.mul"(%[[VAR29]], %[[VAR51]]) {shift = 30 : i32}
+// CHECK-DAG: %[[VAR53:.*]] = "tosa.sub"(%[[VAR1]], %[[VAR32]])
+// CHECK-DAG: %[[VAR54:.*]] = "tosa.arithmetic_right_shift"(%[[VAR52]], %[[VAR53]]) {round = true}
+// CHECK: %[[VAR55:.*]] = "tosa.rescale"(%[[VAR54]]) {double_round = false, input_zp = 0 : i32, multiplier = [1073741824 : i32], output_zp = -128 : i32, per_channel = false, scale32 = true, shift = [30 : i32]}
+func.func @test_softmax_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.015685837715864182:-1>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 3.906250e-03:-128>> {
+  %0 = "tfl.softmax"(%arg0) {beta = 1.000000e+00 : f32} : (tensor<13x21x3x!quant.uniform<i8:f32, 0.015685837715864182:-1>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 3.906250e-03:-128>>
   func.return %0 : tensor<13x21x3x!quant.uniform<i8:f32, 3.906250e-03:-128>>
 }
 
@@ -1640,11 +1749,82 @@ func.func @test_leaky_relu_qi8(%arg0: tensor<14x19x!quant.uniform<i8:f32, 0.0155
 // -----
 
 // CHECK-LABEL: test_resize_bilinear_qi8
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.resize"(%arg0) {mode = "BILINEAR", offset = [-448, -448], offset_fp = [0.000000e+00 : f32, 0.000000e+00 : f32], output_size = [640, 640], shift = 10 : i32, stride = [128, 128], stride_fp = [0.000000e+00 : f32, 0.000000e+00 : f32]}
-// CHECK: %[[VAR2:.*]] = "tosa.rescale"(%[[VAR1]]) {double_round = false, input_zp = 0 : i32, multiplier = [1073741824 : i32], output_zp = 0 : i32, per_channel = false, scale32 = true, shift = [50 : i32]}
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.resize"(%arg0) {border = [14, 14], mode = "BILINEAR", offset = [0, 0], scale = [16, 2, 16, 2]}
+// CHECK: %[[VAR2:.*]] = "tosa.rescale"(%[[VAR1]]) {double_round = false, input_zp = 0 : i32, multiplier = [1073741824 : i32], output_zp = 0 : i32, per_channel = false, scale32 = true, shift = [38 : i32]}
 func.func @test_resize_bilinear_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>> {
   %0 = "tfl.pseudo_const"() {value = dense<640> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tfl.resize_bilinear"(%arg0, %0) {align_corners = false, half_pixel_centers = false} : (tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>, tensor<2xi32>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
+  func.return %1 : tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
+}
+
+// -----
+
+// CHECK-LABEL: test_resize_bilinear_half_qi8
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.resize"(%arg0) {border = [7, 7], mode = "BILINEAR", offset = [-7, -7], scale = [16, 2, 16, 2]}
+func.func @test_resize_bilinear_half_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>> {
+  %0 = "tfl.pseudo_const"() {value = dense<640> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_bilinear"(%arg0, %0) {align_corners = false, half_pixel_centers = true} : (tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>, tensor<2xi32>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
+  func.return %1 : tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
+}
+
+// -----
+
+// CHECK-LABEL: test_resize_bilinear_align_qi8
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.resize"(%arg0) {border = [0, 0], mode = "BILINEAR", offset = [0, 0], scale = [1278, 158, 1278, 158]}
+func.func @test_resize_bilinear_align_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>> {
+  %0 = "tfl.pseudo_const"() {value = dense<640> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tfl.resize_bilinear"(%arg0, %0) {align_corners = true, half_pixel_centers = false} : (tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>, tensor<2xi32>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
+  func.return %1 : tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
+}
+
+// -----
+
+// CHECK-LABEL: test_resize_bilinear_align_half_qi8
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.resize"(%arg0) {border = [-560, -560], mode = "BILINEAR", offset = [-560, -560], scale = [1278, 158, 1278, 158]}
+func.func @test_resize_bilinear_align_half_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>> {
+  %0 = "tfl.pseudo_const"() {value = dense<640> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tfl.resize_bilinear"(%arg0, %0) {align_corners = true, half_pixel_centers = true} : (tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>, tensor<2xi32>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
+  func.return %1 : tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
+}
+
+// -----
+
+// CHECK-LABEL: test_resize_nearest_qi8
+// CHECK: %[[VAR1:.*]] = "tosa.resize"(%arg0) {border = [14, 14], mode = "NEAREST_NEIGHBOR", offset = [0, 0], scale = [16, 2, 16, 2]}
+func.func @test_resize_nearest_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>> {
+  %0 = "tfl.pseudo_const"() {value = dense<640> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tfl.resize_nearest_neighbor"(%arg0, %0) {align_corners = false, half_pixel_centers = false} : (tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>, tensor<2xi32>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
+  func.return %1 : tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
+}
+
+
+// -----
+
+// CHECK-LABEL: test_resize_nearest_half_qi8
+// CHECK: %[[VAR1:.*]] = "tosa.resize"(%arg0) {border = [15, 15], mode = "NEAREST_NEIGHBOR", offset = [1, 1], scale = [16, 2, 16, 2]}
+func.func @test_resize_nearest_half_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>> {
+  %0 = "tfl.pseudo_const"() {value = dense<640> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tfl.resize_nearest_neighbor"(%arg0, %0) {align_corners = false, half_pixel_centers = true} : (tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>, tensor<2xi32>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
+  func.return %1 : tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
+}
+
+// -----
+
+// CHECK-LABEL: test_resize_nearest_align_qi8
+// CHECK: %[[VAR1:.*]] = "tosa.resize"(%arg0) {border = [639, 639], mode = "NEAREST_NEIGHBOR", offset = [639, 639], scale = [1278, 158, 1278, 158]}
+func.func @test_resize_nearest_align_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>> {
+  %0 = "tfl.pseudo_const"() {value = dense<640> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tfl.resize_nearest_neighbor"(%arg0, %0) {align_corners = true, half_pixel_centers = false} : (tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>, tensor<2xi32>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
+  func.return %1 : tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
+}
+
+// -----
+
+// CHECK-LABEL: test_resize_nearest_align_half_qi8
+// CHECK: %[[VAR1:.*]] = "tosa.resize"(%arg0) {border = [718, 718], mode = "NEAREST_NEIGHBOR", offset = [718, 718], scale = [1278, 158, 1278, 158]}
+func.func @test_resize_nearest_align_half_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>> {
+  %0 = "tfl.pseudo_const"() {value = dense<640> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tfl.resize_nearest_neighbor"(%arg0, %0) {align_corners = true, half_pixel_centers = true} : (tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>, tensor<2xi32>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
   func.return %1 : tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
 }
 
@@ -1808,7 +1988,6 @@ func.func @test_fakequant(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 func.func @test_fullyconnected_hybrid(%arg0: tensor<14x19xf32>) -> tensor<*xf32> {
   // This verifies that the constant is decomposed into a dequantization via a
   // cast, subtract, and multiplication.
-  // CHECK: "tosa.cast"
   // CHECK: "tosa.sub"
   // CHECK: "tosa.fully_connected"
   %0 = "tfl.pseudo_qconst"() {qtype = tensor<36x36x!quant.uniform<i8:f32, 1.0>>, value = dense<42> : tensor<28x19xi8>} : () -> tensor<28x19x!quant.uniform<i8:f32, 1.0>>
@@ -1848,4 +2027,71 @@ func.func @test_squeeze_neg(%arg0: tensor<2x1x3x1xf32>) -> tensor<2x1x3xf32> {
   // CHECK: -> tensor<2x1x3xf32>
   %0 = "tfl.squeeze"(%arg0) {squeeze_dims = [-1]} : (tensor<2x1x3x1xf32>) -> tensor<2x1x3xf32>
   func.return %0 : tensor<2x1x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_gelu
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<1x4x8x19xf32>
+// CHECK-DAG: %[[VAL_1:.*]] = "tosa.const"() {value = dense<3.000000e+00> : tensor<1x1x1x1xf32>}
+// CHECK-DAG: %[[VAL_2:.*]] = "tosa.const"() {value = dense<4.471500e-02> : tensor<1x1x1x1xf32>}
+// CHECK-DAG: %[[VAL_3:.*]] = "tosa.const"() {value = dense<0.797884583> : tensor<1x1x1x1xf32>}
+// CHECK-DAG: %[[VAL_4:.*]] = "tosa.const"() {value = dense<1.000000e+00> : tensor<1x1x1x1xf32>}
+// CHECK-DAG: %[[VAL_5:.*]] = "tosa.const"() {value = dense<5.000000e-01> : tensor<1x1x1x1xf32>}
+// CHECK: %[[VAL_6:.*]] = "tosa.pow"(%[[VAL_0]], %[[VAL_1]])
+// CHECK: %[[VAL_7:.*]] = "tosa.mul"(%[[VAL_6]], %[[VAL_2]]) {shift = 0 : i32}
+// CHECK: %[[VAL_8:.*]] = "tosa.add"(%[[VAL_0]], %[[VAL_7]])
+// CHECK: %[[VAL_9:.*]] = "tosa.mul"(%[[VAL_8]], %[[VAL_3]]) {shift = 0 : i32}
+// CHECK: %[[VAL_10:.*]] = "tosa.tanh"(%[[VAL_9]])
+// CHECK: %[[VAL_11:.*]] = "tosa.add"(%[[VAL_10]], %[[VAL_4]])
+// CHECK: %[[VAL_12:.*]] = "tosa.mul"(%[[VAL_0]], %[[VAL_5]]) {shift = 0 : i32}
+// CHECK: %[[VAL_13:.*]] = "tosa.mul"(%[[VAL_12]], %[[VAL_11]]) {shift = 0 : i32}
+func.func @test_gelu(%arg0: tensor<1x4x8x19xf32>) -> tensor<1x4x8x19xf32> {
+  %0 = "tfl.gelu"(%arg0) {approximate = true} : (tensor<1x4x8x19xf32>) -> tensor<1x4x8x19xf32>
+  func.return %0 : tensor<1x4x8x19xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_gelu_qi8
+// CHECK-SAME: %[[VAR0:.*]]: tensor<1x4x4x4x!quant.uniform<i8:f32, 0.015685562044382095:-1>>
+// CHECK: %[[VAR1:.*]] = "tosa.const"() {value = dense<{{.*}}> : tensor<256xi8>}
+// CHECK: %[[VAR2:.*]] = "tosa.table"(%[[VAR0]], %[[VAR1]]) : (tensor<1x4x4x4x!quant.uniform<i8:f32, 0.015685562044382095:-1>>, tensor<256xi8>)
+func.func @test_gelu_qi8(%arg0: tensor<1x4x4x4x!quant.uniform<i8:f32, 0.015685562044382095:-1>>) -> tensor<1x4x4x4x!quant.uniform<i8:f32, 0.0083315325900912285:-108>> {
+  %0 = "tfl.gelu"(%arg0) {approximate = true} : (tensor<1x4x4x4x!quant.uniform<i8:f32, 0.015685562044382095:-1>>) -> tensor<1x4x4x4x!quant.uniform<i8:f32, 0.0083315325900912285:-108>>
+  func.return %0 : tensor<1x4x4x4x!quant.uniform<i8:f32, 0.0083315325900912285:-108>>
+}
+
+// -----
+
+// CHECK-LABEL: mirrorpad_reflect
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<4x9xi32>
+// CHECK: %[[VAL_1:.*]] = "tosa.slice"(%[[VAL_0]]) {size = [2, 9], start = [1, 0]} : (tensor<4x9xi32>)
+// CHECK: %[[VAL_2:.*]] = "tosa.reverse"(%[[VAL_1]]) {axis = 0 : i64} : (tensor<2x9xi32>)
+// CHECK: %[[VAL_3:.*]] = "tosa.slice"(%[[VAL_0]]) {size = [1, 9], start = [2, 0]} : (tensor<4x9xi32>)
+// CHECK: %[[VAL_4:.*]] = "tosa.concat"(%[[VAL_2]], %[[VAL_0]], %[[VAL_3]]) {axis = 0 : i64} : (tensor<2x9xi32>, tensor<4x9xi32>, tensor<1x9xi32>)
+// CHECK: %[[VAL_5:.*]] = "tosa.slice"(%[[VAL_4]]) {size = [7, 2], start = [0, 1]} : (tensor<7x9xi32>)
+// CHECK: %[[VAL_6:.*]] = "tosa.reverse"(%[[VAL_5]]) {axis = 1 : i64} : (tensor<7x2xi32>)
+// CHECK: %[[VAL_7:.*]] = "tosa.slice"(%[[VAL_4]]) {size = [7, 1], start = [0, 7]} : (tensor<7x9xi32>)
+// CHECK: %[[VAL_8:.*]] = "tosa.concat"(%[[VAL_6]], %[[VAL_4]], %[[VAL_7]]) {axis = 1 : i64} : (tensor<7x2xi32>, tensor<7x9xi32>, tensor<7x1xi32>)
+func.func @mirrorpad_reflect(%arg0: tensor<4x9xi32>) -> tensor<7x12xi32> {
+  %0 = "tfl.pseudo_const"() {value = dense<[[2, 1], [2, 1]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+  %1 = "tfl.mirror_pad"(%arg0, %0) {mode = #tfl<mirror_pad_attr REFLECT>} : (tensor<4x9xi32>, tensor<2x2xi32>) -> tensor<7x12xi32>
+  return %1 : tensor<7x12xi32>
+}
+
+// -----
+
+// CHECK-LABEL: mirrorpad_symmetric
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<15x23x2xf32>
+// CHECK: %[[VAL_1:.*]] = "tosa.slice"(%[[VAL_0]]) {size = [1, 23, 2], start = [0, 0, 0]} : (tensor<15x23x2xf32>)
+// CHECK: %[[VAL_2:.*]] = "tosa.concat"(%[[VAL_1]], %[[VAL_0]]) {axis = 0 : i64} : (tensor<1x23x2xf32>, tensor<15x23x2xf32>)
+// CHECK: %[[VAL_3:.*]] = "tosa.slice"(%[[VAL_2]]) {size = [16, 1, 2], start = [0, 0, 0]} : (tensor<16x23x2xf32>)
+// CHECK: %[[VAL_4:.*]] = "tosa.concat"(%[[VAL_3]], %[[VAL_2]]) {axis = 1 : i64} : (tensor<16x1x2xf32>, tensor<16x23x2xf32>)
+// CHECK: %[[VAL_5:.*]] = "tosa.slice"(%[[VAL_4]]) {size = [16, 24, 1], start = [0, 0, 0]} : (tensor<16x24x2xf32>)
+// CHECK: %[[VAL_6:.*]] = "tosa.concat"(%[[VAL_5]], %[[VAL_4]]) {axis = 2 : i64} : (tensor<16x24x1xf32>, tensor<16x24x2xf32>)
+func.func @mirrorpad_symmetric(%arg0: tensor<15x23x2xf32>) -> tensor<16x24x3xf32> {
+  %0 = "tfl.pseudo_const"() {value = dense<[[1, 0], [1, 0], [1, 0]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
+  %1 = "tfl.mirror_pad"(%arg0, %0) {mode = #tfl<mirror_pad_attr SYMMETRIC>} : (tensor<15x23x2xf32>, tensor<3x2xi32>) -> tensor<16x24x3xf32>
+  return %1 : tensor<16x24x3xf32>
 }

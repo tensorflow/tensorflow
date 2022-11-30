@@ -10,7 +10,7 @@ load(
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_cc_library", "tflite_flex_shared_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 default_visibility = [
     "//tensorflow/compiler/mlir/lite:__subpackages__",
@@ -22,6 +22,7 @@ default_visibility = [
 # This is a TF Lite delegate that is powered by TensorFlow's Eager.
 #
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = default_visibility,
     licenses = ["notice"],
 )
@@ -84,7 +85,7 @@ tf_cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -133,7 +134,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":delegate_only_runtime",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
     ],
     alwayslink = 1,
 )
@@ -335,8 +336,8 @@ tf_cc_test(
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -405,7 +406,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",

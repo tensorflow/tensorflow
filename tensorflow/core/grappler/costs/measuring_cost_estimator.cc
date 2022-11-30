@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/robust_stats.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/kernels/ops_util.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/public/session.h"
 

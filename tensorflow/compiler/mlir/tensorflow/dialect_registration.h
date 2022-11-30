@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_DIALECT_REGISTRATION_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_DIALECT_REGISTRATION_H_
 
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MLProgram/IR/MLProgram.h"  // from @llvm-project
@@ -33,7 +33,7 @@ namespace mlir {
 // intended for tools that need to register dialects before parsing .mlir files.
 inline void RegisterAllTensorFlowDialects(DialectRegistry &registry) {
   registry
-      .insert<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
+      .insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
               mlir::ml_program::MLProgramDialect, mlir::TF::TensorFlowDialect,
               mlir::tf_type::TFTypeDialect, mlir::cf::ControlFlowDialect,
               mlir::tf_device::TensorFlowDeviceDialect,

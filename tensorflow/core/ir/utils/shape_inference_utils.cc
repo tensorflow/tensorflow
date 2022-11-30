@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -81,9 +82,17 @@ NamedAttrList GetAllAttributesFromOperation(Operation* op) {
 }
 
 // Extracts a PartialTensorShape from the MLIR type.
+// Some MLIR shapes may fail to be represented as PartialTensorShape, e.g.
+// those where num_elements overflows.
+// TODO(tlongeri): Should num_elements overflow be handled by the MLIR
+// verifier? Are there other cases?
 Optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
   if (auto ranked_type = t.dyn_cast<RankedTensorType>()) {
-    return tensorflow::PartialTensorShape(ranked_type.getShape());
+    tensorflow::PartialTensorShape shape;
+    const tensorflow::Status status =
+        tensorflow::PartialTensorShape::BuildPartialTensorShape(
+            ConvertMlirShapeToTF(ranked_type.getShape()), &shape);
+    if (status.ok()) return shape;
   }
   return None;
 }
@@ -171,7 +180,7 @@ TensorType CreateTensorType(InferenceContext& context, const ShapeHandle& sh,
                             Type element_type) {
   auto shape = GetShapeFromHandle(context, sh);
   if (shape.has_value())
-    return RankedTensorType::get(shape.getValue(), element_type);
+    return GetTypeFromTFTensorShape(shape.getValue(), element_type, {});
   return UnrankedTensorType::get(element_type);
 }
 

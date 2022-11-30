@@ -1,7 +1,6 @@
 // RUN: tf-tfrt-opt %s                                                         \
 // RUN:   -split-input-file                                                    \
 // RUN:   -tf-executor-to-tfrt-pipeline="                                      \
-// RUN:       enable-native-ops=false                                          \
 // RUN:       enable-optimizer=true                                            \
 // RUN:       tfrt-cost-threshold=1024                                         \
 // RUN:       auto-fusion-oplist=tf.Relu,tf.Transpose,tf.Const                 \
@@ -159,7 +158,7 @@ module attributes {tf.versions = {producer = 462 : i32}} {
 // CHECK-SAME: }
 // CHECK:      func @compute(
 // CHECK-SAME:   %[[ARG0:.*]]: tensor<?x?xf32>
-// CHECK-SAME:   %[[ARG1:.*]]: tensor<?xi32> {jitrt.constraint = "value"}
+// CHECK-SAME:   %[[ARG1:.*]]: tensor<?xi32> {rt.constraint = "value"}
 // CHECK-SAME: ) -> tensor<?x?xf32> {
 // CHECK-NEXT:   %[[RET:.*]] = "tf.Transpose"(%[[ARG0]], %[[ARG1]])
 // CHECK:        return %[[RET]]

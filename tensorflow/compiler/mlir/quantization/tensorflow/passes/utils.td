@@ -16,12 +16,15 @@ include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 include "mlir/IR/PatternBase.td"
 
-def NonOpaqueElementsAttr : ElementsAttrBase<
-  CPred<"!$_self.isa<OpaqueElementsAttr>()">,
+def DenseElementsAttr : ElementsAttrBase<
+  CPred<"$_self.isa<DenseElementsAttr>()">,
   "non-opaque constant tensor">;
 
 // Checks if the data format is "NHWC".
 def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">;
+
+// Checks if the data format is "NDHWC".
+def IsDataFormatNDHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NDHWC\"">;
 
 // Checks if the op is constant op.
 def IsConstTensor :  Constraint<CPred<"dyn_cast_or_null<TF::ConstOp>($0.getDefiningOp())">>;
@@ -98,6 +101,10 @@ class CreateStringAttr<string values> : NativeCodeCall<
 // Creates a new F32 type with the same shape as the given value.
 def CloneTypeWithF32ElementType : NativeCodeCall<
   "CloneTypeWithNewElementType($0.getType(), $_builder.getF32Type())">;
+
+// Creates a new I32 type with the same shape as the given value.
+def CloneTypeWithI32ElementType : NativeCodeCall<
+  "CloneTypeWithNewElementType($0.getType(), $_builder.getI32Type())">;
 
 // By default, the generated code uses  the `create` method without the output
 // type field. However, for many ops, the output type field is always required.

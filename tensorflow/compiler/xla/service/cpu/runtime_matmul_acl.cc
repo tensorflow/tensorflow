@@ -20,12 +20,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_lightweight_check.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/types.h"
 
 #define EIGEN_USE_THREADS
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/platform/dynamic_annotations.h"
+#include "tensorflow/tsl/platform/dynamic_annotations.h"
 
 namespace {
 // ACL GEMM API for 32-bit Matrix Multiplication.

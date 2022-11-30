@@ -345,39 +345,6 @@ TEST(RemoveIdentityStridedSlice, OutputIsGraphOutputInputConsumedByFewNodes) {
               UnorderedElementsAre(value0, value1, value2, value3));
 }
 
-TEST(RemoveCastAfterLogicalOpTest, Smoke) {
-  GraphFloat32 graph;
-  auto input = graph.NewValue();
-  input->tensor.shape = BHWC(1, 4, 4, 4);
-
-  auto logical_node = graph.NewNode();
-  logical_node->operation.type = ToString(OperationType::GREATER);
-  auto cast_node = graph.NewNode();
-  cast_node->operation.type = ToString(OperationType::CAST);
-
-  ASSERT_TRUE(graph.AddConsumer(logical_node->id, input->id).ok());
-
-  Value* output = nullptr;
-  ASSERT_TRUE(AddOutput(&graph, cast_node, &output).ok());
-  output->tensor.shape = BHWC(1, 4, 4, 4);
-
-  Value* link_tensor = nullptr;
-  ASSERT_TRUE(
-      ConnectTwoNodes(&graph, logical_node, cast_node, &link_tensor).ok());
-  link_tensor->tensor.shape = BHWC(1, 4, 4, 4);
-
-  ASSERT_EQ(2, graph.nodes().size());
-  ASSERT_EQ(3, graph.values().size());
-
-  auto transformation = NewRemoveCastAfterLogicalOp();
-  ModelTransformer transformer(&graph);
-  transformer.Apply("remove_cast_after_logical_op", transformation.get());
-
-  EXPECT_EQ(1, graph.nodes().size());
-  EXPECT_EQ(2, graph.values().size());
-  EXPECT_EQ(ToString(OperationType::GREATER), graph.nodes()[0]->operation.type);
-}
-
 }  // namespace
 }  // namespace gpu
 }  // namespace tflite

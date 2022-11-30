@@ -55,7 +55,7 @@ Status RunSparseExpansion(mlir::Operation* op, mlir::Operation** output) {
         SparseExpanderRegistry::Global()->GetSparseExpansionFnForOp(op);
     if (expander != nullptr) {
       auto expanded_op = expander->ExpandOp(op);
-      if (expanded_op.ok()) *output = expanded_op.ValueOrDie();
+      if (expanded_op.ok()) *output = expanded_op.value();
       return expanded_op.status();
     } else {
       VLOG(1) << "No sparse expansion found for " << OpName(op) << "\n";

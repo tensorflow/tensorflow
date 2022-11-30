@@ -997,7 +997,7 @@ Takes the packed uint32 input and unpacks the input to uint8 to do
 Dequantization on device.
 
 input: Input tensors whose types is uint32, shape is [d0, ..., dn].
-output: Output tensors whose types is bloat16. If transpose_output is true,
+output: Output tensors whose types is bfloat16. If transpose_output is true,
      output shape is [dn * 4, dn-1, ..., d1, d0]. If transpose_output
      is false, output shape is [d0,..., dn * 4].
 min_range: The minimum scalar value possibly produced for the input.
@@ -1228,6 +1228,22 @@ Documented at https://www.tensorflow.org/xla/operation_semantics#optimizationbar
 input: A Tuple of Arrays of any type.
 )doc");
 
+REGISTER_OP("XlaReducePrecision")
+    .Input("operand: T")
+    .Output("output: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .Attr("exponent_bits: int")
+    .Attr("mantissa_bits: int")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Wraps the XLA ReducePrecision operator
+  documented at https://www.tensorflow.org/xla/operation_semantics#reduceprecision.
+
+operand: array of floating-point type.
+exponent_bits: number of exponent bits in lower-precision format
+mantissa_bits: number of mantissa bits in lower-precision format
+)doc");
+
 REGISTER_OP("XlaCustomCall")
     .Input("args: T")
     .Output("output: dtype")
@@ -1256,17 +1272,59 @@ dtype: Output tensor data type.
 shape: Output tensor shape.
 )doc");
 
+REGISTER_OP("XlaCustomCallV2")
+    .Input("operands: operand_dtypes")
+    .Output("results: result_dtypes")
+    .Attr("call_target_name: string")
+    .Attr("backend_config: string")
+    .Attr("has_side_effect: bool")
+    .Attr("operand_dtypes: list(type) >= 0")
+    .Attr("result_dtypes: list(type) >= 0")
+    .Attr("result_shapes: list(shape) >= 0")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      std::vector<TensorShape> shapes;
+      TF_RETURN_IF_ERROR(c->GetAttr("result_shapes", &shapes));
+      if (shapes.size() != c->num_outputs()) {
+        return errors::InvalidArgument("Unexpected number of result shapes: ",
+                                       shapes.size(), " != ", c->num_outputs());
+      }
+      for (int i = 0; i < c->num_outputs(); ++i) {
+        shape_inference::ShapeHandle shape;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shapes[i], &shape));
+        c->set_output(i, shape);
+      }
+      return OkStatus();
+    })
+    .Doc(R"doc(
+Emits an HLO `CustomCall` operation with multiple outputs.
+
+As opposed to `XlaCustomCall`, this operation supports multiple outputs.
+
+See `CustomCall` specification at
+  https://tensorflow.org/xla/operation_semantics#customcall,
+and `mhlo.custom_call` specification at
+  https://tensorflow.org/mlir/hlo_ops#mhlocustom_call_mlirmhlocustomcallop.
+
+operands: A sequence of tensors with possibly different types.
+call_target_name: Name of the user function. The function signature must conform
+  to version 3 of the API, see `API_VERSION_STATUS_RETURNING_UNIFIED`. All
+  operands and results assumed to be in the default layout.
+backend_config: A string that encodes a metadata for the backend.
+has_side_effect: Indicates whether the custom call has side effects.
+result_dtypes: Types of all results.
+result_shapes: Shapes of all results.
+)doc");
+
 REGISTER_OP("XlaCallModule")
     .Input("args: Tin")
     .Output("output: Tout")
+    .Attr("version: int")
     .Attr("module: string")
     .Attr("Sout: list(shape) >= 0")
     .Attr("Tout: list(type) >= 0")
     .Attr("Tin: list(type) >= 0")
     .Attr("dim_args_spec: list(string) >= 0")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      // For debugging
-      VLOG(3) << "XlaCallModule.shape_inference";
       std::vector<shape_inference::ShapeHandle> args_shapes;
       TF_RETURN_IF_ERROR(c->input("args", &args_shapes));
       for (int i = 0; i < args_shapes.size(); ++i) {
@@ -1293,11 +1351,7 @@ very likely to change. This op will be used only in jax2tf under an
 experimental flag.
 
 This is an experimental op to allow a smooth evolution of jax2tf towards
-emitting and serializing MHLO directly from JAX. At the moment this op
-carries a serialized MHLO module, therefore there are no backward-compatibility
-guarantees, and should not be used for serialization.
-Eventually, the op will carry a MHLO object, which will have
-backwards-compatibility guarantees.
+emitting and serializing StableHLO directly from JAX.
 
 The serialized module must return a tuple if and only if the Sout is an empty
 list or a list with more than 1 elements. The length of Tout and Sout must
@@ -1316,7 +1370,11 @@ E.g., the specification "2.1" denotes the value args[2].shape[1].
 
 args: A list of `Tensor` with possibly different types to be passed as arguments
   to the HLO module.
-module: A serialized computation, a text representation of mlir.Module.
+version: Changes when we change the semantics of the op, to support backwards
+  compatibility. Version 1 carries an MHLO text or bytecode `module`. From
+  version 2, the op carries a StableHLO text or bytecode `module`.
+module: A serialized computation, a text or bytecode representation of
+  an mlir.Module.
 Tout: List of output tensor data types.
 Sout: List of output tensor shapes.
 dim_args_spec: the specification for the dimension arguments, one for each

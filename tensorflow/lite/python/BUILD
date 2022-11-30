@@ -1,8 +1,9 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
         "//third_party/tflite_micro:__subpackages__",
@@ -56,12 +57,12 @@ py_test(
     deps = [
         ":interpreter",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python/metrics",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -75,7 +76,6 @@ py_binary(
         ":tflite_convert_main_lib",
         "//tensorflow:tensorflow_py",
         "@absl_py//absl:app",
-        "@six_archive//:six",
     ],
 )
 
@@ -88,7 +88,6 @@ py_library(
         ":tflite_convert_lib",
         "//tensorflow:tensorflow_py",
         "@absl_py//absl:app",
-        "@six_archive//:six",
     ],
 )
 
@@ -103,7 +102,6 @@ py_library(
         "//tensorflow/lite/toco/logging:toco_conversion_log_proto_py",
         "//tensorflow/python:util",
         "@absl_py//absl:app",
-        "@six_archive//:six",
     ],
 )
 
@@ -211,7 +209,6 @@ py_library(
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
-        "@six_archive//:six",
     ],
 )
 
@@ -233,7 +230,6 @@ py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
-        "@six_archive//:six",
     ],
 )
 
@@ -259,7 +255,6 @@ py_test(
         "//tensorflow/lite/python/testdata:double_op",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
-        "@six_archive//:six",
     ],
 )
 
@@ -275,7 +270,6 @@ py_library(
         ":lite",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
-        "@six_archive//:six",
     ],
 )
 
@@ -316,7 +310,6 @@ py_library(
         "//tensorflow/python/training:saver",
         "@absl_py//absl/logging",
         "@flatbuffers//:runtime_py",
-        "@six_archive//:six",
     ],
 )
 
@@ -342,7 +335,6 @@ py_test(
         "//tensorflow/python:session",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
     ],
 )
 
@@ -401,7 +393,6 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )
 

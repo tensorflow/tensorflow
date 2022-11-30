@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 
@@ -48,25 +48,29 @@ void LlvmIrGenTestBase::ResetIrHook() {
 
 void LlvmIrGenTestBase::CompileAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const std::string& pattern,
-    bool match_optimized_ir) {
+    bool match_optimized_ir, bool run_optimization_passes) {
   SetIrHook(match_optimized_ir);
-  Status status = CompileToExecutable(std::move(hlo_module)).status();
+  Status status =
+      CompileToExecutable(std::move(hlo_module), run_optimization_passes)
+          .status();
   ResetIrHook();
   TF_ASSERT_OK(status);
 
   StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
   TF_ASSERT_OK(filecheck_result.status());
-  EXPECT_TRUE(filecheck_result.ValueOrDie()) << "Full IR: " << ir_;
+  EXPECT_TRUE(filecheck_result.value()) << "Full IR: " << ir_;
 }
 
 void LlvmIrGenTestBase::CompileAndVerifyIr(const std::string& hlo_text,
                                            const std::string& expected_llvm_ir,
-                                           bool match_optimized_ir) {
+                                           bool match_optimized_ir,
+                                           bool run_optimization_passes) {
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text, config));
-  CompileAndVerifyIr(std::move(module), expected_llvm_ir, match_optimized_ir);
+  CompileAndVerifyIr(std::move(module), expected_llvm_ir, match_optimized_ir,
+                     run_optimization_passes);
 }
 
 void LlvmIrGenTestBase::CompileAheadOfTimeAndVerifyIr(
@@ -80,37 +84,7 @@ void LlvmIrGenTestBase::CompileAheadOfTimeAndVerifyIr(
 
   StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
   ASSERT_TRUE(filecheck_result.ok());
-  EXPECT_TRUE(filecheck_result.ValueOrDie()) << "Full IR: " << ir_;
-}
-
-void LlvmIrGenTestBase::MatchOptimizedHlo(absl::string_view hlo,
-                                          absl::string_view pattern,
-                                          bool print_operand_shape) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(hlo));
-  HloPrintOptions print_opts;
-  print_opts.set_print_operand_shape(print_operand_shape);
-  StatusOr<bool> filecheck_result =
-      RunFileCheck(optimized_module->ToString(print_opts), pattern);
-  TF_ASSERT_OK(filecheck_result.status());
-  EXPECT_TRUE(filecheck_result.ValueOrDie());
-}
-
-StatusOr<std::unique_ptr<HloModule>> LlvmIrGenTestBase::GetOptimizedModule(
-    absl::string_view hlo) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> module,
-      ParseAndReturnVerifiedModule(hlo, GetModuleConfigForTest()));
-  return backend().compiler()->RunHloPasses(
-      std::move(module), backend().default_stream_executor(),
-      backend().default_stream_executor()->GetAllocator());
-}
-
-StatusOr<std::unique_ptr<HloModule>> LlvmIrGenTestBase::GetOptimizedModule(
-    std::unique_ptr<HloModule> hlo_module) {
-  return backend().compiler()->RunHloPasses(
-      std::move(hlo_module), backend().default_stream_executor(),
-      backend().default_stream_executor()->GetAllocator());
+  EXPECT_TRUE(filecheck_result.value()) << "Full IR: " << ir_;
 }
 
 LLVMCompiler* LlvmIrGenTestBase::GetLLVMCompiler() {

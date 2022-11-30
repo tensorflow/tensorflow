@@ -16,12 +16,12 @@
 # pylint: disable=g-bad-import-order
 import collections
 import json
+import queue
 import threading
 import time
 
 from concurrent import futures
 import grpc
-from six.moves import queue
 
 from tensorflow.core.debug import debug_service_pb2
 from tensorflow.core.framework import graph_pb2
@@ -43,7 +43,7 @@ def _state_change(new_state, node_name, output_slot, debug_op):
   return state_change
 
 
-class EventListenerBaseStreamHandler(object):
+class EventListenerBaseStreamHandler:
   """Per-stream handler of EventListener gRPC streams."""
 
   def __init__(self):

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 
+#include <algorithm>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/master.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/master_session.h"
-#include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
 
 namespace tensorflow {
 
@@ -108,7 +109,7 @@ GrpcServer::~GrpcServer() {
   delete eager_service_;
 
   for (auto& kv : extra_services_) {
-    AsyncServiceInterface* service = kv.second;
+    tsl::AsyncServiceInterface* service = kv.second;
     delete service;
   }
 
@@ -207,6 +208,14 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   }
   worker_env_.local_devices = worker_env_.device_mgr->ListDevices();
   master_env_.local_devices = worker_env_.device_mgr->ListDevices();
+
+  int num_tasks = 0;
+  for (auto& job : server_def_.cluster().job()) {
+    num_tasks += job.tasks_size();
+  }
+  master_env_.experimental_num_shards = std::max(1, num_tasks);
+  worker_env_.experimental_num_shards = master_env_.experimental_num_shards;
+
   worker_env_.rendezvous_mgr = opts.rendezvous_mgr_func == nullptr
                                    ? new RpcRendezvousMgr(&worker_env_)
                                    : opts.rendezvous_mgr_func(&worker_env_);
@@ -299,6 +308,8 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
         worker_cache, default_worker_name);
   }
 
+  auto* grpc_coordination_service =
+      static_cast<GrpcCoordinationServiceImpl*>(coordination_service_);
   // Set up worker environment.
   worker_env_.session_mgr = new SessionMgr(
       &worker_env_, SessionMgr::WorkerNameFromServerDef(server_def_),
@@ -306,7 +317,8 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
       [this](const ServerDef& server_def, WorkerCacheInterface** worker_cache) {
         WorkerCacheFactoryOptions options(server_def);
         return WorkerCacheFactory(options, worker_cache);
-      });
+      },
+      grpc_coordination_service->GetRpcHandler());
   worker_env_.compute_pool = compute_pool;
 
   // Finish setting up master environment.
@@ -425,7 +437,7 @@ Status GrpcServer::Start() {
 
       for (const auto& kv : extra_services_) {
         const std::string& service_name = kv.first;
-        AsyncServiceInterface* service = kv.second;
+        tsl::AsyncServiceInterface* service = kv.second;
         std::unique_ptr<Thread> extra_service_thread;
         extra_service_thread.reset(env_->StartThread(
             ThreadOptions(), service_name,
@@ -489,10 +501,18 @@ Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
 // TODO(haoyuzhang): Remove this method once we have a mechanism to directly set
 // field inside the RPC coordination service handler.
 Status GrpcServer::SetCoordinationServiceAgentInstance(
-    CoordinationServiceAgent* agent) {
+    tsl::CoordinationServiceAgent* agent) {
   auto* coord_service =
       static_cast<GrpcCoordinationServiceImpl*>(coordination_service_);
   coord_service->SetCoordinationServiceAgentInstance(agent);
+  return OkStatus();
+}
+
+Status GrpcServer::SetCoordinationServiceInstance(
+    tsl::CoordinationServiceInterface* service) {
+  auto* coord_service =
+      static_cast<GrpcCoordinationServiceImpl*>(coordination_service_);
+  coord_service->SetCoordinationServiceInstance(service);
   return OkStatus();
 }
 
@@ -504,6 +524,7 @@ Status GrpcServer::StopCoordinationService() {
   // them within the session manager to prevent data races.
   TF_RETURN_IF_ERROR(SetCoordinationServiceAgentInstance(nullptr));
   worker_env()->session_mgr->TeardownCoordinationServiceAgent();
+  TF_RETURN_IF_ERROR(SetCoordinationServiceInstance(nullptr));
   coordination_service_->Shutdown();
   worker_env()->session_mgr->TeardownCoordinationService();
   return OkStatus();

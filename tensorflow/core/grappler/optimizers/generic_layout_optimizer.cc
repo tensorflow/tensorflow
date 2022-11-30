@@ -39,7 +39,7 @@ namespace {
 constexpr char kNHWC[] = "NHWC";
 constexpr char kNCHW[] = "NCHW";
 constexpr float kGPURatioThreshold = 0.5;
-constexpr float kConvGPUFP16Threshold = 0.5;
+constexpr float kConvGPUExpectedDtypeThreshold = 0.5;
 
 struct MutableNodeViewFormatter {
   void operator()(std::string* out, utils::MutableNodeView* node_view) const {
@@ -55,10 +55,7 @@ struct GpuStats {
 
 inline GpuStats GetNumGPUs(const Cluster& cluster) {
   auto devices = cluster.GetDevices();
-  GpuStats gpu_stats;
-  gpu_stats.num_gpus = 0;
-  gpu_stats.num_voltas = 0;
-  gpu_stats.num_amperes = 0;
+  GpuStats gpu_stats{};
   for (const auto& device : devices) {
     if (device.second.type() != kGPU) {
       continue;
@@ -82,7 +79,7 @@ inline bool NumConvOnDeviceWithDataTypeOverThreshold(
     const TransposeContext& context, absl::string_view device,
     const DataType& data_type) {
   int num_conv_gpu = 0;
-  int num_conv_gpu_fp16 = 0;
+  int num_conv_gpu_expected_dtype = 0;
 
   for (const auto& node : context.graph_view->GetNodes()) {
     const auto* node_def = node.node();
@@ -103,14 +100,46 @@ inline bool NumConvOnDeviceWithDataTypeOverThreshold(
       continue;
     }
     if (t_attr->type() == data_type) {
-      num_conv_gpu_fp16++;
+      num_conv_gpu_expected_dtype++;
     }
   }
 
   if (num_conv_gpu == 0) return false;
 
-  return (static_cast<float>(num_conv_gpu_fp16) /
-          static_cast<float>(num_conv_gpu)) >= kConvGPUFP16Threshold;
+  return (static_cast<float>(num_conv_gpu_expected_dtype) /
+          static_cast<float>(num_conv_gpu)) >= kConvGPUExpectedDtypeThreshold;
+}
+
+inline bool ConvBackpropExists(const TransposeContext& context,
+                               absl::string_view device,
+                               const DataType& data_type) {
+  for (const auto& node : context.graph_view->GetNodes()) {
+    const auto* node_def = node.node();
+    if (!IsConv2DBackpropFilter(*node_def) &&
+        !IsConv2DBackpropInput(*node_def) &&
+        !IsConv3DBackpropFilterV2(*node_def) &&
+        !IsConv3DBackpropInputV2(*node_def)) {
+      continue;
+    }
+
+    const string& device_name = GetDeviceName(*node_def);
+    string device_type;
+    string task;
+    if (!DeviceNameUtils::SplitDeviceName(device_name, &task, &device_type) ||
+        !absl::StrContains(absl::AsciiStrToLower(device_type),
+                           absl::AsciiStrToLower(device))) {
+      continue;
+    }
+
+    const auto* t_attr = node.GetAttr("T");
+    if (t_attr == nullptr) {
+      continue;
+    }
+    if (t_attr->type() == data_type) {
+      return true;
+    }
+  }
+  return false;
 }
 
 inline std::pair<string, string> GetSrcAndDstDataFormats(
@@ -120,16 +149,22 @@ inline std::pair<string, string> GetSrcAndDstDataFormats(
 
   const bool is_NHWC_enforced =
       (!context.enforced_layout.empty() && context.enforced_layout == "NHWC");
-  const bool volta_ok =
+  const bool volta_ready =
       (static_cast<float>(gpu_stats.num_voltas) /
        static_cast<float>(gpu_stats.num_gpus)) >= kGPURatioThreshold;
-  const bool ampere_ok =
+  const bool ampere_ready =
       (static_cast<float>(gpu_stats.num_amperes) /
        static_cast<float>(gpu_stats.num_gpus)) >= kGPURatioThreshold;
+
+  // We swap the src_format and dst_format when:
+  //   (1): Volta+ GPUs AND half-dtype conv nodes >= 50% of total conv nodes.
+  //   (2): Ampere+ GPUs AND TF32-dtype conv nodes >= 50% AND no backprop nodes.
   const bool should_swap =
-      volta_ok &&
+      volta_ready &&
       (NumConvOnDeviceWithDataTypeOverThreshold(context, kGPU, DT_HALF) ||
-       (ampere_ok && tensor_float_32_execution_enabled()));
+       (ampere_ready && tensor_float_32_execution_enabled() &&
+        NumConvOnDeviceWithDataTypeOverThreshold(context, kGPU, DT_FLOAT) &&
+        !ConvBackpropExists(context, kGPU, DT_FLOAT)));
   // We swap only if NHWC is enforced or no layout is enforced and the devices
   // config meet the thresholds
   if (is_NHWC_enforced || (context.enforced_layout.empty() && should_swap)) {

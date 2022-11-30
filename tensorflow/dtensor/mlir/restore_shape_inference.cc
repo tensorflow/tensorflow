@@ -21,7 +21,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/dtensor_send_recv.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/shape_utils.h"
@@ -29,7 +28,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORINFERSHAPESFORRESTOREV2OP
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // From the Operation that produces `value`, set the result type to `type`.
 //
@@ -41,11 +43,13 @@ mlir::LogicalResult BackwardShapeInferenceToRestoreOp(mlir::ModuleOp module,
                                                       mlir::Type type) {
   mlir::Operation* op = value.getDefiningOp();
   if (op == nullptr) return mlir::success();
-  if (!llvm::isa<mlir::TF::IdentityOp, mlir::TF::DTensorRecv,
+  if (!llvm::isa<mlir::TF::IdentityOp, mlir::TF::CastOp, mlir::TF::DTensorRecv,
                  mlir::TF::RestoreV2Op>(op)) {
-    return op->emitOpError(llvm::formatv(
-        "Expected an Identity, DTensorRecv, or RestoreV2 op, but got: {0}",
-        op->getName().getStringRef()));
+    return op->emitOpError(
+        llvm::formatv("Expected an Identity, Cast, DTensorRecv, or RestoreV2 "
+                      "op, but got: {0}. Please file a bug to the DTensor team."
+                      "(component id: 833864)",
+                      op->getName().getStringRef()));
   }
 
   builder->setInsertionPointAfter(op);
@@ -65,29 +69,48 @@ mlir::LogicalResult BackwardShapeInferenceToRestoreOp(mlir::ModuleOp module,
     // Using setType(type) modifies in place and makes this algorithm run in
     // O(N).
     value.setType(type);
+  } else if (auto cast_op = llvm::dyn_cast_or_null<mlir::TF::CastOp>(op)) {
+    auto new_cast_op = builder->create<mlir::TF::CastOp>(cast_op.getLoc(), type,
+                                                         cast_op.getOperand());
+    cast_op.replaceAllUsesWith(new_cast_op.getResult());
+    cast_op.erase();
+
+    // Cast ops have differing operand and output element type, so update
+    // the type to the operand element type.
+    mlir::RankedTensorType new_type = mlir::RankedTensorType::get(
+        GetShapeOfValue(new_cast_op.getResult()).value(),
+        new_cast_op.getOperand()
+            .getType()
+            .cast<mlir::TensorType>()
+            .getElementType());
+
+    // Recursively shape inference to the input of the cast op with the
+    // new type.
+    return BackwardShapeInferenceToRestoreOp(
+        module, builder, new_cast_op.getOperand(), new_type);
   } else if (auto identity_op =
                  llvm::dyn_cast_or_null<mlir::TF::IdentityOp>(op)) {
     auto new_identity_op = builder->create<mlir::TF::IdentityOp>(
-        identity_op.getLoc(), type, identity_op.input());
-    identity_op.output().replaceAllUsesWith(new_identity_op.output());
+        identity_op.getLoc(), type, identity_op.getInput());
+    identity_op.getOutput().replaceAllUsesWith(new_identity_op.getOutput());
     identity_op.erase();
 
     // Recursively shape inference to the input of the identity op.
     return BackwardShapeInferenceToRestoreOp(module, builder,
-                                             new_identity_op.input(), type);
+                                             new_identity_op.getInput(), type);
   } else if (auto recv_op = llvm::dyn_cast_or_null<mlir::TF::DTensorRecv>(op)) {
     // If we have a DTensorRecv, then there is cross mesh action and the
     // RestoreV2Op we want to fix is on the mesh of the corresponding
     // DTensorSend. Set shape of this DTensorRecv first and go to the
     // corresponding DTensorSend.
     auto new_recv_op = builder->create<mlir::TF::DTensorRecv>(
-        recv_op.getLoc(), type, builder->getStringAttr(recv_op.key()),
+        recv_op.getLoc(), type, builder->getStringAttr(recv_op.getKey()),
         mlir::TF::ShapeAttr::get(builder->getContext(),
                                  type.dyn_cast<mlir::TensorType>()),
         mlir::dtensor::LayoutAttr::get(builder->getContext(),
-                                       recv_op.layout()));
+                                       recv_op.getLayout()));
 
-    recv_op.replaceAllUsesWith(new_recv_op.output());
+    recv_op.replaceAllUsesWith(new_recv_op.getOutput());
     recv_op.erase();
 
     auto send_op = GetCorrespondingDTensorSendRecvOp<mlir::TF::DTensorRecv>(
@@ -116,9 +139,9 @@ mlir::LogicalResult PropagateShapeInformationFromAssignVariableOp(
     mlir::ModuleOp module) {
   module.walk([&](mlir::TF::AssignVariableOp assign_op) {
     // Check that the `value` has an unknown shape.
-    if (ValueRank(assign_op.value()) == -1) {
+    if (ValueRank(assign_op.getValue()) == -1) {
       StatusOr<llvm::ArrayRef<int64_t>> shape =
-          GetShapeOfValue(assign_op.resource());
+          GetShapeOfValue(assign_op.getResource());
       if (!shape.ok()) {
         assign_op->emitOpError(
             "Resource tensor was expected to have shape information but was "
@@ -128,9 +151,9 @@ mlir::LogicalResult PropagateShapeInformationFromAssignVariableOp(
       // Propagete shape backwards to all the ops that use or produce
       // the value with missing shape.
       mlir::OpBuilder builder(assign_op);
-      mlir::Type known_type = GetSubtypeOrSelf(assign_op.resource());
+      mlir::Type known_type = GetSubtypeOrSelf(assign_op.getResource());
       if (mlir::failed(BackwardShapeInferenceToRestoreOp(
-              module, &builder, assign_op.value(), known_type))) {
+              module, &builder, assign_op.getValue(), known_type))) {
         assign_op->emitOpError(
             "Error doing Backward shape inference from AssignVariableOp during "
             "CheckpointShapeInference.");
@@ -144,7 +167,7 @@ mlir::LogicalResult PropagateShapeInformationFromAssignVariableOp(
 }
 
 struct DTensorInferShapesForRestoreV2Op
-    : public DTensorInferShapesForRestoreV2OpBase<
+    : public impl::DTensorInferShapesForRestoreV2OpBase<
           DTensorInferShapesForRestoreV2Op> {
   void runOnOperation() override {
     auto module = getOperation();

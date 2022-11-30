@@ -161,13 +161,10 @@ inline void CreateFlexOpCustomOptions(const std::string &op_name,
 }
 
 // Creates ElementsAttr for custom option.
-inline OpaqueElementsAttr CustomOptionForFlexOp(OpBuilder *builder,
-                                                const std::string &content) {
-  ShapedType type = RankedTensorType::get(
-      {static_cast<int64_t>(content.size())}, builder->getIntegerType(8));
-  return OpaqueElementsAttr::get(builder->getContext()->getLoadedDialect("tfl"),
-                                 type,
-                                 StringRef(content.data(), content.size()));
+inline TFL::ConstBytesAttr CustomOptionForFlexOp(OpBuilder *builder,
+                                                 const std::string &content) {
+  return TFL::ConstBytesAttr::get(builder->getContext(),
+                                  StringRef(content.data(), content.size()));
 }
 
 // Fallbacks ops that are not supported by TF Quantization to TFLite Flex ops.

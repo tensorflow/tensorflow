@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/algorithm/algorithm.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
@@ -162,14 +162,16 @@ TEST(BenchmarkTest, DoesntCrashStringModel) {
 
 TEST(BenchmarkTest, SplitInputLayerNameAndValueFile) {
   std::vector<std::string> input_layer_value_files = {
-      "input:/tmp/input",       "input\\:0:/tmp/input",
-      "input\\\\0:/tmp/input",  "input\\\\:0:/tmp/input",
-      "input\\:0:\\tmp\\input",
+      "input:/tmp/input",
+      "input::0:/tmp/input",
+      "input::0::0:/tmp/input",
+      "input::::0:/tmp::input",
   };
   std::vector<std::pair<std::string, std::string>> expected = {
-      {"input", "/tmp/input"},      {"input:0", "/tmp/input"},
-      {"input\\\\0", "/tmp/input"}, {"input\\:0", "/tmp/input"},
-      {"input:0", "\\tmp\\input"},
+      {"input", "/tmp/input"},
+      {"input:0", "/tmp/input"},
+      {"input:0:0", "/tmp/input"},
+      {"input::0", "/tmp:input"},
   };
   std::pair<std::string, std::string> name_file_pair;
   for (int i = 0; i < input_layer_value_files.size(); ++i) {

@@ -22,43 +22,18 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/file_system_helper.h"
 
 namespace tensorflow {
-
-class FileSystem;
-class Env;
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::Env;
+using tsl::FileSystem;
 
 namespace internal {
-
-// Given a pattern, stores in 'results' the set of paths (in the given file
-// system) that match that pattern.
-//
-// This helper may be used by implementations of FileSystem::GetMatchingPaths()
-// in order to provide parallel scanning of subdirectories (except on iOS).
-//
-// Arguments:
-//   fs: may not be null and will be used to identify directories and list
-//       their contents.
-//   env: may not be null and will be used to check if a match has been found.
-//   pattern: see FileSystem::GetMatchingPaths() for details.
-//   results: will be cleared and may not be null.
-//
-// Returns an error status if any call to 'fs' failed.
-Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
-                        std::vector<string>* results);
-
-// Given a file path, determines whether the file exists. This helper simplifies
-// the use of Env::FileExists.
-//
-// Arguments:
-//   env: may not be null.
-//   fname: the file path to look up
-//
-// Returns true if the file exists, false if it does not exist, or an error
-// Status.
-StatusOr<bool> FileExists(Env* env, const string& fname);
-
+using tsl::internal::FileExists;
+using tsl::internal::GetMatchingPaths;
 }  // namespace internal
+// NOLINTEND(misc-unused-using-decls)
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_FILE_SYSTEM_HELPER_H_

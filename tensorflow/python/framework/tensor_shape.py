@@ -17,8 +17,6 @@ import functools
 import operator
 from typing import Optional, Sequence, Type
 
-import six
-
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.function import trace_type
 from tensorflow.python import tf2
@@ -213,10 +211,10 @@ class Dimension(object):
         # TODO(b/143206389): Remove once we fully migrate to 3.X.
         self._value = int(value.__index__())
       except AttributeError:
-        six.raise_from(
-            TypeError("Dimension value must be integer or None or have "
-                      "an __index__ method, got value '{0!r}' with type '{1!r}'"
-                      .format(value, type(value))), None)
+        raise TypeError(
+            "Dimension value must be integer or None or have "
+            "an __index__ method, got value '{0!r}' with type '{1!r}'".format(
+                value, type(value))) from None
       if self._value < 0:
         raise ValueError("Dimension %d must be >= 0" % self._value)
 
@@ -744,8 +742,13 @@ def as_dimension(value):
 class TensorShape(trace.TraceType, trace_type.Serializable):
   """Represents the shape of a `Tensor`.
 
-  A `TensorShape` represents a possibly-partial shape specification for a
-  `Tensor`. It may be one of the following:
+  >>> t = tf.constant([[1,2,3],[4,5,6]])
+  >>> t.shape
+  TensorShape([2, 3])
+
+  `TensorShape` is the *static* shape representation of a Tensor.
+  During eager execution a Tensor always has a fully specified shape but
+  when tracing a `tf.function` it may be one of the following:
 
   * *Fully-known shape:* has a known number of dimensions and a known size
     for each dimension. e.g. `TensorShape([16, 256])`
@@ -754,12 +757,57 @@ class TensorShape(trace.TraceType, trace_type.Serializable):
   * *Unknown shape:* has an unknown number of dimensions, and an unknown
     size in all dimensions. e.g. `TensorShape(None)`
 
+  During function tracing `t.shape` will return a `TensorShape` object
+  representing the shape of Tensor as it is known during tracing.
+  This static representation will be partially defined in cases where the
+  exact shape depends on the values within the tensors. To get the
+  *dynamic* representation, please use `tf.shape(t)`
+  which will return Tensor representing the fully defined shape of `t`.
+  This way, you can express logic that manipulates the shapes of tensors by
+  building other tensors that depend on the dynamic shape of `t`.
+
+  Note: `tf.RaggedTensor.shape` also returns a `tf.TensorShape`,
+  the lengths of any ragged dimensions are unknown (`None`).
+
+  For example, this function prints the `TensorShape' (`t.shape`), when you
+  trace the function, and returns a tensor `tf.shape(t)` for given input `t`:
+
+  >>> @tf.function
+  ... def get_dynamic_shape(t):
+  ...   print("tracing...")
+  ...   print(f"static shape is {t.shape}")
+  ...   return tf.shape(t)
+
+  Just calling the function traces it with a fully-specified static shape:
+
+  >>> result = get_dynamic_shape(tf.constant([[1, 1, 1], [0, 0, 0]]))
+  tracing...
+  static shape is (2, 3)
+  >>> result.numpy()
+  array([2, 3], dtype=int32)
+
+  But `tf.function` can also trace the function with a partially specified
+  (or even unspecified) shape:
+
+  >>> cf1 = get_dynamic_shape.get_concrete_function(tf.TensorSpec(
+  ...                                               shape=[None, 2]))
+  tracing...
+  static shape is (None, 2)
+  >>> cf1(tf.constant([[1., 0],[1, 0],[1, 0]])).numpy()
+  array([3, 2], dtype=int32)
+
+  >>> cf2 = get_dynamic_shape.get_concrete_function(tf.TensorSpec(shape=None))
+  tracing...
+  static shape is <unknown>
+  >>> cf2(tf.constant([[[[[1., 0]]]]])).numpy()
+  array([1, 1, 1, 1, 2], dtype=int32)
+
   If a tensor is produced by an operation of type `"Foo"`, its shape
   may be inferred if there is a registered shape function for
   `"Foo"`. See [Shape
   functions](https://www.tensorflow.org/guide/create_op#shape_functions_in_c)
   for details of shape functions and how to register them. Alternatively,
-  you may set the shape explicitly using `tf.Tensor.set_shape`.
+  you may set the shape explicitly using `tf.Tensor.ensure_shape`.
   """
   __slots__ = ["_dims"]
 
@@ -799,13 +847,11 @@ class TensorShape(trace.TraceType, trace_type.Serializable):
           try:
             self._dims.append(as_dimension(d).value)
           except TypeError as e:
-            six.raise_from(
-                TypeError(
-                    "Failed to convert '{0!r}' to a shape: '{1!r}'"
-                    "could not be converted to a dimension. A shape should "
-                    "either be single dimension (e.g. 10), or an iterable of "
-                    "dimensions (e.g. [1, 10, None])."
-                    .format(dims, d)), e)
+            raise TypeError(
+                "Failed to convert '{0!r}' to a shape: '{1!r}'"
+                "could not be converted to a dimension. A shape should "
+                "either be single dimension (e.g. 10), or an iterable of "
+                "dimensions (e.g. [1, 10, None]).".format(dims, d)) from e
         self._dims = tuple(self._dims)
 
   @property

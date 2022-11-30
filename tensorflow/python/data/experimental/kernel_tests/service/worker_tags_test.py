@@ -15,6 +15,7 @@
 """Tests tf.data service reading from workers with specific tags."""
 
 import time
+import multiprocessing
 
 from absl.testing import parameterized
 
@@ -149,7 +150,10 @@ class WorkerTagsTest(data_service_test_base.TestBase, parameterized.TestCase):
         num_remote_workers=num_remote_workers,
         worker_tags=[_COLOCATED_WORKER_TAG])
 
-    num_elements = 300
+    # num_elements needs to be bigger than (100 + <cpu core count>), the extra
+    # 100 is just a bit of margin. The CPU core count is involved as
+    # elements are prefetched, one element per CPU core.
+    num_elements = 200 + multiprocessing.cpu_count()
     dataset = self.make_distributed_range_dataset(num_elements, cluster)
     get_next = self.getNext(dataset)
     results = [self.evaluate(get_next()) for _ in range(100)]

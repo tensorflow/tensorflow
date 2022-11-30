@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/custom_device_op_handler.h"
 
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
@@ -168,6 +169,19 @@ Status CustomDeviceOpHandler::MaybePinToCustomDevice(
         }
       }
     }
+    // When there is a single custom device present, let the custom device
+    // choose whether to pin on the custom device if it overrides choosing.
+    if (first != nullptr) {
+      StatusOr<bool> pin_to_custom_device = first->ShallPinToThisDevice(&op);
+      // Custom devices that do not override will throw an unimplemented error.
+      if (pin_to_custom_device.ok()) {
+        if (pin_to_custom_device.value()) {
+          *device = first;
+        }
+        return OkStatus();
+      }
+    }
+
     for (const ImmediateExecutionTensorHandle* generic_input : op.GetInputs()) {
       if (generic_input->DataType() == DT_RESOURCE) {
         if (CustomDeviceTensorHandle::classof(generic_input)) {

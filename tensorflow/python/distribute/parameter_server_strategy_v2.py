@@ -43,21 +43,18 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training import server_lib
+from tensorflow.python.util import keras_deps
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
+
 
 ALLOWED_TASK_TYPES = ("chief", "worker", "ps")
 
 cluster_coordinator = LazyLoader(
     "cluster_coordinator", globals(),
     "tensorflow.python.distribute.coordinator.cluster_coordinator"
-)
-
-load_context = LazyLoader(
-    "load_context", globals(),
-    "tensorflow.python.keras.saving.saved_model.load_context"
 )
 
 
@@ -100,7 +97,7 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   the cluster to make progress.
 
   Note that the coordinator is not one of the training workers. Instead, it
-  creates resources such as variables and datasets, dispatchs `tf.function`s,
+  creates resources such as variables and datasets, dispatches `tf.function`s,
   saves checkpoints and so on. In addition to workers, parameter servers and
   the coordinator, an optional evaluator can be run on the side that
   periodically reads the checkpoints saved by the coordinator and runs
@@ -822,7 +819,7 @@ class ParameterServerStrategyV2Extended(
     # the coordinator which incurs worker-coordinator communication overhead.
 
     def lookup_creator(next_creator, *args, **kwargs):
-      if load_context.in_load_context():
+      if keras_deps.get_load_context_function()():
         return (ps_values.RestoredDistributedTable(
             self._container_strategy(), lambda: next_creator(*args, **kwargs)))  # pylint: disable=protected-access
       else:

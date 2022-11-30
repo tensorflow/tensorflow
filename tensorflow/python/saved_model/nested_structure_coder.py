@@ -28,9 +28,7 @@ restored_signature = nested_structure_coder.decode_proto(signature_proto)
 
 import collections
 import functools
-
 import warnings
-import six
 
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.data.ops import dataset_ops
@@ -135,7 +133,7 @@ def decode_proto(proto):
   return _map_structure(proto, _get_decoders())
 
 
-class _ListCodec(object):
+class _ListCodec:
   """Codec for lists."""
 
   def can_encode(self, pyobj):
@@ -172,10 +170,10 @@ def _is_named_tuple(instance):
     return False
   return (hasattr(instance, "_fields") and
           isinstance(instance._fields, collections_abc.Sequence) and
-          all(isinstance(f, six.string_types) for f in instance._fields))
+          all(isinstance(f, str) for f in instance._fields))
 
 
-class _TupleCodec(object):
+class _TupleCodec:
   """Codec for tuples."""
 
   def can_encode(self, pyobj):
@@ -195,7 +193,7 @@ class _TupleCodec(object):
     return tuple(decode_fn(element) for element in value.tuple_value.values)
 
 
-class _DictCodec(object):
+class _DictCodec:
   """Codec for dicts."""
 
   def can_encode(self, pyobj):
@@ -215,7 +213,7 @@ class _DictCodec(object):
     return {key: decode_fn(val) for key, val in value.dict_value.fields.items()}
 
 
-class _NamedTupleCodec(object):
+class _NamedTupleCodec:
   """Codec for namedtuples.
 
   Encoding and decoding a namedtuple reconstructs a namedtuple with a different
@@ -247,7 +245,7 @@ class _NamedTupleCodec(object):
     return named_tuple_type(**dict(items))
 
 
-class _Float64Codec(object):
+class _Float64Codec:
   """Codec for floats."""
 
   def can_encode(self, pyobj):
@@ -267,7 +265,7 @@ class _Float64Codec(object):
     return value.float64_value
 
 
-class _Int64Codec(object):
+class _Int64Codec:
   """Codec for Python integers (limited to 64 bit values)."""
 
   def can_encode(self, pyobj):
@@ -287,7 +285,7 @@ class _Int64Codec(object):
     return int(value.int64_value)
 
 
-class _StringCodec(object):
+class _StringCodec:
   """Codec for strings.
 
   See StructuredValue.string_value in proto/struct.proto for more detailed
@@ -311,7 +309,7 @@ class _StringCodec(object):
     return compat.as_str(value.string_value)
 
 
-class _NoneCodec(object):
+class _NoneCodec:
   """Codec for None."""
 
   def can_encode(self, pyobj):
@@ -331,7 +329,7 @@ class _NoneCodec(object):
     return None
 
 
-class _BoolCodec(object):
+class _BoolCodec:
   """Codec for booleans."""
 
   def can_encode(self, pyobj):
@@ -351,7 +349,7 @@ class _BoolCodec(object):
     return value.bool_value
 
 
-class _TensorShapeCodec(object):
+class _TensorShapeCodec:
   """Codec for `TensorShape`."""
 
   def can_encode(self, pyobj):
@@ -372,7 +370,7 @@ class _TensorShapeCodec(object):
     return tensor_shape.TensorShape(value.tensor_shape_value)
 
 
-class _TensorTypeCodec(object):
+class _TensorTypeCodec:
   """Codec for `TensorType`."""
 
   def can_encode(self, pyobj):
@@ -392,7 +390,7 @@ class _TensorTypeCodec(object):
     return dtypes.DType(value.tensor_dtype_value)
 
 
-class _TensorSpecCodec(object):
+class _TensorSpecCodec:
   """Codec for `TensorSpec`."""
 
   def can_encode(self, pyobj):
@@ -424,7 +422,7 @@ class _TensorSpecCodec(object):
         name=(name if name else None))
 
 
-class _BoundedTensorSpecCodec(object):
+class _BoundedTensorSpecCodec:
   """Codec for `BoundedTensorSpec`."""
 
   def can_encode(self, pyobj):
@@ -461,7 +459,7 @@ class _BoundedTensorSpecCodec(object):
 
 
 # TODO(b/238903802): Use TraceType serialization and specific protos.
-class _TypeSpecCodec(object):
+class _TypeSpecCodec:
   """Codec for `tf.TypeSpec`."""
 
   # Mapping from enum value to type (TypeSpec subclass).

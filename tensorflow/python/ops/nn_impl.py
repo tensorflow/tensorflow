@@ -565,7 +565,7 @@ def swish(features, beta=1.0):
   beta = math_ops.cast(beta, features.dtype)
 
   @custom_gradient.custom_gradient
-  def swish_impl(features):
+  def swish_impl(features, beta):
 
     def grad(dy):
       """Gradient for the Swish activation function."""
@@ -577,14 +577,18 @@ def swish(features, beta=1.0):
       # expression immediately after use during the forward pass.
       with ops.control_dependencies([dy]):
         sigmoid_features = math_ops.sigmoid(beta * features)
+
       activation_grad = (
           sigmoid_features * (1.0 + (beta * features) *
                               (1.0 - sigmoid_features)))
-      return dy * activation_grad
+      beta_grad = math_ops.reduce_sum(
+          dy * math_ops.square(features) * sigmoid_features *
+          (1.0 - sigmoid_features))
+      return (dy * activation_grad, beta_grad)
 
     return features * math_ops.sigmoid(beta * features), grad
 
-  return swish_impl(features)
+  return swish_impl(features, beta)
 
 
 # pylint: disable=redefined-builtin
@@ -2023,7 +2027,7 @@ def nce_loss_v2(weights,
 
   See [Noise-contrastive estimation: A new estimation principle for
   unnormalized statistical
-  models](http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
+  models](https://arxiv.org/abs/1806.03664).
   Also see our [Candidate Sampling Algorithms
   Reference](https://www.tensorflow.org/extras/candidate_sampling.pdf)
 

@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -326,6 +326,12 @@ IrArray::Index IrArray::Index::SourceIndexOfTranspose(
   return Index(operand_multidim_index, operand_shape, index_type_);
 }
 
+static absl::InlinedVector<int64_t, 8> ReverseIota(int64_t n) {
+  absl::InlinedVector<int64_t, 8> ret(n);
+  absl::c_generate(ret, [n = ret.size()]() mutable { return --n; });
+  return ret;
+}
+
 IrArray::Index IrArray::Index::SourceIndexOfBitcast(
     const Shape& shape, const Shape& operand_shape,
     llvm::IRBuilder<>* builder) const {
@@ -338,29 +344,52 @@ IrArray::Index IrArray::Index::SourceIndexOfBitcast(
     return SourceIndexOfReshape(shape, operand_shape, builder);
   }
 
-  // If we have a linear index, we can definitely use it because we know the
-  // operation is a bitcast. This will recompute the multi-dimensional index for
-  // the operand based on the linear index.
-  if (linear() != nullptr) {
-    return Index(linear(), operand_shape, builder);
+  if (std::optional<std::vector<int64_t>> dimensions =
+          ShapeUtil::DeduceTransposeDimensionsForBitcast(operand_shape,
+                                                         shape)) {
+    return SourceIndexOfTranspose(shape, operand_shape, *dimensions);
   }
 
-  // First linearize the index coming from the output of the bitcast. We want
-  // the physical index of the element in the buffer. This is like Linearize,
-  // but takes the layout into account.
-  int64_t scale = 1;
-  llvm::Value* linear_index = GetConstantWithIndexType(0);
-  for (auto dimension : LayoutUtil::MinorToMajor(shape)) {
-    linear_index = builder->CreateAdd(
-        linear_index,
-        builder->CreateMul(multidim_[dimension],
-                           GetConstantWithIndexType(scale), "",
-                           /*HasNUW=*/true, /*HasNSW=*/true),
-        "", /*HasNUW=*/true, /*HasNSW=*/true);
-    scale *= shape.dimensions(dimension);
-  }
+  // Every bitcast from A to B can be represented as a sequence of:
+  // 1) Transpose to a normalized layout of A
+  // 2) Reshape to a normalized layout of B
+  // 3) Transpose from (2) to B
+  //
+  // Steps (1) and (3) can be skipped if the layout is already descending.
+  // Such a sequence of index transformations is markedly faster than the
+  // previous approach of linearizing and delinearizing the entire index.
+  Shape normalized_operand_shape =
+      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+          operand_shape);
 
-  return Index(linear_index, operand_shape, builder);
+  std::vector<int64_t> transpose_dims_to_normalized_operand_shape =
+      ComposePermutations(operand_shape.layout().minor_to_major(),
+                          ReverseIota(operand_shape.rank()));
+
+  // We need to go from target `shape` to an index of `operand_shape`.
+  std::vector<int64_t> transpose_perm =
+      ComposePermutations(ReverseIota(shape.rank()),
+                          InversePermutation(shape.layout().minor_to_major()));
+
+  // Has same rank as output shape.
+  Shape reshape_shape = ShapeUtil::MakeShapeWithDescendingLayout(
+      shape.element_type(),
+      ComposePermutations(shape.dimensions(),
+                          InversePermutation(transpose_perm)));
+  Index transposed_index =
+      absl::c_is_sorted(transpose_perm)
+          ? *this
+          : SourceIndexOfTranspose(shape, reshape_shape, transpose_perm);
+
+  CHECK(ShapeUtil::ReshapeIsBitcast(reshape_shape, normalized_operand_shape,
+                                    /*ignore_element_type=*/true));
+  Index out = transposed_index.SourceIndexOfReshape(
+      reshape_shape, normalized_operand_shape, builder);
+  return absl::c_is_sorted(transpose_dims_to_normalized_operand_shape)
+             ? out
+             : out.SourceIndexOfTranspose(
+                   normalized_operand_shape, operand_shape,
+                   transpose_dims_to_normalized_operand_shape);
 }
 
 IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
@@ -508,7 +537,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
   CHECK_GT(index.size(), 0);
   std::vector<llvm::Value*> gep_indices(
       1, llvm::ConstantInt::get(index[0]->getType(), 0));
-  for (int64_t i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
+  for (int64_t i = 0; i < shape_.rank(); ++i) {
     int64_t dimension = LayoutUtil::Major(shape_.layout(), i);
     gep_indices.push_back(actual_index[dimension]);
   }

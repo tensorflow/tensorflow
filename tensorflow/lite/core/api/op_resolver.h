@@ -62,7 +62,7 @@ class OpResolver {
   // Represents a function that creates a TfLite delegate instance.
   using TfLiteDelegateCreator =
       std::function<std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>(
-          int /*num_threads*/)>;
+          TfLiteContext* /*context*/)>;
 
   // Represents a sequence of delegate creator functions.
   using TfLiteDelegateCreators = std::vector<TfLiteDelegateCreator>;

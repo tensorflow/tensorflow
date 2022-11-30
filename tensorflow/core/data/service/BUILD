@@ -6,15 +6,7 @@ load(
     "tf_proto_library",
     "tf_protos_profiler_service",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "get_compatible_with_cloud", "tf_grpc_cc_dependencies")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -23,6 +15,7 @@ load(
 package_group(name = "data_transfer_visibility")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -56,7 +49,6 @@ tf_proto_library(
     create_java_proto = False,
     protodeps = tf_additional_all_protos() + [
         ":common_proto",
-        "//tensorflow/core/data:dataset_proto",
     ],
     visibility = [
         ":data_transfer_visibility",
@@ -257,7 +249,7 @@ cc_library(
     deps = [
         ":worker_proto_cc",
         "//tensorflow/core:framework",
-        "//tensorflow/core/data:dataset_proto_cc",
+        "//tensorflow/core/framework:dataset_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:macros",
@@ -336,7 +328,6 @@ cc_library(
         ":dispatcher_proto_cc",
         ":grpc_util",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:protos_all_cc",
@@ -390,7 +381,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:optional",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -431,7 +421,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -717,7 +706,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",
@@ -941,7 +929,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
-        "//tensorflow/core/data:dataset_proto_cc",
+        "//tensorflow/core/framework:dataset_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -1008,6 +996,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:core_cpu",
@@ -1017,7 +1006,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/data:standalone",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:errors",

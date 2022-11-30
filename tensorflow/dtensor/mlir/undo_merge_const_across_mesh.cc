@@ -14,29 +14,27 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <memory>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
-#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/dtensor/cc/tensor_layout.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 
 namespace tensorflow {
 namespace dtensor {
 
 namespace {
+#define GEN_PASS_DEF_DTENSORUNDOMERGECONSTACROSSMESH
+#define GEN_PASS_DEF_DTENSORELIDEIDENTITYBEFORECOPYTOMESH
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // MLIR pass that undoes unintended const merging across different meshes within
 // the same Block by canonicalization passes.
 struct DTensorUndoMergeConstAcrossMesh
-    : public DTensorUndoMergeConstAcrossMeshBase<
+    : public impl::DTensorUndoMergeConstAcrossMeshBase<
           DTensorUndoMergeConstAcrossMesh> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();
@@ -49,7 +47,7 @@ struct DTensorUndoMergeConstAcrossMesh
             mlir::dyn_cast<mlir::TF::DTensorLayout>(consumer);
         if (!layout_op) continue;
 
-        const Layout layout = layout_op.layout();  // keep-alive for mesh.
+        const Layout layout = layout_op.getLayout();  // keep-alive for mesh.
         const Mesh& mesh = layout.mesh();
         if (std::find(known_meshes.begin(), known_meshes.end(), mesh) ==
             known_meshes.end()) {
@@ -69,11 +67,34 @@ struct DTensorUndoMergeConstAcrossMesh
   }
 };
 
+struct DTensorElideIdentityBeforeCopyToMesh
+    : public impl::DTensorElideIdentityBeforeCopyToMeshBase<
+          DTensorElideIdentityBeforeCopyToMesh> {
+  void runOnOperation() override {
+    getOperation().walk([](mlir::TF::CopyToMeshGradOp op) {
+      mlir::Value input_value = op->getOperand(0);
+      mlir::Operation* defining_op = input_value.getDefiningOp();
+      if (!mlir::isa<mlir::TF::IdentityOp>(defining_op)) {
+        return;
+      }
+      op->replaceUsesOfWith(input_value, defining_op->getOperand(0));
+      if (!defining_op->use_empty()) {
+        return;
+      }
+      defining_op->erase();
+    });
+  }
+};
+
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateDTensorUndoMergeConstAcrossMesh() {
   return std::make_unique<DTensorUndoMergeConstAcrossMesh>();
+}
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateDTensorElideIdentityBeforeCopyToMesh() {
+  return std::make_unique<DTensorElideIdentityBeforeCopyToMesh>();
 }
 }  // namespace dtensor
 }  // namespace tensorflow

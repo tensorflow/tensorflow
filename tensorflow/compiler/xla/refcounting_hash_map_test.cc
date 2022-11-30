@@ -17,10 +17,9 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <utility>
 
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/errors.h"
 
 namespace xla {
 namespace {

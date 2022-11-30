@@ -3,6 +3,7 @@ load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":__subpackages__",
         "//tensorflow/compiler/mlir:__subpackages__",
@@ -69,7 +70,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/types:Dialect",
-        "//tensorflow/stream_executor/lib",
+        "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -94,7 +95,7 @@ cc_library(
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/stream_executor/lib",
+        "//tensorflow/core/platform:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
@@ -178,7 +179,6 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace Eigen {
@@ -39,20 +40,21 @@ namespace stream_executor {
 class Stream;
 }  // namespace stream_executor
 
+namespace tsl {
+class Env;
+namespace thread {
+class ThreadPool;
+}  // namespace thread
+}  // namespace tsl
 namespace tensorflow {
 
 class Device;
 class DeviceAttributes;
-class Env;
 class EventMgr;
 class OpKernelContext;
 class ResourceMgr;
 class ScopedAllocatorMgr;
 class TensorProto;
-
-namespace thread {
-class ThreadPool;
-}
 
 // A wrapper for an Eigen Gpu Device that includes per-op state. The
 // class is defined even for non-GPU devices since the
@@ -125,14 +127,14 @@ class DeviceContext : public core::RefCounted {
 
 class DeviceBase {
  public:
-  explicit DeviceBase(Env* env) : env_(env) {}
+  explicit DeviceBase(tsl::Env* env) : env_(env) {}
   virtual ~DeviceBase();
 
-  Env* env() const { return env_; }
+  tsl::Env* env() const { return env_; }
 
   struct CpuWorkerThreads {
     int num_threads = 0;
-    thread::ThreadPool* workers = nullptr;
+    tsl::thread::ThreadPool* workers = nullptr;
   };
 
   // Does not take ownership.
@@ -173,7 +175,7 @@ class DeviceBase {
 
   // The preferred thread pool for this device. If it is nullptr, the system
   // automatically assigns a thread pool for execution.
-  virtual thread::ThreadPool* tensorflow_device_thread_pool() {
+  virtual tsl::thread::ThreadPool* tensorflow_device_thread_pool() {
     return device_thread_pool_;
   }
 
@@ -280,16 +282,16 @@ class DeviceBase {
 
  protected:
   // Does not take ownership.
-  void set_tensorflow_device_thread_pool(thread::ThreadPool* thread_pool) {
+  void set_tensorflow_device_thread_pool(tsl::thread::ThreadPool* thread_pool) {
     device_thread_pool_ = thread_pool;
   }
 
  private:
-  Env* const env_;
+  tsl::Env* const env_;
   CpuWorkerThreads* cpu_worker_threads_ = nullptr;
   // Set by GPUs as well as by TPU devices.
   AcceleratorDeviceInfo* accelerator_device_info_ = nullptr;
-  thread::ThreadPool* device_thread_pool_ = nullptr;
+  tsl::thread::ThreadPool* device_thread_pool_ = nullptr;
   std::vector<Eigen::ThreadPoolDevice*> eigen_cpu_devices_;
 };
 

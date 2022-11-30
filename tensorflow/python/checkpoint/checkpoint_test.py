@@ -20,7 +20,6 @@ import sys
 import weakref
 
 from absl.testing import parameterized
-import six
 
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
@@ -52,7 +51,7 @@ from tensorflow.python.training import saver as saver_lib
 class NonLayerTrackable(autotrackable.AutoTrackable):
 
   def __init__(self):
-    super(NonLayerTrackable, self).__init__()
+    super().__init__()
     self.a_variable = trackable_utils.add_variable(
         self, name="a_variable", shape=[])
 
@@ -116,8 +115,8 @@ class InterfaceTests(test.TestCase):
         "duplicate/.ATTRIBUTES/VARIABLE_VALUE",
         "ones_initializer/.ATTRIBUTES/VARIABLE_VALUE",
     )
-    six.assertCountEqual(
-        self, expected_checkpoint_names, [v.name for v in named_variables])
+    self.assertCountEqual(expected_checkpoint_names,
+                          [v.name for v in named_variables])
 
   def testInitNotCalled(self):
 
@@ -154,8 +153,7 @@ class _MirroringSaveable(saver_lib.BaseSaverBuilder.SaveableObject):
         tensor=tensor,
         slice_spec="",
         name=name)
-    super(_MirroringSaveable, self).__init__(
-        tensor, [spec], name)
+    super().__init__(tensor, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into both variables."""
@@ -1126,6 +1124,16 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     ckpt2 = trackable_utils.Checkpoint(v=w)
     ckpt2.read(save_path)
     self.assertEqual(ckpt.v.numpy(), 1.0)
+
+  @test_util.run_deprecated_v1
+  def test_save_in_graph_but_no_session(self):
+    v = variables_lib.Variable(1.0)
+    ckpt = trackable_utils.Checkpoint(v=v)
+    self.evaluate(v.initializer)
+    prefix = pathlib.Path(self.get_temp_dir()) / "ckpt"
+    with ops.default_session(None):
+      with self.assertRaisesRegex(RuntimeError, "create a session"):
+        ckpt.write(prefix)
 
 
 class SerializeToTensorTest(test.TestCase):

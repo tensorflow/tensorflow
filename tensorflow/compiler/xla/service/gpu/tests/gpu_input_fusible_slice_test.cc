@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -65,7 +65,7 @@ TEST_F(GpuSliceInputFusionTest, InputFusionWithATupleOfSlices) {
 
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define amdgpu_kernel void @fusion
 ; CHECK: slice2
@@ -112,7 +112,7 @@ TEST_F(GpuSliceInputFusionTest, ConcatThenSplit) {
 
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define amdgpu_kernel void @fusion
 ; CHECK: slice2

@@ -18,9 +18,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -274,7 +274,7 @@ int DefaultThreadPoolSize() {
   if (nproc_str && absl::SimpleAtoi(nproc_str, &nproc)) {
     return std::max(0, nproc);
   }
-  return tensorflow::port::MaxParallelism();
+  return tsl::port::MaxParallelism();
 }
 
 bool HasMajorToMinorLayout(PrimitiveType type, absl::Span<int64_t const> dims,

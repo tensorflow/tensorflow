@@ -53,9 +53,12 @@ Once you have generated the file, you can include it in your program. It is
 important to change the array declaration to `const` for better memory
 efficiency on embedded platforms.
 
+<!-- 
+Removing this link for now because it is broken. Need to update TF example repos. b/244204652
 For an example of how to include and use a model in your program, see
 [`model.cc`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world/model.cc)
 in the *Hello World* example.
+-->
 
 ## Model architecture and training
 

@@ -8,17 +8,10 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_kernel_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
@@ -190,7 +183,7 @@ tf_kernel_library(
     name = "matrix_inverse_op",
     prefix = "matrix_inverse_op",
     visibility = [":friends"],
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + [":loose_headers"],
 )
 
 tf_kernel_library(
@@ -229,7 +222,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:fill_functor",
         "//tensorflow/core/platform:stream_executor",
     ] + if_cuda([
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/util:cuda_solvers",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
@@ -315,6 +308,21 @@ cc_library(
         "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
+)
+
+# For a more maintainable build this target should not exist and the headers
+# should  be split into the existing cc_library targets, but this change was
+# automatically  done so that we can remove long standing issues and complexity
+# in the build system. It's up to the OWNERS of this package to get rid of it or
+# not. The use of the textual_hdrs attribute is discouraged, use hdrs instead.
+# Here it is used to avoid header parsing errors in packages where the feature
+# parse_headers was enabled since loose headers were not being parsed. See
+# go/loose-lsc-one-target-approach for more details.
+cc_library(
+    name = "loose_headers",
+    tags = ["avoid_dep"],
+    textual_hdrs = ["eye_functor.h"],
+    visibility = [":__pkg__"],
 )
 
 tf_cuda_cc_test(

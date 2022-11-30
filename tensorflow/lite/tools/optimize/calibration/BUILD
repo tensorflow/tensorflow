@@ -3,6 +3,7 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -18,6 +19,7 @@ cc_library(
         ":calibration_logger",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:lstm_shared",
@@ -38,6 +40,7 @@ cc_library(
         ":calibration_logger",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:lstm_shared",
@@ -66,6 +69,7 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",

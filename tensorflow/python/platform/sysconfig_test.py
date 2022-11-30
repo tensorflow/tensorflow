@@ -39,10 +39,10 @@ class SysconfigTest(googletest.TestCase):
     def list_contains(items, regex_str):
       regex = re.compile(regex_str)
       return any(regex.match(item) for item in items)
-
     self.assertTrue(list_contains(compile_flags, ".*/include"))
     self.assertTrue(list_contains(compile_flags, ".*_GLIBCXX_USE_CXX11_ABI.*"))
     self.assertTrue(list_contains(compile_flags, ".*EIGEN_MAX_ALIGN_BYTES.*"))
+    self.assertTrue(list_contains(compile_flags, ".*std.*"))
 
 
 if __name__ == "__main__":

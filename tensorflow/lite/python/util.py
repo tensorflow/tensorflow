@@ -19,8 +19,6 @@ import datetime
 import sys
 
 from absl import logging
-import six
-from six.moves import range
 
 import flatbuffers
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
@@ -117,7 +115,7 @@ def get_tensor_name(tensor):
   Returns:
     str
   """
-  parts = six.ensure_str(tensor.name).split(":")
+  parts = tensor.name.split(":")
   if len(parts) > 2:
     raise ValueError("Tensor name invalid. Expect 0 or 1 colon, got {0}".format(
         len(parts) - 1))
@@ -153,7 +151,7 @@ def get_tensors_from_tensor_names(graph, tensor_names):
   tensors = []
   invalid_tensors = []
   for name in tensor_names:
-    if not isinstance(name, six.string_types):
+    if not isinstance(name, str):
       raise ValueError("Invalid type for a tensor name in the provided graph. "
                        "Expected type for a tensor name is 'str', instead got "
                        "type '{}' for tensor name '{}'".format(
@@ -325,8 +323,7 @@ def is_frozen_graph(sess):
     Bool.
   """
   for op in sess.graph.get_operations():
-    if six.ensure_str(op.type).startswith("Variable") or six.ensure_str(
-        op.type).endswith("VariableOp"):
+    if op.type.startswith("Variable") or op.type.endswith("VariableOp"):
       return False
   return True
 

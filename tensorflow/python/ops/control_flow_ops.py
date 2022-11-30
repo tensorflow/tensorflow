@@ -191,6 +191,9 @@ def _Identity(tensor, name=None):
     A Tensor with the same type and value as the input Tensor.
   """
   tensor = ops.internal_convert_to_tensor_or_composite(tensor, as_ref=True)
+  # TODO(b/246438937): Remove this when we expand ResourceVariables into
+  # dt_resource tensors.
+  tensor = variable_utils.convert_variables_to_tensors(tensor)
   if isinstance(tensor, ops.Tensor):
     if tensor.dtype._is_ref_dtype:  # pylint: disable=protected-access
       return gen_array_ops.ref_identity(tensor, name=name)

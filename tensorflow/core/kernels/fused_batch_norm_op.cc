@@ -37,7 +37,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
 #include "tensorflow/core/kernels/redux_functor.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/tensor_format.h"
 

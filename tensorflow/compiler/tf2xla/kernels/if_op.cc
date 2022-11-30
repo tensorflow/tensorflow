@@ -221,7 +221,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       // necessary for forwarding shapes of DT_VARIANTs, e.g. TensorLists.
       auto shape_or = ctx->builder()->GetShape(ctx->Input(i + 1));
       OP_REQUIRES_OK(ctx, shape_or.status());
-      arg.shape = shape_or.ValueOrDie();
+      arg.shape = shape_or.value();
       VLOG(2) << "Arg type: " << DataTypeString(arg.type)
               << " shape: " << arg.HumanString();
     }
@@ -303,7 +303,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       for (const string& node_name : token_input_nodes_) {
         auto token_or = compiler->GetNodeToken(node_name);
         OP_REQUIRES_OK(ctx, token_or.status());
-        token_inputs.push_back(token_or.ValueOrDie());
+        token_inputs.push_back(token_or.value());
       }
       inputs[i] = xla::AfterAll(b, token_inputs);
     } else if (ctx->input_type(input_num) == DT_RESOURCE) {
@@ -346,10 +346,10 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
         xla::GetTupleElement(outputs, output_types_.size() + num_resource_args);
     auto shape_or = b->GetShape(token_output);
     OP_REQUIRES_OK(ctx, shape_or.status());
-    OP_REQUIRES(ctx, shape_or.ValueOrDie().IsToken(),
+    OP_REQUIRES(ctx, shape_or.value().IsToken(),
                 errors::FailedPrecondition(
                     "Token output is not token type: ",
-                    xla::ShapeUtil::HumanString(shape_or.ValueOrDie())));
+                    xla::ShapeUtil::HumanString(shape_or.value())));
     OP_REQUIRES_OK(ctx,
                    compiler->SetNodeToken(original_node_name_, token_output));
   }

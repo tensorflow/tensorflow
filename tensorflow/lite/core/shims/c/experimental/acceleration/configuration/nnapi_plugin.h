@@ -15,6 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_SHIMS_C_EXPERIMENTAL_ACCELERATION_CONFIGURATION_NNAPI_PLUGIN_H_
 #define TENSORFLOW_LITE_CORE_SHIMS_C_EXPERIMENTAL_ACCELERATION_CONFIGURATION_NNAPI_PLUGIN_H_
 
-#include "tensorflow/lite/experimental/acceleration/configuration/c/nnapi_plugin.h"
+#include "tensorflow/lite/core/experimental/acceleration/configuration/c/nnapi_plugin.h"
 
 #endif  // TENSORFLOW_LITE_CORE_SHIMS_C_EXPERIMENTAL_ACCELERATION_CONFIGURATION_NNAPI_PLUGIN_H_

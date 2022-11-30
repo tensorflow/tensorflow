@@ -42,7 +42,7 @@ T ValueOrThrow(StatusOr<T> v) {
 namespace pybind11 {
 namespace detail {
 
-// Status, StatusOr. Failing statuses become Python exceptions; Status::OK()
+// Status, StatusOr. Failing statuses become Python exceptions; OK Status()
 // becomes None.
 template <>
 struct type_caster<xla::Status> {
@@ -71,8 +71,8 @@ struct type_caster<xla::StatusOr<T>> {
     if (!src.ok()) {
       throw xla::XlaRuntimeError(src.status());
     }
-    return value_conv::cast(std::forward<xla::StatusOr<T>>(src).ValueOrDie(),
-                            policy, parent);
+    return value_conv::cast(std::forward<xla::StatusOr<T>>(src).value(), policy,
+                            parent);
   }
 };
 

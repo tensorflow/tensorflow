@@ -415,12 +415,10 @@ ConvolutionTransposed3x3 CreateConvolutionTransposed3x3(
   ConvolutionTransposed3x3 result(definition, gpu_info, padding);
   result.UploadWeights(attr.weights);
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
-  desc.element_type = definition.GetDataType();
-  desc.UploadLinearData(attr.bias);
-  result.args_.AddObject(
-      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr.bias);
+  result.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                       std::move(bias_tensor_desc)));
   return result;
 }
 
@@ -439,12 +437,10 @@ ConvolutionTransposed3x3 CreateConvolutionTransposed3x3DynamicWeights(
   const int2 padding = int2(attr.padding.prepended.w, attr.padding.prepended.h);
   ConvolutionTransposed3x3 result(new_def, gpu_info, padding);
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
-  desc.element_type = new_def.GetDataType();
-  desc.UploadLinearData(attr.bias);
-  result.args_.AddObject(
-      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr.bias);
+  result.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                       std::move(bias_tensor_desc)));
   return result;
 }
 

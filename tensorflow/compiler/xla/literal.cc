@@ -16,19 +16,21 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/casts.h"
-#include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -42,9 +44,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mem.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/mem.h"
+#include "tensorflow/tsl/util/byte_swap_array.h"
 
 namespace xla {
 namespace {
@@ -53,7 +56,7 @@ using absl::StrCat;
 
 constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 // Literals can be used as DMA targets, which can require alignment. We
-// force a tensorflow::Allocator::kAllocatorAlignment-byte minimum
+// force a tsl::Allocator::kAllocatorAlignment-byte minimum
 // alignment.
 constexpr int kMinimumAlignment = 64;
 
@@ -120,7 +123,7 @@ const Shape& ScalarShapeImpl() {
                 "Not a valid type for a scalar.");
   static const Shape* shape = [] {
     auto shape = new Shape(kType, {}, {}, {});
-    shape->mutable_layout()->set_format(DENSE);
+    shape->mutable_layout();
     return shape;
   }();
   return *shape;
@@ -183,7 +186,7 @@ const Shape* TryInternShape(const Shape& shape) {
     return &NilShape();
   }
   if (shape.IsArray() && shape.dimensions_size() == 0 && shape.is_static() &&
-      shape.layout().tiles_size() == 0) {
+      shape.layout().tiles_size() == 0 && shape.layout().memory_space() == 0) {
     return &ScalarShape(shape.element_type());
   }
   return nullptr;
@@ -191,7 +194,24 @@ const Shape* TryInternShape(const Shape& shape) {
 
 }  // namespace
 
-LiteralBase::~LiteralBase() {}
+LiteralBase::~LiteralBase() = default;
+
+const Shape& LiteralBase::shape() const { return root_piece().subshape(); }
+
+const char* LiteralBase::Piece::buffer() const {
+  return std::visit(BufferVisitor{}, rep_);
+}
+
+const LiteralBase::Piece& LiteralBase::piece(
+    const ShapeIndex& shape_index) const {
+  Piece* piece = &const_cast<Piece&>(root_piece());
+  for (const auto i : shape_index) {
+    DCHECK_GE(i, 0);
+    DCHECK_LT(i, piece->children_size());
+    piece = &piece->child(i);
+  }
+  return *piece;
+}
 
 std::ostream& operator<<(std::ostream& out, const Literal& literal) {
   out << literal.ToString();
@@ -257,15 +277,15 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays,
       piece->emplace_back(std::move(child_piece));
     }
   } else if (shape.IsArray()) {
+    DCHECK(LayoutUtil::IsDenseArray(shape))
+        << "literal array storage is currently only supported for dense "
+           "arrays: "
+        << shape;
     piece->set_array_value_state(leaf_array_value_state);
     if (leaf_array_value_state == LiteralBase::ArrayValueState::kKnown &&
         allocate_arrays) {
       piece->AllocateBuffers();
     }
-  } else {
-    // If the shape is neither an array nor tuple, then it must be
-    // zero-sized. Otherwise, some memory needs to be allocated for it.
-    CHECK_EQ(piece->size_bytes(), 0);
   }
 }
 
@@ -313,7 +333,7 @@ Literal LiteralBase::CreateFromShape(const Shape& shape) {
   literal.root_piece_.ForEachMutableSubpiece(
       [&](const ShapeIndex& index, Piece* piece) {
         if (piece->subshape().IsArray()) {
-          memset(piece->untyped_data(), 0, piece->size_bytes());
+          memset(piece->untyped_data(), 0, piece->size_bytes_dense());
         }
       });
   return literal;
@@ -374,6 +394,7 @@ Status MutableLiteralBase::CopySliceFromInternal(
     absl::Span<const int64_t> dest_base, absl::Span<const int64_t> copy_size) {
   const int64_t src_base_size = src_base.size();
   const int64_t dest_base_size = dest_base.size();
+  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()));
   TF_RET_CHECK(src_literal.shape().rank() == src_base_size);
   TF_RET_CHECK(shape().rank() == dest_base_size);
 
@@ -433,6 +454,7 @@ Status MutableLiteralBase::CopySliceFromInternal(
 Status MutableLiteralBase::CopyElementFrom(
     const LiteralSlice& src_literal, absl::Span<const int64_t> src_index,
     absl::Span<const int64_t> dest_index) {
+  DCHECK(LayoutUtil::IsDenseArray(shape()));
   DCHECK_EQ(shape().element_type(), src_literal.shape().element_type());
   const int64_t src_linear_index =
       IndexUtil::MultidimensionalIndexToLinearIndex(src_literal.shape(),
@@ -465,6 +487,9 @@ Status MutableLiteralBase::CopyElementFrom(
   }
   if (!LayoutUtil::HasLayout(shape)) {
     return InvalidArgument("LiteralProto has no layout");
+  }
+  if (LayoutUtil::IsSparseArray(shape)) {
+    return Unimplemented("Sparse literals are not supported");
   }
 
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
@@ -555,6 +580,8 @@ template <typename NativeT>
 void CopyElementsBetween(absl::Span<NativeT> dest,
                          absl::Span<const NativeT> src, const Shape& dest_shape,
                          const Shape& src_shape) {
+  CHECK(LayoutUtil::IsDenseArray(dest_shape));
+  CHECK(LayoutUtil::IsDenseArray(src_shape));
   CHECK(ShapeUtil::Compatible(dest_shape, src_shape));
   if (ShapeUtil::IsZeroElementArray(dest_shape)) {
     return;
@@ -583,20 +610,20 @@ void LiteralBase::Piece::SetDynamicSize(int64_t dim_index, int32_t size) {
 }
 
 void LiteralBase::Piece::AllocateBuffers() {
-  const int64_t bytes = total_bytes();
+  const int64_t bytes = total_bytes_dense();
   if (bytes > kMaxInlinedBytes) {
     CHECK_EQ(buffer(), nullptr);
-    rep_.emplace<ArrayRep>();
-    set_buffer(static_cast<char*>(
-        tensorflow::port::AlignedMalloc(bytes, kMinimumAlignment)));
+    rep_.emplace<DenseRep>();
+    set_buffer(
+        static_cast<char*>(tsl::port::AlignedMalloc(bytes, kMinimumAlignment)));
   } else {
-    rep_.emplace<InlinedRep>();
+    rep_.emplace<DenseInlinedRep>();
   }
 }
 
 void LiteralBase::Piece::DeallocateBuffers() {
-  if (auto* array_rep = GetArrayRep()) {
-    tensorflow::port::AlignedFree(array_rep->data);
+  if (auto* array_rep = GetDenseRep()) {
+    tsl::port::AlignedFree(array_rep->data);
     rep_.emplace<Uninitialized>();
   }
 }
@@ -605,6 +632,10 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
                                     bool only_dynamic_bound) {
   CHECK(subshape_ != nullptr);
   CHECK(src.subshape_ != nullptr);
+  CHECK(LayoutUtil::IsDenseArray(subshape()))
+      << __func__ << " is only supported for dense arrays: " << subshape();
+  CHECK(LayoutUtil::IsDenseArray(src.subshape()))
+      << __func__ << " is only supported for dense arrays: " << src.subshape();
   if (src.array_value_state_ == ArrayValueState::kUnknown ||
       src.array_value_state_ == ArrayValueState::kUndetermined) {
     if (array_value_state_ == ArrayValueState::kKnown) {
@@ -623,7 +654,7 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
 
   if (ShapeUtil::Equal(subshape(), src.subshape())) {
     // If the layouts are equal it's faster just to memcpy.
-    memcpy(buffer(), src.buffer(), src.size_bytes());
+    memcpy(buffer(), src.buffer(), src.size_bytes_dense());
   } else {
     std::vector<int64_t> origin(subshape().rank(), 0);
     switch (subshape().element_type()) {
@@ -675,11 +706,9 @@ void MutableLiteralBase::SetDynamicSize(int64_t dim_index,
                                         int32_t size) {
   Shape* subshape =
       ShapeUtil::GetMutableSubshape(mutable_shape_do_not_use(), shape_index);
+  CHECK(LayoutUtil::IsDenseArray(*subshape))
+      << __func__ << " is only supported for dense arrays: " << *subshape;
   CHECK_GE(subshape->dimensions(dim_index), size);
-  if (subshape->dimensions(dim_index) == size) {
-    subshape->set_dynamic_dimension(dim_index, false);
-    return;
-  }
   subshape->set_dynamic_dimension(dim_index, true);
   CHECK_EQ(&piece(shape_index).subshape(), subshape);
 
@@ -836,7 +865,7 @@ Status MutableLiteralBase::CopySliceFrom(const LiteralSlice& src_literal,
       shape().element_type());
 }
 
-void MutableLiteralBase::PopulateR1(const tensorflow::core::Bitmap& values) {
+void MutableLiteralBase::PopulateR1(const tsl::core::Bitmap& values) {
   CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 1);
   CHECK_EQ(element_count(), values.bits());
@@ -885,7 +914,9 @@ Literal LiteralBase::ToBoundedDynamic(const Shape& bounded_shape) const {
           return;
         }
         for (int64_t i = 0; i < subshape.rank(); ++i) {
-          result.SetDynamicSize(i, subshape.dimensions(i));
+          if (bounded_shape.is_dynamic_dimension(i)) {
+            result.SetDynamicSize(i, subshape.dimensions(i));
+          }
         }
       });
   TF_CHECK_OK(result.CopyFrom(*this, {}, {}, /*only_dynamic_bound=*/true));
@@ -933,9 +964,14 @@ StatusOr<Literal> LiteralBase::Broadcast(
   const char* source_data = static_cast<const char*>(untyped_data());
   const int64_t primitive_size =
       ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
-  for (int64_t i = 0; i < dimensions.size(); ++i) {
-    int64_t dynamic_size = GetDynamicSize(i);
-    result.SetDynamicSize(dimensions[i], dynamic_size);
+  if (shape().is_dynamic()) {
+    for (int64_t i = 0; i < dimensions.size(); ++i) {
+      if (shape().is_dynamic_dimension(i)) {
+        // Set any dynamic sizes in the new literal.
+        int64_t dynamic_size = GetDynamicSize(i);
+        result.SetDynamicSize(dimensions[i], dynamic_size);
+      }
+    }
   }
 
   ShapeUtil::ForEachIndex(
@@ -957,10 +993,11 @@ StatusOr<Literal> LiteralBase::Broadcast(
 
 StatusOr<Literal> LiteralBase::Reshape(
     absl::Span<const int64_t> dimensions) const {
-  if (!shape().IsArray()) {
-    return InvalidArgument("Reshape does not support tuples.");
+  if (!LayoutUtil::IsDenseArray(shape())) {
+    return InvalidArgument("Reshape is only supported for dense arrays.");
   }
   if (shape().is_dynamic()) {
+    // TODO(b/243182930): We should consider supporting dynamic reshape.
     return Unimplemented("Dynamic reshape is not implemented.");
   }
   Literal output;
@@ -987,7 +1024,8 @@ StatusOr<Literal> LiteralBase::Reshape(
 }
 
 Literal LiteralBase::Transpose(absl::Span<const int64_t> permutation) const {
-  CHECK(shape().IsArray()) << "Tuple is not supported for transpose";
+  CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
   CHECK(shape().rank() == permutation.size() && IsPermutation(permutation))
       << "Given permutation is not a permutation of dimension numbers";
   // To transpose the array, we just permute the dimensions and layout, and
@@ -1016,8 +1054,14 @@ Literal LiteralBase::Transpose(absl::Span<const int64_t> permutation) const {
     layout->add_minor_to_major(inverse_permutation[index]);
   }
   Literal new_literal(permuted_shape);
-  for (int64_t i = 0; i < shape().rank(); i++) {
-    new_literal.SetDynamicSize(inverse_permutation[i], GetDynamicSize(i));
+  if (shape().is_dynamic()) {
+    for (int64_t i = 0; i < shape().rank(); i++) {
+      if (shape().is_dynamic_dimension(i)) {
+        // Set the dynamic size of any dynamic dimension in the transposed
+        // literal.
+        new_literal.SetDynamicSize(inverse_permutation[i], GetDynamicSize(i));
+      }
+    }
   }
   DCHECK_EQ(ShapeUtil::ByteSizeOf(new_literal.shape()),
             ShapeUtil::ByteSizeOf(shape()));
@@ -1062,9 +1106,9 @@ Literal LiteralBase::Slice(absl::Span<const int64_t> start_indices,
     CHECK_GE(dimension, 0) << "dnum = " << dnum;
     result_dimensions.push_back(dimension);
   }
-  auto result_shape =
-      ShapeUtil::MakeShapeWithLayout(shape().element_type(), result_dimensions,
-                                     LayoutUtil::MinorToMajor(shape()));
+  auto result_shape = ShapeUtil::MakeShapeWithDenseLayout(
+      shape().element_type(), result_dimensions,
+      LayoutUtil::MinorToMajor(shape()));
   ShapeUtil::CopyDynamicDimensions(&result_shape, shape());
   switch (result_shape.element_type()) {
     case PRED:
@@ -1474,8 +1518,9 @@ std::string LiteralBase::ToStringWithLayoutOneline() const {
 }
 
 void LiteralBase::EachCellAsString(
-    const std::function<void(absl::Span<const int64_t> indices,
-                             const std::string& value)>& per_cell) const {
+    absl::FunctionRef<void(absl::Span<const int64_t> indices,
+                           const std::string& value)>
+        per_cell) const {
   if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
@@ -1666,7 +1711,7 @@ StatusOr<Literal> ConvertIfDestTypeMatches(const LiteralBase& src_literal,
 StatusOr<Literal> ConvertSwitch(const LiteralBase& literal,
                                 PrimitiveType primitive_dest_type,
                                 bool bitcast) {
-  TF_RET_CHECK(literal.shape().IsArray());
+  TF_RET_CHECK(LayoutUtil::IsDenseArray(literal.shape()));
   if (literal.shape().element_type() == primitive_dest_type) {
     return literal.Clone();
   }
@@ -1724,7 +1769,24 @@ StatusOr<Literal> LiteralBase::BitcastConvert(const Shape& dest_shape) const {
 
   Literal out(dest_shape);
   std::memcpy(out.root_piece_.buffer(), root_piece().buffer(),
-              root_piece().size_bytes());
+              root_piece().size_bytes_dense());
+
+  // Perform the reshape on little endian encoding even on big endian machines.
+  if (!kLittleEndian) {
+    // Swap byte ordering as per the input data type.
+    size_t input_elem_size =
+        ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
+    TF_RETURN_IF_ERROR(tsl::ByteSwapArray(
+        const_cast<char*>(out.root_piece().buffer()), input_elem_size,
+        out.root_piece().size_bytes_dense() / input_elem_size));
+    // Swap byte ordering as per the output data type.
+    size_t output_elem_size =
+        ShapeUtil::ByteSizeOfPrimitiveType(dest_shape.element_type());
+    TF_RETURN_IF_ERROR(tsl::ByteSwapArray(
+        const_cast<char*>(out.root_piece().buffer()), output_elem_size,
+        out.root_piece().size_bytes_dense() / output_elem_size));
+  }
+
   return out;
 }
 
@@ -1825,10 +1887,11 @@ bool LiteralBase::Piece::EqualDynamicSize(
 
 bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
   if (subshape().is_static() &&
-      ShapeUtil::Equal(subshape(), other.subshape()) &&
-      LayoutUtil::IsDenseArray(subshape())) {
-    CHECK_EQ(size_bytes(), other.size_bytes());
-    return memcmp(buffer(), other.buffer(), size_bytes()) == 0;
+      ShapeUtil::Equal(subshape(), other.subshape()) && subshape().IsArray()) {
+    CHECK(LayoutUtil::IsDenseArray(subshape()))
+        << __func__ << " is only supported for dense arrays: " << subshape();
+    CHECK_EQ(size_bytes_dense(), other.size_bytes_dense());
+    return memcmp(buffer(), other.buffer(), size_bytes_dense()) == 0;
   }
 
   std::vector<int64_t> multi_index;
@@ -1936,6 +1999,8 @@ bool Literal::Piece::IsAll(const Literal& scalar) const {
     return false;
   }
 
+  CHECK(LayoutUtil::IsDenseArray(subshape()))
+      << __func__ << " is only supported for dense arrays: " << subshape();
   CHECK_EQ(subshape().element_type(), scalar.shape().element_type());
   switch (subshape().element_type()) {
     case U8:
@@ -2101,13 +2166,16 @@ bool LiteralBase::IsAllFirst() const {
   absl::InlinedVector<int64_t, 4> start_indices(/*n=*/shape().rank(), 0);
   absl::InlinedVector<int64_t, 4> end_indices(/*n=*/shape().rank(), 1);
   Literal first = Slice(start_indices, end_indices);
-  return IsAll(first.Reshape({}).ValueOrDie());
+  return IsAll(first.Reshape({}).value());
 }
 
 bool LiteralBase::IsR1Iota() const {
   if (!shape().IsArray()) {
     return false;
   }
+
+  CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
 
   if (shape().rank() != 1) {
     return false;
@@ -2167,6 +2235,9 @@ std::optional<int64_t> LiteralBase::IsR1StridedIota() const {
     return std::nullopt;
   }
 
+  CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
+
   const int64_t elements = ShapeUtil::ElementsIn(shape());
   const PrimitiveType type = shape().element_type();
   if (elements <= 1 || !primitive_util::IsIntegralType(type)) {
@@ -2214,7 +2285,8 @@ std::optional<int64_t> LiteralBase::IsR1StridedIota() const {
 }
 
 bool LiteralBase::IsZero(absl::Span<const int64_t> indices) const {
-  CHECK(shape().IsArray());
+  CHECK(LayoutUtil::IsDenseArray(shape()))
+      << __func__ << " is only supported for dense arrays: " << shape();
   switch (shape().element_type()) {
     case U8:
       return Get<uint8_t>(indices) == 0;
@@ -2296,29 +2368,33 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       CopyToRepeatedField(proto->mutable_s64s(), data<int64_t>());
       break;
     case U16:
-      *proto->mutable_u16s() = std::string(
-          reinterpret_cast<const char*>(data<uint16_t>().data()), size_bytes());
+      *proto->mutable_u16s() =
+          std::string(reinterpret_cast<const char*>(data<uint16_t>().data()),
+                      size_bytes_dense());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_u16s());
       }
       break;
     case S16:
-      *proto->mutable_s16s() = std::string(
-          reinterpret_cast<const char*>(data<int16_t>().data()), size_bytes());
+      *proto->mutable_s16s() =
+          std::string(reinterpret_cast<const char*>(data<int16_t>().data()),
+                      size_bytes_dense());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_s16s());
       }
       break;
     case F16:
-      *proto->mutable_f16s() = std::string(
-          reinterpret_cast<const char*>(data<half>().data()), size_bytes());
+      *proto->mutable_f16s() =
+          std::string(reinterpret_cast<const char*>(data<half>().data()),
+                      size_bytes_dense());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_f16s());
       }
       break;
     case BF16:
-      *proto->mutable_bf16s() = std::string(
-          reinterpret_cast<const char*>(data<bfloat16>().data()), size_bytes());
+      *proto->mutable_bf16s() =
+          std::string(reinterpret_cast<const char*>(data<bfloat16>().data()),
+                      size_bytes_dense());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_bf16s());
       }
@@ -2353,12 +2429,14 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
 }
 
 const void* LiteralBase::Piece::untyped_data() const {
-  CHECK(subshape().IsArray()) << ShapeUtil::HumanString(subshape());
+  DCHECK(LayoutUtil::IsDenseArray(subshape()))
+      << ShapeUtil::HumanString(subshape());
   return buffer();
 }
 
 void* LiteralBase::Piece::untyped_data() {
-  CHECK(subshape().IsArray()) << ShapeUtil::HumanString(subshape());
+  DCHECK(LayoutUtil::IsDenseArray(subshape()))
+      << ShapeUtil::HumanString(subshape());
   return buffer();
 }
 
@@ -2541,7 +2619,7 @@ void* MutableLiteralBase::untyped_data(const ShapeIndex& shape_index) {
 }
 
 int64_t LiteralBase::size_bytes(const ShapeIndex& shape_index) const {
-  return piece(shape_index).size_bytes();
+  return piece(shape_index).size_bytes_dense();
 }
 
 std::string LiteralBase::GetR1U8AsString() const {
@@ -2574,14 +2652,10 @@ void MutableBorrowingLiteral::CopyPieceSubtree(const Shape& shape,
     }
   } else if (shape.IsArray()) {
     dest_piece->set_buffer(const_cast<char*>(src_piece->buffer()));
-  } else {
-    // If the shape is neither an array nor tuple, then it must be
-    // zero-sized. Otherwise, some memory needs to be allocated for it.
-    CHECK_EQ(dest_piece->size_bytes(), 0);
   }
 }
 
-MutableLiteralBase::~MutableLiteralBase() {}
+MutableLiteralBase::~MutableLiteralBase() = default;
 
 MutableBorrowingLiteral::MutableBorrowingLiteral(
     const MutableBorrowingLiteral& literal)

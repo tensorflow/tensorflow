@@ -31,15 +31,19 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/gpu_event_stats.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
+#include "tensorflow/core/profiler/utils/hlo_module_map.h"
+#include "tensorflow/core/profiler/utils/hlo_proto_map.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
+#include "tensorflow/core/profiler/utils/tpu_xplane_utils.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/tsl/util/stats_calculator.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -291,7 +295,7 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
                                std::vector<XPlane*> device_traces) {
   struct GroupLaunchInfo {  // "Group" normally means step.
     Timespan timespan;
-    Stat<uint64_t> stat;
+    tsl::Stat<uint64_t> stat;
 
     void AddEventTimespan(Timespan event_span) {
       if (stat.count() == 0) {
@@ -370,15 +374,95 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
 
 void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
                               XSpace* space) {
-  // TODO(profiler): Once we capture HLO protos for xla/gpu, we should use that
-  // to look up tensorflow op name from hlo_module/hlo_op.
-  auto dummy_symbol_resolver =
-      [](absl::optional<uint64_t> program_id, absl::string_view hlo_module,
-         absl::string_view hlo_op) { return Symbol(); };
-  for (XPlane* plane : FindMutablePlanesWithPrefix(space, kGpuPlanePrefix)) {
-    DeriveStepEventsFromGroups(group_metadata_map, plane);
-    DeriveEventsFromAnnotations(dummy_symbol_resolver, plane);
+  HloModuleMap hlo_module_map;
+  {
+    HloProtoMap hlo_proto_map;
+    hlo_proto_map.AddHloProtosFromXSpace(*space);
+    for (const auto& [program_id, hlo_proto] : hlo_proto_map) {
+      AddHloProto(hlo_module_map, program_id, *hlo_proto);
+    }
   }
+
+  auto symbol_resolver = [&](absl::optional<uint64_t> program_id,
+                             absl::string_view hlo_module,
+                             absl::string_view hlo_op) -> Symbol {
+    Symbol output;
+    const auto* hlo_instruction =
+        GetHloInstruction(hlo_module_map, program_id, hlo_op);
+    if (hlo_instruction != nullptr) {
+      output.tf_op_name = hlo_instruction->op_full_name();
+      output.source_info = std::string(hlo_instruction->source_info());
+    }
+    return output;
+  };
+
+  std::vector<XPlane*> device_planes =
+      FindMutablePlanesWithPrefix(space, kGpuPlanePrefix);
+  for (XPlane* plane : device_planes) {
+    DeriveStepEventsFromGroups(group_metadata_map, plane);
+    DeriveEventsFromAnnotations(symbol_resolver, plane);
+  }
+
+  const XPlane* host_plane = FindPlaneWithName(*space, kHostThreadsPlaneName);
+  if (host_plane) {
+    DeriveEventsFromHostTrace(host_plane, group_metadata_map, device_planes);
+  }
+  for (XPlane* plane : FindMutableTensorCorePlanes(space)) {
+    DeriveLinesFromStats(plane);
+    SortXPlane(plane);
+  }
+}
+
+void DeriveLinesFromStats(XPlane* device_trace) {
+  XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(device_trace);
+  XPlaneBuilder plane_builder(device_trace);
+  int64_t start_timestamp_ns = GetStartTimestampNs(*device_trace);
+  DerivedXLineBuilder tf_ops(
+      &plane_builder, tensorflow::profiler::kThreadIdTfOp,
+      tensorflow::profiler::kTensorFlowOpLineName, start_timestamp_ns, {});
+  DerivedXLineBuilder tf_name_scope(
+      &plane_builder, tensorflow::profiler::kThreadIdTfNameScope,
+      tensorflow::profiler::kTensorFlowNameScopeLineName, start_timestamp_ns,
+      {&tf_ops});
+  DerivedXLineBuilder source(
+      &plane_builder, tensorflow::profiler::kThreadIdSource,
+      tensorflow::profiler::kSourceLineName, start_timestamp_ns, {});
+
+  for (const XEventVisitor& event :
+       GetSortedEvents<XEventVisitor>(plane_visitor, true)) {
+    Timespan event_span = event.GetTimespan();
+    std::optional<absl::string_view> tf_op_name;
+    std::optional<absl::string_view> source_info;
+    std::optional<uint64_t> group_id;
+    std::optional<uint64_t> is_async;
+    auto for_each_stat = [&](const XStatVisitor& stat) {
+      if (stat.Type() == StatType::kTfOp) {
+        tf_op_name = stat.StrOrRefValue();
+      } else if (stat.Type() == StatType::kGroupId) {
+        group_id = stat.IntOrUintValue();
+      } else if (stat.Type() == StatType::kSourceInfo) {
+        source_info = stat.StrOrRefValue();
+      } else if (stat.Type() == StatType::kIsAsync) {
+        is_async = stat.IntOrUintValue();
+      }
+    };
+    event.Metadata().ForEachStat(for_each_stat);
+    event.ForEachStat(for_each_stat);
+
+    if (is_async && *is_async) continue;  // Disregard asynchronous events.
+
+    if (tf_op_name && !tf_op_name->empty()) {
+      ProcessTfOpEvent(*tf_op_name, event_span, group_id, plane_builder,
+                       tf_name_scope, tf_ops);
+    }
+    if (source_info && !source_info->empty()) {
+      source.ExpandOrAddEvent(
+          *plane_builder.GetOrCreateEventMetadata(*source_info), event_span,
+          group_id);
+    }
+  }
+
+  RemoveEmptyLines(device_trace);
 }
 
 }  // namespace profiler

@@ -386,7 +386,7 @@ static Optional<ValuesConstraintSet> CanBeClustered(
     const std::function<bool(Operation *op)> &filter) {
   // Check that op has no side effects. This guarantees that we will not
   // reorder side-effecting ops during cluster formation.
-  if (!MemoryEffectOpInterface::hasNoEffect(op)) return llvm::None;
+  if (!isMemoryEffectFree(op)) return llvm::None;
 
   // Operation rejected by the custom filter.
   if (filter && !filter(op)) return llvm::None;
@@ -572,7 +572,7 @@ tf_device::ClusterOp CreateClusterOp(Cluster &cluster, StringAttr policy) {
 
   // Create block in cluster_op's region and move 'cluster.operations' into
   // it.
-  auto block = builder.createBlock(&cluster_op.body());
+  auto block = builder.createBlock(&cluster_op.getBody());
   auto block_end = block->end();
   for (auto op : cluster.operations) op->moveBefore(block, block_end);
 

@@ -27,7 +27,7 @@ limitations under the License.
 // automatically move <Python.h> before <locale>.
 #include <Python.h>
 
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 
 struct TfLiteDelegate;
 

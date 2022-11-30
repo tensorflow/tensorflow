@@ -146,8 +146,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       self.assertTrue(imported.v1.name.startswith("foo/"))
       self.assertTrue(imported.v2.name.startswith("foo/"))
 
+  @test_util.disable_xla("This test never passed for XLA")
   def test_partially_defined_variable_shape(self, cycles):
-
     class MakeVariable(module.Module):
 
       def __init__(self):
@@ -802,7 +802,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     def get_gradient(obj):
       with backprop.GradientTape() as t:
-        x = constant_op.constant(2.)
+        x = constant_op.constant(2., dtype=dtype)
         y = obj.g(x)
         self.assertAllClose(y, obj.weight * 2.)
         self.assertAllEqual(t.watched_variables(), [obj.weight])
@@ -852,7 +852,6 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self._test_restored_func_with_captured_var_backprop(cycles, dtypes.float32)
 
   def test_restored_func_with_captured_var_backprop_float64(self, cycles):
-    self.skipTest("b/144573917")
     self._test_restored_func_with_captured_var_backprop(cycles, dtypes.float64)
 
   def test_callable(self, cycles):
@@ -1170,18 +1169,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       v.assign_add(1)
       capture.assign_sub(1)
 
-    @def_function.function(input_signature=[
-        resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)
-    ])
-    def func_with_input_signature(v):
-      v.assign_add(5)
-      capture.assign_sub(5)
-      return 1
-
     vsave = variables.Variable(1)
     root = autotrackable.AutoTrackable()
     root.f = func.get_concrete_function(vsave)
-    root.f_sig = func_with_input_signature.get_concrete_function()
     root.capture = capture
 
     self.assertEqual(1, vsave.numpy())
@@ -1189,24 +1179,17 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(2, vsave.numpy())
     self.assertEqual(-1, capture.numpy())
 
-    root.f_sig(vsave)
-    self.assertEqual(7, vsave.numpy())
-    self.assertEqual(-6, capture.numpy())
-
     imported = cycle(root, cycles)
 
     vload = variables.Variable(1)
     imported.f(vload)
     self.assertEqual(2, vload.numpy())
+    self.assertEqual(-2, imported.capture.numpy())
     imported.f(v=vload)
     self.assertEqual(3, vload.numpy())
-    self.assertEqual(-8, imported.capture.numpy())
+    self.assertEqual(-3, imported.capture.numpy())
 
-    imported.f_sig(v=vload)
-    self.assertEqual(8, vload.numpy())
-    self.assertEqual(-13, imported.capture.numpy())
-
-    self.assertEqual(-6, capture.numpy())
+    self.assertEqual(-1, capture.numpy())
 
   def test_function_and_component(self, cycles):
 
@@ -1539,20 +1522,6 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(4, root.f(3).numpy())
     self.assertAllEqual(3, root.f(constant_op.constant(2)).numpy())
     self.assertAllEqual(4, root.f(constant_op.constant(3)).numpy())
-
-  def test_partial(self, cycles):
-    def f(x, y):
-      return x + y
-
-    func = def_function.function(
-        functools.partial(f, x=array_ops.zeros([1]), y=array_ops.ones([1])))
-
-    root = autotrackable.AutoTrackable()
-    root.f = func
-    self.assertAllEqual(root.f(), [1.0])
-
-    root = cycle(root, cycles)
-    self.assertAllEqual(root.f(), [1.0])
 
   def test_partial_with_non_tensor_defaults(self, cycles):
 

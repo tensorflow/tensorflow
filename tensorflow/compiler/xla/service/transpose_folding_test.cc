@@ -21,27 +21,27 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace {
 
 namespace op = xla::testing::opcode_matchers;
-using ::tensorflow::testing::IsOkAndHolds;
+using ::tsl::testing::IsOkAndHolds;
 
 using TransposeFoldingTest = HloTestBase;
 
@@ -252,7 +252,7 @@ TEST_F(TransposeFoldingTest, FoldConvDimSwapTransposeRhs) {
       /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      conv_shape.ValueOrDie(), x, transpose_y,
+      conv_shape.value(), x, transpose_y,
       /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
       DefaultPrecisionConfig(2)));
 
@@ -310,7 +310,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeRhs) {
       /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      conv_shape.ValueOrDie(), x, transpose_y,
+      conv_shape.value(), x, transpose_y,
       /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
       DefaultPrecisionConfig(2)));
 
@@ -373,7 +373,7 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
       /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      conv_shape.ValueOrDie(), transpose_x, y,
+      conv_shape.value(), transpose_x, y,
       /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
       DefaultPrecisionConfig(2)));
 
@@ -442,7 +442,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeLhs) {
       /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      conv_shape.ValueOrDie(), transpose_x, y,
+      conv_shape.value(), transpose_x, y,
       /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
       DefaultPrecisionConfig(2)));
 

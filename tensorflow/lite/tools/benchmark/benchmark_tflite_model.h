@@ -42,11 +42,11 @@ namespace benchmark {
 //
 // As TensorFlow allows ':' in the tensor names (e.g. input:0 to denote the
 // output index), having ':' as the delimiter can break the benchmark code
-// unexpectedly. To avoid this issue, we allow escaping ':' char with '\:' for
+// unexpectedly. To avoid this issue, we allow escaping ':' char with '::' for
 // this particular flag only. This function handles splitting the name and file
 // path that contains escaped colon.
 //
-// For example, "input\:0:/tmp/path" will be divided into input:0 and /tmp/path.
+// For example, "input::0:/tmp/path" will be divided into input:0 and /tmp/path.
 TfLiteStatus SplitInputLayerNameAndValueFile(
     const std::string& name_and_value_file,
     std::pair<std::string, std::string>& name_file_pair);

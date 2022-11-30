@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "grpcpp/create_channel.h"
 #include "absl/algorithm/container.h"
@@ -25,9 +26,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "absl/time/time.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/auto_shard_rewriter.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/utils.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -65,9 +67,9 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-constexpr int64_t kRetryIntervalMicros = 5 * 1000 * 1000;        // 5 seconds.
-constexpr int64_t kDefaultHeartBeatIntervalMs = 30 * 1000;       // 30 seconds.
-constexpr int64_t kDefaultDispatcherTimeoutMs = 60 * 60 * 1000;  // 1 hour.
+constexpr absl::Duration kRetryInterval = absl::Seconds(5);
+constexpr absl::Duration kDefaultHeartBeatInterval = absl::Seconds(30);
+constexpr absl::Duration kDefaultDispatcherTimeout = absl::Hours(1);
 
 using WorkerConfig = experimental::WorkerConfig;
 
@@ -99,10 +101,12 @@ Status MoveElementToResponse(std::vector<Tensor>&& element,
 WorkerConfig ApplyWorkerDefaults(const WorkerConfig& config) {
   WorkerConfig new_config(config);
   if (new_config.heartbeat_interval_ms() == 0) {
-    new_config.set_heartbeat_interval_ms(kDefaultHeartBeatIntervalMs);
+    new_config.set_heartbeat_interval_ms(
+        absl::ToInt64Milliseconds(kDefaultHeartBeatInterval));
   }
   if (new_config.dispatcher_timeout_ms() == 0) {
-    new_config.set_dispatcher_timeout_ms(kDefaultDispatcherTimeoutMs);
+    new_config.set_dispatcher_timeout_ms(
+        absl::ToInt64Milliseconds(kDefaultDispatcherTimeout));
   }
   return new_config;
 }
@@ -174,7 +178,8 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address,
     }
     LOG(WARNING) << "Failed to register with dispatcher at "
                  << config_.dispatcher_address() << ": " << s;
-    Env::Default()->SleepForMicroseconds(kRetryIntervalMicros);
+    Env::Default()->SleepForMicroseconds(
+        absl::ToInt64Microseconds(kRetryInterval));
     s = Heartbeat();
   }
   LOG(INFO) << "Worker registered with dispatcher running at "
@@ -190,15 +195,13 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address,
 }
 
 void DataServiceWorkerImpl::Stop() {
-  std::vector<std::shared_ptr<Task>> tasks;
+  absl::flat_hash_map<int64_t, std::shared_ptr<Task>> tasks;
   {
     mutex_lock l(mu_);
     cancelled_ = true;
-    for (const auto& entry : tasks_) {
-      tasks.push_back(entry.second);
-    }
+    tasks.swap(tasks_);
   }
-  for (auto& task : tasks) {
+  for (const auto& [task_id, task] : tasks) {
     StopTask(*task);
   }
   // At this point there are no outstanding requests in this RPC handler.
@@ -454,7 +457,7 @@ void DataServiceWorkerImpl::TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(mu_);
       if (!cancelled_) {
         task_completion_cv_.wait_for(
-            l, std::chrono::microseconds(kRetryIntervalMicros));
+            l, absl::ToChronoMicroseconds(kRetryInterval));
       }
     }
   }

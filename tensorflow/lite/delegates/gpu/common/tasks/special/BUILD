@@ -1,4 +1,5 @@
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -12,27 +13,24 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
-        "//tensorflow/lite/delegates/gpu/common/task:texture2d_desc",
         "@com_google_absl//absl/strings",
     ],
 )
 
 cc_library(
-    name = "depthwise_conv_plus_1x1_conv",
-    srcs = ["depthwise_conv_plus_1x1_conv.cc"],
-    hdrs = ["depthwise_conv_plus_1x1_conv.h"],
+    name = "dw7x7_conv2to6_concat_conv8to8",
+    srcs = ["dw7x7_conv2to6_concat_conv8to8.cc"],
+    hdrs = ["dw7x7_conv2to6_concat_conv8to8.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:flops_util",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:precision",
-        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
-        "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
-        "//tensorflow/lite/delegates/gpu/common/task:util",
-        "//tensorflow/lite/delegates/gpu/common/tasks:prelu",
-        "//tensorflow/lite/delegates/gpu/common/tasks:relu",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/lite/delegates/gpu/common/task:qcom_thin_filter_desc",
     ],
 )
 
@@ -51,7 +49,24 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
         "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "//tensorflow/lite/delegates/gpu/common/task:tensor_linear_desc",
-        "//tensorflow/lite/delegates/gpu/common/task:texture2d_desc",
+    ],
+)
+
+cc_library(
+    name = "thin_pointwise_fuser",
+    srcs = ["thin_pointwise_fuser.cc"],
+    hdrs = ["thin_pointwise_fuser.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:flops_util",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:precision",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
+        "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:elementwise",
+        "//tensorflow/lite/delegates/gpu/common/tasks:prelu",
+        "//tensorflow/lite/delegates/gpu/common/tasks:relu",
+        "@com_google_absl//absl/strings",
     ],
 )

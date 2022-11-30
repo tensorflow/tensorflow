@@ -19,14 +19,14 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -64,7 +64,7 @@ TEST_F(LogisticExpanderTest, ExpandWithTanh) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kLogistic);
   LogisticExpander logistic_expander(LogisticExpansionType::kTanh);
-  ASSERT_TRUE(logistic_expander.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(logistic_expander.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::AddAnyOrder(
@@ -91,7 +91,7 @@ TEST_F(LogisticExpanderTest, ExpandWithEXP) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kLogistic);
   LogisticExpander logistic_expander(LogisticExpansionType::kExp);
-  ASSERT_TRUE(logistic_expander.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(logistic_expander.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Divide(

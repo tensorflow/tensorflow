@@ -12,32 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_CPU_HOST_TRACER_H_
-#define TENSORFLOW_CORE_PROFILER_INTERNAL_CPU_HOST_TRACER_H_
+#ifndef TENSORFLOW_CORE_PROFILER_BACKENDS_CPU_PYTHON_TRACER_H_
+#define TENSORFLOW_CORE_PROFILER_BACKENDS_CPU_PYTHON_TRACER_H_
 
 #include <memory>
 
-#include "tensorflow/core/profiler/lib/profiler_interface.h"
+#include "tensorflow/compiler/xla/backends/profiler/cpu/python_tracer.h"
+#include "tensorflow/tsl/profiler/lib/profiler_interface.h"
 
 namespace tensorflow {
 namespace profiler {
 
-struct PythonTracerOptions {
-  // Whether to enable python function calls tracing.
-  // NOTE: Runtime overhead ensues if enabled.
-  bool enable_trace_python_function = false;
+using xla::profiler::PythonTracerOptions;  // NOLINT
 
-  // Whether to enable python TraceMe instrumentation.
-  bool enable_python_traceme = true;
-
-  // Whether profiling stops within an atexit handler.
-  bool end_to_end_mode = false;
-};
-
-std::unique_ptr<ProfilerInterface> CreatePythonTracer(
-    const PythonTracerOptions& options);
+using xla::profiler::CreatePythonTracer;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_CPU_HOST_TRACER_H_
+#endif  // TENSORFLOW_CORE_PROFILER_BACKENDS_CPU_PYTHON_TRACER_H_

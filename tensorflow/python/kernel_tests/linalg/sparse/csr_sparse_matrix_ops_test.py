@@ -14,6 +14,7 @@
 # ==============================================================================
 """CSR sparse matrix tests."""
 
+from absl.testing import parameterized
 import numpy as np
 from scipy import sparse
 
@@ -86,7 +87,7 @@ def twist_matrix(matrix, permutation_indices):
   return matrix
 
 
-class CSRSparseMatrixOpsTest(test.TestCase):
+class CSRSparseMatrixOpsTest(test.TestCase, parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):  # pylint: disable=g-missing-super-call
@@ -540,111 +541,107 @@ class CSRSparseMatrixOpsTest(test.TestCase):
           math_ops.conj(test_util.matmul_without_tf32(a_dense, b)))
       self.assertAllClose(expected_c_value, c_value)
 
+  @parameterized.product(
+      dtype=[np.float32, np.complex64],
+      transpose=[(False, False), (False, True), (True, False), (True, True)],
+      adjoint=[(False, False), (False, True), (True, False), (True, True)],
+      shapes=[([53, 127, 65], [53, 65, 1]), ([53, 127, 1], [53, 1, 65]),
+              ([53, 127, 65], [53, 65, 127])])
   @test_util.run_in_graph_and_eager_modes
-  def testLargeBatchSparseMatrixMatMul(self):
-    dtypes_to_test = [np.float32, np.complex64]
+  def testLargeBatchSparseMatrixMatMul(self, dtype, transpose, adjoint, shapes):
     sparsify = lambda m: m * (m > 0)
-    for dtype in dtypes_to_test:
-      for (transpose_a, transpose_b) in ((False, False), (False, True),
-                                         (True, False), (True, True)):
-        for (adjoint_a, adjoint_b) in ((False, False), (False, True),
-                                       (True, False), (True, True)):
-          if (transpose_a and adjoint_a) or (transpose_b and adjoint_b):
-            continue
-          for shapes in [[[53, 127, 65], [53, 65, 1]],
-                         [[53, 127, 1], [53, 1, 65]],
-                         [[53, 127, 65], [53, 65, 127]]]:
-            a_dense_shape = shapes[0]
-            b_dense_shape = shapes[1]
-            if transpose_a or adjoint_a:
-              _swap(a_dense_shape, -2, -1)
-            if transpose_b or adjoint_b:
-              _swap(b_dense_shape, -2, -1)
-            a_mats = sparsify(
-                (np.random.randn(*a_dense_shape) +
-                 1.j * np.random.randn(*a_dense_shape))).astype(dtype)
-            b_mats = (np.random.randn(*b_dense_shape) +
-                      1.j * np.random.randn(*b_dense_shape)).astype(dtype)
-            tf_logging.info(
-                "testLargeBatchSparseMatrixMatMul transpose_a %s transpose_b "
-                "%s adjoint_a %s adjoint_b %s" %
-                (transpose_a, transpose_b, adjoint_a, adjoint_b))
-            a_sm = dense_to_csr_sparse_matrix(a_mats)
-            c_t = sparse_csr_matrix_ops.sparse_matrix_mat_mul(
-                a_sm,
-                b_mats,
-                transpose_output=False,
-                conjugate_output=False,
-                transpose_a=transpose_a,
-                transpose_b=transpose_b,
-                adjoint_a=adjoint_a,
-                adjoint_b=adjoint_b)
-            c_dense_t = test_util.matmul_without_tf32(
-                a_mats,
-                b_mats,
-                transpose_a=transpose_a,
-                transpose_b=transpose_b,
-                adjoint_a=adjoint_a,
-                adjoint_b=adjoint_b)
-            self.assertAllEqual(c_dense_t.shape, c_t.shape)
-            c_t_value, c_dense_t_value = self.evaluate((c_t, c_dense_t))
+    transpose_a, transpose_b = transpose
+    adjoint_a, adjoint_b = adjoint
+    if (transpose_a and adjoint_a) or (transpose_b and adjoint_b):
+      return
+    # Make copies so we don't update the lists inside the decorator arguments.
+    a_dense_shape = shapes[0][:]
+    b_dense_shape = shapes[1][:]
+    if transpose_a or adjoint_a:
+      _swap(a_dense_shape, -2, -1)
+    if transpose_b or adjoint_b:
+      _swap(b_dense_shape, -2, -1)
+    a_mats = sparsify((np.random.randn(*a_dense_shape) +
+                       1.j * np.random.randn(*a_dense_shape))).astype(dtype)
+    b_mats = (np.random.randn(*b_dense_shape) +
+              1.j * np.random.randn(*b_dense_shape)).astype(dtype)
+    tf_logging.info(
+        "testLargeBatchSparseMatrixMatMul transpose_a %s transpose_b "
+        "%s adjoint_a %s adjoint_b %s" %
+        (transpose_a, transpose_b, adjoint_a, adjoint_b))
+    a_sm = dense_to_csr_sparse_matrix(a_mats)
+    c_t = sparse_csr_matrix_ops.sparse_matrix_mat_mul(
+        a_sm,
+        b_mats,
+        transpose_output=False,
+        conjugate_output=False,
+        transpose_a=transpose_a,
+        transpose_b=transpose_b,
+        adjoint_a=adjoint_a,
+        adjoint_b=adjoint_b)
+    c_dense_t = test_util.matmul_without_tf32(
+        a_mats,
+        b_mats,
+        transpose_a=transpose_a,
+        transpose_b=transpose_b,
+        adjoint_a=adjoint_a,
+        adjoint_b=adjoint_b)
+    self.assertAllEqual(c_dense_t.shape, c_t.shape)
+    c_t_value, c_dense_t_value = self.evaluate((c_t, c_dense_t))
 
-            self.assertAllClose(
-                c_t_value, c_dense_t_value, rtol=1e-6, atol=2e-5)
+    self.assertAllClose(c_t_value, c_dense_t_value, rtol=1e-6, atol=2e-5)
 
+  @parameterized.product(
+      dtype=[np.float32, np.complex64],
+      transpose=[(False, False), (False, True), (True, False), (True, True)],
+      adjoint=[(False, False), (False, True), (True, False), (True, True)],
+      shapes=[[[53, 127, 65], [53, 65, 1]], [[53, 127, 1], [53, 1, 65]],
+              [[53, 127, 65], [53, 65, 127]]])
   @test_util.run_in_graph_and_eager_modes
-  def testLargeBatchSparseMatrixMatMulTransposed(self):
-    dtypes_to_test = [np.float32, np.complex64]
-
+  def testLargeBatchSparseMatrixMatMulTransposed(self, dtype, transpose,
+                                                 adjoint, shapes):
     sparsify = lambda m: m * (m > 0)
-    for dtype in dtypes_to_test:
-      for (transpose_a, transpose_b) in ((False, False), (False, True),
-                                         (True, False), (True, True)):
-        for (adjoint_a, adjoint_b) in ((False, False), (False, True),
-                                       (True, False), (True, True)):
-          if (transpose_a and adjoint_a) or (transpose_b and adjoint_b):
-            continue
-          for shapes in [[[53, 127, 65], [53, 65, 1]],
-                         [[53, 127, 1], [53, 1, 65]],
-                         [[53, 127, 65], [53, 65, 127]]]:
-            a_dense_shape = shapes[0]
-            b_dense_shape = shapes[1]
-            if transpose_a or adjoint_a:
-              _swap(a_dense_shape, -2, -1)
-            if transpose_b or adjoint_b:
-              _swap(b_dense_shape, -2, -1)
-            a_mats = sparsify(
-                (np.random.randn(*a_dense_shape) +
-                 1.j * np.random.randn(*a_dense_shape))).astype(dtype)
-            b_mats = (np.random.randn(*b_dense_shape) +
-                      1.j * np.random.randn(*b_dense_shape)).astype(dtype)
-            tf_logging.info(
-                "testLargeBatchSparseMatrixMatMul transpose_a %s transpose_b "
-                "%s adjoint_a %s adjoint_b %s" %
-                (transpose_a, transpose_b, adjoint_a, adjoint_b))
-            a_sm = dense_to_csr_sparse_matrix(a_mats)
-            c_t = sparse_csr_matrix_ops.sparse_matrix_mat_mul(
-                a_sm,
-                b_mats,
-                transpose_output=True,
-                conjugate_output=False,
-                transpose_a=transpose_a,
-                transpose_b=transpose_b,
-                adjoint_a=adjoint_a,
-                adjoint_b=adjoint_b)
+    (transpose_a, transpose_b) = transpose
+    (adjoint_a, adjoint_b) = adjoint
+    if (transpose_a and adjoint_a) or (transpose_b and adjoint_b):
+      return
+    # Make copies so we don't update the lists inside the decorator arguments.
+    a_dense_shape = shapes[0][:]
+    b_dense_shape = shapes[1][:]
+    if transpose_a or adjoint_a:
+      _swap(a_dense_shape, -2, -1)
+    if transpose_b or adjoint_b:
+      _swap(b_dense_shape, -2, -1)
+    a_mats = sparsify((np.random.randn(*a_dense_shape) +
+                       1.j * np.random.randn(*a_dense_shape))).astype(dtype)
+    b_mats = (np.random.randn(*b_dense_shape) +
+              1.j * np.random.randn(*b_dense_shape)).astype(dtype)
+    tf_logging.info(
+        "testLargeBatchSparseMatrixMatMul transpose_a %s transpose_b "
+        "%s adjoint_a %s adjoint_b %s" %
+        (transpose_a, transpose_b, adjoint_a, adjoint_b))
+    a_sm = dense_to_csr_sparse_matrix(a_mats)
+    c_t = sparse_csr_matrix_ops.sparse_matrix_mat_mul(
+        a_sm,
+        b_mats,
+        transpose_output=True,
+        conjugate_output=False,
+        transpose_a=transpose_a,
+        transpose_b=transpose_b,
+        adjoint_a=adjoint_a,
+        adjoint_b=adjoint_b)
 
-            # Example: t(adj(a) . b) = t(b) . conj(a)
-            c_dense_t = test_util.matmul_without_tf32(
-                math_ops.conj(b_mats) if adjoint_b else b_mats,
-                math_ops.conj(a_mats) if adjoint_a else a_mats,
-                transpose_a=not (transpose_b or adjoint_b),
-                transpose_b=not (transpose_a or adjoint_a),
-                adjoint_a=False,
-                adjoint_b=False)
-            self.assertAllEqual(c_t.shape, c_dense_t.shape)
-            c_t_value, c_dense_t_value = self.evaluate((c_t, c_dense_t))
-            self.assertAllClose(
-                c_t_value, c_dense_t_value, rtol=1e-6, atol=2e-5)
+    # Example: t(adj(a) . b) = t(b) . conj(a)
+    c_dense_t = test_util.matmul_without_tf32(
+        math_ops.conj(b_mats) if adjoint_b else b_mats,
+        math_ops.conj(a_mats) if adjoint_a else a_mats,
+        transpose_a=not (transpose_b or adjoint_b),
+        transpose_b=not (transpose_a or adjoint_a),
+        adjoint_a=False,
+        adjoint_b=False)
+    self.assertAllEqual(c_t.shape, c_dense_t.shape)
+    c_t_value, c_dense_t_value = self.evaluate((c_t, c_dense_t))
+    self.assertAllClose(c_t_value, c_dense_t_value, rtol=1e-6, atol=2e-5)
 
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixMatMulConjugate(self):
@@ -1312,6 +1309,16 @@ class CSRSparseMatrixOpsTest(test.TestCase):
       # for this matrix.
       self.assertLess(cholesky_with_amd_nnz_value,
                       cholesky_without_ordering_nnz_value)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNoMatrixNoCrash(self):
+    # Round-about way of creating an empty variant tensor that works in both
+    # graph and eager modes.
+    no_matrix = array_ops.reshape(dense_to_csr_sparse_matrix([[0.0]]), [1])[0:0]
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "(Invalid input matrix)|(Shape must be rank 0)"):
+      sparse_csr_matrix_ops.sparse_matrix_nnz(no_matrix)
 
 
 class CSRSparseMatrixOpsBenchmark(test.Benchmark):

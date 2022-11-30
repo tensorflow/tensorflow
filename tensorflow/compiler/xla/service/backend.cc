@@ -27,14 +27,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -69,12 +70,12 @@ const std::optional<std::set<int>>& BackendOptions::allowed_devices() const {
 // these types in the header.
 struct Backend::IntraOpThreadPool {
   explicit IntraOpThreadPool(const int num_threads)
-      : pool(new tensorflow::thread::ThreadPool(tensorflow::Env::Default(),
-                                                "XLAEigen", num_threads)),
+      : pool(new tsl::thread::ThreadPool(tsl::Env::Default(), "XLAEigen",
+                                         num_threads)),
         device(new Eigen::ThreadPoolDevice(pool->AsEigenThreadPool(),
                                            pool->NumThreads())) {}
 
-  std::unique_ptr<tensorflow::thread::ThreadPool> pool;
+  std::unique_ptr<tsl::thread::ThreadPool> pool;
   std::unique_ptr<Eigen::ThreadPoolDevice> device;
 };
 
@@ -136,7 +137,7 @@ Backend::Backend(se::Platform* platform, Compiler* compiler,
   if (platform->id() == se::host::kHostPlatformId) {
     const int num_threads = intra_op_parallelism_threads > 0
                                 ? intra_op_parallelism_threads
-                                : tensorflow::port::MaxParallelism();
+                                : tsl::port::MaxParallelism();
     intra_op_thread_pool_.reset(new IntraOpThreadPool(num_threads));
   }
 }
@@ -155,7 +156,7 @@ const Eigen::ThreadPoolDevice* Backend::eigen_intra_op_thread_pool_device()
   return intra_op_thread_pool_->device.get();
 }
 
-tensorflow::thread::ThreadPool* Backend::eigen_intra_op_thread_pool() const {
+tsl::thread::ThreadPool* Backend::eigen_intra_op_thread_pool() const {
   if (intra_op_thread_pool_ == nullptr) {
     return nullptr;
   }

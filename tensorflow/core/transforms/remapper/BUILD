@@ -1,8 +1,9 @@
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_compatible_with = get_compatible_with_cloud(),
     default_visibility = [
         "//tensorflow/core:__subpackages__",
@@ -30,11 +31,16 @@ gentbl_cc_library(
 cc_library(
     name = "Pass",
     srcs = ["pass.cc"],
-    hdrs = ["pass.h"],
+    hdrs = [
+        "pass.h",
+        "remapping_helper.h",
+    ],
     deps = [
         ":MklPDLLPatternsIncGen",
+        "//tensorflow/core:framework",
         "//tensorflow/core/ir:Dialect",
-        "//tensorflow/core/transforms:PassDetail",
+        "//tensorflow/core/transforms:PassIncGen",
+        "//tensorflow/core/transforms:op_cat_helper",
         "//tensorflow/core/transforms:pdll_utils",
         "//tensorflow/core/transforms:utils",
         "@llvm-project//mlir:IR",

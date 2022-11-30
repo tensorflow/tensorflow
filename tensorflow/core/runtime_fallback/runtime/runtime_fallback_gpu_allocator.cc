@@ -18,7 +18,8 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_gpu_allocator.h"
 
 #include "llvm/Support/Errc.h"
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/tsl/framework/allocator.h"
+#include "tensorflow/tsl/platform/mutex.h"
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/support/ref_count.h"  // from @tf_runtime
 #include "tfrt/support/string_util.h"  // from @tf_runtime
@@ -28,7 +29,7 @@ namespace tensorflow {
 class RuntimeFallbackGpuAllocator : public tfrt::gpu::GpuAllocator {
  public:
   explicit RuntimeFallbackGpuAllocator(
-      tensorflow::Allocator* tf_gpu_allocator,
+      tsl::Allocator* tf_gpu_allocator,
       const tfrt::gpu::wrapper::Context& context)
       : tf_gpu_allocator_(tf_gpu_allocator), context_(context) {}
   ~RuntimeFallbackGpuAllocator() override;
@@ -45,12 +46,12 @@ class RuntimeFallbackGpuAllocator : public tfrt::gpu::GpuAllocator {
   // Structures immutable after construction
 
   // Does not own tf_gpu_allocator.
-  tensorflow::Allocator* tf_gpu_allocator_;
+  tsl::Allocator* tf_gpu_allocator_;
 
   tfrt::gpu::wrapper::Context context_;
 
   // Structures mutable after construction
-  mutable tensorflow::mutex mu_;
+  mutable tsl::mutex mu_;
 
   // Because we don't support multiple streams, stream_ is the stream
   // for all allocations. All allocation requests on a different stream will be
@@ -69,7 +70,7 @@ RuntimeFallbackGpuAllocator::~RuntimeFallbackGpuAllocator() {}
 llvm::Expected<tfrt::gpu::GpuPointer> RuntimeFallbackGpuAllocator::Allocate(
     size_t size, tfrt::gpu::wrapper::Stream stream) {
   {
-    tensorflow::mutex_lock lock(mu_);
+    tsl::mutex_lock lock(mu_);
     if (stream_ == nullptr) {
       stream_ = stream;
     } else if (stream != stream_) {
@@ -100,7 +101,7 @@ llvm::Error RuntimeFallbackGpuAllocator::Deallocate(
 }
 
 tfrt::gpu::GpuAllocatorFactory CreateRuntimeFallbackGpuAllocatorFactory(
-    tensorflow::Allocator* tf_gpu_allocator) {
+    tsl::Allocator* tf_gpu_allocator) {
   return [tf_gpu_allocator](const tfrt::gpu::wrapper::Context& context) {
     return std::make_unique<RuntimeFallbackGpuAllocator>(tf_gpu_allocator,
                                                          context);

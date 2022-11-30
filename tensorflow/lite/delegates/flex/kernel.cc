@@ -474,7 +474,7 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
   // tensors (buffer forwarding).
   auto check_if_op_reuses_input = [](const string& op_name) {
     return op_name == "TensorListPushBack" || op_name == "TensorListSetItem" ||
-           op_name == "SparseReshape";
+           op_name == "SparseReshape" || op_name == "StridedSlice";
   };
 
   for (auto node_index : TfLiteIntArrayView(params->nodes_to_replace)) {
@@ -502,11 +502,10 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
     // last node that needs this tensor.
     for (auto tensor_index : TfLiteIntArrayView(node->inputs)) {
       int node_id = node_index;
-      if (op_data_->shared_info.tensor_release_map->find(tensor_index) !=
-          op_data_->shared_info.tensor_release_map->end()) {
-        node_id =
-            std::max(op_data_->shared_info.tensor_release_map->at(tensor_index),
-                     node_index);
+      if (const std::map<int, int>::iterator it =
+              op_data_->shared_info.tensor_release_map->find(tensor_index);
+          it != op_data_->shared_info.tensor_release_map->end()) {
+        node_id = std::max(it->second, node_index);
       }
       (*op_data_->shared_info.tensor_release_map)[tensor_index] = node_id;
 

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace tensorflow {
 
@@ -128,6 +128,15 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
 
 // Returns pointers to inputs stored in `ctx`.
 std::vector<const Tensor*> InputsFromContext(OpKernelContext* ctx);
+
+StatusOr<std::vector<int>> GetConstantInputIndicesFromContext(
+    OpKernelContext* ctx);
+
+std::vector<int> GetResourceVariableIndicesFromContext(OpKernelContext* ctx);
+
+Status SetOutputForConstant(
+    OpKernelContext* ctx, bool requires_copy_to_device,
+    const XlaCompiler::CompilationResult* compilation_result, int output_num);
 
 // Helper class to perform the marshalling of TensorFlow inputs and outputs to
 // ShapedBuffers suitable for passing to an XLA computation.

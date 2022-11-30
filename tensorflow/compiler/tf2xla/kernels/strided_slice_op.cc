@@ -144,7 +144,7 @@ class StridedSliceOp : public XlaOpKernel {
     }
     std::vector<xla::XlaOp> start_indices;
     std::vector<xla::XlaOp> slice_sizes_dynamic;
-    xla::Shape input_xla_shape = ctx->InputXlaShape(0).ValueOrDie();
+    xla::Shape input_xla_shape = ctx->InputXlaShape(0).value();
     for (int64_t i = 0; i < input_shape.dims(); ++i) {
       bool begin_mask = (1 << i) & shape_spec.begin_dense_mask;
       bool end_mask = (1 << i) & shape_spec.end_dense_mask;
@@ -225,7 +225,7 @@ class StridedSliceOp : public XlaOpKernel {
             &ctx->value_inference(), slice,
             slice_sizes_dynamic[processing_shape_dim], i);
         OP_REQUIRES_OK(ctx, status.status());
-        slice = status.ValueOrDie();
+        slice = status.value();
       }
     }
     ctx->SetOutput(0, slice);
@@ -309,7 +309,7 @@ class StridedSliceOp : public XlaOpKernel {
       slice = xla::Slice(slice, slice_begin, slice_end, slice_strides);
       auto operand_shape_or = ctx->builder()->GetShape(ctx->Input(0));
       OP_REQUIRES_OK(ctx, operand_shape_or.status());
-      xla::Shape xla_shape = operand_shape_or.ValueOrDie();
+      xla::Shape xla_shape = operand_shape_or.value();
 
       bool begins_are_static = absl::c_all_of(
           begins_are_dynamic, [](bool dynamic) { return !dynamic; });
@@ -448,7 +448,7 @@ class StridedSliceGradOp : public XlaOpKernel {
     }
 
     xla::XlaOp grad = ctx->Input(4);
-    xla::Shape grad_shape = ctx->InputXlaShape(4).ValueOrDie();
+    xla::Shape grad_shape = ctx->InputXlaShape(4).value();
     VLOG(1) << "xla grad shape" << grad_shape;
     VLOG(1) << "xla final_shape" << final_shape;
     VLOG(1) << "input_shape" << input_shape.DebugString();
@@ -602,7 +602,7 @@ class StridedSliceGradOp : public XlaOpKernel {
     grad = xla::Pad(grad, zero, padding_config);
 
     xla::XlaOp dynamic_shape = ctx->Input(0);
-    xla::Shape grad_shape = ctx->builder()->GetShape(grad).ValueOrDie();
+    xla::Shape grad_shape = ctx->builder()->GetShape(grad).value();
     std::vector<bool> dynamic_input;
     OP_REQUIRES_OK(ctx,
                    ctx->ResolveInputDynamismIntoPredVector(0, &dynamic_input));

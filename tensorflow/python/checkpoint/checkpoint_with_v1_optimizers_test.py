@@ -15,8 +15,6 @@
 """Tests for object-based saving which use tf.train.* optimizers."""
 import os
 
-import six
-
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
@@ -219,7 +217,7 @@ class TemplateTests(test.TestCase):
 
     save_template = template.make_template("s1", _templated)
     v1_save, _, v2_save, manual_scope, manual_scope_v = save_template()
-    six.assertCountEqual(self, [
+    self.assertCountEqual([
         id(obj) for obj in
         [v1_save, v2_save, manual_scope, manual_scope_v, save_template]
     ], [id(obj) for obj in trackable_utils.list_objects(save_template)])

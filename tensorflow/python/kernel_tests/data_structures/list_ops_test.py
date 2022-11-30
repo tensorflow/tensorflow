@@ -94,6 +94,16 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
       self.evaluate(l)
 
+  def testTensorListReserveWithNonScalarNumElements(self):
+    # list_kernels.cc in tf/core/kernels raises InvalidArgumentError, and
+    # tf_ops_n_z.cc in tf/compiler/mlir/tf/ir raises UnknownError.
+    with self.assertRaises((errors.InvalidArgumentError, errors.UnknownError)):
+      l = list_ops.tensor_list_reserve(
+          element_dtype=dtypes.float32,
+          element_shape=[2, 3],
+          num_elements=constant_op.constant([1, 1]))
+      self.evaluate(l)
+
   def testPopUninitializedTensorUseListElementShape(self):
     l = list_ops.tensor_list_reserve(
         element_dtype=dtypes.float32, element_shape=[2, 3], num_elements=3)
@@ -538,6 +548,17 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         "Indices in TensorListScatter must all be non-negative."):
       l = list_ops.tensor_list_scatter(c0, [-1, -2], element_shape=[])
       self.evaluate(l)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testScatterWithNonScalarFails(self):
+    c = constant_op.constant(value=[2])
+    num_elements = np.array([[], [], []], dtype=np.float32)
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                r"Shape must be rank 0 but is rank \d+|"
+                                r"\w+ must be a scalar"):
+      self.evaluate(
+          gen_list_ops.TensorListScatterV2(
+              tensor=c, indices=c, element_shape=c, num_elements=num_elements))
 
   def testScatterIntoExistingList(self):
     l = list_ops.tensor_list_reserve(
@@ -1493,6 +1514,15 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
       self.evaluate(t)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testConcatWithInvalidElementShape(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[], num_elements=0)
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                r"element_shape must not be empty"):
+      self.evaluate(gen_list_ops.tensor_list_concat(
+          input_handle=l, element_dtype=dtypes.float32, element_shape=[]))
+
   def testEmptyTensorListInvalidShape(self):
     with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
                                 r"Shape must be at most rank 1 but is rank 2"):
@@ -1648,6 +1678,15 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l = list_ops.tensor_list_resize(l, -1)
       self.evaluate(l)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testResizeWithNonScalarFails(self):
+    l = list_ops.tensor_list_from_tensor([3, 4, 5], element_shape=[])
+    size = np.zeros([0, 2, 3, 3])
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                r"Shape must be rank 0 but is rank \d+|"
+                                r"\w+ must be a scalar"):
+      self.evaluate(gen_list_ops.TensorListResize(input_handle=l, size=size))
+
   @test_util.run_deprecated_v1
   @test_util.enable_control_flow_v2
   def testSkipEagerResizeGrad(self):
@@ -1722,13 +1761,12 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.skipTest("b/150742232")
 
     @function.defun_with_attributes(attributes={"_noinline": True})
-    def generator():
-      c = constant_op.constant(["a", "b", "c"])
+    def generator(c):
       return list_ops.tensor_list_from_tensor(c, element_shape=[])
 
     @def_function.function
-    def f():
-      l = generator()
+    def f(c):
+      l = generator(c)
 
       def upper(i):
         e = list_ops.tensor_list_get_item(l, i, element_dtype=dtypes.string)
@@ -1737,7 +1775,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       return map_fn.map_fn(
           upper, constant_op.constant([0, 1, 2]), dtype=dtypes.string)
 
-    self.assertAllEqual(f(), [b"A", b"B", b"C"])
+    c = constant_op.constant(["a", "b", "c"])
+    self.assertAllEqual(f(c), [b"A", b"B", b"C"])
 
   def testPopBackGrad(self):
     # https://github.com/tensorflow/tensorflow/issues/37230

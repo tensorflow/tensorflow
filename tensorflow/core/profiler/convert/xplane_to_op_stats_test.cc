@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
-#include "absl/strings/str_cat.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/status.h"
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/convert/multi_xplanes_to_op_stats.h"
+#include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
 #include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -32,15 +35,18 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
 
-static constexpr char kXPlanePb[] = "xplane.pb";
+using ::testing::Property;
+using ::testing::UnorderedElementsAre;
 
 TEST(ConvertXPlaneToOpStats, GpuPerfEnv) {
-  XSpace space;
+  auto space = std::make_unique<XSpace>();
   constexpr double kMaxError = 0.01;
   constexpr int kClockRateKHz = 1530000;
   constexpr int kCoreCount = 80;
@@ -51,7 +57,7 @@ TEST(ConvertXPlaneToOpStats, GpuPerfEnv) {
   constexpr int kComputeCapMinor = 0;
 
   XPlaneBuilder device_plane(
-      GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0));
+      GetOrCreateGpuXPlane(space.get(), /*device_ordinal=*/0));
   device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
                                 GetStatTypeStr(StatType::kDevVendor)),
                             kDeviceVendorNvidia);
@@ -69,10 +75,16 @@ TEST(ConvertXPlaneToOpStats, GpuPerfEnv) {
       *device_plane.GetOrCreateStatMetadata("compute_cap_minor"),
       kComputeCapMinor);
 
-  GroupTfEvents(&space);
+  std::vector<std::unique_ptr<XSpace>> xspaces;
+  xspaces.push_back(std::move(space));
+  auto session_snapshot_or =
+      SessionSnapshot::Create({"test_xspace"}, std::move(xspaces));
+  TF_CHECK_OK(session_snapshot_or.status());
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
-  OpStats op_stats = ConvertXSpaceToOpStats(space, options);
+  OpStats op_stats;
+  TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(session_snapshot_or.value(),
+                                                   options, &op_stats));
   const PerfEnv& perf_env = op_stats.perf_env();
   EXPECT_NEAR(141, perf_env.peak_tera_flops_per_second(), kMaxError);
   EXPECT_NEAR(900, perf_env.peak_hbm_bw_giga_bytes_per_second(), kMaxError);
@@ -80,20 +92,26 @@ TEST(ConvertXPlaneToOpStats, GpuPerfEnv) {
 }
 
 TEST(ConvertXPlaneToOpStats, GpuRunEnvironment) {
-  XSpace space;
+  auto space = std::make_unique<XSpace>();
   XPlaneBuilder device_plane1(
-      GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0));
+      GetOrCreateGpuXPlane(space.get(), /*device_ordinal=*/0));
   device_plane1.AddStatValue(*device_plane1.GetOrCreateStatMetadata(
                                  GetStatTypeStr(StatType::kDevVendor)),
                              kDeviceVendorNvidia);
   XPlaneBuilder device_plane2(
-      GetOrCreateGpuXPlane(&space, /*device_ordinal=*/1));
+      GetOrCreateGpuXPlane(space.get(), /*device_ordinal=*/1));
   device_plane2.AddStatValue(*device_plane2.GetOrCreateStatMetadata(
                                  GetStatTypeStr(StatType::kDevVendor)),
                              kDeviceVendorNvidia);
 
-  GroupTfEvents(&space);
-  OpStats op_stats = ConvertXSpaceToOpStats(space, OpStatsOptions());
+  std::vector<std::unique_ptr<XSpace>> xspaces;
+  xspaces.push_back(std::move(space));
+  auto session_snapshot_or =
+      SessionSnapshot::Create({"test_xspace"}, std::move(xspaces));
+  TF_CHECK_OK(session_snapshot_or.status());
+  OpStats op_stats;
+  TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(
+      session_snapshot_or.value(), OpStatsOptions(), &op_stats));
   const RunEnvironment& run_env = op_stats.run_environment();
 
   EXPECT_EQ("Nvidia GPU", run_env.device_type());
@@ -106,8 +124,8 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
   constexpr int64_t kStepNum = 123;
   constexpr int64_t kStepId = 0;
 
-  XSpace space;
-  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
+  auto space = std::make_unique<XSpace>();
+  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(space.get()));
   host_plane_builder.ReserveLines(2);
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
@@ -122,11 +140,17 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
                {{StatType::kStepId, kStepId}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70);
 
-  GroupTfEvents(&space);
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
-  OpStats op_stats = ConvertXSpaceToOpStats(space, options);
+  std::vector<std::unique_ptr<XSpace>> xspaces;
+  xspaces.push_back(std::move(space));
+  auto session_snapshot_or =
+      SessionSnapshot::Create({"test_xspace"}, std::move(xspaces));
+  TF_CHECK_OK(session_snapshot_or.status());
+  OpStats op_stats;
+  TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(session_snapshot_or.value(),
+                                                   options, &op_stats));
   const StepDatabaseResult& step_db = op_stats.step_db();
 
   EXPECT_EQ(step_db.step_sequence_size(), 1);
@@ -137,8 +161,8 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
   constexpr int64_t kStepId = 0;
   constexpr int64_t kCorrelationId = 100;
 
-  XSpace space;
-  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
+  auto space = std::make_unique<XSpace>();
+  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(space.get()));
   host_plane_builder.ReserveLines(2);
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
@@ -155,18 +179,24 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
                {{StatType::kCorrelationId, kCorrelationId}});
 
   XPlaneBuilder device_plane_builder(
-      GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0));
+      GetOrCreateGpuXPlane(space.get(), /*device_ordinal=*/0));
   device_plane_builder.ReserveLines(1);
 
   auto stream = device_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&device_plane_builder, &stream, "matmul", 50, 40,
                {{StatType::kCorrelationId, kCorrelationId}});
 
-  GroupTfEvents(&space);
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
-  OpStats op_stats = ConvertXSpaceToOpStats(space, options);
+  std::vector<std::unique_ptr<XSpace>> xspaces;
+  xspaces.push_back(std::move(space));
+  auto session_snapshot_or =
+      SessionSnapshot::Create({"test_xspace"}, std::move(xspaces));
+  TF_CHECK_OK(session_snapshot_or.status());
+  OpStats op_stats;
+  TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(session_snapshot_or.value(),
+                                                   options, &op_stats));
   const StepDatabaseResult& step_db = op_stats.step_db();
 
   EXPECT_EQ(step_db.step_sequence_size(), 1);
@@ -219,7 +249,6 @@ void BuildXSpaceForTest(XSpace& xspace, absl::string_view hostname) {
                {{StatType::kStepId, kStepId}});
   // Create a TensorFlow op that runs for 70 ps.
   CreateXEvent(&host_plane_builder, &executor_thread, "aaa:bbb", 30, 70);
-  GroupTfEvents(&xspace);
   xspace.add_hostnames(std::string(hostname));
 }
 
@@ -227,23 +256,31 @@ TEST(ConvertXPlaneToOpStats, TestConvertMultiXSpacesToCombinedOpStats) {
   static constexpr char kHost1[] = "host1";
   static constexpr char kHost2[] = "host2";
 
-  XSpace xspace1;
-  XSpace xspace2;
+  auto xspace1 = std::make_unique<XSpace>();
+  auto xspace2 = std::make_unique<XSpace>();
 
-  BuildXSpaceForTest(xspace1, kHost1);
-  BuildXSpaceForTest(xspace2, kHost2);
+  BuildXSpaceForTest(*xspace1, kHost1);
+  BuildXSpaceForTest(*xspace2, kHost2);
 
-  std::vector<XSpace> xspaces;
-  xspaces.push_back(xspace1);
-  xspaces.push_back(xspace2);
+  std::vector<std::string> xspace_paths;
+  xspace_paths.push_back("xspace_path1");
+  xspace_paths.push_back("xspace_path2");
+
+  std::vector<std::unique_ptr<XSpace>> xspaces;
+  xspaces.push_back(std::move(xspace1));
+  xspaces.push_back(std::move(xspace2));
+
+  auto session_snapshot_or =
+      SessionSnapshot::Create(std::move(xspace_paths), std::move(xspaces));
+  TF_CHECK_OK(session_snapshot_or.status());
 
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
   OpStats combined_op_stats;
 
-  TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(xspaces, options,
-                                                   &combined_op_stats))
+  TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(session_snapshot_or.value(),
+                                                   options, &combined_op_stats))
       << "Failed to convert multi XSpace to OpStats";
 
   // Result OpStats has 2 Host Ops, "IDLE" and "aaa:bbb".
@@ -275,7 +312,7 @@ TEST(ConvertXPlaneToOpStats, TestConvertMultiXSpacesToCombinedOpStats) {
 TEST(ConvertXPlaneToOpStats, RunEnvironmentExtractedFromTpuPlane) {
   XSpace xspace;
   for (int i : {0, 1, 2, 3}) {
-    GetOrCreateTpuXPlane(&xspace, i, "TPU V4");
+    GetOrCreateTpuXPlane(&xspace, i, "TPU V4", 0, 0);
   }
 
   OpStats op_stats = ConvertXSpaceToOpStats(xspace, OpStatsOptions());
@@ -285,7 +322,7 @@ TEST(ConvertXPlaneToOpStats, RunEnvironmentExtractedFromTpuPlane) {
 }
 
 TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
-  XSpace space;
+  auto space = std::make_unique<XSpace>();
   constexpr double kMaxError = 0.01;
   constexpr int kClockRateKHz = 1530000;
   constexpr int kCoreCount = 80;
@@ -297,8 +334,9 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
   constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
   constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 900.0;
 
-  XPlaneBuilder device_plane(
-      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/0, "TPU V4"));
+  XPlaneBuilder device_plane(GetOrCreateTpuXPlane(
+      space.get(), /*device_ordinal=*/0, "TPU V4",
+      kDevCapPeakTeraflopsPerSecond, kDevCapPeakHbmBwGigabytesPerSecond));
   /*device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
                             GetStatTypeStr(StatType::kDevVendor)),
                         kDeviceVendorNvidia); // "Google, Inc.");*/
@@ -315,17 +353,17 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
   device_plane.AddStatValue(
       *device_plane.GetOrCreateStatMetadata("compute_cap_minor"),
       kComputeCapMinor);
-  device_plane.AddStatValue(
-      *device_plane.GetOrCreateStatMetadata("peak_teraflops_per_second"),
-      kDevCapPeakTeraflopsPerSecond);
-  device_plane.AddStatValue(
-      *device_plane.GetOrCreateStatMetadata("peak_hbm_bw_gigabytes_per_second"),
-      kDevCapPeakHbmBwGigabytesPerSecond);
 
-  GroupTfEvents(&space);
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
-  OpStats op_stats = ConvertXSpaceToOpStats(space, options);
+  std::vector<std::unique_ptr<XSpace>> xspaces;
+  xspaces.push_back(std::move(space));
+  auto session_snapshot_or =
+      SessionSnapshot::Create({"test_xspace"}, std::move(xspaces));
+  TF_CHECK_OK(session_snapshot_or.status());
+  OpStats op_stats;
+  TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(session_snapshot_or.value(),
+                                                   options, &op_stats));
   const PerfEnv& perf_env = op_stats.perf_env();
   EXPECT_NEAR(141, perf_env.peak_tera_flops_per_second(), kMaxError);
   EXPECT_NEAR(900, perf_env.peak_hbm_bw_giga_bytes_per_second(), kMaxError);
@@ -333,14 +371,20 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
 }
 
 TEST(ConvertXPlaneToOpStats, TpuRunEnvironment) {
-  XSpace space;
+  auto space = std::make_unique<XSpace>();
   XPlaneBuilder device_plane1(
-      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/0, "TPU V4"));
+      GetOrCreateTpuXPlane(space.get(), /*device_ordinal=*/0, "TPU V4", 0, 0));
   XPlaneBuilder device_plane2(
-      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/1, "TPU V4"));
+      GetOrCreateTpuXPlane(space.get(), /*device_ordinal=*/1, "TPU V4", 0, 0));
 
-  GroupTfEvents(&space);
-  OpStats op_stats = ConvertXSpaceToOpStats(space, OpStatsOptions());
+  std::vector<std::unique_ptr<XSpace>> xspaces;
+  xspaces.push_back(std::move(space));
+  auto session_snapshot_or =
+      SessionSnapshot::Create({"test_xspace"}, std::move(xspaces));
+  TF_CHECK_OK(session_snapshot_or.status());
+  OpStats op_stats;
+  TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(
+      session_snapshot_or.value(), OpStatsOptions(), &op_stats));
   const RunEnvironment& run_env = op_stats.run_environment();
 
   EXPECT_EQ("TPU V4", run_env.device_type());
@@ -357,8 +401,8 @@ TEST(ConvertXPlaneToOpStats, TpuStepDbTest) {
   constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
   constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 900.0;
 
-  XSpace space;
-  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
+  auto space = std::make_unique<XSpace>();
+  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(space.get()));
   host_plane_builder.ReserveLines(2);
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
@@ -374,17 +418,10 @@ TEST(ConvertXPlaneToOpStats, TpuStepDbTest) {
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 10,
                {{StatType::kCorrelationId, kCorrelationId}});
 
-  XPlaneBuilder device_plane_builder(
-      GetOrCreateTpuXPlane(&space, /*device_ordinal=*/0, "TPU V4"));
+  XPlaneBuilder device_plane_builder(GetOrCreateTpuXPlane(
+      space.get(), /*device_ordinal=*/0, "TPU V4",
+      kDevCapPeakTeraflopsPerSecond, kDevCapPeakHbmBwGigabytesPerSecond));
   device_plane_builder.ReserveLines(1);
-  device_plane_builder.AddStatValue(
-      *device_plane_builder.GetOrCreateStatMetadata(
-          "peak_teraflops_per_second"),
-      kDevCapPeakTeraflopsPerSecond);
-  device_plane_builder.AddStatValue(
-      *device_plane_builder.GetOrCreateStatMetadata(
-          "peak_hbm_bw_gigabytes_per_second"),
-      kDevCapPeakHbmBwGigabytesPerSecond);
   device_plane_builder.AddStatValue(
       *device_plane_builder.GetOrCreateStatMetadata("core_count"), kCoreCount);
 
@@ -392,11 +429,17 @@ TEST(ConvertXPlaneToOpStats, TpuStepDbTest) {
   CreateXEvent(&device_plane_builder, &stream, "matmul", 50, 40,
                {{StatType::kCorrelationId, kCorrelationId}});
 
-  GroupTfEvents(&space);
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
-  OpStats op_stats = ConvertXSpaceToOpStats(space, options);
+  std::vector<std::unique_ptr<XSpace>> xspaces;
+  xspaces.push_back(std::move(space));
+  auto session_snapshot_or =
+      SessionSnapshot::Create({"test_xspace"}, std::move(xspaces));
+  TF_CHECK_OK(session_snapshot_or.status());
+  OpStats op_stats;
+  TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(session_snapshot_or.value(),
+                                                   options, &op_stats));
   const StepDatabaseResult& step_db = op_stats.step_db();
 
   EXPECT_EQ(step_db.step_sequence_size(), 1);
@@ -405,6 +448,54 @@ TEST(ConvertXPlaneToOpStats, TpuStepDbTest) {
       op_stats.device_op_metrics_db().precision_stats();
   EXPECT_EQ(precision_stats.compute_16bit_ps(), 0);
   EXPECT_EQ(precision_stats.compute_32bit_ps(), 40);
+}
+
+TEST(ConvertXPlaneToOpStats, TpuDeviceTraceToStepDb) {
+  auto space = std::make_unique<XSpace>();
+  constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
+  constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 900.0;
+  XPlaneBuilder xplane_builder(GetOrCreateTpuXPlane(
+      space.get(), /*device_ordinal=*/0, "TPU V4",
+      kDevCapPeakTeraflopsPerSecond, kDevCapPeakHbmBwGigabytesPerSecond));
+
+  XEventMetadata* event_metadata = xplane_builder.GetOrCreateEventMetadata(1);
+  event_metadata->set_name("op_name");
+  XStatsBuilder<XEventMetadata> stats(event_metadata, &xplane_builder);
+
+  stats.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
+                         GetStatTypeStr(StatType::kProgramId)),
+                     1);
+  stats.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
+                         GetStatTypeStr(StatType::kSymbolId)),
+                     1);
+  stats.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
+                         GetStatTypeStr(StatType::kSelfDurationPs)),
+                     10);
+  stats.AddStatValue(
+      *xplane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)),
+      "tf_op_name");
+  stats.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
+                         GetStatTypeStr(StatType::kHloCategory)),
+                     "category");
+  XLineBuilder line = xplane_builder.GetOrCreateLine(1);
+  line.SetName(kTensorFlowOpLineName);
+  XEventBuilder event = line.AddEvent(*event_metadata);
+  event.SetOffsetNs(0);
+  event.SetDurationNs(10);
+
+  OpStatsOptions options;
+  options.generate_op_metrics_db = true;
+  std::vector<std::unique_ptr<XSpace>> xspaces;
+  xspaces.push_back(std::move(space));
+  auto session_snapshot_or =
+      SessionSnapshot::Create({"test_xspace"}, std::move(xspaces));
+  TF_CHECK_OK(session_snapshot_or.status());
+  OpStats op_stats;
+  TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(session_snapshot_or.value(),
+                                                   options, &op_stats));
+  EXPECT_THAT(op_stats.device_op_metrics_db().metrics_db(),
+              UnorderedElementsAre(Property(&OpMetrics::name, "op_name"),
+                                   Property(&OpMetrics::name, "IDLE")));
 }
 
 }  // namespace

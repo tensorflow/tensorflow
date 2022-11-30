@@ -14,7 +14,6 @@
 # ==============================================================================
 """Utilities to create TensorProtos."""
 import numpy as np
-import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
@@ -183,7 +182,7 @@ else:
 
 def GetFromNumpyDTypeDict(dtype_dict, dtype):
   # NOTE: dtype_dict.get(dtype) always returns None.
-  for key, val in six.iteritems(dtype_dict):
+  for key, val in dtype_dict.items():
     if key == dtype:
       return val
   return None
@@ -832,7 +831,7 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   values that cannot be evaluated will be `None`. For example:
 
   ```python
-  class Foo(object):
+  class Foo:
     def __init__(self):
       self.a = tf.Variable(1)
       self.b = tf.constant(2)

@@ -27,6 +27,9 @@ namespace mlir {
 namespace quant {
 class QuantizationDialect;
 }
+namespace quantfork {
+class QuantizationForkDialect;
+}
 namespace mhlo {
 class MhloDialect;
 }
@@ -212,6 +215,27 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateGetArithmeticCountPass();
 // tensors with fill op.
 std::unique_ptr<OperationPass<ModuleOp>> CreateUnfoldLargeSplatConstantPass();
 
+// Creates a pass that adds control dependencies to keep the relative execution
+// order of operations with side effects frozen.
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePinOpsWithSideEffectsPass();
+
+// Creates a pass that brings operations into the same order as graph_info.cc.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreatePartitionedTopologicalSortPass();
+
+#define GEN_PASS_DECL_DEFAULTQUANTPARAMSPASS
+#define GEN_PASS_DECL_DENSETOSPARSEPASS
+#define GEN_PASS_DECL_LEGALIZETFPASS
+#define GEN_PASS_DECL_MODIFYIONODESPASS
+#define GEN_PASS_DECL_OPTIMIZEPASS
+#define GEN_PASS_DECL_POSTQUANTIZEPASS
+#define GEN_PASS_DECL_PREPARECOMPOSITEFUNCTIONSPASS
+#define GEN_PASS_DECL_PREPAREDYNAMICRANGEQUANTIZEPASS
+#define GEN_PASS_DECL_PREPAREQUANTIZEPASS
+#define GEN_PASS_DECL_PREPARETFPASS
+#define GEN_PASS_DECL_QUANTIZEPASS
+#define GEN_PASS_DECL_RAISECUSTOMOPSPASS
+#define GEN_PASS_DECL_TRIMFUNCTIONSPASS
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 }  // namespace TFL

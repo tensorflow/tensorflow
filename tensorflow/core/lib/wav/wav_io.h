@@ -15,8 +15,8 @@ limitations under the License.
 
 // Functions to write audio in WAV format.
 
-#ifndef TENSORFLOW_LIB_WAV_WAV_IO_H_
-#define TENSORFLOW_LIB_WAV_WAV_IO_H_
+#ifndef TENSORFLOW_CORE_LIB_WAV_WAV_IO_H_
+#define TENSORFLOW_CORE_LIB_WAV_WAV_IO_H_
 
 #include <string>
 #include <vector>
@@ -101,4 +101,4 @@ Status ReadValue(const std::string& data, T* value, int* offset) {
 }  // namespace wav
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_WAV_WAV_IO_H_
+#endif  // TENSORFLOW_CORE_LIB_WAV_WAV_IO_H_

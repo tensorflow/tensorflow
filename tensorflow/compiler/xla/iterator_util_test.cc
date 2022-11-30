@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/iterator_util.h"
 
 #include <algorithm>
+#include <functional>
 #include <list>
 #include <memory>
+#include <vector>
 
 #include "tensorflow/compiler/xla/test.h"
 
@@ -124,7 +126,10 @@ TEST(FilteringUnwrappingIteratorTest, StdFind) {
   for (int i = 0; i < 3; ++i) {
     l.push_back(std::make_unique<int>(i));
   }
-  auto pred = [](const int* value) { return *value % 2 == 0; };
+  // Use std::function predicate to work around MSVC bug.
+  std::function<bool(const int*)> pred = [](const int* value) {
+    return *value % 2 == 0;
+  };
   EXPECT_EQ(
       l.begin()->get(),
       *std::find(MakeFilteringUnwrappingIterator(l.begin(), l.end(), pred),

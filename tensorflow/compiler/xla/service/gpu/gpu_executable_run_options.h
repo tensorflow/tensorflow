@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_EXECUTABLE_RUN_OPTIONS_H_
 
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -24,8 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 namespace gpu {
@@ -65,8 +66,8 @@ class GpuExecutableRunOptions {
   // elements of `device_assignment` are interpreted as global device IDs, not
   // local device ordinals.
   GpuExecutableRunOptions& set_gpu_global_device_ids(
-      std::optional<std::vector<GlobalDeviceId>> gpu_global_device_ids);
-  const std::optional<std::vector<GlobalDeviceId>>& gpu_global_device_ids()
+      std::optional<std::map<int, GlobalDeviceId>> gpu_global_device_ids);
+  const std::optional<std::map<int, GlobalDeviceId>>& gpu_global_device_ids()
       const;
 
   // Callback that returns a ncclUniqueId encoded as a string for a group of
@@ -76,7 +77,7 @@ class GpuExecutableRunOptions {
   const NcclUniqueIdCallback& nccl_unique_id_callback() const;
 
  private:
-  std::optional<std::vector<GlobalDeviceId>> gpu_global_device_ids_;
+  std::optional<std::map<int, GlobalDeviceId>> gpu_global_device_ids_;
   NcclUniqueIdCallback nccl_unique_id_callback_;
 };
 
@@ -87,9 +88,9 @@ struct NcclExecuteParams {
 
   se::Stream* stream;
   RunId run_id;
-  const DeviceAssignment* device_assn;                       // never null
-  const std::vector<GlobalDeviceId>* gpu_global_device_ids;  // may be null
-  const NcclUniqueIdCallback* nccl_unique_id_callback;       // may be null
+  const DeviceAssignment* device_assn;                         // never null
+  const std::map<int, GlobalDeviceId>* gpu_global_device_ids;  // may be null
+  const NcclUniqueIdCallback* nccl_unique_id_callback;         // may be null
 
   StatusOr<GlobalDeviceId> GetGlobalDeviceId() const;
 };

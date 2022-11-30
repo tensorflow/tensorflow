@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -74,6 +75,7 @@ SaveDatasetOp::SaveDatasetOp(OpKernelConstruction* ctx)
 }
 
 Status SaveDatasetOp::DoCompute(OpKernelContext* ctx) {
+  metrics::RecordTFDataFetchOp("SaveDatasetOp");
   DatasetBase* dataset;
   TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
 
@@ -677,9 +679,8 @@ class LoadDatasetOp::Dataset : public DatasetBase {
    private:
     Status InitializeInput(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      auto run_dir = snapshot_util::RunDirectory(dataset()->path_,
-                                                 dataset()->metadata_.run_id());
-
+      auto run_dir = snapshot_util::RunDirectory(
+          TranslateFileName(dataset()->path_), dataset()->metadata_.run_id());
       std::vector<std::string> snapshot_shard_dirs;
       TF_RETURN_IF_ERROR(ctx->env()->GetMatchingPaths(
           io::JoinPath(run_dir,

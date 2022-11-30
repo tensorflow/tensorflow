@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
+#include "tensorflow/core/profiler/protobuf/topology.pb.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/step_intersection.h"
@@ -90,6 +91,7 @@ void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
     dst->set_num_cores_per_replica(
         std::max(src.num_cores_per_replica(), dst->num_cores_per_replica()));
     *dst->mutable_topology() = src.topology();
+    *dst->mutable_system_topology() = src.system_topology();
   } else if (dst->device_type().empty()) {
     dst->set_device_type(src.device_type());
   }
@@ -159,6 +161,12 @@ void CombineOpStats(
   // Combine the mapping from core ID to details.
   CombineCoreIdMap(src_host_id, src.core_id_to_details(),
                    dst->mutable_core_id_to_details());
+
+  // Combine performance counter result.
+  dst->mutable_performance_counter_result()
+      ->set_matrix_unit_utilization_percent(
+          dst->performance_counter_result().matrix_unit_utilization_percent() +
+          src.performance_counter_result().matrix_unit_utilization_percent());
 }
 
 }  // namespace
@@ -205,6 +213,12 @@ StepIntersection ComputeStepIntersectionToMergeOpStats(
 void CombineAllOpStats(const std::vector<OpStatsInfo>& all_op_stats_info,
                        const StepIntersection& step_intersection,
                        OpStats* combined_op_stats) {
+  // A shortcut code path for a single OpStats. There is no need to merge.
+  if (all_op_stats_info.size() == 1) {
+    *combined_op_stats = *all_op_stats_info[0].op_stats;
+    return;
+  }
+
   StepDatabaseResult* combined_step_db = combined_op_stats->mutable_step_db();
   // Initialize the StepDatabaseResult field that depends on the number of
   // steps.
@@ -247,6 +261,13 @@ void CombineAllOpStats(const std::vector<OpStatsInfo>& all_op_stats_info,
   // keeps only the top kernel reports with long kernel duration.
   SortAndKeepTopKDurationKernelReportsInDb(
       combined_op_stats->mutable_kernel_stats_db());
+
+  // Process performance counter results.
+  combined_op_stats->mutable_performance_counter_result()
+      ->set_matrix_unit_utilization_percent(
+          combined_op_stats->performance_counter_result()
+              .matrix_unit_utilization_percent() /
+          all_op_stats_info.size());
 }
 
 }  // namespace profiler

@@ -22,7 +22,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -89,7 +89,7 @@ struct TFToJITInvocationsPattern : public RewritePattern {
     {
       OpBuilder::InsertionGuard guard(rewriter);
       llvm::SmallVector<Location> locs(op->getNumOperands(), loc);
-      Block *block = rewriter.createBlock(&jit_compile_op.body(), {},
+      Block *block = rewriter.createBlock(&jit_compile_op.getBody(), {},
                                           op->getOperandTypes(), locs);
 
       // Map operands.
@@ -105,7 +105,7 @@ struct TFToJITInvocationsPattern : public RewritePattern {
 
     // Create JIT execute op.
     rewriter.replaceOpWithNewOp<tf_framework::JITExecuteOp>(
-        op, op_result.getType(), /*ctx=*/Value(), jit_compile_op.result(),
+        op, op_result.getType(), /*ctx=*/Value(), jit_compile_op.getResult(),
         op->getOperands());
     return success();
   }
@@ -152,7 +152,7 @@ struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
                   {
                     OpBuilder::InsertionGuard guard(rewriter);
                     Block *block = rewriter.createBlock(
-                        &jit_compile_op.body(), {}, operand_types,
+                        &jit_compile_op.getBody(), {}, operand_types,
                         SmallVector<Location>(operand_types.size(), loc));
                     for (auto it :
                          llvm::zip(op->getOperands(), block->getArguments()))
@@ -165,9 +165,9 @@ struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
                   }
                   auto jit_execute_op =
                       rewriter.create<tf_framework::JITExecuteOp>(
-                          loc, result_types, Value(), jit_compile_op.result(),
-                          op->getOperands());
-                  b.create<scf::YieldOp>(l, jit_execute_op.result());
+                          loc, result_types, Value(),
+                          jit_compile_op.getResult(), op->getOperands());
+                  b.create<scf::YieldOp>(l, jit_execute_op.getResult());
                 },
                 [&](OpBuilder &b, Location l) {
                   auto new_op = rewriter.clone(*op);
@@ -200,7 +200,7 @@ struct PackJITCompileOpPattern
 
   LogicalResult matchAndRewrite(tf_framework::JITCompileOp op,
                                 PatternRewriter &rewriter) const override {
-    Block *body = op.getBody();
+    Block *body = op.SingleBlock::getBody();
     auto yield_op =
         llvm::cast<tf_framework::JITCompileYieldOp>(body->getTerminator());
 
@@ -209,7 +209,8 @@ struct PackJITCompileOpPattern
     auto loc = op->getLoc();
     OpBuilder tmp_module_builder(getContext(), rewriter.getListener());
     auto jit_module = tmp_module_builder.create<ModuleOp>(loc);
-    tmp_module_builder.setInsertionPointToStart(jit_module.getBody());
+    tmp_module_builder.setInsertionPointToStart(
+        jit_module.SingleBlock::getBody());
     auto jit_function = tmp_module_builder.create<func::FuncOp>(
         loc, tf_framework::JITCompileFromStrOp::kJITEntryFunctionName,
         tmp_module_builder.getFunctionType(body->getArgumentTypes(),
@@ -218,7 +219,7 @@ struct PackJITCompileOpPattern
                           tmp_module_builder.getUnitAttr());
     jit_function.getBody().takeBody(op.getBodyRegion());
     tmp_module_builder.setInsertionPointToEnd(&jit_function.getBody().front());
-    tmp_module_builder.create<func::ReturnOp>(loc, yield_op.result());
+    tmp_module_builder.create<func::ReturnOp>(loc, yield_op.getResult());
     rewriter.eraseOp(yield_op);
 
     // Serialize JIT module.
@@ -228,7 +229,7 @@ struct PackJITCompileOpPattern
 
     // Finally, create the new JIT compile op.
     rewriter.replaceOpWithNewOp<tf_framework::JITCompileFromStrOp>(
-        op, op->getResultTypes(), op.ctx(), rewriter.getStringAttr(code),
+        op, op->getResultTypes(), op.getCtx(), rewriter.getStringAttr(code),
         rewriter.getI64ArrayAttr(tile_sizes),
         rewriter.getI64ArrayAttr(unroll_factors),
         rewriter.getI64IntegerAttr(max_supported_rank),
@@ -248,11 +249,11 @@ struct PackJITCompileOpPattern
   bool cpu_codegen;
 };
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_TFTOJITINVOCATIONPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 struct TFToJITInvocationPass
-    : public TFToJITInvocationPassBase<TFToJITInvocationPass> {
+    : public impl::TFToJITInvocationPassBase<TFToJITInvocationPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect,
                     scf::SCFDialect, shape::ShapeDialect>();

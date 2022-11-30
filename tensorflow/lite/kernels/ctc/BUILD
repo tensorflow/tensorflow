@@ -1,6 +1,7 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -68,6 +69,7 @@ cc_test(
     deps = [
         ":ctc_beam_search_decoder_op",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",

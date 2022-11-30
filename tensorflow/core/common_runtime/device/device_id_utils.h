@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <numeric>
 
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
 #include "tensorflow/core/lib/gtl/int_type.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/stream_executor/platform.h"
-#include "tensorflow/stream_executor/stream_executor.h"
 
 namespace tensorflow {
 

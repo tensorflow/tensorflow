@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/stream_executor/cuda/cuda_blas_lt.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 
 namespace xla {
 namespace gpu {

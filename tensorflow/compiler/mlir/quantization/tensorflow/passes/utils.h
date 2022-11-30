@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTILS_H_
+
 #include <type_traits>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -24,8 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
-#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTIL_H_
-#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTIL_H_
 namespace mlir {
 namespace quant {
 
@@ -129,6 +130,12 @@ bool AreSplatValuesEqual(Value x, Value y) {
   return splat_x == splat_y;
 }
 
+// TODO(b/241488936): Remove this function after adding a new constant folding
+// pass to TensorFlow.
+// Applies constant folding to the operation if possible and return the folded
+// results.
+llvm::SmallVector<Value> ConstantFoldOpIfPossible(Operation *op);
+
 }  // namespace quant
 }  // namespace mlir
-#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTIL_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTILS_H_

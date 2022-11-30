@@ -22,14 +22,16 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 
 namespace mlir {
 namespace tf_saved_model {
 namespace {
 
+#define GEN_PASS_DEF_DEDUPBOUNDINPUTBINDINGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
+
 class DedupBoundInputBindingPass
-    : public DedupBoundInputBindingPassBase<DedupBoundInputBindingPass> {
+    : public impl::DedupBoundInputBindingPassBase<DedupBoundInputBindingPass> {
   void runOnOperation() final;
 };
 

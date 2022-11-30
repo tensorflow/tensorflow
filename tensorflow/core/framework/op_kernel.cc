@@ -592,6 +592,37 @@ Status OpKernelContext::forward_input_or_allocate_temp(
   return allocate_temp(type, shape, out_temp, allocator_attr);
 }
 
+Status OpKernelContext::forward_input_or_allocate_output(
+    gtl::ArraySlice<int> candidate_input_indices, int output_index,
+    const TensorShape& output_shape, Tensor** output, int* forwarded_input) {
+  for (int input_index : candidate_input_indices) {
+    if (forward_input_to_output_with_shape(input_index, output_index,
+                                           output_shape, output)) {
+      if (forwarded_input != nullptr) {
+        *forwarded_input = input_index;
+      }
+      return OkStatus();
+    }
+  }
+  if (forwarded_input != nullptr) {
+    *forwarded_input = -1;
+  }
+  return allocate_output(output_index, output_shape, output);
+}
+
+Status OpKernelContext::forward_input_or_allocate_output(
+    gtl::ArraySlice<StringPiece> candidate_input_names, StringPiece output_name,
+    const TensorShape& output_shape, Tensor** output) {
+  for (const StringPiece& input_name : candidate_input_names) {
+    if (forward_input_to_output_with_shape(input_name, output_name,
+                                           output_shape, output)
+            .ok()) {
+      return OkStatus();
+    }
+  }
+  return allocate_output(output_name, output_shape, output);
+}
+
 void OpKernelContext::delete_ref_input(int index, bool lock_held) {
   CHECK_GE(index, 0);
   CHECK_LT(index, num_inputs());
@@ -822,6 +853,18 @@ Status OpKernelContext::allocate_temp(
     tracking_state_->temp_memory_allocated += out_temp->TotalBytes();
   }
   return s;
+}
+
+Status OpKernelContext::allocate_temp(DataType type, const TensorShape& shape,
+                                      Tensor* out_temp,
+                                      AllocatorAttributes allocator_attr) {
+  return allocate_temp(type, shape, out_temp, allocator_attr,
+                       AllocationAttributes());
+}
+
+Status OpKernelContext::allocate_temp(DataType type, const TensorShape& shape,
+                                      Tensor* out_temp) {
+  return allocate_temp(type, shape, out_temp, AllocatorAttributes());
 }
 
 Status OpKernelContext::get_input_index(StringPiece name,
@@ -1245,6 +1288,13 @@ void SetupOrDisableJit(KernelRegistry* registry) {
   }
 }
 
+namespace register_kernel {
+
+// Defined out of line to save code space
+Name::Name(const char* op) : KernelDefBuilder(op) {}
+
+}  // namespace register_kernel
+
 void* GlobalKernelRegistry() {
   static KernelRegistry* global_kernel_registry = []() {
     KernelRegistry* registry = new KernelRegistry;
@@ -1444,8 +1494,11 @@ Status FindKernelDef(
     }
 
     // Do not print kernel registrations for other devices when using _JIT
-    // devices for compilation.
-    if (!absl::StrContains(device_str, "JIT")) {
+    // devices for compilation or for MKL ops.
+    // TODO (intel-tf) : Remove the check for MKL ops when support for
+    // block format is removed.
+    if (!absl::StrContains(device_str, "JIT") &&
+        !absl::StartsWith(node_name, "_Mkl")) {
       errors::AppendToMessage(
           &s, ".  Registered:", KernelsRegisteredForOp(node_op));
     }

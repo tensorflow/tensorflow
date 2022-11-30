@@ -138,10 +138,10 @@ class SobolSampleOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(context->input(0).shape()),
                 errors::InvalidArgument("dim must be a scalar"));
     int32_t dim = context->input(0).scalar<int32_t>()();
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(context->input(0).shape()),
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(context->input(1).shape()),
                 errors::InvalidArgument("num_results must be a scalar"));
     int32_t num_results = context->input(1).scalar<int32_t>()();
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(context->input(0).shape()),
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(context->input(2).shape()),
                 errors::InvalidArgument("skip must be a scalar"));
     int32_t skip = context->input(2).scalar<int32_t>()();
 

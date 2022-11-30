@@ -218,6 +218,10 @@ void AppendMarkForCompilationPassFlags(
 // be used by a server to ensure that JIT compilation is opt-in.
 void DisableXlaCompilation();
 
+// Enables XLA compilation. Can be used with `DisableXlaCompilation` to
+// enable/disable JIT compilation at different stages.
+void EnableXlaCompilation();
+
 // Returns `false` unless `DisableXlaCompilation` was called.
 bool FailOnXlaCompilation();
 

@@ -19,11 +19,11 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/scratch_allocator.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -140,6 +140,8 @@ Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
         stream, fft_rank, fft_length, input_embed, input_stride, input_distance,
         output_embed, output_stride, output_distance, fft_type, kInPlaceFft,
         batch_size, &scratch_allocator);
+    TF_RET_CHECK(fft_plan != nullptr)
+        << "Failed to create cuFFT batched plan with scratch allocator";
     fft_plan_ptr->scale_factor = 1.0f / output_distance;
   } else {
     stream->parent()->AsFft()->UpdatePlanWithScratchAllocator(

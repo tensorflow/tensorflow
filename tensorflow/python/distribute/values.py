@@ -492,7 +492,13 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     # Use a weakref to make it easy to map from the contained values
     # to the container without introducing a reference cycle.
     for v in values:
-      v._distributed_container = weakref.ref(self)  # pylint: disable=protected-access
+      # ResourceVariable is a CompositeTensor. Attributes added to
+      # CompositeTensors will get lost through tf.nest packing and unpacking.
+      if isinstance(v, composite_tensor.CompositeTensor) and hasattr(
+          v, "handle"):
+        v.handle._distributed_container = weakref.ref(self)  # pylint: disable=protected-access
+      else:
+        v._distributed_container = weakref.ref(self)  # pylint: disable=protected-access
 
     # Packed variable is used to reduce the overhead of function execution.
     # For a DistributedVariable, only one variable handle is captured into a
@@ -1012,6 +1018,40 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       resource_map[self._packed_var.packed_handle] = resource_map[
           self._primary.handle]
     return obj_map, resource_map
+
+  def _export_to_saved_model_graph(self,
+                                   object_map=None,
+                                   tensor_map=None,
+                                   options=None,
+                                   **kwargs):
+    # Initialize for self._primary first, so that obj_map[self._primary] and
+    # resource_map[self._primary.handle] contain mapped values.
+    resource_list = self._primary._export_to_saved_model_graph(  # pylint:disable=protected-access
+        object_map=object_map,
+        tensor_map=tensor_map,
+        options=options,
+        **kwargs)
+    for v in [v for v in self._values if v != self._primary]:
+      if (options.experimental_variable_policy  # pylint:disable=protected-access
+          ._expand_distributed_variables()):
+        resource_list.extend(
+            v._export_to_saved_model_graph(  # pylint:disable=protected-access
+                object_map=object_map,
+                tensor_map=tensor_map,
+                options=options,
+                **kwargs))  # pylint:disable=protected-access
+      else:
+        object_map[v] = object_map[self._primary]
+        tensor_map[v.handle] = tensor_map[self._primary.handle]
+        resource_list.append(v.handle)
+    object_map[self] = object_map[self._primary]
+    tensor_map[self] = tensor_map[self._primary.handle]
+    resource_list.append(self)
+    if self._packed_var is not None:
+      tensor_map[self._packed_var.packed_handle] = tensor_map[
+          self._primary.handle]
+      resource_list.append(self._packed_var.packed_handle)
+    return resource_list
 
   def _write_object_proto(self, proto, options):
     """Update a SavedObject proto for the caller.

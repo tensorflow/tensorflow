@@ -89,7 +89,8 @@ MemoryProfile GenerateMemoryProfile(const XPlane* host_trace) {
   // kMemoryDeallocation.
   plane.ForEachLine([&](const XLineVisitor& line) {
     line.ForEachEvent([&](const XEventVisitor& event) {
-      int64_t event_type = event.Type().value_or(kUnknownHostEventType);
+      int64_t event_type =
+          event.Type().value_or(HostEventType::kUnknownHostEventType);
       if (!(IsMemoryAllocation(event_type) ||
             IsMemoryDeallocation(event_type))) {
         return;

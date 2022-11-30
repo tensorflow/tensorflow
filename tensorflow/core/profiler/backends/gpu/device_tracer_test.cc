@@ -53,15 +53,21 @@ limitations under the License.
 // TODO(b/186367334)
 #define CUPTI_NVBUG_3299481_WAR (10000 <= CUDA_VERSION && CUDA_VERSION < 11000)
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+namespace xla {
+namespace profiler {
+extern std::unique_ptr<tensorflow::profiler::ProfilerInterface> CreateGpuTracer(
+    const tensorflow::ProfileOptions& options);
+}  // namespace profiler
+}  // namespace xla
+#endif
 namespace tensorflow {
 namespace profiler {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-extern std::unique_ptr<ProfilerInterface> CreateGpuTracer(
-    const ProfileOptions& options);
 std::unique_ptr<ProfilerInterface> CreateGpuTracer() {
   ProfileOptions options = ProfilerSession::DefaultOptions();
-  return CreateGpuTracer(options);
+  return xla::profiler::CreateGpuTracer(options);
 }
 
 #else
@@ -306,12 +312,12 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   EXPECT_GE(device_plane->event_metadata_size(), 5);
   // Check if device capacity is serialized.
   XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
-  EXPECT_TRUE(plane.GetStat(kDevCapClockRateKHz).has_value());
-  EXPECT_TRUE(plane.GetStat(kDevCapCoreCount).has_value());
-  EXPECT_TRUE(plane.GetStat(kDevCapMemoryBandwidth).has_value());
-  EXPECT_TRUE(plane.GetStat(kDevCapMemorySize).has_value());
-  EXPECT_TRUE(plane.GetStat(kDevCapComputeCapMajor).has_value());
-  EXPECT_TRUE(plane.GetStat(kDevCapComputeCapMinor).has_value());
+  EXPECT_TRUE(plane.GetStat(StatType::kDevCapClockRateKHz).has_value());
+  EXPECT_TRUE(plane.GetStat(StatType::kDevCapCoreCount).has_value());
+  EXPECT_TRUE(plane.GetStat(StatType::kDevCapMemoryBandwidth).has_value());
+  EXPECT_TRUE(plane.GetStat(StatType::kDevCapMemorySize).has_value());
+  EXPECT_TRUE(plane.GetStat(StatType::kDevCapComputeCapMajor).has_value());
+  EXPECT_TRUE(plane.GetStat(StatType::kDevCapComputeCapMinor).has_value());
 
   // Check if the device events timestamps are set.
   int total_events = 0;
@@ -363,10 +369,10 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
 
   // These follow the order in which they were invoked above.
   const std::array<StatType, 4> expected_event_stat_type = {
-      kMemallocDetails,
-      kMemsetDetails,
-      kMemcpyDetails,
-      kMemFreeDetails,
+      StatType::kMemallocDetails,
+      StatType::kMemsetDetails,
+      StatType::kMemcpyDetails,
+      StatType::kMemFreeDetails,
   };
 
   int event_idx = 0;

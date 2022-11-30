@@ -18,13 +18,16 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/strings/escaping.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -34,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/FunctionImplementation.h"  // from @llvm-project
 #include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
@@ -341,34 +345,6 @@ Attribute FuncAttr::parse(AsmParser &parser, Type type) {
                        dict.cast<DictionaryAttr>());
 }
 
-void FuncAttr::walkImmediateSubElements(
-    function_ref<void(Attribute)> walkAttrsFn,
-    function_ref<void(Type)> walkTypesFn) const {
-  // Walk the dictionary attribute first, so that its index is always 0.
-  walkAttrsFn(getAttrs());
-  // Walk the symbol ref attribute if it isn't empty.
-  if (!getName().getRootReference().getValue().empty()) walkAttrsFn(getName());
-}
-
-SubElementAttrInterface FuncAttr::replaceImmediateSubAttribute(
-    ArrayRef<std::pair<size_t, Attribute>> replacements) const {
-  DictionaryAttr attrs = getAttrs();
-  SymbolRefAttr name = getName();
-  for (auto &replacement : replacements) {
-    switch (replacement.first) {
-      case 0:
-        attrs = replacement.second.cast<DictionaryAttr>();
-        break;
-      case 1:
-        name = replacement.second.cast<SymbolRefAttr>();
-        break;
-      default:
-        llvm_unreachable("invalid replacement attribute index");
-    }
-  }
-  return FuncAttr::get(getContext(), name, attrs);
-}
-
 void PlaceholderAttr::print(AsmPrinter &os) const {
   os << "<" << StringAttr::get(getContext(), getValue()) << ">";
 }
@@ -389,7 +365,7 @@ void ShapeAttr::print(AsmPrinter &os) const {
   os << "<";
   if (hasRank()) {
     auto print_dim = [&](int64_t dim) {
-      if (dim != -1)
+      if (dim != ShapedType::kDynamicSize)
         os << dim;
       else
         os << "?";
@@ -865,6 +841,29 @@ Type DropSubTypes(Type ty) {
 Type DropRefType(Type ty) { return DropTypeHelper<TensorFlowRefType>(ty); }
 
 Type DropRefAndSubTypes(Type ty) { return DropRefType(DropSubTypes(ty)); }
+
+Attribute TensorProtoAttr::parse(AsmParser &parser, Type type) {
+  if (parser.parseColon()) {
+    return nullptr;
+  }
+
+  std::string data;
+  if (parser.parseString(&data)) {
+    return nullptr;
+  }
+  if (data.size() < 2 || data.substr(0, 2) != "0x") {
+    parser.emitError(parser.getNameLoc(), "Hex string doesn't start with `0x`");
+    return nullptr;
+  }
+
+  std::string bytes_data = absl::HexStringToBytes(data.substr(2));
+  return TensorProtoAttr::get(type, bytes_data);
+}
+
+void TensorProtoAttr::print(mlir::AsmPrinter &printer) const {
+  StringRef bytes_str = getValue();
+  printer << " : \"0x" << llvm::toHex(bytes_str) << "\"";
+}
 
 }  // namespace tf_type
 }  // namespace mlir

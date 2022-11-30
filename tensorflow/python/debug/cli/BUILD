@@ -1,7 +1,8 @@
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_binary", "py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -50,7 +51,6 @@ py_library(
         ":curses_widgets",
         ":debugger_cli_common",
         ":tensor_format",
-        "@six_archive//:six",
     ],
 )
 
@@ -61,7 +61,6 @@ py_library(
     deps = [
         ":base_ui",
         ":debugger_cli_common",
-        "@six_archive//:six",
     ],
 )
 
@@ -89,7 +88,6 @@ py_library(
         ":debugger_cli_common",
         "//tensorflow/python/debug/lib:debug_data",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -106,7 +104,6 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/debug/lib:common",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -133,7 +130,6 @@ py_library(
         ":ui_factory",
         "//tensorflow/python/debug/lib:debug_graphs",
         "//tensorflow/python/debug/lib:source_utils",
-        "@six_archive//:six",
     ],
 )
 
@@ -155,7 +151,6 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tf_session",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -198,7 +193,6 @@ py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -355,7 +349,6 @@ cuda_py_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/lib/io:lib",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 

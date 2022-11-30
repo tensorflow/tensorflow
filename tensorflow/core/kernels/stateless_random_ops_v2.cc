@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/stateless_random_ops_v2.h"
 
 #include "tensorflow/core/framework/bounds_check.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -46,44 +45,40 @@ namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
-namespace {
+StatelessRandomOpBaseWithKeyCounter::StatelessRandomOpBaseWithKeyCounter(
+    OpKernelConstruction* ctx)
+    : OpKernel(ctx) {}
 
-class StatelessRandomOpBase : public OpKernel {
- public:
-  explicit StatelessRandomOpBase(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+void StatelessRandomOpBaseWithKeyCounter::Compute(OpKernelContext* ctx) {
+  OP_REQUIRES_VALUE(auto key_counter_alg, ctx,
+                    GetKeyCounterAlgFromInputs(ctx, 1, 2, 3));
+  auto key_t = std::get<0>(key_counter_alg);
+  auto counter_t = std::get<1>(key_counter_alg);
+  auto alg = std::get<2>(key_counter_alg);
 
-  void Compute(OpKernelContext* ctx) override {
-    OP_REQUIRES_VALUE(auto key_counter_alg, ctx,
-                      GetKeyCounterAlgFromInputs(ctx, 1, 2, 3));
-    auto key_t = std::get<0>(key_counter_alg);
-    auto counter_t = std::get<1>(key_counter_alg);
-    auto alg = std::get<2>(key_counter_alg);
+  TensorShape shape;
+  OP_REQUIRES_OK(ctx, tensor::MakeShape(ctx->input(0), &shape));
 
-    TensorShape shape;
-    OP_REQUIRES_OK(ctx, tensor::MakeShape(ctx->input(0), &shape));
-
-    // Allocate output
-    Tensor* output;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, shape, &output));
-    if (shape.num_elements() == 0) {
-      return;
-    }
-
-    // Fill in the random numbers
-    Fill(ctx, alg, key_t, counter_t, output);
+  // Allocate output
+  Tensor* output;
+  OP_REQUIRES_OK(ctx, ctx->allocate_output(0, shape, &output));
+  if (shape.num_elements() == 0) {
+    return;
   }
 
-  // The part of Compute that depends on device, type, and distribution.
-  // Must be a tail call because it doesn't report error via return value.
-  virtual void Fill(OpKernelContext* ctx, Algorithm alg, const Tensor& key,
-                    const Tensor& counter, Tensor* output) = 0;
-};
+  // Fill in the random numbers
+  Fill(ctx, alg, key_t, counter_t, output);
+}
+
+namespace {
 
 template <typename Device, typename Distribution>
-class StatelessRandomOp : public StatelessRandomOpBase {
+class StatelessRandomOp : public StatelessRandomOpBaseWithKeyCounter {
  public:
-  using StatelessRandomOpBase::StatelessRandomOpBase;
+  using StatelessRandomOpBaseWithKeyCounter::
+      StatelessRandomOpBaseWithKeyCounter;
 
+ protected:
   void Fill(OpKernelContext* ctx, Algorithm alg, const Tensor& key,
             const Tensor& counter, Tensor* output) override {
     typedef typename Distribution::ResultElementType T;
@@ -104,10 +99,12 @@ class StatelessRandomOp : public StatelessRandomOpBase {
 };
 
 template <typename Device, typename IntType>
-class StatelessRandomUniformIntOp : public StatelessRandomOpBase {
+class StatelessRandomUniformIntOp : public StatelessRandomOpBaseWithKeyCounter {
  public:
-  using StatelessRandomOpBase::StatelessRandomOpBase;
+  using StatelessRandomOpBaseWithKeyCounter::
+      StatelessRandomOpBaseWithKeyCounter;
 
+ protected:
   void Fill(OpKernelContext* ctx, Algorithm alg, const Tensor& key,
             const Tensor& counter, Tensor* output) override {
     const Tensor& minval = ctx->input(4);
@@ -148,10 +145,13 @@ class StatelessRandomUniformIntOp : public StatelessRandomOpBase {
 };
 
 template <typename Device, typename IntType>
-class StatelessRandomUniformFullIntOp : public StatelessRandomOpBase {
+class StatelessRandomUniformFullIntOp
+    : public StatelessRandomOpBaseWithKeyCounter {
  public:
-  using StatelessRandomOpBase::StatelessRandomOpBase;
+  using StatelessRandomOpBaseWithKeyCounter::
+      StatelessRandomOpBaseWithKeyCounter;
 
+ protected:
   void Fill(OpKernelContext* ctx, Algorithm alg, const Tensor& key,
             const Tensor& counter, Tensor* output) override {
     // Build distribution
@@ -327,6 +327,7 @@ REGISTER_GET_KCA(CPU);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TF_CALL_half(REGISTER_GPU);
+TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
 TF_CALL_int32(REGISTER_INT_GPU);

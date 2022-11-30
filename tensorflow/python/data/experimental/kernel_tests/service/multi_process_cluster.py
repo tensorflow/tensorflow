@@ -52,7 +52,7 @@ class _RemoteWorkerProcess(multi_process_lib.Process):
     self._worker.join()
 
 
-class MultiProcessCluster(object):
+class MultiProcessCluster:
   """tf.data service cluster with local and remote workers.
 
   Represents a cluster with a dispatcher, `num_local_workers` local workers, and

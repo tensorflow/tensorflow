@@ -1,4 +1,5 @@
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -62,7 +63,6 @@ py_library(
     deps = [
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python/compat",
         "//tensorflow/python/data/experimental/service:_pywrap_utils",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
@@ -101,8 +101,6 @@ py_library(
     srcs = ["error_ops.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
     ],
@@ -311,6 +309,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:map_op",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",

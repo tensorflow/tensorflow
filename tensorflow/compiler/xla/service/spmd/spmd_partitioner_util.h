@@ -16,22 +16,33 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_SPMD_PARTITIONER_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_SPMD_PARTITIONER_UTIL_H_
 
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
 namespace spmd {
 
-struct GatherParallelDimSharding {
+template <typename T>
+using IsCompOrCompBuilder =
+    typename std::enable_if_t<std::is_same<HloComputation, T>::value ||
+                              std::is_same<HloComputation::Builder, T>::value ||
+                              std::is_same<SpmdBuilder, T>::value>;
+
+struct GatherScatterParallelDimSharding {
   HloSharding indices_sharding;
   HloSharding operand_sharding;
 };
@@ -39,26 +50,71 @@ struct GatherParallelDimSharding {
 // Returns true if the given sharding contains any replicated sharding.
 bool HasReplicatedSharding(const HloSharding& sharding);
 
+// Base for creating constants.
+template <typename T, typename = IsCompOrCompBuilder<T>>
+HloInstruction* CreateConstantBase(const Shape& shape, Literal value, T* b,
+                                   Literal (*literal_creator)(Literal,
+                                                              PrimitiveType)) {
+  if (shape.IsTuple()) {
+    std::vector<HloInstruction*> elements;
+    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+      elements.push_back(
+          CreateConstantBase(ShapeUtil::GetTupleElementShape(shape, i),
+                             value.Clone(), b, literal_creator));
+    }
+    return b->AddInstruction(HloInstruction::CreateTuple(elements));
+  }
+
+  if (shape.IsToken()) {
+    return b->AddInstruction(HloInstruction::CreateToken());
+  }
+  auto c = b->AddInstruction(HloInstruction::CreateConstant(
+      literal_creator(std::move(value), shape.element_type())));
+  if (shape.rank() == 0) {
+    return c;
+  }
+  return b->AddInstruction(HloInstruction::CreateBroadcast(shape, c, {}));
+}
+
 // Creates constant value instructions of the given shape. The literal must be a
 // scalar shape and is broadcast to the given shape.
-HloInstruction* CreateConstant(const Shape& shape, Literal value,
-                               SpmdBuilder* b);
+template <typename T, typename = IsCompOrCompBuilder<T>>
+HloInstruction* CreateConstant(const Shape& shape, Literal value, T* b) {
+  auto identity = [](Literal value, PrimitiveType primitive_type) {
+    CHECK(ShapeUtil::IsScalarWithElementType(value.shape(), primitive_type));
+    return value;
+  };
+  return CreateConstantBase(shape, std::move(value), b, identity);
+}
+
 // Creates zero value instructions of the given shape.
-HloInstruction* CreateZero(const Shape& shape, SpmdBuilder* b);
+template <typename T, typename = IsCompOrCompBuilder<T>>
+HloInstruction* CreateZero(const Shape& shape, T* b) {
+  auto zero = [](Literal /*unused*/, PrimitiveType primitive_type) {
+    return LiteralUtil::Zero(primitive_type);
+  };
+  return CreateConstantBase(shape, /*unused*/ Literal(), b, zero);
+}
 
 // Creates one value instructions of the given shape.
-HloInstruction* CreateOne(const Shape& shape, SpmdBuilder* b);
+template <typename T, typename = IsCompOrCompBuilder<T>>
+HloInstruction* CreateOne(const Shape& shape, T* b) {
+  auto one = [](Literal /*unused*/, PrimitiveType primitive_type) {
+    return LiteralUtil::One(primitive_type);
+  };
+  return CreateConstantBase(shape, /*unused*/ Literal(), b, one);
+}
 
-template <typename NativeT>
-HloInstruction* CreateR0WithType(PrimitiveType type, NativeT value,
-                                 SpmdBuilder* b) {
+template <typename NativeT, typename T, typename = IsCompOrCompBuilder<T>>
+HloInstruction* CreateR0WithType(PrimitiveType type, NativeT value, T* b) {
   auto literal = LiteralUtil::CreateR0(value)
                      .ConvertToShape(ShapeUtil::MakeShape(type, {}))
-                     .ValueOrDie();
+                     .value();
   return b->AddInstruction(HloInstruction::CreateConstant(std::move(literal)));
 }
 
-inline HloInstruction* CreateFirstWithType(PrimitiveType type, SpmdBuilder* b) {
+template <typename T, typename = IsCompOrCompBuilder<T>>
+inline HloInstruction* CreateFirstWithType(PrimitiveType type, T* b) {
   if (type == F32) {
     auto float_pad_value = std::numeric_limits<float>::quiet_NaN();
     return CreateR0WithType(type, -float_pad_value, b);
@@ -67,7 +123,8 @@ inline HloInstruction* CreateFirstWithType(PrimitiveType type, SpmdBuilder* b) {
   return b->AddInstruction(HloInstruction::CreateConstant(std::move(literal)));
 }
 
-inline HloInstruction* CreateLastWithType(PrimitiveType type, SpmdBuilder* b) {
+template <typename T, typename = IsCompOrCompBuilder<T>>
+inline HloInstruction* CreateLastWithType(PrimitiveType type, T* b) {
   if (type == F32) {
     auto float_pad_value = std::numeric_limits<float>::quiet_NaN();
     return CreateR0WithType(type, float_pad_value, b);
@@ -113,9 +170,28 @@ std::vector<HloInstruction*> MakeTiledPartitionOrdinals(
 
 // Pads hlo to the desired shape using high padding. Either a builder or a
 // computation needs to be supplied, but not both.
-HloInstruction* PadToShape(HloInstruction* hlo, const Shape& padded_shape,
-                           SpmdBuilder* b,
-                           HloComputation* computation = nullptr);
+template <typename T, typename = IsCompOrCompBuilder<T>>
+HloInstruction* PadToShape(HloInstruction* hlo, const Shape& padded_shape, T* b,
+                           std::optional<Literal> value = std::nullopt) {
+  if (ShapeUtil::Compatible(hlo->shape(), padded_shape)) {
+    return hlo;
+  }
+  PaddingConfig padding_config;
+  for (int64_t i = 0; i < padded_shape.rank(); ++i) {
+    auto padding_config_dim = padding_config.add_dimensions();
+    padding_config_dim->set_edge_padding_low(0);
+    padding_config_dim->set_interior_padding(0);
+    padding_config_dim->set_edge_padding_high(padded_shape.dimensions(i) -
+                                              hlo->shape().dimensions(i));
+  }
+  const Shape padding_shape =
+      ShapeUtil::MakeScalarShape(hlo->shape().element_type());
+  HloInstruction* padding =
+      value.has_value() ? CreateConstant(padding_shape, std::move(*value), b)
+                        : CreateZero(padding_shape, b);
+  return b->AddInstruction(
+      HloInstruction::CreatePad(padded_shape, hlo, padding, padding_config));
+}
 
 // Returns the padded shape when combining all partitions.
 Shape GetPaddedShapeForUnevenPartitioning(const Shape& base_shape,
@@ -123,8 +199,17 @@ Shape GetPaddedShapeForUnevenPartitioning(const Shape& base_shape,
 
 // Pads the HLO (with base shape) for uneven tiled partition to make it evenly
 // partitionable.
+template <typename T, typename = IsCompOrCompBuilder<T>>
 HloInstruction* PadBaseShapeBeforeUnevenTiledSharding(
-    HloInstruction* hlo, const HloSharding& sharding, SpmdBuilder* b);
+    HloInstruction* hlo, const HloSharding& sharding, T* b,
+    std::optional<Literal> value = std::nullopt) {
+  auto padded_base_shape =
+      GetPaddedShapeForUnevenPartitioning(hlo->shape(), sharding);
+  if (ShapeUtil::Compatible(padded_base_shape, hlo->shape())) {
+    return hlo;
+  }
+  return PadToShape(hlo, padded_base_shape, b, std::move(value));
+}
 
 // Returns the index of the unique tile dimension. Returns std::nullopt if the
 // given sharding is not tiled or tiled along multiple dimensions.
@@ -330,11 +415,6 @@ HloInstruction* PerGroupSliceFromReplicated(
     absl::Span<const int64_t> group_dims,
     absl::Span<const int64_t> group_dim_sizes, SpmdBuilder* b);
 
-// Returns the opcode if `reduction_comp` represents a simple binary elementwise
-// computation on the two operands.
-std::optional<HloOpcode> ParseReductionComputation(
-    const HloComputation* reduction_comp);
-
 // Pad the shape from partial replicate shape for `dst_sharding`.
 // If dst_sharding needs more padding and per_shard_size increased in
 // dst_sharding, halo exchange on the right side is needed.
@@ -385,12 +465,12 @@ HloSharding CreateMatchingShardingOnDims(const Shape& target_shape,
                                          absl::Span<const int64_t> target_dims,
                                          absl::Span<const int64_t> source_dims);
 
-// Returns if the sharding across operand and indices of a gather is across
-// parallel dimensions and matches what SPMD partitioner supports.
-std::optional<GatherParallelDimSharding>
-GatherOperandsShardedAcrossParallelDims(
+// Returns if the sharding across operand and indices of a gather/scatter is
+// across parallel dimensions and matches what SPMD partitioner supports.
+std::optional<GatherScatterParallelDimSharding>
+GatherScatterOperandsShardedAcrossParallelDims(
     const HloInstruction& operand, const HloInstruction& indices,
-    const hlo_sharding_util::GatherParallelDims& parallel_dims);
+    const hlo_sharding_util::GatherScatterParallelDims& parallel_dims);
 
 // Pattern rewrite preprocessing utilities.
 
@@ -416,6 +496,33 @@ struct PadWithWrapPattern {
 std::optional<PadWithWrapPattern> FindPadWithWrapPattern(
     const HloInstruction* concat, const HloInstruction* lhs,
     const HloInstruction* mid, const HloInstruction* rhs);
+
+// Reshards data for a slice to be happening on such data with the passed
+// parameters.
+std::optional<PartitionedHlo::WindowedInputShardReturnValue>
+ReshardDataForSlicing(absl::Span<const int64_t> strides,
+                      absl::Span<const int64_t> starts,
+                      absl::Span<const int64_t> limits,
+                      PartitionedHlo to_reshard,
+                      const HloSharding& target_sharding, SpmdBuilder* b);
+
+// Performs slicing of data based on the windowed sharding passed as input.
+HloInstruction* SliceDataFromWindowReshard(
+    const PartitionedHlo::WindowedInputShardReturnValue& reshard_operand,
+    absl::Span<const int64_t> strides, const Shape& base_shape,
+    const HloSharding& target_sharding, SpmdBuilder* b);
+
+// Reshards data for a pad to be happening on such data with the passed
+// parameters.
+std::optional<PartitionedHlo::WindowedInputShardReturnValue> ReshardDataForPad(
+    HloInstruction* pad_value, PaddingConfig pc, PartitionedHlo to_reshard,
+    const Shape& target_shape, const HloSharding& target_sharding,
+    SpmdBuilder* b);
+
+// Performs padding of data based on the windowed sharding passed as input.
+HloInstruction* PadDataFromWindowReshard(
+    const PartitionedHlo::WindowedInputShardReturnValue& reshard_operand,
+    HloInstruction* pad_value, SpmdBuilder* b);
 
 }  // namespace spmd
 }  // namespace xla

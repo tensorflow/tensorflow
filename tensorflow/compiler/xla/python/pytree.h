@@ -170,6 +170,14 @@ class PyTreeDef {
 
   std::string ToString() const;
 
+  // Transforms the PyTreeDef into a pickleable object. Used to implement
+  // `PyTreeDef.__getstate__`.
+  pybind11::object ToPickleable() const;
+
+  // Transforms the object returned by `ToPickleable()` back to PyTreeDef. Used
+  // to implement `PyTreeDef.__setstate__`.
+  static PyTreeDef FromPickleable(pybind11::object pickleable);
+
  private:
   struct Node {
     PyTreeKind kind = PyTreeKind::kLeaf;

@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
+#include "tensorflow/tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 
 namespace tensorflow {
 namespace profiler {

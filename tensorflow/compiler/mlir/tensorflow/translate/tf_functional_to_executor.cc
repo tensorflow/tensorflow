@@ -20,7 +20,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 #define DEBUG_TYPE "tf-functional-to-executor"
 
@@ -40,8 +39,12 @@ namespace {
 //      }
 //      return %graph_results#...
 //    }
+
+#define GEN_PASS_DEF_FUNCTIONALTOEXECUTORDIALECTCONVERSIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct FunctionalToExecutorDialectConversion
-    : public TF::FunctionalToExecutorDialectConversionPassBase<
+    : public impl::FunctionalToExecutorDialectConversionPassBase<
           FunctionalToExecutorDialectConversion> {
   void runOnOperation() override;
 };
@@ -75,7 +78,7 @@ void FunctionalToExecutorDialectConversion::runOnOperation() {
   OpBuilder builder(&body, body.begin());
   auto graph_op = builder.create<tf_executor::GraphOp>(
       loc, func.getFunctionType().getResults());
-  graph_op.body().push_back(new Block);
+  graph_op.getBody().push_back(new Block);
   builder.setInsertionPointToEnd(&graph_op.GetBody());
   auto island = builder.create<tf_executor::IslandOp>(
       loc, func.getFunctionType().getResults(),
@@ -88,11 +91,11 @@ void FunctionalToExecutorDialectConversion::runOnOperation() {
   }
   builder.create<tf_executor::FetchOp>(loc, to_fetch);
   // Build Island.
-  island.body().push_back(new Block);
-  island.body().front().getOperations().splice(
-      island.body().front().begin(), body.getOperations(), copy_range.begin(),
-      copy_range.end());
-  builder.setInsertionPointToEnd(&island.body().front());
+  island.getBody().push_back(new Block);
+  island.getBody().front().getOperations().splice(
+      island.getBody().front().begin(), body.getOperations(),
+      copy_range.begin(), copy_range.end());
+  builder.setInsertionPointToEnd(&island.getBody().front());
   builder.create<tf_executor::YieldOp>(loc, return_op.getOperands());
   for (auto item : llvm::enumerate(graph_op.getResults())) {
     return_op.setOperand(item.index(), item.value());

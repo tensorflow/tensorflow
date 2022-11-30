@@ -14,6 +14,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -21,6 +22,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/importexport/convert_tensor.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/platform/test.h"
@@ -84,7 +86,10 @@ class ShapeInferenceTest : public ::testing::Test {
       for (int i = 0; i < op.getNumResults() - 1; ++i) {
         ShapedType shape = op.getResultTypes()[i].cast<ShapedType>();
         EXPECT_EQ(shape.hasRank(), info[i].hasRank());
-        if (shape.hasRank()) EXPECT_EQ(shape.getShape(), info[i].getDims());
+        if (shape.hasRank())
+          EXPECT_EQ(
+              shape.getShape(),
+              llvm::makeArrayRef(ConvertTFShapeToMlir(info[i].getDims())));
         if (check_type)
           EXPECT_EQ(shape.getElementType(), info[i].getElementType());
       }
@@ -127,7 +132,7 @@ TEST_F(ShapeInferenceTest, TestShapeAndTypeInference) {
 
   GraphFuncOp func = GetModule().lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
-  Block &block = *func.body().begin();
+  Block &block = *func.getBody().begin();
 
   SmallVector<SmallVector<ShapedTypeComponents>> all_results;
 
@@ -152,7 +157,8 @@ TEST_F(ShapeInferenceTest, TestShapeAndTypeInference) {
     all_results.push_back(results);
   }
 
-  VerifyInferredShapes(func.body().begin()->without_terminator(), all_results,
+  VerifyInferredShapes(func.getBody().begin()->without_terminator(),
+                       all_results,
                        /*check_type*/ true);
 
   // In general, `operand_as_constant_fn` and `op_result_as_shape_fn` may have
@@ -191,7 +197,8 @@ TEST_F(ShapeInferenceTest, TestShapeAndTypeInference) {
     all_results.push_back(results);
   }
 
-  VerifyInferredShapes(func.body().begin()->without_terminator(), all_results,
+  VerifyInferredShapes(func.getBody().begin()->without_terminator(),
+                       all_results,
                        /*check_type*/ true);
 }
 
@@ -209,7 +216,7 @@ TEST_F(ShapeInferenceTest, TestInferenceFailure) {
 
   GraphFuncOp func = GetModule().lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
-  Block &block = *func.body().begin();
+  Block &block = *func.getBody().begin();
 
   SmallVector<SmallVector<ShapedTypeComponents>> all_results;
 

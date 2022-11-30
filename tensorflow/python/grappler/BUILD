@@ -1,21 +1,9 @@
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "get_compatible_with_cloud", "tf_py_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_protos_grappler")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -157,7 +145,7 @@ tf_py_test(
 
 tf_py_test(
     name = "datasets_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "datasets_test.py",
     ],

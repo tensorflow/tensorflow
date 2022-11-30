@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/simple_philox.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 namespace tensorflow {
@@ -389,6 +389,13 @@ Status Examples::Initialize(OpKernelContext* const context,
   OpInputList dense_features_inputs;
   TF_RETURN_IF_ERROR(
       context->input_list("dense_features", &dense_features_inputs));
+  for (int i = 0; i < dense_features_inputs.size(); ++i) {
+    if (!TensorShapeUtils::IsMatrix(dense_features_inputs[i].shape())) {
+      return errors::InvalidArgument("Dense features at index ", i,
+                                     " must be rank 2 but is rank ",
+                                     dense_features_inputs[i].dims());
+    }
+  }
 
   examples_.clear();
   examples_.resize(num_examples);

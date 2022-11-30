@@ -149,25 +149,11 @@ ImmediateExecutionTensorHandle* EagerContext::CreateLocalHandleFromTFTensor(
                                          /*op_device=*/nullptr, this);
 }
 
-ImmediateExecutionTensorHandle* EagerContext::TFTensorHandleFromInterface(
-    ImmediateExecutionTensorHandle* handle) {
-  return handle;
-}
-
 // TODO(b/152902651): We have to keep this function here since EagerOperation
 // depends on EagerContext. Thus, the context build target can't depend on
 // EagerOperation.
 ImmediateExecutionOperation* EagerContext::CreateOperation() {
   return new EagerOperation(this);
-}
-
-Status EagerContext::RegisterFunction(AbstractFunction* f) {
-  FunctionDef* fdef;
-  TF_RETURN_IF_ERROR(f->GetFunctionDef(&fdef));
-  if (!fdef) {
-    return errors::InvalidArgument("GetFunctionDef returned nullptr.");
-  }
-  return AddFunctionDef(*fdef);
 }
 
 // TODO(b/152902651): Once we move many execute.cc functions into

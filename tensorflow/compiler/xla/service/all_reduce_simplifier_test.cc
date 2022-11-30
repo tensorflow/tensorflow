@@ -18,9 +18,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/window_util.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -80,7 +80,7 @@ test {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kModuleStr, /*replica_count=*/8));
   AllReduceSimplifier simplifier(/*replica_count=*/8);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Tuple(
@@ -116,7 +116,7 @@ test {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kModuleStr, /*replica_count=*/8));
   AllReduceSimplifier simplifier(/*replica_count=*/8);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::MultiplyAnyOrder(
                   m::AllReduce(m::Parameter(0)),
@@ -157,7 +157,7 @@ test {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kModuleStr, /*replica_count=*/8));
   AllReduceSimplifier simplifier(/*replica_count=*/8);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Tuple(
@@ -187,7 +187,7 @@ test {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kModuleStr, /*replica_count=*/8));
   AllReduceSimplifier simplifier(/*replica_count=*/8);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Parameter(0)));
 }

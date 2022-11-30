@@ -3,6 +3,7 @@
 load("//tensorflow:tensorflow.bzl", "if_mobile", "if_not_mobile", "tf_cc_test", "tf_copts")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # The public targets are marked public individually
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],
@@ -127,6 +128,7 @@ cc_test(
         ":tflite_tensor_view",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/core:headers",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -138,6 +140,7 @@ cc_library(
     deps = [
         ":shape",
         ":tensor_view",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -166,6 +169,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
     ]),
 )
 
@@ -217,6 +221,7 @@ cc_test(
     deps = [
         ":test_util",
         "//tensorflow/lite:cc_api",
+        "//tensorflow/lite/core:headers",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
@@ -40,13 +39,16 @@ namespace {
 constexpr llvm::StringRef kNestedModule = "_tpu_v1_compat_outlined";
 constexpr llvm::StringRef kOutlinedFuncPrefix = "_tpu_v1_compat_outlined_func";
 
+#define GEN_PASS_DEF_TPUBRIDGEEXECUTORISLANDOUTLININGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Extract the islands containing a TPU cluster computation into an outlined
 // function in a nested module. This will allow to run the usual bridge on this
 // nested module which exhibit a more friendly "V2-like" structure.
 // This is only intended for V1 compatibility mode where the bridge runs without
 // feed/fetches on session create/extend.
 struct TPUBridgeExecutorIslandOutlining
-    : public TF::TPUBridgeExecutorIslandOutliningPassBase<
+    : public impl::TPUBridgeExecutorIslandOutliningPassBase<
           TPUBridgeExecutorIslandOutlining> {
   void runOnOperation() override;
 };
@@ -110,7 +112,7 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
 
     // First the captured values in the island are function arguments
     llvm::SetVector<Value> operands;
-    getUsedValuesDefinedAbove(island_op.body(), operands);
+    getUsedValuesDefinedAbove(island_op.getBody(), operands);
 
     SmallVector<Type, 16> func_operand_types;
     func_operand_types.reserve(operands.size());
@@ -136,11 +138,11 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     // new function later.
     {
       YieldOp yield_op = island_op.GetYield();
-      outlined_func.getBody().takeBody(island_op.body());
+      outlined_func.getBody().takeBody(island_op.getBody());
 
       // Replace the yield with a return
       OpBuilder replacer(yield_op);
-      island_op.body().push_back(new Block);
+      island_op.getBody().push_back(new Block);
       replacer.create<mlir::func::ReturnOp>(yield_op.getLoc(),
                                             yield_op.getOperands());
       yield_op.erase();

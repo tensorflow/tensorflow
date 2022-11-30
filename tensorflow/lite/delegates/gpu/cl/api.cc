@@ -880,7 +880,8 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
             "OpenCL context and EGL parameters are set in the same time.");
       }
 #endif
-      context = CLContext(options_.context, /* has_ownership = */ false);
+      context =
+          CLContext(options_.context, /* has_ownership = */ false, device);
     } else {
 #ifdef CL_DELEGATE_ALLOW_GL
       if (options_.IsGlAware() && properties_.is_gl_sharing_supported) {

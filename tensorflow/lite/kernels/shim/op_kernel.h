@@ -177,7 +177,8 @@ struct ContextTypeForRuntime {
 //   };
 //
 // WARNING: Experimental interface, subject to change
-template <template <Runtime> typename SubType, Runtime Rt>
+template <template <Runtime, typename...> typename SubType, Runtime Rt,
+          typename... Ts>
 class OpKernelShim {
  public:
   // Some typedefs for convenience
@@ -194,17 +195,17 @@ class OpKernelShim {
 
   // If the operation has any attributes they are passed here.
   absl::Status Init(InitContext* ctx) {
-    return static_cast<SubType<Rt>&>(*this).Init(ctx);
+    return static_cast<SubType<Rt, Ts...>&>(*this).Init(ctx);
   }
 
   // The actual computations of the operation
   absl::Status Invoke(InvokeContext* ctx) {
-    return static_cast<SubType<Rt>&>(*this).Invoke(ctx);
+    return static_cast<SubType<Rt, Ts...>&>(*this).Invoke(ctx);
   }
 
   // Shape inference
   static absl::Status ShapeInference(ShapeInferenceContext* ctx) {
-    return SubType<Rt>::ShapeInference(ctx);
+    return SubType<Rt, Ts...>::ShapeInference(ctx);
   }
 
  protected:
@@ -251,4 +252,4 @@ absl::Status ShapeInferenceContext<SubType>::GetAttr(
 }  // namespace shim
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_KERNELS_SHIM_ABSTRACT_OP_H_
+#endif  // TENSORFLOW_LITE_KERNELS_SHIM_OP_KERNEL_H_

@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -51,14 +51,14 @@ Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
   }
 
   auto platform =
-      se::MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName());
+      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName());
   if (!platform.ok()) {
     // Treat failures as non-fatal; there might not be a GPU in the machine.
     VLOG(1) << "Failed to create XLA_GPU device: " << platform.status();
     return OkStatus();
   }
 
-  int device_count = platform.ValueOrDie()->VisibleDeviceCount();
+  int device_count = platform.value()->VisibleDeviceCount();
   if (device_count <= 0) {
     return OkStatus();
   }
@@ -100,7 +100,7 @@ Status XlaGpuDeviceFactory::CreateDevices(
   (void)registrations;
 
   auto platform =
-      se::MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName());
+      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName());
   if (!platform.ok()) {
     // Treat failures as non-fatal; there might not be a GPU in the machine.
     VLOG(1) << "Failed to create XLA_GPU device: " << platform.status();
@@ -117,17 +117,17 @@ Status XlaGpuDeviceFactory::CreateDevices(
   string allowed_gpus =
       session_options.config.gpu_options().visible_device_list();
   std::optional<std::set<int>> gpu_ids =
-      ParseVisibleDeviceList(allowed_gpus).ValueOrDie();
+      ParseVisibleDeviceList(allowed_gpus).value();
   if (!gpu_ids) {
     gpu_ids.emplace();
     // Fill the gpu_ids set with all devices if config string is empty.
-    for (int i = 0; i < platform.ValueOrDie()->VisibleDeviceCount(); ++i) {
+    for (int i = 0; i < platform.value()->VisibleDeviceCount(); ++i) {
       gpu_ids->insert(i);
     }
   }
   for (int i : *gpu_ids) {
     XlaDevice::Options options;
-    options.platform = platform.ValueOrDie();
+    options.platform = platform.value();
     options.device_name_prefix = name_prefix;
     options.device_name = DEVICE_XLA_GPU;
     options.device_ordinal = i;

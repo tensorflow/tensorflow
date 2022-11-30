@@ -18,12 +18,12 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -79,7 +79,7 @@ TEST_F(BatchNormExpanderTest, BatchNormTraining) {
   BatchNormExpander rewriter(/*rewrite_training_op=*/true,
                              /*rewrite_inference_op=*/true,
                              /*rewrite_grad_op=*/true);
-  ASSERT_TRUE(rewriter.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(rewriter.Run(module.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(CountGetDimensionSize(*module), 3);
   // Make sure this operation is expanded.
@@ -122,7 +122,7 @@ TEST_F(BatchNormExpanderTest, BatchNormGrad) {
   BatchNormExpander rewriter(/*rewrite_training_op=*/true,
                              /*rewrite_inference_op=*/true,
                              /*rewrite_grad_op=*/true);
-  ASSERT_TRUE(rewriter.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(rewriter.Run(module.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(CountGetDimensionSize(*module), 3);
   // Make sure this operation is expanded.
@@ -138,14 +138,14 @@ ENTRY entry {
   %param.2 = f32[4] parameter(2)
   ROOT %batch-norm-training = (f32[8,4], f32[4], f32[4])
     batch-norm-training(f32[8,4] %param.0, f32[4] %param.1, f32[4] %param.2),
-    epsilon=0.001, feature_index=1, sharding={maximal device=1}
+    epsilon=0.001, feature_index=1, sharding={{maximal device=1},{maximal device=1},{maximal device=1}}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   BatchNormExpander rewriter(/*rewrite_training_op=*/true,
                              /*rewrite_inference_op=*/true,
                              /*rewrite_grad_op=*/true);
-  ASSERT_TRUE(rewriter.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(rewriter.Run(m.get()).value());
 
   for (auto* instruction : m->entry_computation()->instructions()) {
     if (instruction->opcode() == HloOpcode::kParameter) {
@@ -166,7 +166,7 @@ ENTRY entry {
   %param.2 = f32[4] parameter(2)
   ROOT %batch-norm-training = (f32[8,4], f32[4], f32[4])
     batch-norm-training(f32[8,4] %param.0, f32[4] %param.1, f32[4] %param.2),
-    epsilon=0.001, feature_index=1, sharding={maximal device=1}
+    epsilon=0.001, feature_index=1, sharding={{maximal device=1},{maximal device=1},{maximal device=1}}
 })";
   EXPECT_TRUE(RunAndCompare(module_str, ErrorSpec{1e-4, 1e-4}));
 }

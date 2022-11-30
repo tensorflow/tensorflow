@@ -25,15 +25,15 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -235,9 +235,9 @@ std::string HloModuleGroupUtil::CycleToString(
   return absl::StrJoin(names, " --> ");
 }
 
-Status HloModuleGroupUtil::VisitTopologicalOrder(
-    VisitStates* visit_state, const VisitFunction& visit_function,
-    HloInstruction* root) {
+Status HloModuleGroupUtil::VisitTopologicalOrder(VisitStates* visit_state,
+                                                 VisitFunction visit_function,
+                                                 HloInstruction* root) {
   // Stack of HLO instructions visited in DFS order.
   std::stack<HloInstruction*> stack;
   stack.push(root);

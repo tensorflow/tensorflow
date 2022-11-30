@@ -14,6 +14,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -21,10 +22,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -48,7 +49,6 @@ using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::Gt;
 using ::testing::HasSubstr;
-using ::testing::IsSubsetOf;
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAreArray;
 

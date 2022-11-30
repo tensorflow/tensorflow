@@ -3,6 +3,7 @@ load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//tensorflow:tensorflow.bzl", "workspace_root")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -62,7 +63,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:serialization_base",
-        "//tensorflow/lite/delegates/gpu/common/task:storage_type_util",
         "//tensorflow/lite/delegates/gpu/common/transformations:add_bias",
         "//tensorflow/lite/delegates/gpu/common/transformations:global_pooling_to_reduce_op",
         "//tensorflow/lite/delegates/gpu/common/transformations:merge_padding_with",
@@ -80,6 +80,26 @@ flatbuffer_cc_library(
     ],
     includes = [
         "//tensorflow/lite/delegates/gpu/common/task:serialization_base_cc_fbs_includes",
+    ],
+)
+
+cc_library(
+    name = "gpu_model_test_util",
+    testonly = True,
+    srcs = ["gpu_model_test_util.cc"],
+    hdrs = ["gpu_model_test_util.h"],
+    deps = [
+        ":gpu_model",
+        ":operations",
+        ":status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:cast",
+        "//tensorflow/lite/delegates/gpu/common/tasks:concat_z",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_generic",
+        "//tensorflow/lite/delegates/gpu/common/tasks:elementwise",
+        "//tensorflow/lite/delegates/gpu/common/tasks:prelu",
+        "//tensorflow/lite/delegates/gpu/common/tasks:reshape",
+        "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice",
     ],
 )
 
@@ -223,7 +243,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite:framework_lib",
@@ -324,6 +344,7 @@ cc_library(
         ":shape",
         ":status",
         ":tensor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:variant",
     ],
 )

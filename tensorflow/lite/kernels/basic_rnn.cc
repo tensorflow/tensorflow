@@ -184,6 +184,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context,
                       GetTemporarySafe(context, node, /*index=*/5, &row_sums));
     row_sums->type = kTfLiteInt32;
+    row_sums->name = "Rnn_row_sums";
     row_sums->allocation_type = kTfLiteArenaRwPersistent;
     int row_sums_dims[2] = {2, num_units};
     if (!TfLiteIntArrayEqualsArray(row_sums->dims, 2, row_sums_dims)) {

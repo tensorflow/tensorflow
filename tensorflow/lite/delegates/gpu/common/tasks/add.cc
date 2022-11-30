@@ -74,9 +74,17 @@ GPUOperation CreateAdd(const OperationDef& definition,
   op_desc.code = "  out_value = in_value;\n";
   for (int i = 1; i < definition.src_tensors.size(); ++i) {
     const std::string tensor_name = absl::StrCat("src_tensor_", i);
+    std::string coords = "X_COORD, Y_COORD";
+    if (definition.src_tensors[i].HasAxis(Axis::DEPTH)) {
+      coords += ", Z_COORD";
+    }
+    coords += ", S_COORD";
+    if (definition.src_tensors[i].HasAxis(Axis::BATCH)) {
+      coords += ", B_COORD";
+    }
     op_desc.code += "if (S_COORD < args." + tensor_name + ".Slices()) {\n";
-    op_desc.code += "  out_value += args." + tensor_name +
-                    ".Read(X_COORD, Y_COORD, S_COORD);\n";
+    op_desc.code +=
+        "  out_value += args." + tensor_name + ".Read(" + coords + ");\n";
     op_desc.code += "}\n";
   }
   return CreateGpuOperation(definition, std::move(op_desc));

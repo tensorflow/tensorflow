@@ -94,7 +94,7 @@ Status DTensorMlirPassRunner::RunOnGraph(
             module_ref.status().error_message())
             .c_str());
 
-  mlir::ModuleOp module = module_ref.ValueOrDie().get();
+  mlir::ModuleOp module = module_ref.value().get();
 
   AddDevicesToOp(module, &device_set);
 

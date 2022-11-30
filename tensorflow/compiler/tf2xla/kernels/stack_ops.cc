@@ -43,7 +43,7 @@ Status GetStackShape(xla::XlaBuilder* builder, XlaResource* resource,
   if (!shape_or_status.ok()) {
     return shape_or_status.status();
   }
-  xla::Shape shape = shape_or_status.ValueOrDie();
+  xla::Shape shape = shape_or_status.value();
   TF_RET_CHECK(shape.IsTuple());
   return XLAShapeToTensorShape(xla::ShapeUtil::GetTupleElementShape(shape, 0),
                                stack_shape);

@@ -487,6 +487,8 @@ class TileTest(test.TestCase, parameterized.TestCase):
   def testTypes(self):
     types_to_test = {
         "bool": (dtypes.bool, bool),
+        "bfloat16": (dtypes.bfloat16, float),
+        "float16": (dtypes.float16, float),
         "float32": (dtypes.float32, float),
         "float64": (dtypes.float64, float),
         "complex64": (dtypes.complex64, complex),

@@ -23,12 +23,12 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/reflection_generated.h"  // from @flatbuffers
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/decode_jpeg_status.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/jpeg_common.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/jpeg_header_parser.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier/validation_graph_builder.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/logger.h"

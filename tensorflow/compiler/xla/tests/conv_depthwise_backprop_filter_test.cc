@@ -199,5 +199,18 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Bool()),
     BatchGroupedConvolution2DTestDataToString);
 
+XLA_TEST_F(HloTestBase, OutpuChannelsSmallerThanBatch) {
+  const std::string& hlo_string = R"(
+HloModule main, entry_computation_layout={(bf16[4,4,4,1]{3,2,1,0},bf16[2,2,1,2]{3,2,1,0})->bf16[2,2,2,2]{3,2,1,0}}
+
+ENTRY %main.4 (Arg_0.1: bf16[4,4,4,1], Arg_1.2: bf16[2,2,1,2]) -> bf16[2,2,2,2] {
+  %Arg_0.1 = bf16[4,4,4,1] parameter(0)
+  %Arg_1.2 = bf16[2,2,1,2] parameter(1)
+  ROOT %convolution.3 = bf16[2,2,2,2] convolution(bf16[4,4,4,1] %Arg_0.1, bf16[2,2,1,2] %Arg_1.2), window={size=2x2 stride=2x2}, dim_labels=b01f_01io->b01f, batch_group_count=2
+}
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.01, 0.01}));
+}
+
 }  // namespace
 }  // namespace xla

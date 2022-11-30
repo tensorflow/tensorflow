@@ -19,6 +19,10 @@ namespace xla {
 namespace gpu {
 
 bool IsCublasGemm(const HloInstruction& hlo) {
+  return IsLegacyCublasMatmul(hlo) || IsCublasLtMatmul(hlo);
+}
+
+bool IsLegacyCublasMatmul(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&
          hlo.custom_call_target() == kGemmCallTarget;
 }

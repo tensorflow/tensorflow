@@ -589,7 +589,8 @@ Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
     data_format_str = "NHWC";
   }
   if (!c->GetAttr("filter_format", &filter_format_str).ok()) {
-    filter_format_str = "HWIO";
+    filter_format_str =
+        data_format_str == "NCHW_VECT_C" ? "OIHW_VECT_I" : "HWIO";
   }
 
   TensorFormat data_format;
@@ -2177,7 +2178,7 @@ Status RandomShape(shape_inference::InferenceContext* c) {
   return OkStatus();
 }
 
-Status UnsortedSegmentReductionShapeFn(InferenceContext* c) {
+Status SegmentReductionWithNumSegmentsShapeFn(InferenceContext* c) {
   ShapeHandle s_data = c->input(0);
   ShapeHandle s_segment_ids = c->input(1);
   ShapeHandle s_num_segments = c->input(2);
@@ -2556,6 +2557,65 @@ Status QuantizedConv2DShape(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
   c->set_output(1, c->Scalar());
   c->set_output(2, c->Scalar());
+  return OkStatus();
+}
+
+Status FusedQuantizedConvShape(InferenceContext* c, int num_dims) {
+  std::vector<string> fused_ops;
+  TF_RETURN_IF_ERROR(c->GetAttr("fused_ops", &fused_ops));
+  ShapeHandle unused, channel;
+  bool fused_sum, fused_bias, fused_requantize;
+  fused_sum =
+      std::find(fused_ops.begin(), fused_ops.end(), "Sum") != fused_ops.end();
+  fused_bias = std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") !=
+               fused_ops.end();
+  fused_requantize = std::find(fused_ops.begin(), fused_ops.end(),
+                               "Requantize") != fused_ops.end();
+  const int kMinInputBaseIdx = 2;
+  const int kMinFilterBaseIdx = 4;
+  int min_input_filter_offset = 0;
+  if (fused_bias && !fused_sum) {
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));  // bias
+    min_input_filter_offset = 1;
+  } else if (fused_sum && !fused_bias) {
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(2), num_dims, &unused));  // summand
+    min_input_filter_offset = 1;
+  } else if (fused_bias && fused_sum) {
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));         // bias
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(3), num_dims, &unused));  // summand
+    min_input_filter_offset = 2;
+  }
+  TF_RETURN_IF_ERROR(
+      c->WithRank(c->input(kMinInputBaseIdx + min_input_filter_offset), 0,
+                  &unused));  // min_input
+  TF_RETURN_IF_ERROR(
+      c->WithRank(c->input(kMinInputBaseIdx + min_input_filter_offset + 1), 0,
+                  &unused));  // max_input
+  TF_RETURN_IF_ERROR(
+      c->WithRankAtMost(c->input(kMinFilterBaseIdx + min_input_filter_offset),
+                        1, &channel));  // min_filter
+  TF_RETURN_IF_ERROR(c->WithRankAtMost(
+      c->input(kMinFilterBaseIdx + min_input_filter_offset + 1), 1,
+      &channel));  // max_filter
+  if (fused_requantize) {
+    c->set_output(1, c->Scalar());
+    c->set_output(2, c->Scalar());
+  } else {
+    c->set_output(1, channel);
+    c->set_output(2, channel);
+  }
+  return OkStatus();
+}
+
+Status FusedQuantizedConv2DShape(InferenceContext* c) {
+  TF_RETURN_IF_ERROR(shape_inference::Conv2DShapeImpl(c, true));
+  TF_RETURN_IF_ERROR(FusedQuantizedConvShape(c, 4));
+  return OkStatus();
+}
+
+Status FusedQuantizedDepthwiseConv2D(InferenceContext* c) {
+  TF_RETURN_IF_ERROR(DepthwiseConv2DNativeShapeImpl(c, true));
+  TF_RETURN_IF_ERROR(FusedQuantizedConvShape(c, 4));
   return OkStatus();
 }
 

@@ -18,13 +18,14 @@ limitations under the License.
 
 #include <iostream>
 
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/types.h"
 
 #ifdef XLA_CPU_USE_ACL
 #include "arm_compute/runtime/NEON/NEFunctions.h"
 #include "arm_compute/runtime/NEON/NEScheduler.h"
 #include "utils/Utils.h"
 
+extern "C" {
 struct acl_matmul_obj_t {
   arm_compute::NEGEMM gemm;
   arm_compute::NETranspose trans_lhs;
@@ -59,7 +60,9 @@ extern void __xla_cpu_runtime_ACLBatchMatMulF32(
     float* lhs, float* rhs, int64_t m, int64_t n, int64_t k, int64_t batch_size,
     int32_t transpose_lhs, int32_t transpose_rhs);
 
+}  // extern "C"
 #else
+extern "C" {
 extern void __xla_cpu_runtime_ACLMatMulF32(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, float* out,
     float* lhs, float* rhs, int64_t m, int64_t n, int64_t k,
@@ -79,6 +82,6 @@ extern void __xla_cpu_runtime_ACLBatchMatMulF32(
          "XLA_CPU_USE_ACL. Add --define=build_with_acl=true to build with ACL.";
   exit(1);
 }
-
+}  // extern "C"
 #endif  // XLA_CPU_USE_ACL
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_MATMUL_ACL_H_

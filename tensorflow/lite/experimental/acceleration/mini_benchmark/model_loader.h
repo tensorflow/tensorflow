@@ -40,6 +40,10 @@ class ModelLoader {
 
   const FlatBufferModel* GetModel() const { return model_.get(); }
 
+  // Return whether the FlatBufferModel is created from FlatbufferBuilder
+  // directly.
+  virtual bool IsLoadedFromFlatbufferBuilder() = 0;
+
  protected:
   // ModelLoader() = default;
 
@@ -56,6 +60,8 @@ class PathModelLoader : public ModelLoader {
  public:
   explicit PathModelLoader(absl::string_view model_path)
       : ModelLoader(), model_path_(model_path) {}
+
+  bool IsLoadedFromFlatbufferBuilder() override { return false; }
 
  protected:
   MinibenchmarkStatus InitInternal() override;
@@ -83,6 +89,8 @@ class MmapModelLoader : public ModelLoader {
     }
   }
 
+  bool IsLoadedFromFlatbufferBuilder() override { return false; }
+
  protected:
   MinibenchmarkStatus InitInternal() override;
 
@@ -108,6 +116,8 @@ class PipeModelLoader : public ModelLoader {
 
   ~PipeModelLoader() override { std::free(model_buffer_); }
 
+  bool IsLoadedFromFlatbufferBuilder() override { return true; }
+
  protected:
   // Read the serialized Model from read_pipe_fd. Return ModelReadFailed if the
   // readin bytes is less than read_size. This function also closes the
@@ -128,7 +138,7 @@ class PipeModelLoader : public ModelLoader {
 // parsed.
 // 2) Pipe descriptor path: path must be in the format of
 // "pipe:%read_pipe%:%write_pipe%:%model_size%". This function also closes the
-// write_pipe for the caller, so it should be called at the read thread /
+// write_pipe when write_pipe >= 0, so it should be called at the read thread /
 // process. Returns null if path cannot be parsed.
 // 3) File path: Always return a PathModelLoader.
 // NOTE: This helper function is designed for creating the ModelLoader from

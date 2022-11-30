@@ -15,36 +15,39 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_QUANTIZE_MODEL_WRAPPER_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_QUANTIZE_MODEL_WRAPPER_H_
 
-#include <pybind11/stl.h>
-
 #include <string>
+#include <utility>
 
 #include "absl/strings/string_view.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
-#include "tensorflow/python/lib/core/pybind11_lib.h"
 
 namespace tensorflow {
 namespace quantization {
 
-PyObject* QuantizeQATModel(const absl::string_view saved_model_path,
-                           const absl::string_view exported_names_str,
-                           const absl::string_view tags,
-                           const std::string& quant_opts_serialized);
+// Runs quantization on a model trained with quantization-aware training (QAT).
+// Returns serialized ExportedModel.
+std::string QuantizeQatModel(absl::string_view saved_model_path,
+                             absl::string_view exported_names_str,
+                             absl::string_view tags,
+                             absl::string_view quant_opts_serialized);
 
-PyObject* QuantizePTQDynamicRange(const absl::string_view saved_model_path,
-                                  const absl::string_view exported_names_str,
-                                  const absl::string_view tags,
-                                  const std::string& quant_opts_serialized);
+// Runs dynamic range post-training quantization (PTQ). Returns serialized
+// ExportedModel.
+std::string QuantizePtqDynamicRange(absl::string_view saved_model_path,
+                                    absl::string_view exported_names_str,
+                                    absl::string_view tags,
+                                    absl::string_view quant_opts_serialized);
 
-PyObject* QuantizePTQModelPreCalibration(
-    const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags);
+// Runs the pre-calibration step of post-training quantization (PTQ). Returns
+// serialized ExportedModel.
+std::string QuantizePtqModelPreCalibration(
+    absl::string_view saved_model_path, absl::string_view exported_names_str,
+    absl::string_view tags, absl::string_view quant_opts_serialized);
 
-PyObject* QuantizePTQModelPostCalibration(
-    const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
-    const std::string& quant_opts_serialized);
+// Runs the post-calibration step of post-training quantization (PTQ). Returns
+// serialized ExportedModel.
+std::string QuantizePtqModelPostCalibration(
+    absl::string_view saved_model_path, absl::string_view exported_names_str,
+    absl::string_view tags, absl::string_view quant_opts_serialized);
 
 void ClearCollectedInformationFromCalibrator();
 

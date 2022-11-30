@@ -1,11 +1,11 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_compatible_with = get_compatible_with_cloud(),
     default_visibility = [
-        "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
         "//tensorflow/core:__subpackages__",
         "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
     ],
@@ -28,17 +28,6 @@ gentbl_cc_library(
     td_file = "passes.td",
     deps = [
         "@llvm-project//mlir:PassBaseTdFiles",
-    ],
-)
-
-cc_library(
-    name = "PassDetail",
-    hdrs = ["pass_detail.h"],
-    deps = [
-        ":PassIncGen",
-        "//tensorflow/core/ir:Dialect",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -99,6 +88,7 @@ cc_library(
     deps = [
         ":PDLLUtilsIncGen",
         ":utils",
+        "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core/ir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

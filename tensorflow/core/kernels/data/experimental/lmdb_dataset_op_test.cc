@@ -76,7 +76,7 @@ tstring MaybeCopyDataFile() {
   FileSystem* fs;  // Pointer to singleton
   TF_EXPECT_OK(Env::Default()->GetFileSystemForFile(src_loc, &fs));
 
-  // FileSystem::FileExists currently returns Status::OK() if the file
+  // FileSystem::FileExists currently returns OkStatus() if the file
   // exists and errors::NotFound() if the file doesn't exist. There's no
   // indication in the code or docs about whether other error codes may be
   // added in the future, so we code defensively here.

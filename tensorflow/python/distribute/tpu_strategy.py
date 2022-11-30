@@ -24,9 +24,9 @@ import weakref
 from absl import logging
 import numpy as np
 
-from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
 from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
 from tensorflow.python.autograph.impl import api as autograph
+from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -929,7 +929,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._use_spmd_for_xla_partitioning = use_spmd_for_xla_partitioning
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
-    distribute_utils. validate_colocate(colocate_with_variable, self)
+    distribute_utils.validate_colocate(colocate_with_variable, self)
 
   def _make_dataset_iterator(self, dataset):
     """Make iterators for each of the TPU hosts."""

@@ -19,6 +19,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif  // _WIN32
+
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -34,7 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/tensor_bundle.pb.h"
-#include "tensorflow/core/util/tensor_bundle/byte_swap.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 
 namespace tensorflow {
 using ::testing::ElementsAre;
@@ -63,6 +67,11 @@ Tensor Constant(T v, TensorShape shape) {
 template <typename T>
 Tensor Constant_2x3(T v) {
   return Constant(v, TensorShape({2, 3}));
+}
+
+template <typename T>
+Tensor Constant_100x100(T v) {
+  return Constant(v, TensorShape({100, 100}));
 }
 
 Tensor ByteSwap(Tensor t) {
@@ -723,6 +732,19 @@ TEST(TensorBundleTest, StringTensorsOldFormat) {
   Expect<float>(&reader, "floats", Constant_2x3<float>(16.18));
 }
 
+// Copied from absl code.
+size_t GetPageSize() {
+#ifdef _WIN32
+  SYSTEM_INFO system_info;
+  GetSystemInfo(&system_info);
+  return std::max(system_info.dwPageSize, system_info.dwAllocationGranularity);
+#elif defined(__wasm__) || defined(__asmjs__)
+  return getpagesize();
+#else
+  return sysconf(_SC_PAGESIZE);
+#endif
+}
+
 TEST(TensorBundleTest, StringTensors) {
   constexpr size_t kLongLength = static_cast<size_t>(UINT32_MAX) + 1;
   Tensor long_string_tensor(DT_STRING, TensorShape({1}));
@@ -783,14 +805,17 @@ TEST(TensorBundleTest, StringTensors) {
     TF_ASSERT_OK(reader.Lookup("long_scalar", &long_string_tensor));
     ASSERT_EQ(backing_string, long_string_tensor.flat<tstring>().data());
     EXPECT_EQ(kLongLength, backing_string->length());
-    for (size_t i = 0; i < kLongLength; i++) {
-      // Not using ASSERT_EQ('d', c) because this way is twice as fast due to
-      // compiler optimizations.
-      if ((*backing_string)[i] != 'd') {
+
+    const size_t kPageSize = GetPageSize();
+    char* testblock = new char[kPageSize];
+    memset(testblock, 'd', sizeof(char) * kPageSize);
+    for (size_t i = 0; i < kLongLength; i += kPageSize) {
+      if (memcmp(testblock, backing_string->data() + i, kPageSize) != 0) {
         FAIL() << "long_scalar is not full of 'd's as expected.";
         break;
       }
     }
+    delete[] testblock;
   }
 }
 
@@ -1097,6 +1122,29 @@ TEST(TensorBundleTest, VersionTest) {
         strings::StrCat(
             "Checkpoint disallows consumer version ", kTensorBundleVersion,
             ".  Please upgrade TensorFlow: this version is likely buggy."));
+  }
+}
+
+TEST(TensorBundleTest, LargeVariableLoadingTest) {
+  {
+    BundleWriter writer(Env::Default(), Prefix("foo"));
+    TF_EXPECT_OK(writer.Add("foo_003", Constant_100x100<float>(3)));
+    TF_EXPECT_OK(writer.Add("foo_000", Constant_100x100<float>(0)));
+    TF_EXPECT_OK(writer.Add("foo_002", Constant_100x100<float>(2)));
+    TF_EXPECT_OK(writer.Add("foo_001", Constant_100x100<float>(1)));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  {
+    BundleReader reader(Env::Default(), Prefix("foo"),
+                        /* enable_multi_threading_for_testing = */ true);
+    TF_ASSERT_OK(reader.status());
+    EXPECT_EQ(
+        AllTensorKeys(&reader),
+        std::vector<string>({"foo_000", "foo_001", "foo_002", "foo_003"}));
+    Expect<float>(&reader, "foo_000", Constant_100x100<float>(0));
+    Expect<float>(&reader, "foo_001", Constant_100x100<float>(1));
+    Expect<float>(&reader, "foo_002", Constant_100x100<float>(2));
+    Expect<float>(&reader, "foo_003", Constant_100x100<float>(3));
   }
 }
 

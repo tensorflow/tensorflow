@@ -12,9 +12,10 @@ load(
     "if_static",
     "tf_cuda_tests_tags",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -23,6 +24,7 @@ package_group(
     name = "friends",
     packages = [
         # Authorized users go here.
+        "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/mobile/lite/delegates/tfmrt/...",
@@ -83,6 +85,18 @@ cc_library(
 )
 
 cc_library(
+    name = "op_kernel_runner_cache",
+    srcs = ["op_kernel_runner_cache.cc"],
+    hdrs = ["op_kernel_runner_cache.h"],
+    deps = [
+        ":op_kernel_runner",
+        "//tensorflow/core/framework:node_def_util",
+        "@com_google_absl//absl/strings",
+        "@tf_runtime//:hostcontext",
+    ],
+)
+
+cc_library(
     name = "cost_recorder",
     srcs = ["cost_recorder.cc"],
     hdrs = ["cost_recorder.h"],
@@ -90,8 +104,8 @@ cc_library(
         ":op_cost_map_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/util:env_var",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
         "@tf_runtime//:hostcontext",
     ],
 )

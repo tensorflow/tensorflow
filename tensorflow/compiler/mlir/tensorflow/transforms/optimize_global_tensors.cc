@@ -36,13 +36,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 
 namespace mlir {
 namespace tf_saved_model {
 namespace {
+
+#define GEN_PASS_DEF_OPTIMIZEGLOBALTENSORSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
 struct OptimizeGlobalTensorsPass
-    : public OptimizeGlobalTensorsPassBase<OptimizeGlobalTensorsPass> {
+    : public impl::OptimizeGlobalTensorsPassBase<OptimizeGlobalTensorsPass> {
   void runOnOperation() override;
 };
 
@@ -61,7 +63,7 @@ bool IsImmutable(GlobalTensorOp global_tensor,
                  ArrayRef<GlobalTensorUse> global_tensor_uses,
                  const TF::ResourceAnalyzer& resource_analyzer) {
   // Global tensor is already known to be immutable.
-  if (!global_tensor.is_mutable()) {
+  if (!global_tensor.getIsMutable()) {
     return false;
   }
   // An exported global tensor that is not already known to be immutable might

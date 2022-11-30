@@ -186,9 +186,9 @@ TEST(Status, InvalidPayloadGetsIgnored) {
 TEST(Status, SetPayloadSetsOrUpdatesIt) {
   Status s(error::INTERNAL, "Error message");
   s.SetPayload("Error key", "Original");
-  ASSERT_EQ(s.GetPayload("Error key"), tensorflow::StringPiece("Original"));
+  ASSERT_EQ(s.GetPayload("Error key"), absl::Cord("Original"));
   s.SetPayload("Error key", "Updated");
-  ASSERT_EQ(s.GetPayload("Error key"), tensorflow::StringPiece("Updated"));
+  ASSERT_EQ(s.GetPayload("Error key"), absl::Cord("Updated"));
 }
 
 TEST(Status, ErasePayloadRemovesIt) {

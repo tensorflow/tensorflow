@@ -1,9 +1,10 @@
 # Description:
 #   Low-level utilities for reading and writing checkpoints.
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -56,7 +57,6 @@ py_library(
         "//tensorflow/python/trackable:trackable_utils",
         "//tensorflow/python/types",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )
 
@@ -68,7 +68,6 @@ tf_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/checkpoint",
-        "//tensorflow/python/checkpoint:saveable_compat",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:dtypes",

@@ -152,4 +152,18 @@ def SparsityParameterAttr : AttrDef<TFL_Dialect, "SparsityParameter"> {
   let assemblyFormat = "`<` struct(params) `>`";
 }
 
+def TFL_ConstBytesAttr : AttrDef<TFL_Dialect, "ConstBytes"> {
+  let summary = "A string attribute representation of compiled bytes";
+  let description = [{
+    Syntax Examples:
+
+    ```mlir
+    #tfl<const_bytes : "0xDEADBEEF">
+    ```
+  }];
+  let mnemonic = "const_bytes";
+  let parameters = (ins StringRefParameter<"">:$value);
+  let hasCustomAssemblyFormat = 1;
+}
+
 #endif // TFL_OP_ENUMS

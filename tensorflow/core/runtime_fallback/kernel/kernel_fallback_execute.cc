@@ -28,6 +28,7 @@ limitations under the License.
 #include "tfrt/common/compat/eigen/thread_pool_device.h"  // from @tf_runtime
 #include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
+#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
 #include "tfrt/support/ref_count.h"  // from @tf_runtime

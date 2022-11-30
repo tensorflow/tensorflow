@@ -160,6 +160,7 @@ Status RunGpuConvForwardActivation(const GpuConvParams& params,
                                       output_type,
                                       params.config->conv_result_scale,
                                       params.config->fusion->side_input_scale,
+                                      /* leakyrelu_alpha = */ 0.0,
                                       params.config->input_descriptor,
                                       params.config->filter_descriptor,
                                       bias_desc,
@@ -239,11 +240,6 @@ Status RunGpuConvImpl(const GpuConvParams& params, se::Stream* stream,
   auto filter_buf = se::DeviceMemory<ElementType>(params.filter_buf);
   auto output_buf = se::DeviceMemory<OutputType>(params.output_buf);
 
-  se::dnn::AlgorithmDesc algorithm = params.config->algorithm;
-  if (options.runner_cache) {
-    algorithm = options.runner_cache->ToAlgorithmDesc();
-  }
-
   Status run_status = RunGpuConvInternalImpl<ElementType, BiasType, OutputType>(
       params, stream, options, input_buf, filter_buf, output_buf,
       scratch_memory);
@@ -253,6 +249,10 @@ Status RunGpuConvImpl(const GpuConvParams& params, se::Stream* stream,
   }
 
   if (!stream->ok()) {
+    se::dnn::AlgorithmDesc algorithm = params.config->algorithm;
+    if (options.runner_cache) {
+      algorithm = options.runner_cache->ToAlgorithmDesc();
+    }
     return InternalError(
         "Unable to launch convolution with type %s and algorithm %s",
         CudnnConvKindToString(params.config->kind), algorithm.ToString());

@@ -53,7 +53,7 @@ Status DoParallelConcatUpdate(const Device& d, const Tensor& value, int32 loc,
   TF_CHECK_OK(GpuLaunchKernel(
       DoParallelConcatOpKernel<T>, cfg.block_count, cfg.thread_per_block, 0,
       d.stream(), cfg.virtual_thread_count, nrows, ncols, loc, src, dst));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
@@ -76,7 +76,7 @@ Status DoParallelConcat(const Device& d, const Tensor& value, int32 loc,
       return errors::InvalidArgument("Unsupported data type: ",
                                      DataTypeString(value.dtype()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T, InplaceOpType op>
@@ -181,7 +181,7 @@ Status DoInplace(const Device& d, InplaceOpType op, const Tensor& i,
       return errors::InvalidArgument("Unsupported data type: ",
                                      DataTypeString(v.dtype()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
@@ -205,7 +205,7 @@ Status DoCopy(const Device& d, const Tensor& x, Tensor* y) {
       return errors::InvalidArgument("Unsupported dtype: ",
                                      DataTypeString(x.dtype()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace functor

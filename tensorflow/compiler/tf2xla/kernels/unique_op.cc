@@ -146,9 +146,9 @@ class UniqueOpBase : public XlaOpKernel {
     xla::XlaOp input = ctx->Input(0);
     StatusOr<xla::Shape> input_shape_or = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, input_shape_or.status());
-    auto input_shape = input_shape_or.ValueOrDie();
+    auto input_shape = input_shape_or.value();
     auto aux = MoveAxis(input, axis, 0, input_shape);
-    auto aux_shape = ctx->builder()->GetShape(aux).ValueOrDie();
+    auto aux_shape = ctx->builder()->GetShape(aux).value();
     int64_t leading_size = aux_shape.dimensions(0);
     int64_t product = 1;
     for (int64_t i = 1; i < aux_shape.rank(); ++i) {

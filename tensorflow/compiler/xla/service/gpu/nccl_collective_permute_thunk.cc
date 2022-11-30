@@ -22,15 +22,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/call_once.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 #if XLA_ENABLE_XCCL
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #endif
 
 namespace xla {
@@ -62,7 +61,7 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
   }
 
   const std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
-      ConvertNx2Attribute(op.getSourceTargetPairs()).ValueOrDie();
+      ConvertNx2Attribute(op.getSourceTargetPairs()).value();
 
   for (const std::pair<int64_t, int64_t>& source_target : source_target_pairs) {
     int64_t source = source_target.first;
@@ -83,7 +82,7 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
     mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
     int64_t partition_count) {
   const std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
-      ConvertNx2Attribute(op.getSourceTargetPairs()).ValueOrDie();
+      ConvertNx2Attribute(op.getSourceTargetPairs()).value();
   // Each ID can appear only once as a source and as a target. So if all pairs
   // are identity, all IDs must appear in the list is the size == number of
   // replicas/partitions.
@@ -99,13 +98,14 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
 /*static*/ bool NcclCollectivePermuteThunk::CanImplement(
     mlir::lmhlo::CollectivePermuteOp op) {
   const Shape shape = GetShape(op.getOperand());
-  return IsTypeSupportedByNccl(shape.element_type());
+  return IsTypeSupportedByNccl(shape.element_type(),
+                               Thunk::kNcclCollectivePermute);
 }
 
 NcclCollectivePermuteThunk::NcclCollectivePermuteThunk(
     ThunkInfo thunk_info, mlir::lmhlo::CollectivePermuteOp op,
     int64_t replica_count, int64_t partition_count, const Buffer& buffer)
-    : NcclCollectiveThunk(Thunk::kCollectivePermute, thunk_info),
+    : NcclCollectiveThunk(Thunk::kNcclCollectivePermute, thunk_info),
       config_(
           GetNcclCollectivePermuteConfig(op, replica_count, partition_count)),
       buffer_(buffer) {}
@@ -174,21 +174,6 @@ Status RunCollectivePermute(
   const std::optional<int64_t> source_id = source_target.source;
   const std::optional<int64_t> target_id = source_target.target;
 
-  // NCCL 2.8.x has an issue with point-to-point communication primitives if
-  // different ranks process different amounts of data. This can happen in the
-  // case of a collective permute as certain nodes may not do any send or
-  // receives, or do only send or only receive. Sending and receiving to self
-  // as well (identity pair) causes this imbalance. NCCL 2.8.x requires the
-  // use of NCCL_LAUNCH_MODE=PARALLEL to avoid these issues. See
-  // https://docs.nvidia.com/deeplearning/nccl/release-notes/rel_2-8-4.html#rel_2-8-4
-  if (!IsNcclLaunchModeParallel()) {
-    static absl::once_flag log_once;
-    absl::call_once(log_once, [] {
-      LOG(WARNING) << "NCCL based collective permute may not work correctly if "
-                      "NCCL_LAUNCH_MODE is not set to PARALLEL";
-    });
-  }
-
   se::DeviceMemoryBase src_addr = buffer.source_buffer;
   se::DeviceMemoryBase dest_addr = buffer.destination_buffer;
 
@@ -199,9 +184,10 @@ Status RunCollectivePermute(
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
 
   TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                      ToNcclDataTypeAndCountMultiplier(buffer.element_type));
+                      ToNcclDataTypeAndCountMultiplier(
+                          buffer.element_type, Thunk::kNcclCollectivePermute));
   ncclDataType_t dtype = dtype_and_multiplier.first;
-  int element_count = buffer.element_count * dtype_and_multiplier.second;
+  int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
 
   se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 

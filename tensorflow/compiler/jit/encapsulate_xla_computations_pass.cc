@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/encapsulate_xla_computations_pass.h"
 
+#include <functional>
+#include <string>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
@@ -32,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
@@ -223,28 +227,30 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
 }
 
 /*static*/ Status EncapsulateXlaComputationsPass::BuildXlaLaunchOps(
-    Graph* graph) {
+    Graph* graph,
+    const std::function<StatusOr<bool>(const Node&)>& is_xla_launch_node,
+    const std::function<StatusOr<XlaFunctionInfo>(const Node&)>&
+        get_xla_function_info,
+    const bool add_edges_to_output_of_downstream_nodes) {
   // Finds all of the XlaLaunch function calls, to avoid mutating the graph
   // while iterating.
   std::vector<Node*> launch_nodes;
   for (Node* n : graph->nodes()) {
-    const string& name = GetNodeAttrString(n->attrs(), kXlaClusterIdAttr);
-    if (!name.empty()) {
-      launch_nodes.push_back(n);
-    }
+    TF_ASSIGN_OR_RETURN(const bool is_xla_launch_node, is_xla_launch_node(*n));
+    if (is_xla_launch_node) launch_nodes.push_back(n);
   }
 
   // Replaces each launch function call together with its neighboring
   // XlaClusterOutput nodes with a XlaLaunch node.
   for (Node* launch : launch_nodes) {
-    int variable_start_index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(launch->attrs(), "_variable_start_index",
-                                   &variable_start_index));
+    TF_ASSIGN_OR_RETURN(const XlaFunctionInfo xla_function_info,
+                        get_xla_function_info(*launch));
 
     std::vector<const Edge*> in_edges;
     TF_RETURN_IF_ERROR(launch->input_edges(&in_edges));
 
     const int num_inputs = in_edges.size();
+    const int variable_start_index = xla_function_info.variable_start_index;
     const int num_variables = num_inputs - variable_start_index;
     const int num_args = variable_start_index;
 
@@ -278,7 +284,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
     const int num_outputs = launch->output_types().size();
     absl::flat_hash_set<Node*> control_outputs;
     std::vector<std::vector<std::pair<Node*, int>>> data_outputs(num_outputs);
-    DataTypeVector output_types(num_outputs);
+    const DataTypeVector& output_types(launch->output_types());
 
     for (const Edge* le : launch->out_edges()) {
       if (le->IsControlEdge()) {
@@ -287,18 +293,22 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
         TF_RET_CHECK(le->src_output() < num_outputs);
         Node* output_node = le->dst();
 
-        TF_RET_CHECK(output_node->type_string() == kXlaClusterOutput)
-            << le->DebugString();
-        nodes_to_remove.push_back(output_node);
+        if (add_edges_to_output_of_downstream_nodes) {
+          TF_RET_CHECK(output_node->type_string() == kXlaClusterOutput)
+              << le->DebugString();
+          nodes_to_remove.push_back(output_node);
 
-        for (const Edge* oe : output_node->out_edges()) {
-          TF_RET_CHECK(!oe->IsControlEdge());
+          for (const Edge* oe : output_node->out_edges()) {
+            TF_RET_CHECK(!oe->IsControlEdge());
+            data_outputs[le->src_output()].push_back(
+                {oe->dst(), oe->dst_input()});
+          }
+
+          AddControlOutputs(*output_node, &control_outputs);
+        } else {
           data_outputs[le->src_output()].push_back(
-              {oe->dst(), oe->dst_input()});
+              {le->dst(), le->dst_input()});
         }
-        output_types[le->src_output()] = output_node->input_type(0);
-
-        AddControlOutputs(*output_node, &control_outputs);
       }
     }
 
@@ -316,7 +326,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
     AddNodeAttr("Nresources", num_variables, &def);
     AddNodeAttr("Tresults", output_types, &def);
     NameAttrList function;
-    function.set_name(launch->type_string());
+    function.set_name(xla_function_info.function_name);
     AddNodeAttr("function", function, &def);
 
     for (Node* node : nodes_to_remove) {
@@ -346,6 +356,25 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
     }
   }
   return OkStatus();
+}
+
+/*static*/ Status EncapsulateXlaComputationsPass::BuildXlaLaunchOps(
+    Graph* graph) {
+  const auto is_xla_launch_node = [](const Node& node) -> StatusOr<bool> {
+    const string& name = GetNodeAttrString(node.attrs(), kXlaClusterIdAttr);
+    return !name.empty();
+  };
+
+  const auto get_xla_function_info =
+      [](const Node& node) -> StatusOr<XlaFunctionInfo> {
+    XlaFunctionInfo result;
+    TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), "_variable_start_index",
+                                   &result.variable_start_index));
+    result.function_name = node.type_string();
+    return result;
+  };
+  return BuildXlaLaunchOps(graph, is_xla_launch_node, get_xla_function_info,
+                           /*add_edges_to_output_of_downstream_nodes=*/true);
 }
 
 Status EncapsulateXlaComputationsPass::Run(

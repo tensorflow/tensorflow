@@ -35,23 +35,13 @@ void EvalPerChannelDequantize(const Tensor& input, const Tensor& scales,
   DCHECK(input.IsSameSize(output));
   const float* scales_data = scales.flat<float>().data();
   const int32_t* zero_points_data = zero_points.flat<int32_t>().data();
-  const int64_t quantization_dim_size = output.dim_size(quantization_axis);
 
   auto input_tensor =
       input.template flat_inner_outer_dims<Tin, 3>(quantization_axis - 1);
+  auto output_tensor =
+      output.template flat_inner_outer_dims<Tout, 3>(quantization_axis - 1);
 
-  int64_t pre_dim_size = 1;
-  for (int i = 0; i < quantization_axis; ++i) {
-    pre_dim_size *= output.dim_size(i);
-  }
-  int64_t post_dim_size = 1;
-  for (int i = quantization_axis + 1; i < output.dims(); ++i) {
-    post_dim_size *= output.dim_size(i);
-  }
-  auto output_tensor = output.template bit_casted_shaped<Tout, 3>(
-      {pre_dim_size, quantization_dim_size, post_dim_size});
-
-  for (int i = 0; i < quantization_dim_size; ++i) {
+  for (int i = 0; i < output.dim_size(quantization_axis); ++i) {
     AffineDequantize(input_tensor.template chip<1>(i), scales_data[i],
                      zero_points_data[i], output_tensor.template chip<1>(i));
   }

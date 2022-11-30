@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher_impl.h"
 
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
@@ -32,7 +33,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/time/time.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/hash_utils.h"
 #include "tensorflow/core/data/service/common.h"
@@ -492,7 +492,7 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
     VLOG(3) << "RegisterDataset returns an existing dataset with ID = "
             << *dataset_id << ", fingerprint = " << fingerprint << ".";
     response->set_dataset_id(*dataset_id);
-    return Status::OK();
+    return OkStatus();
   }
 
   std::string new_dataset_id;
@@ -598,7 +598,7 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
   }
   VLOG(3) << "Received job id " << job->id << " for CreateJob("
           << request->DebugString() << ")";
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherImpl::GetOrCreateIteration(
@@ -748,7 +748,7 @@ Status DataServiceDispatcherImpl::CreateJob(
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
   tensorflow::metrics::RecordTFDataServiceJobsCreated(
       request.processing_mode_def(), is_coordinated_read);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherImpl::CreateIteration(
@@ -967,7 +967,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     ClientHeartbeatUpdate* client_heartbeat = update.mutable_client_heartbeat();
     bool apply_update = false;
     client_heartbeat->set_iteration_client_id(request->iteration_client_id());
-    absl::optional<int64_t> blocked_round;
+    std::optional<int64_t> blocked_round;
     if (request->optional_blocked_round_case() ==
         ClientHeartbeatRequest::kBlockedRound) {
       blocked_round = request->blocked_round();

@@ -23,8 +23,6 @@ from collections import abc
 import os
 import time
 
-import six
-
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
@@ -52,6 +50,18 @@ def load_checkpoint(ckpt_dir_or_file):
   If `ckpt_dir_or_file` resolves to a directory with multiple checkpoints,
   reader for the latest checkpoint is returned.
 
+  Example usage:
+
+  ```python
+  import tensorflow as tf
+  a = tf.Variable(1.0)
+  b = tf.Variable(2.0)
+  ckpt = tf.train.Checkpoint(var_list={'a': a, 'b': b})
+  ckpt_path = ckpt.save('tmp-ckpt')
+  reader= tf.train.load_checkpoint(ckpt_path)
+  print(reader.get_tensor('var_list/a/.ATTRIBUTES/VARIABLE_VALUE'))  # 1.0
+  ```
+
   Args:
     ckpt_dir_or_file: Directory with checkpoints file or path to checkpoint
       file.
@@ -73,6 +83,22 @@ def load_checkpoint(ckpt_dir_or_file):
 @tf_export("train.load_variable")
 def load_variable(ckpt_dir_or_file, name):
   """Returns the tensor value of the given variable in the checkpoint.
+
+  When the variable name is unknown, you can use `tf.train.list_variables` to
+  inspect all the variable names.
+
+  Example usage:
+
+  ```python
+  import tensorflow as tf
+  a = tf.Variable(1.0)
+  b = tf.Variable(2.0)
+  ckpt = tf.train.Checkpoint(var_list={'a': a, 'b': b})
+  ckpt_path = ckpt.save('tmp-ckpt')
+  var= tf.train.load_variable(
+      ckpt_path, 'var_list/a/.ATTRIBUTES/VARIABLE_VALUE')
+  print(var)  # 1.0
+  ```
 
   Args:
     ckpt_dir_or_file: Directory with checkpoints file or path to checkpoint.
@@ -96,7 +122,7 @@ def list_variables(ckpt_dir_or_file):
 
   Example usage:
 
-    ```python
+  ```python
   import tensorflow as tf
   import os
   ckpt_directory = "/tmp/training_checkpoints/ckpt"
@@ -359,7 +385,7 @@ def _init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   reader = load_checkpoint(ckpt_dir_or_file)
   variable_map = reader.get_variable_to_shape_map()
   if isinstance(assignment_map, abc.Mapping):
-    assignment_map = six.iteritems(assignment_map)
+    assignment_map = assignment_map.items()
 
   # We only want to sort by tensor names.
   sort_key = lambda pair: pair[0]

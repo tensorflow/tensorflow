@@ -19,6 +19,7 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <numeric>
 #include <random>
 #include <type_traits>

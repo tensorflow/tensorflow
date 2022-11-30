@@ -16,37 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_HOST_OR_DEVICE_SCALAR_H_
 #define TENSORFLOW_STREAM_EXECUTOR_HOST_OR_DEVICE_SCALAR_H_
 
-#include <utility>
-#include <variant>
-
-#include "tensorflow/stream_executor/device_memory.h"
-
-namespace stream_executor {
-
-// Allows to represent a value that is either a host scalar or a scalar stored
-// on the device.
-template <typename T>
-class HostOrDeviceScalar {
- public:
-  explicit HostOrDeviceScalar(T host_value) : value_(std::move(host_value)) {}
-  explicit HostOrDeviceScalar(DeviceMemory<T> device_ptr)
-      : value_(std::move(device_ptr)) {
-    CHECK_EQ(1, device_ptr.ElementCount());
-  }
-
-  bool on_device() const {
-    return std::holds_alternative<DeviceMemory<T>>(value_);
-  }
-
-  const void* opaque() const {
-    return on_device() ? std::get<DeviceMemory<T>>(value_).opaque()
-                       : &std::get<T>(value_);
-  }
-
- private:
-  std::variant<T, DeviceMemory<T>> value_;
-};
-
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/host_or_device_scalar.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_HOST_OR_DEVICE_SCALAR_H_

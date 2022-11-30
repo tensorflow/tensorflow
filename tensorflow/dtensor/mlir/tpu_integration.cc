@@ -43,14 +43,16 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORTPUINTEGRATION
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // Adds metadata used in TPU Compilation to `cluster` as attributes.
 void AddMetadataToTPUCluster(const Mesh& mesh_config,
@@ -78,7 +80,7 @@ void IdentifyTPUFunctions(
   if (!main_func) return;
 
   for (auto call : main_func.getOps<mlir::TF::StatefulPartitionedCallOp>()) {
-    auto mesh_or_status = Mesh::FromString(string(call.config()));
+    auto mesh_or_status = Mesh::FromString(string(call.getConfig()));
     // Function calls created by end users instead of being converted from
     // tf_device.cluster do not have a serialized mesh as a config attribute. We
     // ignore the error returned from parsing in this case.
@@ -90,7 +92,7 @@ void IdentifyTPUFunctions(
     }
     if (mesh_or_status->is_tpu_mesh() && !skip_xla_compilation) {
       tpu_functions->emplace_back(call);
-      tpu_meshs->emplace_back(std::move(mesh_or_status.ValueOrDie()));
+      tpu_meshs->emplace_back(std::move(mesh_or_status.value()));
     }
   }
 }
@@ -108,7 +110,7 @@ mlir::LogicalResult CreateTPUCluster(
 
   auto cluster = builder->create<mlir::tf_device::ClusterOp>(
       tpu_call.getLoc(), function->getCallableResults());
-  cluster.body().push_back(new mlir::Block);
+  cluster.getBody().push_back(new mlir::Block);
 
   auto& function_body = function_block.getOperations();
   cluster.GetBody().getOperations().splice(
@@ -127,7 +129,7 @@ mlir::LogicalResult CreateTPUCluster(
 }
 
 struct DTensorTPUIntegration
-    : public DTensorTPUIntegrationBase<DTensorTPUIntegration> {
+    : public impl::DTensorTPUIntegrationBase<DTensorTPUIntegration> {
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
     registry.insert<mlir::dtensor::DTensorDialect>();
     registry.insert<mlir::tf_device::TensorFlowDeviceDialect>();

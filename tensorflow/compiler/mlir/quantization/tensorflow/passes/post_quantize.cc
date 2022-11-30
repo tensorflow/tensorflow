@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 //===----------------------------------------------------------------------===//
 // The post-quantize Passes.
@@ -66,14 +67,15 @@ enum RemoveVolatileOpsType {
 
 // Remove the back-to-back quantize and dequantize ops with volatile attribute.
 template <RemoveVolatileOpsType remove_volatile_ops_type>
-struct RemoveVolatileOps : public OpRewritePattern<DequantizeCastOp> {
+struct RemoveVolatileOps
+    : public OpRewritePattern<quantfork::DequantizeCastOp> {
   explicit RemoveVolatileOps(MLIRContext* context)
-      : OpRewritePattern<DequantizeCastOp>(context, 1) {}
+      : OpRewritePattern<quantfork::DequantizeCastOp>(context, 1) {}
 
-  LogicalResult matchAndRewrite(DequantizeCastOp op,
+  LogicalResult matchAndRewrite(quantfork::DequantizeCastOp op,
                                 PatternRewriter& rewriter) const override {
     auto input_op = op.getArg().getDefiningOp();
-    if (auto q = llvm::dyn_cast_or_null<QuantizeCastOp>(input_op)) {
+    if (auto q = llvm::dyn_cast_or_null<quantfork::QuantizeCastOp>(input_op)) {
       if (!q->getAttr(kVolatileOpAttrName)) return failure();
 
       if (remove_volatile_ops_type == kPreserveInputsAndOutputs) {
@@ -90,7 +92,7 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeCastOp> {
       if (auto qtype =
               QuantizedType::getQuantizedElementType(q.getArg().getType())) {
         rewriter.setInsertionPoint(op);
-        rewriter.replaceOpWithNewOp<DequantizeCastOp>(
+        rewriter.replaceOpWithNewOp<quantfork::DequantizeCastOp>(
             op, op.getResult().getType(), q.getArg());
         return success();
       }
@@ -102,12 +104,15 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeCastOp> {
   }
 };
 
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/post_quantize.inc"
+
 void PostQuantizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
   auto* ctx = func.getContext();
-  patterns.add<FoldTrivalRequantizeOp<QuantizeCastOp>,
+  patterns.add<FoldTrivalRequantizeOp<quantfork::QuantizeCastOp>,
                RemoveVolatileOps<kPreserveNone>>(ctx);
+  populateWithGenerated(patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 

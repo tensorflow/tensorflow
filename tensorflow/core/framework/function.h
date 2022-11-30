@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/variant.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -49,7 +50,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class CancellationManager;
 class CollectiveExecutor;
 class DeviceSet;
 class Graph;
@@ -847,7 +847,7 @@ class FunctionLibraryRuntime {
     CollectiveExecutor* collective_executor = nullptr;
     ScopedStepContainer* step_container = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
-    CoordinationServiceAgent* coordination_service_agent = nullptr;
+    tsl::CoordinationServiceAgent* coordination_service_agent = nullptr;
 
     absl::optional<ManagedStackTrace> stack_trace = absl::nullopt;
 
@@ -1119,7 +1119,7 @@ Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
 //   } else {
 //     ... ...
 //   }
-//   return Status::OK();
+//   return OkStatus();
 // }
 //
 // NOTE: $T is substituted with the type variable "T" when the

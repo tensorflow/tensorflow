@@ -15,6 +15,7 @@
 
 import numpy as np
 
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
@@ -262,6 +263,7 @@ class NonSquareLinearOperatorFullMatrixTest(
 
 
 if __name__ == "__main__":
+  config.enable_tensor_float_32_execution(False)
   linear_operator_test_util.add_tests(SquareLinearOperatorFullMatrixTest)
   linear_operator_test_util.add_tests(NonSquareLinearOperatorFullMatrixTest)
   linear_operator_test_util.add_tests(

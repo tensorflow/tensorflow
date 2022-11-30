@@ -65,9 +65,6 @@ struct MklDnnMatMulFwdParams {
   memory::format_tag dst_format;
   string dtypes = string("");
   bool const_weight;
-#ifdef DNNL_AARCH64_USE_ACL
-  void* weight_address = nullptr;
-#endif
   struct PostOpParam {
     string name;
     std::vector<float> param;
@@ -404,9 +401,6 @@ class MklDnnMatMulFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(mkldnn_matmul_fwd_dims.dst_dims);
     key_creator.AddAsKey(mkldnn_matmul_fwd_dims.dtypes);
     key_creator.AddAsKey(mkldnn_matmul_fwd_dims.weight_format);
-#ifdef DNNL_AARCH64_USE_ACL
-    key_creator.AddAsKey(mkldnn_matmul_fwd_dims.weight_address);
-#endif
 
     // Generate keys for post-ops
     for (auto const& post_op_param : mkldnn_matmul_fwd_dims.post_op_params) {
@@ -587,9 +581,6 @@ struct MklMatMulParams {
   memory::dims a_strides;
   memory::dims b_strides;
   memory::dims c_strides;
-#ifdef DNNL_AARCH64_USE_ACL
-  int aarch64_counter;
-#endif
   struct PostOpParam {
     string name;
     std::vector<float> param;
@@ -664,6 +655,10 @@ class MklMatMulPrimitive : public MklPrimitive {
     context_.sp_mem->set_data_handle(DummyData);
     if (mul_data != nullptr) context_.mul_mem->set_data_handle(DummyData);
     if (add_data != nullptr) context_.add_mem->set_data_handle(DummyData);
+  }
+
+  std::shared_ptr<dnnl::matmul::primitive_desc> GetPrimitiveDesc() const {
+    return context_.prim_desc;
   }
 
  private:
@@ -848,9 +843,6 @@ class MklMatMulPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(params.b_strides);
     key_creator.AddAsKey(params.c_strides);
     key_creator.AddAsKey(typeid(T).name());
-#ifdef DNNL_AARCH64_USE_ACL
-    key_creator.AddAsKey(params.aarch64_counter);
-#endif
     key_creator.AddAsKey(typeid(Tlhs).name());
     key_creator.AddAsKey(typeid(Trhs).name());
     key_creator.AddAsKey(typeid(Toutput).name());

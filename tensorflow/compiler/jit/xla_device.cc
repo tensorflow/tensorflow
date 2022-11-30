@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <string>
 #include <unordered_set>
 #include <utility>
 
@@ -160,7 +161,7 @@ se::Platform* XlaDevice::Metadata::platform() const { return platform_; }
 
 xla::LocalClient* XlaDevice::Metadata::client() const {
   auto client = xla::ClientLibrary::GetOrCreateLocalClient(platform_);
-  return client.ValueOrDie();
+  return client.value();
 }
 
 const DeviceType& XlaDevice::Metadata::jit_device_type() const {
@@ -271,7 +272,7 @@ Allocator* XlaDevice::GetAllocatorLocked(AllocatorAttributes attr) {
   if (xla_allocator_ == nullptr) {
     // TODO(b/78468222): This can fail, at least when the backend is GPU and
     // there is no GPU on the host.
-    xla::Backend* backend = GetOrCreateClient().ValueOrDie()->mutable_backend();
+    xla::Backend* backend = GetOrCreateClient().value()->mutable_backend();
     xla_allocator_ = XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
         backend, device_ordinal_);
   }
@@ -584,14 +585,10 @@ Status XlaDevice::RefreshStatus() {
   return status;
 }
 
-XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
-                                                   const char* jit_device) {
-  // Any op assigned to the device that isn't rewritten by the graph rewriter
-  // gets executed by an XlaCompileOnDemandOp, which compiles it and executes
-  // it just-in-time.
-  auto factory = [](OpKernelConstruction* context) -> OpKernel* {
-    return new XlaCompileOnDemandOp(context);
-  };
+XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(
+    const char* device, const char* jit_device,
+    OpKernel* (*factory)(OpKernelConstruction*),
+    StringPiece kernel_class_name) {
   XlaOpRegistry::RegisterCompilationKernels();
   XlaDeviceOpRegistrations* registrations = new XlaDeviceOpRegistrations;
   for (const KernelDef* jit_def : XlaOpRegistry::DeviceKernels(
@@ -607,10 +604,21 @@ XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
 
     def->set_device_type(device);
     registrations->op_kernel_registrars.emplace_back(
-        new kernel_factory::OpKernelRegistrar(def, "XlaCompileOnDemandOp",
-                                              factory));
+        new kernel_factory::OpKernelRegistrar(def, kernel_class_name, factory));
   }
   return registrations;
+}
+
+XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
+                                                   const char* jit_device) {
+  // Any op assigned to the device that isn't rewritten by the graph rewriter
+  // gets executed by an XlaCompileOnDemandOp, which compiles it and executes
+  // it just-in-time.
+  auto factory = [](OpKernelConstruction* context) -> OpKernel* {
+    return new XlaCompileOnDemandOp(context);
+  };
+  return RegisterXlaDeviceKernels(device, jit_device, factory,
+                                  /*kernel_class_name=*/"XlaCompileOnDemandOp");
 }
 
 }  // namespace tensorflow

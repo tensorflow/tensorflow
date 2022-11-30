@@ -13,16 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_SERVICE_XLA_COMPILATION_ENVIRONMENTS_H_
-#define TENSORFLOW_COMPILER_SERVICE_XLA_COMPILATION_ENVIRONMENTS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_COMPILATION_ENVIRONMENTS_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_COMPILATION_ENVIRONMENTS_H_
 
+#include <cstdint>
 #include <memory>
+#include <string_view>
 #include <typeindex>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -46,27 +48,45 @@ class CompilationEnvironments {
   CompilationEnvironments& operator=(const CompilationEnvironments& rhs);
   ~CompilationEnvironments() = default;
 
+  // Whenever an environment is added to CompilationEnvironments, even when
+  // GetEnv() adds a lazily initialized one, it is passed to this method. The
+  // result of this method is the environment that is used by
+  // CompilationEnvironments. This allows environment authors to do things like
+  // populate missing fields in an added environment.
+  //
   // Users of CompilationEnvironments must specialize this method for each type
   // of CompilationEnvironment they wish to use in code.
   //
-  // T must be a type of proto message.
+  // The input env may be null.
+  //
+  // REQUIRES:
+  // - T must be a type of proto message.
+  // - The output is *not* allowed to be null, even for null input.
   template <typename T>
-  static std::unique_ptr<T> CreateDefaultEnv() = delete;
+  static std::unique_ptr<T> ProcessNewEnv(std::unique_ptr<T> env) = delete;
 
   // Adds env to the list of CompilationEnvironments. If an environment with
   // std::type_index equal to env.GetTypeid() has already been added, env
   // will replace it.
-  void AddEnv(std::unique_ptr<tensorflow::protobuf::Message> env);
+  //
+  // All added environments are processed via ProcessNewEnv().
+  //
+  // AddEnv<T> will not compile for type T, unless ProcessNewEnv<T> is defined.
+  template <typename T>
+  void AddEnv(std::unique_ptr<T> env);
 
   // Returns the CompilationEnvironment corresponding to T. If such an
-  // environment has not been added, CreateDefaultEnv<T>() will be called to
-  // create one that is then added.
+  // environment has not been added, ProcessNewEnv<T>(nullptr) will be added
+  // and returned.
   //
-  // GetEnv() is not const because it can perform lazy initialization, thereby
-  // modifying the CompilationEnvironments's data members.
+  // GetMutableEnv()/GetEnv() are not const because they can perform lazy
+  // initialization, thereby modifying the CompilationEnvironments's data
+  // members.
   //
-  // GetEnv<T> will not compile for type T, unless CreateDefaultEnv<T> is
-  // defined.
+  // GetMutableEnv<T>/GetEnv<T> will not compile for type T, unless
+  // ProcessNewEnv<T> is defined.
+  template <typename T>
+  T& GetMutableEnv();
   template <typename T>
   const T& GetEnv();
 
@@ -74,31 +94,55 @@ class CompilationEnvironments {
   void Clear() { environments_.clear(); }
 
  private:
-  absl::flat_hash_map<const tensorflow::protobuf::Descriptor*,
-                      std::unique_ptr<tensorflow::protobuf::Message>>
+  // Called by GetEnv() when it calls lazily creates a new environment, to
+  // globally track stats about how many such environments are created by
+  // CompilationEnvironments.
+  static void DefaultEnvCreatedByCompilationEnvironments(
+      std::string_view env_type);
+
+  // Called by AddEnv(), to globally track stats about how many environments
+  // are added to CompilationEnvironments.
+  static void EnvAdded(std::string_view env_type);
+
+  // Implements the part of AddEnv() after the ProcessNewEnv() call.
+  void AddProcessedEnv(std::unique_ptr<tsl::protobuf::Message> env);
+
+  absl::flat_hash_map<const tsl::protobuf::Descriptor*,
+                      std::unique_ptr<tsl::protobuf::Message>>
       environments_;
 };
 
 // ----- Template implementation below -----
 
-// Make sure no one tries to specialize CreateDefaultEnv() for raw
-// tensorflow::protobuf::Message. Specialization should always be for a specific
+// Make sure no one tries to specialize ProcessNewEnv() for raw
+// tsl::protobuf::Message. Specialization should always be for a specific
 // type of proto message.
 template <>
-std::unique_ptr<tensorflow::protobuf::Message>
-CompilationEnvironments::CreateDefaultEnv() = delete;
+std::unique_ptr<tsl::protobuf::Message> CompilationEnvironments::ProcessNewEnv(
+    std::unique_ptr<tsl::protobuf::Message> env) = delete;
 
 template <typename T>
-const T& CompilationEnvironments::GetEnv() {
+void CompilationEnvironments::AddEnv(std::unique_ptr<T> env) {
+  AddProcessedEnv(ProcessNewEnv<T>(std::move(env)));
+}
+
+template <typename T>
+T& CompilationEnvironments::GetMutableEnv() {
   auto descriptor = T::descriptor();
   auto it = environments_.find(descriptor);
   if (it == environments_.end()) {
-    AddEnv(CreateDefaultEnv<T>());
+    AddEnv<T>(nullptr);
+    DefaultEnvCreatedByCompilationEnvironments(descriptor->full_name());
     it = environments_.find(descriptor);
   }
-  return tensorflow::down_cast<const T&>(*it->second);
+  return tensorflow::down_cast<T&>(*it->second);
+}
+
+template <typename T>
+const T& CompilationEnvironments::GetEnv() {
+  return GetMutableEnv<T>();
 }
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_SERVICE_XLA_COMPILATION_ENVIRONMENTS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_COMPILATION_ENVIRONMENTS_H_

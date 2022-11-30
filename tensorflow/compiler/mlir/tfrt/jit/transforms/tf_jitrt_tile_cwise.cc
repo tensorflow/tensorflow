@@ -16,9 +16,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "gml_st/IR/gml_st_ops.h"
+#include "gml_st/transforms/transforms.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -27,7 +27,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_TILEFILL
+#define GEN_PASS_DEF_TILECWISE
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 using mlir::failure;
@@ -40,7 +41,9 @@ using mlir::SmallVector;
 using mlir::success;
 using mlir::Value;
 using mlir::arith::ConstantIndexOp;
+using mlir::gml_st::ForOp;
 using mlir::gml_st::LoopOp;
+using mlir::gml_st::ParallelOp;
 using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
 using mlir::linalg::LinalgOp;
@@ -83,13 +86,14 @@ struct TileCWisePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
 // Return true if the generic has only parallel iterations. This disallows
 // windowed and reduction iteration.
 bool isNonTiledCwiseGeneric(Operation *op) {
-  if (op->getParentOfType<LoopOp>()) return false;
+  if (op->getParentOfType<LoopOp>() || op->getParentOfType<ForOp>() ||
+      op->getParentOfType<ParallelOp>())
+    return false;
   auto linalg_op = mlir::dyn_cast<GenericOp>(op);
   if (linalg_op) {
     if (!linalg_op.hasTensorSemantics()) return false;
-    return llvm::all_of(linalg_op.iterator_types(), [](auto type) {
-      return mlir::isParallelIterator(type);
-    });
+    return llvm::all_of(linalg_op.getIteratorTypesArray(),
+                        mlir::linalg::isParallelIterator);
   }
   if (auto fill_op = mlir::dyn_cast<FillOp>(op)) {
     return fill_op.hasTensorSemantics();
@@ -100,7 +104,9 @@ bool isNonTiledCwiseGeneric(Operation *op) {
 // Return true if the generic has only parallel iterations. This disallows
 // windowed and reduction iteration.
 bool isNonTiledFill(Operation *op) {
-  if (op->getParentOfType<LoopOp>()) return false;
+  if (op->getParentOfType<LoopOp>() || op->getParentOfType<ForOp>() ||
+      op->getParentOfType<ParallelOp>())
+    return false;
   if (auto fill_op = mlir::dyn_cast<FillOp>(op)) {
     return fill_op.hasTensorSemantics();
   }
@@ -131,7 +137,7 @@ void Tile(mlir::func::FuncOp func, int64_t tile_size,
   func.walk([](LinalgOp op) { removeTransformationAttr(op); });
 }
 
-struct TileCWisePass : public TileCWiseBase<TileCWisePass> {
+struct TileCWisePass : public impl::TileCWiseBase<TileCWisePass> {
   TileCWisePass() = default;
   explicit TileCWisePass(int64_t tile_size) { cwise_tile_size = tile_size; }
 
@@ -141,7 +147,7 @@ struct TileCWisePass : public TileCWiseBase<TileCWisePass> {
   }
 };
 
-struct TileFillPass : public TileFillBase<TileFillPass> {
+struct TileFillPass : public impl::TileFillBase<TileFillPass> {
   TileFillPass() = default;
   explicit TileFillPass(int64_t tile_size) { cwise_tile_size = tile_size; }
 

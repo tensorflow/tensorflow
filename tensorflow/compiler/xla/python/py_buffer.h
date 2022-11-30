@@ -202,6 +202,128 @@ class PyBuffer {
   PyBuffer* prev_;
 };
 
+// A batched version of python wrapper around a list of PjRtBuffers.
+class PyShardedBuffer {
+ public:
+  static PyShardedBuffer CreateFromPyBuffers(
+      absl::Span<const PyBuffer::object> py_buffers);
+
+  PyShardedBuffer(std::shared_ptr<PyClient> client,
+                  std::vector<std::shared_ptr<PjRtBuffer>> buffers,
+                  std::shared_ptr<Traceback> traceback, bool sticky = false)
+      : client_(std::move(client)),
+        buffers_(std::move(buffers)),
+        traceback_(std::move(traceback)),
+        sticky_(sticky) {
+    Link();
+  }
+
+  PyShardedBuffer(const PyShardedBuffer&) = delete;
+  PyShardedBuffer& operator=(const PyShardedBuffer&) = delete;
+
+  PyShardedBuffer(PyShardedBuffer&& other) {
+    other.Unlink();
+    client_ = std::move(other.client_);
+    buffers_ = std::move(other.buffers_);
+    traceback_ = std::move(other.traceback_);
+    sticky_ = other.sticky_;
+    Link();
+  }
+
+  PyShardedBuffer& operator=(PyShardedBuffer&& other) {
+    Unlink();
+    other.Unlink();
+    client_ = std::move(other.client_);
+    buffers_ = std::move(other.buffers_);
+    traceback_ = std::move(other.traceback_);
+    sticky_ = other.sticky_;
+    Link();
+    return *this;
+  }
+
+  ~PyShardedBuffer() { Unlink(); }
+
+  std::vector<PyBuffer::object> GetPyBuffers() const {
+    std::vector<PyBuffer::object> results;
+    results.reserve(buffers_.size());
+    for (const auto& pjrt_buffer : buffers_) {
+      auto py_buffer = PyBuffer::Make(client_, pjrt_buffer, traceback_);
+      if (sticky_) {
+        TF_CHECK_OK(py_buffer.buf()->set_sticky_device(pjrt_buffer->device()));
+      }
+      results.push_back(std::move(py_buffer));
+    }
+    return results;
+  }
+
+  PyBuffer::object GetPyBuffer(int device_id) const {
+    const auto& pjrt_buffer = buffers_.at(device_id);
+    auto py_buffer = PyBuffer::Make(client_, pjrt_buffer, traceback_);
+    if (sticky_) {
+      TF_CHECK_OK(py_buffer.buf()->set_sticky_device(pjrt_buffer->device()));
+    }
+    return py_buffer;
+  }
+
+  PrimitiveType dtype() const {
+    return buffers_.at(0)->on_device_shape().element_type();
+  }
+
+  PjRtBuffer* GetPjRtBuffer(int device_id) const {
+    return buffers_.at(device_id).get();
+  }
+
+  int num_devices() const { return buffers_.size(); }
+
+  const std::shared_ptr<Traceback>& traceback() const { return traceback_; }
+
+  Status BlockHostUntilReady();
+
+  void Delete() {
+    for (auto& pjrt_buffer : buffers_) {
+      pjrt_buffer->Delete();
+    }
+  }
+
+ private:
+  void Link() {
+    if (!client_) return;
+
+    CHECK(PyGILState_Check());
+    next_ = client_->sharded_buffers_;
+    client_->sharded_buffers_ = this;
+    if (next_) {
+      next_->prev_ = this;
+    }
+    prev_ = nullptr;
+  }
+
+  void Unlink() {
+    if (!client_) return;
+
+    CHECK(PyGILState_Check());
+    if (client_->sharded_buffers_ == this) {
+      client_->sharded_buffers_ = next_;
+    }
+    if (prev_) {
+      prev_->next_ = next_;
+    }
+    if (next_) {
+      next_->prev_ = prev_;
+    }
+  }
+
+  friend class PyClient;
+
+  std::shared_ptr<PyClient> client_;
+  std::vector<std::shared_ptr<PjRtBuffer>> buffers_;
+  std::shared_ptr<Traceback> traceback_;
+  bool sticky_ = false;
+
+  PyShardedBuffer* next_ = nullptr;
+  PyShardedBuffer* prev_ = nullptr;
+};
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_PY_BUFFER_H_

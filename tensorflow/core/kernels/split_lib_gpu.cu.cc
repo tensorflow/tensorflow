@@ -248,6 +248,7 @@ TF_CALL_COMPLEX_TYPES(REGISTER_GPU_KERNEL);
 TF_CALL_bfloat16(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 #define REGISTER_GPU_KERNEL(T)                 \
+  template struct SplitVOpGPULaunch<T, int8>;  \
   template struct SplitVOpGPULaunch<T, int32>; \
   template struct SplitVOpGPULaunch<T, int64>;
 

@@ -69,23 +69,27 @@ class _DVariableSaveable(saveable_object.SaveableObject):
     host_layout = layout_lib.Layout(original_layout.sharding_specs,
                                     original_layout.mesh.host_mesh())
 
-    def get_host_dvariable():
+    def get_host_dtensor():
       # Copy to host mesh if needed.
       if original_layout.mesh.device_type().upper() != 'CPU':
-        with ops.device(dvariable.device):
-          host_dvariable = DVariable(
-              api.pack(api.unpack(dvariable.read_value()), host_layout))
+        # Prefer pack and unpack in eager mode because it supports sharded
+        # layouts.
+        if context.executing_eagerly():
+          host_dtensor = api.pack(
+              api.unpack(dvariable.read_value()), host_layout)
+        else:
+          host_dtensor = api.copy_to_mesh(dvariable.read_value(), host_layout)
       else:
-        host_dvariable = dvariable
-      return (math_ops.cast(host_dvariable, dtypes.bfloat16)
-              if self.should_cast(host_dvariable) else host_dvariable)
+        host_dtensor = dvariable.read_value()
+      return (math_ops.cast(host_dtensor, dtypes.bfloat16)
+              if self.should_cast(host_dtensor) else host_dtensor)
 
     num_local_devices = original_layout.mesh.num_local_devices()
     super(_DVariableSaveable, self).__init__(
         None,
         [
             DSaveSpec(
-                tensor=get_host_dvariable,
+                tensor=get_host_dtensor,
                 slice_spec=pack([''] * num_local_devices,
                                 layout_lib.Layout.replicated(
                                     original_layout.mesh.host_mesh(), rank=0)),
@@ -151,8 +155,46 @@ class DVariable(resource_variable_ops.ResourceVariable):
     # Variables by default use the current device scope for placement. This
     # wrapper has them follow the initial value's placement instead (which will
     # be the DTensor device if the initial value has a layout).
+
+    # Pop layout from kwargs since keras make_variable may pass a 'layout'
+    # keyword argument. We need to pop it because we are passing kwargs to
+    # super class constructor.
+    layout = kwargs.pop('layout', None)
+    shape = kwargs.get('shape', None)
+
     if callable(initial_value):
-      initial_value = initial_value()
+      unwrapped = initial_value
+      if issubclass(type(initial_value), functools.partial):
+        unwrapped = initial_value.func
+
+      # If wrapped is a CheckpointInitialValueCallable, this means that
+      # we are creating a Variable during a checkpoint restore.
+      # Thus the restore will happen now through this callable
+      # and we will create the DVariable with the restored dtensor.
+      if issubclass(type(unwrapped), trackable.CheckpointInitialValueCallable):
+        if not shape or not layout:
+          raise ValueError('Expected shape and layout to be not None.')
+
+        # CheckpointInitialValueCallable will call an eager tf.RestoreV2,
+        # which does not have any shape information or layout information
+        # attached. Thus we will do two things to have them correctly specified:
+        #
+        # The default layout scope allows us to correctly specify the output
+        # layout of the tf.RestoreV2 that will be called
+        #
+        # Passing shard_info with the correct shape allows the tf.RestoreV2
+        # ShapeInference to extract the shape.
+        initial_value = api.call_with_layout(
+            initial_value,
+            layout,
+            shard_info=trackable.ShardInfo(
+                shape=shape, offset=[0] * len(shape)))
+      else:
+        initial_value = initial_value()
+
+    # When the initial value came from a Checkpoint restoration, fetch tensor.
+    if isinstance(initial_value, trackable.CheckpointInitialValue):
+      initial_value = initial_value.wrapped_value
 
     initial_value = ops.convert_to_tensor(initial_value, dtype=dtype)
     variable_device = initial_value.device
