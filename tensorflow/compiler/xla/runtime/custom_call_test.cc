@@ -139,18 +139,15 @@ static void I32NoOp(DynamicCustomCallRegistry& registry) {
 // Static counter to observe side effects of direct custom call.
 static int32_t custom_call_counter = 0;
 
-// Direct custom call linked with XLA runtime executable at compile (link) time.
-static bool CustomCallFn(ExecutionContext* ctx, void** args, void** attrs,
-                         void** rets) {
-  auto handler = CustomCall::Bind("test.custom_call")
-                     .Arg<int32_t>()
-                     .To([&](int32_t arg) -> LogicalResult {
-                       custom_call_counter += arg;
-                       return success();
-                     });
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+static LogicalResult CustomCallImpl(int32_t arg) {
+  custom_call_counter += arg;
+  return success();
 }
+
+// Direct custom call linked with XLA runtime executable at compile (link) time.
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    CustomCallFn, CustomCallImpl,
+    CustomCall::Bind("test.custom_call").Arg<int32_t>());
 
 TEST(CustomCallTest, DirectCustomCall) {
   absl::string_view source = R"(
