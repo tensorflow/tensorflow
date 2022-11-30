@@ -3233,9 +3233,6 @@ def filegroup(**kwargs):
 def genrule(**kwargs):
     native.genrule(**kwargs)
 
-def internal_hlo_deps():
-    return []
-
 def internal_tfrt_deps():
     return []
 

@@ -317,3 +317,12 @@ cc_library(
         "@tf_runtime//:hostcontext",
     ],
 )
+
+cc_library(
+    name = "gpu_variables_table",
+    hdrs = ["gpu_variables_table.h"],
+    deps = [
+        ":device_variables_table",
+        ":fallback_tensor",
+    ],
+)
