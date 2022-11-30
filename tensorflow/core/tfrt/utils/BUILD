@@ -306,3 +306,14 @@ cc_library(
         "//tensorflow/core/platform:threadpool_interface",
     ],
 )
+
+cc_library(
+    name = "device_variables_table",
+    hdrs = ["device_variables_table.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+        "@llvm-project//llvm:Support",
+        "@tf_runtime//:hostcontext",
+    ],
+)
