@@ -6976,6 +6976,12 @@ tf_cc_test(
 #     mhlo = "xla_aot_compile_test.mlir",
 # )
 #
+# xla_aot_compile_gpu(
+#     name = "xla_aot_compile_test_gpu_executable_constant",
+#     gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
+#     mhlo = "xla_aot_compile_test_constant.mlir",
+# )
+#
 # xla_test(
 #     name = "xla_aot_compile_cpu_test",
 #     srcs = ["xla_aot_compile_cpu_test.cc"],
@@ -7007,6 +7013,7 @@ tf_cc_test(
 #     backends = ["gpu"],
 #     data = [
 #         ":xla_aot_compile_test_gpu_executable",
+#         ":xla_aot_compile_test_gpu_executable_constant",
 #     ],
 #     env = {
 #         "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",

@@ -1639,12 +1639,10 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     std::string data(obj_file->getBuffer().data(),
                      obj_file->getBuffer().size());
 
-    // TODO(b/246976431): Export constants required for running AOT compiled
-    // executable (see GpuExecutable::ConstantInfo).
     results.emplace_back(std::make_unique<GpuXlaRuntimeAotCompilationResult>(
         module->ToProto(), data, program->module,
         compile_module_results.entry_func_attrs, backend_result.first,
-        backend_result.second));
+        backend_result.second, compile_module_results.constants));
   }
   return std::move(results);
 }
