@@ -447,6 +447,28 @@ struct MaterializeOpVectorizationPattern
   llvm::function_ref<bool(MaterializeOp)> filterFn;
 };
 
+struct IdentityMaterializeOpFoldingPattern
+    : public OpRewritePattern<MaterializeOp> {
+  explicit IdentityMaterializeOpFoldingPattern(MLIRContext *context,
+                                               PatternBenefit benefit = 1)
+      : OpRewritePattern(context, benefit) {}
+
+  LogicalResult matchAndRewrite(MaterializeOp op,
+                                PatternRewriter &rewriter) const override {
+    auto src = op.getSource();
+    auto set = op.getSet().getDefiningOp<TileOp>();
+    // Only fold identity materialize of block argument.
+    // Set has to be an identity tile op and source and result are static and
+    // have the same shapes.
+    if (!src.isa<BlockArgument>() || !set || !isIdentityTileOp(set) ||
+        !haveSameStaticShape(src, op.getResult()))
+      return rewriter.notifyMatchFailure(op, "did not match filter");
+
+    op.replaceAllUsesWith(src);
+    return success();
+  }
+};
+
 // Converts static tensors among `types` to their equivalent vectors.
 SmallVector<Type, 1> convertToVectorTypes(TypeRange types) {
   return llvm::to_vector<1>(llvm::map_range(types, [&](Type type) -> Type {
@@ -707,6 +729,13 @@ struct VectorizeGmlStLoopsPass
       RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
       patterns.add<MaterializeUpdateTransferWriteTensorOperand,
                    SetYieldUpdateTransferWriteTensorOperand>(ctx);
+      (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+    }
+
+    // Folding identity MaterializeOp.
+    {
+      RewritePatternSet patterns(ctx);
+      patterns.add<IdentityMaterializeOpFoldingPattern>(ctx);
       (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
   }
