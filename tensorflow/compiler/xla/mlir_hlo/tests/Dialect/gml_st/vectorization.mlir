@@ -1,6 +1,10 @@
 // RUN: mlir-hlo-opt %s --vectorize-gml-st-loops --split-input-file |\
 // RUN: FileCheck %s
 
+// RUN: mlir-hlo-opt %s --split-input-file \
+// RUN:     --vectorize-gml-st-loops="vectorize-gml-st-ops=true" \
+// RUN: | FileCheck %s --check-prefix=VECTORIZE-LOOP-NO-LABEL
+
 #map0 = affine_map<(d0) -> (d0)>
 func.func @tiled_add(%A: tensor<8xf32>, %B: tensor<8xf32>,
                   %C: tensor<8xf32>) -> tensor<8xf32> {
@@ -293,3 +297,30 @@ func.func @vectorize_small_untiled_fill() -> tensor<128xf32> {
 }
 // CHECK-LABEL: func @vectorize_small_untiled_fill
 // CHECK: vector.transfer_write
+
+// -----
+
+func.func @do_not_vectorize_materialize_outside_loop() -> tensor<8x1xf32> {
+  %cst = arith.constant 0.000000e+00 : f32
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : index
+  %c0 = arith.constant 0 : index
+  %0 = tensor.empty() : tensor<10x1xf32>
+  %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<10x1xf32>) -> tensor<10x1xf32>
+  %6 = gml_st.tile [0, 0] [8, 1] [1, 1] : !gml_st.tile<8x1>
+  %3 = gml_st.materialize %1[%6] : tensor<10x1xf32>[!gml_st.tile<8x1>] to tensor<8x1xf32>
+  %4 = gml_st.loop (%arg2, %arg3) = (%c0, %c0) to (%c8, %c1) step (%c1, %c8) ins (%arg4 = %cst: f32) outs (%arg5 = %3: tensor<8x1xf32>) {
+    %10 = affine.min affine_map<(d0) -> (-d0 + 1, 8)>(%arg3)
+    %extracted_slice = tensor.extract_slice %arg5[%arg2, %arg3] [1, %10] [1, 1] : tensor<8x1xf32> to tensor<1x?xf32>
+    %11 = linalg.fill ins(%arg4 : f32) outs(%extracted_slice : tensor<1x?xf32>) -> tensor<1x?xf32>
+    %inserted_slice_1 = tensor.insert_slice %11 into %arg5[%arg2, %arg3] [1, %10] [1, 1] : tensor<1x?xf32> into tensor<8x1xf32>
+    gml_st.yield %inserted_slice_1 : tensor<8x1xf32>
+  }
+  return %4 : tensor<8x1xf32>
+}
+// VECTORIZE-LOOP-NO-LABEL-LABEL: func @do_not_vectorize_materialize_outside_loop
+// VECTORIZE-LOOP-NO-LABEL:         %[[CST:.*]] = arith.constant dense<0.000000e+00> : vector<10x1xf32>
+// VECTORIZE-LOOP-NO-LABEL:         %[[INIT:.*]] = tensor.empty() : tensor<10x1xf32>
+// VECTORIZE-LOOP-NO-LABEL:         %[[WRITE:.*]] = vector.transfer_write %[[CST]], %[[INIT]]{{.*}} tensor<10x1xf32>
+// VECTORIZE-LOOP-NO-LABEL:         %[[TILE:.*]] = gml_st.tile [0, 0] [8, 1] [1, 1]
+// VECTORIZE-LOOP-NO-LABEL:         gml_st.materialize %[[WRITE]][%[[TILE]]] : {{.*}} to tensor<8x1xf32>

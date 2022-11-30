@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/runtime/ffi.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
@@ -35,6 +36,8 @@ namespace gpu {
 using ::xla::runtime::Executable;
 using ::xla::runtime::JitExecutable;
 using ::xla::runtime::success;
+
+using ::xla::runtime::ffi::FfiCustomCalls;
 
 GpuRuntimeExecutable::GpuRuntimeExecutable(
     std::vector<int64_t> buffer_sizes,
@@ -235,6 +238,7 @@ Status GpuRuntimeExecutable::Execute(
   opts.async_task_runner = NoAsyncTaskRunner();
   opts.custom_call_data = &user_data;
   opts.diagnostic_engine = &diagnostic_engine;
+  opts.custom_call_registry = &FfiCustomCalls();
 
   // Execute with the prepared call frame.
   executable.Execute(call_frame, opts);

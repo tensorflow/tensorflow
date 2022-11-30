@@ -39,11 +39,6 @@ limitations under the License.
 #include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/profiler/utils/file_system_utils.h"
 
-// Windows.h #defines ERROR, but it is also used in
-// tensorflow/core/util/event.proto
-#undef ERROR
-#include "tensorflow/core/util/events_writer.h"
-
 namespace tsl {
 namespace profiler {
 namespace {
@@ -95,23 +90,6 @@ std::string GetTensorBoardProfilePluginDir(const std::string& logdir) {
   constexpr char kPluginName[] = "plugins";
   constexpr char kProfileName[] = "profile";
   return ProfilerJoinPath(logdir, kPluginName, kProfileName);
-}
-
-Status MaybeCreateEmptyEventFile(const std::string& logdir) {
-  // Suffix for an empty event file.  it should be kept in sync with
-  // _EVENT_FILE_SUFFIX in tensorflow/python/eager/profiler.py.
-  constexpr char kProfileEmptySuffix[] = ".profile-empty";
-  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(logdir));
-
-  std::vector<std::string> children;
-  TF_RETURN_IF_ERROR(Env::Default()->GetChildren(logdir, &children));
-  for (const std::string& child : children) {
-    if (absl::EndsWith(child, kProfileEmptySuffix)) {
-      return OkStatus();
-    }
-  }
-  tensorflow::EventsWriter event_writer(ProfilerJoinPath(logdir, "events"));
-  return event_writer.InitWithSuffix(kProfileEmptySuffix);
 }
 
 Status SaveProfile(const std::string& repository_root, const std::string& run,

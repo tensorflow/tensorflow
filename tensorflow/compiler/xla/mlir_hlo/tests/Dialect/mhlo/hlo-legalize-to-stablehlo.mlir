@@ -1811,6 +1811,22 @@ func.func @attr_precision_config_packed_nibble(%arg0: tensor<8x16xf32>, %arg1: t
 
 // -----
 
+func.func @custom_call_api_version_typed_ffi() {
+  // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
+  "mhlo.custom_call"() {call_target_name = "foo", api_version = 4 : i32} : () -> ()
+  func.return
+}
+
+// -----
+
+func.func @custom_call_dictionary_backend_config() {
+  // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
+  "mhlo.custom_call"() {call_target_name = "foo", api_version = 4 : i32, backend_config = {foo = 42 : i32}} : () -> ()
+  func.return
+}
+
+// -----
+
 func.func @op_add_dependency(%arg0: tensor<16xf32>, %arg1: !mhlo.token) -> tensor<16xf32> {
   // expected-error@+1 {{failed to legalize operation 'mhlo.add_dependency' that was explicitly marked illegal}}
   %0 = "mhlo.add_dependency"(%arg0, %arg1) : (tensor<16xf32>, !mhlo.token) -> tensor<16xf32>

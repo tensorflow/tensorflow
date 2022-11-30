@@ -87,6 +87,10 @@
   * Added non-experimental aliases for `tf.random.split` and
     `tf.random.fold_in`, the experimental endpoints are still available
     so no code changes are necessary.
+* `tf.experimental.ExtensionType`
+  * Added function `experimental.extension_type.as_dict()`, which converts an
+    instance of `tf.experimental.ExtensionType` to a `dict` representation.
+
 
 # Thanks to our Contributors
 

@@ -40,6 +40,11 @@ namespace xla::gpu {
 namespace {
 namespace m = ::xla::match;
 
+bool HasDefaultLayout(const Shape& shape) {
+  return shape.has_layout() &&
+         LayoutUtil::IsMonotonicWithDim0Major(shape.layout());
+}
+
 bool MatchesSoftmaxPattern(HloInstruction* instr) {
   // Match the following pattern:
   //
@@ -53,18 +58,19 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
   //
   // There should not be other users of these ops than indicated by the edges.
   // Between the root and the producer, there can be some optional unary
-  // elementwise ops. Also, initially we only support major-to-minor layouts.
+  // elementwise ops. The operand of the broadcast can be a reshape that removes
+  // 1-sized dimensions. Around the reduce can be a convert op. Also, initially
+  // we only support major-to-minor layouts.
 
   HloInstruction* root;
   HloInstruction* broadcast;
-  HloInstruction* reduce_or_reshape;
-  HloInstruction* reduce;
+  HloInstruction* reduce_or_unary;
   if (!Match(instr,
              m::Op(&root)
-                 .WithOperand(
-                     1, m::Broadcast(&broadcast,
-                                     m::Op(&reduce_or_reshape).WithOneUse())
-                            .WithOneUse())
+                 .WithOperand(1,
+                              m::Broadcast(&broadcast,
+                                           m::Op(&reduce_or_unary).WithOneUse())
+                                  .WithOneUse())
                  // The root operation should be an elementwise binary op of
                  // rank 2.
                  .WithPredicate([](const HloInstruction* instr) {
@@ -82,26 +88,40 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
                  }))) {
     return false;
   }
-  reduce = reduce_or_reshape;
-  if (reduce_or_reshape->opcode() == HloOpcode::kReshape) {
+  bool has_major_to_minor_layout = HasDefaultLayout(root->shape()) &&
+                                   HasDefaultLayout(reduce_or_unary->shape()) &&
+                                   HasDefaultLayout(broadcast->shape());
+  if (reduce_or_unary->opcode() == HloOpcode::kReshape) {
     // Check that the reshape only removes 1-sized dimensions.
     auto descr =
-        reduce_or_reshape->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
+        reduce_or_unary->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
     if (!descr.has_value() || !descr->inserted_dimensions.empty()) {
       return false;
     }
-    reduce = reduce_or_reshape->mutable_operand(0);
-    if (reduce->user_count() != 1) {
+    reduce_or_unary = reduce_or_unary->mutable_operand(0);
+    if (reduce_or_unary->user_count() != 1) {
       return false;
     }
+    if (!HasDefaultLayout(reduce_or_unary->shape())) {
+      has_major_to_minor_layout = false;
+    }
   }
+  bool has_convert_around_reduce = false;
+  if (reduce_or_unary->opcode() == HloOpcode::kConvert) {
+    has_convert_around_reduce = true;
+    reduce_or_unary = reduce_or_unary->mutable_operand(0);
+    if (reduce_or_unary->user_count() != 1) {
+      return false;
+    }
+    if (!HasDefaultLayout(reduce_or_unary->shape())) {
+      has_major_to_minor_layout = false;
+    }
+  }
+
   // The reduction should reduce the last dimension of the operand shape.
-  if (reduce->opcode() != HloOpcode::kReduce ||
-      reduce->dimensions().size() != 1 ||
-      reduce->dimensions()[0] != reduce->shape().rank() ||
-      // Currently we only support F32, because the lowering uses gpu.shuffle op
-      // which has this restriction.
-      reduce->shape().element_type() != F32) {
+  if (reduce_or_unary->opcode() != HloOpcode::kReduce ||
+      reduce_or_unary->dimensions().size() != 1 ||
+      reduce_or_unary->dimensions()[0] != reduce_or_unary->shape().rank()) {
     return false;
   }
 
@@ -130,20 +150,22 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
     }
   }
 
-  HloInstruction* producer = reduce->mutable_operand(0);
+  HloInstruction* producer = reduce_or_unary->mutable_operand(0);
+  if (has_convert_around_reduce && producer->opcode() == HloOpcode::kConvert) {
+    if (!HasDefaultLayout(producer->shape())) {
+      has_major_to_minor_layout = false;
+    }
+    if (producer->user_count() != 1) {
+      return false;
+    }
+    producer = producer->mutable_operand(0);
+  }
+  if (!HasDefaultLayout(producer->shape())) {
+    has_major_to_minor_layout = false;
+  }
 
-  bool has_major_to_minor_layout =
-      LayoutUtil::IsMonotonicWithDim0Major(root->shape().layout()) &&
-      LayoutUtil::IsMonotonicWithDim0Major(
-          reduce_or_reshape->shape().layout()) &&
-      LayoutUtil::IsMonotonicWithDim0Major(reduce->shape().layout()) &&
-      LayoutUtil::IsMonotonicWithDim0Major(broadcast->shape().layout()) &&
-      LayoutUtil::IsMonotonicWithDim0Major(reduce->shape().layout()) &&
-      LayoutUtil::IsMonotonicWithDim0Major(producer->shape().layout());
-
-  // Check whether the operand of the reduce is a direct or indirect operand of
-  // 'root'.
-  const HloInstruction* maybe_common_operand = reduce->operand(0);
+  // Check whether 'producer' is a direct or indirect operand of 'root'.
+  const HloInstruction* maybe_common_operand = producer;
   const HloInstruction* current_operand = root->operand(0);
   while (current_operand != maybe_common_operand) {
     // Any intermediate operand between 'root' and 'maybe_common_operand' needs
@@ -153,8 +175,7 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
         current_operand->user_count() > 1) {
       return false;
     }
-    if (!LayoutUtil::IsMonotonicWithDim0Major(
-            current_operand->shape().layout())) {
+    if (!HasDefaultLayout(current_operand->shape())) {
       has_major_to_minor_layout = false;
     }
     current_operand = current_operand->operand(0);
@@ -171,11 +192,19 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
 HloInstruction* SoftmaxProducer(HloInstruction* softmax_root) {
   // The softmax producer is found by going up the chain
   // -> broadcast -> (reshape) -> reduce -> producer
-  auto reduce_or_reshape = softmax_root->mutable_operand(1)->mutable_operand(0);
-  if (reduce_or_reshape->opcode() == HloOpcode::kReduce) {
-    return reduce_or_reshape->mutable_operand(0);
+  auto reduce_or_unary = softmax_root->mutable_operand(1)->mutable_operand(0);
+  bool has_convert_around_reduce = false;
+  while (reduce_or_unary->opcode() != HloOpcode::kReduce) {
+    if (reduce_or_unary->opcode() == HloOpcode::kConvert) {
+      has_convert_around_reduce = true;
+    }
+    reduce_or_unary = reduce_or_unary->mutable_operand(0);
   }
-  return reduce_or_reshape->mutable_operand(0)->mutable_operand(0);
+  HloInstruction* producer = reduce_or_unary->mutable_operand(0);
+  if (has_convert_around_reduce && producer->opcode() == HloOpcode::kConvert) {
+    producer = producer->mutable_operand(0);
+  }
+  return producer;
 }
 
 bool IsSupportedBroadcast(HloInstruction* hlo) {
@@ -344,8 +373,7 @@ StatusOr<bool> SoftmaxFusion::Run(
 
         // Again, we only allow the default layout for any unary ops on the
         // path.
-        if (!current_shape->has_layout() ||
-            !LayoutUtil::IsMonotonicWithDim0Major(current_shape->layout())) {
+        if (!HasDefaultLayout(*current_shape)) {
           valid = false;
           break;
         }

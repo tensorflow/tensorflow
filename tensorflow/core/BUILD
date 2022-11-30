@@ -1785,6 +1785,7 @@ tf_cuda_library(
         ":function_ops_op_lib",
         ":functional_grad",
         ":functional_ops_op_lib",
+        "//tensorflow/core/common_runtime:stats_publisher_interface",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:required",
     ]),

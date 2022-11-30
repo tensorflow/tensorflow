@@ -1289,24 +1289,25 @@ def tf_gen_op_wrapper_py(
         testonly = testonly,
     )
 
+    pygen_args = []
+
     # Invoke the previous cc_binary to generate a python file.
     if not out:
         out = "ops/gen_" + name + ".py"
 
+    extra_srcs = []
     if hidden:
-        op_list_arg = ",".join(hidden)
-        op_list_is_whitelist = False
+        pygen_args.append("--hidden_op_list=" + ",".join(hidden))
+    elif hidden_file:
+        # `hidden_file` is file containing a list of op names to be hidden in the
+        # generated module.
+        pygen_args.append("--hidden_op_list_filename=$(location " + hidden_file + ")")
+        extra_srcs.append(hidden_file)
     elif op_allowlist:
-        op_list_arg = ",".join(op_allowlist)
-        op_list_is_whitelist = True
-    else:
-        op_list_arg = "''"
-        op_list_is_whitelist = False
+        pygen_args.append("--op_allowlist=" + ",".join(op_allowlist))
 
     # Prepare ApiDef directories to pass to the genrule.
-    if not api_def_srcs:
-        api_def_args_str = ","
-    else:
+    if api_def_srcs:
         api_def_args = []
         for api_def_src in api_def_srcs:
             # Add directory of the first ApiDef source to args.
@@ -1316,33 +1317,17 @@ def tf_gen_op_wrapper_py(
                 "$$(dirname $$(echo $(locations " + api_def_src +
                 ") | cut -d\" \" -f1))",
             )
-        api_def_args_str = ",".join(api_def_args)
+        pygen_args.append("--api_def_dirs=" + ",".join(api_def_args))
 
-    if hidden_file:
-        # `hidden_file` is file containing a list of op names to be hidden in the
-        # generated module.
-        native.genrule(
-            name = name + "_pygenrule",
-            outs = [out],
-            srcs = api_def_srcs + [hidden_file],
-            tools = [tool_name] + tf_binary_additional_srcs(),
-            cmd = ("$(location " + tool_name + ") " + api_def_args_str +
-                   " @$(location " + hidden_file + ") > $@"),
-            compatible_with = compatible_with,
-            testonly = testonly,
-        )
-    else:
-        native.genrule(
-            name = name + "_pygenrule",
-            outs = [out],
-            srcs = api_def_srcs,
-            tools = [tool_name] + tf_binary_additional_srcs(),
-            cmd = ("$(location " + tool_name + ") " + api_def_args_str + " " +
-                   op_list_arg + " " +
-                   ("1" if op_list_is_whitelist else "0") + " > $@"),
-            compatible_with = compatible_with,
-            testonly = testonly,
-        )
+    native.genrule(
+        name = name + "_pygenrule",
+        outs = [out],
+        srcs = api_def_srcs + extra_srcs,
+        tools = [tool_name] + tf_binary_additional_srcs(),
+        cmd = ("$(location " + tool_name + ") " + " ".join(pygen_args) + " > $@"),
+        compatible_with = compatible_with,
+        testonly = testonly,
+    )
 
     # Make a py_library out of the generated python file.
     if not generated_target_name:
@@ -3247,9 +3232,6 @@ def filegroup(**kwargs):
 
 def genrule(**kwargs):
     native.genrule(**kwargs)
-
-def internal_hlo_deps():
-    return []
 
 def internal_tfrt_deps():
     return []

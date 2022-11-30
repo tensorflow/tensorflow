@@ -1051,11 +1051,7 @@ class FuncGraph(ops.Graph):
   @property
   def variable_captures(self):
     """Map of python object ids of variables to variables which are captured."""
-    return {
-        id(self._captures[id(v)][1]): v
-        for v in self.variables
-        if id(v) in self._captures
-    }
+    return self.variables
 
   def mark_as_unsaveable(self, error_message):
     """Marks this FuncGraph as unsaveable.

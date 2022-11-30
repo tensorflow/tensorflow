@@ -650,6 +650,28 @@ ENTRY main {
 
 // -----
 
+HloModule CustomCallWithTypedFFIBackendConfig
+
+// CHECK: func @main
+// CHECK: "lmhlo.custom_call"
+// CHECK-SAME: api_version = 4 : i32
+// CHECK-SAME: backend_config = {
+// CHECK-SAME:   user_attr0 = 123 : i32
+// CHECK-SAME:   user_attr1 = dense<42> : tensor<i32>
+// CHECK-SAME: }
+// CHECK-SAME: num_args = 1
+// CHECK-SAME: num_results = 2
+// CHECK-SAME: args_to_target_args = []
+// CHECK-SAME: results_to_target_results = [0]
+ENTRY main {
+  %tok = token[] parameter(0)
+  ROOT %call = (f32[3], token[]) custom-call (%tok), custom_call_target="foo",
+                                                     api_version=API_VERSION_TYPED_FFI,
+                                                     backend_config="{user_attr0 = 123 : i32, user_attr1 = dense<42> : tensor<i32>}"
+}
+
+// -----
+
 HloModule CustomCallWithTokens
 
 // CHECK: func @main

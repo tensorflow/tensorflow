@@ -25,10 +25,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
-// TODO(skyewm): remove when everything goes through C API
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
+// TODO(skyewm): remove when everything goes through C API
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -272,7 +273,7 @@ StatusOr<std::string> PjRtCApiClient::SerializeExecutable(
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtCApiClient::DeserializeExecutable(absl::string_view serialized,
-                                      CompileOptions options) {
+                                      std::optional<CompileOptions> options) {
   if (kPjRtCApiBypass) {
     VLOG(1) << "PJRT C API BYPASS: DeserializeExecutable";
     return WrapExecutable(wrapped_->DeserializeExecutable(serialized, options));
