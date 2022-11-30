@@ -17,7 +17,6 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
     ],
     licenses = ["notice"],
@@ -67,6 +66,7 @@ tf_kernel_library(
     srcs = ["custom_aggregator_op.cc"],
     compatible_with = get_compatible_with_cloud(),
     visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:__pkg__",
     ],
     deps = [
