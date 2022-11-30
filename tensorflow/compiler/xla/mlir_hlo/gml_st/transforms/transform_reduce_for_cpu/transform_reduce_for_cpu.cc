@@ -202,7 +202,7 @@ struct TransformReduceForCpuPass
            "Tiling sizes for Reduce should have 2 element.");
 
     RewritePatternSet patterns(ctx);
-    patterns.add<ReduceTransformPattern>(ctx, tileSizes[0]);
+    patterns.add<ReduceTransformPattern>(ctx, tileSizes[0], tileSizes[1]);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();
