@@ -25,6 +25,8 @@ load(
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
+    "tf_additional_plugin_deps",
+    "tf_additional_profiler_deps",
 )
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -37,12 +39,6 @@ load(
     "tf_cc_shared_library",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load(
-    "//tensorflow/core/platform:build_config_root.bzl",
-    "if_static",
-    "tf_additional_plugin_deps",
-    "tf_additional_profiler_deps",
-)
 
 # copybara:uncomment_begin
 # load("//tools/build_defs/license:license.bzl", "license")
