@@ -16,7 +16,9 @@
 """Tests for our flags implementation."""
 import sys
 
-from tensorflow.python.platform import app, flags, test
+from tensorflow.python.platform import app
+from tensorflow.python.platform import flags
+from tensorflow.python.platform import test
 
 FLAGS = flags.FLAGS
 flags.DEFINE_boolean("myflag", False, '')
