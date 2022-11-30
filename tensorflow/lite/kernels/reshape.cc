@@ -148,7 +148,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
   if (output->type != kTfLiteString) {
     if (NumInputs(node) == 1 ||
-        IsConstantTensor(GetInput(context, node, kShapeTensor))) {
+        IsConstantOrPersistentTensor(GetInput(context, node, kShapeTensor))) {
       TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
     } else {
       SetTensorToDynamic(output);
