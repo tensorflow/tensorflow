@@ -28,10 +28,6 @@ COPY setup.cuda.sh /setup.cuda.sh
 COPY devel.packages.txt /devel.packages.txt
 RUN /setup.sources.sh && /setup.packages.sh /devel.packages.txt && /setup.cuda.sh
 
-# Install LLVM/Clang at HEAD
-# COPY setup.clang.sh /setup.clang.sh
-# RUN /setup.clang.sh
-
 # Install various tools.
 # - bats: bash unit testing framework
 # - bazelisk: always use the correct bazel version
