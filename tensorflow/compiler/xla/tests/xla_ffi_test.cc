@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -38,18 +39,44 @@ class FfiTest : public HloTestBase {
   Shape tensor_4xf32_ = ShapeUtil::MakeShape(F32, {4});
 };
 
-// Observe FFI arguments by adding them to the trace vector.
+// TODO(ezhulenev): Add support for stateless XLA FFI modules.
+struct EmptyState {};
+
+// XLA FFI module encapsulating FFI functions exported to the runtime.
+struct TestModule : public runtime::ffi::StatefulModule<EmptyState> {
+  using Base = runtime::ffi::StatefulModule<EmptyState>;
+
+  explicit TestModule(const XLA_FFI_Api* api)
+      : Base(api, "xla-ffi-module", {{"test.ffi", FFI_Impl}}) {}
+
+  std::unique_ptr<EmptyState> CreateState() const final {
+    return std::make_unique<EmptyState>();
+  }
+
+  // XLA runtime binding for the C++ function.
+  XLA_FFI_DEFINE_FUNCTION(FFI_Impl, Impl,
+                          Ffi::Bind("test.ffi")
+                              .Arg<StridedBufferArg>()
+                              .Arg<StridedBufferArg>()
+                              .Arg<StridedBufferArg>()
+                              .Attr<float>("foo"));
+
+  // Typed XLA FFI function handler that will be registered with the runtime.
+  //
+  // WARNING: Buffer arguments are placed on the GPU device and we can't touch
+  // the memory they are pointing to on the host.
+  static FfiStatus Impl(StridedBufferArg input0, StridedBufferArg input1,
+                        StridedBufferArg out, float foo);
+};
+
+// Observe FFI arguments by adding them to the static vector.
 static std::vector<std::string>* GetFfiArgs() {
   static auto* args = new std::vector<std::string>();
   return args;
 }
 
-// Typed XLA FFI function handler that will be registered with the runtime.
-//
-// WARN: Buffer arguments placed on the GPU device and we can't touch the memory
-// they are pointing to on the host.
-static FfiStatus TestFfiImpl(StridedBufferArg input0, StridedBufferArg input1,
-                             StridedBufferArg out, float foo) {
+FfiStatus TestModule::Impl(StridedBufferArg input0, StridedBufferArg input1,
+                           StridedBufferArg out, float foo) {
   auto* args = GetFfiArgs();
   args->push_back(std::to_string(foo));
   args->push_back(input0.ToString());
@@ -58,14 +85,6 @@ static FfiStatus TestFfiImpl(StridedBufferArg input0, StridedBufferArg input1,
   return FfiStatus::Ok();
 }
 
-// Bind `TestFn` function to `TestFnImpl` handler.
-XLA_FFI_DEFINE_FUNCTION(TestFfi, TestFfiImpl,
-                        Ffi::Bind("test.ffi")
-                            .Arg<StridedBufferArg>()
-                            .Arg<StridedBufferArg>()
-                            .Arg<StridedBufferArg>()
-                            .Attr<float>("foo"));
-
 // TODO(ezhulenev): We have to register stubs in the XLA custom call registry to
 // suppress errors during Thunk emissions. This stub should never be called,
 // and instead XLA will call into registered FFI handlers. Remove this hack!
@@ -73,8 +92,8 @@ static void Abort() { LOG(FATAL) << "Custom call stub must never be called"; }
 XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("test.ffi", Abort, "CUDA");
 
 XLA_TEST_F(FfiTest, Basic) {
-  const XLA_FFI_Api* api = GetXlaFfiApi();
-  Ffi::Register(api, "test.ffi", TestFfi);
+  // Register XLA FFI module with the runtime.
+  TestModule ffi_module(GetXlaFfiApi());
 
   absl::string_view mlir_module_str = R"(
   module @xla_ffi {

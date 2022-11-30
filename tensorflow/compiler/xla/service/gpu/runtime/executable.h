@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/runtime/ffi.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/collectives.h"
@@ -73,6 +74,8 @@ struct GpuRuntimeProgram {
 // executable provides a lower level API exposing some of the implementation
 // details.
 class GpuRuntimeExecutable {
+  using FfiModulesState = ::xla::runtime::ffi::FfiModulesState;
+
  public:
   // Creates GpuRuntimeExecutable from the Xla Gpu Program.
   static StatusOr<std::unique_ptr<GpuRuntimeExecutable>> Create(
@@ -100,11 +103,13 @@ class GpuRuntimeExecutable {
  private:
   GpuRuntimeExecutable(std::vector<int64_t> buffer_sizes,
                        std::unique_ptr<runtime::JitExecutable> jit_executable,
-                       DebugOptions debug_options);
+                       DebugOptions debug_options,
+                       FfiModulesState ffi_modules_state);
 
   GpuRuntimeExecutable(std::vector<int64_t> buffer_sizes,
                        std::unique_ptr<runtime::Executable> aot_executable,
-                       DebugOptions debug_options);
+                       DebugOptions debug_options,
+                       FfiModulesState ffi_modules_state);
 
   // Depending on the state of `executable_` returns a reference to active
   // Xla runtime executable.
@@ -139,6 +144,12 @@ class GpuRuntimeExecutable {
   // Keep captured and instantiated CUDA graphs instances.
   GraphInstances graph_instances_;
 #endif  // GOOGLE_CUDA
+
+  // Keeps an executable state for all registered FFI modules.
+  FfiModulesState ffi_modules_state_;
+
+  // Dynamic custom calls exported from XLA runtime modules (and FFI modules).
+  runtime::DynamicCustomCallRegistry dynamic_custom_calls_;
 };
 
 }  // namespace gpu

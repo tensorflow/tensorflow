@@ -15,14 +15,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/ffi.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/ffi/ffi_c_api.h"
+#include "tensorflow/compiler/xla/runtime/module.h"
 
 //===----------------------------------------------------------------------===//
 // Define structs forward-declared by XLA FFI C API.
@@ -33,17 +39,20 @@ struct XLA_FFI_Error {
   std::string error;
 };
 
+struct XLA_FFI_Registry {
+  int64_t module_id;
+  xla::runtime::DynamicCustomCallRegistry& dynamic_custom_calls;
+};
+
 //===----------------------------------------------------------------------===//
 
 namespace xla {
 namespace runtime {
 namespace ffi {
 
-// All FFI functions registered in a static dynamic custom call registry.
-DynamicCustomCallRegistry& FfiCustomCalls() {
-  static auto* registry = new DynamicCustomCallRegistry;
-  return *registry;
-}
+//===----------------------------------------------------------------------===//
+// Helper functions to check ABI compatibility.
+//===----------------------------------------------------------------------===//
 
 static std::string StructSizeErrorMsg(absl::string_view struct_name,
                                       size_t expected_size,
@@ -61,6 +70,98 @@ static absl::Status CheckMatchingStructSizes(absl::string_view struct_name,
         StructSizeErrorMsg(struct_name, expected_size, actual_size));
   }
   return absl::OkStatus();
+}
+
+//===----------------------------------------------------------------------===//
+// FFI modules registered with the runtime.
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+class FfiModule;
+
+// FfiState owns the opaque state created by the external FFI module, and
+// destroys it using XLA FFI module API.
+struct FfiState : public runtime::Module::State {
+  FfiState(const FfiModule* parent, XLA_FFI_Module_State* state);
+  ~FfiState() final;
+
+  const FfiModule* parent;
+  XLA_FFI_Module_State* state;
+};
+
+// Adaptor from the XLA FFI module and corresponding module API functions to the
+// Xla runtime stateful module.
+class FfiModule : public runtime::StatefulModule<FfiState> {
+  using Base = runtime::StatefulModule<FfiState>;
+
+ public:
+  FfiModule(int64_t module_id, const char* name, XLA_FFI_Module* module,
+            XLA_FFI_Module_CreateState* create_state,
+            XLA_FFI_Module_DestroyState* destroy_state,
+            XLA_FFI_Module_ExportFunctions* export_functions)
+      : Base(name),
+        module_id_(module_id),
+        module_(module),
+        create_state_(create_state),
+        destroy_state_(destroy_state),
+        export_functions_(export_functions) {}
+
+  int64_t module_id() const { return module_id_; }
+
+  absl::StatusOr<std::unique_ptr<FfiState>> CreateModuleState() const final;
+  void DestroyState(XLA_FFI_Module_State* state) const;
+
+  void Export(DynamicCustomCallRegistry& registry) const final;
+
+ private:
+  int64_t module_id_;
+  XLA_FFI_Module* module_;
+  XLA_FFI_Module_CreateState* create_state_;
+  XLA_FFI_Module_DestroyState* destroy_state_;
+  XLA_FFI_Module_ExportFunctions* export_functions_;
+};
+
+}  // namespace
+
+FfiState::FfiState(const FfiModule* parent, XLA_FFI_Module_State* state)
+    : parent(parent), state(state) {}
+
+FfiState::~FfiState() { parent->DestroyState(state); }
+
+absl::StatusOr<std::unique_ptr<FfiState>> FfiModule::CreateModuleState() const {
+  XLA_FFI_Module_CreateState_Args args;
+  args.struct_size = XLA_FFI_Module_CreateState_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.module = module_;
+  args.state = nullptr;
+
+  XLA_FFI_Error* error = create_state_(&args);
+  if (error) return absl::InternalError(error->error);
+
+  return std::make_unique<FfiState>(this, args.state);
+}
+
+void FfiModule::Export(DynamicCustomCallRegistry& registry) const {
+  XLA_FFI_Registry ffi_registry = {module_id_, registry};
+
+  XLA_FFI_Module_ExportFunctions_Args args;
+  args.struct_size = XLA_FFI_Module_ExportFunctions_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.module = module_;
+  args.registry = &ffi_registry;
+
+  export_functions_(&args);
+}
+
+void FfiModule::DestroyState(XLA_FFI_Module_State* state) const {
+  XLA_FFI_Module_DestroyState_Args args;
+  args.struct_size = XLA_FFI_Module_DestroyState_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.module = module_;
+  args.state = state;
+
+  destroy_state_(&args);
 }
 
 //===----------------------------------------------------------------------===//
@@ -126,8 +227,9 @@ static XLA_FFI_TypeId FfiTypeId() {
 
 class FfiCustomCall : public CustomCall {
  public:
-  FfiCustomCall(std::string_view name, XLA_FFI_Function function)
-      : name_(name), function_(function) {}
+  FfiCustomCall(int64_t module_id, std::string_view name,
+                XLA_FFI_Function* function)
+      : module_id_(module_id), name_(name), function_(function) {}
 
   std::string_view name() const final { return name_; }
 
@@ -144,15 +246,24 @@ class FfiCustomCall : public CustomCall {
     ctx.XLA_FFI_Get_BufferArg_TypeId = FfiTypeId<MemrefView>;
     ctx.XLA_FFI_Get_StridedBufferArg_TypeId = FfiTypeId<StridedMemrefView>;
 
+    // Find an FFI module state for a given FFI call.
+    FfiStateVector* state_vector =
+        user_data ? user_data->getIfExists<FfiStateVector>() : nullptr;
+    if (!state_vector || module_id_ >= state_vector->state.size())
+      return diagnostic->EmitError(
+          absl::InvalidArgumentError("FFI module state was not found"));
+
+    // Package custom call arguments and state into FFI function arguments.
     XLA_FFI_Function_Args ffi_args;
     ffi_args.struct_size = XLA_FFI_Function_Args_STRUCT_SIZE;
     ffi_args.priv = nullptr;
     ffi_args.ctx = &ctx;
+    ffi_args.state = state_vector->state[module_id_];
     ffi_args.args = args;
     ffi_args.attrs = attrs;
     ffi_args.rets = rets;
 
-    // Execute FFI handler and maybe report an error.
+    // Execute FFI function and maybe report an error.
     if (XLA_FFI_Error* error = function_(&ffi_args)) {
       return diagnostic->EmitError(
           absl::Status(ConvertErrorCode(error->errc), error->error));
@@ -162,21 +273,86 @@ class FfiCustomCall : public CustomCall {
   }
 
  private:
+  int64_t module_id_;
   std::string name_;
-  XLA_FFI_Function function_;
+  XLA_FFI_Function* function_;
 };
 
 //===----------------------------------------------------------------------===//
+// XLA runtime FFI backend implementation.
+//===----------------------------------------------------------------------===//
 
-static void Register(XLA_FFI_Register_Args* args) {
+static std::vector<FfiModule>& OwnedFfiModules() {
+  static auto* modules = new std::vector<FfiModule>();
+  return *modules;
+}
+
+std::vector<const runtime::Module*> FfiModules() {
+  std::vector<const runtime::Module*> modules;
+  absl::c_transform(OwnedFfiModules(), std::back_inserter(modules),
+                    [](const FfiModule& module) { return &module; });
+  return modules;
+}
+
+void ExportFfiModules(DynamicCustomCallRegistry& registry) {
+  for (auto* module : FfiModules()) module->Export(registry);
+}
+
+/*static*/ absl::StatusOr<FfiModulesState> FfiModulesState::Instantiate() {
+  std::vector<std::unique_ptr<Module::State>> state;
+
+  for (auto* module : FfiModules()) {
+    auto module_state = module->CreateState();
+    if (!module_state.ok()) return module_state.status();
+    state.push_back(std::move(*module_state));
+  }
+
+  return FfiModulesState(std::move(state));
+}
+
+FfiModulesState::FfiModulesState(
+    std::vector<std::unique_ptr<Module::State>> state)
+    : state_(std::move(state)) {}
+
+FfiStateVector FfiModulesState::state_vector() const {
+  FfiStateVector state_vector;
+  for (auto& state : state_) {
+    auto* ffi_state = dynamic_cast<FfiState*>(state.get());
+    state_vector.state.push_back(ffi_state->state);
+  }
+  return state_vector;
+}
+
+//===----------------------------------------------------------------------===//
+// Implement XLA FFI module and function registration API.
+//===----------------------------------------------------------------------===//
+
+static void RegisterModule(XLA_FFI_RegisterModule_Args* args) {
   absl::Status struct_size_check = CheckMatchingStructSizes(
-      "XLA_FFI_Register_Args", XLA_FFI_Register_Args_STRUCT_SIZE,
+      "XLA_FFI_RegisterModule_Args", XLA_FFI_RegisterModule_Args_STRUCT_SIZE,
       args->struct_size);
   if (!struct_size_check.ok()) LOG(ERROR) << struct_size_check.message();
 
-  auto& registry = FfiCustomCalls();
-  registry.Register(
-      std::make_unique<FfiCustomCall>(args->target, args->function));
+  VLOG(1) << "Register FFI module: " << args->name;
+
+  auto& modules = OwnedFfiModules();
+  modules.emplace_back(/*id=*/modules.size(), args->name, args->module,
+                       args->create_state, args->destroy_state,
+                       args->export_functions);
+}
+
+static void ExportFunction(XLA_FFI_ExportFunction_Args* args) {
+  absl::Status struct_size_check = CheckMatchingStructSizes(
+      "XLA_FFI_ExportFunction_Args", XLA_FFI_ExportFunction_Args_STRUCT_SIZE,
+      args->struct_size);
+  if (!struct_size_check.ok()) LOG(ERROR) << struct_size_check.message();
+
+  XLA_FFI_Registry* registry = args->registry;
+  VLOG(1) << "Export FFI function: " << args->target
+          << " for a module id: " << registry->module_id;
+
+  registry->dynamic_custom_calls.Register(std::make_unique<FfiCustomCall>(
+      registry->module_id, args->target, args->function));
 }
 
 }  // namespace ffi
@@ -184,7 +360,8 @@ static void Register(XLA_FFI_Register_Args* args) {
 }  // namespace xla
 
 const XLA_FFI_Api ffi_api = {
-    ::xla::runtime::ffi::Register,
+    ::xla::runtime::ffi::RegisterModule,
+    ::xla::runtime::ffi::ExportFunction,
 };
 
 const XLA_FFI_Api* GetXlaFfiApi() { return &ffi_api; }

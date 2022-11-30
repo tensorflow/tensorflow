@@ -251,8 +251,9 @@ cc_library(
     hdrs = ["ffi.h"],
     deps = [
         ":custom_call",
-        ":custom_call_registry",
+        ":module",
         "//tensorflow/compiler/xla/runtime/ffi:ffi_c_api_hdrs",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
     ],
 )
