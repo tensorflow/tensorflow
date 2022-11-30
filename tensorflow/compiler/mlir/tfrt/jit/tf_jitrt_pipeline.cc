@@ -123,6 +123,11 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addPass(mlir::createCanonicalizerPass());
 
+  // This will add regions to IfOp/WhileOp (turning them into IfRegionOp
+  // and WhileRegionOp), but be aware that those regions will still contain
+  // calls.
+  pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
+
   // Transform TF operation to HLO.
   pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeTFPass());
