@@ -485,6 +485,30 @@ struct ProtoHelper<Eigen::half> {
   }
 };
 
+template <typename Float8>
+struct Float8ProtoHelper {
+  typedef string RepeatedFieldType;
+  static const Float8* Begin(const TensorProto& proto) {
+    return reinterpret_cast<const Float8*>(proto.float8_val().data());
+  }
+  static size_t NumElements(const TensorProto& proto) {
+    return proto.float8_val().size();
+  }
+  static void Fill(const Float8* data, size_t n, TensorProto* proto) {
+    proto->mutable_float8_val()->reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+      proto->mutable_float8_val()->push_back(
+          Eigen::numext::bit_cast<uint8_t>(data[i]));
+    }
+  }
+};
+
+template <>
+struct ProtoHelper<float8_e5m2> : public Float8ProtoHelper<float8_e5m2> {};
+
+template <>
+struct ProtoHelper<float8_e4m3fn> : public Float8ProtoHelper<float8_e4m3fn> {};
+
 template <typename T>
 Buffer<T>::Buffer(Allocator* a, int64_t n)
     : BufferBase(a, TypedAllocator::Allocate<T>(a, n, AllocationAttributes())),
@@ -823,6 +847,8 @@ bool Tensor::RefCountIsOne() const {
     CASE(Eigen::half, SINGLE_ARG(STMTS))                       \
     CASE(ResourceHandle, SINGLE_ARG(STMTS))                    \
     CASE(Variant, SINGLE_ARG(STMTS))                           \
+    CASE(float8_e5m2, SINGLE_ARG(STMTS))                       \
+    CASE(float8_e4m3fn, SINGLE_ARG(STMTS))                     \
     case DT_INVALID:                                           \
       INVALID;                                                 \
       break;                                                   \
@@ -1105,6 +1131,14 @@ inline float PrintOneElement(bfloat16 f, bool print_v2) {
   return static_cast<float>(f);
 }
 
+inline float PrintOneElement(float8_e5m2 f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
+inline float PrintOneElement(float8_e4m3fn f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
 // Print from left dim to right dim recursively.
 template <typename T>
 void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
@@ -1274,6 +1308,12 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
       return SummarizeArray<Eigen::half>(limit, num_elts, shape_, data,
                                          print_v2);
       break;
+    case DT_FLOAT8_E5M2:
+      return SummarizeArray<float8_e5m2>(limit, num_elts, shape_, data,
+                                         print_v2);
+    case DT_FLOAT8_E4M3FN:
+      return SummarizeArray<float8_e4m3fn>(limit, num_elts, shape_, data,
+                                           print_v2);
     case DT_FLOAT:
       return SummarizeArray<float>(limit, num_elts, shape_, data, print_v2);
       break;

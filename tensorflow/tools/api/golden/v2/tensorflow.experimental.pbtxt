@@ -41,6 +41,14 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "float8_e4m3fn"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "float8_e5m2"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
     name: "numpy"
     mtype: "<type \'module\'>"
   }

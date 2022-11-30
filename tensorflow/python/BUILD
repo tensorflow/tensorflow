@@ -3406,6 +3406,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/client:tf_session_helper",
         "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//tensorflow/python/lib/core:custom_types_lib",
         "//tensorflow/compiler/mlir/python:mlir",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",

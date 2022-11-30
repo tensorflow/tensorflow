@@ -20,6 +20,7 @@ limitations under the License.
 //   https://arxiv.org/abs/2209.05433
 
 #include <cstdint>
+#include <ostream>
 
 #include "third_party/eigen3/Eigen/Core"
 
@@ -352,6 +353,12 @@ constexpr inline bool isnan(const float8_e5m2& a) {
 
 constexpr inline bool isinf(const float8_e5m2& a) {
   return (a.rep() & 0x7F) == 0x7C;
+}
+
+template <typename Float8>
+std::ostream& operator<<(std::ostream& os, const float8_base<Float8>& f8) {
+  os << static_cast<float>(f8.derived());
+  return os;
 }
 
 }  // namespace float8_internal

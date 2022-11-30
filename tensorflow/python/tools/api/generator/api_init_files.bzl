@@ -53,6 +53,7 @@ TENSORFLOW_API_INIT_FILES = [
     "distribute/experimental/partitioners/__init__.py",
     "distribute/experimental/rpc/__init__.py",
     "dtypes/__init__.py",
+    "dtypes/experimental/__init__.py",
     "errors/__init__.py",
     "experimental/__init__.py",
     "experimental/extension_type/__init__.py",
