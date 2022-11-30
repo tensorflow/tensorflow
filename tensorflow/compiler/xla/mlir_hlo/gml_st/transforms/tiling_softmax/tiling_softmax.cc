@@ -52,9 +52,6 @@ LogicalResult tilePartialSoftmax(
     llvm::function_ref<FailureOr<Operation *>(Operation *, int64_t)>
         tileOperationFn) {
   // Match cwise root op.
-  if (!isCwiseGenericOp(op))
-    return rewriter.notifyMatchFailure(op, "not cwise generic");
-
   // Match all operands to be derived from the same source value in one of two
   // ways:
   //   i)  by a reduction and subsequent bcast in one dimension, or
@@ -62,8 +59,10 @@ LogicalResult tilePartialSoftmax(
   Value commonSource;
   Optional<int64_t> commonReductionDim;
   SmallVector<Optional<SimpleBcastReduction>> simpleBcastReductions;
-  auto genericOp = llvm::dyn_cast_or_null<linalg::GenericOp>(op.getOperation());
-  for (Value operand : genericOp.getInputs()) {
+  auto mapOp = llvm::dyn_cast_or_null<linalg::MapOp>(op.getOperation());
+  if (!mapOp || mapOp.getNumDpsInits() != 1)
+    return rewriter.notifyMatchFailure(op, "no mapOp");
+  for (Value operand : mapOp.getInputs()) {
     // Case i.
     SimpleBcastReduction bcastReduction;
     int64_t reductionDim;
@@ -245,8 +244,8 @@ struct FuseUnaryCwisePattern : public OpRewritePattern<MaterializeOp> {
                                 PatternRewriter &rewriter) const override {
     // Match unary cwise ops.
     Operation *source = op.getSource().getDefiningOp();
-    if (!isUnaryCwiseGenericOp(source)) return failure();
-
+    auto mapOp = dyn_cast_or_null<linalg::MapOp>(source);
+    if (!mapOp || mapOp.getNumDpsInputs() != 1) return failure();
     // Fuse.
     FailureOr<Value> fused = createFusedOp(rewriter, op);
     if (failed(fused)) return failure();
