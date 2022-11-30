@@ -89,7 +89,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
   }
 
-  if (IsConstantTensor(axis)) {
+  if (IsConstantOrPersistentTensor(axis)) {
     int axis_value;
     TF_LITE_ENSURE_OK(context,
                       GetAxisValueFromTensor(context, *axis, &axis_value));
