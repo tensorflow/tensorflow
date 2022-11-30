@@ -44,6 +44,7 @@ void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
 
 // Populates PerfEnv.
 PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
+                    double peak_bw_giga_bytes_per_second,
                     double peak_hbm_bw_giga_bytes_per_second);
 
 // Extracts PerfEnv from XPlane stats.
