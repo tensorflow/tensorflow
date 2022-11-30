@@ -12,16 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// WARNING: Until b/191428000 is fixed you need to manually generate and update
-// the generated flatbuffer code when modifying this file. See BUILD for more
-// information.
-
+//-----------------------------------------------------------------------------
+// WARNING: read all the warnings below before modifying this file!
+//-----------------------------------------------------------------------------
+//
 // This schema defines how to configure TFLite for delegation. These
 // definitions can be used in multiple ways: as output of a compatibility list,
 // in benchmarking tools and to decouple delegate instantiation from code.
 //
 // The schema is work-in-progress, covering the most broadly used delegates and
 // options.
+//
+// This schema is written using ProtoBuf syntax, but it is also used to generate
+// a corresponding FlatBuffer schema.
+//
+// WARNING: The TfLiteSettings flatbuffer is used as part of the ABI
+// for TensorFlow in Play Services, so please be careful to preserve
+// binary backwards compatibility!
+//
+// WARNING: the Protobuf to Flatbuffer schema conversion does NOT
+// pay any attention to the protobuf field numbers in this file,
+// so setting the protobuf field numbers is NOT sufficient to preserve binary
+// backwards compatibility.  Instead, to preserve backwards binary
+// compatibility, new fields MUST ONLY be added at the END of messages,
+// and fields should NEVER be deleted, but instead can only be deprecated.
+//
+// WARNING: you need to manually generate and update the generated flatbuffer
+// code (configuration_generated.h) when modifying this file. See BUILD for
+// more information.
 
 syntax = "proto2";
 
