@@ -20,8 +20,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/call_register.h"

@@ -77,15 +77,20 @@ namespace {
 //
 // Setting `freeze_all_variables` to `false` is an experimental feature that has
 // no stability guarantees.
-void AddExportPasses(const bool freeze_all_variables, mlir::PassManager &pm) {
+void AddExportPasses(const bool freeze_all_variables,
+                     const bool duplicate_shape_determining_constants,
+                     mlir::PassManager &pm) {
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
 
   if (!freeze_all_variables) {
     pm.addPass(mlir::quant::CreateUnfreezeConstantsPass());
   }
 
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreateDuplicateShapeDeterminingConstantsPass());
+  if (duplicate_shape_determining_constants) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::quant::CreateDuplicateShapeDeterminingConstantsPass());
+  }
+
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(mlir::CreateBreakUpIslandsPass());
@@ -197,7 +202,8 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
   }
 
   AddQuantizeQatPasses(pm, quantization_options);
-  AddExportPasses(quantization_options.freeze_all_variables().enabled(), pm);
+  AddExportPasses(quantization_options.freeze_all_variables().enabled(),
+                  /*duplicate_shape_determining_constants=*/true, pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {
@@ -265,7 +271,10 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   }
 
   AddQuantizePtqPreCalibrationPasses(pm, quantization_options);
-  AddExportPasses(quantization_options.freeze_all_variables().enabled(), pm);
+  // `duplicate_shape_determining_constants = false` because the
+  // resulting graph of this step is not expected to be loaded on TPU.
+  AddExportPasses(quantization_options.freeze_all_variables().enabled(),
+                  /*duplicate_shape_determining_constants=*/false, pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {
@@ -327,7 +336,8 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   }
 
   AddQuantizePtqPostCalibrationPasses(pm, quantization_options);
-  AddExportPasses(quantization_options.freeze_all_variables().enabled(), pm);
+  AddExportPasses(quantization_options.freeze_all_variables().enabled(),
+                  /*duplicate_shape_determining_constants=*/true, pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {
@@ -396,7 +406,8 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
   }
 
   AddQuantizePtqDynamicRangePasses(pm, quantization_options);
-  AddExportPasses(quantization_options.freeze_all_variables().enabled(), pm);
+  AddExportPasses(quantization_options.freeze_all_variables().enabled(),
+                  /*duplicate_shape_determining_constants=*/true, pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {

@@ -1,14 +1,14 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_external_workspace_visible", "tf_grpc_cc_dependencies")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load(
-    "//tensorflow/core/profiler/builds:build_config.bzl",
+    "//tensorflow/tsl/profiler/builds:build_config.bzl",
     "tf_profiler_copts",
     "tf_profiler_pybind_cc_library_wrapper",
 )
+load("//tensorflow/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow/core/profiler:internal"],
+    default_visibility = ["//tensorflow/tsl/profiler:internal"],
     licenses = ["notice"],
 )
 
@@ -18,14 +18,14 @@ cc_library(
     srcs = ["profiler_service_impl.cc"],
     hdrs = ["profiler_service_impl.h"],
     copts = tf_profiler_copts(),
-    visibility = tf_external_workspace_visible(
-        [
-            "//tensorflow/core/data/service:__pkg__",
-            "//tensorflow/core/distributed_runtime/rpc:__pkg__",
-            "//tensorflow/core/profiler/rpc:__pkg__",
-            "//tensorflow_serving/model_servers:__pkg__",
-        ],
-    ),
+    visibility = [
+        "//tensorflow/core/data/service:__pkg__",
+        "//tensorflow/core/distributed_runtime/rpc:__pkg__",
+        "//tensorflow/core/profiler/rpc:__pkg__",
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/tsl/profiler/rpc/client:__pkg__",
+        "//tensorflow_serving/model_servers:__pkg__",
+    ],
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
@@ -46,7 +46,7 @@ cc_library(
         "//tensorflow/tsl/profiler/utils:math_utils",
         "//tensorflow/tsl/profiler/utils:time_utils",
         "//tensorflow/tsl/profiler/utils:xplane_utils",
-    ] + tf_grpc_cc_dependencies(),
+    ] + tsl_grpc_cc_dependencies(),
 )
 
 tf_profiler_pybind_cc_library_wrapper(
@@ -62,10 +62,10 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [
         "//tensorflow/compiler/xla:__subpackages__",
-        "//tensorflow/core/profiler:internal",
         "//tensorflow/core/profiler/rpc:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
+        "//tensorflow/tsl/profiler:internal",
         "//tensorflow/tsl/profiler/rpc/client:__pkg__",
     ],
     deps = [
@@ -74,6 +74,6 @@ cc_library(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:types",
         "//tensorflow/tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
-    ] + tf_grpc_cc_dependencies(),
+    ] + tsl_grpc_cc_dependencies(),
     alwayslink = True,
 )

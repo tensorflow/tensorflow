@@ -42,7 +42,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",

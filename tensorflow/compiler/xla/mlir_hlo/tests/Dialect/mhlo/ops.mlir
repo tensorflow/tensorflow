@@ -3601,6 +3601,30 @@ func.func @set_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<1x128x512xf32
 
 // -----
 
+func.func @custom_call_with_dictionary_backend_config() {
+  // CHECK: "mhlo.custom_call"() {api_version = 4 : i32, backend_config = {foo = 42 : i32}, call_target_name = "foo"}
+  "mhlo.custom_call"() {api_version = 4 : i32, backend_config={foo = 42 : i32}, call_target_name = "foo"} : () -> ()
+  func.return
+}
+
+// -----
+
+func.func @custom_call_with_incompatible_backend_config() {
+  // expected-error@+1 {{unsupported user-encoded backend config, backend config must be a dictionary attribute}}
+  "mhlo.custom_call"() {api_version = 4 : i32, backend_config="bar=42", call_target_name = "foo"} : () -> ()
+  func.return
+}
+
+// -----
+
+func.func @custom_call_with_incompatible_backend_config() {
+  // expected-error@+1 {{unsupported dictionary attribute backend config, backend config must be a user-encoded string attribute}}
+  "mhlo.custom_call"() {api_version = 3 : i32, backend_config={bar = 42 : i32}, call_target_name = "foo"} : () -> ()
+  func.return
+}
+
+// -----
+
 // CHECK: func @custom_call_multiple_inputs_outputs
 func.func @custom_call_multiple_inputs_outputs(%x: tensor<2xf32>, %token: !mhlo.token) -> tensor<2xf32> {
   %0:3 = "mhlo.custom_call"(%x, %token) {backend_config="", call_target_name = "foo", has_side_effect = false} : (tensor<2xf32>, !mhlo.token) -> (tensor<2xf32>, tensor<2xf32>, !mhlo.token)

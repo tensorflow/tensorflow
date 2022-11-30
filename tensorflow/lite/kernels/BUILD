@@ -200,7 +200,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
@@ -736,10 +736,10 @@ BUILTIN_KERNEL_DEPS = [
         "//tensorflow/lite/kernels/internal:optimized_eigen",
     ],
 }) + select({
-     "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
-     "//conditions:default": [
-       "@XNNPACK//:xnnpack_for_tflite",
-     ],
+    "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
+    "//conditions:default": [
+        "@XNNPACK//:xnnpack_for_tflite",
+    ],
 })
 
 cc_library(
@@ -1207,7 +1207,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1221,7 +1221,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -2870,7 +2870,7 @@ cc_test(
     ],
     deps = [
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels:test_main",

@@ -91,7 +91,6 @@ cc_library(
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite:util",
         "//tensorflow/lite:version",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/c:common",
@@ -133,7 +132,6 @@ cc_library(
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite:util",
         "//tensorflow/lite:version",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
@@ -171,7 +169,6 @@ cc_library(
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite:util",
         "//tensorflow/lite:version",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/c:common",
@@ -202,7 +199,6 @@ cc_library(
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite:util",
         "//tensorflow/lite:version",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/c:common",
@@ -400,7 +396,6 @@ cc_library(
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -415,7 +410,6 @@ cc_library(
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
 )

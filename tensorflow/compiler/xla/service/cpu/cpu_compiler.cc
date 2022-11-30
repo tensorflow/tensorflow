@@ -307,6 +307,7 @@ class FlattenTuplesAndBufferizeTypeConverter : public mlir::TypeConverter {
 
 runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions() {
   runtime::CpuPipelineOptions copts;
+  copts.disable_math_optimizations = true;
   runtime::JitExecutable::Options opts;
   opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
   opts.compiler.register_dialects =

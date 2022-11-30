@@ -164,7 +164,6 @@ cc_library(
         ":memory_planner",
         ":simple_memory_arena",
         ":util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -182,7 +181,6 @@ cc_library(
         ":memory_planner",
         ":simple_memory_arena_with_profiler",
         ":util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -199,7 +197,6 @@ cc_test(
         ":graph_info",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
@@ -216,7 +213,6 @@ cc_library(
         ":graph_info",
         ":memory_planner",
         ":util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -229,7 +225,6 @@ cc_test(
         ":graph_info",
         ":simple_planner",
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
@@ -244,7 +239,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     deps = [
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -256,7 +250,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     deps = [
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -269,7 +262,6 @@ cc_library(
     copts = tflite_copts_warnings(),
     deps = [
         ":kernel_api",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -280,7 +272,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     deps = [
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -294,7 +285,6 @@ cc_library(
     deps = [
         ":macros",
         ":tensorflow_profiler_logger_shim",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -309,7 +299,6 @@ cc_library(
     deps = [
         ":macros",
         ":tensorflow_profiler_logger_shim",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -344,7 +333,6 @@ cc_library(
         ":macros",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
     ],
@@ -367,7 +355,6 @@ cc_library(
     hdrs = ["builtin_op_data.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -381,7 +368,6 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -428,7 +414,6 @@ cc_library(
     copts = tflite_copts_warnings(),
     deps = [
         ":string",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
     ],
@@ -485,7 +470,6 @@ cc_library(
         ":string",
         ":type_to_tflitetype",
         ":util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/core:framework_stable",
@@ -529,7 +513,6 @@ cc_library(
         ":string",
         ":type_to_tflitetype",
         ":util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/core:framework_experimental",
@@ -601,7 +584,6 @@ cc_library(
         ":type_to_tflitetype",
         ":util",
         ":version",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/core:model_builder",
@@ -633,7 +615,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//tensorflow/lite/core:__subpackages__"],
     deps = [
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
@@ -679,7 +660,6 @@ cc_library(
         ":string",
         ":type_to_tflitetype",
         ":util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:cc_api_experimental",
         "//tensorflow/lite/core/api",
@@ -722,7 +702,6 @@ cc_library(
         ":kernel_api",
         ":macros",
         "//tensorflow/lite:cc_api_experimental",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
@@ -754,7 +733,6 @@ cc_library(
     ],
     deps = [
         ":minimal_logging",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/core/c:common",
     ],
@@ -785,7 +763,6 @@ cc_library(
     ],
     deps = [
         ":util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/api:op_resolver_internal",
         "//tensorflow/lite/core/c:common",
@@ -801,7 +778,6 @@ cc_library(
     copts = tflite_copts_warnings(),
     deps = [
         ":string",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -814,7 +790,6 @@ cc_library(
     copts = tflite_copts() + tflite_copts_warnings(),
     linkstatic = True,
     deps = [
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
     ],
@@ -833,8 +808,6 @@ cc_library(
     defines = select({
         ":tflite_kernel_use_xnnpack_false": [],
         ":tflite_with_xnnpack_explicit_false": [],
-        "//tensorflow:macos": [],
-        "//tensorflow:fuchsia": [],
         "//conditions:default": [
             "TFLITE_KERNEL_USE_XNNPACK",
         ],
@@ -885,7 +858,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     deps = [
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ] + select({
         ":tflite_with_xnnpack_explicit_true": [
@@ -909,7 +881,6 @@ cc_test(
         ":framework",
         ":string",
         ":string_util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:util",
@@ -927,7 +898,6 @@ cc_library(
         ":framework",
         ":string_util",
         ":version",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
@@ -961,7 +931,6 @@ cc_test(
         ":string",
         ":string_util",
         ":util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
@@ -1001,7 +970,6 @@ cc_test(
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     deps = [
         ":framework",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
@@ -1016,7 +984,6 @@ cc_test(
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     deps = [
         ":simple_memory_arena",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
@@ -1069,7 +1036,6 @@ cc_test(
         ":string",
         ":tflite_with_xnnpack",
         ":util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -1102,7 +1068,6 @@ cc_test(
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     deps = [
         ":framework",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
@@ -1131,7 +1096,6 @@ cc_test(
     deps = [
         ":framework",
         ":optional_debug_tools",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
@@ -1149,7 +1113,6 @@ cc_library(
     deps = [
         ":kernel_api",
         ":macros",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -1210,7 +1173,6 @@ cc_test(
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     deps = [
         ":util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
@@ -1261,7 +1223,6 @@ cc_library(
     }),
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
 )

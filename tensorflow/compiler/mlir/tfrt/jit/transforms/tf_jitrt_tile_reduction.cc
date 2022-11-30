@@ -68,6 +68,9 @@ using mlir::tensor::ExpandShapeOp;
 using mlir::tensor::ExtractSliceOp;
 using mlir::utils::IteratorType;
 
+static constexpr llvm::StringRef kTileReductionAppliedLabel =
+    "__tile_reduction_applied_label__";
+
 // Match 1D or 2D reduction.
 bool isCanonicalizedReduction(Operation *op) {
   auto reduction = mlir::dyn_cast<GenericOp>(op);
@@ -87,7 +90,8 @@ struct RowOrColumnReductionTilingPattern : public OpRewritePattern<GenericOp> {
 
   LogicalResult matchAndRewrite(GenericOp linalg_op,
                                 PatternRewriter &rewriter) const override {
-    if (hasTransformationAttr(linalg_op)) return failure();
+    if (mlir::gml_st::hasLabel(linalg_op, kTileReductionAppliedLabel))
+      return failure();
     if (!isCanonicalizedReduction(linalg_op)) return failure();
 
     if (linalg_op.getNumDpsInits() != 1) return failure();
@@ -96,8 +100,9 @@ struct RowOrColumnReductionTilingPattern : public OpRewritePattern<GenericOp> {
     auto tiled_op = mlir::gml_st::tileLinalgOp(rewriter, linalg_op, options);
     if (failed(tiled_op)) return failure();
 
-    tiled_op->loops.front()->walk(
-        [&](LinalgOp tOp) { setTransformationAttr(rewriter, tOp); });
+    tiled_op->loops.front()->walk([&](LinalgOp tOp) {
+      mlir::gml_st::setLabel(tOp, kTileReductionAppliedLabel);
+    });
 
     rewriter.replaceOp(linalg_op, tiled_op->tensorResults);
     return success();
@@ -163,7 +168,8 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
 
   LogicalResult matchAndRewrite(GenericOp linalg_op,
                                 PatternRewriter &rewriter) const override {
-    if (hasTransformationAttr(linalg_op)) return failure();
+    if (mlir::gml_st::hasLabel(linalg_op, kTileReductionAppliedLabel))
+      return failure();
     if (!isCanonicalizedReduction(linalg_op)) return failure();
 
     // Check if all inputs have a 1D identity map.
@@ -264,7 +270,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
             bvm.map(linalg_op.getInputs(), sliced_inputs);
             bvm.map(linalg_op.getOutputs(), outputs);
             auto new_linalg_op = b.clone(*linalg_op.getOperation(), bvm);
-            setTransformationAttr(b, new_linalg_op);
+            mlir::gml_st::setLabel(new_linalg_op, kTileReductionAppliedLabel);
             b.create<mlir::gml_st::YieldOp>(nested_loc,
                                             new_linalg_op->getResult(0));
           });
@@ -272,9 +278,10 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
     }
     rewriter.replaceOp(linalg_op, result);
 
-    perfectly_tiled_loop->walk(
-        [&](GenericOp op) { setTransformationAttr(rewriter, op); });
-    setTransformationAttr(rewriter, horizontal_reduction);
+    perfectly_tiled_loop->walk([&](GenericOp op) {
+      mlir::gml_st::setLabel(op, kTileReductionAppliedLabel);
+    });
+    mlir::gml_st::setLabel(horizontal_reduction, kTileReductionAppliedLabel);
     return success();
   }
 
@@ -397,7 +404,9 @@ struct TileReductionPass : public impl::TileReductionBase<TileReductionPass> {
     (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));
 
     // Ensure we drop the marker in the end.
-    func.walk([](LinalgOp op) { removeTransformationAttr(op); });
+    func.walk([](LinalgOp op) {
+      mlir::gml_st::removeLabel(op, kTileReductionAppliedLabel);
+    });
   }
 };
 

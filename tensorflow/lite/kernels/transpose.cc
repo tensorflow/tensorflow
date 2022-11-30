@@ -107,7 +107,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   params.perm_count = size;
 #ifdef TFLITE_KERNEL_USE_XNNPACK
   xnn_status status;
-  pthreadpool_t threadpool = nullptr;
+  CpuBackendContext* cpu_backend_context =
+      CpuBackendContext::GetFromContext(context);
+  pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
+  threadpool = nullptr;
   std::array<size_t, kTransposeMaxDimensions> xnn_input_shape;
   std::array<size_t, kTransposeMaxDimensions> xnn_perm;
   TfLiteIntArray* input_shape = op_context.input->dims;

@@ -3209,7 +3209,7 @@ name=None))
       rerandomize_each_iteration: (Optional) If set to False, the dataset
       generates the same sequence of random numbers for each epoch. If set to
       True, it generates a different deterministic sequence of random numbers
-      for each epoch. It is defaulted to True if left unspecified.
+      for each epoch. It is defaulted to False if left unspecified.
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
@@ -3502,7 +3502,8 @@ name=None))
   def sample_from_datasets(datasets,
                            weights=None,
                            seed=None,
-                           stop_on_empty_dataset=False):
+                           stop_on_empty_dataset=False,
+                           rerandomize_each_iteration=None):
     """Samples elements at random from the datasets in `datasets`.
 
     Creates a dataset by interleaving elements of `datasets` with `weight[i]`
@@ -3544,6 +3545,11 @@ name=None))
         samples starts off as the user intends, but may change as input datasets
         become empty. This can be difficult to detect since the dataset starts
         off looking correct. Default to `False` for backward compatibility.
+      rerandomize_each_iteration: An optional `bool`. The boolean argument
+      controls whether the sequence of random numbers used to determine which
+      dataset to sample from will be rerandomized each epoch. That is, it
+      determinies whether datasets will be sampled in the same order across
+      different epochs (the default behavior) or not.
 
     Returns:
       A dataset that interleaves elements from `datasets` at random, according
@@ -3616,7 +3622,9 @@ name=None))
             axis=[0, 1])
 
       selector_input = map_op._MapDataset(  # pylint: disable=protected-access
-          Dataset.random(seed).batch(2),
+          Dataset.random(
+              seed=seed,
+              rerandomize_each_iteration=rerandomize_each_iteration).batch(2),
           select_dataset_constant_logits,
           use_inter_op_parallelism=False)
 
@@ -3634,7 +3642,11 @@ name=None))
                 logits, 1, seed=seed),
             axis=[0, 1])
 
-      logits_and_seeds = Dataset.zip((logits_ds, Dataset.random(seed).batch(2)))
+      logits_and_seeds = Dataset.zip(
+          (logits_ds,
+           Dataset.random(
+               seed=seed,
+               rerandomize_each_iteration=rerandomize_each_iteration).batch(2)))
       selector_input = map_op._MapDataset(  # pylint: disable=protected-access
           logits_and_seeds,
           select_dataset_varying_logits,

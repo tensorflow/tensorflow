@@ -30,7 +30,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
-#include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
@@ -293,10 +292,7 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
   }
 
   // Some shared values.
-  ArrayAttr allDynamicStridesOrOffsetsAttr =
-      builder.getI64ArrayAttr(SmallVector<int64_t>(rank, ShapedType::kDynamic));
-  ArrayAttr allDynamicSizesAttr =
-      builder.getI64ArrayAttr(SmallVector<int64_t>(rank, ShapedType::kDynamic));
+  SmallVector<int64_t> allDynamicSizes(rank, ShapedType::kDynamic);
   Value zeroCst = builder.create<arith::ConstantIndexOp>(loc, 0);
   Value concatDimCst = builder.create<arith::ConstantIndexOp>(loc, concatDim);
   Value maxTileSizeInConcatDim = tileSizes[concatDim];
@@ -331,9 +327,8 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
 
     // Create the operand tile and materialize the subset for this operand.
     Value tile = builder.create<gml_st::TileOp>(
-        loc, baseTileOffsets, baseTileSizes, sharedTileStrides,
-        allDynamicStridesOrOffsetsAttr, allDynamicSizesAttr,
-        allDynamicStridesOrOffsetsAttr);
+        loc, baseTileOffsets, baseTileSizes, sharedTileStrides, allDynamicSizes,
+        allDynamicSizes, allDynamicSizes);
     subOperands.push_back(
         builder.create<gml_st::MaterializeOp>(loc, operand, tile));
 
@@ -379,10 +374,10 @@ Value fuseConcatenateOpThroughPointRecursively(
     SmallVector<int64_t> allDynamicOffsets(rankedTy.getRank(),
                                            ShapedType::kDynamic);
 
-    auto sizeOrStride = builder.getI64ArrayAttr({1});
+    SmallVector<int64_t> sizeOrStride({1});
     Value operandPoint = builder.create<gml_st::TileOp>(
-        loc, remainingOffsets, ValueRange{}, ValueRange{},
-        builder.getI64ArrayAttr(allDynamicOffsets), sizeOrStride, sizeOrStride);
+        loc, remainingOffsets, ValueRange{}, ValueRange{}, allDynamicOffsets,
+        sizeOrStride, sizeOrStride);
 
     return builder.create<gml_st::MaterializeOp>(loc, rankedTy.getElementType(),
                                                  leadingOperand, operandPoint);
@@ -607,8 +602,7 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
   auto tileOpOffsets =
       getValueOrCreateConstantIndexOp(b, loc, tile.getMixedOffsets());
   int64_t operandRank = operandTy.getRank();
-  auto staticOffsets = b.getI64ArrayAttr(
-      SmallVector<int64_t>(operandRank, ShapedType::kDynamic));
+  auto staticOffsets = SmallVector<int64_t>(operandRank, ShapedType::kDynamic);
   SmallVector<Value> operandOffsets;
   Value zero = getIndexConstant(0);
   for (int initId = 0, operandId = 0; initId < initRank; ++initId) {
@@ -620,8 +614,8 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
   }
 
   // Compute operand tile sizes.
-  auto staticTileSizes = b.getI64ArrayAttr(
-      SmallVector<int64_t>(operandRank, ShapedType::kDynamic));
+  auto staticTileSizes =
+      SmallVector<int64_t>(operandRank, ShapedType::kDynamic);
   SmallVector<Value> tileSizes;
   Value one = getIndexConstant(1);
   auto tileOpSizes =
@@ -635,8 +629,7 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
   }
 
   // Create operand tile.
-  auto staticTileStrides =
-      b.getI64ArrayAttr(SmallVector<int64_t>(operandRank, 1));
+  auto staticTileStrides = SmallVector<int64_t>(operandRank, 1);
   SmallVector<Value> tileStrides = {};
   auto operandTileTy = b.getType<gml_st::TileType>(
       SmallVector<int64_t>(operandRank, ShapedType::kDynamic));
@@ -811,9 +804,8 @@ mlir::gml_st::TilingInterface ScatterOp::getTiledImplementation(
   Value init = this->getInit();
   Value initSlice = getFullSpace(b, loc, init);
 
-  auto dpsInterface = cast<DestinationStyleOpInterface>(this->getOperation());
-  return dpsInterface.clone(b, loc, TypeRange{initSlice.getType()},
-                            ValueRange{indicesSlice, updateSlice, initSlice});
+  return mlir::clone(b, this->getOperation(), TypeRange{initSlice.getType()},
+                     ValueRange{indicesSlice, updateSlice, initSlice});
 }
 
 FailureOr<Value> ScatterOp::generateResultTileValue(
@@ -1128,8 +1120,8 @@ mlir::gml_st::TilingInterface SortOp::getTiledImplementation(
         b.create<gml_st::MaterializeOp>(loc, init, tile));
   }
 
-  auto dpsInterface = cast<DestinationStyleOpInterface>(this->getOperation());
-  return dpsInterface.clone(b, loc, tiledResultTypes, tiledInputsAndInits);
+  return mlir::clone(b, this->getOperation(), tiledResultTypes,
+                     tiledInputsAndInits);
 }
 
 FailureOr<Value> SortOp::generateResultTileValue(OpBuilder &b,

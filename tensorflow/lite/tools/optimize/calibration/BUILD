@@ -18,7 +18,6 @@ cc_library(
     deps = [
         ":calibration_logger",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
@@ -40,7 +39,6 @@ cc_library(
     deps = [
         ":calibration_logger",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
@@ -70,8 +68,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -107,6 +104,7 @@ tf_cc_test(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
@@ -150,6 +148,7 @@ cc_library(
     deps = [
         ":calibration_logger",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -164,7 +163,6 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -186,7 +184,6 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":calibration_logger",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
 )

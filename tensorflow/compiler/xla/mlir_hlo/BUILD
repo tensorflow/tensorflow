@@ -1239,6 +1239,7 @@ cc_library(
         "@llvm-project//mlir:TensorInferTypeOpInterfaceImpl",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",
+        "@llvm-project//mlir:VectorTransforms",
     ],
 )
 
@@ -1276,6 +1277,7 @@ cc_library(
         ":gml_st_passes",
         ":gml_st_test_passes_inc_gen",
         ":gml_st_transforms",
+        ":tiling_interface_impl",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:BufferizationDialect",
         "@llvm-project//mlir:BufferizationTransforms",
@@ -1363,6 +1365,7 @@ cc_library(
         "gml_st/transforms/gml_st_to_gpu/gml_st_to_gpu.cc",
         "gml_st/transforms/gml_st_to_scf/gml_st_to_scf.cc",
         "gml_st/transforms/greedy_tiling_and_fusion/greedy_tiling_and_fusion.cc",
+        "gml_st/transforms/lower_vector_contract/lower_vector_contract.cc",
         "gml_st/transforms/passes.h.inc",
         "gml_st/transforms/peeling/peeling.cc",
         "gml_st/transforms/tiling/tiling.cc",
@@ -1384,6 +1387,7 @@ cc_library(
         "gml_st/transforms/peeling/peeling.h",
         "gml_st/transforms/rewriters.h",
         "gml_st/transforms/tiling/tiling.h",
+        "gml_st/transforms/vectorization/vectorization.h",
         "gml_st/utils/linalg_utils.h",
         "gml_st/utils/vector_utils.h",
     ],

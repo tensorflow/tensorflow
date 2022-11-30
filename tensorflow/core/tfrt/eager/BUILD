@@ -3,10 +3,6 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -40,6 +36,7 @@ cc_library(
         "//tensorflow/core/common_runtime:function_body",
         "//tensorflow/core/common_runtime:function_optimization_registry",
         "//tensorflow/core/common_runtime:optimization_registry",
+        "//tensorflow/core/common_runtime:optimize_function_graph_utils",
         "//tensorflow/core/common_runtime:placer",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/grappler:grappler_item",
@@ -190,7 +187,6 @@ tf_cc_test(
         "function_cache_test.cc",
     ],
     args = ["--heap_check="],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_oss"],
     deps = [
         ":c_api_tfrt",
@@ -221,7 +217,6 @@ tf_cc_test(
         "op_cache_test.cc",
     ],
     args = ["--heap_check="],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_oss"],
     deps = [
         ":c_api_tfrt",

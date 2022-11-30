@@ -25,7 +25,6 @@ load(
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_fingerprint_deps",
-    "tf_kernel_tests_linkstatic",
 )
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -46,16 +45,6 @@ load(
 
 # Description:
 # Op kernel implementations for TensorFlow.
-#
-# Note: Any test that uses GPU support and which we would like to
-# benchmark should be linked statically so that it can be executed
-# from a py_binary or cuda_py_test test logger.  For such a test,
-# append "_gpu" to the test name to invoke the GPU benchmarks.  Example:
-#
-#   # for CPU tests
-#   $ bazel test --config opt //third_party/tensorflow/core/kernels:my_op_test
-#   # for GPU benchmarks
-#   $ bazel run --config opt --config=cuda //third_party/tensorflow/core/kernels:my_op_test_gpu -- --benchmark_filter=..
 #
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -2504,7 +2493,6 @@ tf_kernel_library(
 tf_cuda_cc_test(
     name = "scoped_allocator_ops_test",
     srcs = ["scoped_allocator_ops_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),  #Required for benchmarking
     deps = [
         ":cwise_op",
         ":dense_update_ops",
@@ -4391,6 +4379,7 @@ tf_kernel_library(
         "pooling_ops_3d_gpu.cu.cc",
     ],
     deps = [
+        ":cast_op",
         ":conv_2d",
         ":conv_3d",
         ":conv_ops",
@@ -4807,7 +4796,6 @@ tf_kernel_library(
 tf_cc_test(
     name = "sendrecv_ops_test",
     srcs = ["sendrecv_ops_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -5116,7 +5104,6 @@ tf_cc_test(
     name = "sdca_ops_test",
     size = "small",
     srcs = ["sdca_ops_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     deps = [
         ":ops_util",
         "//tensorflow/core:all_kernels",

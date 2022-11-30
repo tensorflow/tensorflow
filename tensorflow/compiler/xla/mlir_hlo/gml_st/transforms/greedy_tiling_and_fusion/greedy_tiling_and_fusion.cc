@@ -38,6 +38,46 @@ namespace {
 #define GEN_PASS_DEF_GREEDYTILINGANDFUSIONPASS
 #include "gml_st/transforms/passes.h.inc"
 
+namespace {
+
+class FuseTensorExtractPattern : public OpRewritePattern<tensor::ExtractOp> {
+ public:
+  explicit FuseTensorExtractPattern(MLIRContext *context)
+      : OpRewritePattern<tensor::ExtractOp>(context) {}
+
+  LogicalResult matchAndRewrite(tensor::ExtractOp extractOp,
+                                PatternRewriter &rewriter) const override {
+    if (extractOp->getParentOfType<ParallelOp>())
+      return rewriter.notifyMatchFailure(extractOp, "already fused");
+
+    ParallelOp outerMostParallelOp;
+    for (auto *user : extractOp->getUsers()) {
+      ParallelOp parallelOp = user->getParentOfType<gml_st::ParallelOp>();
+      while (parallelOp && parallelOp->getParentOfType<gml_st::ParallelOp>())
+        parallelOp = parallelOp->getParentOfType<gml_st::ParallelOp>();
+
+      if (!parallelOp)
+        return rewriter.notifyMatchFailure(extractOp, "consumer is not fused");
+
+      if (!outerMostParallelOp)
+        outerMostParallelOp = parallelOp;
+      else if (outerMostParallelOp != parallelOp)
+        return rewriter.notifyMatchFailure(
+            extractOp,
+            "consumers are not all nested under the same ParallelOp");
+    }
+
+    rewriter.setInsertionPointToStart(outerMostParallelOp.getBody());
+    Value newExtractOp = rewriter.create<tensor::ExtractOp>(
+        extractOp.getLoc(), extractOp.getTensor(), extractOp.getIndices());
+    rewriter.replaceAllUsesWith(extractOp, newExtractOp);
+
+    return success();
+  }
+};
+
+}  // namespace
+
 struct GreedyTilingAndFusionPass
     : public impl::GreedyTilingAndFusionPassBase<GreedyTilingAndFusionPass> {
   GreedyTilingAndFusionPass() = default;
@@ -77,17 +117,27 @@ struct GreedyTilingAndFusionPass
                llvm::isa<gml_st::TilingInterface>(user);
       }));
     };
-    RewritePatternSet patterns(ctx);
-    populateTilingPatterns(ctx, tilingFilterFn, opts, &patterns);
 
-    auto fusionFilterFn = [](MaterializeOp) { return success(); };
-    populateFusionPatterns(ctx, fusionFilterFn, &patterns);
+    {
+      RewritePatternSet patterns(ctx);
+      populateTilingPatterns(ctx, tilingFilterFn, opts, &patterns);
+
+      auto fusionFilterFn = [](MaterializeOp) { return success(); };
+      populateFusionPatterns(ctx, fusionFilterFn, &patterns);
+
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
+        return signalPassFailure();
+    }
+
+    RewritePatternSet patterns(ctx);
+
+    patterns.add<FuseTensorExtractPattern>(ctx);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
 
     // Clean up by removing temporary attributes.
-    f.walk([](Operation *op) { removeTransformationAttr(op); });
+    removeTilingLabels(f);
   }
 };
 

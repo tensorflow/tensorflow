@@ -34,7 +34,6 @@ namespace {
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 using llvm::SmallVector;
-using mlir::Attribute;
 using mlir::dyn_cast;
 using mlir::failure;
 using mlir::MLIRContext;
@@ -46,6 +45,9 @@ using mlir::arith::ConstantIndexOp;
 using mlir::gml_st::LoopOp;
 using mlir::linalg::GenericOp;
 using mlir::linalg::LinalgTilingOptions;
+
+static constexpr llvm::StringRef kTileTransposeAppliedLabel =
+    "__tile_transpose_applied_label__";
 
 /// Returns true if the operation is a GenericOp implementing a transposition.
 // TODO(diegocaballero): Move it to MLIR core?
@@ -93,7 +95,8 @@ struct TileTransposePattern : public mlir::OpRewritePattern<GenericOp> {
 
   mlir::LogicalResult matchAndRewrite(
       GenericOp linalg_op, PatternRewriter &rewriter) const override {
-    if (hasTransformationAttr(linalg_op)) return failure();
+    if (mlir::gml_st::hasLabel(linalg_op, kTileTransposeAppliedLabel))
+      return failure();
     if (!IsTransposeGenericOp(linalg_op)) return failure();
 
     auto tiled_linalg_op =
@@ -105,8 +108,9 @@ struct TileTransposePattern : public mlir::OpRewritePattern<GenericOp> {
         mlir::dyn_cast<LoopOp>(*tiled_linalg_op.value().loops.front());
     if (!tiled_loop) return failure();
 
-    tiled_loop->walk(
-        [&](GenericOp tiledOp) { setTransformationAttr(rewriter, tiledOp); });
+    tiled_loop->walk([&](GenericOp tiledOp) {
+      mlir::gml_st::setLabel(tiledOp, kTileTransposeAppliedLabel);
+    });
 
     rewriter.replaceOp(linalg_op, tiled_loop->getResults());
     return success();
@@ -165,7 +169,9 @@ struct TileTransposePass : public impl::TileTransposeBase<TileTransposePass> {
     }
 
     // Ensure we drop the marker in the end.
-    func.walk([](GenericOp op) { removeTransformationAttr(op); });
+    func.walk([](GenericOp op) {
+      mlir::gml_st::removeLabel(op, kTileTransposeAppliedLabel);
+    });
   }
 };
 

@@ -20,7 +20,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_KERNELS_BUILTIN_OP_KERNELS_H_
 #define TENSORFLOW_LITE_CORE_KERNELS_BUILTIN_OP_KERNELS_H_
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
 namespace ops {

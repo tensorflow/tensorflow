@@ -888,6 +888,24 @@ LogicalResult CustomCallOp::verify() {
              << "operand part has type " << operandPart
              << " and output part has type " << outputPart;
   }
+
+  // Check backend_config attribute.
+  if (auto backendConfig = getBackendConfig()) {
+    if (getApiVersion() == CustomCallApiVersion::API_VERSION_TYPED_FFI) {
+      // Typed FFI custom calls require `backend_config` to be a DictionaryAttr.
+      if (backendConfig->isa<mlir::StringAttr>())
+        return emitOpError()
+               << "unsupported user-encoded backend config,"
+                  " backend config must be a dictionary attribute.";
+    } else {
+      // Older API versions require user-encoded `backend_config` string.
+      if (backendConfig->isa<mlir::DictionaryAttr>())
+        return emitOpError()
+               << "unsupported dictionary attribute backend config, backend"
+                  " config must be a user-encoded string attribute.";
+    }
+  }
+
   return success();
 }
 

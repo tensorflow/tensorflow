@@ -24,7 +24,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:tensor",
@@ -39,7 +38,6 @@ cc_test(
     deps = [
         ":resource",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest",

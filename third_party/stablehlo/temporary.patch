@@ -1,13 +1,1 @@
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
---- stablehlo/stablehlo/dialect/StablehloOps.cpp
-+++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -1218,7 +1218,7 @@
- 
-   Location loc = op->getLoc();
-   int resultRank = resultTy.getRank();
--  Type shapeElTy = startIndices.getType().cast<ShapedType>().getElementType();
-+  Type shapeElTy = builder.getIndexType();
-   auto toShapeElType = [&](Value v) {
-     return maybeCastTo(builder, loc, v, shapeElTy);
-   };
 

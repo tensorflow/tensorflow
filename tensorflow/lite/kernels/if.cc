@@ -89,7 +89,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, i + 1, &input));
       std::vector<int> dims(input->dims->data,
                             input->dims->data + input->dims->size);
-      subgraph->ResizeInputTensor(i, dims);
+      TF_LITE_ENSURE_OK(context, subgraph->ResizeInputTensor(i, dims));
       TfLiteTensor* subgraph_input = subgraph->tensor(subgraph->inputs()[i]);
       if (IsDynamicTensor(input)) {
         SetTensorToDynamic(subgraph_input);

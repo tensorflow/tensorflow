@@ -198,6 +198,7 @@ cc_library(
         ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -216,6 +217,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -235,6 +237,7 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -253,6 +256,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -272,6 +276,7 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -290,6 +295,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -309,6 +315,7 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -327,6 +334,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -344,6 +352,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -361,6 +370,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -380,6 +390,7 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -398,6 +409,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -415,6 +427,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -433,6 +446,7 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -451,6 +465,7 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -469,6 +484,7 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -486,6 +502,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -503,6 +520,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -520,6 +538,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -537,6 +556,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -554,6 +574,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -571,6 +592,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -588,6 +610,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -605,6 +628,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -622,6 +646,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -656,6 +681,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -673,6 +699,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -725,6 +752,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -742,6 +770,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -761,6 +790,7 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -780,6 +810,7 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",

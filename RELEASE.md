@@ -30,11 +30,6 @@
 
 # Major Features and Improvements
 
-*   `tf.math`:
-
-    *   Added `math_ops.segment_sum_v2` that takes `num_segments` as an
-        additional input for efficient implementation with XLA.
-
 *   `tf.lite`:
 
     *   Add 16-bit float type support for built-in op `fill`.
@@ -71,9 +66,16 @@
     *   Added a new `rerandomize_each_iteration` argument for the
         `tf.data.Dataset.random()` operation, which controls whether the
         sequence of generated random numbers should be re-randomized every epoch
-        (the default behavior) or not. If `seed` is set and
+        or not (the default behavior). If `seed` is set and
         `rerandomize_each_iteration=True`, the `random()` operation will
         produce a different (deterministic) sequence of numbers every epoch.
+    *   Added a new `rerandomize_each_iteration` argument for the
+        `tf.data.Dataset.sample_from_datasets()` operation, which controls
+        whether the sequence of generated random numbers used for sampling
+        should be re-randomized every epoch or not. If `seed` is set and
+        `rerandomize_each_iteration=True`, the `sample_from_datasets()`
+        operation will use a different (deterministic) sequence of numbers every
+        epoch.
 
 # Bug Fixes and Other Changes
 
@@ -85,6 +87,10 @@
   * Added non-experimental aliases for `tf.random.split` and
     `tf.random.fold_in`, the experimental endpoints are still available
     so no code changes are necessary.
+* `tf.experimental.ExtensionType`
+  * Added function `experimental.extension_type.as_dict()`, which converts an
+    instance of `tf.experimental.ExtensionType` to a `dict` representation.
+
 
 # Thanks to our Contributors
 

@@ -35,6 +35,9 @@ namespace {
 #define GEN_PASS_DEF_TILINGSOFTMAXPASS
 #include "gml_st/transforms/passes.h.inc"
 
+static constexpr llvm::StringRef kTileSoftmaxAppliedLabel =
+    "__tile_softmax_applied_label__";
+
 Operation *fuseIthOperandInPlace(PatternRewriter &rewriter, Operation *op,
                                  int64_t i) {
   auto matOp = llvm::cast<MaterializeOp>(op->getOperand(i).getDefiningOp());
@@ -49,9 +52,6 @@ LogicalResult tilePartialSoftmax(
     llvm::function_ref<FailureOr<Operation *>(Operation *, int64_t)>
         tileOperationFn) {
   // Match cwise root op.
-  if (!isCwiseGenericOp(op))
-    return rewriter.notifyMatchFailure(op, "not cwise generic");
-
   // Match all operands to be derived from the same source value in one of two
   // ways:
   //   i)  by a reduction and subsequent bcast in one dimension, or
@@ -59,8 +59,10 @@ LogicalResult tilePartialSoftmax(
   Value commonSource;
   Optional<int64_t> commonReductionDim;
   SmallVector<Optional<SimpleBcastReduction>> simpleBcastReductions;
-  auto genericOp = llvm::dyn_cast_or_null<linalg::GenericOp>(op.getOperation());
-  for (Value operand : genericOp.getInputs()) {
+  auto mapOp = llvm::dyn_cast_or_null<linalg::MapOp>(op.getOperation());
+  if (!mapOp || mapOp.getNumDpsInits() != 1)
+    return rewriter.notifyMatchFailure(op, "no mapOp");
+  for (Value operand : mapOp.getInputs()) {
     // Case i.
     SimpleBcastReduction bcastReduction;
     int64_t reductionDim;
@@ -94,7 +96,7 @@ LogicalResult tilePartialSoftmax(
   FailureOr<Operation *> tiledOp = tileOperationFn(op, *commonReductionDim);
   if (failed(tiledOp))
     return rewriter.notifyMatchFailure(op, "call to tileOperationFn failed");
-  setTransformationAttr(rewriter, *tiledOp);
+  setLabel(*tiledOp, kTileSoftmaxAppliedLabel);
 
   // Fuse through the bcast reduction chains.
   Value commonTiledSource;
@@ -139,7 +141,7 @@ struct TilePartialSoftmaxPattern
 
   LogicalResult matchAndRewrite(TilingInterface op,
                                 PatternRewriter &rewriter) const override {
-    if (hasTransformationAttr(op))
+    if (hasLabel(op, kTileSoftmaxAppliedLabel))
       return rewriter.notifyMatchFailure(op, "has tranformation attr");
 
     // Only apply to non-fusable occurrences.
@@ -178,7 +180,7 @@ struct TilePartialSoftmaxPattern
           if (failed(tilingResult)) return failure();
 
           rewriter.replaceOp(op, tilingResult->loop->getResults());
-          setTransformationAttr(rewriter, tilingResult->tiledOp);
+          setLabel(tilingResult->tiledOp, kTileSoftmaxAppliedLabel);
           return tilingResult->tiledOp;
         });
   }
@@ -242,8 +244,8 @@ struct FuseUnaryCwisePattern : public OpRewritePattern<MaterializeOp> {
                                 PatternRewriter &rewriter) const override {
     // Match unary cwise ops.
     Operation *source = op.getSource().getDefiningOp();
-    if (!isUnaryCwiseGenericOp(source)) return failure();
-
+    auto mapOp = dyn_cast_or_null<linalg::MapOp>(source);
+    if (!mapOp || mapOp.getNumDpsInputs() != 1) return failure();
     // Fuse.
     FailureOr<Value> fused = createFusedOp(rewriter, op);
     if (failed(fused)) return failure();
@@ -286,7 +288,7 @@ struct TilingSoftmaxPass
     }
 
     // Clean up by removing temporary attributes.
-    f.walk([](Operation *op) { removeTransformationAttr(op); });
+    f.walk([](Operation *op) { removeLabel(op, kTileSoftmaxAppliedLabel); });
   }
 };
 

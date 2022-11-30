@@ -168,6 +168,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/schema:schema_utils",
         "@com_googlesource_code_re2//:re2",
     ],
@@ -203,7 +204,6 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/c:common",
@@ -285,6 +285,7 @@ cc_library(
         "//tensorflow/core:tensorflow",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/schema:schema_utils",
         "@flatbuffers",
         "@jsoncpp_git//:jsoncpp",
@@ -321,6 +322,7 @@ cc_library(
     hdrs = ["list_flex_ops.h"],
     deps = [
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/schema:schema_utils",
         "@jsoncpp_git//:jsoncpp",
     ],
@@ -379,7 +381,6 @@ cc_library(
     hdrs = ["utils.h"],
     deps = [
         ":logging",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
     ],

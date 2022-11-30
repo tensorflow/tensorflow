@@ -49,6 +49,9 @@ using mlir::linalg::GenericOp;
 using mlir::linalg::LinalgOp;
 using mlir::linalg::LinalgTilingOptions;
 
+static constexpr llvm::StringRef kTileCwiseAppliedLabel =
+    "__tile_cwise_applied_label__";
+
 struct TileCWisePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
   TileCWisePattern(LinalgTilingOptions options, MLIRContext *context,
                    llvm::function_ref<bool(Operation *)> match_fn,
@@ -59,7 +62,8 @@ struct TileCWisePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
 
   LogicalResult matchAndRewrite(LinalgOp linalg_op,
                                 PatternRewriter &rewriter) const override {
-    if (hasTransformationAttr(linalg_op)) return failure();
+    if (mlir::gml_st::hasLabel(linalg_op, kTileCwiseAppliedLabel))
+      return failure();
     if (!match_fn(linalg_op)) return failure();
 
     auto tiled_linalg_op =
@@ -71,8 +75,9 @@ struct TileCWisePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
         mlir::dyn_cast<LoopOp>(*tiled_linalg_op.value().loops.front());
     if (!tiled_loop) return failure();
 
-    tiled_loop->walk(
-        [&](LinalgOp tiledOp) { setTransformationAttr(rewriter, tiledOp); });
+    tiled_loop->walk([&](LinalgOp tiledOp) {
+      mlir::gml_st::setLabel(tiledOp, kTileCwiseAppliedLabel);
+    });
 
     rewriter.replaceOp(linalg_op, tiled_loop->getResults());
     return success();
@@ -134,7 +139,9 @@ void Tile(mlir::func::FuncOp func, int64_t tile_size,
   (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Ensure we drop the marker in the end.
-  func.walk([](LinalgOp op) { removeTransformationAttr(op); });
+  func.walk([](LinalgOp op) {
+    mlir::gml_st::removeLabel(op, kTileCwiseAppliedLabel);
+  });
 }
 
 struct TileCWisePass : public impl::TileCWiseBase<TileCWisePass> {

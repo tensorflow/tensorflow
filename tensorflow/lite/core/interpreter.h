@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 /// \file
+///
 /// Main abstraction controlling the tflite interpreter.
 /// Do NOT include this file directly,
 /// instead include third_party/tensorflow/lite/interpreter.h
@@ -39,9 +40,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/common.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/c/common.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/experimental/resource/initialization_status.h"

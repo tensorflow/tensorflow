@@ -5,12 +5,10 @@ load(
     "tf_copts",
     "tf_cuda_library",
 )
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test")
-
-# For platform specific build config
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
+    "//tensorflow:tensorflow.default.bzl",
+    "filegroup",
+    "tf_cuda_cc_test",
 )
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -291,7 +289,6 @@ tf_cc_test(
     name = "gpu_device_on_non_gpu_machine_test",
     size = "small",
     srcs = ["gpu_device_on_non_gpu_machine_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":gpu_headers_lib",
         ":gpu_id",
@@ -306,7 +303,6 @@ tf_cuda_cc_test(
     srcs = [
         "gpu_bfc_allocator_test.cc",
     ],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_id",
@@ -333,7 +329,6 @@ tf_cuda_cc_test(
     srcs = [
         "gpu_device_test.cc",
     ],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_id",
@@ -361,7 +356,6 @@ tf_cuda_cc_test(
     srcs = [
         "pool_allocator_test.cc",
     ],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_id",
@@ -388,7 +382,6 @@ tf_cuda_cc_test(
     srcs = [
         "gpu_device_test.cc",
     ],
-    linkstatic = tf_kernel_tests_linkstatic(),
     # Runs test on a Guitar cluster that uses P100s to test unified memory
     # allocations.
     tags = tf_cuda_tests_tags() + [
@@ -417,7 +410,6 @@ tf_cuda_cc_test(
     name = "gpu_allocator_retry_test",
     size = "medium",
     srcs = ["gpu_allocator_retry_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/cc:cc_ops",
@@ -440,7 +432,6 @@ tf_cuda_cc_test(
     size = "medium",
     srcs = ["gpu_debug_allocator_test.cc"],
     args = ["--gtest_death_test_style=threadsafe"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_id",
@@ -466,7 +457,6 @@ tf_cc_test(
     name = "gpu_virtual_mem_allocator_test",
     size = "small",
     srcs = ["gpu_virtual_mem_allocator_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_virtual_mem_allocator",

@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 
+#include <algorithm>
+#include <optional>
+#include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/types/optional.h"
@@ -23,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
@@ -832,9 +838,30 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "has_side_effect",
           builder_->getBoolAttr(custom_call->custom_call_has_side_effect())));
-      attributes.push_back(builder_->getNamedAttr(
-          "backend_config",
-          builder_->getStringAttr(custom_call->raw_backend_config_string())));
+
+      // For typed FFI API version we need to parse raw backend config string
+      // into a dictionary attribute.
+      auto& raw_backend_config = custom_call->raw_backend_config_string();
+
+      if (custom_call->api_version() ==
+          CustomCallApiVersion::API_VERSION_TYPED_FFI) {
+        if (raw_backend_config.empty()) {
+          attributes.push_back(builder_->getNamedAttr(
+              "backend_config", builder_->getDictionaryAttr({})));
+        } else {
+          mlir::Attribute attr =
+              mlir::parseAttribute(raw_backend_config, builder_->getContext());
+          if (!attr.isa<mlir::DictionaryAttr>())
+            return Internal(
+                "Couldn't parse backend config into a dictionary attribute");
+
+          attributes.push_back(builder_->getNamedAttr("backend_config", attr));
+        }
+      } else {
+        attributes.push_back(builder_->getNamedAttr(
+            "backend_config", builder_->getStringAttr(raw_backend_config)));
+      }
+
       attributes.push_back(builder_->getNamedAttr(
           "api_version", mlir::mhlo::CustomCallApiVersionAttr::get(
                              builder_->getContext(), mlir_api_version)));

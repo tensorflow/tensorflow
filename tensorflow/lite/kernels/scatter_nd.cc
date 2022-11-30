@@ -105,7 +105,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
   output->type = updates->type;
 
-  if (IsConstantTensor(shape)) {
+  if (IsConstantOrPersistentTensor(shape)) {
     switch (indices->type) {
       case kTfLiteInt32:
         TF_LITE_ENSURE_OK(

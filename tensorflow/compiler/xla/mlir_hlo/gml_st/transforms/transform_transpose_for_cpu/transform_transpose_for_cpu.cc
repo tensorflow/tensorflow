@@ -36,6 +36,9 @@ namespace {
 
 using mlir::arith::ConstantIndexOp;
 
+static constexpr llvm::StringRef kTransposeTransformedLabel =
+    "__transpose_transformed_label__";
+
 struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
   TileTransposePattern(MLIRContext *context, TilingOptions options,
                        PatternBenefit benefit = 1)
@@ -44,7 +47,7 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
 
   LogicalResult matchAndRewrite(linalg::TransposeOp op,
                                 PatternRewriter &rewriter) const override {
-    if (hasTransformationAttr(op)) return failure();
+    if (hasLabel(op, kTransposeTransformedLabel)) return failure();
 
     auto tilingResult =
         tile(options, rewriter, cast<TilingInterface>(op.getOperation()));
@@ -55,7 +58,7 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
     if (tilingResult->loop != nullptr) {
       rewriter.replaceOp(op, tilingResult->loop->getResults());
     }
-    setTransformationAttr(rewriter, tilingResult->tiledOp);
+    setLabel(tilingResult->tiledOp, kTransposeTransformedLabel);
     return success();
   }
 
@@ -130,7 +133,9 @@ struct TransformTransposeForCpuPass
     }
 
     // Ensure we drop the marker in the end.
-    func.walk([](linalg::TransposeOp op) { removeTransformationAttr(op); });
+    func.walk([](linalg::TransposeOp op) {
+      removeLabel(op, kTransposeTransformedLabel);
+    });
   }
 };
 

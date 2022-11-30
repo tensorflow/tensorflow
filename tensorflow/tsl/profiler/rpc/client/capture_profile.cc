@@ -196,7 +196,6 @@ Status Trace(const std::string& logdir, int num_tracing_attempts,
   std::string session_id = GetCurrentTimeStampAsString();
   std::string repository_root = GetTensorBoardProfilePluginDir(logdir);
   auto duration_ms = opts.profiler_options().duration_ms();
-  TF_RETURN_IF_ERROR(MaybeCreateEmptyEventFile(logdir));
 
   Status status;
   int remaining_attempts = num_tracing_attempts;
@@ -245,7 +244,6 @@ Status Monitor(const std::string& service_addr, int duration_ms,
 }
 
 Status ExportToTensorBoard(const XSpace& xspace, const std::string& logdir) {
-  TF_RETURN_IF_ERROR(MaybeCreateEmptyEventFile(logdir));
   return SaveXSpace(GetTensorBoardProfilePluginDir(logdir),
                     GetCurrentTimeStampAsString(), port::Hostname(), xspace);
 }

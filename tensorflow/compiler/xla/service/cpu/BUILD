@@ -7,8 +7,8 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "mkl_deps",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_openmp_copts")
-load("//tensorflow/tsl:tsl.bzl", "tsl_copts")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow/tsl:tsl.bzl", "tf_openmp_copts", "tsl_copts")
 load(
     "//third_party/compute_library:build_defs.bzl",
     "acl_deps",

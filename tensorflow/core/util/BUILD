@@ -1,6 +1,5 @@
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
     "tf_proto_library",
 )
 load(
@@ -865,7 +864,6 @@ tf_cc_tests(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    linkstatic = tf_kernel_tests_linkstatic(),
     visibility = [
         "//tensorflow/core:__pkg__",
     ],
@@ -909,7 +907,6 @@ tf_cc_test(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
