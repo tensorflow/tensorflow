@@ -2493,3 +2493,97 @@ func.func @self_dependent_only_feeds_into_fetch(
   // expected-remark@above {{ID: 8}}
   // expected-remark@above {{Sinks: {7}}}
 }
+
+// -----
+
+// Tests that we create dependencies between `NcclAllReduce` ops on same device.
+func.func @collective_reduce_ordering_effect(
+  // expected-remark@above {{ID: 7}}
+  %input: tensor<f32>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.NcclAllReduce"(%input) { reduction = "min", num_devices = 2, shared_name = "name", device = "CPU:0"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        %1 = "tf.NcclAllReduce"(%input) { reduction = "min", num_devices = 2, shared_name = "name", device = "CPU:0"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+// -----
+
+// Tests that we create dependencies between `NcclAllReduce` ops for unspecified
+// devices.
+func.func @collective_reduce_ordering_effect(
+  // expected-remark@above {{ID: 7}}
+  %input: tensor<f32>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.NcclAllReduce"(%input) { reduction = "min", num_devices = 2, shared_name = "name"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        %1 = "tf.NcclAllReduce"(%input) { reduction = "min", num_devices = 2, shared_name = "name"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+// -----
+
+// Tests that we don't create dependencies between `NcclAllReduce` ops on
+// different devices.
+func.func @collective_reduce_ordering_effect(
+  // expected-remark@above {{ID: 7}}
+  %input: tensor<f32>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.NcclAllReduce"(%input) { reduction = "min", num_devices = 2, shared_name = "name", device = "CPU:0"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {2}}}
+        %1 = "tf.NcclAllReduce"(%input) { reduction = "min", num_devices = 2, shared_name = "name", device = "CPU:1"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {0,1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
