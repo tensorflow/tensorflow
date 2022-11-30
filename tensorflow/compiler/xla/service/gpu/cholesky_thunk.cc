@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/service/gpu/cusolver_context.h"
 #include "tensorflow/compiler/xla/service/gpu/precompiled_kernels.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
@@ -37,26 +38,9 @@ namespace gpu {
 
 namespace {
 
-StatusOr<GpuSolverContext*> GetContext(se::Stream* stream) {
-  // TODO(b/214454412): This global hashtable is incorrect (ABA bug if a Stream
-  // is added to the hasthable, then deleted, and then a new Stream is created
-  // at the same address).  It also leaks memory!
-  static absl::Mutex mu(absl::kConstInit);
-  static auto contexts =
-      new absl::flat_hash_map<se::Stream*, GpuSolverContext> ABSL_GUARDED_BY(
-          mu);
-
-  absl::MutexLock lock(&mu);
-  auto result = contexts->emplace(stream, GpuSolverContext());
-  if (result.second) {
-    TF_ASSIGN_OR_RETURN(result.first->second, GpuSolverContext::Create(stream));
-  }
-  return &result.first->second;
-}
-
 template <typename T>
 Status DoPotrfBatched(const se::GpuAsmOpts& asm_opts, CholeskyParams* params,
-                      se::Stream* stream, GpuSolverContext* context) {
+                      se::Stream* stream, GpuSolverContext& context) {
   T* a_base = static_cast<T*>(params->a_buffer.opaque());
   se::DeviceMemory<int> infos(params->info_buffer);
 #if TENSORFLOW_USE_ROCSOLVER
@@ -78,12 +62,12 @@ Status DoPotrfBatched(const se::GpuAsmOpts& asm_opts, CholeskyParams* params,
       static_cast<int>(params->batch_size), se::DeviceMemoryBase(as)));
 
   // Now that we've set up the `as` array, we can call cusolver.
-  return context->PotrfBatched(params->uplo, params->n, as, params->n, infos,
-                               params->batch_size);
+  return context.PotrfBatched(params->uplo, params->n, as, params->n, infos,
+                              params->batch_size);
 }
 
 template <typename T>
-Status DoPotrfUnbatched(CholeskyParams* params, GpuSolverContext* context) {
+Status DoPotrfUnbatched(CholeskyParams* params, GpuSolverContext& context) {
   T* a_base = static_cast<T*>(params->a_buffer.opaque());
   int* info_base = static_cast<int*>(params->info_buffer.opaque());
 
@@ -93,9 +77,8 @@ Status DoPotrfUnbatched(CholeskyParams* params, GpuSolverContext* context) {
         se::DeviceMemoryBase(&a_base[i * stride], sizeof(T) * stride));
     se::DeviceMemory<int> info_data(
         se::DeviceMemoryBase(&info_base[i], sizeof(int)));
-    TF_RETURN_IF_ERROR(context->Potrf(params->uplo, params->n, a_data,
-                                      params->n, info_data,
-                                      params->workspace_buffer));
+    TF_RETURN_IF_ERROR(context.Potrf(params->uplo, params->n, a_data, params->n,
+                                     info_data, params->workspace_buffer));
   }
   return OkStatus();
 }
@@ -141,8 +124,10 @@ Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 Status RunCholesky(const se::GpuAsmOpts& asm_opts, PrimitiveType type,
                    CholeskyParams* cholesky_params, se::Stream* stream) {
-  TF_ASSIGN_OR_RETURN(GpuSolverContext * context, GetContext(stream));
-  if (context->SupportsPotrfBatched()) {
+  TF_ASSIGN_OR_RETURN(thread_local GpuSolverContext context,
+                      GpuSolverContext::Create(stream));
+
+  if (context.SupportsPotrfBatched()) {
     switch (type) {
       case F32:
         return DoPotrfBatched<float>(asm_opts, cholesky_params, stream,

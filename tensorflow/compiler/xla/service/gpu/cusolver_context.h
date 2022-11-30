@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUSOLVER_CONTEXT_H_
 
 #include <complex>
+#include <memory>
 
 #define TENSORFLOW_USE_HIPSOLVER \
   (TENSORFLOW_USE_ROCM && (TF_ROCM_VERSION >= 40500))
@@ -44,25 +45,16 @@ using gpusolverHandle_t = rocblas_handle;
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
 
+namespace se = ::stream_executor;
+
 class GpuSolverContext {
  public:
-  // stream may be nullptr, in which case the context can only be used for
-  // buffer size queries.
   static StatusOr<GpuSolverContext> Create(se::Stream* stream);
-  GpuSolverContext() = default;
-  ~GpuSolverContext();
-
-  GpuSolverContext(const GpuSolverContext&) = delete;
-  GpuSolverContext(GpuSolverContext&&);
-  GpuSolverContext& operator=(const GpuSolverContext&) = delete;
-  GpuSolverContext& operator=(GpuSolverContext&&);
 
   bool SupportsPotrfBatched() const { return true; }
 
@@ -121,12 +113,13 @@ class GpuSolverContext {
                                     int batch_size);
 
  private:
-  GpuSolverContext(se::Stream* stream, gpusolverHandle_t handle);
+  explicit GpuSolverContext(gpusolverHandle_t handle);
 
-  gpusolverHandle_t handle() const { return handle_; }
+  struct Deleter {
+    void operator()(gpusolverHandle_t handle);
+  };
 
-  se::Stream* stream_ = nullptr;
-  gpusolverHandle_t handle_ = nullptr;
+  std::unique_ptr<std::remove_pointer_t<gpusolverHandle_t>, Deleter> handle_;
 };
 
 }  // namespace gpu

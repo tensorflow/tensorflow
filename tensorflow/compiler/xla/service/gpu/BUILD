@@ -1200,6 +1200,8 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/tsl/platform:status",
