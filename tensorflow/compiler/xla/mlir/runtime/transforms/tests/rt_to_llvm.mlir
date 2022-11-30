@@ -172,9 +172,8 @@ func.func @dynamic_custom_call(%arg0: !rt.execution_context) {
   // CHECK: %[[C1_0:.*]] = arith.constant 1 : i32
   // CHECK: %[[ARGS:.*]] = llvm.alloca %[[C1_0]] x !llvm.array<1 x ptr>
 
-  // CHECK: %[[ATTRS:.*]] = llvm.mlir.addressof @__rt_custom_call_attrs
-
   // CHECK: %[[CALLEE_ADDR:.*]] = llvm.mlir.addressof @__rt_custom_call_name
+  // CHECK: %[[ATTRS:.*]] = llvm.mlir.addressof @__rt_custom_call_attrs
 
   // CHECK: %[[STATUS:.*]] = call @runtimeCustomCall(%[[CTX]], %[[CALLEE_ADDR]],
   // CHECK-SAME:                                     %[[ARGS]], %[[ATTRS]],
@@ -200,9 +199,10 @@ func.func @dynamic_custom_call(%arg0: !rt.execution_context) {
 
 // CHECK: global internal constant @__rt_custom_call_attrs()
 // CHECK-SAME: : !llvm.array<4 x ptr> {
+// CHECK:   llvm.mlir.addressof @__rt_num_attrs
 // CHECK:   llvm.mlir.addressof @__rt_attr_name
 // CHECK:   llvm.mlir.addressof @__type_id_float
-// CHECK:   llvm.mlir.addressof @__rt_attr_value : !llvm.ptr
+// CHECK:   llvm.mlir.addressof @__rt_attr_value
 // CHECK: }
 
 // CHECK: func @custom_call(
@@ -310,6 +310,18 @@ func.func @custom_call(%arg0: !rt.execution_context) {
 
 // -----
 
+// CHECK: llvm.mlir.global internal constant @__rt_rets_type_table
+// CHECK: llvm.mlir.undef : !llvm.array<0 x ptr>
+// CHECK: llvm.return {{.*}} : !llvm.array<0 x ptr>
+// CHECK: llvm.mlir.global internal constant @__rt_num_rets(0 : i64)
+
+// CHECK: llvm.mlir.global internal constant @__rt_num_attrs(0 : i64)
+// CHECK: llvm.mlir.global internal constant @__rt_custom_call_attrs
+
+// CHECK: llvm.mlir.global internal constant @__rt_args_type_table
+// CHECK: llvm.mlir.undef : !llvm.array<1 x ptr>
+// CHECK: llvm.mlir.addressof @__type_id_float
+
 // CHECK: func @custom_call(
 // CHECK:   %[[CTX:.*]]: !llvm.ptr
 // CHECK:   %[[ARG:.*]]: f32
@@ -319,11 +331,11 @@ func.func @custom_call(%arg0: !rt.execution_context, %arg1 : f32) {
   // CHECK-DAG: %[[ARGS:.*]] = llvm.alloca {{.*}} x !llvm.array<3 x ptr>
   // CHECK-DAG: %[[RETS:.*]] = llvm.alloca {{.*}} x !llvm.array<1 x ptr>
 
-  // CHECK-DAG: %[[TYPE_ID:.*]] = llvm.mlir.addressof @__type_id_float
   // CHECK-DAG: %[[N_ARGS:.*]] = llvm.mlir.addressof @__rt_num_args
-
   // CHECK-DAG: llvm.store %[[ARG]], %[[MEM]]
 
+  // CHECK: %[[ARGS_TYPES:.*]] = llvm.mlir.addressof @__rt_args_type_table
+  // CHECK: llvm.insertvalue %[[ARGS_TYPES]], {{.*}}[1] : !llvm.array<3 x ptr>
   // CHECK: llvm.intr.lifetime.start -1, %[[ARGS]]
   // CHECK: llvm.store {{.*}}, %[[ARGS]] : !llvm.array<3 x ptr>, !llvm.ptr
 
@@ -339,6 +351,9 @@ func.func @custom_call(%arg0: !rt.execution_context, %arg1 : f32) {
 
 // -----
 
+// CHECK: llvm.mlir.global internal constant @__rt_args_type_table
+// CHECK: llvm.mlir.addressof @__type_id_memref_view
+
 // CHECK: func @custom_call(
 // CHECK:   %[[CTX:.*]]: !llvm.ptr
 // CHECK:   %[[ARG:.*]]: memref<?x256xf32>
@@ -347,8 +362,6 @@ func.func @custom_call(%arg0: !rt.execution_context, %arg1 : memref<?x256xf32>) 
 
   // CHECK: %[[DESC:.*]] = builtin.unrealized_conversion_cast %[[ARG]]
   // CHECK-SAME: to !llvm.struct
-
-  // CHECK: %[[TYPE_ID:.*]] = llvm.mlir.addressof @__type_id_memref_view
 
   // CHECK: llvm.mlir.undef : !llvm.array<4 x i64>
   // CHECK-NEXT: llvm.extractvalue %[[DESC]][3, 0]
@@ -367,6 +380,7 @@ func.func @custom_call(%arg0: !rt.execution_context, %arg1 : memref<?x256xf32>) 
   // CHECK: llvm.insertvalue
 
   // CHECK: %[[N_ARGS:.*]] = llvm.mlir.addressof @__rt_num_args
+  // CHECK: %[[TYPES:.*]] = llvm.mlir.addressof @__rt_args_type_table
 
   // CHECK: call @target
   rt.call %arg0["target"] (%arg1) : (memref<?x256xf32>) -> ()
@@ -435,6 +449,9 @@ func.func @opaque_arg(%ctx: !rt.execution_context, %arg: !rt.opaque) {
 
 // -----
 
+// CHECK: llvm.mlir.global internal constant @__rt_args_type_table
+// CHECK: llvm.mlir.addressof @__type_id_opaque : !llvm.ptr
+
 // CHECK: func @opaque_custom_call_arg(
 // CHECK-SAME:   %[[ARG0:.*]]: !llvm.ptr,
 // CHECK-SAME:   %[[ARG1:.*]]: !llvm.ptr
@@ -442,7 +459,6 @@ func.func @opaque_arg(%ctx: !rt.execution_context, %arg: !rt.opaque) {
 func.func @opaque_custom_call_arg(%ctx: !rt.execution_context,
                                   %arg: !rt.opaque) {
   // CHECK: %[[ALLOCA:.*]] = llvm.alloca {{.*}} x !llvm.ptr
-  // CHECK: llvm.mlir.addressof @__type_id_opaque : !llvm.ptr
   // CHECK: llvm.store %[[ARG1]], %[[ALLOCA]] : !llvm.ptr
   // CHECK: call @target
   %status = rt.call %ctx["target"] (%arg) : (!rt.opaque) -> ()

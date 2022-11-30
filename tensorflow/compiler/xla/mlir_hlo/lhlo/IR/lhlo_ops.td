@@ -20,7 +20,7 @@ limitations under the License.
 // to merge these two files together, but we need to consider the following
 // obstacles:
 // * We need to have a common representation for arguments. That is to say,
-//   HLO_Array<X> translates to HLO_Tensor<X> in HLO dialect, and
+//   HLO_Array<X> translates to MHLO_Tensor<X> in HLO dialect, and
 //   Arg<LHLO_Buffer<X>, "", [Mem(Read|Write)]> in LHLO. Array types within
 //   tuples also need to be transformed.
 // * As of now, TableGen's dag functions are not sufficient to accomplish the
@@ -631,7 +631,7 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]> {
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$output,
     StrAttr:$call_target_name,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$has_side_effect,
-    DefaultValuedStrAttr<StrAttr, "">:$backend_config,
+    OptionalAttr<AnyAttrOf<[StrAttr, DictionaryAttr]>>:$backend_config,
     // TODO(b/189822916): Remove this field when all clients are migrated to
     // the status-returning API.
     DefaultValuedOptionalAttr<MHLO_CustomCallApiVersionAttr,

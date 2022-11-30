@@ -23,36 +23,16 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_service.pb.h"
+#include "tensorflow/tsl/profiler/rpc/client/save_profile.h"
 
 namespace tensorflow {
 namespace profiler {
 
-std::string GetCurrentTimeStampAsString();
-
-// Returns the profile plugin directory given a logdir to TensorBoard.
-std::string GetTensorBoardProfilePluginDir(const std::string& logdir);
-
-// Creates an empty event file if not already exists, which indicates that we
-// have a plugins/profile/ directory in the current logdir.
-Status MaybeCreateEmptyEventFile(const std::string& logdir);
-
-// Saves all profiling tool data in a profile to <repository_root>/<run>/.
-// This writes user-facing log messages to `os`.
-// Note: this function creates a directory even when all fields in
-// ProfileResponse are unset/empty.
-Status SaveProfile(const std::string& repository_root, const std::string& run,
-                   const std::string& host, const ProfileResponse& response,
-                   std::ostream* os);
-
-// Gzip the data and save to <repository_root>/<run>/.
-Status SaveGzippedToolData(const std::string& repository_root,
-                           const std::string& run, const std::string& host,
-                           const std::string& tool_name,
-                           const std::string& data);
-
-// Save XSpace to <repository_root>/<run>/<host>_<port>.<kXPlanePb>.
-Status SaveXSpace(const std::string& repository_root, const std::string& run,
-                  const std::string& host, const XSpace& xspace);
+using tsl::profiler::GetCurrentTimeStampAsString;     // NOLINT
+using tsl::profiler::GetTensorBoardProfilePluginDir;  // NOLINT
+using tsl::profiler::SaveGzippedToolData;             // NOLINT
+using tsl::profiler::SaveProfile;                     // NOLINT
+using tsl::profiler::SaveXSpace;                      // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

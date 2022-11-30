@@ -388,7 +388,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   }
 
   // Set dilations
-  op->setAttr("dilations", dilations_attr.getValue());
+  op->setAttr("dilations", dilations_attr.value());
 
   if (expand_op) {
     // If there is `expand_op`, we need to rewire the inputs to bypass the

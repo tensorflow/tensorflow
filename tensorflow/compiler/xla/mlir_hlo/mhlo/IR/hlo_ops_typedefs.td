@@ -54,7 +54,7 @@ def MHLO_AsyncBundleTypeDef : TypeDef<MHLO_Dialect, "AsyncBundle"> {
 def MHLO_IsAsyncBundleTypePred : CPred<"$_self.isa<::mlir::mhlo::AsyncBundleType>()">;
 
 def MHLO_AsyncBundle :
-    MixedContainerType<AnyTypeOf<[HLO_Tensor, HLO_Token]>, MHLO_IsAsyncBundleTypePred,
+    MixedContainerType<AnyTypeOf<[MHLO_Tensor, MHLO_Token]>, MHLO_IsAsyncBundleTypePred,
                        "AsyncBundleType::getFlattenedTypes($_self.cast<::mlir::mhlo::AsyncBundleType>())",
                        "async_bundle">;
 

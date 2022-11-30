@@ -68,7 +68,8 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions() {
   options.bufferizeFunctionBoundaries = true;
   options.allowReturnAllocs = true;
   options.functionBoundaryTypeConversion = LayoutMapOption::IdentityLayoutMap;
-  options.unknownTypeConverterFn = [](mlir::Value value, unsigned memorySpace,
+  options.unknownTypeConverterFn = [](mlir::Value value,
+                                      mlir::Attribute memorySpace,
                                       const BufferizationOptions& options) {
     return mlir::bufferization::getMemRefTypeWithStaticIdentityLayout(
         value.getType().cast<mlir::TensorType>(), memorySpace);
@@ -82,8 +83,9 @@ void AddSparsificationPasses(mlir::OpPassManager& pm) {
       mlir::bufferization::createEmptyTensorToAllocTensorPass());
   pm.addPass(mlir::bufferization::createTensorCopyInsertionPass(
       GetBufferizationOptions()));
-  pm.addPass(mlir::createSparseTensorRewritePass(/*enableRT=*/false));
+  pm.addPass(mlir::createPreSparsificationRewritePass());
   pm.addPass(mlir::createSparsificationPass());
+  pm.addPass(mlir::createPostSparsificationRewritePass(/*enableRT=*/false));
   pm.addPass(mlir::createSparseTensorCodegenPass());
   pm.addPass(mlir::createSparseBufferRewritePass());
   pm.addPass(mlir::createDenseBufferizationPass(GetBufferizationOptions()));

@@ -2,6 +2,7 @@
 # minimal changes to user code.
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -10,6 +11,7 @@ package_group(
     packages = [
         "//tensorflow_models/google/...",
         "//third_party/aimee/clara2_labs/...",
+        "//third_party/py/jax_tpu_embedding/...",
         "//third_party/py/keras/dtensor/...",
     ],
 )

@@ -118,7 +118,6 @@ typedef absl::variant<absl::monostate, Tensor<HWC, DataType::FLOAT32>,
     TensorOrScalar;
 
 struct Padding2D {
-  Padding2D() = default;
   Padding2D& operator=(const Padding2D& value);
   bool operator==(const Padding2D& value) const;
   bool operator!=(const Padding2D& value) const;

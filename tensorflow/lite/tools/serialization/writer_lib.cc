@@ -26,8 +26,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"

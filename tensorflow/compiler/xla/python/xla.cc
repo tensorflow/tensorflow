@@ -19,6 +19,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+// clang-format off
+// Must be included first
+#include "tensorflow/tsl/python/lib/core/numpy.h"  //NOLINT
+// clang-format on
+
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -30,7 +35,6 @@ limitations under the License.
 #include "pybind11/pytypes.h"
 #include "pybind11/stl_bind.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/pjrt/cpu_device.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/distributed.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
@@ -53,7 +57,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/mlir.h"
-#include "tensorflow/compiler/xla/python/numpy.h"
 #include "tensorflow/compiler/xla/python/ops.h"
 #include "tensorflow/compiler/xla/python/outfeed_receiver_py.h"
 #include "tensorflow/compiler/xla/python/pjit.h"
@@ -97,7 +100,7 @@ bool IsOptimizedBuild() {
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
-  ImportNumpy();
+  tsl::ImportNumpy();
   CHECK(tensorflow::RegisterNumpyBfloat16());
 
   // Exceptions
@@ -282,15 +285,6 @@ PYBIND11_MODULE(xla_extension, m) {
            py::arg("result_shapes"), py::arg("operand_layouts") = std::nullopt,
            py::arg("has_side_effects") = false);
 
-  m.def(
-      "get_cpu_client",
-      [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
-        py::gil_scoped_release gil_release;
-        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
-                            GetCpuClient(asynchronous));
-        return std::make_shared<PyClient>(std::move(client));
-      },
-      py::arg("asynchronous") = true);
   m.def(
       "get_tfrt_cpu_client",
       [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {

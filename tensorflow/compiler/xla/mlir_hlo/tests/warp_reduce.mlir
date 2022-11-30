@@ -1,19 +1,22 @@
-// RUN: mlir-hlo-opt -split-input-file -gml-st-simtfy="block-distribution-label=block" \
-// RUN:   -gml-st-to-gpu="warp-distribution-label=warp" %s | FileCheck %s
+// RUN: mlir-hlo-opt -split-input-file %s \
+// RUN:   -gml-st-simtfy="block-distribution-label=block" \
+// RUN:   -gml-st-to-gpu="warp-distribution-label=warp" \
+// RUN: | FileCheck %s
 
 // CHECK-LABEL: func @vector_reduce
-func.func @vector_reduce(%arg0 : memref<1xf32>) {
+func.func @vector_reduce(
+  %arg0: vector<1xf32>,
+  %arg1: vector<1xf32>
+) -> vector<1xf32> {
 
-  %c0 = arith.constant 0 : index
-  %cst = arith.constant 1.0 : f32
-  %init = vector.broadcast %cst : f32 to vector<1xf32>
   %lane = gpu.lane_id
   %tile = gml_st.tile [%lane] [1] [1] : !gml_st.tile<1>
-  %bcast = vector.broadcast %cst : f32 to vector<1xf32>
+  %dist = gml_st.distribute %arg1 into[%tile]
+    : vector<1xf32> into vector<1x32xf32>[!gml_st.tile<1>]
 
-  // CHECK: %[[CST:.*]] = arith.constant 1.0
-  // CHECK: %[[Y0:.*]], %{{.*}} = gpu.shuffle xor %[[CST]], %c1
-  // CHECK: %[[X1:.*]] = arith.addf %[[Y0]], %[[CST]]
+  // CHECK: %[[X0:.*]] = vector.extract %arg1[0]
+  // CHECK: %[[Y0:.*]], %{{.*}} = gpu.shuffle xor %[[X0]], %c1
+  // CHECK: %[[X1:.*]] = arith.addf %[[X0]], %[[Y0]]
   // CHECK: %[[Y1:.*]], %{{.*}} = gpu.shuffle xor %[[X1]], %c2
   // CHECK: %[[X2:.*]] = arith.addf %[[X1]], %[[Y1]]
   // CHECK: %[[Y2:.*]], %{{.*}} = gpu.shuffle xor %[[X2]], %c4
@@ -22,44 +25,75 @@ func.func @vector_reduce(%arg0 : memref<1xf32>) {
   // CHECK: %[[X4:.*]] = arith.addf %[[X3]], %[[Y3]]
   // CHECK: %[[Y4:.*]], %{{.*}} = gpu.shuffle xor %[[X4]], %c16
   // CHECK: %[[X5:.*]] = arith.addf %[[X4]], %[[Y4]]
-  // CHECK: %[[Y5:.*]] = arith.addf %[[X5]], %[[CST]]
-  // CHECK: %[[SUM:.*]] = vector.broadcast %[[Y5]]
-  %dist = gml_st.distribute %bcast into[%tile]
-    : vector<1xf32> into vector<1x32xf32>[!gml_st.tile<1>]
-  %sum = vector.multi_reduction <add>, %dist, %init
+  // CHECK: %[[Y5:.*]] = vector.extract %arg0[0]
+  // CHECK: %[[X6:.*]] = arith.addf %[[Y5]], %[[X5]]
+  // CHECK: %[[RESULT:.*]] = vector.broadcast %[[X6]]
+  %result = vector.multi_reduction <add>, %dist, %arg0
     {"gml-st-distribution-label" = "warp"} [1]
     : vector<1x32xf32> to vector<1xf32>
-  // CHECK: vector.transfer_write %[[SUM]], %arg0[%c0]
-  vector.transfer_write %sum, %arg0[%c0] : vector<1xf32>, memref<1xf32>
 
-  func.return
+  // CHECK: return %[[RESULT]]
+  func.return %result : vector<1xf32>
 }
 
 // -----
 
 // CHECK-LABEL: func @vector_reduce_small
-func.func @vector_reduce_small() -> vector<1xf32> {
+func.func @vector_reduce_small(
+  %arg0: vector<1xf32>,
+  %arg1: vector<1xf32>
+) -> vector<1xf32> {
 
-  %cst = arith.constant 1.0 : f32
-  %init = vector.broadcast %cst : f32 to vector<1xf32>
   %lane = gpu.lane_id
   %tile = gml_st.tile [%lane] [1] [1] : !gml_st.tile<1>
-  %dist = gml_st.distribute %init into[%tile]
+  %dist = gml_st.distribute %arg1 into[%tile]
     : vector<1xf32> into vector<1x4xf32>[!gml_st.tile<1>]
 
-  // CHECK: %[[CST:.*]] = arith.constant 1.0
-  // CHECK: %[[Y0:.*]], %{{.*}} = gpu.shuffle xor %[[CST]], %c1
-  // CHECK: %[[X1:.*]] = arith.addf %[[Y0]], %[[CST]]
+  // CHECK: %[[X0:.*]] = vector.extract %arg1[0]
+  // CHECK: %[[Y0:.*]], %{{.*}} = gpu.shuffle xor %[[X0]], %c1
+  // CHECK: %[[X1:.*]] = arith.addf %[[X0]], %[[Y0]]
   // CHECK: %[[Y1:.*]], %{{.*}} = gpu.shuffle xor %[[X1]], %c2
   // CHECK: %[[X2:.*]] = arith.addf %[[X1]], %[[Y1]]
-  // CHECK: %[[Y2:.*]] = arith.addf %[[X2]], %[[CST]]
-  // CHECK: %[[SUM:.*]] = vector.broadcast %[[Y2]]
-  %sum = vector.multi_reduction <add>, %dist, %init
+  // CHECK: %[[Y2:.*]] = vector.extract %arg0[0]
+  // CHECK: %[[X3:.*]] = arith.addf %[[Y2]], %[[X2]]
+  // CHECK: %[[RESULT:.*]] = vector.broadcast %[[X3]]
+  %result = vector.multi_reduction <add>, %dist, %arg0
     {"gml-st-distribution-label" = "warp"} [1]
     : vector<1x4xf32> to vector<1xf32>
 
-  // CHECK: return %[[SUM]]
-  func.return %sum : vector<1xf32>
+  // CHECK: return %[[RESULT]]
+  func.return %result : vector<1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @vector_reduce_fp16
+func.func @vector_reduce_fp16(
+  %arg0: vector<1xf16>,
+  %arg1: vector<1xf16>
+) -> vector<1xf16> {
+
+  %lane = gpu.lane_id
+  %tile = gml_st.tile [%lane] [1] [1] : !gml_st.tile<1>
+  %dist = gml_st.distribute %arg1 into[%tile]
+    : vector<1xf16> into vector<1x2xf16>[!gml_st.tile<1>]
+
+  // CHECK: %[[X0:.*]] = vector.extract %arg1[0]
+  // CHECK: %[[A0:.*]] = arith.bitcast %[[X0]]
+  // CHECK: %[[B0:.*]] = arith.extui %[[A0]]
+  // CHECK: %[[C0:.*]], %{{.*}} = gpu.shuffle xor %[[B0]], %c1
+  // CHECK: %[[D0:.*]] = arith.trunci %[[C0]]
+  // CHECK: %[[Y0:.*]] = arith.bitcast %[[D0]]
+  // CHECK: %[[X1:.*]] = arith.maxf %[[X0]], %[[Y0]]
+  // CHECK: %[[Y1:.*]] = vector.extract %arg0[0]
+  // CHECK: %[[X2:.*]] = arith.maxf %[[Y1]], %[[X1]]
+  // CHECK: %[[RESULT:.*]] = vector.broadcast %[[X2]]
+  %result = vector.multi_reduction <maxf>, %dist, %arg0
+    {"gml-st-distribution-label" = "warp"} [1]
+    : vector<1x2xf16> to vector<1xf16>
+
+  // CHECK: return %[[RESULT]]
+  func.return %result : vector<1xf16>
 }
 
 // -----

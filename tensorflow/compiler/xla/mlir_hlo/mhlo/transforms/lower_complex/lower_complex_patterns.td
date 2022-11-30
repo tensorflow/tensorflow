@@ -27,8 +27,8 @@ include "mhlo/IR/hlo_ops.td"
 // Add and subtraction are elementwise and can be distributed across the real
 // and imaginary components.
 foreach elementwiseOp = [MHLO_AddOp, MHLO_SubtractOp] in
-  def : Pat<(elementwiseOp HLO_ComplexTensor:$lhs,
-             HLO_ComplexTensor:$rhs),
+  def : Pat<(elementwiseOp MHLO_ComplexTensor:$lhs,
+             MHLO_ComplexTensor:$rhs),
             (MHLO_ComplexOp
               (elementwiseOp (MHLO_RealOp $lhs), (MHLO_RealOp $rhs)),
               (elementwiseOp (MHLO_ImagOp $lhs), (MHLO_ImagOp $rhs)))>;
@@ -37,8 +37,8 @@ foreach elementwiseOp = [MHLO_AddOp, MHLO_SubtractOp] in
 // real and imaginary components such that:
 //   result.real = lhs.real * rhs.real - lhs.imag * rhs.imag
 //   result.imag = lhs.imag * rhs.real + lhs.real * rhs.imag
-def : Pat<(MHLO_MulOp HLO_ComplexTensor:$lhs,
-           HLO_ComplexTensor:$rhs),
+def : Pat<(MHLO_MulOp MHLO_ComplexTensor:$lhs,
+           MHLO_ComplexTensor:$rhs),
           (MHLO_ComplexOp
            (MHLO_SubtractOp
             (MHLO_MulOp
@@ -56,7 +56,7 @@ def : Pat<(MHLO_MulOp HLO_ComplexTensor:$lhs,
 // conjugate of the rhs.
 //   numerator = lhs * conj(rhs)
 //   denominator = rhs * conj(rhs)
-def : Pat<(MHLO_DivOp HLO_ComplexTensor:$lhs, HLO_ComplexTensor:$rhs),
+def : Pat<(MHLO_DivOp MHLO_ComplexTensor:$lhs, MHLO_ComplexTensor:$rhs),
           (MHLO_ComplexOp
             (MHLO_DivOp
              (MHLO_RealOp (MHLO_MulOp:$num $lhs,
@@ -70,7 +70,7 @@ def : Pat<(MHLO_DivOp HLO_ComplexTensor:$lhs, HLO_ComplexTensor:$rhs),
 
 // Absolute value is evaluated as:
 //   result = sqrt(val.real * val.real + val.imag * val.imag)
-def : Pat<(MHLO_AbsOp HLO_ComplexTensor:$val),
+def : Pat<(MHLO_AbsOp MHLO_ComplexTensor:$val),
            (MHLO_SqrtOp
              (MHLO_AddOp
               (MHLO_MulOp (MHLO_RealOp:$real $val), $real),
@@ -80,7 +80,7 @@ def : Pat<(MHLO_AbsOp HLO_ComplexTensor:$val),
 //   sin(a) * cosh(b) + icos(a) * sinh(b)
 //   sinh(b) = (e^x - e^-x) / 2
 //   cosh(b) = (e^x + e^-x) / 2
-def : Pat<(MHLO_SineOp HLO_ComplexTensor:$val),
+def : Pat<(MHLO_SineOp MHLO_ComplexTensor:$val),
             (MHLO_ComplexOp
               (MHLO_DivOp
                 (MHLO_MulOp
@@ -98,7 +98,7 @@ def : Pat<(MHLO_SineOp HLO_ComplexTensor:$val),
 //   cos(a) * cosh(b) - isin(a) * sinh(b)
 //   sinh(b) = (e^x - e^-x) / 2
 //   cosh(b) = (e^x + e^-x) / 2
-def : Pat<(MHLO_CosineOp HLO_ComplexTensor:$val),
+def : Pat<(MHLO_CosineOp MHLO_ComplexTensor:$val),
             (MHLO_ComplexOp
               (MHLO_DivOp
                 (MHLO_MulOp
@@ -120,7 +120,7 @@ def : Pat<(MHLO_CosineOp HLO_ComplexTensor:$val),
 class MHLO_ComparisonDirectionValue<string enumStr> :
   ConstantAttr<MHLO_ComparisonDirectionAttr, "::mlir::mhlo::ComparisonDirection::" # enumStr>;
 
-def : Pat<(MHLO_ExpOp HLO_ComplexTensor:$val),
+def : Pat<(MHLO_ExpOp MHLO_ComplexTensor:$val),
           (MHLO_ComplexOp
            (MHLO_MulOp
             (MHLO_CosineOp (MHLO_ImagOp:$imag $val)),
@@ -129,7 +129,7 @@ def : Pat<(MHLO_ExpOp HLO_ComplexTensor:$val),
 
 foreach pair = [[MHLO_ComparisonDirectionValue<"NE">, MHLO_OrOp],
                 [MHLO_ComparisonDirectionValue<"EQ">, MHLO_AndOp]] in {
-def : Pat<(MHLO_CompareOp HLO_ComplexTensor:$lhs, HLO_ComplexTensor:$rhs, pair[0], $compare_type),
+def : Pat<(MHLO_CompareOp MHLO_ComplexTensor:$lhs, MHLO_ComplexTensor:$rhs, pair[0], $compare_type),
             (pair[1]
              (MHLO_CompareOp (MHLO_RealOp $lhs), (MHLO_RealOp $rhs), pair[0], $compare_type),
              (MHLO_CompareOp (MHLO_ImagOp $lhs), (MHLO_ImagOp $rhs), pair[0], $compare_type))>;

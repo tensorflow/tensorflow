@@ -20,8 +20,11 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_solver_option.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/cluster_environment.h"
 #include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {

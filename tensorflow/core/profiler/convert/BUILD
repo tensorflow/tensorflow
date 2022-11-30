@@ -3,6 +3,7 @@ load("//tensorflow:tensorflow.bzl", "if_oss", "tf_cc_test")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts", "tf_profiler_pybind_cc_library_wrapper")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/core/profiler:internal"],
     licenses = ["notice"],
 )

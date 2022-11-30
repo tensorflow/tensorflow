@@ -15,8 +15,10 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -29,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/runtime/results.h"
+#include "tensorflow/compiler/xla/runtime/types.h"
 #include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
 
@@ -102,6 +105,29 @@ struct ReturnI32 {
   int32_t* ptr = nullptr;
 };
 
+struct ReturnMemref {
+  LogicalResult operator()(unsigned result_index, const Type* type,
+                           const Type* runtime_type, void* ret) const {
+    auto* memref = llvm::dyn_cast<MemrefType>(runtime_type);
+    if (!memref) return failure();
+
+    auto desc = ConvertReturnedMemref<MemrefDesc>(*this, memref, ret);
+    if (failed(desc)) return failure();
+
+    *ptr = std::move(*desc);
+    return success();
+  }
+
+  MemrefDesc operator()(PrimitiveType element_type, void* base_ptr,
+                        void* data_ptr, int64_t offset,
+                        absl::Span<const int64_t> sizes,
+                        absl::Span<const int64_t> strides) const {
+    return MemrefDesc(element_type, base_ptr, offset, sizes, strides);
+  }
+
+  std::optional<MemrefDesc>* ptr = nullptr;
+};
+
 // Execute all tasks in the caller thread immediately.
 class InlineAsyncTaskRunner : public AsyncTaskRunner {
  public:
@@ -127,6 +153,29 @@ TEST(ExecutableTest, ReturnScalar) {
 
   ASSERT_TRUE(CompileAndExecute(module, {}, converter).ok());
   EXPECT_EQ(result, 42);
+}
+
+TEST(ExecutableTest, ReturnMemref) {
+  absl::string_view module = R"(
+    func.func @test() -> memref<?x?xf32> {
+      %0 = arith.constant 1 : index
+      %1 = arith.constant 2 : index
+      %2 = memref.alloc(%0, %1) : memref<?x?xf32>
+      return %2 : memref<?x?xf32>
+    }
+  )";
+
+  std::optional<MemrefDesc> result;
+  ResultConverterSet converter(AssertNoError, ReturnMemref{&result});
+
+  ASSERT_TRUE(CompileAndExecute(module, {}, converter).ok());
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->rank(), 2);
+  EXPECT_EQ(result->size(0), 1);
+  EXPECT_EQ(result->size(1), 2);
+
+  // Result converter passed onwership of the underlying buffer to MemrefDesc.
+  std::free(result->data());
 }
 
 TEST(ExecutableTest, ScalarArgs) {
@@ -263,10 +312,8 @@ TEST(ExecutableTest, AsyncExecuteAndAwait) {
 // Performance benchmarks are below.
 //===----------------------------------------------------------------------===//
 
-using benchmark::State;
-
 static void CompileAndBenchmark(
-    State& state, std::string_view module, ArgumentsRef args,
+    benchmark::State& state, std::string_view module, ArgumentsRef args,
     ResultConverter& results, AsyncTaskRunner* async_task_runner = NoRunner()) {
   JitExecutable::Options opts;
   opts.specialization = JitExecutable::Specialization::kDisabled;
@@ -296,7 +343,7 @@ static void CompileAndBenchmark(
   }
 }
 
-void BM_AsyncExecuteAndAwait(State& state) {
+void BM_AsyncExecuteAndAwait(benchmark::State& state) {
   absl::string_view module = R"(
     func.func @test(%arg0: i32, %arg1: i32) -> i32 {
       %token, %result = async.execute -> !async.value<i32> {

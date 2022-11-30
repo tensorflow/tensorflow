@@ -62,7 +62,7 @@ class LegalizeTF : public impl::LegalizeTFBase<LegalizeTF> {
     prefer_tf2xla_ = prefer_tf2xla;
     use_tf2xla_fallback_ = tf2xla_fallback_device_type.has_value();
     if (tf2xla_fallback_device_type.has_value()) {
-      device_type_ = tf2xla_fallback_device_type.getValue().str();
+      device_type_ = tf2xla_fallback_device_type.value().str();
     }
   }
   /// Performs the lowering to XLA dialect.
@@ -429,7 +429,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
 
   if (tf2xla_fallback_device_type) {
     // Add TF->HLO legalization patterns via TF2XLA fallback.
-    PopulateLegalizeTfWithTf2XlaPatterns(tf2xla_fallback_device_type.getValue(),
+    PopulateLegalizeTfWithTf2XlaPatterns(tf2xla_fallback_device_type.value(),
                                          patterns, context, prefer_tf2xla);
   }
 

@@ -94,7 +94,6 @@ ENTRY main {
   gpu_target_config.cuda_compute_capability = cuda_compute_capability;
   gpu_target_config.rocm_compute_capability = rocm_compute_capability;
   gpu_target_config.platform_name = stream_exec->platform()->Name();
-  gpu_target_config.device_ordinal = stream_exec->device_ordinal();
 
   AotCompilationOptions aot_options(compiler.PlatformId());
   aot_options.set_target_config(gpu_target_config);

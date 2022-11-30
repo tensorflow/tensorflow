@@ -5,7 +5,10 @@ load(
     "tf_cc_test",
 )
 
-package(default_visibility = ["//visibility:private"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//visibility:private"],
+)
 
 licenses(["notice"])
 

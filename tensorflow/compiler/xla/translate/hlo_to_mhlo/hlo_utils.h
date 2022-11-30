@@ -60,8 +60,8 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
 
   bool is_dynamic = false;
   int64_t rank = xla_ty.rank();
-  llvm::SmallVector<int64_t, 4> shape(rank, mlir::ShapedType::kDynamicSize);
-  llvm::SmallVector<int64_t, 4> bounds(rank, mlir::ShapedType::kDynamicSize);
+  llvm::SmallVector<int64_t, 4> shape(rank, mlir::ShapedType::kDynamic);
+  llvm::SmallVector<int64_t, 4> bounds(rank, mlir::ShapedType::kDynamic);
   for (int64_t dim = 0; dim < rank; ++dim) {
     int64_t dim_size = xla_ty.dimensions(dim);
     if (xla_ty.is_dynamic_dimension(dim)) {

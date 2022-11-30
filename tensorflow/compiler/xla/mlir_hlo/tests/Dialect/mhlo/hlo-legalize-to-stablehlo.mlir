@@ -1811,10 +1811,35 @@ func.func @attr_precision_config_packed_nibble(%arg0: tensor<8x16xf32>, %arg1: t
 
 // -----
 
+func.func @custom_call_api_version_typed_ffi() {
+  // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
+  "mhlo.custom_call"() {call_target_name = "foo", api_version = 4 : i32} : () -> ()
+  func.return
+}
+
+// -----
+
+func.func @custom_call_dictionary_backend_config() {
+  // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
+  "mhlo.custom_call"() {call_target_name = "foo", api_version = 4 : i32, backend_config = {foo = 42 : i32}} : () -> ()
+  func.return
+}
+
+// -----
+
 func.func @op_add_dependency(%arg0: tensor<16xf32>, %arg1: !mhlo.token) -> tensor<16xf32> {
   // expected-error@+1 {{failed to legalize operation 'mhlo.add_dependency' that was explicitly marked illegal}}
   %0 = "mhlo.add_dependency"(%arg0, %arg1) : (tensor<16xf32>, !mhlo.token) -> tensor<16xf32>
   func.return %0 : tensor<16xf32>
+}
+
+// -----
+
+func.func private @op_all_to_all_tuple(%arg0: tensor<128x4xf32>,
+    %arg1: tensor<128x4xf32>) -> (tensor<128x4xf32>, tensor<128x4xf32>) {
+  // expected-error@+1 {{failed to legalize operation 'mhlo.all_to_all' that was explicitly marked illegal}}
+  %0:2 = "mhlo.all_to_all"(%arg0, %arg1) {replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>} : (tensor<128x4xf32>, tensor<128x4xf32>) -> (tensor<128x4xf32>, tensor<128x4xf32>)
+  return %0#0, %0#1 : tensor<128x4xf32>, tensor<128x4xf32>
 }
 
 // -----
@@ -1957,4 +1982,20 @@ func.func @op_xla_rng_get_and_update_state() -> tensor<2xui64> {
     delta = 1: i64
   } : () -> tensor<2xui64>
   func.return %0 : tensor<2xui64>
+}
+
+// -----
+
+func.func @type_f8e4m3fn(%arg0: tensor<f16>) -> tensor<f8E4M3FN> {
+  // expected-error@+1 {{'stablehlo.convert' op result #0 must be tensor of 16-bit float or 32-bit float or 64-bit float or bfloat16 type or pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or complex type with 32-bit float or 64-bit float elements or 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer values, but got 'tensor<f8E4M3FN>'}}
+  %0 = "mhlo.convert"(%arg0) : (tensor<f16>) -> tensor<f8E4M3FN>
+  func.return %0 : tensor<f8E4M3FN>
+}
+
+// -----
+
+func.func @type_f8e5m2(%arg0: tensor<f16>) -> tensor<f8E5M2> {
+  // expected-error@+1 {{'stablehlo.convert' op result #0 must be tensor of 16-bit float or 32-bit float or 64-bit float or bfloat16 type or pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or complex type with 32-bit float or 64-bit float elements or 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer values, but got 'tensor<f8E5M2>'}}
+  %0 = "mhlo.convert"(%arg0) : (tensor<f16>) -> tensor<f8E5M2>
+  func.return %0 : tensor<f8E5M2>
 }

@@ -20,8 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/delegates/coreml/builders/op_validator.h"
 #include "tensorflow/lite/delegates/coreml/builders/util.h"
 #include "tensorflow/lite/delegates/coreml/coreml_delegate_kernel.h"

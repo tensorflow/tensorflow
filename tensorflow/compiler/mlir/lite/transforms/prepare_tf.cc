@@ -394,8 +394,11 @@ class ConvertTFDepthwiseConv2dNative
         tensorflow::GetTypeFromTFTensorShape({4}, rewriter.getIntegerType(32));
     SmallVector<Attribute, 4> result_shape_data(4);
     for (int i = 0; i < 4; ++i) {
-      result_shape_data[i] =
-          rewriter.getI32IntegerAttr(static_cast<int32_t>(result_shape[i]));
+      auto size = result_shape[i];
+      // TODO(b/259719789): clean up dynamic shape check (e.g. into a
+      // discrete function) once bug is completely fixed.
+      result_shape_data[i] = rewriter.getI32IntegerAttr(
+          mlir::ShapedType::isDynamic(size) ? -1 : static_cast<int32_t>(size));
     }
     auto shape_attr = DenseElementsAttr::get(shape_type, result_shape_data);
     auto shape = rewriter.create<TF::ConstOp>(loc, shape_type, shape_attr);
@@ -466,8 +469,11 @@ struct ConvertTFStridedSlice : public RewritePattern {
         {dim_size}, rewriter.getIntegerType(32));
     SmallVector<Attribute, 4> result_shape_data(dim_size);
     for (int i = 0; i < dim_size; ++i) {
-      result_shape_data[i] =
-          rewriter.getI32IntegerAttr(static_cast<int32_t>(revised_shape[i]));
+      auto size = revised_shape[i];
+      // TODO(b/259719789): clean up dynamic shape check (e.g. into a
+      // discrete function) once bug is completely fixed.
+      result_shape_data[i] = rewriter.getI32IntegerAttr(
+          mlir::ShapedType::isDynamic(size) ? -1 : static_cast<int32_t>(size));
     }
 
     auto shape_attr = DenseElementsAttr::get(shape_type, result_shape_data);
@@ -997,14 +1003,14 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
     auto odsLoc = rewriter.getFusedLoc({fused_batch_norm->getLoc()});
 
     // We need to make sure input and output shapes are compatible.
-    int64_t last_dim = ShapedType::kDynamicSize;
+    int64_t last_dim = ShapedType::kDynamic;
     {
       auto is_last_dim_compatible = [](const Value &v, int64_t &last_dim) {
         auto v_type = v.getType().dyn_cast_or_null<RankedTensorType>();
         if (!v_type) return true;
         int64_t v_last_dim = v_type.getDimSize(v_type.getRank() - 1);
-        if (v_last_dim == ShapedType::kDynamicSize) return true;
-        if (last_dim != ShapedType::kDynamicSize && v_last_dim != last_dim)
+        if (v_last_dim == ShapedType::kDynamic) return true;
+        if (last_dim != ShapedType::kDynamic && v_last_dim != last_dim)
           return false;
         last_dim = v_last_dim;
         return true;

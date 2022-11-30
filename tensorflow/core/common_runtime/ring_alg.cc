@@ -300,7 +300,8 @@ void RingAlg::StartAbort(const Status& s) {
   // well and there's then no need to abort.
   if (abort_started) {
     if (col_ctx_->op_ctx->cancellation_manager() == nullptr ||
-        !col_ctx_->op_ctx->cancellation_manager()->IsCancelRequested()) {
+        (!col_ctx_->op_ctx->cancellation_manager()->IsCancelled() &&
+         !col_ctx_->op_ctx->cancellation_manager()->IsCancelling())) {
       col_ctx_->col_exec->StartAbort(s);
     }
   }

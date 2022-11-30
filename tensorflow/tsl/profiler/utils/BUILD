@@ -4,6 +4,7 @@ load("//tensorflow/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/tsl/profiler:internal",
     ],
@@ -13,7 +14,6 @@ package(
 package_group(
     name = "friends",
     includes = [
-        "//tensorflow/core/profiler:friends",
         "//tensorflow/tsl/profiler:friends",
     ],
 )

@@ -1067,7 +1067,7 @@ def make_batched_features_dataset_v2(file_pattern,
   # Extract values if the `Example` tensors are stored as key-value tuples.
   if dataset_ops.get_legacy_output_types(dataset) == (
       dtypes.string, dtypes.string):
-    dataset = dataset_ops.MapDataset(
+    dataset = map_op._MapDataset(  # pylint: disable=protected-access
         dataset, lambda _, v: v, use_inter_op_parallelism=False)
 
   # Apply dataset repeat and shuffle transformations.

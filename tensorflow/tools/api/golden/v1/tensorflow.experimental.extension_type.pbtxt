@@ -1,0 +1,7 @@
+path: "tensorflow.experimental.extension_type"
+tf_module {
+  member_method {
+    name: "as_dict"
+    argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
+  }
+}

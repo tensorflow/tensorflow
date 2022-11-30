@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 /// \file
+///
 /// Defines tflite::Interpreter and tflite::InterpreterBuilder.
 ///
 /// WARNING: Users of TensorFlow Lite should not include this file directly,

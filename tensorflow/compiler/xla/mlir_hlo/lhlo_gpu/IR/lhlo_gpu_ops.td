@@ -178,7 +178,7 @@ def LHLOGPU_AllReduceStartOp :
     OptionalAttr<MHLO_ChannelHandle>:$channel_id,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$use_global_device_ids
   );
-  let results = (outs HLO_Token:$token);
+  let results = (outs MHLO_Token:$token);
   let regions = (region SizedRegion<1>:$computation);
   let hasVerifier = 1;
 }
@@ -187,7 +187,7 @@ def LHLOGPU_AllReduceDoneOp:
   LHLOGPU_Op<"all_reduce_done", [SameVariadicOperandSize]> {
   let summary = "AllReduceDone operator";
   let arguments = (ins
-    HLO_Token:$token,
+    MHLO_Token:$token,
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs
   );

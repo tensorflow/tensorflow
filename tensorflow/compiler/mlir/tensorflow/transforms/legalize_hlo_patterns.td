@@ -110,7 +110,7 @@ def : Pat<(CHLO_BroadcastRemOp TF_FpOrI32OrI64Tensor:$l, TF_FpOrI32OrI64Tensor:$
 // Unary op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(MHLO_ConvertOp HLO_Tensor:$operand),
+def : Pat<(MHLO_ConvertOp MHLO_Tensor:$operand),
           (TF_CastOp $operand, ConstBoolAttrFalse)>;
 
 foreach Mapping = [[MHLO_AbsOp, TF_AbsOp],

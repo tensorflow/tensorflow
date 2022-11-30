@@ -394,7 +394,7 @@ Status RunReduceScatter(ReductionKind reduction_kind,
                         ToNcclDataTypeAndCountMultiplier(
                             buffer.element_type, Thunk::kNcclReduceScatter));
     ncclDataType_t dtype = dtype_and_multiplier.first;
-    int element_count = buffer.element_count * dtype_and_multiplier.second;
+    int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
 
     // buffer.element_count is the source buffers element count. For
     // ncclReduceScatter, we need the destination buffers element count.

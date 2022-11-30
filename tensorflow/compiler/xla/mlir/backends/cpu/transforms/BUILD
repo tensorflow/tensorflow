@@ -1,8 +1,9 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -39,7 +40,10 @@ cc_library(
         "//tensorflow/compiler/xla/mlir/xla_cpu/ir:xla_cpu",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",

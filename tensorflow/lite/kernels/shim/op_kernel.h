@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/variant.h"
 #include "tensorflow/lite/kernels/shim/shape.h"
+#include "tensorflow/lite/kernels/shim/status_macros.h"
 #include "tensorflow/lite/kernels/shim/tensor_view.h"
 
 namespace tflite {
@@ -210,6 +211,11 @@ class OpKernelShim {
 
  protected:
   OpKernelShim() = default;
+
+  // Convience method for filling a single dimension output tensor.
+  template <typename BufferType, typename DType>
+  absl::Status FillOutputTensor(const std::vector<BufferType>& buffer,
+                                int index, InvokeContext* context) const;
 };
 
 /////////////////////// Implementations
@@ -247,6 +253,22 @@ absl::Status ShapeInferenceContext<SubType>::GetAttr(
     const std::string& attr_name, AttrType* value) const {
   const auto attr_value_or = GetAttr(attr_name);
   return internal::GetAttr<AttrType>(attr_name, attr_value_or, value);
+}
+
+template <template <Runtime, typename...> typename SubType, Runtime Rt,
+          typename... Ts>
+template <typename BufferType, typename DType>
+absl::Status OpKernelShim<SubType, Rt, Ts...>::FillOutputTensor(
+    const std::vector<BufferType>& buffer, const int index,
+    tflite::shim::InvokeContext<typename ContextTypeForRuntime<Rt>::Invoke>*
+        context) const {
+  SH_ASSIGN_OR_RETURN(
+      const auto tensorview,
+      context->GetOutput(
+          index, tflite::shim::Shape({static_cast<int>(buffer.size())})));
+  auto data = tensorview->template As<DType, 1>();
+  for (int i = 0; i < buffer.size(); ++i) data(i) = buffer.at(i);
+  return absl::OkStatus();
 }
 
 }  // namespace shim

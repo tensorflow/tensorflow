@@ -7,10 +7,6 @@ load(
 )
 load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
-)
-load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
@@ -25,6 +21,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     features = [
         "-layering_check",
@@ -37,7 +34,6 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["device_tracer_test.cc"],
     args = ["--heap_check="],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
         "nomac",
         "gpu_cupti",

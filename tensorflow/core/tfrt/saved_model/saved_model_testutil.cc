@@ -40,10 +40,6 @@ ABSL_FLAG(std::string, force_data_format, "",
           "force data format for all layout sensitive operations. Currently "
           "the supported formats are 'NHWC' and 'NCHW'");
 
-ABSL_FLAG(bool, enable_native_ops, true,
-          "If true, native ops will be used if they are implemented in TFRT. "
-          "If false, all ops are using fallback.");
-
 ABSL_FLAG(
     bool, enable_grappler, false,
     "If true, run grappler passes before importing the SavedModel into MLIR.");
@@ -63,7 +59,6 @@ SavedModel::Options DefaultSavedModelOptions(
   SavedModel::Options options(runtime);
   auto& compile_options = options.graph_execution_options.compile_options;
   compile_options.enable_optimizer = absl::GetFlag(FLAGS_enable_optimizer);
-  compile_options.enable_native_ops = absl::GetFlag(FLAGS_enable_native_ops);
   compile_options.enable_grappler = absl::GetFlag(FLAGS_enable_grappler);
   compile_options.force_data_format = absl::GetFlag(FLAGS_force_data_format);
   return options;
@@ -171,15 +166,14 @@ void ExpectTensorEqual(const tensorflow::Tensor& x, const tensorflow::Tensor& y,
 
 SavedModel::Options DefaultTpuModelOptions(
     tensorflow::tfrt_stub::Runtime* runtime,
-    tensorflow::TfrtTpuInfraTarget tpu_target) {
+    tensorflow::TfrtDeviceInfraTarget device_target) {
   SavedModel::Options options(runtime);
   auto& compile_options = options.graph_execution_options.compile_options;
   compile_options.variable_device =
       "/job:localhost/replica:0/task:0/device:CPU:0";
   compile_options.enable_optimizer = false;
-  compile_options.enable_native_ops = false;
   compile_options.enable_grappler = true;
-  compile_options.tpu_target = tpu_target;
+  compile_options.device_target = device_target;
   compile_options.hoist_invariant_ops = true;
   compile_options.cost_threshold =
       1024;  // Servo currently uses 1024 as threshold for TPU models

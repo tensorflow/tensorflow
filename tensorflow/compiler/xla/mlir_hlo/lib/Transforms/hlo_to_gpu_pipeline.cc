@@ -74,10 +74,14 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
 
     // Tile parallel dimensions of the softmax-like patterns and distribute them
     // across warps. Warps remain independant of each other.
-    pm.addNestedPass<FuncOp>(gml_st::createTilingSoftmaxPass(
+    pm.addNestedPass<FuncOp>(gml_st::createGreedyTilingAndFusionPass(
         /*distribute=*/true, blockTileDim, kBlockDistributionLabel));
-    pm.addNestedPass<FuncOp>(gml_st::createTilingSoftmaxPass(
+    pm.addPass(createCanonicalizerPass());
+    pm.addPass(createCSEPass());
+    pm.addNestedPass<FuncOp>(gml_st::createGreedyTilingAndFusionPass(
         /*distribute=*/true, warpTileDim, kWarpDistributionLabel));
+    pm.addPass(createCanonicalizerPass());
+    pm.addPass(createCSEPass());
 
     // GPU-specific tiling for ops on the warp level.
     pm.addNestedPass<FuncOp>(gml_st::createTilingGpuWarpPass());

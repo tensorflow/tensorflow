@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/core/kernels/register.h"
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tflite_with_xnnpack_optional.h"

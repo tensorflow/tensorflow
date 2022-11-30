@@ -14,6 +14,7 @@
 # ==============================================================================
 
 # Utils package for the stable delegate APIs.
+load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_linkopts_no_undefined")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 cc_library_with_tflite(
@@ -28,6 +29,36 @@ cc_library_with_tflite(
     ],
 )
 
+cc_library_with_tflite(
+    name = "stable_delegate_inferface",
+    hdrs = ["stable_delegate_interface.h"],
+    tflite_deps = ["//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate"],
+    visibility = ["//visibility:public"],
+)
+
+tflite_cc_shared_object(
+    name = "tensorflowlite_stable_xnnpack_delegate",
+    testonly = True,
+    srcs = ["stable_xnnpack_delegate.cc"],
+    defines = ["TFL_STABLE_DELEGATE_COMPILE_LIBRARY"],
+    linkopts = tflite_linkopts_no_undefined() + select({
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            # Expose necessary symbols only.
+            "-Wl,--version-script,$(location //tensorflow/lite/delegates/utils/experimental/stable_delegate:version_script.lds)",
+        ],
+    }),
+    per_os_targets = True,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":stable_delegate_inferface",
+        ":version_script.lds",
+        "//tensorflow/lite/core/shims:c_api",
+        "//tensorflow/lite/core/shims:xnnpack_plugin",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate",
+    ],
+)
+
 cc_test(
     name = "delegate_loader_test",
     srcs = ["delegate_loader_test.cc"],
@@ -38,4 +69,9 @@ cc_test(
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+exports_files(
+    srcs = ["version_script.lds"],
+    visibility = ["//visibility:public"],
 )

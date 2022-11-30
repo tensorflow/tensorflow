@@ -6,16 +6,13 @@ load(
     "tf_cuda_cc_test",
 )
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
-)
-load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
 # Library of gradient functions.
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -118,7 +115,6 @@ tf_cuda_cc_test(
         "custom_gradient_test.cc",
     ],
     args = ["--heap_check="],  # TODO(b/174752220): Remove
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/c:tf_status_helper",
@@ -175,7 +171,6 @@ tf_cuda_cc_test(
         "nn_grad_test.cc",
     ],
     args = ["--heap_check="],  # TODO(b/174752220): Remove
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156,
     deps = [
         ":grad_test_helper",
@@ -202,7 +197,6 @@ tf_cuda_cc_test(
         "math_grad_test.cc",
     ],
     args = ["--heap_check="],  # TODO(b/174752220): Remove
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156,
     deps = [
         ":grad_test_helper",
@@ -229,7 +223,6 @@ tf_cuda_cc_test(
         "array_grad_test.cc",
     ],
     args = ["--heap_check="],  # TODO(b/174752220): Remove
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156,
     deps = [
         ":grad_test_helper",

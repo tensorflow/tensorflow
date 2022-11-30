@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
@@ -66,11 +67,11 @@ class TensorDescriptor : public GPUObjectDescriptor {
                        GenericGPUResourcesWithValue* resources) const;
 
   absl::Status PerformConstExpr(const GpuInfo& gpu_info,
-                                const std::string& const_expr,
+                                absl::string_view const_expr,
                                 std::string* result) const override;
 
   absl::Status PerformSelector(const GpuInfo& gpu_info,
-                               const std::string& selector,
+                               absl::string_view selector,
                                const std::vector<std::string>& args,
                                const std::vector<std::string>& template_args,
                                std::string* result) const override;
@@ -212,42 +213,42 @@ class TensorDescriptor : public GPUObjectDescriptor {
 
   std::string Read(const GpuInfo& gpu_info, DataType read_as_type,
                    const std::vector<std::string>& coords) const;
-  std::string Write(const GpuInfo& gpu_info, const std::string& var_name,
+  std::string Write(const GpuInfo& gpu_info, absl::string_view var_name,
                     const std::vector<std::string>& coords) const;
 
   absl::Status MaybeGetDataTypeFromTemplateArgs(
       const std::vector<std::string>& template_args, DataType* result) const;
 
-  std::string GetGlobalAddressNoDeclaration(const std::string& xc,
-                                            const std::string& yc,
-                                            const std::string& zc,
-                                            const std::string& sc,
-                                            const std::string& bc) const;
+  std::string GetGlobalAddressNoDeclaration(absl::string_view xc,
+                                            absl::string_view yc,
+                                            absl::string_view zc,
+                                            absl::string_view sc,
+                                            absl::string_view bc) const;
 
-  std::vector<std::string> GetPhysicalCoordsWHS(const std::string& x,
-                                                const std::string& y,
-                                                const std::string& s) const;
-  std::vector<std::string> GetPhysicalCoordsWHSB(const std::string& x,
-                                                 const std::string& y,
-                                                 const std::string& s,
-                                                 const std::string& b) const;
-  std::vector<std::string> GetPhysicalCoordsWHDS(const std::string& x,
-                                                 const std::string& y,
-                                                 const std::string& z,
-                                                 const std::string& s) const;
-  std::vector<std::string> GetPhysicalCoordsWHDSB(const std::string& x,
-                                                  const std::string& y,
-                                                  const std::string& z,
-                                                  const std::string& s,
-                                                  const std::string& b) const;
-  std::vector<std::string> GetPhysicalCoords(const std::string& xc,
-                                             const std::string& yc,
-                                             const std::string& zc,
-                                             const std::string& sc,
-                                             const std::string& bc) const;
-  std::vector<std::string> GetPhysicalCoordsLinear(const std::string& x) const;
-  std::vector<std::string> GetPhysicalCoordsHW(const std::string& x,
-                                               const std::string& y) const;
+  std::vector<std::string> GetPhysicalCoordsWHS(absl::string_view x,
+                                                absl::string_view y,
+                                                absl::string_view s) const;
+  std::vector<std::string> GetPhysicalCoordsWHSB(absl::string_view x,
+                                                 absl::string_view y,
+                                                 absl::string_view s,
+                                                 absl::string_view b) const;
+  std::vector<std::string> GetPhysicalCoordsWHDS(absl::string_view x,
+                                                 absl::string_view y,
+                                                 absl::string_view z,
+                                                 absl::string_view s) const;
+  std::vector<std::string> GetPhysicalCoordsWHDSB(absl::string_view x,
+                                                  absl::string_view y,
+                                                  absl::string_view z,
+                                                  absl::string_view s,
+                                                  absl::string_view b) const;
+  std::vector<std::string> GetPhysicalCoords(absl::string_view xc,
+                                             absl::string_view yc,
+                                             absl::string_view zc,
+                                             absl::string_view sc,
+                                             absl::string_view bc) const;
+  std::vector<std::string> GetPhysicalCoordsLinear(absl::string_view x) const;
+  std::vector<std::string> GetPhysicalCoordsHW(absl::string_view x,
+                                               absl::string_view y) const;
 
   bool ParseCoordsFromArgs(const std::vector<std::string>& args, int offset,
                            std::string* xc, std::string* yc, std::string* zc,

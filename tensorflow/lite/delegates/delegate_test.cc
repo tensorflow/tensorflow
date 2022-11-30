@@ -25,8 +25,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/c_api_opaque.h"
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
 #include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/interpreter.h"

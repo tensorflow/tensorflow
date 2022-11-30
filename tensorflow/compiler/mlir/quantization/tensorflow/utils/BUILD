@@ -3,6 +3,7 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
     ],
@@ -41,11 +42,28 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "tf_to_uniform_attribute_utils",
+    srcs = ["tf_to_uniform_attribute_utils.cc"],
+    hdrs = ["tf_to_uniform_attribute_utils.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:uniform_op_quant_spec",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
 )

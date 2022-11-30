@@ -6,6 +6,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -111,23 +112,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "cpu_device_test",
-    srcs = ["cpu_device_test.cc"],
-    deps = [
-        ":cpu_device",
-        ":pjrt_client",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/client:executable_build_options",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/tsl/platform:random",
-        "//tensorflow/tsl/platform:test_main",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -379,7 +363,6 @@ cc_library(
     deps = [
         ":local_device_state",
         ":pjrt_stream_executor_client",
-        ":tracked_device_buffer",
         ":utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -387,11 +370,9 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:tpu_computation_placer",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executable",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executable_interface",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
@@ -403,10 +384,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_transfer_manager",
         "//tensorflow/tsl/platform:casts",
         "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:logging",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
     ],
 )
 
@@ -419,22 +396,6 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
-        "//tensorflow/compiler/xla/service:platform_util",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "cpu_device",
-    srcs = ["cpu_device.cc"],
-    hdrs = ["cpu_device.h"],
-    compatible_with = [],
-    visibility = [":friends"],
-    deps = [
-        ":pjrt_stream_executor_client",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:platform_util",
         "@com_google_absl//absl/strings",
     ],
@@ -654,6 +615,7 @@ cc_library(
     hdrs = ["pjrt_c_api_client.h"],
     deps = [
         ":pjrt_client",
+        ":pjrt_executable",
         ":pjrt_future",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",

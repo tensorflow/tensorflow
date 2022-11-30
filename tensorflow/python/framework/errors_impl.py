@@ -33,10 +33,23 @@ class InaccessibleTensorError(ValueError):
 
 @tf_export("errors.OperatorNotAllowedInGraphError", v1=[])
 class OperatorNotAllowedInGraphError(TypeError):
-  """An error is raised for unsupported operator in Graph execution.
+  """Raised when an unsupported operator is present in Graph execution.
 
-  For example, using a `tf.Tensor` as a Python `bool` in Graph execution
-  is not allowed.
+  For example, using a `tf.Tensor` as a Python `bool` inside a Graph will
+  raise `OperatorNotAllowedInGraphError`. Iterating over values inside a
+  `tf.Tensor` is also not supported in Graph execution.
+
+  Example:
+  >>> @tf.function
+  ... def iterate_over(t):
+  ...   a,b,c = t
+  ...   return a
+  >>>
+  >>> iterate_over(tf.constant([1, 2, 3]))
+  Traceback (most recent call last):
+  ...
+  OperatorNotAllowedInGraphError: ...
+
   """
   pass
 
@@ -211,27 +224,31 @@ DATA_LOSS = error_codes_pb2.DATA_LOSS
 tf_export("errors.DATA_LOSS").export_constant(__name__, "DATA_LOSS")
 
 
-# pylint: disable=line-too-long
 @tf_export("errors.CancelledError")
 class CancelledError(OpError):
-  """Raised when an operation or step is cancelled.
+  """Raised when an operation is cancelled.
 
-  For example, a long-running operation (e.g.
-  `tf.queue.QueueBase.enqueue` may be
-  cancelled by running another operation (e.g.
-  `tf.queue.QueueBase.close`,
-  or by `tf.Session.close`.
-  A step that is running such a long-running operation will fail by raising
-  `CancelledError`.
+  For example, a long-running operation e.g.`tf.queue.QueueBase.enqueue`, or a
+  `tf.function` call may be cancelled by either running another operation e.g.
+  `tf.queue.QueueBase.close` or a remote worker failure.
+
+  This long-running operation will fail by raising `CancelledError`.
+
+  Example:
+  >>> q = tf.queue.FIFOQueue(10, tf.float32, ((),))
+  >>> q.enqueue((10.0,))
+  >>> q.close()
+  >>> q.enqueue((10.0,))
+  Traceback (most recent call last):
+    ...
+  CancelledError: ...
+
   """
 
   def __init__(self, node_def, op, message, *args):
     """Creates a `CancelledError`."""
     super(CancelledError, self).__init__(node_def, op, message, CANCELLED,
                                          *args)
-
-
-# pylint: enable=line-too-long
 
 
 @tf_export("errors.UnknownError")
@@ -463,6 +480,11 @@ class UnavailableError(OpError):
 @tf_export("errors.DataLossError")
 class DataLossError(OpError):
   """Raised when unrecoverable data loss or corruption is encountered.
+
+  This could be due to:
+  * A truncated file.
+  * A corrupted file.
+  * Specifying the wrong data format.
 
   For example, this may be raised by running a
   `tf.WholeFileReader.read`

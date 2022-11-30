@@ -14,6 +14,7 @@
 # ==============================================================================
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -37,6 +38,7 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:shared_library",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 

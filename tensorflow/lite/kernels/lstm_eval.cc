@@ -26,8 +26,8 @@ limitations under the License.
 #include "ruy/mul_params.h"  // from @ruy
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "ruy/ruy.h"  // from @ruy
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"

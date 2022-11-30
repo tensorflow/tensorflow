@@ -73,7 +73,7 @@ llvm::Optional<int64_t> GetDeviceOrdinal(
     unsigned replica_id) {
   int64_t device_ordinal = 0;
   if (devices.has_value()) {
-    if (auto tpu_replica_0 = devices.getValue().get(kTPUCore0)) {
+    if (auto tpu_replica_0 = devices.value().get(kTPUCore0)) {
       llvm::StringRef tpu_device = tpu_replica_0.cast<ArrayAttr>()[replica_id]
                                        .cast<StringAttr>()
                                        .getValue();
@@ -114,7 +114,7 @@ LogicalResult UpdateRegionReplicateVariantOps(
       auto const_op = builder.create<TF::ConstOp>(
           op->getLoc(), DenseIntElementsAttr::get(
                             RankedTensorType::get({}, builder.getI64Type()),
-                            {device_ordinal.getValue()}));
+                            {device_ordinal.value()}));
       op->replaceAllUsesWith(const_op);
       op->erase();
       return WalkResult::advance();
@@ -124,7 +124,7 @@ LogicalResult UpdateRegionReplicateVariantOps(
 
     // Map aliased devices to explicit devices based on replica.
     if (auto launch = dyn_cast<tf_device::LaunchOp>(op))
-      if (auto device_by_replica = devices.getValue().get(launch.getDevice()))
+      if (auto device_by_replica = devices.value().get(launch.getDevice()))
         launch->setAttr(
             kDeviceAttr,
             device_by_replica.cast<ArrayAttr>()[replica_id].cast<StringAttr>());

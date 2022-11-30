@@ -208,9 +208,9 @@ Value BacktrackAnalysis::BacktrackValue(Value value) {
       // we cannot backtrack the value further.
       Optional<const InfoT*> callee_info = GetAnalysisIfExists(func);
       if (!callee_info) break;
-      Optional<int> passthrough_arg = callee_info.getValue()->GetArg(res_index);
+      Optional<int> passthrough_arg = callee_info.value()->GetArg(res_index);
       if (!passthrough_arg) break;
-      value = call.getArgOperands()[passthrough_arg.getValue()];
+      value = call.getArgOperands()[passthrough_arg.value()];
     } else if (isa<tf_device::LaunchOp, tf_device::ClusterOp>(op)) {
       value = op->getRegion(0).front().getTerminator()->getOperand(res_index);
     } else {
@@ -406,8 +406,8 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
       for (auto result : filter_resources(op->getResults())) {
         auto passthrough_arg = func_info.GetArg(result.getResultNumber());
         if (passthrough_arg) {
-          PropagateInputToOutput(
-              call.getArgOperands()[passthrough_arg.getValue()], result);
+          PropagateInputToOutput(call.getArgOperands()[passthrough_arg.value()],
+                                 result);
         } else {
           AddValueUniqueIDMapping(result, kUnknownResourceId);
         }
@@ -432,7 +432,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
               mem_interface.getEffectOnValue<MemoryEffects::Allocate>(value);
           if (alloc_effect) {
             TypeID mlir_type_id =
-                alloc_effect.getValue().getResource()->getResourceID();
+                alloc_effect.value().getResource()->getResourceID();
             // Update or lookup internal type ID.
             auto emplace_result = type_id_to_internal_type_id_.try_emplace(
                 mlir_type_id, next_unique_type_id);
@@ -502,7 +502,7 @@ void ResourceAliasAnalysisInfo::AnalyzeWhileLoop(
     int result_index = result.getResultNumber();
     passthrough_args[result_index] = body_info.GetArg(result_index);
     if (passthrough_args[result_index]) {
-      int passthru_index = passthrough_args[result_index].getValue();
+      int passthru_index = passthrough_args[result_index].value();
       PropagateInputToOutput(while_op->getOperand(passthru_index), result);
       need_analysis |=
           !IsUnknownResource(result) && passthru_index != result_index;
@@ -525,7 +525,7 @@ void ResourceAliasAnalysisInfo::AnalyzeWhileLoop(
       // If this result has a valid passthrough arg, propagate resource IDs
       // from the result of the passthrough arg
       int result_index = result.getResultNumber();
-      int passthru_index = passthrough_args[result_index].getValue();
+      int passthru_index = passthrough_args[result_index].value();
       change =
           PropagateInputToOutput(while_op->getResult(passthru_index), result) ||
           change;
@@ -556,7 +556,7 @@ void ResourceAliasAnalysisInfo::AnalyzeFunctionalCaseOrIfOp(
         });
     if (all_passthrough_args_known) {
       for (const auto& passthrough_arg : passthrough_args) {
-        Value operand = case_or_if_op.getInput()[passthrough_arg.getValue()];
+        Value operand = case_or_if_op.getInput()[passthrough_arg.value()];
         PropagateInputToOutput(operand, result);
       }
     } else {

@@ -10,6 +10,7 @@ load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )

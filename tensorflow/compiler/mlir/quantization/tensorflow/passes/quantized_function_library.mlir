@@ -237,7 +237,26 @@ module {
     func.return %6 : tensor<*xi32>
   }
 
-  for main_op in ["conv2d", "depthwise_conv2d", "matmul", "conv3d"] {
+  // BatchMatMul with int32 accumulation.
+  func.func private @internal_batch_matmul_fn(
+                         %input : tensor<*xi8>, %weight : tensor<*xi8>,
+                         %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
+                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>) -> tensor<*xi32> {
+    %0 = "tf.Cast"(%input) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
+    %1 = "tf.Sub"(%0, %input_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    // Use identity op to avoid the weight being constant-folded.
+    %identity = "tf.Identity"(%weight) : (tensor<*xi8>) -> tensor<*xi8>
+    %2 = "tf.Cast"(%identity) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
+    %3 = "tf.Sub"(%2, %weight_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    %5 = "tf.BatchMatMulV2"(%1, %3) {
+      attr_map = "adj_x:0,adj_y:1"
+    } : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+    func.return %5 : tensor<*xi32>
+  }
+
+  for main_op in ["conv2d", "depthwise_conv2d", "matmul", "conv3d", "batch_matmul"] {
     parameters[
       {"suffix": "with_bias_fn", "act_func": "internal_requantize_no_activation_fn", "output_type": "i8"},
       {"suffix": "with_bias_and_relu_fn", "act_func": "internal_requantize_and_relu_fn", "output_type": "i8"},

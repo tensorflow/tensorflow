@@ -218,7 +218,7 @@ std::pair<Status, bool> PyBuffer::CopyToRemoteDevice(
   Status status;
   bool sends_were_enqueued;
   buffer_->CopyToRemoteDevice(
-      serialized_descriptor,
+      PjRtFuture<StatusOr<std::string>>(std::string(serialized_descriptor)),
       [&done, &status, &sends_were_enqueued, &mu](Status s, bool dispatched) {
         absl::MutexLock l(&mu);
         done = true;
@@ -382,14 +382,7 @@ PyShardedBuffer PyShardedBuffer::CreateFromPyBuffers(
 Status PyShardedBuffer::BlockHostUntilReady() {
   GlobalPyRefManager()->CollectGarbage();
   py::gil_scoped_release gil_release;
-  Status status = OkStatus();
-  for (const auto& buffer : buffers_) {
-    // PjRtBuffer::BlockHostUntilReady() fix up the error message because some
-    // clients rely on it.
-    auto s = buffer->BlockHostUntilReady();
-    if (!s.ok()) status = std::move(s);
-  }
-  return status;
+  return AwaitBuffersReady(buffers_);
 }
 
 // PEP 3118 buffer protocol implementation.

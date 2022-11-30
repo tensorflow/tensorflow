@@ -3,6 +3,8 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 # Config setting to use in select()s to distinguish open source build from
 # google internal build on configurable attributes.
 #
@@ -393,6 +395,21 @@ selects.config_setting_group(
         ":with_tpu_support_define",
         ":with_tpu_support_flag",
     ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "freebsd",
+    values = {"cpu": "freebsd"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "no_nccl_support",
+    define_values = dict(
+        if_google({"GOOGLE_CUDA_COMPILER": "clang"}),
+        no_nccl_support = "true",
+    ),
     visibility = ["//visibility:public"],
 )
 

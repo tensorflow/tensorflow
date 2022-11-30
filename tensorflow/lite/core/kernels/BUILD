@@ -2,6 +2,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_self_contained_l
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -21,8 +22,8 @@ cc_library(
     deps = [
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:tflite_with_xnnpack_optional",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:cc_api_stable",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_op_kernels",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -44,8 +45,8 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:tflite_with_xnnpack_optional",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:cc_api_stable",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_op_kernels",
         "//tensorflow/lite/schema:schema_fbs",
     ],

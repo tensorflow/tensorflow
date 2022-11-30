@@ -3,7 +3,10 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 licenses(["notice"])
 
-package(default_visibility = ["//visibility:private"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//visibility:private"],
+)
 
 cc_library(
     name = "auto_clustering_test_helper",

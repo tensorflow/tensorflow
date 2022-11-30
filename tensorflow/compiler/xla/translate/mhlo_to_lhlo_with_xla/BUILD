@@ -2,6 +2,7 @@ load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -23,7 +24,6 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
         "//tensorflow/compiler/xla/service/gpu:cublas_cudnn",
@@ -44,6 +44,7 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:BufferizationDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

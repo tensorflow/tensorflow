@@ -136,7 +136,8 @@ Status RunAllToAll(bool has_split_dimension,
                           ToNcclDataTypeAndCountMultiplier(
                               buffer.element_type, Thunk::kNcclAllToAll));
       ncclDataType_t dtype = dtype_and_multiplier.first;
-      int element_count = buffer.element_count * dtype_and_multiplier.second;
+      int64_t element_count =
+          buffer.element_count * dtype_and_multiplier.second;
 
       XLA_CUDA_RETURN_IF_ERROR(ncclSend(send_buffer, element_count, dtype,
                                         /*rank=*/i, comm, gpu_stream));

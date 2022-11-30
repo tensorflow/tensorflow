@@ -3,6 +3,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/core/profiler:internal"],
     licenses = ["notice"],
 )
@@ -496,7 +497,7 @@ tf_cuda_library(
     visibility = [":friends"],
     deps = [
         ":hlo_proto_to_module",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core/platform:path",

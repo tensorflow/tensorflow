@@ -52,7 +52,7 @@ class LiftQuantizableSpotsAsFunctionsPass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
       LiftQuantizableSpotsAsFunctionsPass)
 
-  LiftQuantizableSpotsAsFunctionsPass() {}
+  LiftQuantizableSpotsAsFunctionsPass() = default;
 
   explicit LiftQuantizableSpotsAsFunctionsPass(OpSet op_set) {
     op_set_ = op_set;
@@ -155,7 +155,21 @@ class CheckQuantizableOps
     for (auto iter : spec->coeff_op_quant_dim) {
       Operation* preceding_op = call_op.getOperand(iter.first).getDefiningOp();
       // The XLA opset only supports constant filter/weight at the moment.
-      if (!preceding_op || !preceding_op->hasTrait<OpTrait::ConstantLike>()) {
+      bool is_weight_constant =
+          preceding_op && preceding_op->hasTrait<OpTrait::ConstantLike>();
+
+      // There might be q/dq ops after the filter/weight.
+      if (auto dq_op = llvm::dyn_cast_or_null<quantfork::DequantizeCastOp>(
+              preceding_op)) {
+        if (auto q_op = llvm::dyn_cast_or_null<quantfork::QuantizeCastOp>(
+                dq_op.getArg().getDefiningOp())) {
+          Operation* q_op_input = q_op.getArg().getDefiningOp();
+          is_weight_constant =
+              q_op_input && q_op_input->hasTrait<OpTrait::ConstantLike>();
+        }
+      }
+
+      if (!is_weight_constant) {
         return tensorflow::errors::Unknown(
             "Non-constant weights are not supported at the moment.");
       }

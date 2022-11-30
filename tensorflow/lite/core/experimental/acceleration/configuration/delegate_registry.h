@@ -28,7 +28,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 
 // Defines an interface for TFLite delegate plugins.

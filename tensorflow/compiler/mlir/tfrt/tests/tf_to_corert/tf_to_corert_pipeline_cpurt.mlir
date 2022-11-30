@@ -1,7 +1,6 @@
 // RUN: tf-tfrt-opt %s                                                         \
 // RUN:   -split-input-file                                                    \
 // RUN:   -tf-executor-to-tfrt-pipeline="                                      \
-// RUN:       enable-native-ops=false                                          \
 // RUN:       enable-optimizer=true                                            \
 // RUN:       tfrt-cost-threshold=1024                                         \
 // RUN:       auto-fusion-oplist=tf.Relu,tf.Transpose,tf.Const                 \

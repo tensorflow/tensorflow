@@ -5,6 +5,7 @@ load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":internal"],
     licenses = ["notice"],
 )

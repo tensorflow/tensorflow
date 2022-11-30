@@ -145,7 +145,8 @@ inline StringRef GetDeviceAttr(Operation* op) {
 // Print operation with debug info (to get line number info for debugging)
 void dump(StringRef message, Operation* op) {
   llvm::dbgs() << message;
-  op->print(llvm::dbgs(), OpPrintingFlags().enableDebugInfo(true));
+  op->print(llvm::dbgs(), OpPrintingFlags().enableDebugInfo(
+                              /*enable=*/true, /*prettyForm=*/true));
   llvm::dbgs() << "\n";
 }
 

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -22,24 +23,77 @@ limitations under the License.
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 
 #if !defined(_WIN32)
+#include "flatbuffers/idl.h"  // from @flatbuffers
 #include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h"
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/delegate_loader.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/c/stable_delegate.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/configuration_fbs_contents-inl.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #endif  // !defined(_WIN32)
 
 namespace tflite {
 namespace tools {
 
+// The stable delegate provider is disabled on Windows as the delegate shared
+// library loader doesn't support Windows platform.
+#if !defined(_WIN32)
+namespace {
+TfLiteDelegatePtr CreateStableDelegate(const std::string& settings_file_path) {
+  TfLiteDelegatePtr null_delegate = CreateNullDelegate();
+  if (settings_file_path.empty()) {
+    TFLITE_LOG(ERROR) << "Invalid delegate settings path.";
+    return null_delegate;
+  }
+  std::string json_file;
+  if (!flatbuffers::LoadFile(settings_file_path.c_str(), false, &json_file)) {
+    TFLITE_LOG(ERROR) << "Failed to load the delegate settings file ("
+                      << settings_file_path << ").";
+    return null_delegate;
+  }
+  flatbuffers::Parser parser;
+  if (!parser.Parse(configuration_fbs_contents) ||
+      !parser.SetRootType("TFLiteSettings")) {
+    TFLITE_LOG(ERROR) << "Failed to parse the configuration schema file.";
+    return null_delegate;
+  }
+  if (!parser.Parse(json_file.c_str())) {
+    TFLITE_LOG(ERROR) << "Failed to parse the delegate settings file ("
+                      << settings_file_path << ").";
+    return null_delegate;
+  }
+
+  const TFLiteSettings* tflite_settings =
+      flatbuffers::GetRoot<TFLiteSettings>(parser.builder_.GetBufferPointer());
+  if (!tflite_settings || !tflite_settings->stable_delegate_loader_settings() ||
+      !tflite_settings->stable_delegate_loader_settings()->delegate_path()) {
+    TFLITE_LOG(ERROR) << "Invalid TFLiteSettings for the stable delegate.";
+    return null_delegate;
+  }
+  std::string delegate_path = tflite_settings->stable_delegate_loader_settings()
+                                  ->delegate_path()
+                                  ->str();
+  auto stable_delegate_pointer =
+      delegates::utils::LoadDelegateFromSharedLibrary(delegate_path);
+  if (!stable_delegate_pointer || !stable_delegate_pointer->delegate_plugin) {
+    TFLITE_LOG(ERROR)
+        << "Failed to load stable ABI delegate pointer from stable ABI "
+           "delegate binary ("
+        << delegate_path << ".";
+    return null_delegate;
+  }
+  const TfLiteOpaqueDelegatePlugin* delegate_plugin =
+      stable_delegate_pointer->delegate_plugin;
+  return TfLiteDelegatePtr(delegate_plugin->create(tflite_settings),
+                           delegate_plugin->destroy);
+}
+}  // namespace
+#endif  // !defined(_WIN32)
+
 class StableAbiDelegateProvider : public DelegateProvider {
  public:
   StableAbiDelegateProvider() {
-    default_params_.AddParam("stable_delegate_path",
+    default_params_.AddParam("stable_delegate_settings_file",
                              ToolParam::Create<std::string>(""));
-    default_params_.AddParam(
-        "stable_delegate_plugin_symbol",
-        ToolParam::Create<std::string>(
-            delegates::utils::kTfLiteStableDelegateSymbol));
   }
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
@@ -57,69 +111,27 @@ REGISTER_DELEGATE_PROVIDER(StableAbiDelegateProvider);
 std::vector<Flag> StableAbiDelegateProvider::CreateFlags(
     ToolParams* params) const {
   std::vector<Flag> flags = {
-      CreateFlag<std::string>("stable_delegate_path", params,
-                              "The library path for the delegate."),
-      CreateFlag<std::string>(
-          "stable_delegate_plugin_symbol", params,
-          "The name of the delegate plugin symbol in the shared library. "
-          "(default='TFL_TheStableDelegate')")};
+      CreateFlag<std::string>("stable_delegate_settings_file", params,
+                              "The path to the delegate settings JSON file.")};
   return flags;
 }
 
 void StableAbiDelegateProvider::LogParams(const ToolParams& params,
                                           bool verbose) const {
-  if (params.Get<std::string>("stable_delegate_path").empty()) return;
+  if (params.Get<std::string>("stable_delegate_settings_file").empty()) return;
 
-  LOG_TOOL_PARAM(params, std::string, "stable_delegate_path", "Delegate path",
-                 verbose);
-  LOG_TOOL_PARAM(params, std::string, "stable_delegate_plugin_symbol",
-                 "Delegate plugin symbol", verbose);
+  LOG_TOOL_PARAM(params, std::string, "stable_delegate_settings_file",
+                 "Delegate settings file path", verbose);
 }
 
 TfLiteDelegatePtr StableAbiDelegateProvider::CreateTfLiteDelegate(
     const ToolParams& params) const {
-  TfLiteDelegatePtr null_delegate = CreateNullDelegate();
 #if !defined(_WIN32)
-  std::string lib_path = params.Get<std::string>("stable_delegate_path");
-  std::string stable_delegate_plugin_symbol =
-      params.Get<std::string>("stable_delegate_plugin_symbol");
-  if (lib_path.empty()) {
-    // Stable ABI delegate is not used if "stable_delegate_path" is not
-    // provided.
-    return null_delegate;
-  }
-  if (stable_delegate_plugin_symbol.empty()) {
-    TFLITE_LOG(ERROR) << "Delegate plugin symbol ("
-                      << stable_delegate_plugin_symbol
-                      << ") must not be empty.";
-    return null_delegate;
-  }
-  auto stable_delegate_pointer =
-      delegates::utils::LoadDelegateFromSharedLibrary(
-          lib_path, stable_delegate_plugin_symbol);
-  if (!stable_delegate_pointer) {
-    TFLITE_LOG(ERROR)
-        << "Failed to load stable ABI delegate pointer from stable ABI "
-           "delegate binary ("
-        << lib_path << ") with delegate plugin symbol ("
-        << stable_delegate_plugin_symbol << ").";
-    return null_delegate;
-  }
-
-  // TODO(b/250886376): Allow passing TFLiteSettings via JSON formatted string
-  // arguments.
-  flatbuffers::FlatBufferBuilder flatbuffer_builder;
-  tflite::TFLiteSettingsBuilder tflite_settings_builder(flatbuffer_builder);
-  flatbuffers::Offset<tflite::TFLiteSettings> tflite_settings =
-      tflite_settings_builder.Finish();
-  flatbuffer_builder.Finish(tflite_settings);
-  auto delegate_plugin = stable_delegate_pointer->delegate_plugin;
-  TfLiteOpaqueDelegate* delegate =
-      delegate_plugin->create(flatbuffer_builder.GetBufferPointer());
-  void (*delegate_deleter)(TfLiteOpaqueDelegate*) = delegate_plugin->destroy;
-  return TfLiteDelegatePtr(delegate, delegate_deleter);
+  std::string stable_delegate_settings_file =
+      params.Get<std::string>("stable_delegate_settings_file");
+  return CreateStableDelegate(stable_delegate_settings_file);
 #else   // !defined(_WIN32)
-  return null_delegate;
+  return CreateNullDelegate();
 #endif  // !defined(_WIN32)
 }
 
@@ -127,8 +139,8 @@ std::pair<TfLiteDelegatePtr, int>
 StableAbiDelegateProvider::CreateRankedTfLiteDelegate(
     const ToolParams& params) const {
   auto ptr = CreateTfLiteDelegate(params);
-  return std::make_pair(
-      std::move(ptr), params.GetPosition<std::string>("stable_delegate_path"));
+  return std::make_pair(std::move(ptr), params.GetPosition<std::string>(
+                                            "stable_delegate_settings_file"));
 }
 
 }  // namespace tools

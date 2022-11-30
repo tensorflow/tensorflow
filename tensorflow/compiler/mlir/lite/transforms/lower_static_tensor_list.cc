@@ -1116,7 +1116,7 @@ bool IsTensorListType(Type type, llvm::Optional<Value> value) {
   if (!value.has_value()) {
     return false;
   }
-  for (const mlir::OpOperand &use : value.getValue().getUses()) {
+  for (const mlir::OpOperand &use : value.value().getUses()) {
     mlir::Operation *op = use.getOwner();
     if (llvm::isa<TF::TensorListGetItemOp>(op) ||
         llvm::isa<TF::TensorListLengthOp>(op) ||
