@@ -368,58 +368,6 @@ StatusOr<int64_t> GpuSolverContext::PotrfBufferSize(PrimitiveType type,
 #endif
 }
 
-Status GpuSolverContext::Potrf(se::blas::UpperLower uplo, int n,
-                               se::DeviceMemory<float> a, int lda,
-                               se::DeviceMemory<int> lapack_info,
-                               se::DeviceMemoryBase workspace) {
-  return ConvertStatus(GpuSolverSpotrf(
-      handle_.get(), GpuBlasUpperLower(uplo), n, ToDevicePointer(a), lda,
-#if TENSORFLOW_USE_CUSOLVER_OR_HIPSOLVER
-      ToDevicePointer(se::DeviceMemory<float>(workspace)),
-      se::DeviceMemory<float>(workspace).ElementCount(),
-#endif
-      ToDevicePointer(lapack_info)));
-}
-
-Status GpuSolverContext::Potrf(se::blas::UpperLower uplo, int n,
-                               se::DeviceMemory<double> a, int lda,
-                               se::DeviceMemory<int> lapack_info,
-                               se::DeviceMemoryBase workspace) {
-  return ConvertStatus(GpuSolverDpotrf(
-      handle_.get(), GpuBlasUpperLower(uplo), n, ToDevicePointer(a), lda,
-#if TENSORFLOW_USE_CUSOLVER_OR_HIPSOLVER
-      ToDevicePointer(se::DeviceMemory<double>(workspace)),
-      se::DeviceMemory<double>(workspace).ElementCount(),
-#endif
-      ToDevicePointer(lapack_info)));
-}
-
-Status GpuSolverContext::Potrf(se::blas::UpperLower uplo, int n,
-                               se::DeviceMemory<std::complex<float>> a, int lda,
-                               se::DeviceMemory<int> lapack_info,
-                               se::DeviceMemoryBase workspace) {
-  return ConvertStatus(GpuSolverCpotrf(
-      handle_.get(), GpuBlasUpperLower(uplo), n, ToDevicePointer(a), lda,
-#if TENSORFLOW_USE_CUSOLVER_OR_HIPSOLVER
-      ToDevicePointer(se::DeviceMemory<std::complex<float>>(workspace)),
-      se::DeviceMemory<std::complex<float>>(workspace).ElementCount(),
-#endif
-      ToDevicePointer(lapack_info)));
-}
-
-Status GpuSolverContext::Potrf(se::blas::UpperLower uplo, int n,
-                               se::DeviceMemory<std::complex<double>> a,
-                               int lda, se::DeviceMemory<int> lapack_info,
-                               se::DeviceMemoryBase workspace) {
-  return ConvertStatus(GpuSolverZpotrf(
-      handle_.get(), GpuBlasUpperLower(uplo), n, ToDevicePointer(a), lda,
-#if TENSORFLOW_USE_CUSOLVER_OR_HIPSOLVER
-      ToDevicePointer(se::DeviceMemory<std::complex<double>>(workspace)),
-      se::DeviceMemory<std::complex<double>>(workspace).ElementCount(),
-#endif
-      ToDevicePointer(lapack_info)));
-}
-
 Status GpuSolverContext::PotrfBatched(se::blas::UpperLower uplo, int n,
                                       se::DeviceMemory<float*> as, int lda,
                                       se::DeviceMemory<int> lapack_info,

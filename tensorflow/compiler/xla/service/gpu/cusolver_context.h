@@ -56,26 +56,6 @@ class GpuSolverContext {
  public:
   static StatusOr<GpuSolverContext> Create(se::Stream* stream);
 
-  bool SupportsPotrfBatched() const { return true; }
-
-  // Computes the Cholesky factorization A = L * L^T for a single matrix.
-  // Returns OkStatus() if the kernel was launched successfully. See:
-  // http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-potrf
-  Status Potrf(se::blas::UpperLower uplo, int n, se::DeviceMemory<float> a,
-               int lda, se::DeviceMemory<int> lapack_info,
-               se::DeviceMemoryBase workspace);
-  Status Potrf(se::blas::UpperLower uplo, int n, se::DeviceMemory<double> a,
-               int lda, se::DeviceMemory<int> lapack_info,
-               se::DeviceMemoryBase workspace);
-  Status Potrf(se::blas::UpperLower uplo, int n,
-               se::DeviceMemory<std::complex<float>> a, int lda,
-               se::DeviceMemory<int> lapack_info,
-               se::DeviceMemoryBase workspace);
-  Status Potrf(se::blas::UpperLower uplo, int n,
-               se::DeviceMemory<std::complex<double>> a, int lda,
-               se::DeviceMemory<int> lapack_info,
-               se::DeviceMemoryBase workspace);
-
   // Computes the Cholesky factorization of multiple matrices.  See
   // https://docs.nvidia.com/cuda/cusolver/index.html#cuSolverDN-lt-t-gt-batchpotrf
   //
