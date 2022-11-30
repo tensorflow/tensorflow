@@ -463,6 +463,64 @@ TEST(CApiSimple, OpaqueDelegate_ReplaceNodeSubsetsWithDelegateKernels) {
   g_opaque_delegate_struct = nullptr;
 }
 
+TEST(CApiSimple,
+     OpaqueDelegate_TransferRegistrationExternalOwnershipWithoutNodeToReplace) {
+  g_nodes_to_replace = new std::vector<int>();
+
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+
+  TfLiteRegistrationExternal* registration_external =
+      CreateExternalRegistration();
+  // Create and install a delegate instance.
+  DelegateState delegate_state{false, registration_external};
+  TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
+  opaque_delegate_builder.data = &delegate_state;
+  opaque_delegate_builder.Prepare =
+      [](TfLiteOpaqueContext* opaque_context,
+         struct TfLiteOpaqueDelegateStruct* opaque_delegate, void* data) {
+        DelegateState* delegate_state = static_cast<DelegateState*>(data);
+        delegate_state->delegate_prepared = true;
+
+        TfLiteOpaqueNode* node = nullptr;
+        TfLiteRegistrationExternal* registration_external = nullptr;
+        TfLiteOpaqueContextGetNodeAndRegistration(opaque_context, 0, &node,
+                                                  &registration_external);
+        EXPECT_NE(node, nullptr);
+        EXPECT_NE(registration_external, nullptr);
+
+        // Create a fake execution plan to avoid replacing nodes.
+        TfLiteIntArray* fake_execution_plan = TfLiteIntArrayCreate(0);
+        TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
+            opaque_context, delegate_state->registration_external,
+            fake_execution_plan, opaque_delegate);
+        TfLiteIntArrayFree(fake_execution_plan);
+
+        return kTfLiteOk;
+      };
+
+  struct TfLiteOpaqueDelegateStruct* opaque_delegate =
+      TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
+  g_opaque_delegate_struct = opaque_delegate;
+
+  EXPECT_EQ(g_nodes_to_replace->size(), 0);
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddOpaqueDelegate(options, opaque_delegate);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+  TfLiteModelDelete(model);
+
+  // The delegate should have been applied with 0 node to replace.
+  EXPECT_TRUE(delegate_state.delegate_prepared);
+  std::vector<int>& nodes_to_replace = *g_nodes_to_replace;
+  EXPECT_EQ(nodes_to_replace.size(), 0);
+
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteOpaqueDelegateDelete(opaque_delegate);
+  delete g_nodes_to_replace;
+  g_opaque_delegate_struct = nullptr;
+}
+
 using ::tflite::delegates::test_utils::TestFP16Delegation;
 
 TEST_F(TestFP16Delegation,

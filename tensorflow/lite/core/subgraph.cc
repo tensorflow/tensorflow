@@ -474,6 +474,13 @@ TfLiteStatus Subgraph::PartitionGraph(const TfLiteIntArray* nodes_to_replace,
 TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
     TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
     TfLiteDelegate* delegate) {
+  // The subgraph is taking ownership of the external registration, in case the
+  // user has supplied an opaque delegate.
+  if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
+    registration_externals_.insert(std::unique_ptr<TfLiteRegistrationExternal>(
+        registration.registration_external));
+  }
+
   // Ignore empty node replacement sets.
   if (!nodes_to_replace->size) {
     return kTfLiteOk;
@@ -500,13 +507,6 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
       node_subsets.size());
 
   execution_plan_.clear();
-
-  // The subgraph is taking ownership of the external registration, in case the
-  // user has supplied an opaque delegate.
-  if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
-    registration_externals_.insert(std::unique_ptr<TfLiteRegistrationExternal>(
-        registration.registration_external));
-  }
 
   for (auto& node_subset : node_subsets) {
     // Subsets claimed by the delegate should have a "macro" op created, the
