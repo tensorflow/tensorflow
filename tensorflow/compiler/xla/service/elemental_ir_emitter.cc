@@ -2632,26 +2632,50 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   // shapes [A,B,C,T] and [D,T,E], the result has a shape [A,B,C,D,E].
   // Given an output index [a,b,c,d,e] in the result, we compute:
   //   sum(lhs[a,b,c,t]*rhs[d,t,e] for t in [0, T))
+  // Note that due to dot dimension numbers, the operands can have the
+  // dimensions in a different order, so when constructing the index for the
+  // operands, we need to take that into account. We can assume though that the
+  // non-contracting dimensions are in the same order as in the output.
 
-  std::vector<llvm::Value*> lhs_multi_index, rhs_multi_index;
-  for (int64_t i = 0; i < lhs_dims - 1; i++) {
-    lhs_multi_index.push_back(dot_result_index[i]);
+  std::vector<llvm::Value*> lhs_multi_index(lhs_dims, nullptr),
+      rhs_multi_index(rhs_dims, nullptr);
+  int64_t num_batch_dims = dim_numbers.lhs_batch_dimensions_size();
+  DCHECK_EQ(num_batch_dims, dim_numbers.rhs_batch_dimensions_size());
+
+  for (int64_t i = 0; i < num_batch_dims; ++i) {
+    lhs_multi_index[dim_numbers.lhs_batch_dimensions(i)] = dot_result_index[i];
+    rhs_multi_index[dim_numbers.rhs_batch_dimensions(i)] = dot_result_index[i];
   }
-  lhs_multi_index.insert(lhs_multi_index.begin() + lhs_contracting_dim,
-                         inner_loop->GetIndVarValue());
+  lhs_multi_index[lhs_contracting_dim] = inner_loop->GetIndVarValue();
+  rhs_multi_index[rhs_contracting_dim] = inner_loop->GetIndVarValue();
+  // There are lhs_dims - 1 - num_batch_dims non-contracting dimensions for the
+  // lhs operand. We can assume they have the same relative order as in the
+  // output.
+  for (int64_t i = num_batch_dims, j = 0; i < lhs_dims - 1; ++i, ++j) {
+    // Skip the positions which have already been filled with contracting
+    // dimension and batch dimensions.
+    while (j < lhs_dims && lhs_multi_index[j] != nullptr) {
+      ++j;
+    }
+    DCHECK_LT(j, lhs_dims);
+    lhs_multi_index[j] = dot_result_index[i];
+  }
   IrArray::Index lhs_index(lhs_multi_index, hlo->operand(0)->shape(),
                            index_type);
 
-  int64_t num_batch_dims = dim_numbers.rhs_batch_dimensions_size();
-  for (int64_t i = 0; i < num_batch_dims; i++) {
-    rhs_multi_index.push_back(
-        dot_result_index[dim_numbers.rhs_batch_dimensions(i)]);
+  // There are rhs_dims - 1 - num_batch_dims non-contracting dimensions for the
+  // rhs operand. We can assume they have the same relative order as in the
+  // output.
+  DCHECK_EQ(hlo->shape().rank(), lhs_dims + rhs_dims - 2 - num_batch_dims);
+  for (int64_t i = lhs_dims - 1, j = 0; i < hlo->shape().rank(); ++i, ++j) {
+    // Skip the positions which have already been filled with contracting
+    // dimension and batch dimensions.
+    while (j < rhs_dims && rhs_multi_index[j] != nullptr) {
+      ++j;
+    }
+    DCHECK_LT(j, rhs_dims);
+    rhs_multi_index[j] = dot_result_index[i];
   }
-  for (int64_t i = 0; i < rhs_dims - 1 - num_batch_dims; i++) {
-    rhs_multi_index.push_back(dot_result_index[lhs_dims - 1 + i]);
-  }
-  rhs_multi_index.insert(rhs_multi_index.begin() + rhs_contracting_dim,
-                         inner_loop->GetIndVarValue());
   IrArray::Index rhs_index(rhs_multi_index, hlo->operand(1)->shape(),
                            index_type);
 
