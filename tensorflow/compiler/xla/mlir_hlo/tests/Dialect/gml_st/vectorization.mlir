@@ -20,13 +20,15 @@ func.func @tiled_add(%A: tensor<8xf32>, %B: tensor<8xf32>,
       : tensor<8xf32> to tensor<2xf32>
     %C_sub = tensor.extract_slice %C_[%i] [2] [1]
       : tensor<8xf32> to tensor<2xf32>
-    %sum_sub = linalg.map
-      ins(%A_sub, %B_sub : tensor<2xf32>, tensor<2xf32>)
-      outs(%C_sub : tensor<2xf32>)
-      (%a: f32, %b: f32) {
+    %sum_sub = linalg.generic {
+      indexing_maps = [#map0, #map0, #map0],
+      iterator_types = ["parallel"]
+    } ins(%A_sub, %B_sub : tensor<2xf32>, tensor<2xf32>)
+      outs(%C_sub : tensor<2xf32>) {
+      ^bb0(%a: f32, %b: f32, %c: f32):
         %0 = arith.addf %a, %b : f32
         linalg.yield %0 : f32
-      }
+    } -> tensor<2xf32>
     %update = tensor.insert_slice %sum_sub into %C_[%i] [2] [1]
       : tensor<2xf32> into tensor<8xf32>
     gml_st.yield %update : tensor<8xf32>
@@ -75,25 +77,27 @@ func.func @tiled_reduction_2d(%in: tensor<80x60xf32>) -> tensor<80xf32> {
     %out_sub = tensor.extract_slice %out_[%i] [4] [1]
         : tensor<80xf32> to tensor<4xf32>
     %local_fill = linalg.fill ins(%cst_ : f32) outs(%out_sub : tensor<4xf32>) -> tensor<4xf32>
-    %reduced_tile = linalg.reduce
+    %reduced_tile = linalg.generic {
+        indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
+                         affine_map<(d0, d1) -> (d0)>],
+        iterator_types = ["parallel", "reduction"]}
         ins(%in_sub : tensor<4x4xf32>)
-        outs(%local_fill : tensor<4xf32>)
-        dimensions = [0]
-      (%a: f32, %b: f32) {
+        outs(%local_fill : tensor<4xf32>) {
+      ^bb0(%a: f32, %b: f32):
         %0 = arith.addf %a, %b : f32
         linalg.yield %0 : f32
-      }
-    %expand = tensor.expand_shape %reduced_tile [[0, 1]]
-      : tensor<4xf32> into tensor<1x4xf32>
-    %acc = linalg.reduce
-          ins(%expand : tensor<1x4xf32>)
-          outs(%out_sub : tensor<4xf32>)
-          dimensions = [0]
-     (%arg4: f32, %arg5: f32) {
-      %9 = arith.addf %arg4, %arg5 : f32
-      linalg.yield %9 : f32
-    }
+    } -> tensor<4xf32>
 
+    %acc = linalg.generic {
+        indexing_maps = [affine_map<(d0) -> (d0)>,
+                        affine_map<(d0) -> (d0)>],
+        iterator_types = ["parallel"]}
+        ins(%reduced_tile : tensor<4xf32>)
+        outs(%out_sub : tensor<4xf32>) {
+      ^bb0(%a: f32, %b: f32):
+        %1 = arith.addf %a, %b : f32
+        linalg.yield %1 : f32
+    } -> tensor<4xf32>
     %update = tensor.insert_slice %acc into %out_[%i] [4] [1]
         : tensor<4xf32> into tensor<80xf32>
     gml_st.yield %update : tensor<80xf32>
@@ -109,10 +113,14 @@ func.func @tiled_reduction_2d(%in: tensor<80x60xf32>) -> tensor<80xf32> {
 
 // CHECK: %[[BCAST:.*]] = vector.broadcast %[[CST]] : f32 to vector<4xf32>
 // CHECK-NOT: vector.transfer_write %[[BCAST]]
-// CHECK: vector.multi_reduction <add>, %{{.*}}, %[[BCAST]] [0] : vector<4x4xf32> to vector<4xf32>
+// CHECK: vector.multi_reduction <add>, %{{.*}}, %[[BCAST]] [1] : vector<4x4xf32> to vector<4xf32>
 
 // -----
 
+#map0 = affine_map<(d0, d1) -> (d0, d1)>
+#map1 = affine_map<(d0, d1) -> (d1)>
+#map2 = affine_map<(d0) -> (d0)>
+#map3 = affine_map<(d0) -> ()>
 func.func @reduction_1d(%arg0: tensor<16xf32>) -> tensor<f32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c16 = arith.constant 16 : index
@@ -130,24 +138,24 @@ func.func @reduction_1d(%arg0: tensor<16xf32>) -> tensor<f32> {
       : tensor<16xf32> to tensor<8xf32>
     %7 = tensor.expand_shape %6 [[0, 1]]
       : tensor<8xf32> into tensor<1x8xf32>
-    %8 = linalg.reduce
-          ins(%7 : tensor<1x8xf32>)
-          outs(%arg3 : tensor<8xf32>)
-          dimensions = [0]
-     (%arg4: f32, %arg5: f32) {
+    %8 = linalg.generic {indexing_maps = [#map0, #map1],
+                         iterator_types = ["reduction", "parallel"]}
+                         ins(%7 : tensor<1x8xf32>)
+                         outs(%arg3 : tensor<8xf32>) {
+    ^bb0(%arg4: f32, %arg5: f32):
       %9 = arith.addf %arg4, %arg5 : f32
       linalg.yield %9 : f32
-    }
+    } -> tensor<8xf32>
     gml_st.yield %8 : tensor<8xf32>
   }
-  %5 = linalg.reduce
-    ins(%4 : tensor<8xf32>)
-    outs(%1 : tensor<f32>)
-    dimensions = [0]
-    (%arg1: f32, %arg2: f32) {
+  %5 = linalg.generic {indexing_maps = [#map2, #map3],
+                       iterator_types = ["reduction"]}
+                       ins(%4 : tensor<8xf32>)
+                       outs(%1 : tensor<f32>) {
+  ^bb0(%arg1: f32, %arg2: f32):
     %6 = arith.addf %arg1, %arg2 : f32
     linalg.yield %6 : f32
-  }
+  } -> tensor<f32>
   func.return %5 : tensor<f32>
 }
 // CHECK-LABEL: func @reduction_1d
