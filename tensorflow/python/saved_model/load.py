@@ -644,7 +644,7 @@ class Loader(object):
       # to be able to load the "optimizer" object (OptimizerV2), which has
       # special logic around adding slot variables with `add_slot` in this file.
       try:
-        import keras.optimizers.optimizer_v2 as _  # pylint: disable=g-import-not-at-top
+        import keras.optimizers.legacy as _  # pylint: disable=g-import-not-at-top
       except ImportError as e:
         raise ImportError(
             "Error when importing Keras. Unable to load SavedModel that "
