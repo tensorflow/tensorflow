@@ -1152,6 +1152,8 @@ int CudnnDataTypeToByteSize(cudnnDataType_t data_type) {
       return sizeof(double);
     case CUDNN_DATA_HALF:
       return sizeof(Eigen::half);
+    case CUDNN_DATA_BFLOAT16:
+      return sizeof(Eigen::bfloat16);
     default:
       LOG(FATAL) << "Invalid DNN data type: " << static_cast<int>(data_type);
   }

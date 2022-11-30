@@ -85,6 +85,9 @@ def GetTestConfigsDicts(v1_fn,
     configs1 += [(data_format, use_gpu, dtypes.float16),
                  (data_format, use_gpu, dtypes.float64)]
 
+    if use_gpu:
+      configs1 += [(data_format, use_gpu, dtypes.bfloat16)]
+
   # Convert from tuple to dict and add v1/v2 versions.
   ret = []
   for data_format, use_gpu, data_type in configs1:
@@ -906,8 +909,8 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
   def _CompareMaxPoolingFwd(self, input_shape, ksize, strides, padding):
     # double datatype is currently not supported for pooling ops
     # on the ROCm platform
-    for dtype in [np.float32, np.float16] \
-        + [np.float64] if not test.is_built_with_rocm() else []:
+    for dtype in [np.float32, np.float16
+                 ] + [np.float64] if not test.is_built_with_rocm() else []:
       tensor_input = np.random.rand(*input_shape).astype(dtype)
       with self.cached_session():
         t = constant_op.constant(tensor_input, shape=input_shape)
@@ -923,8 +926,8 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
                            padding):
     # double datatype is currently not supported for pooling ops
     # on the ROCm platform
-    for dtype in [np.float32, np.float16] \
-        + [np.float64] if not test.is_built_with_rocm() else []:
+    for dtype in [np.float32, np.float16, dtypes.bfloat16.as_numpy_dtype
+                 ] + [np.float64] if not test.is_built_with_rocm() else []:
       # Generate numbers in a narrow range, so that there are many duplicates
       # in the input.
       tensor_input = np.random.random_integers(0, 3, input_shape).astype(dtype)
@@ -950,14 +953,19 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
       # The CPU version accumulates its gradient on fp16, so it's less
       # accurate than the GPU version that does the accumulation on fp32
       self.assertAllCloseAccordingToType(
-          cpu_val, gpu_val, half_rtol=0.01, half_atol=0.01)
+          cpu_val,
+          gpu_val,
+          half_rtol=0.01,
+          half_atol=0.01,
+          bfloat16_rtol=0.02,
+          bfloat16_atol=0.1)
 
   def _CompareMaxPoolingGradBk(self, input_shape, output_shape, ksize, strides,
                                padding):
     # double datatype is currently not supported for pooling ops
     # on the ROCm platform
-    for dtype in [np.float32, np.float16] \
-        + [np.float64] if not test.is_built_with_rocm() else []:
+    for dtype in [np.float32, np.float16, dtypes.bfloat16.as_numpy_dtype
+                 ] + [np.float64] if not test.is_built_with_rocm() else []:
       # Generate numbers in a narrow range, so that there are many duplicates
       # in the input.
       tensor_input = np.random.random_integers(0, 3, input_shape).astype(dtype)
@@ -1085,8 +1093,8 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
       try:
         config_exec.enable_op_determinism()
         orig_input = [
-            1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 1.0
+            1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0, 0.0, 1.0
         ]
         tensor_input = [11.0, 12.0, 13.0, 14.0, 21.0, 22.0, 23.0, 24.0]
 
@@ -1096,8 +1104,8 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
           argmax_t = constant_op.constant(
               [0, 1, 3, 5, 0, 2, 6, 8], shape=[2, 2, 2, 1], dtype=dtypes.int64)
           with self.assertRaisesRegexp(
-              errors_impl.UnimplementedError, "Determinism is not yet supported "
-              "for MaxPoolGradWithArgmax."):
+              errors_impl.UnimplementedError, "Determinism is not yet supported"
+              " for MaxPoolGradWithArgmax."):
             out_op = gen_nn_ops.max_pool_grad_with_argmax(
                 orig_in,
                 t,
@@ -1113,8 +1121,8 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
       try:
         config_exec.enable_op_determinism()
         orig_input = [
-            1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 1.0
+            1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0, 0.0, 1.0
         ]
         tensor_input = [11.0, 12.0, 13.0, 14.0, 21.0, 22.0, 23.0, 24.0]
 
