@@ -204,7 +204,7 @@ void PopulateOpMetricsNode(const OpMetrics& op_metrics,
       SafeDivide(GibiBytesPerSecondPerCore(op_metrics, -1,
                                            OpMetrics::MemoryAccessed::UNKNOWN),
                  peak_gibibytes_per_second_per_core);
-  metrics->set_memory_bandwidth(mem_bw_utilization);
+  metrics->set_memory_bandwidth_util(mem_bw_utilization);
 
   const uint64 kHbm = 1;
   mem_bw_utilization =
