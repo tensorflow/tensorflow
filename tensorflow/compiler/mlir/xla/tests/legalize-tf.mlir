@@ -1701,6 +1701,21 @@ func.func @unhandled_partitioned_call_2(%arg0: tensor<i32>, %arg1: tensor<*xi32>
 
 // -----
 
+// CHECK-LABEL: func @no_args_and_results
+func.func @no_args_and_results() {
+  // CHECK: call @callee() : () -> ()
+  // CHECK: call @callee() : () -> ()
+  // CHECK: call @callee() : () -> ()
+  "tf.PartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @callee} : () -> ()
+  "tf.StatefulPartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @callee} : () -> ()
+  "tf.LegacyCall"() {config = "", config_proto = "", executor_type = "", f = @callee} : () -> ()
+  func.return
+}
+
+func.func @callee() {
+  func.return
+}
+
 //===----------------------------------------------------------------------===//
 // ReverseV2 op legalization.
 //===----------------------------------------------------------------------===//
