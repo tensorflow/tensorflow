@@ -1239,6 +1239,7 @@ cc_library(
         "@llvm-project//mlir:TensorInferTypeOpInterfaceImpl",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",
+        "@llvm-project//mlir:VectorTransforms",
     ],
 )
 

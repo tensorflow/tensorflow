@@ -811,6 +811,35 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec(1e-6, 1e-6)));
 }
 
+TEST_F(SoftmaxFusionTest,
+       SingleSoftmaxPatternWithDoublyConsumedReducerIdentity) {
+  const std::string& hlo_string = R"(
+HloModule softmax
+
+add_computation {
+  arg0 = f32[] parameter(0)
+  arg1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg0, arg1)
+}
+
+ENTRY main {
+  param_0 = f32[14,8]{1,0} parameter(0)
+  constant_one = f32[] constant(1)
+  broadcast_one = f32[14,8]{1,0} broadcast(constant_one), dimensions={}
+  constant_zero = f32[] constant(0)
+  broadcast_zero = f32[14,8]{1,0} broadcast(constant_zero), dimensions={}
+  rsqrt = f32[14,8]{1,0} rsqrt(param_0)
+  compare = pred[14,8]{1,0} compare(broadcast_zero, rsqrt), direction=EQ
+  select = f32[14,8]{1,0} select(compare, broadcast_one, rsqrt)
+  reduction = f32[14]{0} reduce(select, constant_zero), dimensions={1}, to_apply=add_computation
+  broadcast = f32[14,8]{1,0} broadcast(reduction), dimensions={0}
+  ROOT add = f32[14,8]{1,0} add(select, broadcast)
+})";
+
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec(1e-6, 1e-6)));
+}
+
 class SoftmaxFusionEnd2EndTest
     : public HloTestBase,
       public ::testing::WithParamInterface<::testing::tuple<int, int>> {
