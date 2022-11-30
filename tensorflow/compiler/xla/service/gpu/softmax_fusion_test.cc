@@ -84,23 +84,28 @@ TEST_F(SoftmaxFusionTest, SingleSoftmaxPatternF16) {
 
 HloModule softmax
 
-max_computation {
-  arg_0 = f16[] parameter(0)
-  arg_1 = f16[] parameter(1)
-  ROOT maximum = f16[] maximum(arg_0, arg_1)
+add_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg_0, arg_1)
 }
 
 ENTRY main {
   param_0 = f16[128,127]{1,0} parameter(0)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f16[128]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = f16[128,127]{1,0} broadcast(reduce), dimensions={0}
+  constant_zero = f32[] constant(0.0)
+  convert_up = f32[128,127]{1,0} convert(param_0)
+  reduce = f32[128]{0} reduce(convert_up, constant_zero), dimensions={1}, to_apply=add_computation
+  convert_down = f16[128]{0} convert(reduce)
+  broadcast = f16[128,127]{1,0} broadcast(convert_down), dimensions={0}
   ROOT subtract = f16[128,127]{1,0} subtract(param_0, broadcast)
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  auto initial_module = module->Clone();
   SoftmaxFusion fusion;
-  EXPECT_FALSE(fusion.Run(module.get()).value());
+  EXPECT_TRUE(fusion.Run(module.get()).value());
+
+  EXPECT_TRUE(RunAndCompare(std::move(initial_module), ErrorSpec(1e-6, 1e-6)));
 }
 
 TEST_F(SoftmaxFusionTest, SingleSoftmaxPatternRowsNotLargerThanColumns) {
@@ -198,8 +203,7 @@ ENTRY main {
                   m::Parameter(0),
                   m::Broadcast(m::Reduce(m::Parameter(0), m::Constant())))));
 
-  EXPECT_TRUE(RunAndCompareTwoModules(
-      std::move(module), std::move(initial_module), ErrorSpec(1e-6, 1e-6)));
+  EXPECT_TRUE(RunAndCompare(std::move(initial_module), ErrorSpec(1e-6, 1e-6)));
 }
 
 TEST_F(SoftmaxFusionTest, SoftmaxPatternWithExtraStuff) {
@@ -349,8 +353,7 @@ ENTRY main {
                   m::Parameter(0),
                   m::Broadcast(m::Reduce(m::Parameter(0), m::Constant()))))));
 
-  EXPECT_TRUE(RunAndCompareTwoModules(
-      std::move(module), std::move(initial_module), ErrorSpec(1e-6, 1e-6)));
+  EXPECT_TRUE(RunAndCompare(std::move(initial_module), ErrorSpec(1e-6, 1e-6)));
 }
 
 TEST_F(SoftmaxFusionTest, 4DWithBroadcast) {

@@ -1,5 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
-load("//tensorflow/tsl:tsl.bzl", "if_libtpu")
+load("//tensorflow/tsl:tsl.bzl", "if_libtpu", "tsl_gpu_library")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
@@ -12,7 +11,7 @@ package_group(
     ],
 )
 
-tf_cuda_library(
+tsl_gpu_library(
     name = "profiler_backends",
     cuda_deps = [
         "//tensorflow/compiler/xla/backends/profiler/gpu:device_tracer",

@@ -28,6 +28,10 @@ tf_module {
     name: "StructuredTensor"
     mtype: "<class \'tensorflow.python.framework.extension_type.ExtensionTypeMetaclass\'>"
   }
+  member {
+    name: "extension_type"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "async_clear_error"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"

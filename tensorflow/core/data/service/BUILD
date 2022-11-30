@@ -72,6 +72,7 @@ cc_library(
     hdrs = [
         "auto_shard_rewriter.h",
     ],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common",
         ":common_proto_cc",
@@ -103,6 +104,7 @@ tf_cc_test(
     name = "auto_shard_rewriter_test",
     size = "small",
     srcs = ["auto_shard_rewriter_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":auto_shard_rewriter",
         ":common_proto_cc",
@@ -131,6 +133,7 @@ cc_library(
     hdrs = [
         "common.h",
     ],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common_proto_cc",
         "//tensorflow/core:protos_all_cc",
@@ -145,6 +148,7 @@ cc_library(
 tf_cc_test(
     name = "common_test",
     srcs = ["common_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common",
         "//tensorflow/core:lib",
@@ -160,6 +164,7 @@ cc_library(
     name = "credentials_factory",
     srcs = ["credentials_factory.cc"],
     hdrs = ["credentials_factory.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
@@ -169,6 +174,7 @@ cc_library(
 tf_cc_test(
     name = "credentials_factory_test",
     srcs = ["credentials_factory_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":credentials_factory",
         "//tensorflow/core:lib",
@@ -181,6 +187,7 @@ tf_cc_test(
 cc_library(
     name = "cross_trainer_cache",
     hdrs = ["cross_trainer_cache.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":logging_utils",
         "//tensorflow/core:framework",
@@ -197,6 +204,7 @@ tf_cc_test(
     name = "cross_trainer_cache_test",
     size = "small",
     srcs = ["cross_trainer_cache_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":cross_trainer_cache",
         "//tensorflow/core:framework",
@@ -222,6 +230,7 @@ tf_cc_test(
 tf_cc_test(
     name = "data_service_test",
     srcs = ["data_service_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common_proto_cc",
         ":dispatcher_client",
@@ -243,6 +252,7 @@ cc_library(
     name = "data_transfer",
     srcs = ["data_transfer.cc"],
     hdrs = ["data_transfer.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     visibility = [
         ":data_transfer_visibility",
     ],
@@ -263,6 +273,7 @@ cc_library(
 tf_cc_test(
     name = "data_transfer_test",
     srcs = ["data_transfer_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":data_transfer",
         "//tensorflow/core:framework",
@@ -280,6 +291,7 @@ cc_library(
     name = "dataset_store",
     srcs = ["dataset_store.cc"],
     hdrs = ["dataset_store.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common_proto_cc",
         ":dispatcher_state",
@@ -294,6 +306,7 @@ cc_library(
 tf_cc_test(
     name = "dataset_store_test",
     srcs = ["dataset_store_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common_proto_cc",
         ":dataset_store",
@@ -310,6 +323,7 @@ cc_grpc_library(
     name = "dispatcher_cc_grpc_proto",
     srcs = [":dispatcher_proto"],
     compatible_with = get_compatible_with_cloud(),
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     generate_mocks = True,
     grpc_only = True,
     deps = [":dispatcher_proto_cc"],
@@ -319,6 +333,7 @@ cc_library(
     name = "dispatcher_client",
     srcs = ["dispatcher_client.cc"],
     hdrs = ["dispatcher_client.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common",
         ":common_proto_cc",
@@ -341,6 +356,7 @@ cc_library(
 tf_cc_test(
     name = "dispatcher_client_test",
     srcs = ["dispatcher_client_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common_proto_cc",
         ":data_transfer",
@@ -363,6 +379,7 @@ cc_library(
     hdrs = [
         "dispatcher_impl.h",
     ],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common",
         ":common_proto_cc",
@@ -409,6 +426,7 @@ cc_library(
     hdrs = [
         "dispatcher_state.h",
     ],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":auto_shard_rewriter",
         ":common",
@@ -427,6 +445,7 @@ cc_library(
 tf_cc_test(
     name = "dispatcher_state_test",
     srcs = ["dispatcher_state_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common_proto_cc",
         ":dispatcher_state",
@@ -447,6 +466,7 @@ cc_library(
     name = "grpc_dispatcher_impl",
     srcs = ["grpc_dispatcher_impl.cc"],
     hdrs = ["grpc_dispatcher_impl.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":dispatcher_cc_grpc_proto",
         ":dispatcher_impl",
@@ -459,6 +479,7 @@ cc_library(
 tf_cc_test(
     name = "grpc_dispatcher_impl_test",
     srcs = ["grpc_dispatcher_impl_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common",
         ":common_proto_cc",
@@ -486,6 +507,7 @@ cc_library(
     hdrs = [
         "grpc_util.h",
     ],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common",
         "//tensorflow/core:lib",
@@ -496,6 +518,7 @@ cc_library(
 tf_cc_test(
     name = "grpc_util_test",
     srcs = ["grpc_util_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":grpc_util",
         "//tensorflow/core:lib",
@@ -509,6 +532,7 @@ cc_library(
     name = "grpc_worker_impl",
     srcs = ["grpc_worker_impl.cc"],
     hdrs = ["grpc_worker_impl.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":export_proto_cc",
         ":worker_cc_grpc_proto",
@@ -524,6 +548,7 @@ cc_library(
 tf_cc_test(
     name = "grpc_worker_impl_test",
     srcs = ["grpc_worker_impl_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common_proto_cc",
         ":credentials_factory",
@@ -550,6 +575,7 @@ cc_library(
     name = "journal",
     srcs = ["journal.cc"],
     hdrs = ["journal.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":journal_proto_cc",
         "//tensorflow/core:lib",
@@ -573,6 +599,7 @@ tf_proto_library(
 tf_cc_test(
     name = "journal_test",
     srcs = ["journal_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common_proto_cc",
         ":journal",
@@ -590,6 +617,7 @@ cc_library(
     name = "logging_utils",
     srcs = ["logging_utils.cc"],
     hdrs = ["logging_utils.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core/platform:strcat",
     ],
@@ -598,6 +626,7 @@ cc_library(
 tf_cc_test(
     name = "logging_utils_test",
     srcs = ["logging_utils_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":logging_utils",
         "//tensorflow/core:test",
@@ -609,6 +638,7 @@ cc_library(
     name = "py_utils",
     srcs = ["py_utils.cc"],
     hdrs = ["py_utils.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":credentials_factory",
     ],
@@ -618,6 +648,7 @@ cc_library(
     name = "server_lib",
     srcs = ["server_lib.cc"],
     hdrs = ["server_lib.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     linkstatic = True,
     visibility = [
         "//visibility:public",
@@ -641,6 +672,7 @@ cc_library(
 # does not pull in the server_lib.h header.
 cc_header_only_library(
     name = "server_lib_headers_lib",
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     features = ["-parse_headers"],
     deps = [
         ":dispatcher_client",
@@ -655,6 +687,7 @@ cc_library(
     hdrs = [
         "split_provider.h",
     ],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":dispatcher_client",
         ":grpc_util",
@@ -667,6 +700,7 @@ cc_library(
     name = "task_remover",
     srcs = ["task_remover.cc"],
     hdrs = ["task_remover.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -678,6 +712,7 @@ cc_library(
     name = "task_runner",
     srcs = ["task_runner.cc"],
     hdrs = ["task_runner.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common",
         ":common_proto_cc",
@@ -696,6 +731,7 @@ cc_library(
 tf_cc_test(
     name = "task_runner_test",
     srcs = ["task_runner_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":data_transfer",
         ":task_runner",
@@ -722,6 +758,7 @@ cc_library(
     testonly = True,
     srcs = ["test_cluster.cc"],
     hdrs = ["test_cluster.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common_proto_cc",
         ":data_transfer",
@@ -751,6 +788,7 @@ cc_library(
     hdrs = [
         "test_util.h",
     ],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     data = ["//tensorflow/core/data/service/testdata"],
     deps = [
         ":common_proto_cc",
@@ -779,6 +817,7 @@ cc_library(
 tf_cc_test(
     name = "test_util_test",
     srcs = ["test_util_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common_proto_cc",
         ":test_util",
@@ -799,6 +838,7 @@ tf_cc_test(
 cc_library(
     name = "thread_safe_buffer",
     hdrs = ["thread_safe_buffer.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/platform:macros",
@@ -811,6 +851,7 @@ tf_cc_test(
     name = "thread_safe_buffer_test",
     size = "small",
     srcs = ["thread_safe_buffer_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     shard_count = 3,
     deps = [
         ":thread_safe_buffer",
@@ -830,6 +871,7 @@ cc_library(
     name = "url",
     srcs = ["url.cc"],
     hdrs = ["url.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/strings",
@@ -840,6 +882,7 @@ tf_cc_test(
     name = "url_test",
     size = "small",
     srcs = ["url_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":url",
         "//tensorflow/core:test",
@@ -851,6 +894,7 @@ cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common_proto_cc",
         "//tensorflow/core:lib",
@@ -861,6 +905,7 @@ cc_library(
 tf_cc_test(
     name = "utils_test",
     srcs = ["utils_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common_proto_cc",
         ":utils",
@@ -876,6 +921,7 @@ cc_library(
     name = "validate_utils",
     srcs = ["validate_utils.cc"],
     hdrs = ["validate_utils.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
@@ -889,6 +935,7 @@ tf_cc_test(
     name = "validate_utils_test",
     size = "small",
     srcs = ["validate_utils_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":validate_utils",
         "//tensorflow/core:framework",
@@ -907,6 +954,7 @@ cc_grpc_library(
     name = "worker_cc_grpc_proto",
     srcs = [":worker_proto"],
     compatible_with = get_compatible_with_cloud(),
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     generate_mocks = True,
     grpc_only = True,
     deps = [":worker_proto_cc"],
@@ -916,6 +964,7 @@ cc_library(
     name = "worker_client",
     srcs = ["worker_client.cc"],
     hdrs = ["worker_client.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common",
         ":credentials_factory",
@@ -941,6 +990,7 @@ tf_cc_test(
     name = "worker_client_test",
     size = "small",
     srcs = ["worker_client_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":common",
         ":common_proto_cc",
@@ -976,6 +1026,7 @@ cc_library(
     hdrs = [
         "worker_impl.h",
     ],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":auto_shard_rewriter",
         ":common",
@@ -1019,6 +1070,7 @@ cc_library(
 tf_cc_test(
     name = "worker_impl_test",
     srcs = ["worker_impl_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":test_cluster",
         ":worker_impl",

@@ -81,10 +81,10 @@ TfLiteStatus MulOpBuilder::RegisterInputs(const TfLiteIntArray* inputs,
   // store constant, scalar value into MultiplyLayerParams directly.
   if (IsConstantTensor(input_0) && NumElements(input_0) == 1) {
     AddInput(inputs->data[1]);
-    SetAlpha(GetTensorData<float>(input_0)[0]);
+    SetAlpha(GetScalarFloatFromTensor(input_0));
   } else if (IsConstantTensor(input_1) && NumElements(input_1) == 1) {
     AddInput(inputs->data[0]);
-    SetAlpha(GetTensorData<float>(input_1)[0]);
+    SetAlpha(GetScalarFloatFromTensor(input_1));
   } else {
     AddInput(inputs->data[0]);
     AddInput(inputs->data[1]);

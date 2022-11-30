@@ -44,6 +44,7 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:BufferizationDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

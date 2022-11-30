@@ -111,6 +111,9 @@ struct ReduceTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       rewriter.replaceOp(reduceOp,
                          tilingParallelDimsResult->loop->getResults());
       reduceOp = cast<linalg::ReduceOp>(tilingParallelDimsResult->tiledOp);
+      // Fuse linalg.map ops into the loop.
+      fuseGreedily(rewriter, *reduceOp->getBlock(),
+                   [](Operation *op) { return isa<linalg::MapOp>(op); });
     }
 
     // Fusion into the output.
@@ -138,6 +141,9 @@ struct ReduceTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       rewriter.replaceOp(reduceOp,
                          tilingReductionDimsResult->loop->getResults());
       reduceOp = cast<linalg::ReduceOp>(tilingReductionDimsResult->tiledOp);
+      // Fuse linalg.map ops into the loop.
+      fuseGreedily(rewriter, *reduceOp->getBlock(),
+                   [](Operation *op) { return isa<linalg::MapOp>(op); });
     }
 
     setLabel(reduceOp, kReduceTransformedLabel);

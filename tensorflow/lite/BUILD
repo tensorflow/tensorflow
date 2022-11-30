@@ -807,8 +807,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     defines = select({
         ":tflite_kernel_use_xnnpack_false": [],
-        "//tensorflow:macos": [],
-        "//tensorflow:fuchsia": [],
         "//conditions:default": [
             "TFLITE_KERNEL_USE_XNNPACK",
         ],

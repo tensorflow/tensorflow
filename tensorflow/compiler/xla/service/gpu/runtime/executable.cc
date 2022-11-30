@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/runtime/ffi.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
@@ -35,6 +36,8 @@ namespace gpu {
 using ::xla::runtime::Executable;
 using ::xla::runtime::JitExecutable;
 using ::xla::runtime::success;
+
+using ::xla::runtime::ffi::FfiCustomCalls;
 
 GpuRuntimeExecutable::GpuRuntimeExecutable(
     std::vector<int64_t> buffer_sizes,
@@ -208,8 +211,7 @@ Status GpuRuntimeExecutable::Execute(
   GemmConfigs::Snapshot gemm_configs = gemm_configs_.snapshot();
 
   // Pass auxiliary data to the custom call handlers.
-  runtime::CustomCall::UserData user_data;
-  user_data.insert_all(
+  runtime::CustomCall::UserData user_data(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
       &binary, &kernels, &gemm_configs, &conv_runners_cache_, &collectives_,
       // Null pointer will be interpreted as an absence of async collectives
@@ -219,7 +221,8 @@ Status GpuRuntimeExecutable::Execute(
 #if GOOGLE_CUDA
   // Add auxiliary data that is available only if compiled with CUDA support.
   MatmulPlans::Snapshot matmul_plans = cublas_lt_matmul_plans_.snapshot();
-  user_data.insert(&matmul_plans);
+  GraphInstances::Snapshot graph_instances = graph_instances_.snapshot();
+  user_data.insert_all(&matmul_plans, &graph_instances);
 #endif  // GOOGLE_CUDA
 
   // Collect all emitted diagnostic messages.
@@ -235,6 +238,7 @@ Status GpuRuntimeExecutable::Execute(
   opts.async_task_runner = NoAsyncTaskRunner();
   opts.custom_call_data = &user_data;
   opts.diagnostic_engine = &diagnostic_engine;
+  opts.custom_call_registry = &FfiCustomCalls();
 
   // Execute with the prepared call frame.
   executable.Execute(call_frame, opts);

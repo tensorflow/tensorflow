@@ -13,16 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -132,15 +136,95 @@ struct OutputInfo {
   Value value;
 };
 
+// Makes input/output names across entry functions unique if necessary. If a
+// dupliated name is found, this function will add signature prefix for all the
+// input/output names.
+void GetUniqueInputOutputNodeNames(ModuleOp& module,
+                                   std::vector<std::string>& input_name_vec,
+                                   std::vector<std::string>& output_name_vec) {
+  bool need_prefix_for_input_name = false;
+  bool need_prefix_for_output_name = false;
+  std::vector<StringRef> fn_input_name_vec, fn_output_name_vec;
+  llvm::StringSet<> input_name_set, output_name_set;
+  for (auto function : module.getOps<func::FuncOp>()) {
+    if (!ShouldIncludeInMainFunction(function)) continue;
+    if (auto tf_attrs =
+            function->getAttrOfType<DictionaryAttr>(kEntryFunctionAttr)) {
+      StringRef function_name = function.getSymName();
+
+      if (auto inputs_attr = tf_attrs.get("inputs")) {
+        std::string inputs_attr_str =
+            inputs_attr.cast<StringAttr>().getValue().str();
+        std::vector<std::string> fn_input_names =
+            absl::StrSplit(inputs_attr_str, ',', absl::SkipEmpty());
+
+        for (StringRef input_name : fn_input_names) {
+          if (input_name_set.count(input_name) > 0) {
+            // Found a duplicated name, all input names will be prefixed by
+            // their corresponding function names.
+            need_prefix_for_input_name = true;
+          }
+          input_name_set.insert(input_name);
+          fn_input_name_vec.push_back(function_name);
+        }
+        input_name_vec.insert(input_name_vec.end(),
+                              std::make_move_iterator(fn_input_names.begin()),
+                              std::make_move_iterator(fn_input_names.end()));
+      }
+
+      if (auto outputs_attr = tf_attrs.get("outputs")) {
+        std::string outputs_attr_str =
+            outputs_attr.cast<StringAttr>().getValue().str();
+        std::vector<std::string> fn_output_names =
+            absl::StrSplit(outputs_attr_str, ',', absl::SkipEmpty());
+
+        for (StringRef output_name : fn_output_names) {
+          if (output_name_set.count(output_name) > 0) {
+            // Found a duplicated name, all output names will be prefixed by
+            // their corresponding function names.
+            need_prefix_for_output_name = true;
+          }
+          output_name_set.insert(output_name);
+          fn_output_name_vec.push_back(function_name);
+        }
+        output_name_vec.insert(output_name_vec.end(),
+                               std::make_move_iterator(fn_output_names.begin()),
+                               std::make_move_iterator(fn_output_names.end()));
+      }
+    }
+  }
+
+  if (need_prefix_for_input_name) {
+    absl::c_transform(input_name_vec, fn_input_name_vec, input_name_vec.begin(),
+                      [](const std::string& input_name, StringRef fn_name) {
+                        std::string new_name = fn_name.str();
+                        absl::StrAppend(&new_name, "_", input_name);
+                        return new_name;
+                      });
+  }
+  if (need_prefix_for_output_name) {
+    absl::c_transform(output_name_vec, fn_output_name_vec,
+                      output_name_vec.begin(),
+                      [](const std::string& output_name, StringRef fn_name) {
+                        std::string new_name = fn_name.str();
+                        absl::StrAppend(&new_name, "_", output_name);
+                        return new_name;
+                      });
+  }
+}
+
 // Creates a main function which calls other exported functions.
 bool CreateMainFunction(ModuleOp& module) {
   MLIRContext* context = module.getContext();
   OpBuilder builder(context);
 
+  std::vector<std::string> input_names, output_names;
+  GetUniqueInputOutputNodeNames(module, input_names, output_names);
+
   // Collects argument and result types.
   llvm::SmallVector<Location> arg_locs;
   llvm::SmallVector<Type> arg_types, result_types;
-  std::vector<std::string> input_names, output_names;
+
   for (auto function : module.getOps<func::FuncOp>()) {
     if (!ShouldIncludeInMainFunction(function)) continue;
 
@@ -151,29 +235,6 @@ bool CreateMainFunction(ModuleOp& module) {
                         return_op.getOperandTypes().end());
     for (const auto& arg : function.getArguments()) {
       arg_locs.push_back(arg.getLoc());
-    }
-
-    // Collects input and output node names. These names are prefixed with the
-    // signature key in SavedModel. They also contain the index suffix. Ex:
-    // "<signature key>_<name>:0", where 0 is the index.
-    if (auto tf_attrs =
-            function->getAttrOfType<DictionaryAttr>(kEntryFunctionAttr)) {
-      if (auto inputs_attr = tf_attrs.get("inputs")) {
-        std::string inputs_attr_str =
-            inputs_attr.cast<StringAttr>().getValue().str();
-        std::vector<std::string> inputs_attr_vec =
-            absl::StrSplit(inputs_attr_str, ',', absl::SkipEmpty());
-        input_names.insert(input_names.end(), inputs_attr_vec.begin(),
-                           inputs_attr_vec.end());
-      }
-      if (auto outputs_attr = tf_attrs.get("outputs")) {
-        std::string outputs_attr_str =
-            outputs_attr.cast<StringAttr>().getValue().str();
-        std::vector<std::string> outputs_attr_vec =
-            absl::StrSplit(outputs_attr_str, ',', absl::SkipEmpty());
-        output_names.insert(output_names.end(), outputs_attr_vec.begin(),
-                            outputs_attr_vec.end());
-      }
     }
   }
 

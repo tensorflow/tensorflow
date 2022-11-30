@@ -939,12 +939,14 @@ Status CheckAndUpdateDeviceAssignmentsInWhileBody(
           return bad_status(instruction, device, channel_instruction,
                             *unique_device);
         }
-      } else if (opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
+      } else if (((opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv) &&
+                  !Cast<HloSendRecvInstruction>(instruction)
+                       ->is_host_transfer())
                  // Cross-replica AllReduces don't have a channel_id, and we
                  // don't enforce any invariant about their device assignment.
-                 ((opcode == HloOpcode::kAllReduce ||
-                   opcode == HloOpcode::kReduceScatter) &&
-                  instruction->channel_id())) {
+                 || ((opcode == HloOpcode::kAllReduce ||
+                      opcode == HloOpcode::kReduceScatter) &&
+                     instruction->channel_id())) {
         channel_instruction = instruction;
         unique_device = device;
         if (!devices_to_instructions.empty()) {

@@ -35,7 +35,6 @@ namespace tfrt_stub {
 namespace {
 
 struct TestParams {
-  bool enable_native_ops = false;
   bool enable_grappler = false;
   bool enable_lazy_loading = false;
 };
@@ -54,8 +53,6 @@ TEST_P(SavedModelTest, BasicV1) {
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
   options.enable_lazy_loading = GetParam().enable_lazy_loading;
-  options.graph_execution_options.compile_options.enable_native_ops =
-      GetParam().enable_native_ops;
   options.graph_execution_options.compile_options.enable_grappler =
       GetParam().enable_grappler;
 
@@ -80,14 +77,12 @@ TEST_P(SavedModelTest, BasicV1) {
 
 // Tests all the value combinations of `TestParams`. For readability, use
 // integers instead of booleans.
-INSTANTIATE_TEST_SUITE_P(
-    SavedModelLiteTest, SavedModelTest,
-    ::testing::Values(
-        // The values below are for:
-        // enable_native_ops, enable_grappler, enable_lazy_loading
-        TestParams{0, 0, 0}, TestParams{0, 0, 1}, TestParams{0, 1, 0},
-        TestParams{0, 1, 1}, TestParams{1, 0, 0}, TestParams{1, 0, 1},
-        TestParams{1, 1, 0}, TestParams{1, 1, 1}));
+INSTANTIATE_TEST_SUITE_P(SavedModelLiteTest, SavedModelTest,
+                         ::testing::Values(
+                             // The values below are for:
+                             // enable_grappler, enable_lazy_loading
+                             TestParams{0, 0}, TestParams{0, 1},
+                             TestParams{1, 0}, TestParams{1, 1}));
 
 TEST(SavedModelTest, CostMeasurementEnabled) {
   // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
@@ -100,7 +95,6 @@ TEST(SavedModelTest, CostMeasurementEnabled) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.graph_execution_options.compile_options.enable_native_ops = false;
 
   auto saved_model = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
                                                     /*tags=*/{"serve"});
@@ -168,7 +162,6 @@ TEST(SavedModelTest, VariableOnTpu) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.graph_execution_options.compile_options.enable_native_ops = false;
 
   auto saved_model = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
                                                     /*tags=*/{"serve"});
@@ -506,7 +499,6 @@ TEST(SavedModelTest, CustomWorkQueue) {
       std::make_unique<tfrt::tf::RunHandlerThreadWorkQueue>(queue_options));
 
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.graph_execution_options.compile_options.enable_native_ops = false;
 
   auto saved_model = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
                                                     /*tags=*/{"serve"});
@@ -548,7 +540,6 @@ TEST(SavedModelTest, RunOptionsWorkQueue) {
       tensorflow::tfrt_stub::Runtime::Create(/*num_inter_op_threads=*/4);
 
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.graph_execution_options.compile_options.enable_native_ops = false;
 
   auto saved_model = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
                                                     /*tags=*/{"serve"});
@@ -744,7 +735,6 @@ TEST(SavedModelTest, HashTableAssetV1) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.graph_execution_options.compile_options.enable_native_ops = false;
   options.graph_execution_options.compile_options.enable_grappler = true;
   options.graph_execution_options.compile_options.hoist_invariant_ops = true;
 

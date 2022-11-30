@@ -87,6 +87,27 @@ enum CustomCallApiVersion {
   //                       XlaCustomCallStatus* status);
   //
   API_VERSION_STATUS_RETURNING_UNIFIED = 3;
+
+  // Api version implementing XLA runtime custom call calling convention. These
+  // custom calls can be registered as an XLA runtime custom call (1) or as XLA
+  // runtime FFI binding (2).
+  //
+  // This type of custom call uses custom ABI to pass type information along
+  // with custom call arguments. Also it passes buffer arguments together with
+  // data type, sizes and strides.
+  //
+  // Example: (XLA runtime custom call)
+  //
+  //   absl::Status DoCustomCall(StridedMemrefView arg, float attr);
+  //
+  //   CustomCall::Bind("custom_call")
+  //     .Arg<StridedMemrefView>()
+  //     .Attr<float>("attr")
+  //     .To(DoCustomCall);
+  //
+  // (1) xla/runtime/custom_call.h
+  // (2) xla/runtime/ffi/ffi.h
+  API_VERSION_TYPED_FFI = 4;
 }
 
 // Serialization of HloInstruction.

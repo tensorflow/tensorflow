@@ -1010,7 +1010,7 @@ bool Subgraph::OpMightHaveSideEffect(
 
 TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
                                          const std::vector<int>& dims) {
-  const bool delegates_applied = !pre_delegation_execution_plan_.empty();
+  const bool delegates_applied = !delegates_applied_.empty();
   const bool graph_is_immutable = state_ == kStateInvokableAndImmutable;
   if (graph_is_immutable && !delegates_applied) {
     ReportError("ResizeInputTensor is disallowed when graph is immutable.");

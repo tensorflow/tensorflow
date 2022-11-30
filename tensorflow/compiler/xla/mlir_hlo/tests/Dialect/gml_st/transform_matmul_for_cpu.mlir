@@ -29,7 +29,11 @@ func.func @matmul_static(%arg0: tensor<128x16xf32>, %arg1: tensor<16x64xf32>,
 // MMT4D-LABEL:    func @matmul_static(
 
 // MMT4D-NOT:        linalg.matmul
-// MMT4D:            linalg.mmt4d
+// MMT4D:            gml_st.parallel {{.*}} = (%c0, %c0) to (%[[DIM0:.*]], %[[DIM1:.*]]) step (%c1, %c1)
+// MMT4D:              gml_st.parallel {{.*}} = (%c0, %c0) to (%c8, %c8) step (%c8, %c8)
+// MMT4D:                gml_st.for {{.*}} = (%c0) to (%[[DIM2:.*]]) step (%c1)
+// MMT4D:                  gml_st.for {{.*}} = (%c0) to (%c1) step (%c1)
+// MMT4D:                    linalg.mmt4d
 
 // -----
 
@@ -107,4 +111,8 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // MMT4D-LABEL:    func @matmul(
 
 // MMT4D-NOT:        linalg.matmul
-// MMT4D:            linalg.mmt4d
+// MMT4D:            gml_st.parallel {{.*}} = (%c0, %c0) to (%[[DIM0:.*]], %[[DIM1:.*]]) step (%c1, %c1)
+// MMT4D:              gml_st.parallel {{.*}} = (%c0, %c0) to (%c8, %c8) step (%c8, %c8)
+// MMT4D:                gml_st.for {{.*}} = (%c0) to (%[[DIM2:.*]]) step (%c1)
+// MMT4D:                  gml_st.for {{.*}} = (%c0) to (%c1) step (%c1)
+// MMT4D:                    linalg.mmt4d

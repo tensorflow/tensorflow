@@ -1,11 +1,11 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_copts",
-    "tf_cuda_library",
+    "//tensorflow/tsl:tsl.bzl",
+    "tsl_copts",
+    "tsl_gpu_library",
 )
-load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
+load("//tensorflow/tsl:tsl.default.bzl", "tsl_gpu_cc_test")
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_additional_device_tracer_srcs",
@@ -32,10 +32,10 @@ package(
     licenses = ["notice"],
 )
 
-tf_cuda_library(
+tsl_gpu_library(
     name = "device_tracer",
     srcs = tf_additional_device_tracer_srcs(),
-    copts = tf_profiler_copts() + tf_copts(),
+    copts = tf_profiler_copts() + tsl_copts(),
     cuda_deps = [
         ":cupti_tracer",
         ":cupti_wrapper",
@@ -63,10 +63,10 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-tf_cuda_library(
+tsl_gpu_library(
     name = "cupti_interface",
     hdrs = if_cuda(["cupti_interface.h"]),
-    copts = tf_profiler_copts() + tf_copts(),
+    copts = tf_profiler_copts() + tsl_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/tsl/platform:macros",
@@ -74,11 +74,11 @@ tf_cuda_library(
     ] + tf_additional_cupti_deps(),
 )
 
-tf_cuda_library(
+tsl_gpu_library(
     name = "mock_cupti",
     testonly = 1,
     hdrs = if_cuda(["mock_cupti.h"]),
-    copts = tf_profiler_copts() + tf_copts(),
+    copts = tf_profiler_copts() + tsl_copts(),
     cuda_deps = [
         ":cupti_interface",
     ],
@@ -87,11 +87,11 @@ tf_cuda_library(
     ],
 )
 
-tf_cuda_library(
+tsl_gpu_library(
     name = "cupti_error_manager",
     srcs = if_cuda(["cupti_error_manager.cc"]),
     hdrs = if_cuda(["cupti_error_manager.h"]),
-    copts = tf_profiler_copts() + tf_copts(),
+    copts = tf_profiler_copts() + tsl_copts(),
     cuda_deps = [
         ":cupti_interface",
         ":cupti_wrapper",
@@ -107,7 +107,7 @@ tf_cuda_library(
     ],
 )
 
-tf_cuda_cc_test(
+tsl_gpu_cc_test(
     name = "cupti_error_manager_test",
     size = "small",
     srcs = ["cupti_error_manager_test.cc"],
@@ -125,7 +125,9 @@ tf_cuda_cc_test(
         ":cupti_wrapper",
         ":mock_cupti",
         "@com_google_absl//absl/memory",
+        "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/profiler/utils:time_utils",
+        "//tensorflow/tsl/profiler/backends/cpu:annotation_stack_impl",
     ]),
 )
 
@@ -155,11 +157,11 @@ cuda_library(
 # the wrapper statically works around the issue. An alternative would be
 # to patch libcupti_static, but it's not worth the trouble considering
 # that the wrapper is about the only direct user.
-tf_cuda_library(
+tsl_gpu_library(
     name = "cupti_wrapper",
     srcs = if_cuda(["cupti_wrapper.cc"]),
     hdrs = if_cuda(["cupti_wrapper.h"]),
-    copts = tf_profiler_copts() + tf_copts(),
+    copts = tf_profiler_copts() + tsl_copts(),
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
@@ -167,11 +169,11 @@ tf_cuda_library(
     ] + tf_additional_cupti_deps(),
 )
 
-tf_cuda_library(
+tsl_gpu_library(
     name = "cupti_tracer",
     srcs = if_cuda(["cupti_tracer.cc"]),
     hdrs = if_cuda(["cupti_tracer.h"]),
-    copts = tf_profiler_copts() + tf_copts(),
+    copts = tf_profiler_copts() + tsl_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":cupti_collector",
@@ -196,11 +198,11 @@ tf_cuda_library(
     ],
 )
 
-tf_cuda_library(
+tsl_gpu_library(
     name = "rocm_tracer",
     srcs = if_rocm(["rocm_tracer.cc"]),
     hdrs = if_rocm(["rocm_tracer.h"]),
-    copts = tf_profiler_copts() + tf_copts(),
+    copts = tf_profiler_copts() + tsl_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla/stream_executor/rocm:roctracer_wrapper",
@@ -219,11 +221,11 @@ tf_cuda_library(
     ],
 )
 
-tf_cuda_library(
+tsl_gpu_library(
     name = "nvtx_utils",
     srcs = if_cuda(["nvtx_utils.cc"]),
     hdrs = if_cuda(["nvtx_utils.h"]),
-    copts = tf_profiler_copts() + tf_copts(),
+    copts = tf_profiler_copts() + tsl_copts(),
     deps = [
         "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:macros",
@@ -231,11 +233,11 @@ tf_cuda_library(
     ],
 )
 
-tf_cuda_library(
+tsl_gpu_library(
     name = "cupti_collector",
     srcs = if_cuda(["cupti_collector.cc"]),
     hdrs = if_cuda(["cupti_collector.h"]),
-    copts = tf_profiler_copts() + tf_copts(),
+    copts = tf_profiler_copts() + tsl_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/container:fixed_array",
@@ -274,10 +276,10 @@ cc_library(
     ],
 )
 
-tf_cuda_library(
+tsl_gpu_library(
     name = "cupti_utils",
     srcs = if_cuda(["cupti_utils.cc"]),
-    copts = tf_profiler_copts() + tf_copts(),
+    copts = tf_profiler_copts() + tsl_copts(),
     cuda_deps = [
         ":cupti_error_manager",
         ":cupti_interface",

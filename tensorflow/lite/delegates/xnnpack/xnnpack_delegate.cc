@@ -797,7 +797,8 @@ class Subgraph {
     }
 
     // XNNPACK Value IDs for TFLite tensors
-    std::vector<uint32_t> xnnpack_tensors(tensors.back() + 1);
+    std::vector<uint32_t> xnnpack_tensors(tensors.empty() ? 0
+                                                          : tensors.back() + 1);
     for (int t : tensors) {
       if (context->tensors[t].type == kTfLiteResource) {
         // We should never see a resource tensor if we are not handling variable

@@ -420,7 +420,7 @@ EIGEN_DEVICE_FUNC To float8_base<Derived>::ConvertTo(const Derived& from) {
   return ConvertImpl<Derived, To, kSaturate, kTruncate>::run(from);
 }
 
-#define DECLARE_CONVERT(Derived, Other)                                 \
+#define DEFINE_CONVERT(Derived, Other)                                  \
   template EIGEN_DEVICE_FUNC Derived                                    \
   float8_base<Derived>::ConvertFrom<false, false, Other>(const Other&); \
   template EIGEN_DEVICE_FUNC Derived                                    \
@@ -438,21 +438,21 @@ EIGEN_DEVICE_FUNC To float8_base<Derived>::ConvertTo(const Derived& from) {
   template EIGEN_DEVICE_FUNC Other                                      \
   float8_base<Derived>::ConvertTo<Other, true, true>(const Derived&)
 
-DECLARE_CONVERT(float8_e4m3, double);
-DECLARE_CONVERT(float8_e4m3, float);
-DECLARE_CONVERT(float8_e4m3, Eigen::bfloat16);
-DECLARE_CONVERT(float8_e4m3, Eigen::half);
-DECLARE_CONVERT(float8_e4m3, float8_e5m2);
-DECLARE_CONVERT(float8_e4m3, float8_e4m3);
+DEFINE_CONVERT(float8_e4m3, double);
+DEFINE_CONVERT(float8_e4m3, float);
+DEFINE_CONVERT(float8_e4m3, Eigen::bfloat16);
+DEFINE_CONVERT(float8_e4m3, Eigen::half);
+DEFINE_CONVERT(float8_e4m3, float8_e5m2);
+DEFINE_CONVERT(float8_e4m3, float8_e4m3);
 
-DECLARE_CONVERT(float8_e5m2, double);
-DECLARE_CONVERT(float8_e5m2, float);
-DECLARE_CONVERT(float8_e5m2, Eigen::bfloat16);
-DECLARE_CONVERT(float8_e5m2, Eigen::half);
-DECLARE_CONVERT(float8_e5m2, float8_e5m2);
-DECLARE_CONVERT(float8_e5m2, float8_e4m3);
+DEFINE_CONVERT(float8_e5m2, double);
+DEFINE_CONVERT(float8_e5m2, float);
+DEFINE_CONVERT(float8_e5m2, Eigen::bfloat16);
+DEFINE_CONVERT(float8_e5m2, Eigen::half);
+DEFINE_CONVERT(float8_e5m2, float8_e5m2);
+DEFINE_CONVERT(float8_e5m2, float8_e4m3);
 
-#undef DECLARE_CONVERT
+#undef DEFINE_CONVERT
 
 }  // namespace float8_internal
 }  // namespace tsl

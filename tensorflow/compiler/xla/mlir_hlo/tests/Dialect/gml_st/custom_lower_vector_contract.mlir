@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt %s -lowering-vector-contract | FileCheck %s
+// RUN: mlir-hlo-opt %s --lower-vector-contract | FileCheck %s
 
 func.func @lower_vector_contract(%arg0: tensor<8x8xf32>, %arg1: tensor<8x8xf32>)
                   -> tensor<8x8xf32> {
