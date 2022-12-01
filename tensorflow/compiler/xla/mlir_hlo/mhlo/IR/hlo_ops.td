@@ -2194,6 +2194,13 @@ def MHLO_CustomCallOp: MHLO_Op<"custom_call",
        result tuple.
 
     See https://www.tensorflow.org/xla/operation_semantics#customcall.
+
+    Example:
+
+    ```mlir
+    %1 = mhlo.custom_call @foo(%arg0, %arg1) {backend_config = "bar", has_side_effect = true}
+          : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
+    ```
   }];
   let arguments = (ins
     Variadic<MHLO_TensorOrTokenOrTuple>:$inputs,
@@ -2232,6 +2239,11 @@ def MHLO_CustomCallOp: MHLO_Op<"custom_call",
       "::mlir::ArrayAttr":$called_computations,
       "::mlir::ArrayAttr":$operand_layouts,
       "::mlir::ArrayAttr":$result_layouts)>];
+
+  let assemblyFormat = [{
+    custom<CustomCallTarget>($call_target_name) `(` $inputs `)`
+      attr-dict `:` functional-type(operands, results)
+  }];
 }
 
 def MHLO_DotOp: MHLO_Op<"dot",

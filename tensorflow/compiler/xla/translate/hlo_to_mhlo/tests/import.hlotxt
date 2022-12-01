@@ -420,10 +420,8 @@ add {
 %test_custom_call (arg1: f32[2,3], arg2: f32[5,5]) -> f32[1,2,3] {
   %arg1 = f32[2,3] parameter(0)
   %arg2 = f32[5,5] parameter(1)
-  // CHECK:  "mhlo.custom_call"([[ARG_0]], [[ARG_1]]) {
-  // CHECK-SAME: api_version = 1 : i32
+  // CHECK:  mhlo.custom_call @foo([[ARG_0]], [[ARG_1]]) {
   // CHECK-SAME: backend_config = "bar"
-  // CHECK-SAME: call_target_name = "foo"
   // CHECK-SAME: custom_call_schedule = #mhlo<custom_call_schedule LATEST>
   // CHECK-SAME: has_side_effect = true
   // CHECK-SAME: : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
@@ -435,10 +433,8 @@ add {
 %test_custom_call_schedule_early(arg1: f32[2,3], arg2: f32[5,5]) -> f32[1,2,3] {
   %arg1 = f32[2,3] parameter(0)
   %arg2 = f32[5,5] parameter(1)
-  // CHECK:  "mhlo.custom_call"([[ARG_0]], [[ARG_1]]) {
-  // CHECK-SAME: api_version = 1 : i32
+  // CHECK:  mhlo.custom_call @foo([[ARG_0]], [[ARG_1]]) {
   // CHECK-SAME: backend_config = "bar"
-  // CHECK-SAME: call_target_name = "foo"
   // CHECK-SAME: custom_call_schedule = #mhlo<custom_call_schedule EARLIEST>
   // CHECK-SAME: has_side_effect = true
   // CHECK-SAME: : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
@@ -450,10 +446,9 @@ add {
 %test_custom_call_backend_config_dict (arg1: f32[2,3], arg2: f32[5,5]) -> f32[1,2,3] {
   %arg1 = f32[2,3] parameter(0)
   %arg2 = f32[5,5] parameter(1)
-  // CHECK:  "mhlo.custom_call"([[ARG_0]], [[ARG_1]]) {
+  // CHECK:  mhlo.custom_call @foo([[ARG_0]], [[ARG_1]]) {
   // CHECK-SAME: api_version = 4 : i32
   // CHECK-SAME: backend_config = {bar = 42 : i32}
-  // CHECK-SAME: call_target_name = "foo"
   // CHECK-SAME: has_side_effect = true
   // CHECK-SAME: : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
   ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[2,3] %arg1, f32[5,5] %arg2), custom_call_target="foo", api_version=API_VERSION_TYPED_FFI, backend_config="{bar = 42 : i32}", custom_call_has_side_effect=true
@@ -464,10 +459,9 @@ add {
 %test_custom_call_empty_backend_config_dict (arg1: f32[2,3], arg2: f32[5,5]) -> f32[1,2,3] {
   %arg1 = f32[2,3] parameter(0)
   %arg2 = f32[5,5] parameter(1)
-  // CHECK:  "mhlo.custom_call"([[ARG_0]], [[ARG_1]]) {
+  // CHECK:  mhlo.custom_call @foo([[ARG_0]], [[ARG_1]]) {
   // CHECK-SAME: api_version = 4 : i32
   // CHECK-SAME: backend_config = {}
-  // CHECK-SAME: call_target_name = "foo"
   // CHECK-SAME: has_side_effect = true
   // CHECK-SAME: : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
   ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[2,3] %arg1, f32[5,5] %arg2), custom_call_target="foo", api_version=API_VERSION_TYPED_FFI, backend_config="", custom_call_has_side_effect=true
@@ -480,10 +474,8 @@ add {
   %arg2 = f32[5,5] parameter(1)
   %arg3 = token[] parameter(2)
   %arg4 = s32[] parameter(3)
-  // CHECK:  "mhlo.custom_call"([[ARG_0]], [[ARG_1]], [[ARG_2]], [[ARG_3]]) {
-  // CHECK-SAME: api_version = 1 : i32
+  // CHECK:  mhlo.custom_call @foo([[ARG_0]], [[ARG_1]], [[ARG_2]], [[ARG_3]]) {
   // CHECK-SAME: backend_config = "bar"
-  // CHECK-SAME: call_target_name = "foo"
   // CHECK-SAME: has_side_effect = true
   // CHECK-SAME: operand_layouts = [dense<[0, 1]> : tensor<2xindex>, dense<[1, 0]> : tensor<2xindex>, dense<> : tensor<0xindex>, dense<> : tensor<0xindex>]
   // CHECK-SAME: result_layouts = [dense<[0, 2, 1]> : tensor<3xindex>]
@@ -496,10 +488,8 @@ add {
 %test_custom_call_tuple_output (arg1: f32[2,3], arg2: f32[5,5]) -> (f32[1,2,3], s32[3,7,9]) {
   %arg1 = f32[2,3] parameter(0)
   %arg2 = f32[5,5] parameter(1)
-  // CHECK:  "mhlo.custom_call"([[ARG_0]], [[ARG_1]]) {
-  // CHECK-SAME: api_version = 1 : i32
+  // CHECK:  mhlo.custom_call @foo([[ARG_0]], [[ARG_1]]) {
   // CHECK-SAME: backend_config = "bar"
-  // CHECK-SAME: call_target_name = "foo"
   // CHECK-SAME: has_side_effect = true
   // CHECK-SAME: operand_layouts = [dense<[0, 1]> : tensor<2xindex>, dense<[1, 0]> : tensor<2xindex>]
   // CHECK-SAME: result_layouts = [dense<[0, 2, 1]> : tensor<3xindex>, dense<[2, 0, 1]> : tensor<3xindex>]
@@ -524,9 +514,7 @@ add {
 %test_custom_call_with_computations (arg1: f32[2,3], arg2: f32[5,5]) -> f32[1,2,3] {
   %arg1 = f32[2,3] parameter(0)
   %arg2 = f32[5,5] parameter(1)
-  // CHECK:  "mhlo.custom_call"([[ARG_0]], [[ARG_1]]) {
-  // CHECK-SAME: api_version = 1 : i32
-  // CHECK-SAME: call_target_name = "foo"
+  // CHECK:  mhlo.custom_call @foo([[ARG_0]], [[ARG_1]]) {
   // CHECK-SAME: called_computations = [@custom_call_computation_0, @custom_call_computation_1]
   // CHECK-SAME: : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
   ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[2,3] %arg1, f32[5,5] %arg2), custom_call_target="foo", called_computations={%custom_call_computation_0, %custom_call_computation_1}
@@ -537,8 +525,7 @@ add {
 %test_custom_call_with_output_operand_alising (arg1: (f32[1,1], f32[2,3]), arg2: f32[5,5]) -> (f32[2,3]) {
   %arg1 = (f32[1,1], f32[2,3]) parameter(0)
   %arg2 = f32[5,5] parameter(1)
-  // CHECK:  "mhlo.custom_call"([[ARG_0]], [[ARG_1]]) {
-  // CHECK-SAME: call_target_name = "foo"
+  // CHECK:  mhlo.custom_call @foo([[ARG_0]], [[ARG_1]]) {
   // CHECK-SAME{LITERAL}: custom_call_output_operand_aliasing = [#mhlo.output_operand_alias<output_tuple_indices = [0], operand_index = 0, operand_tuple_indices = [1]>]
   // CHECK-SAME: (tuple<tensor<1x1xf32>, tensor<2x3xf32>>, tensor<5x5xf32>) -> tuple<tensor<2x3xf32>>
   ROOT %custom-call = (f32[2,3]) custom-call((f32[1,1], f32[2,3]) %arg1, f32[5,5] %arg2), custom_call_target="foo", output_to_operand_aliasing={{0}: (0, {1})}
@@ -1668,7 +1655,7 @@ add {
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<10xf32>)
  %AsyncOp (p0.1: f32[10]) -> f32[20] {
    %p0.1 = f32[10]{0} parameter(0)
-  // CHECK:  "mhlo.custom_call"
+  // CHECK:  mhlo.custom_call
    ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %p0.1),
                                   custom_call_target="foo"
  }
@@ -1711,7 +1698,7 @@ add {
 // CHECK-SAME: execution_thread = "mythread"
  %named_thread (p0.1: f32[10]) -> f32[20] {
    %p0.1 = f32[10]{0} parameter(0)
-  // CHECK:  "mhlo.custom_call"
+  // CHECK:  mhlo.custom_call
    ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %p0.1),
                                   custom_call_target="foo"
  }, execution_thread="mythread"
