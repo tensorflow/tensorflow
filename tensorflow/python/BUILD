@@ -3246,7 +3246,10 @@ py_library(
         otherwise = [],
     ),  # b/153585257
     srcs_version = "PY3",
-    deps = [":pywrap_tensorflow_internal"],
+    deps = [
+        ":pywrap_tensorflow_internal",
+        "//tensorflow/python/platform:self_check",
+    ],
 )
 
 pywrap_tensorflow_macro(
