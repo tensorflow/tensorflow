@@ -434,7 +434,25 @@ message DebugOptions {
   // available and recommended for Ampere+ GPUs.
   bool xla_gpu_use_runtime_fusion = 181;
 
-  // Next id: 182
+  enum MemorySchedulePostprocessor {
+    // Move EARLIEST HLO instructions forward so that they immediately follow
+    // predecessor instructions. Move LATEST instructions later so that they
+    // are executed immediately before successors.
+    SCHED_POSTPROC_EAGER_INSTRUCTION = 0;
+
+    // Successors of an EARLIEST HLO instruction and predecssors of a LATEST
+    // HLO instruction are scheduled together as a cluster/group. Performs more
+    // aggressive rescheduling than EAGER_INSTRUCTION, but may or may not also
+    // adversely impact memory usage.
+    SCHED_POSTPROC_EAGER_CLUSTER = 1;
+
+    // No memory schedule postprocessing will occur.
+    SCHED_POSTPROC_NONE = 2;
+  }
+
+  MemorySchedulePostprocessor xla_gpu_mem_sched_postproc = 182;
+
+  // Next id: 183
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

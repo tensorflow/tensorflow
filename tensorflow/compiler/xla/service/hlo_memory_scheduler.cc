@@ -24,7 +24,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
@@ -431,6 +433,62 @@ StatusOr<HloInstructionSequence> ScheduleComputationHelper(
                                 postprocessor, peak_memory);
 }
 
+// Overload to generate a name-value pair string for pairs with a string value.
+std::string NameValuePairToJSON(const llvm::StringRef& name,
+                                const llvm::StringRef& value) {
+  return llvm::Twine("\"")
+      .concat(name)
+      .concat("\": \"")
+      .concat(value)
+      .concat("\"")
+      .str();
+}
+
+// Overload to generate a name-value pair string for pairs with a "vector of
+// HloInstruction*" value type.
+std::string NameValuePairToJSON(
+    const llvm::StringRef& name,
+    absl::Span<const HloInstruction* const> instrs) {
+  std::string str;
+  llvm::raw_string_ostream os(str);
+  os << llvm::Twine("\"").concat(name).concat("\": [");
+  llvm::interleaveComma(instrs, os, [&](const HloInstruction* instr) {
+    os << llvm::Twine("\"").concat(instr->name()).concat("\"");
+  });
+  os << "]";
+  return str;
+}
+
+// Write the relevant info for a single instruction to the output stream.
+void InstrToJSON(llvm::raw_string_ostream& os, HloInstruction& instr) {
+  os << "      { " << NameValuePairToJSON("name", instr.name()) << ", "
+     << NameValuePairToJSON("opcode", xla::HloOpcodeString(instr.opcode()))
+     << ", " << NameValuePairToJSON("operands", instr.operands()) << ", "
+     << NameValuePairToJSON("users", instr.users()) << ", "
+     << NameValuePairToJSON("ctrl_pred", instr.control_predecessors()) << ", "
+     << NameValuePairToJSON("ctrl_succ", instr.control_successors());
+  os << " }";
+}
+
+// Add a string representation of the given instruction sequence to the given
+// output stream. Used when dumping is enabled for a module.
+void InstructionSequenceToJSONString(llvm::raw_string_ostream& os,
+                                     const std::string& comp_name,
+                                     const HloInstructionSequence& seq,
+                                     bool is_first) {
+  // Each instruction sequence appended to the JSON ostream represents one
+  // computation in an HLO module. If it is not the first, we add a comma.
+  if (!is_first) os << ',';
+  os << "\n    { " << NameValuePairToJSON("name", comp_name)
+     << ", \"instructions\": [\n";
+  for (HloInstruction* instr : seq.instructions()) {
+    InstrToJSON(os, *instr);
+    if (instr != seq.instructions().back()) os << ",";
+    os << "\n";
+  }
+  os << "    ] }";
+}
+
 }  // namespace
 
 StatusOr<HloInstructionSequence> DFSMemoryScheduler(
@@ -511,7 +569,7 @@ StatusOr<HloInstructionSequence> DFSMemoryScheduler(
         return a->name() < b->name();
       }));
   if (postprocessor) {
-    sequence = postprocessor(sequence);
+    sequence = postprocessor(sequence, computation->parent());
   }
   CHECK_EQ(sequence.size(), computation->instruction_count());
   if (peak_memory) {
@@ -534,7 +592,15 @@ ModuleSchedulerAlgorithm ComputationSchedulerToModuleScheduler(
              const absl::flat_hash_set<absl::string_view>& execution_threads,
              int64_t* peak_memory) -> StatusOr<HloSchedule> {
     HloSchedule schedule(module);
+    std::string dump_str;
+    std::optional<llvm::raw_string_ostream> sched_dump;
     absl::flat_hash_map<const HloComputation*, int64_t> memory_by_computation;
+    bool dumping_enabled = DumpingEnabledForHloModule(*module);
+
+    if (dumping_enabled) {
+      sched_dump.emplace(dump_str);
+      sched_dump.value() << "{\n  \"computations\": [";
+    }
     for (auto* computation :
          module->MakeComputationPostOrder(execution_threads)) {
       if (!computation->IsFusionComputation()) {
@@ -544,12 +610,22 @@ ModuleSchedulerAlgorithm ComputationSchedulerToModuleScheduler(
                 computation, points_to_analysis, alias_analysis, size_func,
                 computation_scheduler, memory_by_computation, postprocessor,
                 /*peak_memory=*/nullptr));
+        if (dumping_enabled) {
+          InstructionSequenceToJSONString(
+              sched_dump.value(), computation->name(), computation_sequence,
+              /*is_first=*/schedule.empty());
+        }
         schedule.set_sequence(computation, std::move(computation_sequence));
       }
     }
     if (peak_memory) {
       TF_ASSIGN_OR_RETURN(*peak_memory, HeapSimulator::MinimumMemoryForModule(
                                             schedule, size_func));
+    }
+    if (dumping_enabled) {
+      sched_dump.value() << "\n  ]\n}\n";
+      xla::DumpToFileInDirOrStdout(*module, "", "instr_seq.json",
+                                   sched_dump.value().str());
     }
     return std::move(schedule);
   };
@@ -567,7 +643,7 @@ StatusOr<HloInstructionSequence> ListMemoryScheduler(
                       ListScheduler::Run(computation, points_to_analysis,
                                          size_function, memory_by_computation));
   if (postprocessor) {
-    sequence = postprocessor(sequence);
+    sequence = postprocessor(sequence, computation->parent());
   }
   if (peak_memory) {
     TF_ASSIGN_OR_RETURN(
@@ -588,7 +664,7 @@ StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
     const MemorySchedulerPostprocessor& postprocessor, int64_t* peak_memory) {
   HloInstructionSequence sequence(computation->MakeInstructionPostOrder());
   if (postprocessor) {
-    sequence = postprocessor(sequence);
+    sequence = postprocessor(sequence, computation->parent());
   }
   if (peak_memory) {
     TF_ASSIGN_OR_RETURN(

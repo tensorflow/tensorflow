@@ -101,6 +101,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_softmax_fusion(false);
   opts.set_xla_gpu_normalize_layouts(true);
   opts.set_xla_gpu_simplify_all_fp_conversions(true);
+  opts.set_xla_gpu_mem_sched_postproc(
+      DebugOptions::SCHED_POSTPROC_EAGER_INSTRUCTION);
   return opts;
 }
 
@@ -302,6 +304,15 @@ static void AllocateFlags() {
           +[] { std::atexit(WarnIfFuelWasNeverConsumed); });
     }
     return true;
+  };
+
+  // Custom "sub-parser" lambda for xla_gpu_mem_sched_postproc
+  auto setter_for_xla_gpu_mem_sched_postproc = [](std::string postproc_str) {
+    DebugOptions_MemorySchedulePostprocessor postproc;
+    auto success = DebugOptions::MemorySchedulePostprocessor_Parse(postproc_str,
+                                                                   &postproc);
+    if (success) flag_values->set_xla_gpu_mem_sched_postproc(postproc);
+    return success;
   };
 
   flag_objects = new std::vector<tsl::Flag>();
@@ -821,6 +832,12 @@ static void AllocateFlags() {
       "By default, XLA:CPU will run fp16 dot/conv as fp32, as this is "
       "generally (much) faster on our hardware.  Set this flag to true to "
       "disable this behavior."));
+  flag_objects->push_back(tsl::Flag(
+      "xla_gpu_mem_sched_postproc", setter_for_xla_gpu_mem_sched_postproc,
+      DebugOptions::MemorySchedulePostprocessor_Name(
+          flag_values->xla_gpu_mem_sched_postproc()),
+      "Memory schedule postprocessor used to reorder HLO instructions with "
+      "EARLIEST/LATEST annotations for improved latency hiding."));
 
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }  // NOLINT(readability/fn_size)

@@ -1792,6 +1792,7 @@ cc_library(
     srcs = ["hlo_memory_scheduler.cc"],
     hdrs = ["hlo_memory_scheduler.h"],
     deps = [
+        ":dump",
         ":heap_simulator",
         ":hlo_alias_analysis",
         ":hlo_ordering",
