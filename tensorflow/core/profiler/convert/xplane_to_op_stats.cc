@@ -91,9 +91,15 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
         visitor.GetStat(StatType::kDevCapPeakBwGigabytesPerSecond);
     auto peak_hbm_bw_giga_bytes_per_second =
         visitor.GetStat(StatType::kDevCapPeakHbmBwGigabytesPerSecond);
-    return MakePerfEnv(peak_tera_flops_per_second->DoubleValue(),
-                       peak_bw_giga_bytes_per_second->DoubleValue(),
-                       peak_hbm_bw_giga_bytes_per_second->DoubleValue());
+    return MakePerfEnv(peak_tera_flops_per_second.has_value()
+                           ? peak_tera_flops_per_second->DoubleValue()
+                           : 0.0,
+                       peak_bw_giga_bytes_per_second.has_value()
+                           ? peak_bw_giga_bytes_per_second->DoubleValue()
+                           : 0.0,
+                       peak_hbm_bw_giga_bytes_per_second.has_value()
+                           ? peak_hbm_bw_giga_bytes_per_second->DoubleValue()
+                           : 0.0);
   }
 }
 
