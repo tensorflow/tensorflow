@@ -229,7 +229,7 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& scores,
   T scale = static_cast<T>(0.0);
   bool is_soft_nms = soft_nms_sigma > static_cast<T>(0.0);
   if (is_soft_nms) {
-    scale = static_cast<T>(-0.5) / soft_nms_sigma;
+    scale = static_cast<T>(-1.0) / soft_nms_sigma;
   }
 
   auto suppress_weight = [similarity_threshold, scale,
