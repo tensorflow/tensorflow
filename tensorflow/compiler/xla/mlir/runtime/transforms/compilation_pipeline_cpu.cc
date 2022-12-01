@@ -76,6 +76,8 @@ void RegisterDefaultXlaCpuRuntimeDialects(DialectRegistry& dialects) {
 
 static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
     mlir::OpPassManager& pm, const CpuPipelineOptions& opts) {
+  pm.addPass(mlir::createAsyncFuncToAsyncRuntimePass());
+
   // Convert entry function to the XLA entrypoint.
   pm.addPass(CreateExportRuntimeFunctionsPass());
   pm.addPass(cpu::createConvertLmhloToCpuRuntimePass());

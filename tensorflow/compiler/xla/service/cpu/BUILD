@@ -494,7 +494,6 @@ cc_library(
     srcs = ["cpu_executable.cc"],
     hdrs = ["cpu_executable.h"],
     deps = [
-        ":executable_proto_cc",
         ":simple_orc_jit",
         ":xla_framework",
         "//tensorflow/compiler/xla:shape_tree",
@@ -523,13 +522,13 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/host:host_stream",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Parser",
     ],
 )

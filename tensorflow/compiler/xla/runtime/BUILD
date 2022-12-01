@@ -209,16 +209,17 @@ tf_cc_test(
     deps = [
         ":arguments",
         ":async_runtime",
-        ":diagnostics",
-        ":executable",
         ":jit_executable",
+        ":logical_result",
         ":results",
         ":types",
         "//tensorflow/compiler/xla/mlir/runtime/transforms/tests:testlib_pipeline",
+        "//tensorflow/compiler/xla/mlir/runtime/utils:async_runtime_api",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/base:dynamic_annotations",
+        "@llvm-project//mlir:Support",
     ],
 )
 

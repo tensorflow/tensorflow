@@ -67,13 +67,14 @@ def RT_ExportOp : RT_Op<"export", [
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<(ins "mlir::func::FuncOp":$function_ref)>,
-    OpBuilder<(ins "mlir::func::FuncOp":$function_ref, "unsigned":$ordinal)>,
+    OpBuilder<(ins "mlir::FunctionOpInterface":$function_ref)>,
+    OpBuilder<(ins "mlir::FunctionOpInterface":$function_ref, 
+                   "unsigned":$ordinal)>,
   ];
 
   let extraClassDeclaration = [{
     llvm::Optional<unsigned> ordinal();
-    mlir::func::FuncOp exported(mlir::SymbolTable& sym_table);
+    mlir::FunctionOpInterface exported(mlir::SymbolTable& sym_table);
   }];
 
   let assemblyFormat = "$function_ref (`ordinal` $ordinal^)? attr-dict";
