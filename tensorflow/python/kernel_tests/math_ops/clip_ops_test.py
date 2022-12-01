@@ -298,7 +298,6 @@ class ClipTest(test.TestCase):
     self.assertAllClose(np_ans, tf_ans)
 
   # ClipByGlobalNorm tests
-  @test_util.run_deprecated_v1
   def testClipByGlobalNormClipped(self):
     # Norm clipping when clip_norm < 5
     with self.session():
@@ -320,7 +319,6 @@ class ClipTest(test.TestCase):
     self.assertAllClose(np_ans_0, tf_ans_1)
     self.assertAllClose(np_ans_1, tf_ans_2)
 
-  @test_util.run_deprecated_v1
   def testClipByGlobalNormClippedTensor(self):
     # Norm clipping when clip_norm < 5
     with self.session():
@@ -342,7 +340,6 @@ class ClipTest(test.TestCase):
     self.assertAllClose(np_ans_0, tf_ans_1)
     self.assertAllClose(np_ans_1, tf_ans_2)
 
-  @test_util.run_deprecated_v1
   def testClipByGlobalNormSupportsNone(self):
     # Norm clipping when clip_norm < 5
     with self.session():
@@ -400,7 +397,6 @@ class ClipTest(test.TestCase):
     self.assertEqual(dense_shape, slices.dense_shape)
     self.assertEqual(dense_shape, modified_slices.dense_shape)
 
-  @test_util.run_deprecated_v1
   def testClipByGlobalNormNotClipped(self):
     # No norm clipping when clip_norm >= 5
     with self.session():
@@ -420,7 +416,6 @@ class ClipTest(test.TestCase):
     self.assertAllClose(np_ans_0, tf_ans_1)
     self.assertAllClose(np_ans_1, tf_ans_2)
 
-  @test_util.run_deprecated_v1
   def testClipByGlobalNormZero(self):
     # No norm clipping when norm = 0
     with self.session():
@@ -440,7 +435,6 @@ class ClipTest(test.TestCase):
     self.assertAllClose(np_ans_0, tf_ans_1)
     self.assertAllClose(np_ans_1, tf_ans_2)
 
-  @test_util.run_deprecated_v1
   def testClipByGlobalNormInf(self):
     # Expect all NaNs when global norm is inf.
     with self.session():

@@ -31,7 +31,6 @@ def raise_exception():
 
 class SmartCondTest(test_util.TensorFlowTestCase):
 
-  @test_util.run_deprecated_v1
   def testTrue(self):
     with ops.Graph().as_default():
       with session.Session():
@@ -41,7 +40,6 @@ class SmartCondTest(test_util.TensorFlowTestCase):
                                   lambda: math_ops.multiply(y, 5))
         self.assertEqual(self.evaluate(z), 32)
 
-  @test_util.run_deprecated_v1
   def testFalse(self):
     with ops.Graph().as_default():
       with session.Session():
