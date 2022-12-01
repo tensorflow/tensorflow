@@ -35,22 +35,23 @@ module {
 
   // TODO(b/240931497): Replace with core tf ops once uniform quantization is submitted.
   // Ref bugs for op: b/230804708, b/230805744
-  for main_op in ["conv2d", "depthwise_conv2d"] {
+  for main_op in ["Conv2D", "DepthwiseConv2D"] {
     parameters[
-      {"suffix": "with_bias_fn", "act_func": "internal_requantize_no_activation_fn", "output_type": "!tf_type.qint8"},
-      {"suffix": "with_bias_and_relu_fn", "act_func": "internal_requantize_and_relu_fn", "output_type": "!tf_type.qint8"},
-      {"suffix": "with_bias_and_relu6_fn", "act_func": "internal_requantize_and_relu6_fn", "output_type": "!tf_type.qint8"},
+      {"quantized_ops": ["${main_op}", "BiasAdd"], "act_func": "internal_requantize_no_activation_fn", "output_type": "!tf_type.qint8"},
+      {"quantized_ops": ["${main_op}", "BiasAdd", "Relu"], "act_func": "internal_requantize_and_relu_fn", "output_type": "!tf_type.qint8"},
+      {"quantized_ops": ["${main_op}", "BiasAdd", "Relu6"], "act_func": "internal_requantize_and_relu6_fn", "output_type": "!tf_type.qint8"},
     ]
-    func.func @quantized_${main_op}_${suffix}(%input : tensor<*x!tf_type.qint8>,
+    func.func @GenerateQuantizedFunctionName(${quantized_ops})(%input : tensor<*x!tf_type.qint8>,
                           %filter : tensor<*x!tf_type.qint8>, %bias : tensor<*x!tf_type.qint32>,
                           %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
                           %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
                           %bias_scale : tensor<*xf32>, %bias_zp : tensor<*xi32>,
-                          %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*x${output_type}> {
+                          %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*x${output_type}>
+        attributes {tf_quant.quantized_ops = ${quantized_ops}} {
       // TODO(b/258729559): Revisit scale/zp after e2e path for SRQ on UQ is ready.
       %main_out = "tf.PartitionedCall"(%input, %filter, %input_scale, %input_zp,
                                   %filter_scale, %filter_zp, %out_scale, %out_zp) {
-          config = "", config_proto = "", executor_type = "", f=@internal_${main_op}_fn
+          config = "", config_proto = "", executor_type = "", f=@GenerateImplFunctionName(${main_op})
         } : (tensor<*x!tf_type.qint8>, tensor<*x!tf_type.qint8>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x!tf_type.qint32>
       %add = "tf.ExperimentalUniformQuantizedAdd"(%main_out, %bias, %input_scale, %input_zp, %bias_scale, %bias_zp, %out_scale, %out_zp) {
         // TODO(b/238600711): Populate attributes for quantized_function_library_uniform_quantized
@@ -73,20 +74,21 @@ module {
     }
 
     parameters[
-      {"suffix": "fn", "act_func": "internal_requantize_no_activation_fn", "output_type": "!tf_type.qint8"},
-      {"suffix": "with_relu_fn", "act_func": "internal_requantize_and_relu_fn", "output_type": "!tf_type.qint8"},
-      {"suffix": "with_relu6_fn", "act_func": "internal_requantize_and_relu6_fn", "output_type": "!tf_type.qint8"},
+      {"quantized_ops": ["${main_op}"], "act_func": "internal_requantize_no_activation_fn", "output_type": "!tf_type.qint8"},
+      {"quantized_ops": ["${main_op}", "Relu"], "act_func": "internal_requantize_and_relu_fn", "output_type": "!tf_type.qint8"},
+      {"quantized_ops": ["${main_op}", "Relu6"], "act_func": "internal_requantize_and_relu6_fn", "output_type": "!tf_type.qint8"},
     ]
-    func.func @quantized_${main_op}_${suffix}(%input : tensor<*x!tf_type.qint8>,
+    func.func @GenerateQuantizedFunctionName(${quantized_ops})(%input : tensor<*x!tf_type.qint8>,
                           %filter : tensor<*x!tf_type.qint8>, %bias : tensor<*xf32>,
                           %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
                           %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
                           %bias_scale : tensor<*xf32>, %bias_zp : tensor<*xi32>,
-                          %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*x${output_type}> {
+                          %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*x${output_type}>
+        attributes {tf_quant.quantized_ops = ${quantized_ops}} {
       // TODO(b/258729559): Revisit scale/zp after e2e path for SRQ on UQ is ready.
       %main_out = "tf.PartitionedCall"(%input, %filter, %input_scale, %input_zp,
                                   %filter_scale, %filter_zp, %out_scale, %out_zp) {
-          config = "", config_proto = "", executor_type = "", f=@internal_${main_op}_fn
+          config = "", config_proto = "", executor_type = "", f=@GenerateImplFunctionName(${main_op})
         } : (tensor<*x!tf_type.qint8>, tensor<*x!tf_type.qint8>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x!tf_type.qint32>
       %act = "tf.PartitionedCall"(%main_out, %input_scale, %input_zp, %out_scale, %out_zp) {
           config = "", config_proto = "", executor_type = "", f=@${act_func}
