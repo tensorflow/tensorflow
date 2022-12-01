@@ -35,8 +35,6 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
 // CHECK:      %[[EXTRACT_1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
 // CHECK:      %[[EXTRACT_2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
 // CHECK:      %[[INIT:.*]] = tensor.empty(%[[EXTRACT_0]], %[[EXTRACT_1]], %[[EXTRACT_2]])
-// CHECK:      %[[INIT_TILE:.*]] = gml_st.tile
-// CHECK-SAME:     [%[[I]], %[[J]], %[[K]]] [3, 4, %[[ARG_DIM]]]
 // CHECK:      %[[DIM_0:.*]] = tensor.dim %[[ARG]], %[[C0]]
 // CHECK:      %[[DIM_1:.*]] = tensor.dim %[[ARG]], %[[C1]]
 // CHECK:      %[[CMPI_0:.*]] = arith.cmpi ne, %[[DIM_0]], %[[EXTRACT_0]]
@@ -45,11 +43,13 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
 // CHECK:      %[[SELECT_0:.*]] = arith.select %[[CMPI_1]], %[[C0]], %[[K]]
 // CHECK:      %[[SELECT_1:.*]] = arith.select %[[CMPI_0]], %[[C1]], %[[C3]]
 // CHECK:      %[[SELECT_2:.*]] = arith.select %[[CMPI_1]], %[[C1]], %[[ARG_DIM]]
+// CHECK:      %[[INIT_TILE:.*]] = gml_st.tile
+// CHECK-SAME:     [%[[I]], %[[J]], %[[K]]] [3, 4, %[[ARG_DIM]]]
+// CHECK:      %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[INIT_TILE]]]
 // CHECK:      %[[ARG_TILE:.*]] = gml_st.tile
 // CHECK-SAME:     [%[[SELECT]], %[[SELECT_0]]]
 // CHECK-SAME:     [%[[SELECT_1]], %[[SELECT_2]]]
 // CHECK-SAME:     [1, 1]
-// CHECK:      %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[INIT_TILE]]]
 // CHECK:      %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[ARG_TILE]]]
 // CHECK:      %[[DYNAMIC:.*]] = thlo.dynamic_broadcast_in_dim
 // CHECK-NEXT:     ins(%[[ARG_SUB]] : tensor<?x?xf32>)
@@ -80,8 +80,6 @@ func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
 
 // CHECK-DAG:  %[[C0:.*]] = arith.constant 0
 // CHECK-DAG:  %[[C1:.*]] = arith.constant 1
-// CHECK:      %[[INIT_TILE:.*]] = gml_st.tile
-// CHECK-SAME:     [%[[I]], %[[J]]] [%[[ARG_DIM0]], %[[ARG_DIM1]]]
 
 // CHECK:      %[[DIM_2:.*]] = tensor.dim %[[A]], %[[C1]]
 // CHECK:      %[[MINUI:.*]] = arith.minui %[[J]], %[[DIM_2]]
@@ -115,6 +113,8 @@ func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
 // CHECK-SAME:     [%[[I]], %[[MINUI_3]]]
 // CHECK-SAME:     [%[[ARG_DIM0]], %[[MINUI_4]]]
 // CHECK:      %[[C_SUB:.*]] = gml_st.materialize %[[C]][%[[C_TILE]]]
+// CHECK:      %[[INIT_TILE:.*]] = gml_st.tile
+// CHECK-SAME:     [%[[I]], %[[J]]] [%[[ARG_DIM0]], %[[ARG_DIM1]]]
 // CHECK:      %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[INIT_TILE]]]
 // CHECK:      %[[CONCATENATE:.*]] = thlo.concatenate
 // CHECK-NEXT:     ins(%[[A_SUB]] : tensor<?x?xi32>, %[[B_SUB]] : tensor<?x?xi32>,

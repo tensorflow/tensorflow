@@ -1684,9 +1684,11 @@ cc_library(
     ],
     strip_include_prefix = ".",
     deps = [
+        ":gml_st",
         ":tiling_interface_inc_gen",
         "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:ViewLikeInterface",
     ],
 )
