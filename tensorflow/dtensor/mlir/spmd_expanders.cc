@@ -267,6 +267,7 @@ REGISTER_SPMD(PadV2, TF::PadV2Op, PadSPMDExpander);
 // Scatter/Gather
 REGISTER_SPMD(GatherV2, TF::GatherV2Op, GatherV2SPMDExpander);
 REGISTER_SPMD(GatherNd, TF::GatherNdOp, GatherNdSPMDExpander);
+REGISTER_SPMD(ResourceGather, TF::ResourceGatherOp, ResourceGatherSPMDExpander);
 REGISTER_SPMD(ScatterNd, TF::ScatterNdOp, ScatterNdOpSPMDExpander);
 REGISTER_SPMD(TensorScatterUpdate, TF::TensorScatterUpdateOp,
               TensorScatterOpSPMDExpander);
