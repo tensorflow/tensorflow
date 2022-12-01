@@ -41,8 +41,8 @@ class Float8Test : public ::testing::Test {};
 struct Float8TestParamNames {
   template <typename TypeParam>
   static std::string GetName(int idx) {
-    if constexpr (std::is_same_v<TypeParam, float8_e4m3>) {
-      return "float8_e4m3";
+    if constexpr (std::is_same_v<TypeParam, float8_e4m3fn>) {
+      return "float8_e4m3fn";
     } else if constexpr (std::is_same_v<TypeParam, float8_e5m2>) {
       return "float8_e5m2";
     }
@@ -50,28 +50,30 @@ struct Float8TestParamNames {
   }
 };
 
-using Float8Types = ::testing::Types<float8_e4m3, float8_e5m2>;
+using Float8Types = ::testing::Types<float8_e4m3fn, float8_e5m2>;
 TYPED_TEST_SUITE(Float8Test, Float8Types, Float8TestParamNames);
 
 TEST(Float8E4m3Test, NumericLimits) {
   EXPECT_TRUE(
-      Eigen::numext::isnan(std::numeric_limits<float8_e4m3>::quiet_NaN()));
-  EXPECT_TRUE(
-      Eigen::numext::isnan(std::numeric_limits<float8_e4m3>::signaling_NaN()));
-  EXPECT_EQ(static_cast<float>(std::numeric_limits<float8_e4m3>::min()),
+      Eigen::numext::isnan(std::numeric_limits<float8_e4m3fn>::quiet_NaN()));
+  EXPECT_TRUE(Eigen::numext::isnan(
+      std::numeric_limits<float8_e4m3fn>::signaling_NaN()));
+  EXPECT_EQ(static_cast<float>(std::numeric_limits<float8_e4m3fn>::min()),
             std::exp2(-6));
-  EXPECT_EQ(static_cast<float>(std::numeric_limits<float8_e4m3>::max()), 448);
-  EXPECT_EQ(static_cast<float>(std::numeric_limits<float8_e4m3>::lowest()),
+  EXPECT_EQ(static_cast<float>(std::numeric_limits<float8_e4m3fn>::max()), 448);
+  EXPECT_EQ(static_cast<float>(std::numeric_limits<float8_e4m3fn>::lowest()),
             -448);
-  EXPECT_EQ(static_cast<float>(std::numeric_limits<float8_e4m3>::epsilon()),
+  EXPECT_EQ(static_cast<float>(std::numeric_limits<float8_e4m3fn>::epsilon()),
             0.125);
-  EXPECT_EQ(static_cast<float>(std::numeric_limits<float8_e4m3>::round_error()),
-            0.5);
+  EXPECT_EQ(
+      static_cast<float>(std::numeric_limits<float8_e4m3fn>::round_error()),
+      0.5);
   // No infinity, represent as NaN.
   EXPECT_TRUE(
-      Eigen::numext::isnan(std::numeric_limits<float8_e4m3>::infinity()));
-  EXPECT_EQ(static_cast<float>(std::numeric_limits<float8_e4m3>::denorm_min()),
-            std::exp2(-9));
+      Eigen::numext::isnan(std::numeric_limits<float8_e4m3fn>::infinity()));
+  EXPECT_EQ(
+      static_cast<float>(std::numeric_limits<float8_e4m3fn>::denorm_min()),
+      std::exp2(-9));
 }
 
 TEST(Float8E5m2Test, NumericLimits) {
@@ -270,40 +272,41 @@ TYPED_TEST(Float8Test, ConvertTo) {
 TEST(Float8Test, Float8E5m2_To_Float8E4m3) {
   for (int i = 0x00; i <= 0xFF; ++i) {
     float8_e5m2 e5m2 = float8_e5m2::FromRep(i);
-    float8_e4m3 e4m3 = static_cast<float8_e4m3>(e5m2);
-    float8_e4m3 expected = static_cast<float8_e4m3>(static_cast<float>(e5m2));
+    float8_e4m3fn e4m3 = static_cast<float8_e4m3fn>(e5m2);
+    float8_e4m3fn expected =
+        static_cast<float8_e4m3fn>(static_cast<float>(e5m2));
     EXPECT_EQ(e4m3.rep(), expected.rep()) << i;
   }
 
   // Saturation.
   float8_e5m2 max = std::numeric_limits<float8_e5m2>::max();
-  float8_e4m3 saturated = float8_e4m3::ConvertFrom</*kSaturate=*/true>(max);
-  EXPECT_EQ(saturated, std::numeric_limits<float8_e4m3>::max());
-  saturated = float8_e5m2::ConvertTo<float8_e4m3, /*kSaturate=*/true>(max);
-  EXPECT_EQ(saturated, std::numeric_limits<float8_e4m3>::max());
+  float8_e4m3fn saturated = float8_e4m3fn::ConvertFrom</*kSaturate=*/true>(max);
+  EXPECT_EQ(saturated, std::numeric_limits<float8_e4m3fn>::max());
+  saturated = float8_e5m2::ConvertTo<float8_e4m3fn, /*kSaturate=*/true>(max);
+  EXPECT_EQ(saturated, std::numeric_limits<float8_e4m3fn>::max());
 
   // Truncation - only occurs for e4m3 subnormals.
   float8_e5m2 less_than_subnorm = float8_e5m2::FromRep(0x1F);  // 2^-7 - 2^-10.
-  float8_e4m3 rounded_subnorm =
-      float8_e4m3::ConvertFrom</*kSaturate=*/false, /*kTruncate=*/false>(
+  float8_e4m3fn rounded_subnorm =
+      float8_e4m3fn::ConvertFrom</*kSaturate=*/false, /*kTruncate=*/false>(
           less_than_subnorm);
   EXPECT_EQ(rounded_subnorm.rep(), 0x04);
-  float8_e4m3 truncated_subnorm =
-      float8_e4m3::ConvertFrom</*kSaturate=*/false, /*kTruncate=*/true>(
+  float8_e4m3fn truncated_subnorm =
+      float8_e4m3fn::ConvertFrom</*kSaturate=*/false, /*kTruncate=*/true>(
           less_than_subnorm);
   EXPECT_EQ(truncated_subnorm.rep(), 0x03);
 }
 
 TEST(Float8Test, Float8E4m3_To_Float8E5m2) {
   for (int i = 0x00; i <= 0xFF; ++i) {
-    float8_e4m3 e4m3 = float8_e4m3::FromRep(i);
+    float8_e4m3fn e4m3 = float8_e4m3fn::FromRep(i);
     float8_e5m2 e5m2 = static_cast<float8_e5m2>(e4m3);
     float8_e5m2 expected = static_cast<float8_e5m2>(static_cast<float>(e4m3));
     EXPECT_EQ(e5m2.rep(), expected.rep()) << i;
   }
 
   // Truncation and rounding of a number ever-so-slightly less than 2.
-  float8_e4m3 less_than_two = float8_e4m3::FromRep(0x3F);
+  float8_e4m3fn less_than_two = float8_e4m3fn::FromRep(0x3F);
   float8_e5m2 truncated =
       float8_e5m2::template ConvertFrom</*kSaturate=*/false,
                                         /*kTruncate=*/true>(less_than_two);
@@ -406,12 +409,12 @@ using Float8CastTypePairs = ::testing::Types<
 #if !defined(EIGEN_USE_GPU) && !defined(EIGEN_GPU_COMPILE_PHASE)
     // long double doesn't work on GPU - it is treated as a regular 8-byte
     // double, which differs in size from the 16-byte long double on intel CPU.
-    std::pair<float8_e5m2, long double>, std::pair<float8_e4m3, long double>,
+    std::pair<float8_e5m2, long double>, std::pair<float8_e4m3fn, long double>,
 #endif
-    std::pair<float8_e4m3, double>, std::pair<float8_e4m3, float>,
-    std::pair<float8_e4m3, Eigen::bfloat16>,
-    std::pair<float8_e4m3, Eigen::half>, std::pair<float8_e4m3, bool>,
-    std::pair<float8_e4m3, int32_t>, std::pair<float8_e4m3, int64_t>,
+    std::pair<float8_e4m3fn, double>, std::pair<float8_e4m3fn, float>,
+    std::pair<float8_e4m3fn, Eigen::bfloat16>,
+    std::pair<float8_e4m3fn, Eigen::half>, std::pair<float8_e4m3fn, bool>,
+    std::pair<float8_e4m3fn, int32_t>, std::pair<float8_e4m3fn, int64_t>,
     std::pair<float8_e5m2, double>, std::pair<float8_e5m2, float>,
     std::pair<float8_e5m2, Eigen::bfloat16>,
     std::pair<float8_e5m2, Eigen::half>, std::pair<float8_e5m2, bool>,
