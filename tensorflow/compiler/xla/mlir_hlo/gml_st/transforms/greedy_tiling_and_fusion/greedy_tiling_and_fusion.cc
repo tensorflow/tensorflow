@@ -50,8 +50,11 @@ class FuseTensorExtractPattern : public OpRewritePattern<tensor::ExtractOp> {
     if (extractOp->getParentOfType<ParallelOp>())
       return rewriter.notifyMatchFailure(extractOp, "already fused");
 
+    if (extractOp->getUsers().empty())
+      return rewriter.notifyMatchFailure(extractOp, "op is trivially dead");
+
     ParallelOp outerMostParallelOp;
-    for (auto *user : extractOp->getUsers()) {
+    for (Operation *user : extractOp->getUsers()) {
       ParallelOp parallelOp = user->getParentOfType<gml_st::ParallelOp>();
       while (parallelOp && parallelOp->getParentOfType<gml_st::ParallelOp>())
         parallelOp = parallelOp->getParentOfType<gml_st::ParallelOp>();
