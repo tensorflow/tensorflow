@@ -423,37 +423,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tf_to_tfrt_data",
-    srcs = [
-        "transforms/tf_to_tfrt_data.cc",
-    ],
-    hdrs = [
-        "transforms/tf_to_tfrt_data.h",
-    ],
-    deps = [
-        ":tf_to_tfrt",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/mlir/tensorflow:import_model",
-        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Transforms",
-        "@tf_runtime//:basic_kernels_opdefs",
-        "@tf_runtime//:bef",
-        "@tf_runtime//:data_opdefs",
-        "@tf_runtime//:mlirtobef",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "host_context_util",
     srcs = ["utils/host_context.cc"],
     hdrs = ["utils/host_context.h"],
@@ -641,7 +610,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_test_passes",
         "//tensorflow/compiler/mlir/tfrt:tf_to_tfrt",
-        "//tensorflow/compiler/mlir/tfrt:tf_to_tfrt_data",
     ] + if_google([
         "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
     ]),
