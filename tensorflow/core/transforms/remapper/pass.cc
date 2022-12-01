@@ -350,7 +350,8 @@ class FusedBatchNormExRewriter : public RemapperPatternBase {
 
   bool is_valid_batch_norm(Operation *fused_batch_norm_op) const {
     TFOp fusedbatchnormop_wrapper(fused_batch_norm_op);
-    if (!this->helper_.getDialect()->IsFusedBatchNorm(fusedbatchnormop_wrapper)) {
+    if (!this->helper_.getDialect()->IsFusedBatchNorm(
+            fusedbatchnormop_wrapper)) {
       return false;
     }
     // We fuse FusedBatchNorm on GPU or oneDNN CPU.
@@ -499,28 +500,29 @@ class FusedBatchNormExRewriter : public RemapperPatternBase {
     return false;
   }
 
-  LogicalResult createFusedBatchNormExOpState(
-    OpBuilder &builder, FusedBatchNormEx *pattern, OperationState &state) const {
-  Operation *fused_batch_norm = pattern->fused_batch_norm;
-  Operation *activation = pattern->activation;
-  Value side_input = pattern->side_input;
+  LogicalResult createFusedBatchNormExOpState(OpBuilder &builder,
+                                              FusedBatchNormEx *pattern,
+                                              OperationState &state) const {
+    Operation *fused_batch_norm = pattern->fused_batch_norm;
+    Operation *activation = pattern->activation;
+    Value side_input = pattern->side_input;
 
-  state.addOperands(fused_batch_norm->getOperands());
-  if (side_input) {
-    state.operands.push_back(side_input);
-  }
-  state.addOperands(TFOp(fused_batch_norm).getControlOperands());
-  state.addTypes(fused_batch_norm->getResultTypes());
-  state.attributes = fused_batch_norm->getAttrs();
-  state.attributes.set(
-      "activation_mode",
-      builder.getStringAttr(activation->getName().stripDialect()));
-  if (side_input) {
-    state.attributes.set("num_side_inputs", builder.getI32IntegerAttr(1));
-  } else {
-    state.attributes.set("num_side_inputs", builder.getI32IntegerAttr(0));
-  }
-  return success();
+    state.addOperands(fused_batch_norm->getOperands());
+    if (side_input) {
+      state.operands.push_back(side_input);
+    }
+    state.addOperands(TFOp(fused_batch_norm).getControlOperands());
+    state.addTypes(fused_batch_norm->getResultTypes());
+    state.attributes = fused_batch_norm->getAttrs();
+    state.attributes.set(
+        "activation_mode",
+        builder.getStringAttr(activation->getName().stripDialect()));
+    if (side_input) {
+      state.attributes.set("num_side_inputs", builder.getI32IntegerAttr(1));
+    } else {
+      state.attributes.set("num_side_inputs", builder.getI32IntegerAttr(0));
+    }
+    return success();
   }
 
   LogicalResult matchAndRewrite(Operation *op,
@@ -530,8 +532,9 @@ class FusedBatchNormExRewriter : public RemapperPatternBase {
     if (!matchPattern(op, pattern)) return failure();
 
     OperationState state(op->getLoc(), "tfg._FusedBatchNormEx");
-    LogicalResult create_op_state = createFusedBatchNormExOpState(rewriter, &pattern, state);
-    if (!succeeded(create_op_state)) return failure();    
+    LogicalResult create_op_state =
+        createFusedBatchNormExOpState(rewriter, &pattern, state);
+    if (!succeeded(create_op_state)) return failure();
 
     Operation *fused_op = rewriter.create(state);
 
