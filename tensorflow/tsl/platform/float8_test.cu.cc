@@ -13,6 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// Enable CPU or GPU device, depending on build configuration.
+// TODO(cantonios): configure test to also work for ROCm.
+#if GOOGLE_CUDA  // || TENSORFLOW_USE_ROCM
+#define EIGEN_USE_GPU
+#else
+#define EIGEN_USE_THREADS
+#endif
+
 #include "tensorflow/tsl/platform/float8.h"
 
 #include <cmath>
@@ -20,6 +28,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace tsl {
@@ -325,27 +334,27 @@ TEST(Float8Test, Half_To_Float8E5m2) {
   // Rounding vs truncation.
   Eigen::half less_than_two =
       Eigen::numext::bit_cast<Eigen::half>(static_cast<uint16_t>(0x3FFF));
-  EXPECT_EQ((float8_e5m2::ConvertFrom</*kSaturate=*/false, /*kTruncate=*/false>(
-                 less_than_two)
+  EXPECT_EQ((float8_e5m2::ConvertFrom</*kSaturate=*/false,
+                                      /*kTruncate=*/false>(less_than_two)
                  .rep()),
             0x40);
-  EXPECT_EQ((float8_e5m2::ConvertFrom</*kSaturate=*/false, /*kTruncate=*/true>(
-                 less_than_two)
+  EXPECT_EQ((float8_e5m2::ConvertFrom</*kSaturate=*/false,
+                                      /*kTruncate=*/true>(less_than_two)
                  .rep()),
             0x3F);
-  EXPECT_EQ((float8_e5m2::ConvertFrom</*kSaturate=*/false, /*kTruncate=*/false>(
-                 -less_than_two)
+  EXPECT_EQ((float8_e5m2::ConvertFrom</*kSaturate=*/false,
+                                      /*kTruncate=*/false>(-less_than_two)
                  .rep()),
             0xC0);
-  EXPECT_EQ((float8_e5m2::ConvertFrom</*kSaturate=*/false, /*kTruncate=*/true>(
-                 -less_than_two)
+  EXPECT_EQ((float8_e5m2::ConvertFrom</*kSaturate=*/false,
+                                      /*kTruncate=*/true>(-less_than_two)
                  .rep()),
             0xBF);
 }
 
 using ::testing::Eq;
 using ::testing::IsTrue;
-MATCHER_P(EqOrIsNaN, other, "") {
+MATCHER_P(EqOrIsNan, other, "") {
   if (Eigen::numext::isnan(other)) {
     return ExplainMatchResult(IsTrue(), Eigen::numext::isnan(arg),
                               result_listener);
@@ -361,16 +370,16 @@ TYPED_TEST(Float8Test, CallTheOperator) {
     for (int j = 0x00; j <= 0xFF; ++j) {
       Float8 b = Float8::FromRep(j);
 
-      EXPECT_THAT(a + b, EqOrIsNaN(Float8{float{a} + float{b}}));
-      EXPECT_THAT(a - b, EqOrIsNaN(Float8{float{a} - float{b}}));
-      EXPECT_THAT(a * b, EqOrIsNaN(Float8{float{a} * float{b}}));
-      EXPECT_THAT(a / b, EqOrIsNaN(Float8{float{a} / float{b}}));
+      EXPECT_THAT(a + b, EqOrIsNan(Float8{float{a} + float{b}}));
+      EXPECT_THAT(a - b, EqOrIsNan(Float8{float{a} - float{b}}));
+      EXPECT_THAT(a * b, EqOrIsNan(Float8{float{a} * float{b}}));
+      EXPECT_THAT(a / b, EqOrIsNan(Float8{float{a} / float{b}}));
 
       Float8 c;
-      EXPECT_THAT((c = a, c += b), EqOrIsNaN(Float8{float{a} + float{b}}));
-      EXPECT_THAT((c = a, c -= b), EqOrIsNaN(Float8{float{a} - float{b}}));
-      EXPECT_THAT((c = a, c *= b), EqOrIsNaN(Float8{float{a} * float{b}}));
-      EXPECT_THAT((c = a, c /= b), EqOrIsNaN(Float8{float{a} / float{b}}));
+      EXPECT_THAT((c = a, c += b), EqOrIsNan(Float8{float{a} + float{b}}));
+      EXPECT_THAT((c = a, c -= b), EqOrIsNan(Float8{float{a} - float{b}}));
+      EXPECT_THAT((c = a, c *= b), EqOrIsNan(Float8{float{a} * float{b}}));
+      EXPECT_THAT((c = a, c /= b), EqOrIsNan(Float8{float{a} / float{b}}));
 
       EXPECT_EQ(a == b, float{a} == float{b}) << float{a} << " vs " << float{b};
       EXPECT_EQ(a != b, float{a} != float{b});
@@ -394,11 +403,16 @@ struct Float8CastTestParamNames {
 };
 
 using Float8CastTypePairs = ::testing::Types<
-    std::pair<float8_e4m3, long double>, std::pair<float8_e4m3, float>,
+#if !defined(EIGEN_USE_GPU) && !defined(EIGEN_GPU_COMPILE_PHASE)
+    // long double doesn't work on GPU - it is treated as a regular 8-byte
+    // double, which differs in size from the 16-byte long double on intel CPU.
+    std::pair<float8_e5m2, long double>, std::pair<float8_e4m3, long double>,
+#endif
+    std::pair<float8_e4m3, double>, std::pair<float8_e4m3, float>,
     std::pair<float8_e4m3, Eigen::bfloat16>,
     std::pair<float8_e4m3, Eigen::half>, std::pair<float8_e4m3, bool>,
     std::pair<float8_e4m3, int32_t>, std::pair<float8_e4m3, int64_t>,
-    std::pair<float8_e5m2, long double>, std::pair<float8_e5m2, float>,
+    std::pair<float8_e5m2, double>, std::pair<float8_e5m2, float>,
     std::pair<float8_e5m2, Eigen::bfloat16>,
     std::pair<float8_e5m2, Eigen::half>, std::pair<float8_e5m2, bool>,
     std::pair<float8_e5m2, int32_t>, std::pair<float8_e5m2, int64_t> >;
@@ -420,9 +434,99 @@ TYPED_TEST(Float8CastTest, CastThroughFloat) {
          std::numeric_limits<DestType>::has_infinity)) {
       DestType dest = static_cast<DestType>(f8);
       DestType expected = static_cast<DestType>(static_cast<float>(f8));
-      EXPECT_THAT(dest, EqOrIsNaN(expected));
+      EXPECT_THAT(dest, EqOrIsNan(expected));
     }
   }
+}
+
+// Work-around for lack of consistent .synchronize() method in Eigen.
+template <typename Device>
+void synchronize(Device& device) {
+  // Nothing.
+}
+
+#if GOOGLE_CUDA  // || TENSORFLOW_USE_ROCM
+template <>
+void synchronize<Eigen::GpuDevice>(Eigen::GpuDevice& device) {
+  device.synchronize();
+}
+#endif
+
+TYPED_TEST(Float8CastTest, DeviceCast) {
+  using Float8 = typename TypeParam::first_type;
+  using DestType = typename TypeParam::second_type;
+
+#if defined(EIGEN_USE_GPU)
+  Eigen::GpuStreamDevice stream;
+  Eigen::GpuDevice device(&stream);
+#elif defined(EIGEN_USE_THREADS)
+  constexpr int kThreads = 4;
+  Eigen::ThreadPool tp(kThreads);
+  Eigen::ThreadPoolDevice device(&tp, kThreads);
+#else
+  Eigen::DefaultDevice device;
+#endif
+
+  const int kNumElems = 256;
+  // Allocate device buffers and create device tensors.
+  Float8* src_device_buffer =
+      (Float8*)device.allocate(kNumElems * sizeof(Float8));
+  DestType* dst_device_buffer =
+      (DestType*)device.allocate(kNumElems * sizeof(DestType));
+
+  Eigen::TensorMap<Eigen::Tensor<Float8, 1>, Eigen::Aligned> src_device(
+      src_device_buffer, kNumElems);
+  Eigen::TensorMap<Eigen::Tensor<DestType, 1>, Eigen::Aligned> dst_device(
+      dst_device_buffer, kNumElems);
+
+  // Allocate host buffers and initially src memory.
+  Eigen::Tensor<Float8, 1> src_cpu(kNumElems);
+  Eigen::Tensor<DestType, 1> dst_cpu(kNumElems);
+  for (int i = 0; i < kNumElems; ++i) {
+    src_cpu(i) = Eigen::numext::bit_cast<Float8>(static_cast<uint8_t>(i));
+    // If src is inf or nan but DestType doesn't support these values
+    // (e.g. integer types), replace the input with a zero.
+    if ((!std::numeric_limits<DestType>::has_quiet_NaN &&
+         Eigen::numext::isnan(src_cpu(i))) ||
+        (!std::numeric_limits<DestType>::has_infinity &&
+         Eigen::numext::isinf(src_cpu(i)))) {
+      src_cpu(i) = Float8(0.0);
+    }
+  }
+
+  // Transfer data to device, perform a cast to DestType, then transfer result
+  // back to host.
+  device.memcpyHostToDevice(src_device_buffer, src_cpu.data(),
+                            kNumElems * sizeof(Float8));
+  dst_device.device(device) = src_device.template cast<DestType>();
+  device.memcpyDeviceToHost(dst_cpu.data(), dst_device_buffer,
+                            kNumElems * sizeof(DestType));
+  synchronize(device);
+
+  for (int i = 0; i < kNumElems; ++i) {
+    DestType expected = static_cast<DestType>(src_cpu(i));
+    EXPECT_THAT(dst_cpu(i), EqOrIsNan(expected));
+  }
+
+  // Cast back from DestType to Float8.
+  // First clear out the device src buffer, since that will be the destination.
+  src_cpu.setZero();
+  device.memcpyHostToDevice(src_device_buffer, src_cpu.data(),
+                            kNumElems * sizeof(Float8));
+  src_device.device(device) = dst_device.template cast<Float8>();
+  device.memcpyDeviceToHost(src_cpu.data(), src_device_buffer,
+                            kNumElems * sizeof(Float8));
+  synchronize(device);
+
+  for (int i = 0; i < kNumElems; ++i) {
+    Float8 expected = static_cast<Float8>(dst_cpu(i));
+    EXPECT_THAT(src_cpu(i), EqOrIsNan(expected));
+  }
+
+  // Clean up.
+  device.deallocate(src_device_buffer);
+  device.deallocate(dst_device_buffer);
+  synchronize(device);
 }
 
 }  // namespace
