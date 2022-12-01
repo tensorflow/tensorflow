@@ -3,12 +3,12 @@
 
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
-load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library", "xla_py_test_deps")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary", "xla_py_proto_library", "xla_py_test_deps")
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/tsl:tsl.bzl", "if_libtpu")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable", "internal_hlo_deps")
 load(
@@ -6937,7 +6937,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "xla_compile",
     srcs = if_cuda_is_configured(["xla_compile_main.cc"]),
     visibility = ["//visibility:public"],

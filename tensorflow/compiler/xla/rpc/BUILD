@@ -2,8 +2,12 @@ load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_cc_binary",
     "tf_cc_test",
+)
+load(
+    "//tensorflow/compiler/xla:xla.bzl",
+    "xla_cc_binary",
+    "xla_py_grpc_library",
 )
 load(
     "//tensorflow/tsl:tsl.bzl",
@@ -12,10 +16,6 @@ load(
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
-)
-load(
-    "//tensorflow/compiler/xla:xla.bzl",
-    "xla_py_grpc_library",
 )
 
 package(
@@ -68,11 +68,12 @@ cc_library(
     ),
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "grpc_service_main_cpu",
     deps = [
         ":grpc_service_main_library",
         "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
     ],
 )
 

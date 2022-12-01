@@ -1,13 +1,14 @@
 # Description:
 #   A tool for reducing a HLO module that produces incorrect results.
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
 
 package(
     default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "hlo_bisect",
     testonly = True,
     srcs = ["hlo_bisect.cc"],
