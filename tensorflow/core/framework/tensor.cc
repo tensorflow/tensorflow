@@ -764,7 +764,9 @@ void Tensor::CheckIsAlignedAndSingleElement() const {
 Tensor::~Tensor() { UnrefIfNonNull(buf_); }
 
 std::ostream& operator<<(std::ostream& out, const Tensor& tensor) {
-  out << tensor.DebugString();
+  // The default is to show 3 elements, but this is often insufficient for
+  // debugging.
+  out << tensor.DebugString(/*num_values=*/100);
   return out;
 }
 
