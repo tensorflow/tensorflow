@@ -549,6 +549,7 @@ tf_cc_test(
         ":flags",
         ":xla_compilation_cache",
         ":xla_cpu_jit",
+        ":xla_device_compiler_client",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla/client:client_library",
@@ -1289,6 +1290,40 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/tsl/platform:mutex",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "device_compiler_client",
+    srcs = ["device_compiler_client.cc"],
+    hdrs = ["device_compiler_client.h"],
+    visibility = [
+        ":internal",
+        "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla/client:executable_build_options",
+        "//tensorflow/core/util:determinism",
+    ],
+)
+
+tf_cc_test(
+    name = "device_compiler_client_test",
+    srcs = ["device_compiler_client_test.cc"],
+    deps = [
+        ":device_compiler_client",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "xla_device_compiler_client",
+    srcs = ["xla_device_compiler_client.cc"],
+    hdrs = ["xla_device_compiler_client.h"],
+    deps = [
+        ":device_compiler_client",
+        "//tensorflow/compiler/xla/client:local_client",
     ],
 )
 
