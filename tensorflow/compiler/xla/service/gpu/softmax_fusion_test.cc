@@ -840,6 +840,24 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec(1e-6, 1e-6)));
 }
 
+TEST_F(SoftmaxFusionTest, TryMatchBroadcastIntoOpReturningATuple) {
+  // This is a regression test to check that we do not try to call rank() on a
+  // tuple shape.
+  const std::string& hlo_string = R"(
+HloModule match_softmax
+
+ENTRY main {
+  param_0 = f32[14]{0} parameter(0)
+  param_1 = f32[14]{0} parameter(1)
+  broadcast = f32[14,8]{1,0} broadcast(param_0), dimensions={0}
+  ROOT custom_call = (f32[2]{0}, f32[2]{0}) custom-call(param_1, broadcast), custom_call_target="custom_call"
+})";
+
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  SoftmaxFusion fusion;
+  EXPECT_FALSE(fusion.Run(module.get()).value());
+}
+
 class SoftmaxFusionEnd2EndTest
     : public HloTestBase,
       public ::testing::WithParamInterface<::testing::tuple<int, int>> {

@@ -74,6 +74,8 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
                  // The root operation should be an elementwise binary op of
                  // rank 2.
                  .WithPredicate([](const HloInstruction* instr) {
+                   if (!instr->shape().IsArray()) return false;
+
                    int64_t rank = instr->shape().rank();
                    return instr->IsElementwiseBinary() &&
                           // If the product of the first dimensions is 1, it
