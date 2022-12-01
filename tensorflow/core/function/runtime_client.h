@@ -65,6 +65,11 @@ class Runtime {
   Status CreateFunction(const FunctionDef& fdef);
   // TODO(mdan): Change to mlir::tfg::GraphFuncOp once pybind can depend on it.
   Status CreateFunction(OpaqueTfgGraphFuncOp* fop);
+  // Applies a MLIR pipeline to an existing function.
+  // The pipeline may rename the function. If it does so, the old function
+  // remains unchanged. If the new name specifies an existing function, it will
+  // be overwritten.
+  Status TransformFunction(StringPiece name, StringPiece pipeline_name);
 
   StatusOr<ReturnValues> CallFunction(
       StringPiece name, absl::Span<AbstractTensorHandle* const> args);

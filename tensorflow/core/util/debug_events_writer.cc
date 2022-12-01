@@ -42,7 +42,7 @@ Status SingleDebugEventFileWriter::Init() {
   if (record_writer_ != nullptr) {
     // TODO(cais): We currently don't check for file deletion. When the need
     // arises, check and fix it.
-    return Status::OK();
+    return OkStatus();
   }
 
   // Reset recordio_writer (which has a reference to writable_file_) so final
@@ -59,7 +59,7 @@ Status SingleDebugEventFileWriter::Init() {
   }
   num_outstanding_events_.store(0);
   VLOG(1) << "Successfully opened debug events file: " << file_path_;
-  return Status::OK();
+  return OkStatus();
 }
 
 void SingleDebugEventFileWriter::WriteSerializedDebugEvent(
@@ -80,7 +80,7 @@ void SingleDebugEventFileWriter::WriteSerializedDebugEvent(
 Status SingleDebugEventFileWriter::Flush() {
   const int num_outstanding = num_outstanding_events_.load();
   if (num_outstanding == 0) {
-    return Status::OK();
+    return OkStatus();
   }
   if (writable_file_ == nullptr) {
     return errors::Unknown("Unexpected NULL file for path: ", file_path_);
@@ -97,7 +97,7 @@ Status SingleDebugEventFileWriter::Flush() {
                                   num_outstanding, " debug events to ",
                                   file_path_);
   num_outstanding_events_.store(0);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SingleDebugEventFileWriter::Close() {
@@ -146,7 +146,7 @@ Status DebugEventsWriter::LookUpDebugEventsWriter(
         "No DebugEventsWriter has been created at dump root ", dump_root);
   }
   *debug_events_writer = (*writer_pool)[dump_root].get();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DebugEventsWriter::Init() {
@@ -155,7 +155,7 @@ Status DebugEventsWriter::Init() {
   // TODO(cais): We currently don't check for file deletion. When the need
   // arises, check and fix file deletion.
   if (is_initialized_) {
-    return Status::OK();
+    return OkStatus();
   }
 
   if (!env_->IsDirectory(dump_root_).ok()) {
@@ -195,7 +195,7 @@ Status DebugEventsWriter::Init() {
   TF_RETURN_IF_ERROR(InitNonMetadataFile(EXECUTION));
   TF_RETURN_IF_ERROR(InitNonMetadataFile(GRAPH_EXECUTION_TRACES));
   is_initialized_ = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DebugEventsWriter::WriteSourceFile(SourceFile* source_file) {
@@ -243,7 +243,7 @@ Status DebugEventsWriter::WriteExecution(Execution* execution) {
     if (execution_buffer_.size() > circular_buffer_size_) {
       execution_buffer_.pop_front();
     }
-    return Status::OK();
+    return OkStatus();
   }
 }
 
@@ -268,7 +268,7 @@ Status DebugEventsWriter::WriteGraphExecutionTrace(
     if (graph_execution_trace_buffer_.size() > circular_buffer_size_) {
       graph_execution_trace_buffer_.pop_front();
     }
-    return Status::OK();
+    return OkStatus();
   }
 }
 
@@ -360,7 +360,7 @@ Status DebugEventsWriter::FlushNonExecutionFiles() {
   if (graphs_writer_ != nullptr) {
     TF_RETURN_IF_ERROR(graphs_writer_->Flush());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DebugEventsWriter::FlushExecutionFiles() {
@@ -392,7 +392,7 @@ Status DebugEventsWriter::FlushExecutionFiles() {
     TF_RETURN_IF_ERROR(graph_execution_traces_writer_->Flush());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 string DebugEventsWriter::FileName(DebugEventFileType type) {
@@ -406,7 +406,7 @@ Status DebugEventsWriter::Close() {
   {
     mutex_lock l(initialization_mu_);
     if (!is_initialized_) {
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -455,7 +455,7 @@ Status DebugEventsWriter::Close() {
   }
 
   if (failed_to_close_files.empty()) {
-    return Status::OK();
+    return OkStatus();
   } else {
     return errors::FailedPrecondition(
         "Failed to close %d debug-events files associated with tfdbg",
@@ -503,7 +503,7 @@ Status DebugEventsWriter::InitNonMetadataFile(DebugEventFileType type) {
       (*writer)->Init(), "Initializing debug event writer at path ", filename);
   VLOG(1) << "Successfully opened debug event file: " << filename;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DebugEventsWriter::SerializeAndWriteDebugEvent(DebugEvent* debug_event,
@@ -516,7 +516,7 @@ Status DebugEventsWriter::SerializeAndWriteDebugEvent(DebugEvent* debug_event,
     string str;
     debug_event->AppendToString(&str);
     (*writer)->WriteSerializedDebugEvent(str);
-    return Status::OK();
+    return OkStatus();
   } else {
     return errors::Internal(
         "Unable to find debug events file writer for DebugEventsFileType ",

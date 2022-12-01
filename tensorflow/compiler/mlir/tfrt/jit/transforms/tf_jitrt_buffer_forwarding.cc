@@ -13,21 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_LINALGTRIVIALBUFFERFORWARDING
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 // Returns true if all linalg.generic operation iterators are "parallel".
 bool AllIteratorsAreParallel(mlir::linalg::GenericOp op) {
-  return llvm::all_of(op.iterator_types(), [](mlir::Attribute attr) -> bool {
-    auto str_attr = attr.dyn_cast<mlir::StringAttr>();
-    return str_attr && str_attr.getValue() == "parallel";
-  });
+  return llvm::all_of(op.getIteratorTypesArray(),
+                      mlir::linalg::isParallelIterator);
 }
 
 // Returns buffer inputs that can be safely used as buffer outputs.
@@ -35,7 +35,7 @@ llvm::SmallVector<mlir::OpOperand*> FindBufferForwardingCandidates(
     mlir::linalg::GenericOp op) {
   llvm::SmallVector<mlir::OpOperand*> candidates;
 
-  for (mlir::OpOperand* input_buffer : op.getInputOperands()) {
+  for (mlir::OpOperand* input_buffer : op.getDpsInputOperands()) {
     // Input must be a contiguous memref ...
     if (!IsContiguousMemref(input_buffer->get())) continue;
 
@@ -44,10 +44,11 @@ llvm::SmallVector<mlir::OpOperand*> FindBufferForwardingCandidates(
     if (!alloc || !mlir::isa<mlir::memref::AllocOp>(alloc)) continue;
 
     // Find input users that are after linalg.generic operation in the block.
-    auto users = llvm::make_filter_range(alloc->getUsers(),
-                                         [&](mlir::Operation* user) -> bool {
-                                           return op->isBeforeInBlock(user);
-                                         });
+    auto users = llvm::make_filter_range(
+        alloc->getUsers(), [&](mlir::Operation* user) -> bool {
+          return user->getBlock() == op->getBlock() &&
+                 op->isBeforeInBlock(user);
+        });
 
     // Input buffer must have exactly one user after linalg.generic.
     llvm::SmallVector<mlir::Operation*> input_users(users.begin(), users.end());
@@ -91,7 +92,7 @@ struct LinalgTrivialBufferForwardingPattern
     llvm::DenseSet<mlir::OpOperand*> reused_inputs;
 
     // Try to match output buffers to forwarding candidates.
-    for (mlir::OpOperand* output_buffer : op.getOutputOperands()) {
+    for (mlir::OpOperand* output_buffer : op.getDpsInitOperands()) {
       // Output must be allocated in the same function.
       auto* alloc = output_buffer->get().getDefiningOp();
       if (!alloc || !mlir::isa<mlir::memref::AllocOp>(alloc)) continue;
@@ -99,7 +100,8 @@ struct LinalgTrivialBufferForwardingPattern
       // We cannot forward the buffer if there are any users before the
       // linalg.generic op in the block.
       if (llvm::any_of(alloc->getUsers(), [op](mlir::Operation* user) {
-            return user->isBeforeInBlock(op);
+            return user->getBlock() == op->getBlock() &&
+                   user->isBeforeInBlock(op);
           })) {
         continue;
       }
@@ -112,8 +114,8 @@ struct LinalgTrivialBufferForwardingPattern
         if (input_buffer->get().getType() != output_buffer->get().getType())
           continue;
 
-        mlir::AffineMap src_map = op.getTiedIndexingMap(input_buffer);
-        mlir::AffineMap dst_map = op.getTiedIndexingMap(output_buffer);
+        mlir::AffineMap src_map = op.getMatchingIndexingMap(input_buffer);
+        mlir::AffineMap dst_map = op.getMatchingIndexingMap(output_buffer);
 
         // Only support identity maps for the output for now.
         if (!dst_map.isIdentity()) continue;
@@ -189,10 +191,10 @@ struct LinalgTrivialBufferForwardingPattern
 // Trivial buffer forwarding for the linalg.generic operations.
 // -------------------------------------------------------------------------- //
 struct LinalgTrivialBufferForwardingPass
-    : public LinalgTrivialBufferForwardingBase<
+    : public impl::LinalgTrivialBufferForwardingBase<
           LinalgTrivialBufferForwardingPass> {
   void runOnOperation() override {
-    mlir::FuncOp function = getOperation();
+    mlir::func::FuncOp function = getOperation();
     mlir::MLIRContext* ctx = function.getContext();
 
     mlir::RewritePatternSet patterns(ctx);
@@ -204,7 +206,7 @@ struct LinalgTrivialBufferForwardingPass
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateLinalgTrivialBufferForwardingPass() {
   return std::make_unique<LinalgTrivialBufferForwardingPass>();
 }

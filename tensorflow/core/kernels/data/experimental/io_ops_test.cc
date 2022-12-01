@@ -49,7 +49,7 @@ class SaveDatasetV2Params : public DatasetParams {
         func_lib_(std::move(func_lib)),
         use_shard_func_(use_shard_func),
         type_arguments_(std::move(type_arguments)) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
                                    input_dataset_params.iterator_prefix());
@@ -65,7 +65,7 @@ class SaveDatasetV2Params : public DatasetParams {
     input_names->clear();
     input_names->emplace_back(SaveDatasetV2Op::kInputDataset);
     input_names->emplace_back(SaveDatasetV2Op::kPath);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -77,7 +77,7 @@ class SaveDatasetV2Params : public DatasetParams {
                               type_arguments_);
     attr_vector->emplace_back(SaveDatasetV2Op::kOutputTypes, output_dtypes_);
     attr_vector->emplace_back(SaveDatasetV2Op::kOutputShapes, output_shapes_);
-    return Status::OK();
+    return OkStatus();
   }
 
   string path() const { return path_; }
@@ -103,7 +103,7 @@ class SaveDatasetV2OpTest : public DatasetOpsTestBase {
     TF_RETURN_IF_ERROR(DatasetOpsTestBase::Initialize(dataset_params));
     auto params = static_cast<const SaveDatasetV2Params&>(dataset_params);
     save_filename_ = params.path();
-    return Status::OK();
+    return OkStatus();
   }
 
  protected:

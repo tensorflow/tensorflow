@@ -173,6 +173,12 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // must provide max tensor size in the "tensor_max_size_hints" field for all
     // output tensors with dynamic shapes.
     NnapiDelegateVendorPlugin* vendor_plugin = nullptr;
+
+    // Controls disabling of the debugging diagnostics callbacks that only print
+    // debug logs, which are otherwise enabled by default.
+    // Use this in case different callbacks are being registered elsewhere, such
+    // as for example to send logs through some logger.
+    bool disable_debugging_diagnostics_callbacks = false;
   };
 
   // Uses default options.
@@ -249,6 +255,9 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     ANeuralNetworksMemory* memory;
     CopyToHostTensorFnPtr callback;
     void* callback_context;
+    // The registeration timestamp. It is unique for each registered memory in
+    // the lifetime of a StatefulNnApiDelegate.
+    uint64_t timestamp;
   };
 
   // Register the ANeuralNetworksMemory handle with the delegate. A
@@ -303,6 +312,8 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     bool disallow_nnapi_cpu;
     // Tensor to ANeuralNetworksMemory mapping.
     std::vector<MemoryRegistration> tensor_memory_map;
+    // The next timestamp for buffer handle registration.
+    uint64_t next_buffer_handle_timestamp = 1;
     // Contains a non zero value if any NNAPI method call
     // operation returned a non zero result code.
     int nnapi_errno = ANEURALNETWORKS_NO_ERROR;
@@ -352,6 +363,12 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // TFLite Serialization in case caching has been enabled by the user through
     // Options.
     std::unique_ptr<delegates::Serialization> cache;
+
+    // Controls disabling of the default diagnostics callbacks that only print
+    // debug logs, which are otherwise enabled by default.
+    // Use this in case different callbacks are being registered elsewhere, such
+    // as for example to send logs through some logger.
+    bool disable_debugging_diagnostics_callbacks = false;
 
     explicit Data(const NnApi* nnapi);
     explicit Data(std::unique_ptr<const NnApi> nnapi);

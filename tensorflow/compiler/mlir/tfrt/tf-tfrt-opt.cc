@@ -17,18 +17,20 @@ limitations under the License.
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/InitAllPasses.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_sync.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/opdefs/tf_jitrt_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_test_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/gml_st/IR/gml_st_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback.h"
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_async.h"
 #include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
 
 int main(int argc, char **argv) {
@@ -40,6 +42,7 @@ int main(int argc, char **argv) {
   // Register passes for TF->JitRt compilation.
   registerTfJitRtPasses();
   registerTfJitRtTestPasses();
+  mlir::gml_st::registerGmlStPasses();
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
@@ -51,6 +54,7 @@ int main(int argc, char **argv) {
   registry.insert<mlir::tf_jitrt::JitRuntimeDialect>();
   registry.insert<tfrt::fallback::FallbackDialect>();
   registry.insert<tfrt::fallback_async::FallbackAsyncDialect>();
+  registry.insert<tfrt::fallback_sync::FallbackSyncDialect>();
   tensorflow::RegisterTPUDialects(&registry);
 
   tfrt::RegisterTFRTDialects(registry);

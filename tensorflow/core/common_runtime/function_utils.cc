@@ -268,7 +268,7 @@ Status NameAndAttrsFromFunctionCall(const NodeDef& call_def,
     function->set_name(call_def.op());
     *function->mutable_attr() = call_def.attr();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status InstantiateFunctionCall(const NodeDef& call_def,

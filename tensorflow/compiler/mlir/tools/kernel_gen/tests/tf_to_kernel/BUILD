@@ -1,6 +1,9 @@
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
 
 glob_lit_tests(
     data = [":test_utilities"],

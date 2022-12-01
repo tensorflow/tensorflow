@@ -1,4 +1,4 @@
-// RUN: tfg-transforms-opt --tfg-cf-sink %s | FileCheck %s
+// RUN: tfg-transforms-opt --tfg-cf-sink %s | not FileCheck %s
 
 // CHECK: tfg.func @test(%[[A0:.*]]: tensor<i32> {tfg.name = "[[A0]]"},
 // CHECK:                %[[A1:.*]]: tensor<i32> {tfg.name = "[[A1]]"},

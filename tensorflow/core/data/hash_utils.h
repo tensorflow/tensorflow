@@ -50,7 +50,7 @@ Status HashGraph(const GraphDef& graph, uint64* hash);
 // determined to be equal.
 Status CheckGraphsEqual(const GraphDef& a, const GraphDef& b);
 
-// Determines whether the subgraphs rooted aat the given nodes are equal
+// Determines whether the subgraphs rooted at the given nodes are equal
 // following the same logic used for HashGraph. Returns OK if the graphs can be
 // determined to be equal, otherwise returns an error message explaining why the
 // graphs couldn't be determined to be equal.

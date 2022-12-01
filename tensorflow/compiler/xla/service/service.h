@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/allocation_tracker.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/channel_tracker.h"
@@ -32,16 +33,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/execution_tracker.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -64,14 +64,14 @@ class ServiceOptions {
   // Sets the allowed_devices set for selectively constructing stream executors
   // on the platform.
   ServiceOptions& set_allowed_devices(
-      const absl::optional<std::set<int>>& allowed_devices);
-  const absl::optional<std::set<int>>& allowed_devices() const;
+      const std::optional<std::set<int>>& allowed_devices);
+  const std::optional<std::set<int>>& allowed_devices() const;
 
  private:
   se::Platform* platform_ = nullptr;
   int number_of_replicas_ = 1;
   int intra_op_parallelism_threads_ = -1;
-  absl::optional<std::set<int>> allowed_devices_;
+  std::optional<std::set<int>> allowed_devices_;
 };
 
 // The XLA service object, which is the same across all platforms. It maintains

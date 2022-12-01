@@ -228,7 +228,7 @@ TEST(QuantizedConcatenationOpModel, FourInputsQuantizedMixedRange_LargeData) {
   m0.SetInput<uint8_t>(3, data4);
 
   // Reference output.
-  m0.Invoke();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   std::vector<float> reference_output = m0.GetDequantizedOutput<uint8_t>();
 
   m0.ApplyDelegateAndInvoke();

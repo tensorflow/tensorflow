@@ -30,13 +30,14 @@ class XNNPackPlugin : public DelegatePluginInterface {
   int GetDelegateErrno(TfLiteDelegate* from_delegate) override { return 0; }
   static std::unique_ptr<DelegatePluginInterface> New(
       const TFLiteSettings& acceleration) {
-    return absl::make_unique<XNNPackPlugin>(acceleration);
+    return std::make_unique<XNNPackPlugin>(acceleration);
   }
   explicit XNNPackPlugin(const TFLiteSettings& tflite_settings)
       : options_(TfLiteXNNPackDelegateOptionsDefault()) {
     const auto* xnnpack_settings = tflite_settings.xnnpack_settings();
     if (xnnpack_settings) {
       options_.num_threads = xnnpack_settings->num_threads();
+      options_.flags = xnnpack_settings->flags();
     }
   }
 

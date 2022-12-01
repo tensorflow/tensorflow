@@ -60,6 +60,13 @@ class ParallelLoopEmitter {
                   llvm::Type* index_type = nullptr);
 
  private:
+  struct LinearBaseAndThreadIdx {
+    llvm::Value* linear_base;
+    llvm::Value* thread_idx;
+  };
+
+  LinearBaseAndThreadIdx EmitLinearBaseAndThreadIdx(llvm::Type* index_type,
+                                                    llvm::Value* base_index);
   Status EmitSerialLoop(absl::string_view loop_name, llvm::Type* index_type,
                         llvm::Value* base_indvar = nullptr);
 

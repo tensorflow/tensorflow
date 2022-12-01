@@ -1268,6 +1268,13 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
         ShapeFromFormat(data_format_, params.tensor_in_batch, params.out_height,
                         params.out_width, params.depth);
 
+    // Degenerate pooling output should return an empty tensor.
+    if (out_shape.num_elements() == 0) {
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
+      return;
+    }
+
     // Assuming qint8 <--> NCHW_VECT_C (int8x4) here.
     constexpr bool is_int8x4 = std::is_same<T, qint8>::value;
     OP_REQUIRES(context, (is_int8x4 == (data_format_ == FORMAT_NCHW_VECT_C)),
@@ -1572,11 +1579,13 @@ namespace functor {
   extern template struct SpatialMaxPooling<Eigen::GpuDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
+TF_CALL_bfloat16(DECLARE_GPU_SPEC);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 #define REGISTER_GPU_MAX_POOL_KERNELS(T) REGISTER_MAX_POOL_KERNELS(GPU, T)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_MAX_POOL_KERNELS);
+TF_CALL_bfloat16(REGISTER_GPU_MAX_POOL_KERNELS);
 #undef REGISTER_GPU_MAX_POOL_KERNELS
 
 // Below kernels currently implemented only for GPU device.
@@ -1612,6 +1621,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_MAX_POOL_KERNELS);
                               .TypeConstraint<int64_t>("Targmax"), \
                           MaxPoolingGradGradWithArgmaxOp<GPUDevice, T>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_ONLY_POOL_KERNELS);
+TF_CALL_bfloat16(REGISTER_GPU_ONLY_POOL_KERNELS);
 
 // TODO(b/65847473): Re-enable once the underlying build error is fixed.
 #if !defined(PLATFORM_WINDOWS)

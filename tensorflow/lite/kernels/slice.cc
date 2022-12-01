@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
@@ -58,14 +59,14 @@ TfLiteStatus CalculateOutputShapeVector(TfLiteContext* context,
     T size_value = GetTensorData<T>(size)[idx];
     if (size_value < 0) {
       if (size_value != -1) {
-        context->ReportError(context, "Invalid size.");
+        TF_LITE_KERNEL_LOG(context, "Invalid size.");
         return kTfLiteError;
       }
       size_value = SizeOfDimension(input, idx) - GetTensorData<T>(begin)[idx];
     } else {
       if (SizeOfDimension(input, idx) <
           GetTensorData<T>(begin)[idx] + size_value) {
-        context->ReportError(context, "Invalid begin and size.");
+        TF_LITE_KERNEL_LOG(context, "Invalid begin and size.");
         return kTfLiteError;
       }
     }
@@ -97,8 +98,8 @@ TfLiteStatus ResizeOutputShape(TfLiteContext* context,
     TF_LITE_ENSURE_STATUS(CalculateOutputShapeVector<int64_t>(
         context, input, begin, size, &output_shape_vector));
   } else {
-    context->ReportError(
-        context, "Type %d is currently not supported by Slice.", begin->type);
+    TF_LITE_KERNEL_LOG(context, "Type %d is currently not supported by Slice.",
+                       begin->type);
     return kTfLiteError;
   }
 
@@ -107,6 +108,13 @@ TfLiteStatus ResizeOutputShape(TfLiteContext* context,
   std::copy(output_shape_vector.begin(), output_shape_vector.end(),
             output_shape->data);
   return context->ResizeTensor(context, output, output_shape);
+}
+
+bool ShapeHasRank(const TfLiteIntArray* shape) {
+  // Note that we consider scalar as false here because there is
+  // no differentiation between scalar and dynamic properly supported.
+  if (shape == nullptr || shape->size == 0) return false;
+  return true;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -135,9 +143,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_MSG(context, NumDimensions(input) <= kMaxDim,
                      "Slice op only supports 1D-5D input arrays.");
 
+  // If the shape of output is fully specified then resize even if
+  // the input shape is not staticly defined.
+  if (!HasUnspecifiedDimension(output) && ShapeHasRank(output->dims)) {
+    return kTfLiteOk;
+  }
   // Postpone allocation of output if any of the indexing tensors is not
-  // constant
-  if (!(IsConstantTensor(begin) && IsConstantTensor(size))) {
+  // constant, or the input tensor has dynamic dimension.
+  if (!(IsConstantTensor(begin) && IsConstantTensor(size)) ||
+      HasUnspecifiedDimension(input)) {
     SetTensorToDynamic(output);
     return kTfLiteOk;
   }
@@ -179,8 +193,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     GetBeginAndSizeVectors<int64_t>(NumDimensions(input), begin, size, &begins,
                                     &sizes);
   } else {
-    context->ReportError(
-        context, "Type %d is currently not supported by Slice.", begin->type);
+    TF_LITE_KERNEL_LOG(context, "Type %d is currently not supported by Slice.",
+                       begin->type);
     return kTfLiteError;
   }
 
@@ -237,7 +251,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_SLICE(string);
       break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context, "Type %d is currently not supported by Slice.", input->type);
       return kTfLiteError;
   }

@@ -220,8 +220,8 @@ def execute(
       cmdline: list of strings, the command to execute
       error_msg: string, a summary of the error if the command fails
       error_details: string, details about the error or steps to fix it
-      allow_failure: bool, if True, an empty stdout result and output to stderr
-        is fine, otherwise it's an error
+      allow_failure: bool, if True, an empty stdout result or output to stderr
+        is fine, otherwise either of these is an error
     Returns:
       The result of repository_ctx.execute(cmdline)
     """

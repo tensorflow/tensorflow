@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <fstream>
+#include <string>
+
 #include <gtest/gtest.h>
 #include "flatbuffers/flatc.h"  // from @flatbuffers
 #include "tensorflow/core/platform/platform.h"

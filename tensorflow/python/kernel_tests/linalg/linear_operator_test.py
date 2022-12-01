@@ -24,6 +24,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
+from tensorflow.python.ops.parallel_for import control_flow_ops
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
@@ -274,8 +275,12 @@ class LinearOperatorTest(test.TestCase):
 
     self.assertTrue(operator_matmul.is_square)
     self.assertTrue(operator_matmul.is_non_singular)
-    self.assertEqual(None, operator_matmul.is_self_adjoint)
-    self.assertEqual(None, operator_matmul.is_positive_definite)
+
+    # A @ A is SA since A is.
+    self.assertEqual(True, operator_matmul.is_self_adjoint)
+
+    # A @ A is non-singular (since A is) and A @ A = A @ A.H is semi-def so...
+    self.assertEqual(True, operator_matmul.is_positive_definite)
 
   def test_linear_operator_matmul_hints_false(self):
     matrix1 = array_ops.placeholder_with_default(
@@ -307,19 +312,20 @@ class LinearOperatorTest(test.TestCase):
 
     operator_matmul = operator2.matmul(operator2, adjoint_arg=True)
 
+    # Composition recognizes this as the form A @ A.H, which is square, SA.
+    self.assertTrue(operator_matmul.is_square)
+    self.assertTrue(operator_matmul.is_self_adjoint)
+
     if context.executing_eagerly():
-      self.assertTrue(operator_matmul.is_square)
       # False since we specified is_non_singular=False.
       self.assertFalse(operator_matmul.is_non_singular)
     else:
-      self.assertIsNone(operator_matmul.is_square)
       # May be non-singular, since it's the composition of two non-square.
       # TODO(b/136162840) This is a bit inconsistent, and should probably be
       # False since we specified operator2.is_non_singular == False.
       self.assertIsNone(operator_matmul.is_non_singular)
 
     # No way to deduce these, even in Eager mode.
-    self.assertIsNone(operator_matmul.is_self_adjoint)
     self.assertIsNone(operator_matmul.is_positive_definite)
 
   def test_linear_operator_matmul_hint_infer_square(self):
@@ -406,6 +412,22 @@ class LinearOperatorTest(test.TestCase):
             lhs, right_operator, adjoint_a=adjoint, adjoint_b=adjoint_arg)
         self.assertAllClose(
             self.evaluate(op_val), self.evaluate(matmul_val))
+
+  def testVectorizedMap(self):
+
+    def fn(x):
+      y = constant_op.constant([3., 4.])
+      # Make a [2, N, N] shaped operator.
+      x = x * y[..., array_ops.newaxis, array_ops.newaxis]
+      operator = linalg.LinearOperatorFullMatrix(
+          x, is_square=True)
+      return operator
+
+    x = np.random.uniform(-1., 1., size=[3, 5, 5]).astype(np.float32)
+    batched_operator = control_flow_ops.vectorized_map(
+        fn, ops.convert_to_tensor(x))
+    self.assertIsInstance(batched_operator, linalg.LinearOperator)
+    self.assertAllEqual(batched_operator.batch_shape, [3, 2])
 
 
 if __name__ == "__main__":

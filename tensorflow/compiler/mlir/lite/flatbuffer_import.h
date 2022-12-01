@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_IMPORT_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_IMPORT_H_
 
+#include <string>
+
 #include "absl/strings/string_view.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project

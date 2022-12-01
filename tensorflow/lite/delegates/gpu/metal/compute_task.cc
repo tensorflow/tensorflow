@@ -136,8 +136,6 @@ std::map<std::string, std::string> GetMetalDefines(
       {"INIT_INT2v2(v0, v1)", "int2(v0, v1)"},
       {"INIT_INT4v4(v0, v1, v2, v3)", "int4(v0, v1, v2, v3)"},
       {"CONVERT_TO_INT4(value)", "int4(value)"},
-      {"SELECT_BY_INDEX_FROM_FLT4(value, index)", "(value)[index]"},
-      {"SELECT_BY_INDEX_FROM_VEC4(vec_type, value, index)", "(value)[index]"},
   };
 }
 }  // namespace
@@ -187,16 +185,6 @@ void ComputeTask::Init(std::unique_ptr<GPUOperation>&& operation) {
   operation_ = std::move(operation);
 }
 
-const OperationDef& ComputeTask::GetDefinition() const {
-  return operation_->GetDefinition();
-}
-
-bool ComputeTask::IsLinkable() const { return operation_->IsLinkable(); }
-
-absl::Status ComputeTask::AddTask(ComputeTask* task) {
-  return operation_->AddOperation(task->operation_.get());
-}
-
 absl::Status ComputeTask::Compile(MetalDevice* device) {
   RETURN_IF_ERROR(metal_args_.Init(use_arguments_buffer_, device,
                                    &operation_->args_, &operation_->code_));
@@ -208,7 +196,7 @@ absl::Status ComputeTask::Compile(MetalDevice* device) {
   ReplaceAllWords("half16", "half4x4", &operation_->code_);
   ReplaceAllWords("float8", "float2x4", &operation_->code_);
   ReplaceAllWords("half8", "half2x4", &operation_->code_);
-  defines_ = GetMetalDefines(device, operation_->GetDefinition().precision);
+  defines_ = GetMetalDefines(device, operation_->GetPrecision());
   return CompileProgram(device, operation_->code_, defines_);
 }
 

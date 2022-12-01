@@ -109,7 +109,7 @@ Status Rendezvous::ParseKey(StringPiece key, ParsedKey* out) {
     out->src_device = StringPiece(parts[0].data(), parts[0].size());
     out->dst_device = StringPiece(parts[2].data(), parts[2].size());
     out->edge_name = StringPiece(parts[3].data(), parts[3].size());
-    return Status::OK();
+    return OkStatus();
   }
   return errors::InvalidArgument("Invalid  rendezvous key: ", key);
 }
@@ -152,7 +152,7 @@ Status RendezvousInterface::Recv(const ParsedKey& key, const Args& args,
 namespace {
 class LocalRendezvousWrapper : public Rendezvous {
  public:
-  LocalRendezvousWrapper() : impl_(this) {}
+  LocalRendezvousWrapper(int num_shards) : impl_(this, num_shards) {}
 
   Status Send(const ParsedKey& key, const Args& send_args, const Tensor& val,
               const bool is_dead) override {
@@ -173,6 +173,8 @@ class LocalRendezvousWrapper : public Rendezvous {
 };
 }  // namespace
 
-Rendezvous* NewLocalRendezvous() { return new LocalRendezvousWrapper; }
+Rendezvous* NewLocalRendezvous(int num_shards) {
+  return new LocalRendezvousWrapper(num_shards);
+}
 
 }  // end namespace tensorflow

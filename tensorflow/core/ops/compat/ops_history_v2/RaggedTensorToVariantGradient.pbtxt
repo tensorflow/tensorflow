@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "RaggedTensorToVariantGradient"
   input_arg {
     name: "encoded_ragged_grad"

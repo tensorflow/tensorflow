@@ -6,11 +6,11 @@ tf_module {
   }
   member {
     name: "StaticHashTable"
-    mtype: "<class \'tensorflow.python.training.tracking.resource._ResourceMetaclass\'>"
+    mtype: "<class \'tensorflow.python.trackable.resource._ResourceMetaclass\'>"
   }
   member {
     name: "StaticVocabularyTable"
-    mtype: "<class \'tensorflow.python.training.tracking.resource._ResourceMetaclass\'>"
+    mtype: "<class \'tensorflow.python.trackable.resource._ResourceMetaclass\'>"
   }
   member {
     name: "TextFileIndex"

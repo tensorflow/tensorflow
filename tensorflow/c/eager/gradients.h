@@ -38,7 +38,7 @@ namespace gradients {
 //     grad_outputs[1] = grad_inputs[0];
 //     grad_outputs[0]->Ref();
 //     grad_outputs[1]->Ref();
-//     return Status::OK();
+//     return OkStatus();
 //   }
 //   ~AddGradientFunction() override {}
 // };

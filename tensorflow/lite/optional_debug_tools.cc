@@ -26,8 +26,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -341,6 +341,8 @@ const char* TensorTypeName(TfLiteType type) {
       return "kTfLiteResource";
     case kTfLiteVariant:
       return "kTfLiteVariant";
+    case kTfLiteInt4:
+      return "kTfLiteInt4";
   }
   return "(invalid)";
 }
@@ -377,11 +379,11 @@ std::string TruncateString(const char* str, int size_limit,
 
   if (truncate_at_end) {
     truncated.resize(size_limit);
-    // Change the the last 3 chars to  "..." to imply truncation.
+    // Change the last 3 chars to  "..." to imply truncation.
     truncated.replace(size_limit - 3, 3, "...");
   } else {
     truncated.erase(0, length - size_limit);
-    // Change the the first 3 chars to  "..." to imply truncation.
+    // Change the first 3 chars to  "..." to imply truncation.
     truncated.replace(0, 3, "...");
   }
   return truncated;
@@ -555,6 +557,64 @@ void PrintInterpreterState(const Interpreter* interpreter) {
 
     printf("--------------Subgraph-%d dump has completed--------------\n\n", i);
   }
+  printf("--------------Memory Arena Status Start--------------\n");
+  size_t total_arena_memory_bytes = 0;
+  size_t total_dynamic_memory_bytes = 0;
+  size_t total_resource_bytes = 0;
+
+  for (int i = 0; i < num_subgraphs; ++i) {
+    const Subgraph& subgraph = *(interpreter->subgraph(i));
+    Subgraph::SubgraphAllocInfo alloc_info;
+    subgraph.GetMemoryAllocInfo(&alloc_info);
+    total_arena_memory_bytes += alloc_info.arena_size;
+    total_arena_memory_bytes += alloc_info.arena_persist_size;
+    total_dynamic_memory_bytes += alloc_info.dynamic_size;
+    // Resources are shared with all subgraphs. So calculate it only once.
+    if (i == 0) {
+      total_resource_bytes = alloc_info.resource_size;
+    }
+  }
+  size_t total_memory_bytes = total_arena_memory_bytes +
+                              total_dynamic_memory_bytes + total_resource_bytes;
+  printf("Total memory usage: %zu bytes (%.3f MB)\n", total_memory_bytes,
+         static_cast<float>(total_memory_bytes) / (1 << 20));
+  printf("- Total arena memory usage: %zu bytes (%.3f MB)\n",
+         total_arena_memory_bytes,
+         static_cast<float>(total_arena_memory_bytes) / (1 << 20));
+  printf("- Total dynamic memory usage: %zu bytes (%.3f MB)\n",
+         total_dynamic_memory_bytes,
+         static_cast<float>(total_dynamic_memory_bytes) / (1 << 20));
+  if (total_resource_bytes) {
+    printf("- Total resource memory usage: %zu bytes (%.3f MB)\n",
+           total_resource_bytes,
+           static_cast<float>(total_resource_bytes) / (1 << 20));
+  }
+  putchar('\n');
+
+  for (int i = 0; i < num_subgraphs; ++i) {
+    const Subgraph& subgraph = *(interpreter->subgraph(i));
+    Subgraph::SubgraphAllocInfo alloc_info;
+    subgraph.GetMemoryAllocInfo(&alloc_info);
+    if (alloc_info.arena_size) {
+      printf(
+          "Subgraph#%-3d %-18s %10zu (%.2f%%)\n", i, "Arena (Normal)",
+          alloc_info.arena_size,
+          static_cast<float>(alloc_info.arena_size * 100) / total_memory_bytes);
+    }
+    if (alloc_info.arena_persist_size) {
+      printf("Subgraph#%-3d %-18s %10zu (%.2f%%)\n", i, "Arena (Persistent)",
+             alloc_info.arena_persist_size,
+             static_cast<float>(alloc_info.arena_persist_size * 100) /
+                 total_memory_bytes);
+    }
+    if (alloc_info.dynamic_size) {
+      printf("Subgraph#%-3d %-18s %10zu (%.2f%%)\n", i, "Dyanmic Tensors",
+             alloc_info.dynamic_size,
+             static_cast<float>(alloc_info.dynamic_size * 100) /
+                 total_memory_bytes);
+    }
+  }
+  printf("--------------Memory Arena Status End--------------\n\n");
 }
 
 }  // namespace tflite

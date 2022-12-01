@@ -16,7 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_DESPECIALIZER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_DESPECIALIZER_H_
 
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include <iterator>
+#include <utility>
+#include <vector>
+
+#include "absl/algorithm/container.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -33,11 +40,27 @@ namespace xla {
 class Despecializer : public HloModulePass {
  public:
   Despecializer();
+  void AddReduceWindowToReduceBroadcastDeconstruct();
   absl::string_view name() const override { return "despecializer"; }
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   HloPassPipeline pipeline_;
+};
+
+class DeconstructReduceWindowToReduceBroadcast : public HloModulePass {
+ public:
+  DeconstructReduceWindowToReduceBroadcast() = default;
+  absl::string_view name() const override {
+    return "ReduceWindowToReduceAndBroadcast";
+  }
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
 // Pass which strips control dependencies from all instructions in the module.
@@ -46,7 +69,10 @@ class ControlDepRemover : public HloModulePass {
   ControlDepRemover() = default;
   absl::string_view name() const override { return "control-dep-remover"; }
 
-  StatusOr<bool> Run(HloModule* module) override {
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(HloModule* module,
+                     const absl::flat_hash_set<absl::string_view>&
+                         execution_threads) override {
     bool changed = false;
     for (HloComputation* computation : module->computations()) {
       for (HloInstruction* instruction : computation->instructions()) {

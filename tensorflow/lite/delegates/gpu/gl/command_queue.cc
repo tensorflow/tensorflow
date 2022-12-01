@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/command_queue.h"
 
+#include <memory>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -94,9 +96,9 @@ std::unique_ptr<CommandQueue> NewCommandQueue(const GpuInfo& gpu_info) {
         gpu_info.adreno_info.adreno_gpu == AdrenoGpu::kAdreno505) {
       flush_every_n = 10;
     }
-    return absl::make_unique<AdrenoCommandQueue>(flush_every_n);
+    return std::make_unique<AdrenoCommandQueue>(flush_every_n);
   }
-  return absl::make_unique<DefaultCommandQueue>();
+  return std::make_unique<DefaultCommandQueue>();
 }
 
 }  // namespace gl

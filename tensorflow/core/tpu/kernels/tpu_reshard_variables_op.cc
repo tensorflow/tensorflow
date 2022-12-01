@@ -21,6 +21,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_node_context.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -39,10 +43,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_execute.h"
 #include "tensorflow/core/util/stream_executor_util.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor_interface.h"
-#include "tensorflow/stream_executor/tpu/tpu_node_context.h"
 
 namespace tensorflow {
 
@@ -75,7 +75,7 @@ Status TPUReshardVariablesOpKernel::DoWork(OpKernelContext* context) {
   TF_RETURN_IF_ERROR(LookupOrCreateResource<Var>(
       context, handle, &format_state_var, [new_format_key](Var** ptr) {
         *ptr = new Var(new_format_key->dtype());
-        return Status::OK();
+        return OkStatus();
       }));
   mutex_lock ml(*format_state_var->mu());
   const bool initialized = format_state_var->is_initialized;
@@ -93,7 +93,7 @@ Status TPUReshardVariablesOpKernel::DoWork(OpKernelContext* context) {
       (initialized && format_state_var->tensor()->vec<tstring>()(2) ==
                           new_format_key->vec<tstring>()(2))) {
     VLOG(1) << "Sharding unchanged, nothing to do.";
-    return Status::OK();
+    return OkStatus();
   }
 
   if (!state_is_default) {
@@ -115,7 +115,7 @@ Status TPUReshardVariablesOpKernel::DoWork(OpKernelContext* context) {
   // Change the state.
   *format_state_var->tensor() = *new_format_key;
   format_state_var->is_initialized = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TPUReshardVariablesOpKernel::DoTpuExecute(
@@ -147,7 +147,7 @@ Status TPUReshardVariablesOpKernel::DoTpuExecute(
   if (entry.tpu_program_group() == nullptr) {
     VLOG(2) << "Sharding/unsharding program does not exist, so this is default "
                "sharding.";
-    return Status::OK();
+    return OkStatus();
   }
 
   const tpu::TpuProgramGroupInterface* tpu_program_group =
@@ -187,9 +187,8 @@ Status TPUReshardVariablesOpKernel::DoTpuExecute(
   xla::ShapedBuffer shaped_buffer(std::move(host_shape), input_buffers.shape(),
                                   device_ordinal);
   shaped_buffer.set_buffers(input_buffers.Map<se::DeviceMemoryBase>(
-      [](xla::MaybeOwningDeviceMemory* buffer) {
-        CHECK(buffer);
-        return buffer->AsDeviceMemoryBase();
+      [](const xla::MaybeOwningDeviceMemory& buffer) {
+        return buffer.AsDeviceMemoryBase();
       }));
 
   // Write input root tuple.

@@ -16,7 +16,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_TESTING_PARSE_TESTDATA_H_
 
 #include <vector>
-#include "tensorflow/lite/interpreter.h"
+
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/testing/test_runner.h"
 
 namespace tflite {

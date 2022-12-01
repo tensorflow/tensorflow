@@ -49,7 +49,7 @@ Status ValidateExternalGraphDefSyntax(const GraphDef& graph_def) {
   for (const NodeDef& node : graph_def.node()) {
     TF_RETURN_IF_ERROR(ValidateExternalNodeDefSyntax(node));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
@@ -79,7 +79,7 @@ Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 static Status RemoveNewDefaultAttrsFromNodeDef(
@@ -124,7 +124,7 @@ static Status RemoveNewDefaultAttrsFromNodeDef(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 static bool IsFunction(const GraphDef& graph_def, const string& op_name) {
@@ -161,7 +161,7 @@ Status RemoveNewDefaultAttrsFromGraphDef(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void StripDefaultAttributes(const OpRegistryInterface& op_registry,
@@ -261,7 +261,7 @@ Status StrippedOpListForGraph(const GraphDef& graph_def,
     stripped_op->CopyFrom(*op_def);
     RemoveDescriptionsFromOpDef(stripped_op);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

@@ -15,27 +15,36 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GEMM_ALGORITHM_PICKER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GEMM_ALGORITHM_PICKER_H_
 
-#include "absl/types/optional.h"
+#include <optional>
+
+#include "tensorflow/compiler/xla/autotune_results.pb.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/protobuf/autotuning.pb.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
 
 class GemmAlgorithmPicker : public HloModulePass {
  public:
+  static void ClearAutotuneResults();
+  static Status WriteAutotuneResults(AutotuneResults* results);
+  static Status LoadAutotuneResults(const AutotuneResults& results);
+
   GemmAlgorithmPicker(se::StreamExecutor* stream_exec,
                       se::DeviceMemoryAllocator* allocator)
       : stream_exec_(stream_exec), allocator_(allocator) {}
 
   absl::string_view name() const override { return "gemm-algorithm-picker"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   se::StreamExecutor* stream_exec_;

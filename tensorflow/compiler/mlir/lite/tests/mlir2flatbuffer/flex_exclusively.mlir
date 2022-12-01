@@ -1,6 +1,6 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -emit-select-tf-ops=true -emit-builtin-tflite-ops=false -o - | flatbuffer_to_string - | FileCheck %s
 
-func @main(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> {
+func.func @main(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> {
 // CHECK:  {
 // CHECK-NEXT:    version: 3,
 // CHECK-NEXT:    operator_codes: [ {
@@ -15,14 +15,16 @@ func @main(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> {
 // CHECK-NEXT:        name: "arg0",
 // CHECK-NEXT:        quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:        }
+// CHECK-NEXT:        },
+// CHECK-NEXT:        has_rank: true
 // CHECK-NEXT:      }, {
 // CHECK-NEXT:        shape: [ 3, 2 ],
 // CHECK-NEXT:        buffer: 2,
 // CHECK-NEXT:        name: "tf.AddV2",
 // CHECK-NEXT:        quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:        }
+// CHECK-NEXT:        },
+// CHECK-NEXT:        has_rank: true
 // CHECK-NEXT:      } ],
 // CHECK-NEXT:      inputs: [ 0 ],
 // CHECK-NEXT:      outputs: [ 1 ],
@@ -51,5 +53,5 @@ func @main(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> {
 // CHECK-NEXT:  }
 
   %0 = "tf.AddV2"(%arg0, %arg0) : (tensor<3x2xf32>, tensor<3x2xf32>) -> tensor<3x2xf32>
-  return %0 : tensor<3x2xf32>
+  func.return %0 : tensor<3x2xf32>
 }

@@ -17,6 +17,7 @@ limitations under the License.
 #include <stdio.h>
 
 #include <sstream>
+#include <string>
 #include <unordered_map>
 
 #include "absl/strings/escaping.h"
@@ -125,9 +126,22 @@ void Unflatten(const string& prefix, const std::vector<string>& output_sizes,
 }
 
 string TensorPBString(const TensorProto& pb) {
+  // Explicitly not using ShortDebugString, because ShortDebugString should
+  // not be used as a format for transporting information (it's e.g. subject
+  // to redaction of sensitive information). There is a PrintShortTextProto
+  // helper, but it's not feasible to depend on that library).
+
+  std::string message_short_text;
+
+  ::tensorflow::protobuf::TextFormat::Printer printer;
+  printer.SetSingleLineMode(true);
+  printer.SetExpandAny(true);
+
+  printer.PrintToString(pb, &message_short_text);
+
   // Note: This gets used in the argument list, and so must survive naive
   // word wrapping.
-  return strings::StrCat("\"\"\"", pb.ShortDebugString(), "\"\"\"");
+  return strings::StrCat("\"\"\"", message_short_text, "\"\"\"");
 }
 
 class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
@@ -1160,9 +1174,8 @@ void GenEagerPythonOp::AddTypeBasedDispatcherAlias() {
   // this, we add a private variable with the dispatcher, and access that
   // directly.
   if (api_def_.visibility() == ApiDef::VISIBLE) {
-    strings::StrAppend(&result_, "_dispatcher_for_", function_name_,
-                       " = ", function_name_,
-                       "._tf_type_based_dispatcher.Dispatch\n");
+    strings::StrAppend(&result_, "_dispatcher_for_", function_name_, " = ",
+                       function_name_, "._tf_type_based_dispatcher.Dispatch\n");
   }
 }
 void GenEagerPythonOp::AddTypeBasedDispatch(const string& prefix) {

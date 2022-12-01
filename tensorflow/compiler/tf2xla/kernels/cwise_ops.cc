@@ -36,8 +36,8 @@ namespace tensorflow {
 void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
   TensorShape lhs_shape = ctx->InputShape(0);
   TensorShape rhs_shape = ctx->InputShape(1);
-  xla::Shape lhs_xla_shape = ctx->InputXlaShape(0).ValueOrDie();
-  xla::Shape rhs_xla_shape = ctx->InputXlaShape(1).ValueOrDie();
+  xla::Shape lhs_xla_shape = ctx->InputXlaShape(0).value();
+  xla::Shape rhs_xla_shape = ctx->InputXlaShape(1).value();
   // Fetch the expressions containing the input tensors.
   auto lhs_handle = ctx->Input(0);
   auto rhs_handle = ctx->Input(1);
@@ -157,7 +157,7 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
     xla::XlaOp error = rhs.builder()->ReportError(rhs_output.status());
     return {error, error};
   }
-  return {lhs_output.ValueOrDie(), rhs_output.ValueOrDie()};
+  return {lhs_output.value(), rhs_output.value()};
 }
 
 }  // namespace tensorflow

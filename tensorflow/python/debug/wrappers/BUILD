@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -23,10 +24,7 @@ py_library(
     name = "dumping_wrapper",
     srcs = ["dumping_wrapper.py"],
     srcs_version = "PY3",
-    visibility = [
-        "//tensorflow:internal",
-        "//third_party/py/tf_slim:__subpackages__",
-    ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":framework",
         "//tensorflow/core:protos_all_py",

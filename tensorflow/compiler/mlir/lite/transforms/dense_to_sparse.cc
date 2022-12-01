@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 
 //===----------------------------------------------------------------------===//
@@ -32,6 +33,10 @@ namespace mlir {
 namespace TFL {
 
 namespace {
+
+#define GEN_PASS_DEF_DENSETOSPARSEPASS
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
+
 // If sparsity level is below this threshold, keep the tensor in dense format.
 constexpr float kMinSparsityLevel = 0.3;
 // Heuristic to check if a block configuration is correct for float constants.
@@ -173,10 +178,10 @@ InspectResult InspectWeight(
   ShapedType type;
   InspectResult result = {};
   if (auto cst = dyn_cast<ConstOp>(inst)) {
-    attr = cst.value();
+    attr = cst.getValue();
     type = cst.getType().cast<ShapedType>();
   } else if (auto cst = dyn_cast<QConstOp>(inst)) {
-    attr = cst.value();
+    attr = cst.getValue();
     type = cst.getType().cast<ShapedType>();
   } else {
     result.can_compress = false;
@@ -223,10 +228,10 @@ std::vector<T> BuildSparsityParameterAttribute(
   ElementsAttr attr;
   ShapedType type;
   if (auto cst = dyn_cast<ConstOp>(inst)) {
-    attr = cst.value();
+    attr = cst.getValue();
     type = cst.getType().cast<ShapedType>();
   } else if (auto cst = dyn_cast<QConstOp>(inst)) {
-    attr = cst.value();
+    attr = cst.getValue();
     type = cst.getType().cast<ShapedType>();
   } else {
     assert(false && "Expected a constant-like op");
@@ -250,59 +255,37 @@ std::vector<T> BuildSparsityParameterAttribute(
   const auto& metadata = format_converter.GetDimMetadata();
   const auto& compressed_data = format_converter.GetData();
   const int dim_size = metadata.size() / 2;
-  std::vector<Attribute> dim_metadata(traversal_order.size());
+  std::vector<DimensionMetadataAttr> dim_metadata(traversal_order.size());
   for (int i = 0; i < dim_size; i++) {
     if (format[i] == kTfLiteDimDense) {
       dim_metadata[i] = DimensionMetadataAttr::get(
-          builder->getStringAttr("DENSE"),
-          builder->getI32IntegerAttr(metadata[2 * i][0]),
-          builder->getArrayAttr({}), builder->getArrayAttr({}),
-          builder->getContext());
+          builder->getContext(),
+          ::mlir::TFL::DimensionTypeAttr::get(
+              builder->getContext(), ::mlir::TFL::DimensionType::DENSE),
+          metadata[2 * i][0], {}, {});
     } else {
       dim_metadata[i] = DimensionMetadataAttr::get(
-          builder->getStringAttr("SPARSE_CSR"), builder->getI32IntegerAttr(0),
-          builder->getI32ArrayAttr(metadata[2 * i]),
-          builder->getI32ArrayAttr(metadata[2 * i + 1]), builder->getContext());
+          builder->getContext(),
+          ::mlir::TFL::DimensionTypeAttr::get(
+              builder->getContext(), ::mlir::TFL::DimensionType::SPARSE_CSR),
+          0, metadata[2 * i], metadata[2 * i + 1]);
     }
   }
-  *s_param = SparsityParameterAttr::get(
-      builder->getI32ArrayAttr(traversal_order),
-      builder->getI32ArrayAttr(b_map), builder->getArrayAttr(dim_metadata),
-      builder->getContext());
+  *s_param = SparsityParameterAttr::get(builder->getContext(), traversal_order,
+                                        b_map, dim_metadata);
 
   return compressed_data;
 }
 
-// This pass encodes sparse weights in the model in the proper format, and adds
-// Densify() op if necessary. The general algorithm is:
-//   1. Get list of operands (weights) of an op that can be sparse.
-//   2. Get list of supported block configurations of the op.
-//   3. Calculate random sparsity of the weight.
-//     3.1. If sparsity level is below the encoding threshold, keep in dense.
-//     3.2. If sparsity level is above the encoding threshold, go to 4.
-//   4. Try to encode the weight with supported block configurations. If the
-//      weight was pruned with the same block config, the blocked sparsity level
-//      should match the random sparsity.
-//     4.1. Return the matching block config if found.
-//     4.2. If no matching block config is found, encode the weight with random
-//          sparsity, and add Densify() op to fall back to dense execution.
-struct DenseToSparse
-    : public PassWrapper<DenseToSparse, OperationPass<FuncOp>> {
-  void runOnOperation() override;
+struct DenseToSparsePass
+    : public impl::DenseToSparsePassBase<DenseToSparsePass> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DenseToSparsePass)
 
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-dense-to-sparse";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Convert dense tensor to sparse format.";
-  }
+  void runOnOperation() override;
 };
 
-void DenseToSparse::runOnOperation() {
-  FuncOp func = getOperation();
+void DenseToSparsePass::runOnOperation() {
+  func::FuncOp func = getOperation();
   OpBuilder builder(func);
 
   func.walk([&](SparseOpInterface sparse_op) {
@@ -357,7 +340,7 @@ void DenseToSparse::runOnOperation() {
       builder.setInsertionPoint(op);
       SparsityParameterAttr s_param;
       if (auto cst = dyn_cast<ConstOp>(inst)) {
-        auto attr = cst.value();
+        auto attr = cst.getValue();
         auto type = cst.getType().cast<ShapedType>();
         if (type.getElementType().isF32()) {
           std::vector<float> dense_data;
@@ -374,7 +357,7 @@ void DenseToSparse::runOnOperation() {
           auto new_value = DenseElementsAttr::get<float>(compressed_data_type,
                                                          compressed_data);
           auto s_const = builder.create<SparseConstOp>(
-              op->getLoc(), cst.value(), s_param, new_value);
+              op->getLoc(), cst.getValue(), s_param, new_value);
           value.replaceAllUsesWith(s_const.getResult());
           cst.erase();
         } else if (type.getElementType().isF16()) {
@@ -396,12 +379,12 @@ void DenseToSparse::runOnOperation() {
           auto new_value =
               DenseElementsAttr::get(compressed_data_type, apfloat_data);
           auto s_const = builder.create<SparseConstOp>(
-              op->getLoc(), cst.value(), s_param, new_value);
+              op->getLoc(), cst.getValue(), s_param, new_value);
           value.replaceAllUsesWith(s_const.getResult());
           cst.erase();
         }
       } else if (auto cst = dyn_cast<QConstOp>(inst)) {
-        auto attr = cst.value();
+        auto attr = cst.getValue();
         auto type = cst.getType().cast<ShapedType>();
         std::vector<int8_t> dense_data;
         dense_data.reserve(type.getNumElements());
@@ -416,8 +399,9 @@ void DenseToSparse::runOnOperation() {
             builder.getIntegerType(8, true));
         auto new_value = DenseElementsAttr::get<int8_t>(compressed_data_type,
                                                         compressed_data);
-        auto s_qconst = builder.create<SparseQConstOp>(
-            op->getLoc(), cst.qtypeAttr(), cst.value(), s_param, new_value);
+        auto s_qconst =
+            builder.create<SparseQConstOp>(op->getLoc(), cst.getQtypeAttr(),
+                                           cst.getValue(), s_param, new_value);
         value.replaceAllUsesWith(s_qconst.getResult());
         cst.erase();
       }
@@ -436,11 +420,9 @@ void DenseToSparse::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect DenseToSparse pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateDenseToSparsePass() {
-  return absl::make_unique<DenseToSparse>();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDenseToSparsePass() {
+  return std::make_unique<DenseToSparsePass>();
 }
-
-static PassRegistration<DenseToSparse> pass;
 
 }  // namespace TFL
 }  // namespace mlir

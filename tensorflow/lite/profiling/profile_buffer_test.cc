@@ -58,7 +58,7 @@ TEST(ProfileBufferTest, AddEvent) {
 
   buffer.EndEvent(event_handle);
   EXPECT_EQ(1, buffer.Size());
-  EXPECT_GE(event->end_timestamp_us, event->begin_timestamp_us);
+  EXPECT_GE(event->elapsed_time, 0);
 }
 
 TEST(ProfileBufferTest, EndEventWithMetadata) {
@@ -80,7 +80,7 @@ TEST(ProfileBufferTest, EndEventWithMetadata) {
   EXPECT_EQ(event->event_metadata, kEventMetadata1);
   EXPECT_EQ(event->extra_event_metadata, kEventMetadata2);
   EXPECT_EQ(1, buffer.Size());
-  EXPECT_GE(event->end_timestamp_us, event->begin_timestamp_us);
+  EXPECT_GE(event->elapsed_time, 0);
 }
 
 TEST(ProfileBufferTest, OverFlow) {

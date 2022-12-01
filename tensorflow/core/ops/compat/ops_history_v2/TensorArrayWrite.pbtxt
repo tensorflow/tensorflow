@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "TensorArrayWrite"
   input_arg {
     name: "handle"

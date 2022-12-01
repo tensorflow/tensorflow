@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dataset_store.h"
 
 #include <memory>
+#include <string>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -41,7 +42,7 @@ Status FileSystemDatasetStore::Put(const std::string& key,
     return errors::AlreadyExists("File ", path_to_write, " already exists");
   }
   TF_RETURN_IF_ERROR(WriteDatasetDef(path_to_write, dataset));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FileSystemDatasetStore::Get(
@@ -51,7 +52,7 @@ Status FileSystemDatasetStore::Get(
   DatasetDef def;
   TF_RETURN_IF_ERROR(ReadDatasetDef(path, def));
   dataset_def = std::make_shared<const DatasetDef>(def);
-  return Status::OK();
+  return OkStatus();
 }
 
 MemoryDatasetStore::MemoryDatasetStore() {}
@@ -64,7 +65,7 @@ Status MemoryDatasetStore::Put(const std::string& key,
                                  " is already stored.");
   }
   stored_dataset = std::make_shared<const DatasetDef>(dataset);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MemoryDatasetStore::Get(const std::string& key,
@@ -74,7 +75,7 @@ Status MemoryDatasetStore::Get(const std::string& key,
     return errors::NotFound("Dataset with key ", key, " not found");
   }
   dataset_def = stored_dataset;
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace data

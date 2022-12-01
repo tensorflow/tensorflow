@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -216,7 +216,9 @@ class SliceR1Test : public ClientLibraryTestBase,
     // This can't be an std::vector, since you can't grab a Span of a
     // vector<bool>.
     absl::InlinedVector<NativeT, 1> input(spec.input_dim0);
-    std::iota(input.begin(), input.end(), NativeT());
+    for (size_t i = 0; i < input.size(); ++i) {
+      input[i] = static_cast<NativeT>(i);
+    }
     auto literal = LiteralUtil::CreateR1<NativeT>(input);
 
     XlaBuilder builder(TestName());

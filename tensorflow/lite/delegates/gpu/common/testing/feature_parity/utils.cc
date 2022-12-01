@@ -23,14 +23,14 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/string_type.h"
 
 std::ostream& operator<<(std::ostream& os, const TfLiteTensor& tensor) {
   std::string shape;
-  absl::optional<std::string> result = tflite::ShapeToString(tensor.dims);
+  std::optional<std::string> result = tflite::ShapeToString(tensor.dims);
   if (result.has_value()) {
     shape = std::move(result.value());
   } else {
@@ -41,7 +41,7 @@ std::ostream& operator<<(std::ostream& os, const TfLiteTensor& tensor) {
 
 namespace tflite {
 
-absl::optional<std::string> ShapeToString(TfLiteIntArray* shape) {
+std::optional<std::string> ShapeToString(TfLiteIntArray* shape) {
   std::string result;
   int* data = shape->data;
   switch (shape->size) {
@@ -60,13 +60,13 @@ absl::optional<std::string> ShapeToString(TfLiteIntArray* shape) {
       break;
     default:
       // This printer doesn't expect shapes of more than 4 dimensions.
-      return absl::nullopt;
+      return std::nullopt;
   }
   return result;
 }
 
-absl::optional<std::string> CoordinateToString(TfLiteIntArray* shape,
-                                               int linear) {
+std::optional<std::string> CoordinateToString(TfLiteIntArray* shape,
+                                              int linear) {
   std::string result;
   switch (shape->size) {
     case 1: {
@@ -114,7 +114,7 @@ absl::optional<std::string> CoordinateToString(TfLiteIntArray* shape,
     }
     default:
       // This printer doesn't expect shapes of more than 4 dimensions.
-      return absl::nullopt;
+      return std::nullopt;
   }
   return result;
 }

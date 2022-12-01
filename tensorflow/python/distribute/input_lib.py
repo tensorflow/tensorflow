@@ -543,7 +543,7 @@ def _is_statically_shaped(element_spec):
       if spec.shape.rank > 0 and spec.shape.as_list()[0] is None:
         return False
     else:
-      for component in nest.flatten(spec._component_specs):  # pylint: disable=protected-access
+      for component in spec._flat_tensor_specs:  # pylint: disable=protected-access
         if not component.shape.is_fully_defined():
           return False
   return True
@@ -776,32 +776,6 @@ class DistributedDatasetAndIteratorSpec(type_spec.TypeSpec):
     return type(self)(
         self._input_workers,
         common_element_spec,
-        self._strategy,
-        self._options,
-        cardinality=self._cardinality,
-        enable_get_next_as_optional=self._enable_get_next_as_optional)
-
-  # Overriding this method so that we can merge and reconstruct the spec object
-  def most_specific_compatible_type(self, other):
-    """Returns the most specific TypeSpec compatible with `self` and `other`.
-
-    Deprecated. Use most_specific_common_supertype instead.
-
-    Args:
-      other: A `TypeSpec`.
-
-    Raises:
-      ValueError: If there is no TypeSpec that is compatible with both `self`
-        and `other`.
-    """
-    # pylint: disable=protected-access
-    self.sanity_check_type(other)
-    element_spec = nest.map_structure(
-        lambda a, b: a.most_specific_compatible_type(b), self._element_spec,
-        other._element_spec)
-    return type(self)(
-        self._input_workers,
-        element_spec,
         self._strategy,
         self._options,
         cardinality=self._cardinality,
@@ -1154,7 +1128,7 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
     # `num_replicas_in_sync` smaller batches to be distributed among that
     # worker's replicas, so that the batch size for a global step (across all
     # workers and replicas) adds up to the original dataset's batch size.
-    if num_replicas_in_sync is not None:
+    if num_replicas_in_sync is not None and num_replicas_in_sync > 1:
       num_workers = input_context.num_input_pipelines if input_context else len(
           input_workers.worker_devices)
       rebatch_fn = self._make_rebatch_fn(dataset, num_workers,
@@ -1208,13 +1182,13 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
 
     def rebatch_fn(dataset, worker_index):
       try:
-        # pylint: disable=protected-access
+
         def apply_rebatch():
           batch_sizes = distribute.batch_sizes_for_worker(
               batch_size, num_workers, num_replicas_per_worker, worker_index)
-          return distribute._RebatchDataset(
-              dataset, batch_sizes).prefetch(num_replicas_per_worker)
+          return dataset.rebatch(batch_sizes).prefetch(num_replicas_per_worker)
 
+        # pylint: disable=protected-access
         def apply_legacy_rebatch():
           return distribute._LegacyRebatchDataset(
               dataset, num_replicas_in_sync).prefetch(num_replicas_per_worker)

@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 /// \file
+///
 /// Optional debugging functionality.
 /// For small sized binaries, these are not needed.
 #ifndef TENSORFLOW_LITE_OPTIONAL_DEBUG_TOOLS_H_
 #define TENSORFLOW_LITE_OPTIONAL_DEBUG_TOOLS_H_
 
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 
 namespace tflite {
 

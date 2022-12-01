@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 
 namespace mlir {
@@ -37,8 +36,11 @@ namespace {
 constexpr const char *kDeviceAttr = "device";
 constexpr const char *kTFDeviceAttr = "tf.device";
 
+#define GEN_PASS_DEF_TENSORDEVICECOPYCONVERSIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TensorDeviceCopyConversionPass
-    : public TensorDeviceCopyConversionPassBase<
+    : public impl::TensorDeviceCopyConversionPassBase<
           TensorDeviceCopyConversionPass> {
   void runOnOperation() override;
 };
@@ -46,7 +48,7 @@ struct TensorDeviceCopyConversionPass
 // Folds tf.IdentityOp and tf.IdentityNOp if op device and the argument devices
 // from the defining ops match.
 void TensorDeviceCopyConversionPass::runOnOperation() {
-  FuncOp func_op = getOperation();
+  func::FuncOp func_op = getOperation();
 
   auto should_fold_op_func = [&func_op](const Value &arg,
                                         const StringAttr &op_device) {
@@ -108,7 +110,8 @@ void TensorDeviceCopyConversionPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTensorDeviceCopyConversionPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTensorDeviceCopyConversionPass() {
   return std::make_unique<TensorDeviceCopyConversionPass>();
 }
 

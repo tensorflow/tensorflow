@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/grpc_util.h"
 
+#include <algorithm>
+#include <functional>
+#include <string>
+
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
@@ -26,11 +31,20 @@ namespace tensorflow {
 namespace data {
 namespace grpc_util {
 
+constexpr char kStreamRemovedMessage[] = "Stream removed";
+
 Status WrapError(const std::string& message, const ::grpc::Status& status) {
   if (status.ok()) {
     return errors::Internal("Expected a non-ok grpc status. Wrapping message: ",
                             message);
   } else {
+    // FromGrpcStatus checks for "Stream removed" as well, but only when the
+    // status code is "Unknown". We have observed that sometimes stream removed
+    // errors use other status codes (b/258285154).
+    // TODO(aaudibert): Upstream this to FromGrpcStatus.
+    if (status.error_message() == kStreamRemovedMessage) {
+      return Status(tensorflow::error::UNAVAILABLE, kStreamRemovedMessage);
+    }
     Status s = FromGrpcStatus(status);
     return Status(s.code(),
                   absl::StrCat(message, ": ", status.error_message()));
@@ -48,8 +62,7 @@ Status Retry(const std::function<Status()>& f,
              const std::string& description, int64_t deadline_micros) {
   Status s = f();
   for (int num_retries = 0;; ++num_retries) {
-    if (!errors::IsUnavailable(s) && !errors::IsAborted(s) &&
-        !errors::IsCancelled(s)) {
+    if (!IsPreemptedError(s)) {
       return s;
     }
     int64_t now_micros = EnvTime::NowMicros();

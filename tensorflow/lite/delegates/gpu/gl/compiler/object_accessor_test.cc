@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/compiler/object_accessor.h"
 
 #include <string>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -32,7 +33,7 @@ namespace gl {
 struct ParameterComparator {
   template <typename T>
   bool operator()(const T& t) const {
-    const T* v = absl::get_if<T>(&p.value);
+    const T* v = std::get_if<T>(&p.value);
     return v && t == *v;
   }
   const Variable& p;
@@ -40,7 +41,7 @@ struct ParameterComparator {
 
 // partially equal
 bool operator==(const Variable& l, const Variable& r) {
-  return l.name == r.name && absl::visit(ParameterComparator{l}, r.value);
+  return l.name == r.name && std::visit(ParameterComparator{l}, r.value);
 }
 
 namespace {

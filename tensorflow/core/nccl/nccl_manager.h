@@ -30,7 +30,11 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/nccl/nccl.h"
 #elif TENSORFLOW_USE_ROCM
+#if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/rccl/rccl.h"
+#else
+#include "rocm/include/rccl.h"
+#endif
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #endif
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -66,8 +70,9 @@ class NcclManager {
   // A participant in a Collective.
   struct Participant {
     Participant(se::StreamExecutor* executor, se::Stream* tensor_stream,
-                const DeviceBase::GpuDeviceInfo* info, const Tensor* input,
-                Tensor* output, int global_rank, DoneCallback done_callback)
+                const DeviceBase::AcceleratorDeviceInfo* info,
+                const Tensor* input, Tensor* output, int global_rank,
+                DoneCallback done_callback)
         : executor(executor),
           tensor_stream(tensor_stream),
           event_mgr(info->event_mgr),

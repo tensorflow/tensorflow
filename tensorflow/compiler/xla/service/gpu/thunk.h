@@ -16,16 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_THUNK_H_
 
+#include <functional>
 #include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
 #include <vector>
 
-#include "tensorflow/compiler/xla/executable_run_options.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
@@ -45,12 +48,13 @@ class Thunk {
  public:
   enum Kind {
     kCholesky,
-    kCollectivePermute,
     kConditional,
     kConvolution,
     kCopy,
+    kCublasLtMatmul,
     kCustomCall,
     kFft,
+    kFor,
     kGemm,
     kInfeed,
     kKernel,
@@ -60,6 +64,7 @@ class Thunk {
     kNcclAllReduce,
     kNcclAllReduceStart,
     kNcclAllReduceDone,
+    kNcclCollectivePermute,
     kNcclReduceScatter,
     kNcclAllToAll,
     kOutfeed,
@@ -71,24 +76,31 @@ class Thunk {
   };
 
   struct ThunkInfo {
-    absl::optional<int64_t> profile_index;
+    explicit ThunkInfo(mlir::Operation* op) : op(op) {}
+    std::optional<int64_t> profile_index;
     std::string profile_annotation;
+    mlir::Operation* op;
   };
 
   // The hlo_instruction argument is meant to be the instruction this thunk was
   // generated from, but Thunk never uses this argument other than to save it
   // to Thunk::hlo_instruction, so it can be null.
-  explicit Thunk(Kind kind, ThunkInfo thunk_info)
+  Thunk(Kind kind, ThunkInfo thunk_info)
       : kind_(kind),
         profile_index_(thunk_info.profile_index),
-        profile_annotation_(thunk_info.profile_annotation) {}
-  virtual ~Thunk() {}
+        profile_annotation_(thunk_info.profile_annotation),
+        op_(thunk_info.op) {}
+  virtual ~Thunk() = default;
   Thunk(const Thunk&) = delete;
   Thunk& operator=(const Thunk&) = delete;
 
   virtual std::string ToStringExtra(int indent) const { return ""; }
   Kind kind() const { return kind_; }
   std::string profile_annotation() const { return profile_annotation_; }
+  // Only valid during compilation, i.e., lowering thunks to kernel-launch
+  // related XLA runtime custom calls). nullptr at runtime. MLIR codegen will
+  // cease the practice of lowering thunks to XLA runtime custom calls.
+  mlir::Operation* op() { return op_; }
 
   // Prepares the thunk for execution on the given StreamExecutor.
   //
@@ -97,7 +109,7 @@ class Thunk {
   // time spent initializing doesn't count towards our execution profile.
   virtual Status Initialize(const GpuExecutable& /*executable*/,
                             se::StreamExecutor* /*executor*/) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Parameters passed to ExecuteOnStream.  Encapsulated in a struct so that
@@ -110,12 +122,7 @@ class Thunk {
     const BufferAllocations* buffer_allocations;  // never null
     se::Stream* stream;
     se::Stream* async_comms_stream;
-    RunId run_id;
-    const DeviceAssignment* device_assn;                          // never null
-    const std::vector<GlobalDeviceId>* gpu_global_device_ids;     // may be null
-    const NcclUniqueIdCallback* nccl_unique_id_callback;          // may be null
-
-    StatusOr<GlobalDeviceId> GetGlobalDeviceId() const;
+    NcclExecuteParams nccl_params;
   };
 
   // Execute the kernel for the thunk on the given stream. This method must be
@@ -125,15 +132,19 @@ class Thunk {
   // Precondition: Initialize(stream->parent()) has been called.
   virtual Status ExecuteOnStream(const ExecuteParams& params) = 0;
 
+  // Clears metadata that is only valid during compile time.
+  virtual void ClearCompileTimeInfo() { op_ = nullptr; }
+
   static absl::string_view KindToString(Thunk::Kind kind);
 
  protected:
-  absl::optional<int64_t> profile_index() const { return profile_index_; }
+  std::optional<int64_t> profile_index() const { return profile_index_; }
 
  private:
   Kind kind_;
-  absl::optional<int64_t> profile_index_;
+  std::optional<int64_t> profile_index_;
   std::string profile_annotation_;
+  mlir::Operation* op_;
 };
 
 // A sequence of thunks.
@@ -153,6 +164,9 @@ struct ShapedSlice {
   Shape shape;
 };
 
+// Returns if the thunk implements a reduction collective (all-reduce or
+// reduce-scatter).
+bool IsReductionCollective(Thunk::Kind kind);
 }  // namespace gpu
 }  // namespace xla
 

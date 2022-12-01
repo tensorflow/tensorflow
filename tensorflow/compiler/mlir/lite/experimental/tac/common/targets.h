@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_COMMON_TARGETS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_COMMON_TARGETS_H_
 
+#include <algorithm>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -127,14 +129,14 @@ struct InferenceDeviceType {
 inline llvm::Optional<InferenceDeviceType> GetInferenceDeviceTypeForOp(
     Operation* op) {
   auto hardware = GetTargetAnnotation(op);
-  if (!hardware.hasValue()) return llvm::None;
+  if (!hardware.has_value()) return llvm::None;
 
   auto inference_type = GetInferenceTypeAnnotation(op);
-  if (!inference_type.hasValue()) return llvm::None;
+  if (!inference_type.has_value()) return llvm::None;
 
   InferenceDeviceType inference_device_type;
-  inference_device_type.hardware = hardware.getValue();
-  inference_device_type.inference_type = inference_type.getValue();
+  inference_device_type.hardware = hardware.value();
+  inference_device_type.inference_type = inference_type.value();
   return inference_device_type;
 }
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
+#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tensorflow/stream_executor/multi_platform_manager.h"
 
 namespace tensorflow {
 
@@ -64,7 +64,7 @@ class TpuOutfeedDequeueOp : public T {
 
     VLOG(1) << "TransferLiteralFromOutfeed complete.";
 
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -116,7 +116,7 @@ class TpuOutfeedDequeueTupleOp : public T {
       TF_RETURN_IF_ERROR(
           T::transfer_op_->TransferLiteralFromOutfeed(device_ordinal, literal));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

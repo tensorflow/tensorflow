@@ -19,8 +19,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_split.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
-#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 
 namespace xla {
 namespace gpu {

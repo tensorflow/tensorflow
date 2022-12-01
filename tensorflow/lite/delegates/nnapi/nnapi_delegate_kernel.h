@@ -19,9 +19,9 @@ limitations under the License.
 #include <list>
 #include <map>
 #include <memory>
+#include <string>
 #include <unordered_map>
 
-#include "absl/hash/hash.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
@@ -36,11 +36,10 @@ constexpr int32_t kMinSdkVersionForNNAPI = 27;
 constexpr int32_t kMinSdkVersionForNNAPI11 = 28;
 constexpr int32_t kMinSdkVersionForNNAPI12 = 29;
 constexpr int32_t kMinSdkVersionForNNAPI13 = 30;
-// TODO(b/185838597): change the remaining kMinSdkVersionForNNAPI* to
-// kNNAPIRuntimeFeatureLevel*.
 constexpr int32_t kNNAPIRuntimeFeatureLevel5 = 31;
 constexpr int32_t kNNAPIRuntimeFeatureLevel6 = 1000006;
 constexpr int32_t kNNAPIRuntimeFeatureLevel7 = 1000007;
+constexpr int32_t kNNAPIRuntimeFeatureLevel8 = 1000008;
 
 class NNAPIOpBuilder;
 
@@ -209,15 +208,13 @@ class NNAPIExecutionCache {
  public:
   // The cache signature. Uniquely identifies an execution request.
   struct Signature {
-    std::vector<int> tensor_handles;
+    std::vector<uint64_t> tensor_handle_timestamps;
     std::vector<int> dynamic_dimensions;
 
     bool operator==(const Signature& other) const;
-    template <typename H>
-    friend H AbslHashValue(H h, const Signature& signature) {
-      return H::combine(std::move(h), signature.tensor_handles,
-                        signature.dynamic_dimensions);
-    }
+    struct Hasher {
+      std::size_t operator()(const Signature& signature) const;
+    };
   };
 
   explicit NNAPIExecutionCache(uint32_t max_cache_size)
@@ -252,7 +249,7 @@ class NNAPIExecutionCache {
   // A hash map to lookup a managed execution by its signature.
   std::unordered_map<Signature,
                      std::pair<std::list<Signature>::iterator, UniqueExecution>,
-                     absl::Hash<Signature>>
+                     Signature::Hasher>
       lookup_;
 };
 
@@ -405,6 +402,26 @@ class NNAPIDelegateKernel {
                           const TfLiteIntArray* input_tensors,
                           const TfLiteIntArray* output_tensors,
                           int* nnapi_errno);
+
+  // Log the compilation info provided by the support library at the end of
+  // a compilation (failed or successful).
+  // To avoid output spamming, logging is done only once, on the first call to
+  // this method, subsequent runs will only retrieve the information but not
+  // log it.
+  //
+  // This method is registered as a callback with the SL which calls it.
+  static void LogCompilationInfoOnce(
+      const NnApi* nnapi, const ANeuralNetworksDiagnosticCompilationInfo* info);
+
+  // Log the execution info provided by the support library at the end of
+  // an execution (failed or successful).
+  // To avoid output spamming, logging is done only once, on the first call to
+  // this method, subsequent runs will only retrieve the information but not
+  // log it.
+  //
+  // This method is registered as a callback with the SL which calls it.
+  static void LogExecutionInfoOnce(
+      const NnApi* nnapi, const ANeuralNetworksDiagnosticExecutionInfo* info);
 };
 
 }  // namespace nnapi

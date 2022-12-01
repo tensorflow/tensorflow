@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,11 +25,10 @@ from absl import logging
 class WatchDog(object):
   """A class to dump stack traces if no activity happens in ClusterCoordinator."""
 
-  def __init__(self,
-               timeout=os.environ.get(
-                   "TF_CLUSTER_COORDINATOR_WATCH_DOG_TIMEOUT", -1),
-               traceback_file=sys.stdout,
-               on_triggered=None):
+  def __init__(self, timeout=-1, traceback_file=sys.stdout, on_triggered=None):
+    if os.environ.get("TF_CLUSTER_COORDINATOR_WATCH_DOG_TIMEOUT",
+                      "").isnumeric():
+      timeout = int(os.environ["TF_CLUSTER_COORDINATOR_WATCH_DOG_TIMEOUT"])
     self._timeout = timeout
     self._last_activity_time = time.time()
     self._traceback_file = traceback_file

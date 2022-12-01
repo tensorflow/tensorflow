@@ -29,12 +29,12 @@ from tensorflow.lite.python.metrics import metrics
 from tensorflow.lite.tools.optimize.debugging.python import debugger
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 
 
 def _get_model():
   """Returns somple model with Conv2D and representative dataset gen."""
-  root = tracking.AutoTrackable()
+  root = autotrackable.AutoTrackable()
   kernel_in = np.array([-2, -1, 1, 2], dtype=np.float32).reshape((2, 2, 1, 1))
 
   @tf.function(

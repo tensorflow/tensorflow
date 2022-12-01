@@ -384,3 +384,13 @@ class LinearOperatorTridiag(linear_operator.LinearOperator):
   @property
   def _composite_tensor_fields(self):
     return ('diagonals', 'diagonals_format')
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    diagonal_event_ndims = 2
+    if self.diagonals_format == _SEQUENCE:
+      # For the diagonal and the super/sub diagonals.
+      diagonal_event_ndims = [1, 1, 1]
+    return {
+        'diagonals': diagonal_event_ndims,
+    }

@@ -60,7 +60,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
@@ -96,7 +96,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -126,7 +126,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {input_graph_node, num_shards, index},
                       {{kRequireNonEmpty, require_non_empty_attr}}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -134,6 +134,8 @@ class ShardDatasetOp::Dataset : public DatasetBase {
    public:
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params), next_index_(0) {}
+
+    bool SymbolicCheckpointCompatible() const override { return true; }
 
     Status Initialize(IteratorContext* ctx) override {
       if (dataset()->num_shards_ == kShardHint) {
@@ -156,7 +158,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       *end_of_sequence = false;
       if (!input_impl_) {
         *end_of_sequence = true;
-        return Status::OK();
+        return OkStatus();
       }
 
       int num_to_skip =
@@ -170,14 +172,14 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       next_index_ += num_skipped;
       if (*end_of_sequence) {
         input_impl_.reset();
-        return Status::OK();
+        return OkStatus();
       }
 
       std::vector<Tensor> result;
       TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &result, end_of_sequence));
       if (*end_of_sequence) {
         input_impl_.reset();
-        return Status::OK();
+        return OkStatus();
       }
       next_index_++;
 
@@ -209,7 +211,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       }
 
       *out_tensors = std::move(result);
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -221,27 +223,30 @@ class ShardDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      if (!input_impl_) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
-      } else {
+      TF_RETURN_IF_ERROR(writer->WriteScalar(
+          full_name(kInputImplEmpty), static_cast<int64_t>(!input_impl_)));
+      if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kNextIndex), next_index_));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      if (!reader->Contains(full_name(kInputImplEmpty))) {
+      int64_t input_empty;
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(full_name(kInputImplEmpty), &input_empty));
+      if (!static_cast<bool>(input_empty)) {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(full_name(kNextIndex), &next_index_));
       } else {
         input_impl_.reset();
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {

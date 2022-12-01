@@ -23,10 +23,12 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/types/dialect.h"
+#include "tensorflow/core/ir/utility.h"
 
 namespace mlir {
 namespace detail {
-// This class implements the iterator on control return of a value.
+// This class iterates over the control dependencies of the values.
 template <typename ValueIteratorT>
 class ControlRetIterator final
     : public llvm::mapped_iterator_base<ControlRetIterator<ValueIteratorT>,
@@ -34,7 +36,12 @@ class ControlRetIterator final
  public:
   using llvm::mapped_iterator_base<ControlRetIterator<ValueIteratorT>,
                                    ValueIteratorT, Value>::mapped_iterator_base;
-  Value mapElement(Value value) const;
+
+  Value mapElement(Value value) const {
+    return value.getType().isa<tf_type::ControlType>()
+               ? value
+               : tfg::LookupControlDependency(value);
+  }
 };
 }  // namespace detail
 
@@ -65,26 +72,16 @@ class TFOp {
   }
 
   // Split the operands into data and control operands.
-  std::tuple<OperandRange, OperandRange> splitOperands() {
+  std::pair<OperandRange, OperandRange> splitOperands() {
     ControlType ctl_type = getDialect()->getControlType();
-    OperandRange operands = op_->getOperands();
-    unsigned num_ctl = 0;
-    for (Value operand : llvm::reverse(operands)) {
-      if (operand.getType() == ctl_type)
-        ++num_ctl;
-      else
-        break;
-    }
-    unsigned split_idx = operands.size() - num_ctl;
-    return std::make_tuple(operands.slice(0, split_idx),
-                           operands.slice(split_idx, num_ctl));
+    return SplitDataAndControlValues(op_->getOperands(), ctl_type);
   }
 
   // Returns the regular operands, the control operands will be excluded.
-  OperandRange getNonControlOperands() { return std::get<0>(splitOperands()); }
+  OperandRange getNonControlOperands() { return splitOperands().first; }
 
   // The control operands are always after the regular inputs.
-  OperandRange getControlOperands() { return std::get<1>(splitOperands()); }
+  OperandRange getControlOperands() { return splitOperands().second; }
 
   // Returns the control token produced by this operation.
   Value controlRet() { return op_->getResult(op_->getNumResults() - 1); }
@@ -125,7 +122,10 @@ class TFOp {
   // requested device otherwise.
   StringAttr deviceAttr() {
     StringAttr device = assignedDeviceAttr();
-    if (device) return device;
+    if (device) {
+      assert(!device.getValue().empty());
+      return device;
+    }
     return requestedDeviceAttr();
   }
   StringRef device() {

@@ -15,8 +15,8 @@ limitations under the License.
 
 // Utility functions for performance profiling.
 
-#ifndef TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_TIME_LOG_H_
-#define TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_TIME_LOG_H_
+#ifndef TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_TIME_LOG_H_
+#define TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_TIME_LOG_H_
 
 #include <stdint.h>
 
@@ -134,4 +134,4 @@ inline static void TimeLog(const char* const str) {
 inline static void PrintTimeLog() {}
 #endif
 
-#endif  // TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_TIME_LOG_H_
+#endif  // TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_TIME_LOG_H_

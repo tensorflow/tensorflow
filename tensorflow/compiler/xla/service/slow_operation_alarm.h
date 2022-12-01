@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_SLOW_OPERATION_ALARM_H_
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -24,7 +25,6 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 
@@ -35,7 +35,12 @@ class SlowOperationAlarm {
   // If `counter` is not null, this alarm will throttle itself to logging
   // once-every-power-of-two occurrences. The counter must outlive this object.
   SlowOperationAlarm(absl::Duration timeout, std::string msg,
-                     std::atomic<int64_t>* counter = nullptr);
+                     std::atomic<int64_t>* counter = nullptr,
+                     absl::string_view context = "");
+  SlowOperationAlarm(absl::Duration timeout,
+                     std::function<std::string()> msg_fn,
+                     std::atomic<int64_t>* counter = nullptr,
+                     absl::string_view context = "");
   ~SlowOperationAlarm();
 
   // Not copyable or movable, because the constructor stores a pointer to `this`
@@ -46,27 +51,41 @@ class SlowOperationAlarm {
   SlowOperationAlarm& operator=(const SlowOperationAlarm&&) = delete;
 
   absl::Time deadline() const { return deadline_; }
-  absl::string_view msg() const { return msg_; }
+  std::string msg() const { return msg_fn_(); }
   std::atomic<int64_t>* counter() { return counter_; }
+  void cancel() { UnscheduleAlarm(this); }
+  // Has the alarm fired?  If appropriate, consider cancel()'ing first, to avoid
+  // a race.
+  bool fired() const { return fired_.load(); }
 
  private:
+  static void AlarmLoop();
+  static void ScheduleAlarm(SlowOperationAlarm* alarm);
+  static void UnscheduleAlarm(const SlowOperationAlarm* alarm);
+
+  absl::Time start_;
   absl::Time deadline_;
-  std::string msg_;
+  std::string context_;
+  std::function<std::string()> msg_fn_;
+  std::atomic<bool> fired_{false};
   // counter_ may be null.  If it's not, this alarm prints something only once
   // every power of two occurrences.
   std::atomic<int64_t>* counter_;
 };
 
 // Returns an object which prints a warning about slow compilation after a
-// certain amount of time.
+// certain amount of time. It will also print the total lifetime duration of
+// the returned object when it goes out of scope.
 //
 // In debug builds, recommends building with -c opt.
 //
 // In opt builds, recommends filing a bug.
 //
 // This is throttled to once-every-power-of-two occurrences, globally.
-ABSL_MUST_USE_RESULT std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
-    absl::string_view msg = "");
+//
+// `context` is an additional message prepended to the alarm.
+[[nodiscard]] std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
+    absl::string_view context);
 
 }  // namespace xla
 

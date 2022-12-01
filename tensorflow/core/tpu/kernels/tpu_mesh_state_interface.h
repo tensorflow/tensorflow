@@ -12,15 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef EXPERIMENTAL_BRAIN_TPU_1VM_MINIEXECUTOR_TPU_MESH_STATE_INTERFACE_H_
-#define EXPERIMENTAL_BRAIN_TPU_1VM_MINIEXECUTOR_TPU_MESH_STATE_INTERFACE_H_
+#ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_MESH_STATE_INTERFACE_H_
+#define TENSORFLOW_CORE_TPU_KERNELS_TPU_MESH_STATE_INTERFACE_H_
 
 #include <string>
 
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
-#include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 
 namespace tensorflow {
 
@@ -33,19 +33,18 @@ const char kTpuMeshStateInterfaceResourceName[] = "tpu_mesh_common_state";
 class TpuMeshStateInterface : public tensorflow::ResourceBase {
  public:
   explicit TpuMeshStateInterface(XLA_TpuMeshState* handle)
-      : mesh_state_(handle) {
-  }
+      : mesh_state_(handle) {}
 
   ~TpuMeshStateInterface() override {
     if (mesh_state_ != nullptr) {
-      OpsApiFn()->TpuMeshState_FreeFn(mesh_state_);
+      stream_executor::tpu::OpsApiFn()->TpuMeshState_FreeFn(mesh_state_);
     }
   }
 
   static TpuMeshStateInterface* Create() {
     XLA_TpuMeshState* state = nullptr;
-    if (OpsApiFn()->TpuMeshState_CreateFn != nullptr) {
-      state = OpsApiFn()->TpuMeshState_CreateFn();
+    if (stream_executor::tpu::OpsApiFn()->TpuMeshState_CreateFn != nullptr) {
+      state = stream_executor::tpu::OpsApiFn()->TpuMeshState_CreateFn();
     }
     return new TpuMeshStateInterface(state);
   }
@@ -57,23 +56,23 @@ class TpuMeshStateInterface : public tensorflow::ResourceBase {
       return nullptr;
     }
     return static_cast<tensorflow::TpuMeshCommonState*>(
-        OpsApiFn()->TpuMeshState_MeshCommonStateFn(mesh_state_));
+        stream_executor::tpu::OpsApiFn()->TpuMeshState_MeshCommonStateFn(
+            mesh_state_));
   }
 
   // Returns whether we should include the device assignment as a static field
   // to the TPU program. This also determines whether we should include the
   // device assignment as part of the compilation cache key.
-  bool NeedsStaticDeviceAssignment(
-      const TPUCompileMetadataProto& metadata,
-      TpuCoreTypeEnum tpu_core_type) const {
+  bool NeedsStaticDeviceAssignment(const TPUCompileMetadataProto& metadata,
+                                   TpuCoreTypeEnum tpu_core_type) const {
     if (mesh_state_ == nullptr) {
       return false;
     }
     // Static device assignment enables XLA to perform certain optimization when
     // all cores are used in the replicated computation.
     return metadata.num_cores_per_replica() * metadata.num_replicas() ==
-           OpsApiFn()->TpuTopology_AvailableCoreCountFn(mesh_state_,
-                                                        tpu_core_type);
+           stream_executor::tpu::OpsApiFn()->TpuTopology_AvailableCoreCountFn(
+               mesh_state_, tpu_core_type);
   }
 
   string DebugString() const override { return "TpuMeshStateInterface"; }
@@ -85,4 +84,4 @@ class TpuMeshStateInterface : public tensorflow::ResourceBase {
 }  // namespace tpu
 }  // namespace tensorflow
 
-#endif  // EXPERIMENTAL_BRAIN_TPU_1VM_MINIEXECUTOR_TPU_MESH_STATE_INTERFACE_H_
+#endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_MESH_STATE_INTERFACE_H_

@@ -124,7 +124,7 @@ Status MklEagerOpRewrite::Run(
   if (ShouldRewriteOp(orig_op)) {
     TF_CHECK_OK(RewriteToMklOp(orig_op, out_op));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MklEagerOpRewrite::SetupNewOp(
@@ -164,7 +164,7 @@ Status MklEagerOpRewrite::CreateGenericMklOp(
   const string mkl_op_name =
       mkl_op_registry::GetMklNativeOpName(orig_op->Name());
   TF_CHECK_OK(SetupNewOp(orig_op, mkl_op_name, mkl_op));
-  return Status::OK();
+  return OkStatus();
 }
 
 bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op) {
@@ -173,7 +173,7 @@ bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op) {
     return false;
   }
   DataType data_type;
-  if (op->Attrs().Get("T", &data_type) != Status::OK()) {
+  if (op->Attrs().Get("T", &data_type) != OkStatus()) {
     return false;
   }
   // Only rewrite if op is to be run on CPU device.
@@ -218,7 +218,7 @@ Status MklEagerOpRewrite::RewriteToMklOp(
   // (once each in ShouldRewriteOp & RewriteToMklOp) to just once.
   TF_RETURN_IF_ERROR(
       mkl_eager_ops_[orig_op->Name()].CreateMklOp(orig_op, mkl_op));
-  return Status::OK();
+  return OkStatus();
 }
 
 bool MklEagerOpRewrite::RewriteConv2D(EagerOperation* op) {

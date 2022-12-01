@@ -6,6 +6,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -31,7 +32,7 @@ cc_library(
         "modular_filesystem.h",
         "modular_filesystem_registration.h",
     ],
-    # TODO(mihaimaruseac): Visibility should be more restrictive once we
+    # TODO(b/139060984): Visibility should be more restrictive once we
     # convert to modular filesystems everywhere
     visibility = ["//visibility:public"],
     deps = [
@@ -42,6 +43,7 @@ cc_library(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/platform:errors",
     ],
 )
 

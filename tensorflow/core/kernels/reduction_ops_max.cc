@@ -56,9 +56,13 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
                   Eigen::internal::MaxReducer<type, Eigen::PropagateNaN>>);
 
 REGISTER_GPU_KERNELS(Eigen::half);
+REGISTER_GPU_KERNELS(Eigen::bfloat16);
 REGISTER_GPU_KERNELS(float);
 REGISTER_GPU_KERNELS(double);
 REGISTER_GPU_KERNELS(int64_t);
+
+#undef REGISTER_GPU_KERNELS
+#endif
 
 // A special DEVICE_DEFAULT kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -81,10 +85,5 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<int32>("T")
         .TypeConstraint<int64_t>("Tidx"),
     ReductionOp<CPUDevice, int32, int64, Eigen::internal::MaxReducer<int32>>);
-
-#undef REGISTER_GPU_KERNELS
-
-#endif
-
 
 }  // namespace tensorflow

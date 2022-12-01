@@ -5,11 +5,11 @@
 // CHECK: Some ops in the model are custom ops, See instructions to implement
 // CHECK: tf.MyCustomOp(tensor<4xf32>, tensor<4xf32>) -> (tensor<4xf32>, tensor<3xf32>) : {name = "MyCustomOp"}
 
-func @main(tensor<4xf32>) -> tensor<4xf32> {
+func.func @main(tensor<4xf32>) -> tensor<4xf32> {
 ^bb0(%arg0: tensor<4xf32>):
   %0 = "tfl.pseudo_const" () {name = "Const", value = dense<1.0> : tensor<4xf32>} : () -> tensor<4xf32>
   %1 = "tfl.mul"(%arg0, %0) {fused_activation_function = "NONE", name = "mul"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   %2:2 = "tf.MyCustomOp"(%1, %0) {name = "MyCustomOp"} : (tensor<4xf32>, tensor<4xf32>) -> (tensor<4xf32>, tensor<3xf32>)
   %3 = "tfl.exp"(%2#0) {name = "exp"} : (tensor<4xf32>) -> tensor<4xf32>
-  return %3 : tensor<4xf32>
+  func.return %3 : tensor<4xf32>
 }

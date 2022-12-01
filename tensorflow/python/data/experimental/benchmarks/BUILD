@@ -1,6 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -140,7 +141,6 @@ tf_py_test(
         "//tensorflow/python/data/experimental/ops:resampling",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 

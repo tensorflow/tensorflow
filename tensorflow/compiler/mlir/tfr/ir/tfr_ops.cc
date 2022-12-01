@@ -28,7 +28,7 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
@@ -161,8 +161,8 @@ bool TFRType::classof(Type type) {
 
 LogicalResult ConstantTensorOp::verify() {
   ConstantTensorOp op = *this;
-  auto input_type = op.arg().getType();
-  auto output_type = op.out().getType();
+  auto input_type = op.getArg().getType();
+  auto output_type = op.getOut().getType();
 
   if (auto output_tensor_type = output_type.dyn_cast<TFRTensorType>()) {
     return success();
@@ -211,7 +211,7 @@ LogicalResult TFRFuncOp::verify() {
   // at the end?
   int first_tensor = -1, last_tensor = -1, first_tensor_list = -1,
       last_tensor_list = -1, first_attr = -1;
-  for (auto arg : llvm::enumerate(func.getType().getInputs())) {
+  for (auto arg : llvm::enumerate(func.getFunctionType().getInputs())) {
     Type arg_type = arg.value();
 
     if (auto tensor = arg_type.dyn_cast<TFRTensorType>()) {
@@ -290,7 +290,7 @@ LogicalResult TFRFuncOp::verify() {
   int undefined_input_attrs_number = undefined_attrs.size();
   bool seen_tensor_list = false, has_tensor_list_order_error = false,
        has_multiple_tensor_lists_error = false;
-  for (auto result_type : func.getType().getResults()) {
+  for (auto result_type : func.getFunctionType().getResults()) {
     if (auto tensor = result_type.dyn_cast<TFRTensorType>()) {
       if (seen_tensor_list) {
         has_tensor_list_order_error = true;
@@ -363,10 +363,7 @@ ParseResult TFRFuncOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void TFRFuncOp::print(OpAsmPrinter &p) {
-  FunctionType fn_type = getType();
-  function_interface_impl::printFunctionOp(p, *this, fn_type.getInputs(),
-                                           /*isVariadic=*/false,
-                                           fn_type.getResults());
+  function_interface_impl::printFunctionOp(p, *this, /*isVariadic=*/false);
 }
 
 }  // namespace TFR
@@ -393,10 +390,12 @@ class ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
     Operation *new_cst = nullptr;
 
     ArrayAttr array;
-    if (matchPattern(cst_tensor_op.arg(), m_Constant(&array))) {
+    if (matchPattern(cst_tensor_op.getArg(), m_Constant(&array))) {
       llvm::DenseSet<Type> all_types;
       for (auto it : array) {
-        all_types.insert(it.getType());
+        TypedAttr typed_attr = it.dyn_cast<TypedAttr>();
+        if (!typed_attr) return failure();
+        all_types.insert(typed_attr.getType());
       }
       if (all_types.size() != 1) return failure();
       ShapedType new_out_type = RankedTensorType::get(
@@ -411,8 +410,8 @@ class ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
       return success();
     }
 
-    Attribute scalar;
-    if (matchPattern(cst_tensor_op.arg(), m_Constant(&scalar))) {
+    TypedAttr scalar;
+    if (matchPattern(cst_tensor_op.getArg(), m_Constant(&scalar))) {
       Type new_out_type = RankedTensorType::get({}, scalar.getType());
       new_cst = rewriter.create<TF::ConstOp>(loc, new_out_type, scalar);
       if (out_type.isa<TFRTensorType>()) {
@@ -438,11 +437,11 @@ class RemoveRedundantCast : public OpRewritePattern<CastOp> {
   LogicalResult matchAndRewrite(CastOp cast_op,
                                 PatternRewriter &rewriter) const override {
     auto preceding_cast =
-        llvm::dyn_cast_or_null<CastOp>(cast_op.arg().getDefiningOp());
+        llvm::dyn_cast_or_null<CastOp>(cast_op.getArg().getDefiningOp());
     if (!preceding_cast) {
       return failure();
     }
-    Value input = preceding_cast.arg();
+    Value input = preceding_cast.getArg();
     Type input_type = input.getType();
     Type output_type = cast_op.getType();
 
@@ -466,7 +465,7 @@ class RemoveRedundantCast : public OpRewritePattern<CastOp> {
       auto new_tfr_cast = rewriter.create<TFR::CastOp>(
           cast_op.getLoc(),
           output_tensor_type.clone(input_tensor_type.getElementType()),
-          cast_op.arg());
+          cast_op.getArg());
       rewriter.replaceOpWithNewOp<TF::CastOp>(cast_op, output_type,
                                               new_tfr_cast);
       return success();
@@ -500,10 +499,10 @@ class GetTensorShape : public OpRewritePattern<GetShapeOp> {
  public:
   LogicalResult matchAndRewrite(GetShapeOp shape_op,
                                 PatternRewriter &rewriter) const override {
-    Operation *preceding_op = shape_op.arg().getDefiningOp();
+    Operation *preceding_op = shape_op.getArg().getDefiningOp();
     if (auto cast_op = llvm::dyn_cast_or_null<CastOp>(preceding_op)) {
       // replace this pair by shape.shape_of, so the folding works.
-      rewriter.replaceOpWithNewOp<shape::ShapeOfOp>(shape_op, cast_op.arg());
+      rewriter.replaceOpWithNewOp<shape::ShapeOfOp>(shape_op, cast_op.getArg());
       return success();
     }
     return failure();
@@ -517,11 +516,11 @@ class RemoveRedundantGetElement : public OpRewritePattern<GetElementOp> {
   LogicalResult matchAndRewrite(GetElementOp ge_op,
                                 PatternRewriter &rewriter) const override {
     IntegerAttr index;
-    if (!matchPattern(ge_op.index(), m_Constant(&index))) {
+    if (!matchPattern(ge_op.getIndex(), m_Constant(&index))) {
       return failure();
     }
     auto preceding_build_list = llvm::dyn_cast_or_null<BuildListOp>(
-        ge_op.tensor_list().getDefiningOp());
+        ge_op.getTensorList().getDefiningOp());
     if (!preceding_build_list ||
         preceding_build_list.getNumOperands() <= index.getInt()) {
       return failure();
@@ -544,7 +543,7 @@ class RemoveRedundantGetLength : public OpRewritePattern<GetLengthOp> {
   LogicalResult matchAndRewrite(GetLengthOp gl_op,
                                 PatternRewriter &rewriter) const override {
     auto preceding_build_list = llvm::dyn_cast_or_null<BuildListOp>(
-        gl_op.tensor_list().getDefiningOp());
+        gl_op.getTensorList().getDefiningOp());
     if (!preceding_build_list) {
       return failure();
     }
@@ -592,7 +591,7 @@ class RemoveRawDataOp : public OpRewritePattern<TFRQuantRawDataOp> {
  public:
   LogicalResult matchAndRewrite(TFRQuantRawDataOp raw_data_op,
                                 PatternRewriter &rewriter) const override {
-    auto preceding_op = raw_data_op.input().getDefiningOp();
+    auto preceding_op = raw_data_op.getInput().getDefiningOp();
     if (isa<BuildListOp>(preceding_op)) {
       return rewritePrecedingListOp(raw_data_op, rewriter);
     }
@@ -602,16 +601,16 @@ class RemoveRawDataOp : public OpRewritePattern<TFRQuantRawDataOp> {
       return failure();
     }
     // If there are redundant casts, hoist output of raw data op originating op.
-    if (preceding_cast.arg().getDefiningOp()) {
-      auto redundant_cast = preceding_cast.arg().getDefiningOp<CastOp>();
-      if (!redundant_cast ||
-          redundant_cast.arg().getType() != preceding_cast.out().getType()) {
+    if (preceding_cast.getArg().getDefiningOp()) {
+      auto redundant_cast = preceding_cast.getArg().getDefiningOp<CastOp>();
+      if (!redundant_cast || redundant_cast.getArg().getType() !=
+                                 preceding_cast.getOut().getType()) {
         return failure();
       }
-      raw_data_op.output().replaceAllUsesWith(redundant_cast.arg());
+      raw_data_op.getOutput().replaceAllUsesWith(redundant_cast.getArg());
     } else {
       // If the argument of cast op is input, then simply remove the RawData op.
-      raw_data_op.output().replaceAllUsesWith(preceding_cast.out());
+      raw_data_op.getOutput().replaceAllUsesWith(preceding_cast.getOut());
     }
     return success();
   }
@@ -619,26 +618,26 @@ class RemoveRawDataOp : public OpRewritePattern<TFRQuantRawDataOp> {
   LogicalResult rewritePrecedingListOp(TFRQuantRawDataOp raw_data_op,
                                        PatternRewriter &rewriter) const {
     llvm::SmallVector<Value> new_list_values;
-    auto preceding_list = raw_data_op.input().getDefiningOp<BuildListOp>();
-    for (Value operand : preceding_list.tensors()) {
+    auto preceding_list = raw_data_op.getInput().getDefiningOp<BuildListOp>();
+    for (Value operand : preceding_list.getTensors()) {
       auto preceding_cast = operand.getDefiningOp<CastOp>();
       if (!preceding_cast || !getQuantizedElementType(preceding_cast)) {
         return failure();
       }
 
       // This function currently only supports the case with redundant casts.
-      auto redundant_cast = preceding_cast.arg().getDefiningOp<CastOp>();
-      if (!redundant_cast ||
-          redundant_cast.arg().getType() != preceding_cast.out().getType()) {
+      auto redundant_cast = preceding_cast.getArg().getDefiningOp<CastOp>();
+      if (!redundant_cast || redundant_cast.getArg().getType() !=
+                                 preceding_cast.getOut().getType()) {
         return failure();
       }
 
-      new_list_values.push_back(redundant_cast.arg());
+      new_list_values.push_back(redundant_cast.getArg());
     }
 
     auto new_list = rewriter.create<BuildListOp>(
         raw_data_op.getLoc(), preceding_list.getType(), new_list_values);
-    raw_data_op.output().replaceAllUsesWith(new_list.out());
+    raw_data_op.getOutput().replaceAllUsesWith(new_list.getOut());
     return success();
   }
 };
@@ -649,7 +648,7 @@ class RemoveQParamsOp : public OpRewritePattern<TFRQuantQParamsOp> {
  public:
   LogicalResult matchAndRewrite(TFRQuantQParamsOp qparams_op,
                                 PatternRewriter &rewriter) const override {
-    auto cast_op = dyn_cast<TFR::CastOp>(qparams_op.input().getDefiningOp());
+    auto cast_op = dyn_cast<TFR::CastOp>(qparams_op.getInput().getDefiningOp());
     auto cast_qtype = getQuantizedElementType(cast_op);
     if (!cast_qtype) {
       return failure();
@@ -691,13 +690,13 @@ class RemoveQParamsOp : public OpRewritePattern<TFRQuantQParamsOp> {
     if (!scale_op || !zp_op) {
       return failure();
     }
-    auto scale_cast = rewriter.create<CastOp>(loc, qparams_op.scale().getType(),
-                                              scale_op.output());
-    auto zp_cast =
-        rewriter.create<CastOp>(loc, qparams_op.zp().getType(), zp_op.output());
+    auto scale_cast = rewriter.create<CastOp>(
+        loc, qparams_op.getScale().getType(), scale_op.getOutput());
+    auto zp_cast = rewriter.create<CastOp>(loc, qparams_op.getZp().getType(),
+                                           zp_op.getOutput());
 
-    qparams_op.scale().replaceAllUsesWith(scale_cast.out());
-    qparams_op.zp().replaceAllUsesWith(zp_cast.out());
+    qparams_op.getScale().replaceAllUsesWith(scale_cast.getOut());
+    qparams_op.getZp().replaceAllUsesWith(zp_cast.getOut());
     return success();
   }
 };
@@ -721,7 +720,7 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
   LogicalResult matchAndRewrite(TFRQuantScaleFactorOp scale_factor_op,
                                 PatternRewriter &rewriter) const override {
     auto out_scale_op =
-        scale_factor_op.out_scale().getDefiningOp<arith::ConstantOp>();
+        scale_factor_op.getOutScale().getDefiningOp<arith::ConstantOp>();
     if (!out_scale_op) {
       return failure();
     }
@@ -729,7 +728,7 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
         out_scale_op.getValue().cast<FloatAttr>().getValueAsDouble();
 
     auto in_scales_op =
-        scale_factor_op.in_scales().getDefiningOp<BuildListOp>();
+        scale_factor_op.getInScales().getDefiningOp<BuildListOp>();
     if (!in_scales_op || in_scales_op.getNumOperands() != 2) {
       // BuildListOp is variadic, but we require two values: input_scale
       // and filter_scale.
@@ -742,7 +741,7 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
     }
 
     DenseFPElementsAttr in_scale_attr;
-    if (!matchPattern(in_scale_op.arg(), m_Constant(&in_scale_attr)) ||
+    if (!matchPattern(in_scale_op.getArg(), m_Constant(&in_scale_attr)) ||
         in_scale_attr.size() != 1) {
       return failure();
     }
@@ -752,7 +751,8 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
       return failure();
     }
     DenseFPElementsAttr filter_scale_attr;
-    if (!matchPattern(filter_scale_op.arg(), m_Constant(&filter_scale_attr))) {
+    if (!matchPattern(filter_scale_op.getArg(),
+                      m_Constant(&filter_scale_attr))) {
       return failure();
     }
 
@@ -773,9 +773,9 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
         loc,
         DenseElementsAttr::get(scale_type, llvm::makeArrayRef(scale_factors)));
     auto result_scale_cast_op = rewriter.create<CastOp>(
-        loc, scale_factor_op.getType(), result_scale_op.output());
-    scale_factor_op.scale_factor().replaceAllUsesWith(
-        result_scale_cast_op.out());
+        loc, scale_factor_op.getType(), result_scale_op.getOutput());
+    scale_factor_op.getScaleFactor().replaceAllUsesWith(
+        result_scale_cast_op.getOut());
     return success();
   }
 };
@@ -788,9 +788,9 @@ class RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
   // tf.Cast(tf.Round(tf.Cast(input, f32) * scale) + tf.Cast(zp, f32), i32)
   LogicalResult matchAndRewrite(TFRQuantRescaleOp rescale_op,
                                 PatternRewriter &rewriter) const override {
-    Value input = rescale_op.input();
-    Value scale = rescale_op.scale();
-    Value zp = rescale_op.zp();
+    Value input = rescale_op.getInput();
+    Value scale = rescale_op.getScale();
+    Value zp = rescale_op.getZp();
 
     const Location loc = rescale_op->getLoc();
     const auto result_types = rescale_op->getResultTypes();
@@ -810,7 +810,7 @@ class RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
     auto zp_tensor = rewriter.create<TF::ConstOp>(
         loc, RankedTensorType::get({}, zp.getType()), zp_attr);
     auto zp_cast = rewriter.create<CastOp>(
-        loc, rewriter.getType<TFRTensorType>(), zp_tensor.output());
+        loc, rewriter.getType<TFRTensorType>(), zp_tensor.getOutput());
 
     rewriter.setInsertionPoint(rescale_op);
     auto cast_input_to_float_op = rewriter.create<CallOp>(
@@ -836,7 +836,7 @@ class RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
         loc, result_types,
         SymbolRefAttr::get(rewriter.getContext(), "tf__cast"),
         ArrayRef<Value>{recentered_op->getResult(0), constant_i32_op, c_false});
-    rescale_op.output().replaceAllUsesWith(cast_output_to_i32.getResult(0));
+    rescale_op.getOutput().replaceAllUsesWith(cast_output_to_i32.getResult(0));
     return success();
   }
 };
@@ -904,17 +904,17 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.empty() && "constant has no operands");
 
   // Return the held attribute value.
-  return value();
+  return getValue();
 }
 
 // CallableOpInterface
 Region *TFRFuncOp::getCallableRegion() {
-  return isExternal() ? nullptr : &body().front();
+  return isExternal() ? nullptr : &getBody().front();
 }
 
 // CallableOpInterface
 ArrayRef<Type> TFRFuncOp::getCallableResults() {
-  return getType().getResults();
+  return getFunctionType().getResults();
 }
 
 //===----------------------------------------------------------------------===//

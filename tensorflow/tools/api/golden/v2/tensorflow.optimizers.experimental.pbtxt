@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Adafactor"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Adagrad"
     mtype: "<type \'type\'>"
   }
@@ -22,6 +26,10 @@ tf_module {
   }
   member {
     name: "Ftrl"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Nadam"
     mtype: "<type \'type\'>"
   }
   member {

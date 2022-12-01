@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace tensorflow {
 
@@ -101,10 +102,11 @@ class Executor {
     ScopedStepContainer* step_container = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
     thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr;
-    CoordinationServiceAgent* coordination_service_agent = nullptr;
+    tsl::CoordinationServiceAgent* coordination_service_agent = nullptr;
     int64_t start_time_usecs = 0;
     // The deadline for the kernel to complete by. Empty if unspecified.
     absl::optional<absl::Time> deadline;
+    absl::optional<ManagedStackTrace> stack_trace = absl::nullopt;
 
     // If true, calls Sync() on the device.
     bool sync_on_finish = false;

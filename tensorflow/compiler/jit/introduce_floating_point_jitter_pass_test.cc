@@ -46,7 +46,7 @@ TEST(IntroduceFloatingPointJitterTest, SingleOutputFP32) {
   Output tanh_a = ops::Tanh(root.WithOpName("tanh_a"), sigmoid_a);
   Output tanh_b = ops::Tanh(root.WithOpName("tanh_b"), sigmoid_b);
 
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(root.ToGraph(graph.get()));
 
   std::vector<string> tensor_names;
@@ -87,7 +87,7 @@ TEST(IntroduceFloatingPointJitterTest, TwoNodesOneUser) {
 
   Output add = ops::Add(root.WithOpName("add"), sigmoid_a, sigmoid_b);
 
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(root.ToGraph(graph.get()));
 
   std::vector<string> tensor_names;
@@ -124,7 +124,7 @@ TEST(IntroduceFloatingPointJitterTest, NotFP32) {
 
   Output tanh = ops::Tanh(root.WithOpName("tanh"), sigmoid);
 
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(root.ToGraph(graph.get()));
 
   std::vector<string> tensor_names;
@@ -156,7 +156,7 @@ TEST(IntroduceFloatingPointJitterTest, MultiOutput) {
   Output tanh_u = ops::Tanh(root.WithOpName("tanh_u"), svd.u);
   Output tanh_v = ops::Tanh(root.WithOpName("tanh_v"), svd.v);
 
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(root.ToGraph(graph.get()));
 
   std::vector<string> tensor_names;

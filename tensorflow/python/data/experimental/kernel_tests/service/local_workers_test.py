@@ -18,12 +18,13 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests.service import multi_process_cluster
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
-from tensorflow.python.data.experimental.ops.data_service_ops import ShardingPolicy
+from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 
+import multiprocessing
 
 class LocalWorkersTest(data_service_test_base.TestBase, parameterized.TestCase):
   """Tests reading from local workers if `target_workers` is `local`."""
@@ -123,7 +124,7 @@ class LocalWorkersTest(data_service_test_base.TestBase, parameterized.TestCase):
     ds = self.make_distributed_range_dataset(
         num_elements,
         cluster,
-        processing_mode=ShardingPolicy.DYNAMIC,
+        processing_mode=data_service_ops.ShardingPolicy.DYNAMIC,
         target_workers="LOCAL")
     self.assertDatasetProduces(
         ds, list(range(num_elements)), assert_items_equal=True)
@@ -134,7 +135,12 @@ class LocalWorkersTest(data_service_test_base.TestBase, parameterized.TestCase):
     cluster = multi_process_cluster.MultiProcessCluster(
         num_local_workers=num_local_workers,
         num_remote_workers=num_remote_workers)
-    num_elements = 300
+    # Because the elements in datasets are prefetched one per
+    # CPU core, a static number here may be excessively large
+    # for small numbers of CPU cores, or too small for high
+    # CPU core count machines, or probably both.
+    # In this case the below formula should satisfy both needs.
+    num_elements = 50 + (multiprocessing.cpu_count() * 2)
     num_consumers = 8
     iterators = []
     for _ in range(num_consumers):
@@ -210,8 +216,8 @@ class LocalWorkersTest(data_service_test_base.TestBase, parameterized.TestCase):
 
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        "but there is already an existing job with that name using "
-        "target_workers <AUTO>."):
+        "but found an existing job with different parameters: "
+        "Existing target workers: <AUTO>"):
       for dataset in datasets:
         self.getDatasetOutput(dataset)
 
@@ -426,7 +432,7 @@ class LocalTaskGarbageCollectTest(data_service_test_base.TestBase,
         dataset,
         cluster=cluster,
         job_name=job_name,
-        processing_mode=ShardingPolicy.OFF,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
         target_workers="LOCAL")
 
 

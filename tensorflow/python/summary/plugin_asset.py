@@ -28,8 +28,6 @@ TensorBoard can retrieve them.
 
 import abc
 
-import six
-
 from tensorflow.python.framework import ops
 
 _PLUGIN_ASSET_PREFIX = "__tensorboard_plugin_asset__"
@@ -105,8 +103,7 @@ def get_all_plugin_assets(graph=None):
   return out
 
 
-@six.add_metaclass(abc.ABCMeta)
-class PluginAsset(object):
+class PluginAsset(metaclass=abc.ABCMeta):
   """This abstract base class allows TensorBoard to serialize assets to disk.
 
   Plugin authors are expected to extend the PluginAsset class, so that it:

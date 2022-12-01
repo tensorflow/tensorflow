@@ -204,17 +204,14 @@ class AsyncExecuteNode : public EagerNode {
         cancellation_manager_, absl::MakeSpan(retvals_), stack_trace_);
     if (!status.ok()) {
       if (stack_trace_.has_value()) {
-        Status with_stack_trace(status.code(), status.error_message(),
-                                stack_trace_->ToStackFrames({}, {}));
-        errors::CopyPayloads(status, with_stack_trace);
-        status = std::move(with_stack_trace);
+        errors::SetStackTrace(status, stack_trace_->ToStackFrames({}, {}));
       }
       Abort(status);
       return status;
     }
     // If status is ok, EagerKernelExecute would have called SetTensor on
     // all the output handles.
-    return Status::OK();
+    return OkStatus();
   }
 
   void Abort(Status status) override {

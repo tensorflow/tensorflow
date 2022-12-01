@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/minimal_logging.h"
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/logger.h"
 
 namespace tflite {
 
@@ -45,9 +46,35 @@ TEST(MinimalLogging, Error) {
 
 TEST(MinimalLogging, UnknownSeverity) {
   testing::internal::CaptureStderr();
+  LogSeverity default_log_severity = TFLITE_LOG_INFO;
+#if defined(__ANDROID__) || !defined(NDEBUG)
+  default_log_severity = TFLITE_LOG_VERBOSE;
+#endif
+  EXPECT_EQ(tflite::logging_internal::MinimalLogger::SetMinimumLogSeverity(
+                static_cast<LogSeverity>(-1)),
+            default_log_severity);
   TFLITE_LOG_PROD(static_cast<LogSeverity>(-1), "Three");
   EXPECT_EQ("<Unknown severity>: Three\n",
             testing::internal::GetCapturedStderr());
+  tflite::logging_internal::MinimalLogger::SetMinimumLogSeverity(
+      default_log_severity);
+}
+
+TEST(MinimalLogging, MinimumSeverity) {
+  testing::internal::CaptureStderr();
+  LogSeverity default_log_severity = TFLITE_LOG_INFO;
+#if defined(__ANDROID__) || !defined(NDEBUG)
+  default_log_severity = TFLITE_LOG_VERBOSE;
+#endif
+
+  EXPECT_EQ(tflite::logging_internal::MinimalLogger::SetMinimumLogSeverity(
+                TFLITE_LOG_WARNING),
+            default_log_severity);
+  TFLITE_LOG_PROD(TFLITE_LOG_WARNING, "Foo");
+  TFLITE_LOG_PROD(default_log_severity, "Bar");
+  EXPECT_EQ("WARNING: Foo\n", testing::internal::GetCapturedStderr());
+  tflite::logging_internal::MinimalLogger::SetMinimumLogSeverity(
+      default_log_severity);
 }
 
 TEST(MinimalLogging, Once) {

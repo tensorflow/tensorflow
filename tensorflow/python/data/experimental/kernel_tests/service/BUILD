@@ -1,8 +1,9 @@
 # tf.data service tests.
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -33,7 +34,7 @@ tf_py_test(
     name = "coordinated_read_ft_test",
     size = "medium",
     srcs = ["coordinated_read_ft_test.py"],
-    shard_count = 16,
+    shard_count = 8,
     deps = [
         ":test_base",
         "//tensorflow:tensorflow_py",
@@ -50,7 +51,7 @@ tf_py_test(
     name = "coordinated_read_test",
     size = "medium",
     srcs = ["coordinated_read_test.py"],
-    shard_count = 16,
+    shard_count = 8,
     deps = [
         ":test_base",
         "//tensorflow:tensorflow_py",
@@ -177,6 +178,38 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "cross_trainer_cache_test",
+    size = "medium",
+    srcs = ["cross_trainer_cache_test.py"],
+    shard_count = 8,
+    deps = [
+        ":test_base",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/platform:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "cross_trainer_cache_ft_test",
+    size = "medium",
+    srcs = ["cross_trainer_cache_ft_test.py"],
+    shard_count = 4,
+    deps = [
+        ":test_base",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/platform:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
     name = "multi_device_test",
     size = "small",
     srcs = ["multi_device_test.py"],
@@ -201,6 +234,7 @@ py_library(
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/distribute:multi_process_lib",
         "//tensorflow/python/platform:test",

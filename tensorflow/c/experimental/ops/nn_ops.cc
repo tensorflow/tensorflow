@@ -43,10 +43,11 @@ Status SparseSoftmaxCrossEntropyWithLogits(AbstractContext* ctx,
                                            AbstractTensorHandle* const labels,
                                            AbstractTensorHandle** loss,
                                            AbstractTensorHandle** backprop,
-                                           const char* name) {
+                                           const char* name,
+                                           const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op_ptr->Reset("SparseSoftmaxCrossEntropyWithLogits",
-                                   /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(
+      op_ptr->Reset("SparseSoftmaxCrossEntropyWithLogits", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(features));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(labels));
@@ -64,9 +65,10 @@ Status SparseSoftmaxCrossEntropyWithLogits(AbstractContext* ctx,
 // Description:
 Status ReluGrad(AbstractContext* ctx, AbstractTensorHandle* const gradients,
                 AbstractTensorHandle* const features,
-                AbstractTensorHandle** backprops, const char* name) {
+                AbstractTensorHandle** backprops, const char* name,
+                const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op_ptr->Reset("ReluGrad", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("ReluGrad", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(gradients));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(features));
@@ -83,9 +85,10 @@ Status ReluGrad(AbstractContext* ctx, AbstractTensorHandle* const gradients,
 //   >>> tf.nn.relu([-2., 0., 3.]).numpy()
 //   array([0., 0., 3.], dtype=float32)
 Status Relu(AbstractContext* ctx, AbstractTensorHandle* const features,
-            AbstractTensorHandle** activations, const char* name) {
+            AbstractTensorHandle** activations, const char* name,
+            const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op_ptr->Reset("Relu", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("Relu", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(features));
   int num_retvals = 1;
@@ -100,9 +103,10 @@ Status Relu(AbstractContext* ctx, AbstractTensorHandle* const features,
 //   Broadcasting is supported, so `value` may have any number of dimensions.
 Status BiasAdd(AbstractContext* ctx, AbstractTensorHandle* const value,
                AbstractTensorHandle* const bias, AbstractTensorHandle** output,
-               const char* data_format, const char* name) {
+               const char* data_format, const char* name,
+               const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op_ptr->Reset("BiasAdd", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("BiasAdd", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(value));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(bias));
@@ -122,9 +126,9 @@ Status BiasAdd(AbstractContext* ctx, AbstractTensorHandle* const value,
 Status BiasAddGrad(AbstractContext* ctx,
                    AbstractTensorHandle* const out_backprop,
                    AbstractTensorHandle** output, const char* data_format,
-                   const char* name) {
+                   const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op_ptr->Reset("BiasAddGrad", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("BiasAddGrad", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(out_backprop));
   TF_RETURN_IF_ERROR(

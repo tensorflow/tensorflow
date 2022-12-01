@@ -26,7 +26,7 @@ Status CheckOpDefCompatibility(const tensorflow::OpDef& op_def) {
       return tensorflow::errors::Internal(
           "TFRT kernel fallback error: Unsupported ref args in ",
           op_def.name());
-    return Status::OK();
+    return OkStatus();
   };
 
   for (const auto& arg_def : op_def.input_arg())
@@ -34,7 +34,7 @@ Status CheckOpDefCompatibility(const tensorflow::OpDef& op_def) {
   for (const auto& arg_def : op_def.output_arg())
     TF_RETURN_IF_ERROR(check_arg_def(arg_def));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Create a tensorflow::NodeDef from the tensorflow::OpDef and the attributes.
@@ -73,7 +73,7 @@ tensorflow::Status CreateOpKernel(
   tensorflow::OpKernel* k = nullptr;
   TF_RETURN_IF_ERROR(flr->CreateKernel(props, &k));
   result->reset(k);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -155,16 +155,26 @@ OpKernelRunner::OpKernelRunner(
   }
 }
 
+void OpKernelRunner::Run(OpKernelContext* context) const {
+  DVLOG(1) << "KernelFallbackExecuteCompat Running Op: "
+           << op_kernel_->def().DebugString()
+           << ", on Device: " << context->device()->name();
+
+  static_cast<tensorflow::Device*>(context->device())
+      ->Compute(op_kernel_.get(), context);
+}
+
 void OpKernelRunner::RunAsync(OpKernelContext* context,
                               AsyncOpKernel::DoneCallback done_callback) const {
   DVLOG(1) << "KernelFallbackExecuteCompat Running Async Op: "
            << op_kernel_->def().DebugString()
-           << ", on Device: " << device_->name();
+           << ", on Device: " << context->device()->name();
 
   AsyncOpKernel* async = op_kernel_->AsAsync();
   DCHECK(async);
 
-  async->ComputeAsync(context, std::move(done_callback));
+  static_cast<tensorflow::Device*>(context->device())
+      ->ComputeAsync(async, context, std::move(done_callback));
 }
 
 }  // namespace tfrt_stub

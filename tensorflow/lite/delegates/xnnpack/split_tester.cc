@@ -19,15 +19,16 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <numeric>
 #include <random>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
@@ -132,8 +133,8 @@ void SplitTester::Test(TensorType tensor_type, TfLiteDelegate *delegate) const {
   ASSERT_TRUE(default_interpreter);
   ASSERT_EQ(delegate_interpreter->inputs().size(), 2);
   ASSERT_EQ(default_interpreter->inputs().size(), 2);
-  ASSERT_EQ(delegate_interpreter->outputs().size(), 2);
-  ASSERT_EQ(default_interpreter->outputs().size(), 2);
+  ASSERT_EQ(delegate_interpreter->outputs().size(), NumSplits());
+  ASSERT_EQ(default_interpreter->outputs().size(), NumSplits());
 
   ASSERT_EQ(delegate_interpreter->AllocateTensors(), kTfLiteOk);
   ASSERT_EQ(default_interpreter->AllocateTensors(), kTfLiteOk);
@@ -167,7 +168,7 @@ std::vector<char> SplitTester::CreateTfLiteModel(TensorType tensor_type) const {
                     builder.CreateVector(
                         reinterpret_cast<const uint8_t *>(split_dim.data()),
                         split_dim.size() * sizeof(int32_t)))}};
-  std::array<int32_t, 1> split_dim_shape = {1};
+  std::array<int32_t, 0> split_dim_shape = {};
 
   flatbuffers::Offset<QuantizationParameters> quantization_params =
       CreateQuantizationParameters(
@@ -186,20 +187,25 @@ std::vector<char> SplitTester::CreateTfLiteModel(TensorType tensor_type) const {
                                                  InputShape().size()),
                    tensor_type,
                    /*buffer=*/0, /*name=*/0, quantization_params),
-      CreateTensor(builder,
-                   builder.CreateVector<int32_t>(OutputShape().data(),
-                                                 OutputShape().size()),
-                   tensor_type,
-                   /*buffer=*/0, /*name=*/0, quantization_params),
-      CreateTensor(builder,
-                   builder.CreateVector<int32_t>(OutputShape().data(),
-                                                 OutputShape().size()),
-                   tensor_type,
-                   /*buffer=*/0, /*name=*/0, quantization_params),
   }};
 
+  for (int i = 0; i < NumSplits(); i++) {
+    tensors.push_back(
+        CreateTensor(builder,
+                     builder.CreateVector<int32_t>(OutputShape().data(),
+                                                   OutputShape().size()),
+                     tensor_type,
+                     /*buffer=*/0, /*name=*/0, quantization_params));
+  }
+
   const std::array<int32_t, 2> op_inputs{0, 1};
-  const std::array<int32_t, 2> op_outputs{2, 3};
+  std::vector<int32_t> op_outputs;
+  op_outputs.reserve(NumSplits());
+  for (int i = 0; i < NumSplits(); i++) {
+    op_outputs.push_back(op_inputs.size() + i);
+  }
+  EXPECT_EQ(op_outputs.size(), NumSplits());
+
   const flatbuffers::Offset<Operator> op = CreateOperator(
       builder, /*opcode_index=*/0,
       builder.CreateVector<int32_t>(op_inputs.data(), op_inputs.size()),
@@ -208,7 +214,7 @@ std::vector<char> SplitTester::CreateTfLiteModel(TensorType tensor_type) const {
       CreateSplitOptions(builder, NumSplits()).Union());
 
   const std::array<int32_t, 2> subgraph_inputs = op_inputs;
-  const std::array<int32_t, 2> subgraph_outputs = op_outputs;
+  const std::vector<int32_t> subgraph_outputs = op_outputs;
   flatbuffers::Offset<SubGraph> subgraph = CreateSubGraph(
       builder, builder.CreateVector(tensors.data(), tensors.size()),
       builder.CreateVector<int32_t>(subgraph_inputs.data(),

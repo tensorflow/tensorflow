@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/function/testing/test_pass.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -57,7 +58,7 @@ EagerContextPtr TestingEagerCtx() {
       /*rendezvous=*/nullptr,
       /*cluster_flr=*/nullptr,
       /*collective_executor_mgr=*/nullptr,
-      /*run_eager_op_as_function=*/false));
+      /*run_eager_op_as_function=*/true));
 }
 
 int IntValue(ImmediateExecutionTensorHandle& h) {
@@ -228,7 +229,8 @@ TEST(CreateTest, MlirFromGraphDef) {
       )mlir",
       &mctx);
 
-  mlir::tfg::GraphFuncOp fop = *m->body().op_begin<mlir::tfg::GraphFuncOp>();
+  mlir::tfg::GraphFuncOp fop =
+      *m->getBody()->op_begin<mlir::tfg::GraphFuncOp>();
 
   EagerContextPtr ectx = TestingEagerCtx();
   Runtime rt(*ectx);
@@ -285,6 +287,24 @@ TEST(CallTest, Binary) {
   ASSERT_EQ(rets->size(), 1);
   ASSERT_EQ(rets->at(0)->DataType(), DT_INT32);
   EXPECT_EQ(IntValue(*(rets->at(0))), 2);
+}
+
+TEST(TransformTest, TestPassOnBinaryFunction) {
+  EagerContextPtr ctx = TestingEagerCtx();
+  Runtime rt(*ctx);
+  TF_ASSERT_OK(rt.CreateFunction(MakeBinaryFunction()));
+
+  testing::RegisterTestPass();
+  TF_EXPECT_OK(rt.TransformFunction("BinaryFunction", "test-pass"));
+
+  auto x = IntScalarTensor(*ctx, 2);
+  auto y = IntScalarTensor(*ctx, 3);
+  StatusOr<ReturnValues> rets =
+      rt.CallFunction("BinaryFunction", {x.get(), y.get()});
+  TF_ASSERT_OK(rets.status());
+  ASSERT_EQ(rets->size(), 1);
+  ASSERT_EQ(rets->at(0)->DataType(), DT_INT32);
+  EXPECT_EQ(IntValue(*(rets->at(0))), 6);
 }
 
 }  // namespace

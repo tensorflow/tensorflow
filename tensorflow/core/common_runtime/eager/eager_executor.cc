@@ -31,7 +31,8 @@ bool IsAsyncWaitForRemoteFunctionEnabled() {
 }
 }  // namespace
 
-EagerExecutor::EagerExecutor(bool async)
+EagerExecutor::EagerExecutor(bool async, bool enable_streaming_enqueue,
+                             int in_flight_nodes_limit)
     : next_node_id_(0),
       ok_(true),
       thread_(async ? tensorflow::Env::Default()->StartThread(
@@ -40,7 +41,14 @@ EagerExecutor::EagerExecutor(bool async)
                     : nullptr),
       last_eager_client_(nullptr),
       enable_async_wait_for_remote_function_(
-          IsAsyncWaitForRemoteFunctionEnabled()) {}
+          IsAsyncWaitForRemoteFunctionEnabled()),
+      enable_streaming_enqueue_(enable_streaming_enqueue),
+      in_flight_nodes_limit_(in_flight_nodes_limit) {
+  if (async && in_flight_nodes_limit_ > 0) {
+    LOG(INFO) << "EagerExecutor InFlightNodes limit is set to "
+              << in_flight_nodes_limit_;
+  }
+}
 
 EagerExecutor::~EagerExecutor() {
   tensorflow::mutex_lock l(node_queue_mutex_);
@@ -155,8 +163,23 @@ Status EagerExecutor::AddOrExecute(std::unique_ptr<EagerNode> node) {
         if (node_queue_.size() == 1) {
           nodes_pending_.notify_all();
         }
-
-        return Status::OK();
+        if (in_flight_nodes_limit_ == 0) {
+          return OkStatus();
+        }
+        // Limit the concurrency by controlling the number of in flight nodes.
+        while (true) {
+          int64_t in_flight_nodes_count =
+              node_queue_.size() + unfinished_nodes_.size();
+          if (in_flight_nodes_count < in_flight_nodes_limit_) {
+            break;
+          }
+          VLOG(4) << "Hitting in-flight node limit node_queue_.size() = "
+                  << node_queue_.size()
+                  << " unfinished_nodes_.size() = " << unfinished_nodes_.size()
+                  << ".";
+          nodes_done_.wait(l);
+        }
+        return OkStatus();
       }
     }
   }
@@ -179,8 +202,7 @@ tensorflow::Status EagerExecutor::WaitForAllPendingNodesLocked(
   tensorflow::condition_variable cond;
   // Don't wait if an error is already set.
   if (!status_.ok()) return status_;
-  if (node_queue_.empty() && unfinished_nodes_.empty())
-    return tensorflow::Status::OK();
+  if (node_queue_.empty() && unfinished_nodes_.empty()) return OkStatus();
   // node_queue_ must be empty in sync mode.
   DCHECK(Async() || node_queue_.empty());
   auto last_id = next_node_id_ - 1;
@@ -201,7 +223,7 @@ void EagerExecutor::ClearError() {
   // been cleared, and no new entries should have been added since.
   DCHECK(node_done_notifications_.empty());
   DCHECK(node_queue_.empty());
-  status_ = tensorflow::Status::OK();
+  status_ = OkStatus();
   ok_ = true;
   last_eager_client_ = nullptr;
   nodes_pending_.notify_all();
@@ -275,6 +297,8 @@ void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
     if (need_notification) {
       NotifyWaiters(item->id);
     }
+    // Notify AddOrExecute() some nodes have been done.
+    nodes_done_.notify_all();
   }
 
   for (auto& item : items_to_destroy) {
@@ -414,7 +438,7 @@ Status EagerExecutor::MoveToUnfinished(core::RefCountPtr<NodeItem> item,
   unfinished_nodes_.emplace_hint(unfinished_nodes_.end(), item->id,
                                  std::move(item));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void EagerExecutor::AddCleanup(intptr_t key, std::function<void()> callback) {

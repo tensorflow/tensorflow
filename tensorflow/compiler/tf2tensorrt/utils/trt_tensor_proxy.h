@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_TENSOR_PROXY_H
-#define TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_TENSOR_PROXY_H
+#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TRT_TENSOR_PROXY_H_
+#define TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TRT_TENSOR_PROXY_H_
 
 #include <cstddef>
 #include <memory>
@@ -455,4 +455,4 @@ struct ITensorProxyHash {
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
-#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_TENSOR_PROXY_H
+#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TRT_TENSOR_PROXY_H_

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
 
@@ -32,7 +33,7 @@ Status GetNodeAttr(const NodeDef& node_def, StringPiece attr_name,
   } else {
     return errors::NotFound(str_value, " is not an allowed padding mode.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 string GetMirrorPadModeAttrString() { return "mode: {'REFLECT', 'SYMMETRIC'}"; }

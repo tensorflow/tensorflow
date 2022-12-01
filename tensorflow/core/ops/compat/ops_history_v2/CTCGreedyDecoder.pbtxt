@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "CTCGreedyDecoder"
   input_arg {
     name: "inputs"

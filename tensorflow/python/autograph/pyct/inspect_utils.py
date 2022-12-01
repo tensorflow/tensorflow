@@ -17,6 +17,7 @@
 This module contains whatever inspect doesn't offer out of the box.
 """
 
+import builtins
 import inspect
 import itertools
 import linecache
@@ -24,29 +25,10 @@ import sys
 import threading
 import types
 
-import six
-
 from tensorflow.python.util import tf_inspect
 
 # This lock seems to help avoid linecache concurrency errors.
 _linecache_lock = threading.Lock()
-
-# These functions test negative for isinstance(*, types.BuiltinFunctionType)
-# and inspect.isbuiltin, and are generally not visible in globals().
-# TODO(mdan): Remove this.
-SPECIAL_BUILTINS = {
-    'dict': dict,
-    'enumerate': enumerate,
-    'float': float,
-    'int': int,
-    'len': len,
-    'list': list,
-    'print': print,
-    'range': range,
-    'tuple': tuple,
-    'type': type,
-    'zip': zip
-}
 
 
 def islambda(f):
@@ -76,7 +58,7 @@ def isnamedtuple(f):
 
 def isbuiltin(f):
   """Returns True if the argument is a built-in function."""
-  if any(f is builtin for builtin in six.moves.builtins.__dict__.values()):
+  if any(f is builtin for builtin in builtins.__dict__.values()):
     return True
   elif isinstance(f, types.BuiltinFunctionType):
     return True
@@ -157,9 +139,9 @@ def getnamespace(f):
   Returns:
     A dict mapping symbol names to values.
   """
-  namespace = dict(six.get_function_globals(f))
-  closure = six.get_function_closure(f)
-  freevars = six.get_function_code(f).co_freevars
+  namespace = dict(f.__globals__)
+  closure = f.__closure__
+  freevars = f.__code__.co_freevars
   if freevars and closure:
     for name, cell in zip(freevars, closure):
       try:
@@ -232,28 +214,15 @@ def getqualifiedname(namespace, object_, max_depth=5, visited=None):
   return None
 
 
-def _get_unbound_function(m):
-  # TODO(mdan): Figure out why six.get_unbound_function fails in some cases.
-  # The failure case is for tf.keras.Model.
-  if hasattr(m, '__func__'):
-    return m.__func__
-  if hasattr(m, 'im_func'):
-    return m.im_func
-  return m
-
-
 def getdefiningclass(m, owner_class):
   """Resolves the class (e.g. one of the superclasses) that defined a method."""
-  # Normalize bound functions to their respective unbound versions.
-  m = _get_unbound_function(m)
-  for superclass in reversed(inspect.getmro(owner_class)):
-    if hasattr(superclass, m.__name__):
-      superclass_m = getattr(superclass, m.__name__)
-      if _get_unbound_function(superclass_m) is m:
-        return superclass
-      elif hasattr(m, '__self__') and m.__self__ == owner_class:
-        # Python 3 class methods only work this way it seems :S
-        return superclass
+  method_name = m.__name__
+  for super_class in inspect.getmro(owner_class):
+    if ((hasattr(super_class, '__dict__') and
+         method_name in super_class.__dict__) or
+        (hasattr(super_class, '__slots__') and
+         method_name in super_class.__slots__)):
+      return super_class
   return owner_class
 
 
@@ -286,7 +255,7 @@ def getmethodclass(m):
   # Callable objects: return their own class.
   if (not hasattr(m, '__name__') and hasattr(m, '__class__') and
       hasattr(m, '__call__')):
-    if isinstance(m.__class__, six.class_types):
+    if isinstance(m.__class__, type):
       return m.__class__
 
   # Instance and class: return the class of "self".

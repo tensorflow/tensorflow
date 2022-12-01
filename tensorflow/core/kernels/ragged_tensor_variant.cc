@@ -58,7 +58,7 @@ Status RaggedTensorVariantDeviceCopy(
   TF_RETURN_IF_ERROR(copy(from.values(), to->mutable_values()));
   // TODO(b/170415165) Should we use `copy` to move splits from device<->host?
   *to->mutable_nested_splits() = from.nested_splits();
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

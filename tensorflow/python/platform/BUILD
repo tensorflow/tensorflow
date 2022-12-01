@@ -1,23 +1,14 @@
 # platform package
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_build_info_genrule")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_py_build_info_genrule", "tf_py_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 visibility = [
     "//tensorflow:__subpackages__",
 ]
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = visibility,
     licenses = ["notice"],
 )
@@ -46,12 +37,9 @@ py_library(
             "device_context.py",  # In platform_device_context.
         ],
     ) + ["build_info.py"],
-    data = select({
-        "//tensorflow:windows": [],
-        "//conditions:default": ["//tensorflow/core/platform:_cpu_feature_guard.so"],
-    }),
     srcs_version = "PY3",
     deps = [
+        ":_pywrap_cpu_feature_guard",
         ":build_info",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:pywrap_tfe",
@@ -62,7 +50,6 @@ py_library(
         "@absl_py//absl/flags",
         "@absl_py//absl/logging",
         "@rules_python//python/runfiles",
-        "@six_archive//:six",
     ],
 )
 
@@ -73,7 +60,6 @@ py_library(
     deps = [
         ":platform",
         "//tensorflow/python:client",
-        "@six_archive//:six",
     ],
 )
 
@@ -130,6 +116,8 @@ tf_py_test(
     ],
     python_version = "PY3",
     tags = [
+        "no_mac",  # TODO(b/259295275) re-enable after fixing sysconfig.get_path breakage
+        "no_oss",  # TODO(b/259295275) re-enable after fixing sysconfig.get_path breakage
         "no_pip",
         "no_windows",
     ],
@@ -145,6 +133,9 @@ tf_py_test(
     size = "small",
     srcs = ["flags_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_mac",  # TODO(b/259295275) re-enable after fixing sysconfig.get_path breakage
+    ],
     deps = [
         ":client_testlib",
         ":platform",
@@ -181,9 +172,21 @@ tf_py_test(
 tf_python_pybind_extension(
     name = "_pywrap_stacktrace_handler",
     srcs = ["stacktrace_handler_wrapper.cc"],
-    hdrs = ["//tensorflow/core/platform:stacktrace_handler_hdrs"],
-    module_name = "_pywrap_stacktrace_handler",
+    hdrs = [
+        "//tensorflow/core/platform:stacktrace_handler_hdrs",
+        "//tensorflow/tsl/platform:stacktrace_handler_hdrs",
+    ],
     deps = [
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
+pybind_extension(
+    name = "_pywrap_cpu_feature_guard",
+    srcs = ["cpu_feature_guard_wrapper.cc"],
+    deps = [
+        "//tensorflow/core/platform:cpu_feature_guard",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -246,7 +249,6 @@ pybind_extension(
     name = "_pywrap_tf2",
     srcs = ["enable_tf2.cc"],
     hdrs = ["//tensorflow/core/platform:enable_tf2_hdr"],
-    module_name = "_pywrap_tf2",
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

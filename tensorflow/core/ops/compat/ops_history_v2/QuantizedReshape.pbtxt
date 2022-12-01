@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "QuantizedReshape"
   input_arg {
     name: "tensor"

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/pooling_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -37,18 +38,18 @@ absl::Status AveragePoolingTest(TestExecutionEnvironment* env) {
   attr.kernel = HW(2, 2);
   attr.type = PoolingType::AVERAGE;
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation = CreatePooling(op_def, attr);
+      GPUOperation operation = CreatePooling(op_def, env->GetGpuInfo(), attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 1, 1, 2), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({3.0f, 4.0f}, dst_tensor.data, eps));
     }
@@ -68,18 +69,18 @@ absl::Status AveragePoolingNonEmptyPaddingTest(TestExecutionEnvironment* env) {
   attr.kernel = HW(2, 2);
   attr.type = PoolingType::AVERAGE;
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation = CreatePooling(op_def, attr);
+      GPUOperation operation = CreatePooling(op_def, env->GetGpuInfo(), attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 2, 1), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({1.5f, 2.0f, 2.5f, 3.0f}, dst_tensor.data, eps));
@@ -100,18 +101,18 @@ absl::Status MaxPoolingTest(TestExecutionEnvironment* env) {
   attr.kernel = HW(2, 2);
   attr.type = PoolingType::MAX;
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation = CreatePooling(op_def, attr);
+      GPUOperation operation = CreatePooling(op_def, env->GetGpuInfo(), attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 1, 1, 2), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({8.0f, 7.0f}, dst_tensor.data, eps));
     }
@@ -132,20 +133,20 @@ absl::Status MaxPoolingIndicesTest(TestExecutionEnvironment* env) {
   attr.type = PoolingType::MAX;
   attr.output_indices = true;
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       TensorFloat32 dst_tensor_ind;
-      GPUOperation operation = CreatePooling(op_def, attr);
+      GPUOperation operation = CreatePooling(op_def, env->GetGpuInfo(), attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          {src_tensor}, absl::make_unique<GPUOperation>(std::move(operation)),
+          {src_tensor}, std::make_unique<GPUOperation>(std::move(operation)),
           {BHWC(1, 1, 1, 2), BHWC(1, 1, 1, 2)},
           {&dst_tensor, &dst_tensor_ind}));
       RETURN_IF_ERROR(PointWiseNear({8.0f, 7.0f}, dst_tensor.data, eps));
@@ -157,11 +158,11 @@ absl::Status MaxPoolingIndicesTest(TestExecutionEnvironment* env) {
   }
 
   // Testing writing of indices in int tensor
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({DataType::INT32, storage, Layout::HWC});
@@ -172,10 +173,10 @@ absl::Status MaxPoolingIndicesTest(TestExecutionEnvironment* env) {
       dst_0.SetBHWCShape(BHWC(1, 1, 1, 2));
       dst_1.SetBHWCShape(BHWC(1, 1, 1, 2));
 
-      GPUOperation operation = CreatePooling(op_def, attr);
+      GPUOperation operation = CreatePooling(op_def, env->GetGpuInfo(), attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {&src_0}, {&dst_0, &dst_1},
-          absl::make_unique<GPUOperation>(std::move(operation))));
+          std::make_unique<GPUOperation>(std::move(operation))));
 
       TensorFloat32 dst_tensor;
       dst_0.DownloadData(&dst_tensor);

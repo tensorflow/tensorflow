@@ -94,7 +94,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return absl::make_unique<Iterator>(typename Iterator::Params{
+      return std::make_unique<Iterator>(typename Iterator::Params{
           this, strings::StrCat(prefix, "::DenseToSparseBatch")});
     }
 
@@ -123,7 +123,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return Status::OK();
+      return OkStatus();
     }
 
     Status CheckExternalState() const override {
@@ -147,7 +147,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddVector(row_shape, &row_shape_node));
       TF_RETURN_IF_ERROR(b->AddDataset(
           this, {input_node, batch_size_node, row_shape_node}, output));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:
@@ -231,7 +231,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
         if (batch_elements.empty()) {
           DCHECK(*end_of_sequence);
-          return Status::OK();
+          return OkStatus();
         }
 
         // * indices will be [`total_elements`, `row_shape + 1`].
@@ -284,7 +284,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
         out_tensors->push_back(std::move(serialized_sparse));
 
         *end_of_sequence = false;
-        return Status::OK();
+        return OkStatus();
       }
 
      protected:
@@ -299,14 +299,14 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
                           IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(Iterator::SaveInput(ctx, writer, input_impl_));
-        return Status::OK();
+        return OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(Iterator::RestoreInput(ctx, reader, input_impl_));
-        return Status::OK();
+        return OkStatus();
       }
 
      private:

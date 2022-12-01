@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
@@ -25,7 +26,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 
 namespace mlir {
 namespace tf_saved_model {
@@ -33,8 +33,10 @@ namespace {
 using mlir::Operation;
 using mlir::TF::VarHandleOp;
 
+#define GEN_PASS_DEF_REMOVEVARIABLESINSESSIONINITIALIZERPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
 class RemoveVariablesInSessionInitializerPass
-    : public RemoveVariablesInSessionInitializerPassBase<
+    : public impl::RemoveVariablesInSessionInitializerPassBase<
           RemoveVariablesInSessionInitializerPass> {
  public:
   void runOnOperation() override;
@@ -84,8 +86,8 @@ void RemoveVariablesInSessionInitializerPass::runOnOperation() {
 
   SymbolTable symbol_table(module);
 
-  for (auto sym_ref : session_init_op.initializers()) {
-    FuncOp init_func_op = symbol_table.lookup<mlir::FuncOp>(
+  for (auto sym_ref : session_init_op.getInitializers()) {
+    func::FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
         sym_ref.cast<FlatSymbolRefAttr>().getValue());
 
     if (!init_func_op) {

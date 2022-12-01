@@ -382,7 +382,11 @@ class ActivityAnalyzer(transformer.Base):
   def visit_AnnAssign(self, node):
     self._enter_scope(False)
     node.target = self.visit(node.target)
-    node.value = self.visit(node.value)
+    if node.value is not None:
+      # Can be None for pure declarations, e.g. `n: int`. This is a new thing
+      # enabled by type annotations, but does not influence static analysis
+      # (declarations are not definitions).
+      node.value = self.visit(node.value)
     if node.annotation:
       node.annotation = self._process_annotation(node.annotation)
     self._exit_and_record_scope(node)
@@ -630,6 +634,8 @@ class ActivityAnalyzer(transformer.Base):
       lambda_scope = self.scope
       self._exit_and_record_scope(node, NodeAnno.ARGS_AND_BODY_SCOPE)
 
+      # TODO(bhack:) https://github.com/tensorflow/tensorflow/issues/56089
+      # remove after deprecation
       # Exception: lambdas are assumed to be used in the place where
       # they are defined. Therefore, their activity is passed on to the
       # calling statement.

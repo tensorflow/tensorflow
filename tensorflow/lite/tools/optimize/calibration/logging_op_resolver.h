@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_LOGGING_OP_RESOLVER_H_
-#define TENSORFLOW_LITE_TOOLS_OPTIMIZE_LOGGING_OP_RESOLVER_H_
+#ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_LOGGING_OP_RESOLVER_H_
+#define TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_LOGGING_OP_RESOLVER_H_
 
 #include <set>
 #include <unordered_map>
@@ -62,4 +62,4 @@ class LoggingOpResolver : public OpResolver {
 }  // namespace optimize
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_TOOLS_OPTIMIZE_LOGGING_OP_RESOLVER_H_
+#endif  // TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_LOGGING_OP_RESOLVER_H_

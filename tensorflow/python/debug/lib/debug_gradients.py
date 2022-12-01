@@ -17,8 +17,6 @@
 import re
 import uuid
 
-import six
-
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.lib import debug_graphs
 from tensorflow.python.framework import ops
@@ -61,7 +59,7 @@ def _parse_grad_debug_op_name(op_name):
   return grad_debugger_uuid, orig_tensor_name
 
 
-class GradientsDebugger(object):
+class GradientsDebugger:
   """Gradients Debugger.
 
   Allows retrieval of gradient tensors created by TensorFlow's automatic
@@ -336,7 +334,7 @@ class GradientsDebugger(object):
   def _get_tensor_name(self, tensor):
     if isinstance(tensor, (ops.Tensor, variables.Variable)):
       return tensor.name
-    elif isinstance(tensor, six.string_types):
+    elif isinstance(tensor, str):
       return tensor
     else:
       raise TypeError(

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -30,12 +31,12 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 
 namespace mlir {
 namespace mhlo {
@@ -71,7 +72,7 @@ FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
       if (t.isa<TokenType>()) continue;
       auto layout = GetTPUInfeedLayout({t}, rewriter);
       if (failed(layout)) return failure();
-      v.push_back(layout.getValue());
+      v.push_back(layout.value());
     }
     ArrayRef<Attribute> shape(v);
     return rewriter.getArrayAttr(shape);
@@ -84,7 +85,7 @@ FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
       if (t.isa<TokenType>()) continue;
       auto layout = GetTPUInfeedLayout({t}, rewriter);
       if (failed(layout)) return failure();
-      v.push_back(layout.getValue());
+      v.push_back(layout.value());
     }
     ArrayRef<Attribute> shape(v);
     return rewriter.getArrayAttr(shape);
@@ -93,7 +94,7 @@ FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
     auto layout = GetTPUInfeedLayoutFromAPI(t);
     std::vector<int64_t> minor_to_major;
     if (succeeded(layout)) {
-      minor_to_major = layout.getValue();
+      minor_to_major = layout.value();
     } else {
       /* If we're not running on a TPU node, we might not be able to
        * actually call the part of the TPU API that gives us layout.
@@ -128,12 +129,15 @@ FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
 }
 
 namespace {
-class AdjustLayout : public PassWrapper<AdjustLayout, OperationPass<FuncOp>> {
+class AdjustLayout
+    : public PassWrapper<AdjustLayout, OperationPass<func::FuncOp>> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect>();
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AdjustLayout)
+
   StringRef getArgument() const final { return "xla-adjust-layout"; }
   StringRef getDescription() const final {
     return "Adjust layouts so infeed send & receive use the same format.";
@@ -147,7 +151,7 @@ class AdjustLayout : public PassWrapper<AdjustLayout, OperationPass<FuncOp>> {
       auto layout = GetTPUInfeedLayout(result_types, builder);
       if (failed(layout)) return;
 
-      op->setAttr("layout", layout.getValue());
+      op->setAttr("layout", layout.value());
     }
   }
 

@@ -22,13 +22,13 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
+#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/stream_executor_util.h"
-#include "tensorflow/stream_executor/tf_allocator_adapter.h"
 
 namespace tensorflow {
 
@@ -44,7 +44,7 @@ namespace tensorflow {
 //
 // `has_ref_vars`: whether the input computation can have reference variables.
 // TODO(cheshire): instead derive this information from the input graph.
-class XlaLocalLaunchBase : public OpKernel {
+class XlaLocalLaunchBase : public AsyncOpKernel {
  public:
   XlaLocalLaunchBase(OpKernelConstruction* ctx,
                      const std::vector<int>& constants,
@@ -54,7 +54,7 @@ class XlaLocalLaunchBase : public OpKernel {
   XlaLocalLaunchBase& operator=(const XlaLocalLaunchBase&) = delete;
   ~XlaLocalLaunchBase() override = default;
 
-  void Compute(OpKernelContext* ctx) override;
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
 
  protected:
   // Indexes of compile-time constant inputs

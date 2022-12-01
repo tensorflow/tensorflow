@@ -32,7 +32,7 @@ namespace toco {
   const auto dequantize_it = model->operators.begin() + op_index;
   const auto* dequantize_op = dequantize_it->get();
   if (dequantize_op->type != OperatorType::kDequantize) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   const auto& output = dequantize_op->outputs[0];
   // We can remove any dequantize op whose output is not consumed by
@@ -41,7 +41,7 @@ namespace toco {
   // in the middle of the graph might be designated as an output
   // array.
   if (CountOpsWithInput(*model, output)) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // If one of the model's output arrays was actually the Dequantize op's
@@ -56,7 +56,7 @@ namespace toco {
   AddMessageF("Removed final %s", LogName(*dequantize_op));
   DeleteOpAndArrays(model, dequantize_op);
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

@@ -75,7 +75,7 @@ Status CreateTableTensorSliceBuilder(const string& name,
   Status s = Env::Default()->NewWritableFile(name, &f);
   if (s.ok()) {
     *builder = new TableBuilder(name, f.release());
-    return Status::OK();
+    return OkStatus();
   } else {
     return s;
   }
@@ -131,6 +131,16 @@ Status TensorSliceWriter::Finish() {
 
 /* static */
 size_t TensorSliceWriter::MaxBytesPerElement(DataType dt) {
+  size_t max_bytes_per_element =
+      TensorSliceWriter::MaxBytesPerElementOrZero(dt);
+  if (max_bytes_per_element == 0) {
+    LOG(FATAL) << "MaxBytesPerElement not implemented for dtype: " << dt;
+  }
+  return max_bytes_per_element;
+}
+
+/* static */
+size_t TensorSliceWriter::MaxBytesPerElementOrZero(DataType dt) {
   switch (dt) {
     case DT_FLOAT:
       return 4;
@@ -170,9 +180,8 @@ size_t TensorSliceWriter::MaxBytesPerElement(DataType dt) {
     case DT_STRING:
     case DT_BFLOAT16:
     default:
-      LOG(FATAL) << "MaxBytesPerElement not implemented for dtype: " << dt;
+      return 0;
   }
-  return 0;
 }
 
 template <>
@@ -191,7 +200,7 @@ Status TensorSliceWriter::SaveData(const tstring* data, int64_t num_elements,
   Fill(data, num_elements, ss->mutable_data());
   DCHECK_GE(ss->ByteSize(), 0);
   DCHECK_LE(ss->ByteSize(), size_bound);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace checkpoint

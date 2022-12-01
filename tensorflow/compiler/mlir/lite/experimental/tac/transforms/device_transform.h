@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_TRANSFORMS_DEVICE_TRANSFORM_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_TRANSFORMS_DEVICE_TRANSFORM_H_
 
+#include <string>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -35,10 +37,10 @@ RewritePatternSet GetHardwareRewritePatterns(MLIRContext* context,
 
 // Convert quantized ops to float, this will essentially insert dequantize &
 // quantize pair around the op.
-void ConvertQuantizedOpToFloat(FuncOp func, OpBuilder* builder);
+void ConvertQuantizedOpToFloat(func::FuncOp func, OpBuilder* builder);
 
 // This will optimize the quantized ops -> float graph.
-void OptimizeQuantizedOpToFloat(FuncOp func, MLIRContext* context);
+void OptimizeQuantizedOpToFloat(func::FuncOp func, MLIRContext* context);
 
 }  // namespace tac
 }  // namespace TFL

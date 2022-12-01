@@ -281,10 +281,12 @@ class GrpcRemoteWorker : public WorkerInterface {
   void IssueRequest(const protobuf::Message* request, TensorResponse* response,
                     const ::grpc::string& method, StatusCallback done,
                     CallOptions* call_opts = nullptr) {
-    new RPCState<TensorResponse>(&stub_, cq_, method, *request, response,
-                                 std::move(done), call_opts,
-                                 callback_threadpool_, MaxRetries(),
-                                 /*fail_fast=*/true, &target_);
+    new RPCState<TensorResponse>(
+        &stub_, cq_, method, *request, response, std::move(done), call_opts,
+        callback_threadpool_, MaxRetries(),
+        /*fail_fast=*/true, &target_,
+        // Use optimized proto parse function that avoids a copy.
+        GrpcMaybeParseTensorResponse);
   }
 
   void IssueMarkRecvFinishedRequest(int64_t request_id) {

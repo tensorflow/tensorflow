@@ -66,7 +66,7 @@ Status XlaTensor::AllocateShapedBuffer(DataType dtype,
   VLOG(4) << shaped_buffer.ToString();
 
   set_shaped_buffer(std::move(shaped_buffer));
-  return Status::OK();
+  return OkStatus();
 }
 
 void XlaTensor::WaitForDefinitionEventOnStream(se::Stream* stream) {

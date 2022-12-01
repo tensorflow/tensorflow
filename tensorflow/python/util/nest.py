@@ -143,6 +143,7 @@ def _sorted(dict_):
     raise TypeError("nest only supports dicts with sortable keys.")
 
 
+# TODO(b/225045380): Move to a "leaf" library to use in trace_type.
 def is_namedtuple(instance, strict=False):
   """Returns True iff `instance` is a `namedtuple`.
 
@@ -168,6 +169,7 @@ _is_mutable_mapping = _pywrap_utils.IsMutableMapping
 _is_mapping = _pywrap_utils.IsMapping
 
 
+# TODO(b/225045380): Move to a "leaf" library to use in trace_type.
 @tf_export("__internal__.nest.is_attrs", v1=[])
 def is_attrs(obj):
   """Returns a true if its input is an instance of an attr.s decorated class."""
@@ -211,9 +213,10 @@ def _sequence_like(instance, args):
   elif _is_mapping(instance):
     result = dict(zip(_sorted(instance), args))
     instance_type = type(instance)
-    tf_logging.log_first_n(
-        tf_logging.WARN, "Mapping types may not work well with tf.nest. Prefer"
-        " using MutableMapping for {}".format(instance_type), 1)
+    if not getattr(instance_type, "__supported_by_tf_nest__", False):
+      tf_logging.log_first_n(
+          tf_logging.WARN, "Mapping types may not work well with tf.nest. "
+          "Prefer using MutableMapping for {}".format(instance_type), 1)
     try:
       return instance_type((key, result[key]) for key in instance)
     except TypeError as err:
@@ -1098,8 +1101,8 @@ def assert_shallow_structure(shallow_tree,
         pass
 
       elif ((_is_composite_tensor(shallow_tree) or
-             _is_composite_tensor(input_tree)) and
-            (_is_type_spec(shallow_tree) or _is_type_spec(input_tree))):
+             _is_type_spec(shallow_tree)) and
+            (_is_composite_tensor(input_tree) or _is_type_spec(input_tree))):
         pass  # Compatibility will be checked below.
 
       elif not (isinstance(shallow_tree, _collections_abc.Mapping) and
@@ -1120,11 +1123,18 @@ def assert_shallow_structure(shallow_tree,
                      shallow_tree._type_spec)._without_tensor_names()
       type_spec_2 = (input_tree if _is_type_spec(input_tree) else
                      input_tree._type_spec)._without_tensor_names()
-      # pylint: enable=protected-access
-      result = type_spec_1.most_specific_common_supertype([type_spec_2])
+      # TODO(b/246356867): Replace the most_specific_common_supertype below
+      # with get_structure.
+      if hasattr(type_spec_1, "_get_structure") and hasattr(type_spec_2,
+                                                            "_get_structure"):
+        result = (type_spec_1._get_structure() == type_spec_2._get_structure()
+                  or None)
+      else:
+        result = type_spec_1.most_specific_common_supertype([type_spec_2])
       if result is None:
         raise ValueError("Incompatible CompositeTensor TypeSpecs: %s vs. %s" %
                          (type_spec_1, type_spec_2))
+      # pylint: enable=protected-access
 
     elif _is_type_spec(shallow_tree):
       if not _is_type_spec(input_tree):

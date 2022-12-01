@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-# Lint as: python3
 """Generates a v2 saved model for triggering placer and grappler."""
 
 from absl import app

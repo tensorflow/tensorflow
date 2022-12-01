@@ -41,7 +41,7 @@ Status ConsumePrefix(absl::string_view str, absl::string_view prefix,
                      absl::string_view* output) {
   if (absl::StartsWith(str, prefix)) {
     *output = str.substr(prefix.size());
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   return NotFound("No prefix \"", prefix, "\" in \"", str, "\"");
 }
@@ -63,7 +63,7 @@ Status ParseTextProto(absl::string_view text_proto,
   tensorflow::protobuf::io::ArrayInputStream input_stream(
       text_proto_without_prefix.data(), text_proto_without_prefix.size());
   if (parser.Parse(&input_stream, parsed_proto)) {
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   parsed_proto->Clear();
   return InvalidArgument("Could not parse text proto: ", text_proto);

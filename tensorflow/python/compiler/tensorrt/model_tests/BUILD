@@ -3,6 +3,7 @@
 #   numerics and latency.
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -28,7 +29,6 @@ py_library(
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
         "//third_party/py/numpy",
-        "@absl_py//absl/logging",
     ],
 )
 
@@ -61,6 +61,5 @@ py_binary(
         "//tensorflow/python/saved_model:tag_constants",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
-        "@absl_py//absl/logging",
     ],
 )

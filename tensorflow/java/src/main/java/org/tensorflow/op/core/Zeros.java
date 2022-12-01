@@ -27,9 +27,9 @@ import org.tensorflow.op.annotation.Operator;
  * An operator creating a constant initialized with zeros of the shape given by `dims`.
  * 
  * <p>For example, the following expression
- * <pre>{@code ops.zeros(ops.constant(new long[]{2, 2}), Float.class)</pre>
+ * <pre>{@code ops.zeros(ops.constant(new long[]{2, 2}), Float.class)}</pre>
  * is the equivalent of
- * <pre>{@code ops.fill(ops.constant(new long[]{2, 2}), ops.constant(0.0f))</pre>
+ * <pre>{@code ops.fill(ops.constant(new long[]{2, 2}), ops.constant(0.0f))}</pre>
  *
  * @param <T> constant type
  */

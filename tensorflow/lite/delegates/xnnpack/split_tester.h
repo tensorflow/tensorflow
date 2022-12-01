@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -48,8 +48,12 @@ class SplitTester {
 
   int32_t SplitDimension() const { return split_dim_; }
 
-  // Only support splitting into 2 outputs for now.
-  inline const int NumSplits() const { return 2; }
+  inline SplitTester& NumSplits(int num_splits) {
+    num_splits_ = num_splits;
+    return *this;
+  }
+
+  inline const int NumSplits() const { return num_splits_; }
 
   inline const std::vector<int32_t>& InputShape() const { return input_shape_; }
 
@@ -75,6 +79,7 @@ class SplitTester {
 
   std::vector<int32_t> input_shape_;
   int32_t split_dim_;
+  int num_splits_;
 };
 
 }  // namespace xnnpack

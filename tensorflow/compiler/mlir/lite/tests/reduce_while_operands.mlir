@@ -41,7 +41,7 @@
 // CHECK-DAG:       }) : (tensor<i32>) -> tensor<i32>
 // CHECK-DAG:       return %[[VAL_0]] : tensor<i32>
 // CHECK-DAG:     }
-func @increase_3rd_operand_3_times() -> tensor<i32> {
+func.func @increase_3rd_operand_3_times() -> tensor<i32> {
   %cst_0 = "arith.constant" () {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
   %cst_1 = "arith.constant" () {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
   %cst_2 = "arith.constant" () {value = dense<0> : tensor<i32>} : () -> tensor<i32>
@@ -63,5 +63,5 @@ func @increase_3rd_operand_3_times() -> tensor<i32> {
       "tfl.yield"(%2, %3, %4) : (tensor<f32>, tensor<f32>, tensor<i32>) -> ()
     }
   ) : (tensor<f32>, tensor<f32>, tensor<i32>) -> (tensor<f32>, tensor<f32>, tensor<i32>)
-  return %0#2 : tensor<i32>
+  func.return %0#2 : tensor<i32>
 }

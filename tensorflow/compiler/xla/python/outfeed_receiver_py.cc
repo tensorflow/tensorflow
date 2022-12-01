@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "pybind11/functional.h"
 #include "pybind11/pybind11.h"
@@ -57,7 +56,7 @@ class OutfeedReceiverForPython {
                       [](const std::shared_ptr<PyClient>& client) {
                         return client->pjrt_client();
                       });
-    outfeed_receiver_ = absl::make_unique<OutfeedReceiver>(
+    outfeed_receiver_ = std::make_unique<OutfeedReceiver>(
         callback, client_ptrs, max_callback_queue_size_bytes);
   }
   OutfeedReceiverForPython(const OutfeedReceiverForPython&) = delete;
@@ -102,8 +101,7 @@ class OutfeedReceiverForPython {
         });
     CHECK(it != clients_.end());
     py::gil_scoped_acquire gil_acquire;  // Need GIL also for LiteralToPython
-    py::object literal_python =
-        LiteralToPython(std::move(literal)).ValueOrDie();
+    py::object literal_python = LiteralToPython(std::move(literal)).value();
     // The callback_ should handle all exceptions in user-code. If we get
     // an exception here, it is a bug in the callback and we should stop.
     callback_python_(WrapWithClient<PjRtDevice>(*it, device), consumer_id,
@@ -129,7 +127,7 @@ void BuildOutfeedReceiverSubmodule(py::module* m) {
          std::vector<std::shared_ptr<PyClient>> clients,
          ssize_t max_callback_queue_size_bytes)
           -> std::unique_ptr<OutfeedReceiverForPython> {
-        auto server = absl::make_unique<OutfeedReceiverForPython>(
+        auto server = std::make_unique<OutfeedReceiverForPython>(
             callback_to_python, clients, max_callback_queue_size_bytes);
         server->Start();
         return server;

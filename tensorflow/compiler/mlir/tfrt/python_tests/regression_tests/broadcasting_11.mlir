@@ -1,4 +1,4 @@
-builtin.func @test(%V__0: tensor<?x?xf32> { python_test_attrs.static_type = tensor<1x2xf32> }, %V__1: tensor<3xi32> { python_test_attrs.shape_value = dense<[5, 3, 2]> : tensor<3xi32> }, %V__2: tensor<?x?x?xf32> { python_test_attrs.static_type = tensor<5x1x2xf32> }, %V__3: tensor<?xf32> { python_test_attrs.static_type = tensor<2xf32> }) -> tensor<?x?x?xf32> {
+func.func @test(%V__0: tensor<?x?xf32> { python_test_attrs.static_type = tensor<1x2xf32> }, %V__1: tensor<3xi32> { python_test_attrs.shape_value = dense<[5, 3, 2]> : tensor<3xi32> }, %V__2: tensor<?x?x?xf32> { python_test_attrs.static_type = tensor<5x1x2xf32> }, %V__3: tensor<?xf32> { python_test_attrs.static_type = tensor<2xf32> }) -> tensor<?x?x?xf32> {
   %0 = "tf.BroadcastTo"(%V__0, %V__1) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
   %1 = "tf.Abs"(%0) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   %2 = "tf.Ceil"(%1) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
@@ -19,5 +19,5 @@ builtin.func @test(%V__0: tensor<?x?xf32> { python_test_attrs.static_type = tens
   %17 = "tf.Rint"(%16) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   %18 = "tf.Add"(%3, %17) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   %19 = "tf.Relu6"(%18) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
-  return %19 : tensor<?x?x?xf32>
+  func.return %19 : tensor<?x?x?xf32>
 }

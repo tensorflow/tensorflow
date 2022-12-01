@@ -105,7 +105,7 @@ Status RFFTShape(InferenceContext* c, const bool forward, const int rank) {
   }
 
   c->set_output(0, out);
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_OP("RFFT")

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_BUFFERED_STRUCT_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_BUFFERED_STRUCT_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_JPEG_DECOMPRESS_BUFFERED_STRUCT_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_JPEG_DECOMPRESS_BUFFERED_STRUCT_H_
 
 #include <algorithm>
 #include <cstddef>
@@ -75,4 +75,4 @@ class JpegDecompressBufferedStruct {
 }  // namespace acceleration
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_BUFFERED_STRUCT_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_JPEG_DECOMPRESS_BUFFERED_STRUCT_H_

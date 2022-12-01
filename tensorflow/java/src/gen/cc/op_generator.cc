@@ -554,7 +554,7 @@ Status OpGenerator::Run(const OpList& op_list, const string& base_package,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace java

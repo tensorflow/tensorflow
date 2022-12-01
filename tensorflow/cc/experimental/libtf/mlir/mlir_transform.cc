@@ -54,7 +54,7 @@ Handle LoadModule(Object self, String saved_model) {
   obj.Set(
       String("_module"),
       Handle(impl::TaggedValue::Capsule(new mlir::OwningOpRef<mlir::ModuleOp>(
-          std::move(module_or).ConsumeValueOrDie()))));
+          std::move(module_or).value()))));
 
   auto get_string = [](Object self) {
     auto ref = self.Get<internal::Capsule>(String("_module"))

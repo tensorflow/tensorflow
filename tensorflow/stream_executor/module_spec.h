@@ -16,50 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_MODULE_SPEC_H_
 #define TENSORFLOW_STREAM_EXECUTOR_MODULE_SPEC_H_
 
-#include "tensorflow/stream_executor/lib/array_slice.h"
-#include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/platform/port.h"
-
-namespace stream_executor {
-
-// Describes how to load a module on a target platform.
-//
-// The exact meaning of a "module" may differ from platform to platform but
-// loosely speaking a module a collection of kernels and global variables.  It
-// corresponds to CUmodule when running on CUDA.
-class MultiModuleLoaderSpec {
- public:
-  bool has_cuda_cubin_in_memory() const { return has_cuda_cubin_in_memory_; }
-  port::ArraySlice<const uint8> cuda_cubin_in_memory() const {
-    CHECK(has_cuda_cubin_in_memory());
-    return {cuda_cubin_in_memory_.data(), cuda_cubin_in_memory_.size()};
-  }
-
-  bool has_cuda_ptx_in_memory() const { return has_cuda_ptx_in_memory_; }
-  const char* cuda_ptx_in_memory() const {
-    CHECK(has_cuda_ptx_in_memory());
-    return cuda_ptx_in_memory_;
-  }
-
-  void AddCudaCubinInMemory(port::ArraySlice<const uint8> cubin_bytes) {
-    CHECK(!cubin_bytes.empty());
-    has_cuda_cubin_in_memory_ = true;
-    cuda_cubin_in_memory_ = cubin_bytes;
-  }
-
-  void AddCudaPtxInMemory(const char* ptx) {
-    has_cuda_ptx_in_memory_ = true;
-    // The CUDA driver does not like getting an empty string as PTX.
-    cuda_ptx_in_memory_ = *ptx ? ptx : nullptr;
-  }
-
- private:
-  port::ArraySlice<const uint8> cuda_cubin_in_memory_;
-  bool has_cuda_cubin_in_memory_ = false;
-  const char* cuda_ptx_in_memory_;
-  bool has_cuda_ptx_in_memory_ = false;
-};
-
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/module_spec.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_MODULE_SPEC_H_

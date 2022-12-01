@@ -955,11 +955,18 @@ class _EagerTensorArray:
 # pylint:disable=line-too-long
 @tf_export("TensorArray")
 class TensorArray:
-  """Class wrapping dynamic-sized, per-time-step, write-once Tensor arrays.
+  """Class wrapping dynamic-sized, per-time-step, Tensor arrays.
 
   This class is meant to be used with dynamic iteration primitives such as
   `while_loop` and `map_fn`.  It supports gradient back-propagation via special
   "flow" control flow dependencies.
+
+  Note that although the array can be read multiple times and positions can be
+  overwritten, behavior may be undefined when storing multiple references to
+  the same array and clear_after_read is False. In particular, avoid using
+  methods like concat() to convert an intermediate TensorArray to a Tensor,
+  then further modifying the TensorArray, particularly if you need to backprop
+  through it later.
 
   Example 1: Plain reading and writing.
 
@@ -1175,9 +1182,9 @@ class TensorArray:
 
 
     >>> ta = tf.TensorArray(tf.int32, size=3)
-    >>> ta.write(0, tf.constant([1, 2]))
-    >>> ta.write(1, tf.constant([3, 4]))
-    >>> ta.write(2, tf.constant([5, 6]))
+    >>> ta = ta.write(0, tf.constant([1, 2]))
+    >>> ta = ta.write(1, tf.constant([3, 4]))
+    >>> ta = ta.write(2, tf.constant([5, 6]))
     >>> ta.stack()
     <tf.Tensor: shape=(3, 2), dtype=int32, numpy=
     array([[1, 2],
@@ -1407,17 +1414,6 @@ class TensorArraySpec(type_spec.TypeSpec):
             self._dtype.is_compatible_with(other._dtype) and
             self._element_shape.is_compatible_with(other._element_shape) and
             self._dynamic_size == other._dynamic_size)
-
-  # TODO(b/221472813): Migrate logic to most_specific_common_supertype.
-  def most_specific_compatible_type(self, other):
-    """Deprecated. Use most_specific_common_supertype instead."""
-    # pylint: disable=protected-access
-    if not self.is_compatible_with(other):
-      raise ValueError(f"Type `{self}` is not compatible with `{other}`.")
-    infer_shape = self._infer_shape and other._infer_shape
-    return TensorArraySpec(
-        self._element_shape.most_specific_compatible_shape(
-            other._element_shape), self._dtype, self._dynamic_size, infer_shape)
 
   def _serialize(self):
     return (self._element_shape, self._dtype, self._dynamic_size,

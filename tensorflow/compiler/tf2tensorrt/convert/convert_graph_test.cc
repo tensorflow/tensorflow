@@ -50,14 +50,14 @@ class FakeCluster : public grappler::Cluster {
   const DeviceSet* GetDeviceSet() const override { return device_set_; }
 
   string type() const override { return ""; }
-  Status Provision() override { return Status::OK(); }
+  Status Provision() override { return OkStatus(); }
   Status Initialize(const grappler::GrapplerItem& item) override {
-    return Status::OK();
+    return OkStatus();
   }
   Status Run(const GraphDef& graph_def,
              const std::vector<std::pair<string, Tensor>>& feed,
              const std::vector<string>& fetch, RunMetadata* metadata) override {
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -200,13 +200,13 @@ TEST_F(ConvertGraphTest, DirectlyConnectedEngines) {
     std::string node_name = node.name();
     if (node.op() != "TRTEngineOp") continue;
     node_name = remove_graph_sequence_number(node_name);
-    if (node_name == "TRTEngineOp_1") {
+    if (node_name == "TRTEngineOp_001") {
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("input", node.input(0));
       ++num_trt_ops;
-    } else if (node_name == "TRTEngineOp_0") {
+    } else if (node_name == "TRTEngineOp_000") {
       EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("TRTEngineOp_1", remove_graph_sequence_number(node.input(0)));
+      EXPECT_EQ("TRTEngineOp_001", remove_graph_sequence_number(node.input(0)));
       EXPECT_EQ("reshape2", node.input(1));
       ++num_trt_ops;
     }

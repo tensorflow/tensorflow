@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "tensorflow/lite/create_op_resolver.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 
@@ -26,7 +28,7 @@ namespace tflite {
 // JNI code in interpreter_jni.cc.
 std::unique_ptr<MutableOpResolver> CreateOpResolver() {
   std::unique_ptr<MutableOpResolver> resolver =
-      std::unique_ptr<MutableOpResolver>(new MutableOpResolver());
+      std::make_unique<MutableOpResolver>();
   RegisterSelectedOps(resolver.get());
   return resolver;
 }

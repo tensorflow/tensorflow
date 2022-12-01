@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -70,19 +71,19 @@ TEST(DelegateDataTest, CheckFunctionDef) {
          std::set<std::string>* result) {
         result->insert("add_subgraph");
         result->insert("mul_subgraph");
-        return tensorflow::Status::OK();
+        return ::tensorflow::OkStatus();
       };
 
   // Builds a TF Lite primary graph with two subgraphs.
   subgraph_test_util::SubgraphBuilder builder;
   std::unique_ptr<ErrorReporter> error_reporter =
-      absl::make_unique<TestErrorReporter>();
-  auto add_subgraph = absl::make_unique<Subgraph>(
+      std::make_unique<TestErrorReporter>();
+  auto add_subgraph = std::make_unique<Subgraph>(
       error_reporter.get(), /*external_contexts=*/nullptr,
       /*subgraphs=*/nullptr, /*resources=*/nullptr, /*resource_ids=*/nullptr,
       /*initialization_status_map=*/nullptr);
   add_subgraph->SetName("add_subgraph");
-  auto mul_subgraph = absl::make_unique<Subgraph>(
+  auto mul_subgraph = std::make_unique<Subgraph>(
       error_reporter.get(), /*external_contexts=*/nullptr,
       /*subgraphs=*/nullptr, /*resources=*/nullptr, /*resource_ids=*/nullptr,
       /*initialization_status_map=*/nullptr);
@@ -215,13 +216,13 @@ TEST(DelegateDataTest, CheckFunctionDefWithOnlyMainGraph) {
          std::set<std::string>* result) {
         result->insert("add_subgraph");
         result->insert("mul_subgraph");
-        return tensorflow::Status::OK();
+        return ::tensorflow::OkStatus();
       };
 
   // Builds a TF Lite primary graph with two subgraphs.
   subgraph_test_util::SubgraphBuilder builder;
   std::unique_ptr<ErrorReporter> error_reporter =
-      absl::make_unique<TestErrorReporter>();
+      std::make_unique<TestErrorReporter>();
   Subgraph main_subgraph(error_reporter.get(), /*external_contexts=*/nullptr,
                          /*subgraphs=*/nullptr, /*resources=*/nullptr,
                          /*resource_ids=*/nullptr,

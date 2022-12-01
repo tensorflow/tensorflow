@@ -5,12 +5,14 @@ load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_dylib")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
 
 exports_files([
     "delegate.h",
+    "delegate_options.h",
     "metal_delegate.h",
 ])
 
@@ -38,6 +40,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
@@ -73,12 +76,14 @@ objc_library(
     srcs = ["metal_delegate.mm"],
     hdrs = ["metal_delegate.h"],
     copts = ["-std=c++17"],
+    features = ["-layering_check"],
     module_name = "TensorFlowLiteCMetal",
     sdk_frameworks = ["Metal"],
     deps = [
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:model",
@@ -103,9 +108,7 @@ objc_library(
     hdrs = ["metal_delegate_internal.h"],
     copts = ["-std=c++17"],
     sdk_frameworks = ["Metal"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu:metal_delegate",
-    ],
+    deps = ["//tensorflow/lite/delegates/gpu:metal_delegate"],
     alwayslink = 1,
 )
 
@@ -213,6 +216,16 @@ selects.config_setting_group(
 )
 
 cc_library(
+    name = "delegate_options",
+    srcs = ["delegate_options.cc"],
+    hdrs = ["delegate_options.h"],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+    ],
+)
+
+cc_library(
     name = "delegate",
     srcs = ["delegate.cc"],
     hdrs = ["delegate.h"],
@@ -224,6 +237,7 @@ cc_library(
         ],
     }) + [
         ":api",
+        ":delegate_options",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
@@ -232,16 +246,12 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates:serialization",
         "//tensorflow/lite/delegates/gpu/cl:api",
-        "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",
-        "//tensorflow/lite/delegates/gpu/cl:tensor_type_util",
         "//tensorflow/lite/delegates/gpu/cl:util",
-        "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
-        "//tensorflow/lite/delegates/gpu/common:model_transformer",
+        "//tensorflow/lite/delegates/gpu/common:model_builder_helper",
         "//tensorflow/lite/delegates/gpu/common:quantization_util",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/kernels/internal:optimized_base",
     ],
 )

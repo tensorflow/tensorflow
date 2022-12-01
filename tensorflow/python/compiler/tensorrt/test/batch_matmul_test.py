@@ -65,11 +65,14 @@ class BatchMatMulTwoTensorTest(BatchMatMultTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return {"TRTEngineOp_0": ["matmul", "relu"]}
+    return {"TRTEngineOp_000": ["matmul", "relu"]}
 
 
 class BatchMatMulWeightBroadcastTest(BatchMatMultTestBase):
   """Testing BatchMatMulV2: one operand is weight and both have same rank."""
+
+  def ShouldAllowTF32Computation(self):
+    return False
 
   def GraphFn(self, inp):
     dtype = inp.dtype
@@ -84,11 +87,14 @@ class BatchMatMulWeightBroadcastTest(BatchMatMultTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return {"TRTEngineOp_0": ["matmul", "kernel"]}
+    return {"TRTEngineOp_000": ["matmul", "kernel"]}
 
 
 class BatchMatMulWeightBroadcastDims2Test(BatchMatMultTestBase):
   """Testing BatchMatMulV2: weight operand must be broadcasted."""
+
+  def ShouldAllowTF32Computation(self):
+    return False
 
   def GraphFn(self, inp):
     dtype = inp.dtype
@@ -102,7 +108,7 @@ class BatchMatMulWeightBroadcastDims2Test(BatchMatMultTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return {"TRTEngineOp_0": ["matmul", "kernel"]}
+    return {"TRTEngineOp_000": ["matmul", "kernel"]}
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
@@ -26,6 +27,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -104,6 +106,21 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
     # ensure new value's shape is checked
     with self.assertRaises((errors.InvalidArgumentError, ValueError)):
       source.with_values([[5.0, 1.0]])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testIsEager(self):
+    st = sparse_tensor.SparseTensor([[0, 0], [0, 1]], [1.0, 3.0], [2, 2])
+    if context.executing_eagerly():
+      self.assertTrue(st._is_eager())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNumpy(self):
+    st1 = sparse_tensor.SparseTensor([[0, 0], [0, 1]], [1.0, 3.0], [2, 2])
+    if not context.executing_eagerly():
+      with self.assertRaises(ValueError):
+        st1._numpy()
+    else:
+      self.assertAllEqual(st1._numpy(), [[1.0, 3.0], [0.0, 0.0]])
 
 
 class ConvertToTensorOrSparseTensorTest(test_util.TensorFlowTestCase):
@@ -305,6 +322,17 @@ class SparseTensorSpecTest(test_util.TensorFlowTestCase,
   def testFlatTensorSpecs(self, st_spec):
     self.assertEqual(st_spec._flat_tensor_specs,
                      [tensor_spec.TensorSpec(None, dtypes.variant)])
+
+  @parameterized.parameters([
+      dtypes.float32,
+      dtypes.string,
+  ])
+  def testFullTypesForFlatTensors(self, dt):
+    st_spec = sparse_tensor.SparseTensorSpec(dtype=dt)
+    full_type_list = fulltypes_for_flat_tensors(st_spec)
+    expect = [full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_UNSET)]
+    self.assertEqual(len(st_spec._flat_tensor_specs), len(full_type_list))
+    self.assertEqual(expect, full_type_list)
 
   @parameterized.parameters([
       {

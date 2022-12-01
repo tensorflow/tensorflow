@@ -13,22 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
 
 #include <memory>
 #include <string>
 
 #include "absl/algorithm/container.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -37,13 +37,13 @@ class HloInputOutputAliasConfigTest : public HloTestBase {
   void expect_aliased(const ShapeIndex& output_index, int64_t param_number,
                       const ShapeIndex& param_index,
                       const HloInputOutputAliasConfig& config) {
-    absl::optional<ShapeIndex> aliased_output =
+    std::optional<ShapeIndex> aliased_output =
         config.GetAliasedOutput(param_number, param_index);
 
     EXPECT_TRUE(aliased_output);
     EXPECT_EQ(aliased_output.value(), output_index);
 
-    absl::optional<HloInputOutputAliasConfig::Alias> aliased_param =
+    std::optional<HloInputOutputAliasConfig::Alias> aliased_param =
         config.GetAliasedParameter(output_index);
 
     EXPECT_TRUE(aliased_param);
@@ -54,12 +54,12 @@ class HloInputOutputAliasConfigTest : public HloTestBase {
   void expect_not_aliased(const ShapeIndex& output_index, int64_t param_number,
                           const ShapeIndex& param_index,
                           const HloInputOutputAliasConfig& config) {
-    absl::optional<ShapeIndex> aliased_output =
+    std::optional<ShapeIndex> aliased_output =
         config.GetAliasedOutput(param_number, param_index);
 
     EXPECT_FALSE(aliased_output && aliased_output == output_index);
 
-    absl::optional<HloInputOutputAliasConfig::Alias> aliased_param =
+    std::optional<HloInputOutputAliasConfig::Alias> aliased_param =
         config.GetAliasedParameter(output_index);
 
     EXPECT_FALSE(aliased_param &&

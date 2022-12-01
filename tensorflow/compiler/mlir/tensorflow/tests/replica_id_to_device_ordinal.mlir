@@ -4,7 +4,7 @@
 // Tests device ordinal is set correctly for multiple devices.
 // CHECK-LABEL: func @device_ordinal_attr_added_multiple_devices
 module attributes {tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]} {
-  func @device_ordinal_attr_added_multiple_devices() {
+  func.func @device_ordinal_attr_added_multiple_devices() {
     tf_executor.graph {
       %0 = tf_executor.island {
         "tf_device.launch"() ({
@@ -31,7 +31,7 @@ module attributes {tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/
       }
       tf_executor.fetch
     }
-    return
+    func.return
   }
 
   // CHECK:      tf_executor.island
@@ -51,7 +51,7 @@ module attributes {tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/
 // Tests device ordinal is set correctly for single device.
 // CHECK-LABEL: func @device_ordinal_attr_added_single_device
 module attributes {tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
-  func @device_ordinal_attr_added_single_device() {
+  func.func @device_ordinal_attr_added_single_device() {
     tf_executor.graph {
       %0 = tf_executor.island {
         "tf_device.launch"() ({
@@ -63,7 +63,7 @@ module attributes {tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/
       }
       tf_executor.fetch
     }
-    return
+    func.return
   }
   // CHECK:      tf_executor.island
   // CHECK:      "tf.EnqueueTPUEmbeddingArbitraryTensorBatch"
@@ -75,7 +75,7 @@ module attributes {tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/
 // Tests device ordinal is not set for no tpu device.
 // CHECK-LABEL: func @device_ordinal_attr_not_added_no_tpu_device
 module attributes {tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0"]} {
-  func @device_ordinal_attr_not_added_no_tpu_device() {
+  func.func @device_ordinal_attr_not_added_no_tpu_device() {
     tf_executor.graph {
       %0 = tf_executor.island {
         "tf_device.launch"() ({
@@ -87,7 +87,7 @@ module attributes {tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/
       }
       tf_executor.fetch
     }
-    return
+    func.return
   }
   // CHECK:      tf_executor.island
   // CHECK:      "tf.EnqueueTPUEmbeddingArbitraryTensorBatch"

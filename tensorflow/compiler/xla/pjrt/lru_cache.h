@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_LRU_CACHE_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_LRU_CACHE_H_
 
+#include <optional>
+
 #include "absl/container/node_hash_map.h"
-#include "absl/types/optional.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -101,7 +102,7 @@ class LRUCache {
     // pointer stability for keys.
     const Key* key;
     LRUCache* container;
-    absl::optional<Value> value;
+    std::optional<Value> value;
   };
 
   // We use `node_hash_map` because we want to guarantee pointer stability for
@@ -166,7 +167,10 @@ Value LRUCache<Key, Value, Hash, Eq>::GetOrCreateIfAbsent(
     Entry* to_remove = static_cast<Entry*>(lru_head.next);
     to_remove->next->prev = &lru_head;
     lru_head.next = to_remove->next;
-    to_remove->container->entries_.erase(*to_remove->key);
+    // Extract instead of erase in case the kv pair contains python objects
+    // whose destruction could call back into this code. Extract causes the
+    // dtor to be delayed until the kv pair is fully removed from the map.
+    to_remove->container->entries_.extract(*to_remove->key);
     --lru_list_->size_;
   }
   return v;
