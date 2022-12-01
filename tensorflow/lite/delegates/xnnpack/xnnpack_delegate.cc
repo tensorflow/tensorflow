@@ -131,9 +131,9 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
       if (zero_point < std::numeric_limits<uint8_t>::min() ||
           zero_point > std::numeric_limits<uint8_t>::max()) {
         TF_LITE_KERNEL_LOG(context,
-                           "unsupported zero-point value (%f) for UINT8 tensor "
+                           "unsupported zero-point value (%d) for UINT8 tensor "
                            "%d in XNNPACK delegate",
-                           scale, t);
+                           zero_point, t);
         return xnn_datatype_invalid;
       }
 
@@ -192,7 +192,7 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
         if (zero_point < std::numeric_limits<int8_t>::min() ||
             zero_point > std::numeric_limits<int8_t>::max()) {
           TF_LITE_KERNEL_LOG(context,
-                             "unsupported zero-point value (%f) for INT8 "
+                             "unsupported zero-point value (%d) for INT8 "
                              "tensor %d in XNNPACK delegate",
                              zero_point, t);
           return xnn_datatype_invalid;
