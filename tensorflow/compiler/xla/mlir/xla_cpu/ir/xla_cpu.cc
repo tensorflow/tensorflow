@@ -38,7 +38,8 @@ void XlaCpuDialect::initialize() {
 
 template <typename Op>
 LogicalResult BufferizeOp(Op op, RewriterBase &rewriter,
-                          const bufferization::BufferizationOptions &options) {
+                          const bufferization::BufferizationOptions &options,
+                          int64_t num_inputs) {
   if (op.getOperands().front().getType().template isa<MemRefType>()) {
     return success();
   }
@@ -54,7 +55,7 @@ LogicalResult BufferizeOp(Op op, RewriterBase &rewriter,
                       op.getOperation()->getAttrs());
   bufferization::replaceOpWithBufferizedValues(
       rewriter, op.getOperation(),
-      llvm::makeArrayRef(new_operands).drop_front(op.getNumOperands() / 2));
+      llvm::makeArrayRef(new_operands).drop_front(num_inputs));
   return success();
 }
 
@@ -80,7 +81,7 @@ SmallVector<OpResult> AllReduceOp::getAliasingOpResult(
 LogicalResult AllReduceOp::bufferize(
     RewriterBase &rewriter,
     const bufferization::BufferizationOptions &options) {
-  return BufferizeOp(*this, rewriter, options);
+  return BufferizeOp(*this, rewriter, options, this->getNumOperands() / 2);
 }
 
 bufferization::BufferRelation AllReduceOp::bufferRelation(
@@ -91,19 +92,25 @@ bufferization::BufferRelation AllReduceOp::bufferRelation(
 LogicalResult CollectivePermuteOp::bufferize(
     RewriterBase &rewriter,
     const bufferization::BufferizationOptions &options) {
-  return BufferizeOp(*this, rewriter, options);
+  return BufferizeOp(*this, rewriter, options, this->getNumOperands() / 2);
 }
 
 LogicalResult AllToAllOp::bufferize(
     RewriterBase &rewriter,
     const bufferization::BufferizationOptions &options) {
-  return BufferizeOp(*this, rewriter, options);
+  return BufferizeOp(*this, rewriter, options, this->getNumOperands() / 2);
 }
 
 LogicalResult FftOp::bufferize(
     RewriterBase &rewriter,
     const bufferization::BufferizationOptions &options) {
-  return BufferizeOp(*this, rewriter, options);
+  return BufferizeOp(*this, rewriter, options, this->getNumOperands() / 2);
+}
+
+LogicalResult OutfeedOp::bufferize(
+    RewriterBase &rewriter,
+    const bufferization::BufferizationOptions &options) {
+  return BufferizeOp(*this, rewriter, options, this->getNumOperands());
 }
 
 }  // namespace xla_cpu
