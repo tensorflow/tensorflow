@@ -3,6 +3,17 @@
 load("//devtools/build_cleaner/skylark:build_defs.bzl", "register_extension_info")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 
+# LINT.IfChange
+ALL_BACKENDS = ["cpu", "gpu", "tpu"]
+TPU_V3_DONUT_BACKEND = "tpu_v3_2x2"
+TPU_V4_DONUT_BACKEND = "tpu_v4_2x2"
+GPU_2DEVS_BACKEND = "2gpus"
+PATHWAYS = "pw"
+# LINT.ThenChange(
+#     python/tests/test_backend_name.py:backend_name,
+#     python/tests/test_backend_name.oss.py:backend_name
+# )
+
 # FIXME(feyu): Gradually increase the coverage of OSS tests.
 def _get_configurations(
         disable,
