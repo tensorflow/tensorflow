@@ -42,7 +42,8 @@ func.func @vectorize_gml_st_parallel_op(
   func.return %2 : tensor<32xf32>
 }
 // CHECK:      gml_st.parallel
-// CHECK-DAG:  %[[LHS:.*]] = vector.transfer_read %arg0[%c0]
+// CHECK-DAG:  %[[ARG0TILE:.*]] = gml_st.materialize %arg0
+// CHECK-DAG:  %[[LHS:.*]] = vector.transfer_read %[[ARG0TILE]][%c0]
 // CHECK:      %[[RESULT:.*]] = gml_st.parallel
 // CHECK-DAG:    %[[LHSTILE:.*]] = gml_st.materialize %[[LHS]]
 // CHECK:        %[[NEG:.*]] = arith.negf %[[LHSTILE]] : vector<4xf32>
@@ -92,8 +93,10 @@ func.func @vectorize_gml_st_for_op(
   func.return %2 : tensor<32xf32>
 }
 // CHECK:      gml_st.parallel
-// CHECK-DAG:  %[[LHS:.*]] = vector.transfer_read %arg0[%c0]
-// CHECK-DAG:  %[[RES:.*]] = vector.transfer_read %arg1[%c0]
+// CHECK-DAG:  %[[ARG0TILE:.*]] = gml_st.materialize %arg0
+// CHECK-DAG:  %[[ARG1TILE:.*]] = gml_st.materialize %arg1
+// CHECK-DAG:  %[[LHS:.*]] = vector.transfer_read %[[ARG0TILE]][%c0]
+// CHECK-DAG:  %[[RES:.*]] = vector.transfer_read %[[ARG1TILE]][%c0]
 // CHECK:      %[[RESULT:.*]] = gml_st.for
 // CHECK-SAME:     outs (%[[OUT:.*]] = %[[RES]]: vector<32xf32>)
 // CHECK-DAG:    %[[LHSTILE:.*]] = gml_st.materialize %[[LHS]]
@@ -136,8 +139,10 @@ func.func @vectorize_loop_on_scalars(
   func.return %2 : tensor<32xf32>
 }
 // CHECK:      gml_st.parallel
-// CHECK-DAG:  %[[LHS:.*]] = vector.transfer_read %arg0[%c0]
-// CHECK-DAG:  %[[RES:.*]] = vector.transfer_read %arg1[%c0]
+// CHECK-DAG:  %[[ARG0TILE:.*]] = gml_st.materialize %arg0
+// CHECK-DAG:  %[[ARG1TILE:.*]] = gml_st.materialize %arg1
+// CHECK-DAG:  %[[LHS:.*]] = vector.transfer_read %[[ARG0TILE]][%c0]
+// CHECK-DAG:  %[[RES:.*]] = vector.transfer_read %[[ARG1TILE]][%c0]
 // CHECK:      %[[RESULT:.*]] = gml_st.for
 // CHECK-SAME:     outs (%[[OUT:.*]] = %[[RES]]: vector<32xf32>)
 // CHECK-DAG:    %[[LHSTILE:.*]] = gml_st.materialize %[[LHS]]

@@ -457,11 +457,11 @@ struct IdentityMaterializeOpFoldingPattern
                                 PatternRewriter &rewriter) const override {
     auto src = op.getSource();
     auto set = op.getSet().getDefiningOp<TileOp>();
-    // Only fold identity materialize of block argument.
+    // Only fold identity materialize of ForOp's block argument.
     // Set has to be an identity tile op and source and result are static and
     // have the same shapes.
-    if (!src.isa<BlockArgument>() || !set || !isIdentityTileOp(set) ||
-        !haveSameStaticShape(src, op.getResult()))
+    if (!op->getParentOfType<ForOp>() || !src.isa<BlockArgument>() || !set ||
+        !isIdentityTileOp(set) || !haveSameStaticShape(src, op.getResult()))
       return rewriter.notifyMatchFailure(op, "did not match filter");
 
     op.replaceAllUsesWith(src);
@@ -732,7 +732,7 @@ struct VectorizeGmlStLoopsPass
       (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
 
-    // Folding identity MaterializeOp.
+    // Hoisting transfer_read/transfer_write.
     {
       RewritePatternSet patterns(ctx);
       patterns.add<IdentityMaterializeOpFoldingPattern>(ctx);
