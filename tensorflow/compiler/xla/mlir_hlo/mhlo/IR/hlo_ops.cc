@@ -1014,25 +1014,6 @@ LogicalResult DotOp::inferReturnTypes(
   return success();
 }
 
-LogicalResult DotOp::verify() {
-  auto lhsType = getLhs().getType().cast<ShapedType>();
-  auto rhsType = getRhs().getType().cast<ShapedType>();
-  auto resultType = getType().cast<ShapedType>();
-  auto expectReturnType = inferDotReturnType(lhsType, rhsType);
-  if (!expectReturnType) {
-    return emitError() << "Unexpected operands type: " << lhsType << " and "
-                       << rhsType;
-  }
-  if (resultType.hasRank() && expectReturnType.hasRank()) {
-    if (resultType.getShape() != expectReturnType.getShape()) {
-      return emitError() << "Unexpected result type: has " << resultType
-                         << " but inferred " << expectReturnType
-                         << " from operands " << lhsType << " and " << rhsType;
-    }
-  }
-  return success();
-}
-
 //===----------------------------------------------------------------------===//
 // DotGeneralOp
 //===----------------------------------------------------------------------===//
