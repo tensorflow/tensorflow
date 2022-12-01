@@ -2010,30 +2010,27 @@ tf_cc_test(
     ],
 )
 
-# TODO(ezhulenev): This test breaks MacOS build, try to re-enable it later.
-# copybara:uncomment_begin
-# tf_cc_test(
-#     name = "gpu_aot_compilation_test",
-#     srcs = [
-#         "gpu_aot_compilation_test.cc",
-#     ],
-#     env = {
-#         "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
-#     },
-#     tags = [
-#         "gpu",
-#         "no_oss",
-#         "no_rocm",
-#         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
-#         "requires-gpu-nvidia",
-#     ],
-#     deps = [
-#         ":nvptx_compiler_impl",
-#         "//tensorflow/compiler/xla/tests:hlo_test_base",
-#         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
-#     ],
-# )
-# copybara:uncomment_end
+tf_cc_test(
+    name = "gpu_aot_compilation_test",
+    srcs = if_cuda_is_configured([
+        "gpu_aot_compilation_test.cc",
+    ]),
+    env = {
+        "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
+    },
+    tags = [
+        "gpu",
+        "no_oss",
+        "no_rocm",
+        "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
+        "requires-gpu-nvidia",
+    ],
+    deps = if_cuda_is_configured([
+        ":nvptx_compiler_impl",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+    ]),
+)
 
 cc_library(
     name = "amdgpu_compiler",
