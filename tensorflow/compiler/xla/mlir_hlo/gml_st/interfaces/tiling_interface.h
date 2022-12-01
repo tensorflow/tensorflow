@@ -39,6 +39,10 @@ Value materializeSlice(OpBuilder &b, Location loc, Value valueToTile,
 Value materializeIdentitySlice(OpBuilder &b, Location loc, Value valueToTile,
                                bool useExtractSlice);
 
+// Extracts a point using materialize(tile) or extract(extract_slice).
+Value materializePoint(OpBuilder &b, Location loc, Value valueToTile,
+                       ArrayRef<OpFoldResult> offsets, bool useExtractSlice);
+
 }  // namespace gml_st
 }  // namespace mlir
 

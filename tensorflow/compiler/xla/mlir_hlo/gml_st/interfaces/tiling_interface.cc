@@ -16,6 +16,7 @@ limitations under the License.
 #include "gml_st/interfaces/tiling_interface.h"
 
 #include "gml_st/IR/gml_st_ops.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypes.h"
 
@@ -55,6 +56,27 @@ Value materializeIdentitySlice(OpBuilder &b, Location loc, Value valueToTile,
   SmallVector<OpFoldResult> ones(rank, b.getI64IntegerAttr(1));
   return materializeSlice(b, loc, valueToTile, zeros, valueToTileSizes, ones,
                           useExtractSlice);
+}
+
+Value materializePoint(OpBuilder &b, Location loc, Value valueToTile,
+                       ArrayRef<OpFoldResult> offsets, bool useExtractSlice) {
+  auto tensorType = valueToTile.getType().cast<RankedTensorType>();
+  int64_t rank = tensorType.getRank();
+
+  IntegerAttr oneAttr = b.getIndexAttr(1);
+  SmallVector<OpFoldResult> sizes(rank, oneAttr);
+  SmallVector<OpFoldResult> strides(rank, oneAttr);
+
+  if (useExtractSlice) {
+    Value slice = b.create<tensor::ExtractSliceOp>(loc, valueToTile, offsets,
+                                                   sizes, strides);
+    Value zero = b.create<arith::ConstantIndexOp>(loc, 0);
+    return b.create<tensor::ExtractOp>(loc, slice,
+                                       SmallVector<Value>(rank, zero));
+  }
+  Value tile = b.create<TileOp>(loc, offsets, sizes, strides);
+  return b.create<MaterializeOp>(loc, tensorType.getElementType(), valueToTile,
+                                 tile);
 }
 
 }  // namespace gml_st

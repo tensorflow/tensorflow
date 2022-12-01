@@ -17,16 +17,14 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
+#include "gml_st/interfaces/tiling_interface.h"
 #include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/transforms.h"
-#include "gml_st/utils/linalg_utils.h"
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
-#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -126,11 +124,10 @@ struct TilingCwisePattern : OpRewritePattern<linalg::MapOp> {
               loc,
               b.create<arith::SubIOp>(loc, dimSizePlusWarpSizeMinusOne, laneId),
               cGroupSize);
-          Value laneTile = b.createOrFold<gml_st::TileOp>(
-              loc, OpFoldResults{zeroAttr, laneId},
+          Value laneInit = materializeSlice(
+              b, loc, init, OpFoldResults{zeroAttr, laneId},
               OpFoldResults{oneAttr, laneTileSize},
-              OpFoldResults{oneAttr, groupSizeAttr});
-          Value laneInit = b.create<gml_st::MaterializeOp>(loc, init, laneTile);
+              OpFoldResults{oneAttr, groupSizeAttr}, /*useExtractSlice=*/false);
 
           // Create `gml_st.for` loop to iterate over the lane's tile.
           auto sloopTy = ploopTy.clone({1, ShapedType::kDynamic});
@@ -142,18 +139,14 @@ struct TilingCwisePattern : OpRewritePattern<linalg::MapOp> {
                 Value i = ivs.front();
                 Value iterTileOffset = b.create<arith::AddIOp>(
                     loc, laneId, b.create<arith::MulIOp>(loc, i, cGroupSize));
-                Value iterTile = b.create<gml_st::TileOp>(
-                    loc, OpFoldResults{zeroAttr, iterTileOffset},
-                    OpFoldResults{oneAttr, oneAttr},
-                    OpFoldResults{oneAttr, oneAttr});
 
                 // Materialize scalar subsets per operand.
-                SmallVector<Value> iterOperands =
-                    llvm::to_vector(llvm::map_range(
-                        mapOp.getInputs(), [&](Value arg) -> Value {
-                          return b.create<gml_st::MaterializeOp>(
-                              loc, ploopTy.getElementType(), arg, iterTile);
-                        }));
+                SmallVector<Value> iterOperands = llvm::to_vector(
+                    llvm::map_range(mapOp.getInputs(), [&](Value arg) -> Value {
+                      return materializePoint(
+                          b, loc, arg, OpFoldResults{zeroAttr, iterTileOffset},
+                          /*useExtractSlice=*/false);
+                    }));
 
                 // Create scalar computation from `linalg.map` body by (i)
                 // mapping its block arguments to the newly materialized
@@ -174,6 +167,10 @@ struct TilingCwisePattern : OpRewritePattern<linalg::MapOp> {
                 b.create<gml_st::SetYieldOp>(loc, iterResult, aggr,
                                              iterTileInLaneTile);
               });
+          Value laneTile = b.createOrFold<gml_st::TileOp>(
+              loc, OpFoldResults{zeroAttr, laneId},
+              OpFoldResults{oneAttr, laneTileSize},
+              OpFoldResults{oneAttr, groupSizeAttr});
           b.create<gml_st::SetYieldOp>(loc, sloop.getResult(0), init, laneTile);
         });
 
@@ -229,9 +226,9 @@ struct TilingReductionPattern : OpRewritePattern<linalg::ReduceOp> {
     // Create warp-sized partial reduction result tensor.
     Value warpResult = rewriter.create<tensor::EmptyOp>(
         loc, OpFoldResults{oneAttr, groupSizeAttr}, scalarTy);
-    Value initTile = rewriter.create<TileOp>(loc, OpFoldResults{zeroAttr});
     Value initMaterialized =
-        rewriter.create<MaterializeOp>(loc, scalarTy, init, initTile);
+        materializePoint(rewriter, loc, init, OpFoldResults{zeroAttr},
+                         /*useExtractSlice=*/false);
     warpResult =
         rewriter.create<linalg::FillOp>(loc, initMaterialized, warpResult)
             .getResult(0);
@@ -240,8 +237,10 @@ struct TilingReductionPattern : OpRewritePattern<linalg::ReduceOp> {
     auto parallelOpBodyBuilderFn = [&](OpBuilder& b, Location loc,
                                        ValueRange ivs) {
       Value laneId = ivs.front();
-      Value laneTile = b.create<TileOp>(loc, OpFoldResults{zeroAttr, laneId});
-      Value laneResult = b.create<MaterializeOp>(loc, warpResult, laneTile);
+      Value laneResult = materializeSlice(
+          b, loc, warpResult, OpFoldResults{zeroAttr, laneId},
+          OpFoldResults{oneAttr, oneAttr}, OpFoldResults{oneAttr, oneAttr},
+          /*useExtractSlice=*/false);
 
       // Create gml_st.for sequentially reducing parts of the row.
       auto forOpBodyBuilderFn = [&](OpBuilder& b, Location loc, ValueRange ivs,
@@ -250,16 +249,14 @@ struct TilingReductionPattern : OpRewritePattern<linalg::ReduceOp> {
         Value laneAcc = outputs.front();
 
         // Materialize operand subset.
-        Value operandTile = b.create<TileOp>(
-            loc, ArrayRef<OpFoldResult>{zeroAttr, iterationId});
-        Value operandMaterialized =
-            b.create<MaterializeOp>(loc, scalarTy, operand, operandTile);
+        Value operandMaterialized = materializePoint(
+            b, loc, operand, ArrayRef<OpFoldResult>{zeroAttr, iterationId},
+            /*useExtractSlice=*/false);
 
         // Materialize intermediate result.
-        Value iterationTile =
-            rewriter.create<TileOp>(loc, OpFoldResults{zeroAttr, zeroAttr});
-        Value iterationResult = rewriter.create<MaterializeOp>(
-            loc, scalarTy, laneAcc, iterationTile);
+        Value iterationResult = materializePoint(
+            rewriter, loc, laneAcc, OpFoldResults{zeroAttr, zeroAttr},
+            /*useExtractSlice=*/false);
 
         // Create scalar computation based on `linalg.reduce` body.
         BlockAndValueMapping bvm;
@@ -271,6 +268,8 @@ struct TilingReductionPattern : OpRewritePattern<linalg::ReduceOp> {
         iterationResult =
             bvm.lookup(reduceOp.getBody()->getTerminator()->getOperand(0));
 
+        Value iterationTile =
+            rewriter.create<TileOp>(loc, OpFoldResults{zeroAttr, zeroAttr});
         b.create<gml_st::SetYieldOp>(loc, iterationResult, laneAcc,
                                      iterationTile);
       };
@@ -279,6 +278,7 @@ struct TilingReductionPattern : OpRewritePattern<linalg::ReduceOp> {
                                            laneResult, forOpBodyBuilderFn)
                        .getResult(0);
 
+      Value laneTile = b.create<TileOp>(loc, OpFoldResults{zeroAttr, laneId});
       b.create<gml_st::SetYieldOp>(loc, laneResult, warpResult, laneTile);
     };
     warpResult = rewriter

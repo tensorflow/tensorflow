@@ -25,7 +25,6 @@ func.func @tiling_warp_level_reduction(%arg0: tensor<7x13xf32>)
   //     CHECK:   %[[FILL_0:.*]] = linalg.fill ins(%[[CST]] : f32) outs(%[[MATERIALIZE_1]] : tensor<1xf32>)
   //     CHECK:   %[[EXTRACTED:.*]] = tensor.extract %[[FILL_0]][%[[C0]]]
   //     CHECK:   %[[PARALLEL_0:.*]] = gml_st.parallel (%[[ARG2:.*]]) = (%[[C0]]) to (%[[C16]]) step (%[[C1]]) distribution ("thread")
-  //     CHECK:     %[[TILE_3:.*]] = gml_st.tile [0, %[[ARG2]]] [1, 1] [1, 1]
   //     CHECK:     %[[TILE_4:.*]] = gml_st.tile [0, %[[ARG2]]] [1, 1] [1, 1]
   //     CHECK:     %[[MATERIALIZE_2:.*]] = gml_st.materialize %[[EMPTY_0]][%[[TILE_4]]]
   //     CHECK:     %[[FILL_1:.*]] = linalg.fill ins(%[[EXTRACTED]] : f32) outs(%[[MATERIALIZE_2]] : tensor<1x1xf32>)
@@ -35,7 +34,9 @@ func.func @tiling_warp_level_reduction(%arg0: tensor<7x13xf32>)
   //     CHECK:       %[[TILE_6:.*]] = gml_st.tile [0, 0] [1, 1] [1, 1]
   //     CHECK:       %[[MATERIALIZE_4:.*]] = gml_st.materialize %[[ARG4]][%[[TILE_6]]] : tensor<1x1xf32>[!gml_st.tile<1x1>] to f32
   //     CHECK:       %[[MAXF:.*]] = arith.maxf %[[MATERIALIZE_4]], %[[MATERIALIZE_3]] : f32
-  //     CHECK:       gml_st.set_yield %[[MAXF]] into %[[ARG4]][%[[TILE_6]]] : f32 into tensor<1x1xf32>[!gml_st.tile<1x1>]
+  //     CHECK:       %[[TILE_6_:.*]] = gml_st.tile [0, 0] [1, 1] [1, 1]
+  //     CHECK:       gml_st.set_yield %[[MAXF]] into %[[ARG4]][%[[TILE_6_]]] : f32 into tensor<1x1xf32>[!gml_st.tile<1x1>]
+  //     CHECK:     %[[TILE_3:.*]] = gml_st.tile [0, %[[ARG2]]] [1, 1] [1, 1]
   //     CHECK:     gml_st.set_yield %[[FOR]] into %[[EMPTY_0]][%[[TILE_3]]]
   //     CHECK:   %[[REDUCE:.*]] = linalg.reduce
   //     CHECK:       ins(%[[PARALLEL_0]] : tensor<1x16xf32>)
@@ -108,10 +109,12 @@ func.func @tiling_warp_level_cwise(%arg0: tensor<7x13xf32>,
   // CHECK:            %[[ADDI:.*]] = arith.addi %[[ARG3]], %[[MULI]] : index
   // CHECK:            %[[TILE_1:.*]] = gml_st.tile [0, %[[ADDI]]] [1, 1] [1, 1]
   // CHECK:            %[[MATERIALIZE_3:.*]] = gml_st.materialize %[[MATERIALIZE]][%[[TILE_1]]]
-  // CHECK:            %[[MATERIALIZE_4:.*]] = gml_st.materialize %[[MATERIALIZE_0]][%[[TILE_1]]]
+  // CHECK:            %[[TILE_1_:.*]] = gml_st.tile [0, %[[ADDI]]] [1, 1] [1, 1]
+  // CHECK:            %[[MATERIALIZE_4:.*]] = gml_st.materialize %[[MATERIALIZE_0]][%[[TILE_1_]]]
   // CHECK:            %[[SUBF:.*]] = arith.subf %[[MATERIALIZE_3]], %[[MATERIALIZE_4]]
   // CHECK:            %[[TILE_2:.*]] = gml_st.tile [0, %[[ARG4]]] [1, 1] [1, 1]
   // CHECK:            gml_st.set_yield %[[SUBF]] into %[[ARG5]][%[[TILE_2]]]
+  // CHECK:          %[[TILE_0:.*]] = gml_st.tile [0, %[[ARG3]]] [1, %[[DIVUI]]] [1, 16]
   // CHECK:          gml_st.set_yield %[[FOR]] into %[[MATERIALIZE_1]][%[[TILE_0]]]
   // CHECK:        gml_st.set_yield %[[PARALLEL_0]] into %[[EMPTY]][%[[TILE]]]
   // CHECK:      return %[[PARALLEL]]
@@ -174,7 +177,6 @@ func.func @softmax(%arg0: tensor<2048x4096xf32>) -> tensor<2048x4096xf32> {
   //     CHECK:     %[[FILL_0:.*]] = linalg.fill ins(%[[CST_0]] : f32) outs(%[[MATERIALIZE_2]] : tensor<1xf32>)
   //     CHECK:     %[[EXTRACTED:.*]] = tensor.extract %[[FILL_0]][%[[C0]]]
   //     CHECK:     %[[PARALLEL_1:.*]] = gml_st.parallel (%[[ARG3:.*]]) = (%[[C0]]) to (%[[C32]]) step (%[[C1]]) distribution ("thread")
-  //     CHECK:       %[[TILE_4:.*]] = gml_st.tile [0, %[[ARG3]]] [1, 1] [1, 1]
   //     CHECK:       %[[TILE_5:.*]] = gml_st.tile [0, %[[ARG3]]] [1, 1] [1, 1]
   //     CHECK:       %[[MATERIALIZE_3:.*]] = gml_st.materialize %[[EMPTY_1]][%[[TILE_5]]]
   //     CHECK:       %[[FILL_1:.*]] = linalg.fill ins(%[[EXTRACTED]] : f32) outs(%[[MATERIALIZE_3]] : tensor<1x1xf32>)
@@ -184,7 +186,9 @@ func.func @softmax(%arg0: tensor<2048x4096xf32>) -> tensor<2048x4096xf32> {
   //     CHECK:         %[[TILE_7:.*]] = gml_st.tile [0, 0] [1, 1] [1, 1]
   //     CHECK:         %[[MATERIALIZE_5:.*]] = gml_st.materialize %[[ARG5]][%[[TILE_7]]] : tensor<1x1xf32>[!gml_st.tile<1x1>] to f32
   //     CHECK:         %[[MAXF:.*]] = arith.maxf %[[MATERIALIZE_5]], %[[MATERIALIZE_4]] : f32
-  //     CHECK:         gml_st.set_yield %[[MAXF]] into %[[ARG5]][%[[TILE_7]]] : f32 into tensor<1x1xf32>[!gml_st.tile<1x1>]
+  //     CHECK:         %[[TILE_7_:.*]] = gml_st.tile [0, 0] [1, 1] [1, 1]
+  //     CHECK:         gml_st.set_yield %[[MAXF]] into %[[ARG5]][%[[TILE_7_]]] : f32 into tensor<1x1xf32>[!gml_st.tile<1x1>]
+  //     CHECK:       %[[TILE_4:.*]] = gml_st.tile [0, %[[ARG3]]] [1, 1] [1, 1]
   //     CHECK:       gml_st.set_yield %[[FOR]] into %[[EMPTY_1]][%[[TILE_4]]]
   //     CHECK:     %[[REDUCE:.*]] = linalg.reduce
   //     CHECK:          ins(%[[PARALLEL_1]] : tensor<1x32xf32>)
@@ -203,7 +207,6 @@ func.func @softmax(%arg0: tensor<2048x4096xf32>) -> tensor<2048x4096xf32> {
   //     CHECK:     %[[FILL_3:.*]] = linalg.fill ins(%[[CST]] : f32) outs(%[[MATERIALIZE_8]] : tensor<1xf32>)
   //     CHECK:     %[[EXTRACTED_1:.*]] = tensor.extract %[[FILL_3]][%[[C0]]]
   //     CHECK:     %[[PARALLEL_2:.*]] = gml_st.parallel (%[[ARG3]]) = (%[[C0]]) to (%[[C32]]) step (%[[C1]]) distribution ("thread")
-  //     CHECK:       %[[TILE_10:.*]] = gml_st.tile [0, %[[ARG3]]] [1, 1] [1, 1]
   //     CHECK:       %[[TILE_11:.*]] = gml_st.tile [0, %[[ARG3]]] [1, 1] [1, 1]
   //     CHECK:       %[[MATERIALIZE_9:.*]] = gml_st.materialize %[[EMPTY_2]][%[[TILE_11]]]
   //     CHECK:       %[[FILL_4:.*]] = linalg.fill ins(%[[EXTRACTED_1]] : f32) outs(%[[MATERIALIZE_9]] : tensor<1x1xf32>)
@@ -238,7 +241,9 @@ func.func @softmax(%arg0: tensor<2048x4096xf32>) -> tensor<2048x4096xf32> {
   //     CHECK:         %[[TILE_17:.*]] = gml_st.tile [0, 0] [1, 1] [1, 1]
   //     CHECK:         %[[MATERIALIZE_15:.*]] = gml_st.materialize %[[ARG5_0]][%[[TILE_17]]] : tensor<1x1xf32>[!gml_st.tile<1x1>] to f32
   //     CHECK:         %[[ADDF:.*]] = arith.addf %[[MATERIALIZE_15]], %[[EXTRACTED_2]] : f32
-  //     CHECK:         gml_st.set_yield %[[ADDF]] into %[[ARG5_0]][%[[TILE_17]]] : f32 into tensor<1x1xf32>[!gml_st.tile<1x1>]
+  //     CHECK:         %[[TILE_17_:.*]] = gml_st.tile [0, 0] [1, 1] [1, 1]
+  //     CHECK:         gml_st.set_yield %[[ADDF]] into %[[ARG5_0]][%[[TILE_17_]]] : f32 into tensor<1x1xf32>[!gml_st.tile<1x1>]
+  //     CHECK:       %[[TILE_10:.*]] = gml_st.tile [0, %[[ARG3]]] [1, 1] [1, 1]
   //     CHECK:       gml_st.set_yield %[[FOR_0]] into %[[EMPTY_2]][%[[TILE_10]]]
   //     CHECK:     %[[REDUCE_0:.*]] = linalg.reduce
   //     CHECK:         ins(%[[PARALLEL_2]] : tensor<1x32xf32>)
@@ -294,7 +299,8 @@ func.func @softmax(%arg0: tensor<2048x4096xf32>) -> tensor<2048x4096xf32> {
   //     CHECK:         %[[DIVF:.*]] = arith.divf %[[EXTRACTED_2_0]], %[[EXTRACTED_3]] : f32
   //     CHECK:         %[[TILE_26:.*]] = gml_st.tile [0, %[[ARG4_1]]] [1, 1] [1, 1]
   //     CHECK:         gml_st.set_yield %[[DIVF]] into %[[ARG5_1]][%[[TILE_26]]] : f32 into tensor<1x?xf32>[!gml_st.tile<1x1>]
-  //     CHECK:       gml_st.set_yield %[[FOR_1]] into %[[MATERIALIZE_6]][%[[TILE_18]]]
+  //     CHECK:       %[[TILE_18_:.*]] = gml_st.tile [0, %[[ARG3]]] [1, %[[DIVUI]]] [1, 32]
+  //     CHECK:       gml_st.set_yield %[[FOR_1]] into %[[MATERIALIZE_6]][%[[TILE_18_]]]
   //     CHECK:     gml_st.set_yield %[[PARALLEL_3]] into %[[MATERIALIZE]][%[[TILE_0]]]
   //     CHECK:   gml_st.set_yield %[[PARALLEL_0]] into %[[EMPTY_0]][%[[TILE]]]
   //     CHECK: return %[[PARALLEL]]
