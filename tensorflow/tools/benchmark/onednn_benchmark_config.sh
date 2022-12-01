@@ -14,14 +14,19 @@
 # limitations under the License.
 # ==============================================================================
 
-# Benchmarks all downloaded models, parses, and summarizes results.
+# Stores shared and platform-specific benchmark configurations
 
-set -x
-source onednn_benchmark_config.sh
+# Path to store downloaded TensorFlow models.
+export TF_GRAPHS=~/tf-graphs
+export BUILDER=bazel
+export BENCH="${BUILDER}-bin/tensorflow/tools/benchmark/benchmark_model"
 
-export OUTDIR=~/onednn_benchmarks
-mkdir -p ${OUTDIR}
-bash run_models.sh 2>&1 | tee ${OUTDIR}/verbose.log
-grep -v 'profiler_session\|xplane' ${OUTDIR}/verbose.log > ${OUTDIR}/run.log
-grep "\+ ${BUILDER}-bin\|no stats:\|'BATCH=" ${OUTDIR}/run.log > ${OUTDIR}/to_parse.log
-python parse_onednn_benchmarks.py ${OUTDIR}/to_parse.log | tee ${OUTDIR}/results.csv
+configure_build() {
+  cd ../../..
+  yes "" | ./configure
+}
+
+# Input $1: 0 if oneDNN is off, 1 otherwise.
+build_benchmark_tool() {
+   ${BUILDER} build --dynamic_mode=off //tensorflow/tools/benchmark:benchmark_model
+}

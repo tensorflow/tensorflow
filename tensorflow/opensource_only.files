@@ -88,9 +88,7 @@ tensorflow/python/tpu/profiler/pip_package/build_pip_package.sh:
 tensorflow/python/tpu/profiler/pip_package/setup:.py
 tensorflow/python/tpu/tpu.bzl:
 tensorflow/security/fuzzing/tf_fuzzing:.bzl
-tensorflow/tools/benchmark/parse_onednn_benchmarks:.py
-tensorflow/tools/benchmark/run_models:.sh
-tensorflow/tools/benchmark/run_onednn_benchmarks:.sh
+tensorflow/tools/benchmark/onednn_benchmark_config:.sh
 tensorflow/tools/build_info/BUILD:
 tensorflow/tools/ci_build/a100/nightly.sh:
 tensorflow/tools/ci_build/horovod/gpu/nightly.sh:
