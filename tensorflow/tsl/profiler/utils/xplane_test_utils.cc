@@ -63,6 +63,11 @@ XPlane* GetOrCreateTpuXPlane(XSpace* space, int32_t device_ordinal,
   builder.AddStatValue(
       *builder.GetOrCreateStatMetadata("peak_teraflops_per_second"),
       peak_tera_flops_per_second);
+
+  // Make overall mem BW same as HBM bw for now.
+  builder.AddStatValue(
+      *builder.GetOrCreateStatMetadata("peak_bw_gigabytes_per_second"),
+      peak_hbm_bw_gigabytes_per_second);
   builder.AddStatValue(
       *builder.GetOrCreateStatMetadata("peak_hbm_bw_gigabytes_per_second"),
       peak_hbm_bw_gigabytes_per_second);
