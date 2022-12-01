@@ -499,3 +499,33 @@ func.func @collapse_one_dim_parallel(%in: tensor<8x8xf32>) -> tensor<8x8xf32> {
 // CHECK:           gml_st.tile [0, %[[ARG]]]
 // CHECK:           linalg.fill
 // CHECK:           gml_st.set_yield
+
+// -----
+
+func.func @fold_for_iter_arg(%in: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  %c8 = arith.constant 8 : index
+  %c0 = arith.constant 0 : index
+  %c16 = arith.constant 16 : index
+  %cst = arith.constant 0.000000e+00 : f32
+  %0 = tensor.empty() : tensor<8x8xf32>
+  %1 = tensor.empty() : tensor<8x8xf32>
+  %13:2 = gml_st.for (%arg4) = (%c0) to (%c16) step (%c8)
+        outs (%arg5 = %0: tensor<8x8xf32>, %arg6 = %1: tensor<8x8xf32>) {
+    %19 = gml_st.tile [0, 0] [8, 8] [1, 1] : !gml_st.tile<8x8>
+    %11 = linalg.fill ins(%cst : f32) outs(%arg5 : tensor<8x8xf32>)
+          -> tensor<8x8xf32>
+    gml_st.set_yield %11 into %arg5[%19] : tensor<8x8xf32>
+          into tensor<8x8xf32>[!gml_st.tile<8x8>],
+          %arg6 into %arg6[%19] : tensor<8x8xf32>
+          into tensor<8x8xf32>[!gml_st.tile<8x8>],
+  } : tensor<8x8xf32>, tensor<8x8xf32>
+  return %13#0 : tensor<8x8xf32>
+}
+
+// CHECK-LABEL: @fold_for_iter_arg
+// CHECK:         %[[INIT:.*]] = tensor.empty()
+// CHECK-NOT:     tensor.empty()
+// CHECK:         %[[FOR:.*]] = gml_st.for {{.*}} outs (%[[ARG:.*]] = %[[INIT]]: tensor<8x8xf32>) {
+// CHECK:         gml_st.set_yield {{.*}} into %[[ARG]][{{.*}}] : tensor<8x8xf32> into tensor<8x8xf32>
+// CHECK:         } : tensor<8x8xf32>
+// CHECK:         return %[[FOR]] : tensor<8x8xf32
