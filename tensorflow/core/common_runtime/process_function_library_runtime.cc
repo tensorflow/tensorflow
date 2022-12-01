@@ -25,6 +25,7 @@ limitations under the License.
 #include <variant>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/build_graph_options.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -646,8 +647,10 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       [&node_name_to_control_ret](const Node* n) -> absl::optional<string> {
     const auto it = node_name_to_control_ret.find(n->name());
     return it != node_name_to_control_ret.end()
-               ? std::make_optional<string>(it->second)
-               : std::nullopt;
+               // NOLINTNEXTLINE
+               ? absl::make_optional<string>(it->second)
+               // NOLINTNEXTLINE
+               : absl::nullopt;
   };
 
   auto data = std::make_unique<MultiDeviceFunctionData>(
