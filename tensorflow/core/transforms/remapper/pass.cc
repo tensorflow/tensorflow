@@ -329,33 +329,6 @@ bool BatchnormSpatialPersistentEnabled() {
 #endif
 }
 
-static std::unique_ptr<OperationState> CreateFusedBatchNormExOpState(
-    OpBuilder &builder, const OpPropertyHelper &helper,
-    FusedBatchNormEx *pattern) {
-  Operation *fused_batch_norm = pattern->fused_batch_norm;
-  Operation *activation = pattern->activation;
-  Value side_input = pattern->side_input;
-
-  auto state = std::make_unique<OperationState>(fused_batch_norm->getLoc(),
-                                                "tfg._FusedBatchNormEx");
-  state->addOperands(fused_batch_norm->getOperands());
-  if (side_input) {
-    state->operands.push_back(side_input);
-  }
-  state->addOperands(TFOp(fused_batch_norm).getControlOperands());
-  state->addTypes(fused_batch_norm->getResultTypes());
-  state->attributes = fused_batch_norm->getAttrs();
-  state->attributes.set(
-      "activation_mode",
-      builder.getStringAttr(activation->getName().stripDialect()));
-  if (side_input) {
-    state->attributes.set("num_side_inputs", builder.getI32IntegerAttr(1));
-  } else {
-    state->attributes.set("num_side_inputs", builder.getI32IntegerAttr(0));
-  }
-  return state;
-}
-
 // FusedBatchNorm[$is_training] + ... -> _FusedBatchNormEx[$is_training]
 //   (1) FusedBatchNorm + <Activation>
 //   (2) FusedBatchNorm + SideInput + <Activation>
@@ -377,12 +350,14 @@ class FusedBatchNormExRewriter : public RemapperPatternBase {
 
   bool is_valid_batch_norm(Operation *fused_batch_norm_op) const {
     TFOp fusedbatchnormop_wrapper(fused_batch_norm_op);
-    if (!this->helper_.getDialect()->IsFusedBatchNorm(fusedbatchnormop_wrapper))
+    if (!this->helper_.getDialect()->IsFusedBatchNorm(fusedbatchnormop_wrapper)) {
       return false;
+    }
     // We fuse FusedBatchNorm on GPU or oneDNN CPU.
     if (!this->helper_.isOneDNNEnabled() &&
-        !util::OpHasDevice(fused_batch_norm_op, tensorflow::DEVICE_GPU))
+        !util::OpHasDevice(fused_batch_norm_op, tensorflow::DEVICE_GPU)) {
       return false;
+    }
 
     TypeAttr attr = fused_batch_norm_op->getAttrOfType<TypeAttr>("T");
     if (!attr) return false;
@@ -441,8 +416,7 @@ class FusedBatchNormExRewriter : public RemapperPatternBase {
     }
 
     // FusedBatchNormV2 and V3 have an extra type parameter.
-    if (fused_batch_norm_op->getName().getStringRef().str() !=
-        "tfg.FusedBatchNorm") {
+    if (fused_batch_norm_op->getName().getStringRef() != "tfg.FusedBatchNorm") {
       auto attr = fused_batch_norm_op->getAttrOfType<TypeAttr>("U");
       if (attr && !attr.getValue().isa<Float32Type>()) {
         return false;
@@ -451,8 +425,9 @@ class FusedBatchNormExRewriter : public RemapperPatternBase {
 
     // Check that only one node consumes the 0-th output of a FusedBatchNorm.
     if (this->helper_.HasControlOperandsOrResultUsers(fused_batch_norm_op) ||
-        !this->helper_.HasAtMostOneUserOfResult0(fused_batch_norm_op))
+        !this->helper_.HasAtMostOneUserOfResult0(fused_batch_norm_op)) {
       return false;
+    }
 
     return true;
   }
@@ -464,6 +439,7 @@ class FusedBatchNormExRewriter : public RemapperPatternBase {
     if (activation_tfg_wrapper.getNonControlOperands().empty()) return false;
 
     Operation *activation_input_op = op->getOperand(0).getDefiningOp();
+    if (activation_input_op == nullptr) return false;
     if (is_valid_batch_norm(activation_input_op)) {
       pattern.fused_batch_norm = activation_input_op;
       pattern.activation = op;
@@ -477,28 +453,33 @@ class FusedBatchNormExRewriter : public RemapperPatternBase {
       // Currently no CPU implementation for "FusedBatchNorm + SideInput +
       // <Activation>"
       if (this->helper_.isOneDNNEnabled() &&
-          !util::OpHasDevice(op, tensorflow::DEVICE_GPU))
+          !util::OpHasDevice(op, tensorflow::DEVICE_GPU)) {
         return false;
+      }
 
       // Check that only Relu node consumes the output of an Add node.
       if (helper_.HasControlOperandsOrResultUsers(activation_input_op) ||
-          !helper_.HasAtMostOneUserOfResult0(activation_input_op))
+          !helper_.HasAtMostOneUserOfResult0(activation_input_op)) {
         return false;
+      }
 
       if (activation_input_op->getOperands().size() < 2 &&
-          TFOp(activation_input_op).getNonControlOperands().size() < 2)
+          TFOp(activation_input_op).getNonControlOperands().size() < 2) {
         return false;
+      }
 
       // Add node supports broadcasting, FusedBatchNormEx does not.
       // Check for symbolic shape equivalence
       auto add_input0_op = activation_input_op->getOperand(0).getDefiningOp();
       auto add_input1_op = activation_input_op->getOperand(1).getDefiningOp();
+      if (add_input0_op == nullptr || add_input1_op == nullptr) return false;
       auto add_input0_shape =
           activation_input_op->getOperand(0).getType().cast<ShapedType>();
       auto add_input1_shape =
           activation_input_op->getOperand(1).getType().cast<ShapedType>();
-      if (add_input0_shape.getShape() != add_input1_shape.getShape())
+      if (add_input0_shape.getShape() != add_input1_shape.getShape()) {
         return false;
+      }
 
       if (is_valid_batch_norm(add_input0_op)) {
         pattern.fused_batch_norm = add_input0_op;
@@ -518,16 +499,41 @@ class FusedBatchNormExRewriter : public RemapperPatternBase {
     return false;
   }
 
+  LogicalResult createFusedBatchNormExOpState(
+    OpBuilder &builder, FusedBatchNormEx *pattern, OperationState &state) const {
+  Operation *fused_batch_norm = pattern->fused_batch_norm;
+  Operation *activation = pattern->activation;
+  Value side_input = pattern->side_input;
+
+  state.addOperands(fused_batch_norm->getOperands());
+  if (side_input) {
+    state.operands.push_back(side_input);
+  }
+  state.addOperands(TFOp(fused_batch_norm).getControlOperands());
+  state.addTypes(fused_batch_norm->getResultTypes());
+  state.attributes = fused_batch_norm->getAttrs();
+  state.attributes.set(
+      "activation_mode",
+      builder.getStringAttr(activation->getName().stripDialect()));
+  if (side_input) {
+    state.attributes.set("num_side_inputs", builder.getI32IntegerAttr(1));
+  } else {
+    state.attributes.set("num_side_inputs", builder.getI32IntegerAttr(0));
+  }
+  return success();
+  }
+
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     Pattern pattern;
 
     if (!matchPattern(op, pattern)) return failure();
 
-    std::unique_ptr<OperationState> state =
-        CreateFusedBatchNormExOpState(rewriter, helper_, &pattern);
+    OperationState state(op->getLoc(), "tfg._FusedBatchNormEx");
+    LogicalResult create_op_state = createFusedBatchNormExOpState(rewriter, &pattern, state);
+    if (!succeeded(create_op_state)) return failure();    
 
-    Operation *fused_op = rewriter.create(*state);
+    Operation *fused_op = rewriter.create(state);
 
     auto fused_batch_norm_op_name = TFOp(pattern.fused_batch_norm).nameAttr();
     TFOp(fused_op).setName(fused_batch_norm_op_name);
