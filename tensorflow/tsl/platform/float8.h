@@ -469,8 +469,8 @@ struct ConvertImpl<
 
   static EIGEN_DEVICE_FUNC inline To run(const From& from) {
     // Shift bits to destination type, without sign bit.
-    const FromBits from_bits = from.rep() & 0x7F;
-    ToBits bits = ToBits{from_bits} << kDigitShift;
+    const FromBits from_bits = static_cast<FromBits>(from.rep() & 0x7F);
+    ToBits bits = static_cast<ToBits>(ToBits{from_bits} << kDigitShift);
 
     // Adjust the exponent.
     // Special cases.
@@ -537,9 +537,10 @@ constexpr inline Bits RoundBitsToNearestEven(Bits bits, int roundoff) {
   // - L is 1, R is 1, OR
   // - L is 0, R is 1, any T is one.
   // We do this by adding L to a bit pattern consisting of all T = 1.
-  Bits bias = roundoff == 0 ? 0
-                            : ((bits >> roundoff) & 1) +
-                                  (static_cast<Bits>(1) << (roundoff - 1)) - 1;
+  Bits bias = static_cast<Bits>(
+      (roundoff == 0) ? 0
+                      : ((bits >> roundoff) & 1) +
+                            (static_cast<Bits>(1) << (roundoff - 1)) - 1);
   return bits + bias;
 }
 
@@ -577,13 +578,15 @@ struct ConvertImpl<From, To, kSaturate, kTruncate,
   // to convert between bit representations.  The input `in` must be a
   // positive normalized value.
   static constexpr inline FromBits ToFromBits(ToBits in) {
-    FromBits out = static_cast<FromBits>(in) << kDigitShift;
-    out += static_cast<FromBits>(kExponentOffset) << kFromMantissaBits;
+    FromBits out =
+        static_cast<FromBits>(static_cast<FromBits>(in) << kDigitShift);
+    out += static_cast<FromBits>(static_cast<FromBits>(kExponentOffset)
+                                 << kFromMantissaBits);
     return out;
   }
 
   static constexpr inline FromBits SetFromBit(int idx) {
-    return static_cast<FromBits>(1) << idx;
+    return static_cast<FromBits>(static_cast<FromBits>(1) << idx);
   }
 
   static EIGEN_DEVICE_FUNC inline To run(const From& from) {
@@ -642,7 +645,7 @@ struct ConvertImpl<From, To, kSaturate, kTruncate,
         if constexpr (!kTruncate) {
           from_bits = RoundBitsToNearestEven(from_bits, exponent_shift);
         }
-        bits = (from_bits >> exponent_shift);
+        bits = static_cast<ToBits>(from_bits >> exponent_shift);
       }
       // Insert sign and return.
       return Eigen::numext::bit_cast<To>(static_cast<ToBits>(bits | sign));
@@ -686,7 +689,7 @@ struct ConvertImpl<float8_e5m2, float8_e4m3, kSaturate, kTruncate> {
     }
 
     // Subtract exponent offset and shift.
-    uint8_t bits = (from_bits - 0x20) << 1;
+    uint8_t bits = static_cast<uint8_t>((from_bits - 0x20) << 1);
     return float8_e4m3::FromRep(sign | bits);
   }
 };
