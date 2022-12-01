@@ -650,20 +650,30 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertFalse(
         self._contains_op(output_meta_graphdef, 'FusedBatchNormV3'))
 
-  @parameterized.parameters(
-      parameter_combinations([{
+  @parameterized.parameters(*parameter_combinations([
+      {
           'activation_fn': [None, nn_ops.relu, nn_ops.relu6],
           'has_bias': [True, False],
-          'batch_sizes': [(), (2, 3)],
+          'batch_sizes': [([], []), ([2, 3], [2, 3])],
           'target_opset': [quant_opts_pb2.XLA],
-      }]))
+      },
+      # Test broadcastable batch sizes.
+      {
+          'activation_fn': [None],
+          'has_bias': [True],
+          'batch_sizes': [([2], []), ([], [2]), ([1], [2]), ([None], [])],
+          'target_opset': [quant_opts_pb2.XLA],
+      }
+  ]))
   @test_util.run_in_graph_and_eager_modes
   def test_matmul_ptq_model(self, activation_fn: Optional[ops.Operation],
                             has_bias: bool, batch_sizes: Sequence[int],
                             target_opset: quant_opts_pb2.OpSet):
     np.random.seed(1234)
-    input_shape = (*batch_sizes, 1, 1024)
-    filter_shape = (*batch_sizes, 1024, 3)
+    lhs_batch_size, rhs_batch_size = batch_sizes
+    input_shape = (*lhs_batch_size, 1, 1024)
+    filter_shape = (*rhs_batch_size, 1024, 3)
+    static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
     input_saved_model_path = self.create_tempdir('input').full_path
     model = self._create_matmul_model(input_shape, filter_shape,
                                       input_saved_model_path, has_bias,
@@ -674,8 +684,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         yield {
             'input_tensor':
                 ops.convert_to_tensor(
-                    np.random.uniform(low=0.0, high=1.0,
-                                      size=input_shape).astype('f4')),
+                    np.random.uniform(
+                        low=0.0, high=1.0,
+                        size=static_input_shape).astype('f4')),
         }
 
     tags = {tag_constants.SERVING}
@@ -701,7 +712,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self._contains_quantized_function_call(output_meta_graphdef))
 
     input_data = ops.convert_to_tensor(
-        np.random.uniform(low=0.0, high=1.0, size=input_shape).astype('f4'))
+        np.random.uniform(low=0.0, high=1.0,
+                          size=static_input_shape).astype('f4'))
     expected_outputs = model.matmul(input_data)
     got_outputs = converted_model.signatures['serving_default'](
         input_tensor=ops.convert_to_tensor(input_data))
@@ -724,6 +736,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
+    loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = loader.get_meta_graph_def_from_tags(tags)
+    if target_opset == quant_opts_pb2.XLA:
+      self.assertTrue(self._contains_op(output_meta_graphdef, 'XlaDotV2'))
 
     new_outputs = converted_model.signatures['serving_default'](
         input_tensor=ops.convert_to_tensor(input_data))

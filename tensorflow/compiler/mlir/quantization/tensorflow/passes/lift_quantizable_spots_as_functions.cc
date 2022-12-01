@@ -149,6 +149,14 @@ class CheckQuantizableOps
         return tensorflow::errors::Unknown(
             "The channel dimension of Conv3D is required to be static.");
       }
+    } else if (function_name.contains("batch_matmul")) {
+      // For BatchMatMul, the input must be ranked.
+      auto shaped_type =
+          call_op->getOperand(0).getType().dyn_cast<ShapedType>();
+      if (!shaped_type || !shaped_type.hasRank()) {
+        return tensorflow::errors::Unknown(
+            "The input of BatchMatMul must have rank.");
+      }
     }
 
     std::unique_ptr<OpQuantSpec> spec = GetTFOpQuantSpec(call_op);
