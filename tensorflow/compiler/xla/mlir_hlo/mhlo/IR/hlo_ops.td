@@ -2207,6 +2207,7 @@ def MHLO_CustomCallOp: MHLO_Op<"custom_call",
         "::mlir::mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL">:
         $api_version,
     DefaultValuedOptionalAttr<MHLO_FlatSymbolRefArrayAttr, "{}">:$called_computations,
+    DefaultValuedOptionalAttr<MHLO_CustomCallScheduleAttr, "::mlir::mhlo::CustomCallSchedule::NONE">:$custom_call_schedule,
     OptionalAttr<MHLO_ArrayOfLayoutAttr>:$operand_layouts,
     OptionalAttr<MHLO_ArrayOfLayoutAttr>:$result_layouts,
     DefaultValuedOptionalAttr<
