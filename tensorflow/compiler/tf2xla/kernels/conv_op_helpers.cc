@@ -154,7 +154,7 @@ Status ConvBackpropComputeDimensionsV2XlaShapes(
 }  // anonymous namespace
 
 std::vector<DataType> GetXlaConvTypes() {
-  return {DT_FLOAT, DT_BFLOAT16, DT_HALF, DT_DOUBLE, DT_INT32};
+  return {DT_FLOAT, DT_BFLOAT16, DT_HALF, DT_DOUBLE};
 }
 
 StatusOr<ConvOpAttrs> ConvOpAttrs::Create(int num_spatial_dims, bool depthwise,
