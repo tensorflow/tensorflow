@@ -51,6 +51,8 @@ package_group(
     ],
 )
 
+exports_files(["run_lit.sh"])
+
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",
