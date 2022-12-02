@@ -838,7 +838,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     """Returns the lengths of rows in this `RowPartition`.
 
     Args:
-      allow_persist: If True, the generated value_rowids tensor will be 
+      allow_persist: If True, the generated row_lengths tensor will be
       stored internally and reused if needed again. Defaults to True.
 
     Returns:
