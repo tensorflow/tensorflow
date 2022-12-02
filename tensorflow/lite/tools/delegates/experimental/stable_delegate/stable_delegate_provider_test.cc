@@ -26,7 +26,7 @@ namespace tools {
 namespace {
 
 static constexpr char kTestSettingsSrcDir[] =
-    "third_party/tensorflow/lite/tools/delegates/experimental/stable_delegate/";
+    "tensorflow/lite/tools/delegates/experimental/stable_delegate/";
 static constexpr char kGoodStableDelegateSettings[] =
     "test_sample_stable_delegate_settings.json";
 static constexpr char kGoodXNNPackDelegateSettings[] =

@@ -43,6 +43,10 @@ tflite_cc_shared_object(
     defines = ["TFL_STABLE_DELEGATE_COMPILE_LIBRARY"],
     linkopts = tflite_linkopts_no_undefined() + select({
         "//tensorflow:windows": [],
+        # iOS linker doesn't support -version-script.
+        "//tensorflow:ios": [
+            # TODO(b/260213307): support hiding unnecessary symbols on iOS.
+        ],
         "//conditions:default": [
             # Expose necessary symbols only.
             "-Wl,--version-script,$(location //tensorflow/lite/delegates/utils/experimental/stable_delegate:version_script.lds)",
