@@ -2888,7 +2888,6 @@ Status FuseConv2DSwish(RemapperContext* ctx,
   fused_op.set_device(mul->device());
   fused_op.add_input(conv2d->input(0));
   fused_op.add_input(conv2d->input(1));
-  CopyConv2DAttributes(*conv2d, &fused_op);
   // Check if the pattern has Conv2d + BiasAdd
   if (matched_nodes_map.find("biasadd") != matched_nodes_map.end()) {
     auto* bias_add_node =
@@ -2908,6 +2907,7 @@ Status FuseConv2DSwish(RemapperContext* ctx,
     SetFusedOpAttributes(&fused_op, {"FusedBatchNorm", "_MklSwish"},
                          /*num_args=*/4, /*epsilon=*/epsilon);
   }
+  CopyConv2DAttributes(*conv2d, &fused_op);
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
   Status status;
@@ -2921,7 +2921,7 @@ Status FuseConv2DSwish(RemapperContext* ctx,
     (*nodes_to_delete)[node_index] = true;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddFusedMatMulBiasAddAndGelu(
