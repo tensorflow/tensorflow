@@ -2961,7 +2961,7 @@ def pybind_extension_opensource(
     native.py_library(
         name = name,
         data = select({
-            "@org_tensorflow//tensorflow:windows": [pyd_file],
+            clean_dep("//tensorflow:windows"): [pyd_file],
             "//conditions:default": [so_file],
         }) + pytype_srcs,
         deps = pytype_deps,
