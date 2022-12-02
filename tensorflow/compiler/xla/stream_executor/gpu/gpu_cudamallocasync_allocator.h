@@ -13,20 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_CUDAMALLOCASYNC_ALLOCATOR_H_
-#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_CUDAMALLOCASYNC_ALLOCATOR_H_
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_GPU_GPU_CUDAMALLOCASYNC_ALLOCATOR_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_GPU_GPU_CUDAMALLOCASYNC_ALLOCATOR_H_
 
 #include <memory>
 #include <optional>
 #include <string>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/framework/device_id.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/mutex.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -35,7 +35,7 @@ limitations under the License.
 #endif  // GOOGLE_CUDA
 
 
-namespace tensorflow {
+namespace stream_executor {
 
 // An allocator that wraps cudaMallocAsync. It has fewer fragmentation
 // issues then the BFC memory allocator.  The compute-sanitizer tool
@@ -101,7 +101,7 @@ class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
 
  private:
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
-  se::StreamExecutor* stream_exec_;  // Not owned.
+  StreamExecutor* stream_exec_;  // Not owned.
 
   // cudaMallocAsync is stream aware. But TF StreamExecutor use only 1
   // compute stream and already synchronize with the h2d, d2h and d2d
@@ -129,10 +129,10 @@ class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
   // Stats.
   // Structures mutable after construction
   mutable tsl::mutex lock_;
-  std::unique_ptr<tsl::AllocatorStats> stats_ TF_PT_GUARDED_BY(lock_);
-  absl::flat_hash_map<const void*, size_t> size_map_ TF_GUARDED_BY(lock_);
+  std::unique_ptr<tsl::AllocatorStats> stats_ ABSL_PT_GUARDED_BY(lock_);
+  absl::flat_hash_map<const void*, size_t> size_map_ ABSL_GUARDED_BY(lock_);
 };
 
-}  // namespace tensorflow
+}  // namespace stream_executor
 
-#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_CUDAMALLOCASYNC_ALLOCATOR_H_
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_GPU_GPU_CUDAMALLOCASYNC_ALLOCATOR_H_

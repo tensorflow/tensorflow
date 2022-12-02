@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/gpu/gpu_cudamallocasync_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 
 #include <map>
 #include <memory>
@@ -37,7 +37,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/util/env_var.h"
 
-namespace tensorflow {
+namespace stream_executor {
 
 #if GOOGLE_CUDA
 static std::string GetCudaErrorMessage(CUresult result) {
@@ -118,8 +118,8 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   (void)reserve_memory_;
 
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
-  stream_exec_ = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                     se::GPUMachineManager(), platform_device_id)
+  stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(
+                     GPUMachineManager(), platform_device_id)
                      .value();
   // Initialized here as it only exist if compiled with a recent
   // enough CUDA.
@@ -145,7 +145,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
           << "Failed to retain context: " << GetCudaErrorMessage(result);
   }
 
-  se::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
+  cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
 
   // Check the CUDA runtime is recent enough.
   if (auto status2 = cuDriverGetVersion(&driverVersion)) {
@@ -286,7 +286,7 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
         << "The instantiation of GpuCudaMallocAsyncAllocator failed."
         << " See previous errors.";
   }
-  se::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
+  cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
   void* ptr = nullptr;
   if (auto result =
           cuMemAllocFromPoolAsync(reinterpret_cast<CUdeviceptr*>(&ptr),
@@ -338,7 +338,7 @@ void GpuCudaMallocAsyncAllocator::DeallocateRaw(void* ptr) {
       VLOG(1) << "Ignoring CUDA error: " << GetCudaErrorMessage(result);
     } else {
       size_t free, total;
-      se::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
+      cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
       cuMemGetInfo(&free, &total);
       LOG(ERROR) << "cudaFreeAsync failed to free " << ptr << ": "
                  << GetCudaErrorMessage(result)
@@ -430,4 +430,4 @@ void GpuCudaMallocAsyncAllocator::SetStreamAndPreallocateMemory(void* stream) {
 #endif
 }
 
-}  // namespace tensorflow
+}  // namespace stream_executor
