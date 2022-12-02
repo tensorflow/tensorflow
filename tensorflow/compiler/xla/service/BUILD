@@ -6991,33 +6991,33 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "dot_order_optimizer",
-    srcs = ["dot_order_optimizer.cc"],
-    hdrs = ["dot_order_optimizer.h"],
-    deps = [
-        ":hlo_pass",
-        ":hlo_creation_utils",
-        ":pattern_matcher",
-        "//tensorflow/compiler/xla:status_macros",
-    ],
-)
+# cc_library(
+#     name = "dot_order_optimizer",
+#     srcs = ["dot_order_optimizer.cc"],
+#     hdrs = ["dot_order_optimizer.h"],
+#     deps = [
+#         ":hlo_pass",
+#         ":hlo_creation_utils",
+#         ":pattern_matcher",
+#         "//tensorflow/compiler/xla:status_macros",
+#     ],
+# )
 
-tf_cc_test(
-    name = "dot_order_optimizer_test",
-    srcs = ["dot_order_optimizer_test.cc"],
-    deps = [
-        ":dot_order_optimizer",
-        ":hlo",
-        ":hlo_creation_utils",
-        ":pattern_matcher",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-    ],
-)
+# tf_cc_test(
+#     name = "dot_order_optimizer_test",
+#     srcs = ["dot_order_optimizer_test.cc"],
+#     deps = [
+#         ":dot_order_optimizer",
+#         ":hlo_creation_utils",
+#         ":pattern_matcher",
+#         "//tensorflow/compiler/xla/hlo/ir:hlo",
+#         "//tensorflow/compiler/xla:test",
+#         "//tensorflow/compiler/xla/tests:hlo_test_base",
+#         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+#         "//tensorflow/core:lib",
+#         "//tensorflow/core:test",
+#     ],
+# )
 
 cc_library(
     name = "tensor_splitter",
@@ -7038,9 +7038,9 @@ tf_cc_test(
     srcs = ["tensor_splitter_test.cc"],
     deps = [
         ":tensor_splitter",
-        ":hlo",
         ":hlo_creation_utils",
         ":pattern_matcher",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -7061,7 +7061,7 @@ cc_library(
         ":hlo_pass",
         ":hlo_creation_utils",
         ":hlo_dce",
-        ":algebraic_simplifier",
+        # ":algebraic_simplifier",
         ":hlo_pass_pipeline",
         ":pattern_matcher",
         "@com_google_absl//absl/algorithm:container",
@@ -7088,12 +7088,12 @@ cc_library(
     srcs = ["hlo_mco.cc"],
     hdrs = ["hlo_mco.h"],
     deps = [
-        ":hlo",
         ":hlo_creation_utils",
         ":hlo_pass",
         ":pattern_matcher",
         ":call_inliner",
         ":shape_inference",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "@com_google_absl//absl/algorithm:container",
     ],
 )
@@ -7103,8 +7103,8 @@ tf_cc_test(
     srcs = ["hlo_mco_test.cc"],
     deps = [
         ":hlo_mco",
-        ":hlo",
         ":hlo_pass",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",

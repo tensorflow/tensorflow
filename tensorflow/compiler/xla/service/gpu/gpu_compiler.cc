@@ -176,7 +176,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 #include "tensorflow/compiler/xla/service/euclidean_distance_rewriter.h"  // eXLA
-#include "tensorflow/compiler/xla/service/dot_order_optimizer.h" // eXLA
+// #include "tensorflow/compiler/xla/service/dot_order_optimizer.h" // eXLA
 #include "tensorflow/compiler/xla/service/hlo_mco.h"  // eXLA
 #include "tensorflow/compiler/xla/service/tensor_splitter.h"  // eXLA
 #include "tensorflow/compiler/xla/service/reshape_sinker.h"  // eXLA

@@ -1870,7 +1870,7 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/profiler/lib:traceme",
-        "//tensorflow/compiler/xla/service:dot_order_optimizer",  # eXLA
+        # "//tensorflow/compiler/xla/service:dot_order_optimizer",  # eXLA
         "//tensorflow/compiler/xla/service:hlo_mco",  # eXLA
         "//tensorflow/compiler/xla/service:tensor_splitter",  # eXLA
         "//tensorflow/compiler/xla/service:rce_optimizer",  # eXLA

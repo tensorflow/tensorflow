@@ -323,7 +323,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform",
-        "//tensorflow/compiler/xla/service:dot_order_optimizer",  # eXLA
+        # "//tensorflow/compiler/xla/service:dot_order_optimizer",  # eXLA
         "//tensorflow/compiler/xla/service:hlo_mco",  # eXLA
         "//tensorflow/compiler/xla/service:tensor_splitter",  # eXLA
         "//tensorflow/compiler/xla/service:rce_optimizer",  # eXLA
