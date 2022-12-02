@@ -1327,6 +1327,25 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "device_executable_persistor",
+    hdrs = ["device_executable_persistor.h"],
+    deps = [
+        ":xla_compilation_cache_proto_cc",
+        ":xla_device_compiler_client",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/platform:statusor",
+    ],
+)
+
 tf_cc_test(
     name = "device_compilation_profiler_test",
     srcs = ["device_compilation_profiler_test.cc"],
@@ -1335,6 +1354,30 @@ tf_cc_test(
         ":xla_activity_proto_cc",
         "//tensorflow/compiler/jit/tests:xla_compilation_cache_test_helper",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cc_test(
+    name = "device_executable_persistor_test",
+    srcs = ["device_executable_persistor_test.cc"],
+    deps = [
+        ":device_compiler_client",
+        ":device_executable_persistor",
+        ":xla_compilation_cache_proto_cc",
+        ":xla_cpu_device",
+        ":xla_cpu_jit",
+        ":xla_device_compiler_client",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:math_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:executable_build_options",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )
