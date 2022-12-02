@@ -807,6 +807,7 @@ xla_cc_binary(
         "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
         "//tensorflow/tsl/profiler/backends/cpu:annotation_stack_impl",
         "//tensorflow/tsl/util:command_line_flags",
+        "//tensorflow/tsl/util:determinism",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
         "//tensorflow/compiler/xla/service/gpu:nvptx_helper",
