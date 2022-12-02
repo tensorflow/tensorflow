@@ -1011,6 +1011,7 @@ cc_library(
 cc_library(
     name = "tf_saved_model_passes",
     srcs = [
+        "transforms/convert_session_initializer_to_function.cc",
         "transforms/deduplicate_bound_input_bindings.cc",
         "transforms/freeze_global_tensors.cc",
         "transforms/freeze_saved_model_assets.cc",
