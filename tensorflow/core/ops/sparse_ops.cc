@@ -216,9 +216,9 @@ REGISTER_OP("SparseIndicesToRaggedRowSplits")
     .Output("row_splits: IndexType")
     .Output("invalid_flag: int32")
     .SetShapeFn([](InferenceContext* c) {
-        c->set_output(0, c->UnknownShape());
-        c->set_output(1, c->Vector(1));
-        return OkStatus();
+      c->set_output(0, c->UnknownShape());
+      c->set_output(1, c->Vector(1));
+      return OkStatus();
     });
 
 REGISTER_OP("SparseConcat")

@@ -34,9 +34,6 @@ __global__ void SparseIndicesToRaggedRowSplitsKernel(
     const int num_nonzero, const bool validate_ragged_right,
     const IndexType* indices_flat_2d, const IndexType* dense_shape,
     IndexType* row_splits, int32_t* invalid_flag) {
-  *invalid_flag = 0;  // Extremely simplistic way of zeroing out this value.
-  __syncthreads();
-
   auto num_rows = dense_shape[0];
   auto num_cols = dense_shape[1];
 
@@ -121,6 +118,13 @@ struct SparseIndicesToRaggedRowSplitsFunctor<GPUDevice, IndexType> {
                        context->allocate_output(
                            "row_splits", TensorShape({num_rows + 1}), &output));
     IndexType* row_splits = output->flat<IndexType>().data();
+
+    se::Stream* stream = context->op_device_context()->stream();
+    if (!stream) return errors::Internal("No GPU stream available.");
+    se::DeviceMemoryBase invalid_flag_gpu_memory(invalid_flag, sizeof(int32_t));
+    if (!stream->ThenMemZero(&invalid_flag_gpu_memory, sizeof(int32_t)).ok()) {
+      return errors::Internal("Failed to zero invalid_flag.");
+    }
 
     const GPUDevice& d = context->eigen_gpu_device();
     GpuLaunchConfig config = GetGpuLaunchConfig(num_rows, d);

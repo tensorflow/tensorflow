@@ -55,7 +55,7 @@ struct SparseIndicesToRaggedRowSplitsFunctor<CPUDevice, IndexType> {
           // This ensures indices are in order by row.
           if ((curr_row < prev_row) || (curr_row >= num_rows)) {
             *invalid_flag = 1;
-            return Status::OK();
+            return OkStatus();
           }
           prev_col = -1;
         }
@@ -66,7 +66,7 @@ struct SparseIndicesToRaggedRowSplitsFunctor<CPUDevice, IndexType> {
         int curr_col = indices_flat_2d[2 * n + 1];
         if ((curr_col != prev_col + 1) || (curr_col >= num_cols)) {
           *invalid_flag = 1;
-          return Status::OK();
+          return OkStatus();
         } else {
           prev_col = curr_col;
         }
@@ -83,7 +83,7 @@ struct SparseIndicesToRaggedRowSplitsFunctor<CPUDevice, IndexType> {
       row_splits[r + 1] = n;
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 
