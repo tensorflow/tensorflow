@@ -36,6 +36,11 @@ size_t ShardingHash(const pybind11::object& sharding) {
     return op_sharding->Hash();
   }
 
+  if (type.is(SingleDeviceSharding::type())) {
+    auto* single_device_sharding = py::cast<SingleDeviceSharding*>(sharding);
+    return absl::Hash<void*>()(single_device_sharding->device().ptr());
+  }
+
   return py::hash(sharding);
 }
 
@@ -60,6 +65,14 @@ bool ShardingEqual(const pybind11::object& a, const pybind11::object& b) {
     auto* b_op_sharding_sharding = py::cast<const OpShardingSharding*>(b);
 
     return a_op_sharding_sharding == b_op_sharding_sharding;
+  }
+
+  if (a_type.is(SingleDeviceSharding::type())) {
+    auto* a_single_device_sharding = py::cast<const SingleDeviceSharding*>(a);
+    auto* b_single_device_sharding = py::cast<const SingleDeviceSharding*>(b);
+
+    return a_single_device_sharding->device().ptr() ==
+           b_single_device_sharding->device().ptr();
   }
 
   return a.equal(b);
