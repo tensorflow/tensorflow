@@ -741,19 +741,14 @@ ENTRY ReduceR3ToR2.v3 {
       xla::HloModuleProtoWithConfig reconstructed_module_proto,
       reconstructed_module->ToProtoWithConfig());
 
-  // HLO modules never have the same unique ID, but we need to fake it to test
-  // for serialization equality.
-  reconstructed_module_proto.mutable_hlo_module()->set_id(module->unique_id());
-
-  std::string reserialized_module;
-  ASSERT_TRUE(tsl::SerializeToStringDeterministic(reconstructed_module_proto,
-                                                  &reserialized_module));
-  std::string reconstructed_debug_str =
-      reconstructed_module_proto.DebugString();
-  RecordProperty("reserialized_module", reconstructed_debug_str);
-
-  EXPECT_EQ(serialized_module, reserialized_module);
-  EXPECT_EQ(original_debug_str, reconstructed_debug_str);
+  // The two protos should be equivalent except for the `id` field
+  google::protobuf::util::MessageDifferencer diff;
+  diff.set_message_field_comparison(
+      google::protobuf::util::MessageDifferencer::EQUIVALENT);
+  auto module_descriptor = HloModuleProto::GetDescriptor();
+  auto unique_id_field = module_descriptor->FindFieldByName("id");
+  diff.IgnoreField(unique_id_field);
+  EXPECT_TRUE(diff.Compare(proto, reconstructed_module_proto));
 }
 
 static HloModuleConfigProto::ShardableValueUpdatePairProto MakeShardPair(
@@ -876,15 +871,11 @@ TEST_F(HloModuleTest, HloModuleConfigCreateFromProto) {
                           HloModuleConfig::CreateFromProto(input_proto));
   TF_ASSERT_OK_AND_ASSIGN(HloModuleConfigProto output_proto,
                           good_config->ToProto());
-  std::string in_proto_str;
-  std::string out_proto_str;
-  ASSERT_TRUE(tsl::SerializeToStringDeterministic(input_proto, &in_proto_str));
-  ASSERT_TRUE(
-      tsl::SerializeToStringDeterministic(output_proto, &out_proto_str));
 
-  EXPECT_EQ(in_proto_str, out_proto_str);
-  EXPECT_TRUE(tsl::AreSerializedProtosEqual(input_proto, output_proto));
-  EXPECT_EQ(input_proto.DebugString(), output_proto.DebugString());
+  google::protobuf::util::MessageDifferencer diff;
+  diff.set_message_field_comparison(
+      google::protobuf::util::MessageDifferencer::EQUIVALENT);
+  EXPECT_TRUE(diff.Compare(input_proto, output_proto));
 }
 
 TEST_F(HloModuleTest, HloModuleConfigToProto) {
@@ -897,8 +888,11 @@ TEST_F(HloModuleTest, HloModuleConfigToProto) {
   ASSERT_NE(remade_config, nullptr);
   TF_ASSERT_OK_AND_ASSIGN(HloModuleConfigProto second_proto,
                           remade_config->ToProto());
-  EXPECT_TRUE(tsl::AreSerializedProtosEqual(first_proto, second_proto));
-  EXPECT_EQ(first_proto.DebugString(), second_proto.DebugString());
+
+  google::protobuf::util::MessageDifferencer diff;
+  diff.set_message_field_comparison(
+      google::protobuf::util::MessageDifferencer::EQUIVALENT);
+  EXPECT_TRUE(diff.Compare(first_proto, second_proto));
 }
 
 }  // namespace
