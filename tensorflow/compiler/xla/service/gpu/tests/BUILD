@@ -800,6 +800,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
         "//tensorflow/compiler/xla/stream_executor:device_description_proto_cc_impl",
         "//tensorflow/compiler/xla/stream_executor:device_description",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/platform:tensor_float_32_utils",
         "//tensorflow/tsl/protobuf:autotuning_proto_cc_impl",
