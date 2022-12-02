@@ -2873,6 +2873,28 @@ def MHLO_ReturnOp : MHLO_Op<"return", [Pure, Terminator]> {
 }
 
 def MHLO_TorchIndexSelectOp : MHLO_Op<"torch_index_select", [Pure]> {
+  let summary = "Torch Index Select operator";
+  let description = [{
+    Returns a new tensor which indexes the input tensor along dimension `dim`
+    using the entries in `index`.
+
+    The returned tensor has the same dimensions as `operand`, except for the
+    `dim`th dimension which is replaced by the shape of `index` without the
+    leading `batch_dims` dimensions;
+
+    The `batch_dims` attribute specifies the number of major batch dimensions
+    (0 or more) that act like a multidimensional loop over both the input and
+    the index.
+
+    Example:
+
+    ```mlir
+    %0 = "mhlo.torch_index_select"(%arg0, %arg1) {
+      batch_dims = 1 : i64, dim = 2 : i64
+    } : (tensor<8x128x3072x64xf32>, tensor<8x16x1024xi32>) -> tensor<8x128x16x1024x64xf32>
+    ```
+  }];
+
   let arguments = (ins
     MHLO_Tensor:$operand,
     MHLO_Tensor:$index,
