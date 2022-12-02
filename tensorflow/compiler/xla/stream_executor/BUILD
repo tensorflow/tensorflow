@@ -7,7 +7,8 @@
 load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/tsl:tsl.bzl", "tsl_gpu_library")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library", "tsl_cc_test")
+load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 
@@ -772,7 +773,7 @@ cc_library(
     ],
 )
 
-tsl_cc_test(
+xla_cc_test(
     name = "stream_test",
     size = "small",
     srcs = ["stream_test.cc"],
@@ -786,7 +787,7 @@ tsl_cc_test(
     ],
 )
 
-tsl_cc_test(
+xla_cc_test(
     name = "dnn_test",
     size = "small",
     srcs = ["dnn_test.cc"],
