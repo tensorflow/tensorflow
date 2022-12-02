@@ -408,7 +408,7 @@ bool InferDotShardingFromOperands(
                                ? dnums.rhs_non_contracting_dims
                                : dnums.lhs_non_contracting_dims) {
       int64_t d = operand_index == 0 ? dim.lhs : dim.rhs;
-      if (d > 0) {
+      if (d >= 0) {
         contracting_dims.push_back(d);
       }
     }
