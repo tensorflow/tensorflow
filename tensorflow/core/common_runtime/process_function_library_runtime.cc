@@ -18,14 +18,13 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
-#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
-#include <variant>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
+#include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/build_graph_options.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -378,7 +377,8 @@ std::vector<Tensor> GetLocalArgs(gtl::ArraySlice<FunctionArg> args) {
   std::vector<Tensor> tensors;
   for (const auto& arg : args) {
     if (arg.index() == 0) {
-      tensors.push_back(std::get<Tensor>(arg));
+      // NOLINTNEXTLINE
+      tensors.push_back(absl::get<Tensor>(arg));
     }
   }
   return tensors;
@@ -407,7 +407,8 @@ Status FunctionRetsToTensors(const std::vector<FunctionRet>* function_rets,
       return errors::Internal(
           "Expect a Tensor as a function output but got a TensorShape.");
     }
-    tensors->push_back(std::get<Tensor>(ret));
+    // NOLINTNEXTLINE
+    tensors->push_back(absl::get<Tensor>(ret));
   }
   return OkStatus();
 }
