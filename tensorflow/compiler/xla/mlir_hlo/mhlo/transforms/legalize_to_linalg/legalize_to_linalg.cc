@@ -2411,6 +2411,29 @@ Value applyConvolutionPadding(Location loc, Value input,
       DenseIntElementsAttr::get(attrType, padInterior));
 }
 
+// If the ConvolutionOp has a window reversal, applies it to the filter.
+Value applyConvolutionReversal(Location loc, OpBuilder& b, ConvolutionOp op,
+                               Value filter) {
+  auto reversals = op.getWindowReversal();
+  if (!reversals.has_value()) {
+    return filter;
+  }
+  llvm::SmallVector<int64_t> reversedDims;
+  for (auto [idx, reversed] :
+       llvm::enumerate(reversals.value().getValues<bool>())) {
+    if (reversed) {
+      reversedDims.push_back(
+          op.getDimensionNumbers().getKernelSpatialDimensions()[idx]);
+    }
+  }
+
+  return b.create<mhlo::ReverseOp>(
+      loc, filter,
+      mlir::DenseIntElementsAttr::get(
+          RankedTensorType::get(reversedDims.size(), b.getI64Type()),
+          reversedDims));
+}
+
 /// Converts mhlo.conv operation to linalg named op. This only covers normal
 /// convolution cases. The op must have canonical dimension numbers. Depthwise
 /// convolution and pointwise convolution are not handled in the conversion.
@@ -2429,9 +2452,17 @@ struct NormalConvolutionOpConversion
     Location loc = op.getLoc();
     Value input = adaptor.getLhs();
     Value filter = adaptor.getRhs();
+    filter = applyConvolutionReversal(loc, rewriter, op, filter);
     auto resultType =
         typeConverter->convertType(op.getResult().getType()).cast<ShapedType>();
     int64_t rank = resultType.getRank();
+
+    // Immediately emit an EmptyOp for output tensors with zero dimension.
+    if (llvm::is_contained(resultType.getShape(), 0)) {
+      rewriter.replaceOpWithNewOp<tensor::EmptyOp>(op, resultType.getShape(),
+                                                   resultType.getElementType());
+      return success();
+    }
 
     // The output shape is N spatial_dims F.
     SmallVector<Value, 8> dynSizes;
@@ -2535,6 +2566,13 @@ struct ConvolutionOpGeneralConversion
     auto reshapedResultShape = resultType.getShape().vec();
     if (!resultType.hasStaticShape()) return failure();
 
+    // Immediately emit an EmptyOp for output tensors with zero dimension.
+    if (llvm::is_contained(reshapedResultShape, 0)) {
+      rewriter.replaceOpWithNewOp<tensor::EmptyOp>(op, reshapedResultShape,
+                                                   resultType.getElementType());
+      return success();
+    }
+
     auto dimensionNumbers = op.getDimensionNumbers();
     auto inputBatchDimension = dimensionNumbers.getInputBatchDimension();
     auto inputFeatureDimension = dimensionNumbers.getInputFeatureDimension();
@@ -2568,25 +2606,7 @@ struct ConvolutionOpGeneralConversion
     Value modifiedRhs = applyConvolutionPadding(
         op.getLoc(), adaptor.getRhs(), nullptr, adaptor.getRhsDilationAttr(),
         op.getDimensionNumbers().getKernelSpatialDimensions(), rewriter);
-
-    // Decompose the reversal dims into its own step
-    auto reversals = op.getWindowReversal();
-    if (reversals.has_value()) {
-      llvm::SmallVector<int64_t> reversedDims;
-      for (auto& idxAndBool :
-           llvm::enumerate(reversals.value().getValues<bool>()))
-        if (idxAndBool.value())
-          reversedDims.push_back(
-              op.getDimensionNumbers()
-                  .getKernelSpatialDimensions()[idxAndBool.index()]);
-
-      modifiedRhs = rewriter.create<mhlo::ReverseOp>(
-          loc, modifiedRhs,
-          mlir::DenseIntElementsAttr::get(
-              RankedTensorType::get(reversedDims.size(),
-                                    rewriter.getIntegerType(64)),
-              reversedDims));
-    }
+    modifiedRhs = applyConvolutionReversal(loc, rewriter, op, modifiedRhs);
 
     // Non-one values for feature or batch group counts will result in reshaped
     // inputs and outputs. These mappings are used to keep track of the the new
@@ -2857,6 +2877,13 @@ struct DepthwiseConvolutionOpConversion
     if (!resultType.hasStaticShape()) {
       return rewriter.notifyMatchFailure(op,
                                          "expected output has static shapes");
+    }
+
+    // Immediately emit an EmptyOp for output tensors with zero dimension.
+    if (llvm::is_contained(resultType.getShape(), 0)) {
+      rewriter.replaceOpWithNewOp<tensor::EmptyOp>(op, resultType.getShape(),
+                                                   resultType.getElementType());
+      return success();
     }
 
     // Apply padding and input dilation.
@@ -3534,12 +3561,6 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
     ArrayRef<int64_t> startIndexMap =
         gatherOp.getDimensionNumbers().getStartIndexMap();
 
-    auto extractAsIndex = [&](Value input, ArrayRef<Value> index) -> Value {
-      return rewriter.create<arith::IndexCastOp>(
-          loc, rewriter.getIndexType(),
-          rewriter.create<tensor::ExtractOp>(loc, input, index));
-    };
-
     // We'll need these later and creating them on demand we end up with
     // duplicates, which also makes lit tests really hard to write.
     SmallVector<Value> constants;
@@ -3548,25 +3569,8 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
           rewriter.create<arith::ConstantOp>(loc, rewriter.getIndexAttr(i)));
     }
 
-    // Create ops to calculate the dynamic dimensions of the return shape, which
-    // are needed for the init tensor.
-    SmallVector<Value> dynDimSizes;
-    if (!resultType.hasStaticShape()) {
-      SmallVector<Value> returnShapes;
-      if (failed(gatherOp.reifyReturnTypeShapes(rewriter, adaptor.getOperands(),
-                                                returnShapes)))
-        return rewriter.notifyMatchFailure(gatherOp,
-                                           "could not reify return shape");
-      assert(returnShapes.size() == 1);
-      Value returnShape = returnShapes[0];
-
-      for (int i = 0; i < resultRank; ++i)
-        if (resultType.isDynamicDim(i))
-          dynDimSizes.push_back(extractAsIndex(returnShape, constants[i]));
-    }
-
-    Value emptyOp = rewriter.create<tensor::EmptyOp>(
-        loc, resultType.getShape(), resultType.getElementType(), dynDimSizes);
+    auto emptyOp = getEmptyTensorFor(rewriter, loc, resultType, gatherOp,
+                                     adaptor.getOperands());
 
     ValueRange ins;
     SmallVector<AffineMap, 1> indexingMaps(
@@ -3948,6 +3952,43 @@ class PointwiseToLinalgMapConverter : public OpConversionPattern<OpTy> {
   }
 };
 
+class SetDimensionSizeConverter
+    : public OpConversionPattern<mhlo::SetDimensionSizeOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::SetDimensionSizeOp setDimensionSizeOp, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    // We can lower SetDimensionSize to tensor extract. This turns into a
+    // regular dynamic shape. Note that the bounds annotation is still around
+    // but may be no longer valid depending on choices made by bufferization.
+    Location loc = setDimensionSizeOp.getLoc();
+    auto resultType = setDimensionSizeOp.getType().cast<RankedTensorType>();
+
+    SmallVector<OpFoldResult> offsets(resultType.getRank(),
+                                      rewriter.getIndexAttr(0));
+    SmallVector<OpFoldResult> strides(resultType.getRank(),
+                                      rewriter.getIndexAttr(1));
+    SmallVector<OpFoldResult> sizes(llvm::map_range(
+        resultType.getShape(), [&](int64_t dim) -> OpFoldResult {
+          return rewriter.getIndexAttr(dim);
+        }));
+    Value dimensionSize =
+        rewriter.create<tensor::ExtractOp>(loc, setDimensionSizeOp.getSize());
+    sizes[setDimensionSizeOp.getDimension()] =
+        rewriter
+            .create<arith::IndexCastOp>(loc, rewriter.getIndexType(),
+                                        dimensionSize)
+            .getResult();
+
+    rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(
+        setDimensionSizeOp, resultType, adaptor.getOperand(), offsets, sizes,
+        strides);
+    return success();
+  }
+};
+
 struct HloLegalizeToLinalgPass
     : public impl::HloLegalizeToLinalgPassBase<HloLegalizeToLinalgPass> {
   using HloLegalizeToLinalgPassBase::HloLegalizeToLinalgPassBase;
@@ -3997,6 +4038,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       RealDynamicSliceConverter,
       ReshapeOpConverter,
       ReverseConverter,
+      SetDimensionSizeConverter,
       SliceConverter,
       DynamicSliceConverter,
       DynamicUpdateSliceConverter,

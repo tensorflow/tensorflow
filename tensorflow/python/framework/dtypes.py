@@ -27,11 +27,14 @@ from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.framework import _dtypes
 from tensorflow.python.types import doc_typealias
 from tensorflow.python.lib.core import _pywrap_bfloat16
+from tensorflow.python.lib.core import _pywrap_float8
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.types import trace
 from tensorflow.core.function import trace_type
 
 _np_bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
+_np_float8_e4m3fn = _pywrap_float8.TF_float8_e4m3fn_type()
+_np_float8_e5m2 = _pywrap_float8.TF_float8_e5m2_type()
 
 
 class DTypeMeta(type(_dtypes.DType), abc.ABCMeta):
@@ -121,6 +124,10 @@ class DType(
       except:
         if self.base_dtype == bfloat16:
           return _np_bfloat16(float.fromhex("-0x1.FEp127"))
+        elif self.base_dtype == float8_e5m2:
+          return _np_float8_e5m2(float.fromhex("-0x1.Cp15"))
+        elif self.base_dtype == float8_e4m3fn:
+          return _np_float8_e4m3fn(float.fromhex("-0x1.Cp8"))
         raise TypeError(f"Cannot find minimum value of {self}.")
 
   @property
@@ -147,6 +154,10 @@ class DType(
       except:
         if self.base_dtype == bfloat16:
           return _np_bfloat16(float.fromhex("0x1.FEp127"))
+        elif self.base_dtype == float8_e5m2:
+          return _np_float8_e5m2(float.fromhex("0x1.Cp15"))
+        elif self.base_dtype == float8_e4m3fn:
+          return _np_float8_e4m3fn(float.fromhex("0x1.Cp8"))
         raise TypeError(f"Cannot find maximum value of {self}.")
 
   @property
@@ -401,6 +412,23 @@ doc_typealias.document(
     doc="16-bit bfloat (brain floating point).")
 tf_export("dtypes.bfloat16", "bfloat16").export_constant(__name__, "bfloat16")
 
+float8_e5m2 = DType(types_pb2.DT_FLOAT8_E5M2)
+doc_typealias.document(
+    obj=float8_e5m2,
+    doc="8-bit float with 5 exponent bits and 2 mantissa bits.")
+tf_export("dtypes.experimental.float8_e5m2",
+          "experimental.float8_e5m2").export_constant(__name__, "float8_e5m2")
+
+float8_e4m3fn = DType(types_pb2.DT_FLOAT8_E4M3FN)
+doc_typealias.document(
+    obj=float8_e4m3fn,
+    doc="8-bit float with 4 exponent bits and 3 mantissa bits, with extended "
+    "finite range.  This type has no representation for inf, and only two NaN "
+    "values: 0xFF for negative NaN, and 0x7F for positive NaN.")
+tf_export("dtypes.experimental.float8_e4m3fn",
+          "experimental.float8_e4m3fn").export_constant(__name__,
+                                                        "float8_e4m3fn")
+
 resource_ref = DType(types_pb2.DT_RESOURCE_REF)
 variant_ref = DType(types_pb2.DT_VARIANT_REF)
 float16_ref = DType(types_pb2.DT_HALF_REF)
@@ -426,6 +454,8 @@ qint16_ref = DType(types_pb2.DT_QINT16_REF)
 quint16_ref = DType(types_pb2.DT_QUINT16_REF)
 qint32_ref = DType(types_pb2.DT_QINT32_REF)
 bfloat16_ref = DType(types_pb2.DT_BFLOAT16_REF)
+float8_e5m2_ref = DType(types_pb2.DT_FLOAT8_E5M2_REF)
+float8_e4m3fn_ref = DType(types_pb2.DT_FLOAT8_E4M3FN_REF)
 
 # Maintain an intern table so that we don't have to create a large
 # number of small objects.
@@ -451,6 +481,8 @@ _INTERN_TABLE = {
     types_pb2.DT_QUINT16: quint16,
     types_pb2.DT_QINT32: qint32,
     types_pb2.DT_BFLOAT16: bfloat16,
+    types_pb2.DT_FLOAT8_E5M2: float8_e5m2,
+    types_pb2.DT_FLOAT8_E4M3FN: float8_e4m3fn,
     types_pb2.DT_RESOURCE: resource,
     types_pb2.DT_VARIANT: variant,
     types_pb2.DT_HALF_REF: float16_ref,
@@ -474,6 +506,8 @@ _INTERN_TABLE = {
     types_pb2.DT_QUINT16_REF: quint16_ref,
     types_pb2.DT_QINT32_REF: qint32_ref,
     types_pb2.DT_BFLOAT16_REF: bfloat16_ref,
+    types_pb2.DT_FLOAT8_E5M2_REF: float8_e5m2_ref,
+    types_pb2.DT_FLOAT8_E4M3FN_REF: float8_e4m3fn_ref,
     types_pb2.DT_RESOURCE_REF: resource_ref,
     types_pb2.DT_VARIANT_REF: variant_ref,
 }
@@ -501,6 +535,8 @@ _TYPE_TO_STRING = {
     types_pb2.DT_QUINT16: "quint16",
     types_pb2.DT_QINT32: "qint32",
     types_pb2.DT_BFLOAT16: "bfloat16",
+    types_pb2.DT_FLOAT8_E5M2: "float8_e5m2",
+    types_pb2.DT_FLOAT8_E4M3FN: "float8_e4m3fn",
     types_pb2.DT_RESOURCE: "resource",
     types_pb2.DT_VARIANT: "variant",
     types_pb2.DT_HALF_REF: "float16_ref",
@@ -524,6 +560,8 @@ _TYPE_TO_STRING = {
     types_pb2.DT_QUINT16_REF: "quint16_ref",
     types_pb2.DT_QINT32_REF: "qint32_ref",
     types_pb2.DT_BFLOAT16_REF: "bfloat16_ref",
+    types_pb2.DT_FLOAT8_E5M2_REF: "float8_e5m2_ref",
+    types_pb2.DT_FLOAT8_E4M3FN_REF: "float8_e4m3fn_ref",
     types_pb2.DT_RESOURCE_REF: "resource_ref",
     types_pb2.DT_VARIANT_REF: "variant_ref",
 }
@@ -550,7 +588,7 @@ _np_qint16 = np.dtype([("qint16", np.int16)])
 _np_quint16 = np.dtype([("quint16", np.uint16)])
 _np_qint32 = np.dtype([("qint32", np.int32)])
 
-# _np_bfloat16 is defined by a module import.
+# _np_bfloat16, _np_float8* are defined by module imports.
 
 # Custom struct dtype for directly-fed ResourceHandles of supported type(s).
 np_resource = np.dtype([("resource", np.ubyte)])
@@ -580,6 +618,8 @@ _NP_TO_TF = {
     _np_quint16: quint16,
     _np_qint32: qint32,
     _np_bfloat16: bfloat16,
+    _np_float8_e5m2: float8_e5m2,
+    _np_float8_e4m3fn: float8_e4m3fn,
 }
 
 # Map (some) NumPy platform dtypes to TF ones using their fixed-width
@@ -644,7 +684,10 @@ _TF_TO_NP = {
         _np_qint32,
     types_pb2.DT_BFLOAT16:
         _np_bfloat16,
-
+    types_pb2.DT_FLOAT8_E5M2:
+        _np_float8_e5m2,
+    types_pb2.DT_FLOAT8_E4M3FN:
+        _np_float8_e4m3fn,
     # Ref types
     types_pb2.DT_HALF_REF:
         np.float16,
@@ -688,6 +731,10 @@ _TF_TO_NP = {
         _np_qint32,
     types_pb2.DT_BFLOAT16_REF:
         _np_bfloat16,
+    types_pb2.DT_FLOAT8_E5M2_REF:
+        _np_float8_e5m2,
+    types_pb2.DT_FLOAT8_E4M3FN_REF:
+        _np_float8_e4m3fn,
 }
 
 _QUANTIZED_DTYPES_NO_REF = frozenset([qint8, quint8, qint16, quint16, qint32])

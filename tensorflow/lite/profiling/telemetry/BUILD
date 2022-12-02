@@ -16,8 +16,8 @@ cc_library(
     deps = [
         ":telemetry_settings",
         ":telemetry_status",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -30,9 +30,9 @@ cc_library(
     deps = [
         ":telemetry_settings",
         ":telemetry_status",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -43,8 +43,8 @@ cc_test(
         ":profiler",
         ":telemetry",
         ":telemetry_status",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",
     ],
 )

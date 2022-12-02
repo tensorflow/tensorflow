@@ -72,7 +72,7 @@ FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
       if (t.isa<TokenType>()) continue;
       auto layout = GetTPUInfeedLayout({t}, rewriter);
       if (failed(layout)) return failure();
-      v.push_back(layout.getValue());
+      v.push_back(layout.value());
     }
     ArrayRef<Attribute> shape(v);
     return rewriter.getArrayAttr(shape);
@@ -85,7 +85,7 @@ FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
       if (t.isa<TokenType>()) continue;
       auto layout = GetTPUInfeedLayout({t}, rewriter);
       if (failed(layout)) return failure();
-      v.push_back(layout.getValue());
+      v.push_back(layout.value());
     }
     ArrayRef<Attribute> shape(v);
     return rewriter.getArrayAttr(shape);
@@ -94,7 +94,7 @@ FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
     auto layout = GetTPUInfeedLayoutFromAPI(t);
     std::vector<int64_t> minor_to_major;
     if (succeeded(layout)) {
-      minor_to_major = layout.getValue();
+      minor_to_major = layout.value();
     } else {
       /* If we're not running on a TPU node, we might not be able to
        * actually call the part of the TPU API that gives us layout.
@@ -151,7 +151,7 @@ class AdjustLayout
       auto layout = GetTPUInfeedLayout(result_types, builder);
       if (failed(layout)) return;
 
-      op->setAttr("layout", layout.getValue());
+      op->setAttr("layout", layout.value());
     }
   }
 

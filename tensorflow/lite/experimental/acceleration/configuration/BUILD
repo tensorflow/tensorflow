@@ -145,7 +145,7 @@ cc_library(
     hdrs = ["delegate_registry.h"],
     deps = [
         ":configuration_fbs",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
         "@com_google_absl//absl/synchronization",
     ],
@@ -181,7 +181,7 @@ cc_library(
     deps = [
         ":configuration_fbs",
         ":delegate_registry",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/experimental/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/nnapi:nnapi_implementation_headers",
@@ -203,8 +203,8 @@ cc_test(
         ":delegate_registry",
         ":nnapi_plugin",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate_mock_test",
         "//tensorflow/lite/kernels:test_util",
@@ -342,6 +342,43 @@ cc_library(
         "//conditions:default": [],
     }),
     alwayslink = 1,  # For registration to always run.
+)
+
+# TODO(b/260582614): Add support for TF Lite in Play Services.
+cc_library(
+    name = "stable_delegate_plugin",
+    srcs = ["stable_delegate_plugin.cc"],
+    hdrs = ["stable_delegate_plugin.h"],
+    deps = [
+        ":configuration_fbs",
+        ":delegate_registry",
+        "//tensorflow/lite/core/shims:common",
+        "//tensorflow/lite/core/shims:delegate_plugin",
+        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:delegate_loader",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate",
+        "//tensorflow/lite/tools:logging",
+        "@com_google_absl//absl/memory",
+    ],
+    alwayslink = 1,  # For registration to always run.
+)
+
+cc_test(
+    name = "stable_delegate_plugin_test",
+    srcs = ["stable_delegate_plugin_test.cc"],
+    data = ["//tensorflow/lite/delegates/utils/experimental/stable_delegate:libtensorflowlite_stable_xnnpack_delegate.so"],
+    tags = [
+        # TODO(b/259303511): Propagate build config to data correctly to enable the test on x86 platforms.
+        "no_test_android_x86",
+    ],
+    deps = [
+        ":configuration_fbs",
+        ":delegate_registry",
+        ":stable_delegate_plugin",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
+        "@pthreadpool",
+    ],
 )
 
 tflite_portable_test_suite()

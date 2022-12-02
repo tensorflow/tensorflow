@@ -113,10 +113,11 @@ tflite_cc_library_with_c_headers_test(
     deps = [
         ":c_api",
         ":c_api_opaque_internal",
-        ":common",
+        "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/core/c:c_api_experimental",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
@@ -137,11 +138,12 @@ tflite_cc_library_with_c_headers_test(
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
         ":c_api_opaque_internal",
-        ":c_api_types",
         ":c_api_without_op_resolver",
-        ":common",
+        "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:c_api_without_op_resolver",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
@@ -163,10 +165,11 @@ tflite_cc_library_with_c_headers_test(
     deps = [
         ":c_api_opaque_internal_without_alwayslink",
         ":c_api_without_op_resolver_without_alwayslink",
-        ":common",
+        "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver_without_alwayslink",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:c_api_without_op_resolver_without_alwayslink",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
     ],
 )
@@ -191,12 +194,12 @@ cc_library(
         "//tensorflow/lite/delegates/utils:__pkg__",
     ],
     deps = [
-        ":common",
         ":common_internal",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -293,8 +296,8 @@ cc_library(
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
-        ":common",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -309,9 +312,9 @@ cc_library(
     deps = [
         ":c_api_types",
         ":c_api_without_op_resolver",
-        ":common",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -328,9 +331,9 @@ cc_library(
     deps = [
         ":c_api_types",
         ":c_api_without_op_resolver_without_alwayslink",
-        ":common",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -390,10 +393,10 @@ cc_test(
     deps = [
         ":c_api",
         ":c_api_experimental",
-        ":common",
         "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/core/c:c_api_experimental",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 

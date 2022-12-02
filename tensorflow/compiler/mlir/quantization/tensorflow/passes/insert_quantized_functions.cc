@@ -42,7 +42,7 @@ class InsertQuantizedFunctionsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertQuantizedFunctionsPass)
 
-  explicit InsertQuantizedFunctionsPass() {}
+  explicit InsertQuantizedFunctionsPass() = default;
   explicit InsertQuantizedFunctionsPass(QuantizationMethod quantization_method,
                                         OpSet op_set) {
     quantization_method_ = quantization_method;
@@ -170,6 +170,15 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
     func::FuncOp new_func = func.clone();
     new_func.setPrivate();
     symbol_table.insert(new_func);
+
+    // For consistency, we require all quantized composite function to have
+    // the "tf_quant.quantized_ops" attribute.
+    if (!new_func.getSymName().starts_with("quantized_")) continue;
+    if (!new_func->hasAttrOfType<ArrayAttr>("tf_quant.quantized_ops")) {
+      new_func->emitError() << "Missing \"tf_quant.quantized_ops\" "
+                               "attribute in the quantized composite function.";
+      signalPassFailure();
+    }
   }
 }
 

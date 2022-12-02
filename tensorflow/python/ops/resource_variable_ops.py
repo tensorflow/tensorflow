@@ -2637,12 +2637,12 @@ class VariableSpec(tensor_spec.DenseSpec):
     return super().most_specific_common_supertype(others)
 
   # TraceType method
-  def _placeholder_value(self):
+  def _placeholder_value(self, placeholder_context):
     if self.alias_id is None:
       raise NotImplementedError(f"VariableSpec._placeholder_value doesn't "
                                 f"support alias_id=None, got self: {self}.")
 
-    return super()._placeholder_value()
+    return super()._placeholder_value(placeholder_context)
 
   def _get_structure(self):
     # shape, dtype, trainable, and alias_id are all leaves.

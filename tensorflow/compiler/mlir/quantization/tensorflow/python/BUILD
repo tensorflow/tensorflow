@@ -109,6 +109,25 @@ tf_python_pybind_extension(
 )
 
 pytype_strict_library(
+    name = "save_model",
+    srcs = [
+        "save_model.py",
+    ],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:constants",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:tag_constants",
+        "@absl_py//absl/logging",
+    ],
+)
+
+pytype_strict_library(
     name = "quantize_model",
     srcs = [
         "quantize_model.py",
@@ -118,6 +137,7 @@ pytype_strict_library(
     deps = [
         ":pywrap_quantize_model",
         ":representative_dataset",
+        ":save_model",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
         "//tensorflow/core:protos_all_py",
@@ -129,7 +149,6 @@ pytype_strict_library(
         "//tensorflow/python/eager:wrap_function",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/platform",
-        "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:signature_constants",

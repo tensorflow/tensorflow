@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -46,7 +47,7 @@ static DiagnosticEngine CollectDiagnostic(std::string* error) {
   return diagnostic_engine;
 }
 
-static absl::StatusOr<JitExecutable> Compile(std::string_view module) {
+static absl::StatusOr<JitExecutable> Compile(std::string_view source) {
   JitExecutable::Options opts;
   opts.specialization = JitExecutable::Specialization::kDisabled;
   opts.compiler.symbols_binding = ToSymbolsBinding();
@@ -57,12 +58,14 @@ static absl::StatusOr<JitExecutable> Compile(std::string_view module) {
         CreateDefaultXlaGpuRuntimeCompilationPipeline(passes, copts);
       };
 
-  return JitExecutable::Instantiate(module, opts, {"test"});
+  return JitExecutable::Instantiate(source, opts, {"test"});
 }
 
-static absl::Status CompileAndExecute(std::string_view module,
-                                      ArgumentsRef args) {
-  absl::StatusOr<JitExecutable> jit_executable = Compile(module);
+static absl::Status CompileAndExecute(std::string_view source,
+                                      ArgumentsRef args,
+                                      const DynamicCustomCallRegistry& registry,
+                                      CustomCall::UserData user_data) {
+  absl::StatusOr<JitExecutable> jit_executable = Compile(source);
   if (!jit_executable.ok()) return jit_executable.status();
 
   AsyncValuePtr<Executable> executable = jit_executable->DefaultExecutable();
@@ -73,8 +76,9 @@ static absl::Status CompileAndExecute(std::string_view module,
   DiagnosticEngine diagnostic_engine = CollectDiagnostic(&diagnostic);
 
   Executable::ExecuteOpts execute_opts;
-  execute_opts.custom_call_registry = &ffi::FfiCustomCalls();
+  execute_opts.custom_call_registry = &registry;
   execute_opts.diagnostic_engine = &diagnostic_engine;
+  execute_opts.custom_call_data = &user_data;
   execute_opts.async_task_runner =
       reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
 
@@ -90,18 +94,47 @@ static absl::Status CompileAndExecute(std::string_view module,
 
 //===----------------------------------------------------------------------===//
 
-using ::xla::runtime::ffi::Ffi;
-using ::xla::runtime::ffi::FfiStatus;
+using ffi::FfiStatus;
 
-// Use these static variables to observe custom call side effects.
-static int32_t i32 = 0;
-static float f32 = 0;
+// When FFI module is instantiated for an Xla runtime executable, it creates a
+// state object whose lifetime is bound to the executable, and the state can be
+// accessed from exported FFI functions.
+struct TestModuleState {
+  int32_t i32 = 0;
+  int32_t f32 = 0;
+};
 
-// Typed XLA FFI function handler that will be registered with the runtime.
-static FfiStatus TestFnImpl(int32_t arg0, ffi::BufferArg arg1, float attr0) {
-  // Update static variables to observe side effects.
-  i32 = arg0;
-  f32 = attr0;
+// TestModule is a stateful FFI module with every exported function having
+// access to the instance of `TestModuleState`. State is optional, it's ok to
+// skip it in the FFI binding if it's not needed.
+struct TestModule : public ffi::StatefulModule<TestModuleState> {
+  using Base = ffi::StatefulModule<TestModuleState>;
+
+  explicit TestModule(const XLA_FFI_Api* api)
+      : Base(api, "ffi-module", {{"ffi.fill", FFI_Fill}}) {}
+
+  // Creates a new TestModule state for each executable.
+  std::unique_ptr<TestModuleState> CreateState() const final {
+    return std::make_unique<TestModuleState>();
+  }
+
+  // Prepare `Fill` function for export as `FFI_Fill` FFI function.
+  XLA_FFI_DEFINE_FUNCTION(FFI_Fill, Fill,
+                          ffi::Ffi::Bind("ffi.fill")
+                              .State<TestModuleState>()  // state
+                              .Arg<int32_t>()            // arg0
+                              .Arg<ffi::BufferArg>()     // arg1
+                              .Attr<float>("attr"));
+
+  static FfiStatus Fill(TestModuleState* state, int32_t arg0,
+                        ffi::BufferArg arg1, float attr0);
+};
+
+FfiStatus TestModule::Fill(TestModuleState* state, int32_t arg0,
+                           ffi::BufferArg arg1, float attr0) {
+  // Update state to observe side effects.
+  state->i32 = arg0;
+  state->f32 = attr0;
 
   // Write attribute value into the buffer argument.
   if (arg1.dtype != ffi::PrimitiveType::F32)
@@ -116,27 +149,41 @@ static FfiStatus TestFnImpl(int32_t arg0, ffi::BufferArg arg1, float attr0) {
   return FfiStatus::Ok();
 }
 
-// Bind `TestFn` function to `TestFnImpl` handler.
-XLA_FFI_DEFINE_FUNCTION(TestFn, TestFnImpl,
-                        ffi::Ffi::Bind("test.ffi")
-                            .Arg<int32_t>()
-                            .Arg<ffi::BufferArg>()
-                            .Attr<float>("attr"));
+//----------------------------------------------------------------------------//
 
 TEST(FfiTest, ScalarAndBufferArgs) {
-  const XLA_FFI_Api* api = GetXlaFfiApi();
-  Ffi::Register(api, "test.ffi", TestFn);
-
-  absl::string_view module = R"(
-    func.func private @ffi(%arg0: i32, %arg1: memref<?x?xf32>)
-      attributes { rt.dynamic, rt.custom_call = "test.ffi" }
+  absl::string_view source = R"(
+    func.func private @fill(%arg0: i32, %arg1: memref<?x?xf32>)
+      attributes { rt.dynamic, rt.custom_call = "ffi.fill" }
 
     func.func @test(%arg0: memref<?x?xf32>) {
       %0 = arith.constant 42 : i32
-      call @ffi(%0, %arg0) { attr = 42.0 : f32 } : (i32, memref<?x?xf32>) -> ()
+      call @fill(%0, %arg0) { attr = 42.0 : f32 } : (i32, memref<?x?xf32>) -> ()
       return
     }
   )";
+
+  // When module is instantiated it's automatically registered with the runtime.
+  TestModule module(GetXlaFfiApi());
+
+  // Check that it was registered with the runtime.
+  std::vector<const Module*> modules = ffi::FfiModules();
+  ASSERT_EQ(modules.size(), 1);
+  EXPECT_EQ(modules[0]->name(), "ffi-module");
+
+  // Export custom calls defined by FFI modules.
+  DynamicCustomCallRegistry registry;
+  ffi::ExportFfiModules(registry);
+  EXPECT_TRUE(registry.Find("ffi.fill"));
+
+  // Instantiate state for all registered FFI modules.
+  auto state = ffi::FfiModulesState::Instantiate();
+  ASSERT_TRUE(state.ok());
+
+  // Add an FFI state vector to the UserData.
+  ffi::FfiStateVector state_vector = state->state_vector();
+  CustomCall::UserData user_data(&state_vector);
+  ASSERT_EQ(state_vector.state.size(), 1);
 
   // Use vector as buffer storage.
   std::vector<float> buffer(16);
@@ -149,11 +196,14 @@ TEST(FfiTest, ScalarAndBufferArgs) {
   std::vector<MemrefDesc> args;
   args.emplace_back(PrimitiveType::F32, buffer.data(), 0, sizes, strides);
 
-  ASSERT_TRUE(CompileAndExecute(module, args).ok());
+  ASSERT_TRUE(CompileAndExecute(source, args, registry, user_data).ok());
 
-  // Check FFI handler side effects.
-  EXPECT_EQ(i32, 42);
-  EXPECT_EQ(f32, 42.0);
+  // Check that the FFI function updated the corresponding module state.
+  auto* state_ptr = reinterpret_cast<TestModuleState*>(state_vector.state[0]);
+  EXPECT_EQ(state_ptr->i32, 42);
+  EXPECT_EQ(state_ptr->f32, 42.0);
+
+  // Check that FFI function filled the buffer argument with data.
   EXPECT_EQ(buffer, std::vector<float>(16, 42.0));
 }
 

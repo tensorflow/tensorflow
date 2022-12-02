@@ -187,7 +187,7 @@ bool HandleReplicatedInputs(
                             entry.value().get(), &builder);
 
     auto device_list = replicate.getDevices()
-                           .getValue()
+                           .value()
                            .get(execute_launch.getDevice())
                            .cast<ArrayAttr>();
     copy_with_layout->setAttr(kDeviceAttr,

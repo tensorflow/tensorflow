@@ -461,7 +461,7 @@ class DistributedVariableTraceType(trace.TraceType):
   def most_specific_common_supertype(self, others):
     return self if all(self == other for other in others) else None
 
-  def _placeholder_value(self):
+  def _placeholder_value(self, placeholder_context):
     return self.distributed_variable
 
   def __hash__(self) -> int:

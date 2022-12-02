@@ -24,6 +24,7 @@ py_library(
         ":strategy_test_lib",
         ":test_util",
         ":values_v2",
+        "//tensorflow/python/distribute/experimental:dtensor_test_util",
         "//tensorflow/python/distribute/v1:all_reduce",
     ],
 )

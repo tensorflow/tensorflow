@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 
 #include <bitset>
+#include <optional>
 #include <string>
 
 #include "absl/container/node_hash_map.h"
@@ -286,15 +287,21 @@ class OpSideEffectCollector {
           // dead or get pruned, ignore it for side effect analysis.
           continue;
 
-        // Add side effects for op resource ID.
-        std::string instance_str = "";
+        // Add side effects for op resource ID. If `op` does not have
+        // `GetResourceInstanceInterface`, then all op instances will keep an
+        // empty `instance_str` which enforces global order.
+        std::optional<std::string> instance_str = "";
         SideEffects side_effects(GetSideEffectsFromEffectInstance(effect, op));
         if (auto resource_instance_op =
             dyn_cast<GetResourceInstanceInterface>(op)) {
           instance_str = resource_instance_op.GetResourceInstanceStr();
         }
+        // No value (`std::nullopt`) instance string signals that we should
+        // ignore this effect, see comment for `GetResourceInstanceInterface`.
+        if (!instance_str.has_value()) continue;
+
         TypeID type_id = effect.getResource()->getResourceID();
-        ResourceId resource_id = GetOpResourceId(type_id, instance_str);
+        ResourceId resource_id = GetOpResourceId(type_id, instance_str.value());
         side_effects.SetResourceId(resource_id);
         UpdateSideEffectsByResourceId(side_effects,
                                       side_effects_by_resource_id);

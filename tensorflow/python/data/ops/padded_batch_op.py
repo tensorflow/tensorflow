@@ -191,9 +191,13 @@ class _PaddedBatchDataset(dataset_ops.UnaryDataset):
 
     def check_types(component_spec):
       if not isinstance(component_spec, tensor_spec.TensorSpec):
+        if isinstance(component_spec, dataset_ops.DatasetSpec):
+          raise TypeError(
+              "`padded_batch` is not supported for datasets of datasets")
         raise TypeError(f"`padded_batch` is only supported for datasets that "
-                        f"produce tensor elements but the input dataset "
-                        f"spec contains: `{component_spec}`.")
+                        f"produce tensor elements but type spec of elements in "
+                        f"the input dataset is not a subclass of TensorSpec: "
+                        f"`{component_spec}`.")
 
     nest.map_structure(check_types, input_dataset.element_spec)
     self._input_dataset = input_dataset

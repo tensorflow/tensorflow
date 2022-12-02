@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -275,7 +276,8 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
   pflr_.reset(new ProcessFunctionLibraryRuntime(
       device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
       thread_pool, cluster_flr,
-      /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
+      /*session_metadata=*/nullptr, std::move(rendezvous_factory),
+      StatsPublisherInterface::GetStatsPublisherFactory()));
 }
 
 void EagerContext::InitPrioritizedDeviceTypeList() {

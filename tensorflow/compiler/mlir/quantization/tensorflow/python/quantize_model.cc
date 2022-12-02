@@ -65,17 +65,30 @@ namespace {
 // back to GraphDef. Roughly, this consists of:
 //   1) Inserting the @main function, which will become the main Graph.
 //   2) [Experimental] Unfreezing constants into variables.
-//   3) Converting TF dialect -> tf_executor dialect.
-//   4) Adding initializer function's ops into @main function for correct
+//   3) Duplicates shape-determining constants.
+//   4) Converting TF dialect -> tf_executor dialect.
+//   5) Adding initializer function's ops into @main function for correct
 //      resource initialization when loading the exported model.
+//
+// Duplicating shape-determining constants is required to place constants that
+// affect the shape of a tensor to be placed in the TPU graph instead of in the
+// CPU graph, when the graph gets converted for TPU inference. This allows these
+// constants to be known at XLA compilation time.
 //
 // Setting `freeze_all_variables` to `false` is an experimental feature that has
 // no stability guarantees.
-void AddExportPasses(const bool freeze_all_variables, mlir::PassManager &pm) {
+void AddExportPasses(const bool freeze_all_variables,
+                     const bool duplicate_shape_determining_constants,
+                     mlir::PassManager &pm) {
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
 
   if (!freeze_all_variables) {
     pm.addPass(mlir::quant::CreateUnfreezeConstantsPass());
+  }
+
+  if (duplicate_shape_determining_constants) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::quant::CreateDuplicateShapeDeterminingConstantsPass());
   }
 
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -189,7 +202,8 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
   }
 
   AddQuantizeQatPasses(pm, quantization_options);
-  AddExportPasses(quantization_options.freeze_all_variables().enabled(), pm);
+  AddExportPasses(quantization_options.freeze_all_variables().enabled(),
+                  /*duplicate_shape_determining_constants=*/true, pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {
@@ -257,7 +271,10 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   }
 
   AddQuantizePtqPreCalibrationPasses(pm, quantization_options);
-  AddExportPasses(quantization_options.freeze_all_variables().enabled(), pm);
+  // `duplicate_shape_determining_constants = false` because the
+  // resulting graph of this step is not expected to be loaded on TPU.
+  AddExportPasses(quantization_options.freeze_all_variables().enabled(),
+                  /*duplicate_shape_determining_constants=*/false, pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {
@@ -319,7 +336,8 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   }
 
   AddQuantizePtqPostCalibrationPasses(pm, quantization_options);
-  AddExportPasses(quantization_options.freeze_all_variables().enabled(), pm);
+  AddExportPasses(quantization_options.freeze_all_variables().enabled(),
+                  /*duplicate_shape_determining_constants=*/true, pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {
@@ -388,7 +406,8 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
   }
 
   AddQuantizePtqDynamicRangePasses(pm, quantization_options);
-  AddExportPasses(quantization_options.freeze_all_variables().enabled(), pm);
+  AddExportPasses(quantization_options.freeze_all_variables().enabled(),
+                  /*duplicate_shape_determining_constants=*/true, pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {

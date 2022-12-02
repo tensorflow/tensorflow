@@ -30,7 +30,6 @@ namespace profiler {
 
 using tsl::profiler::GetCurrentTimeStampAsString;     // NOLINT
 using tsl::profiler::GetTensorBoardProfilePluginDir;  // NOLINT
-using tsl::profiler::MaybeCreateEmptyEventFile;       // NOLINT
 using tsl::profiler::SaveGzippedToolData;             // NOLINT
 using tsl::profiler::SaveProfile;                     // NOLINT
 using tsl::profiler::SaveXSpace;                      // NOLINT

@@ -29,6 +29,28 @@ func.func @float_add(%lhs: tensor<2x2xf32>,
 
 // -----
 
+// CHECK-LABEL: func @float_add_dynamic_encoding
+// CHECK-PRIMITIVE-LABEL: func @float_add_dynamic_encoding
+func.func @float_add_dynamic_encoding(
+  %lhs: tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>,
+  %rhs: tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>)
+    -> tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>> {
+  // CHECK: linalg.generic
+  // CHECK: arith.addf
+  // CHECK: linalg.yield
+
+  // CHECK-PRIMITIVE: linalg.map
+  // CHECK-PRIMITIVE: arith.addf
+  // CHECK-PRIMITIVE: linalg.yield
+  %0 = "mhlo.add"(%lhs, %rhs) {someattr}
+      : (tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>,
+         tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>)
+      -> tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
+  func.return %0 : tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
+}
+
+// -----
+
 // CHECK-LABEL: integer_add
 // CHECK-PRIMITIVE-LABEL: integer_add
 func.func @integer_add(%lhs: tensor<2x2xi32>,
@@ -3332,7 +3354,7 @@ func.func @dynamic_slice(%arg: tensor<3x4xf32>, %start1: tensor<i64>, %start2: t
 // -----
 
 func.func @dynamic_slice_unsigned_index(
-    %arg: tensor<3x4xui32>, %start1: tensor<ui64>, %start2: tensor<ui64>) 
+    %arg: tensor<3x4xui32>, %start1: tensor<ui64>, %start2: tensor<ui64>)
     -> tensor<1x4xui32> {
   %0 = "mhlo.dynamic_slice"(%arg, %start1, %start2) {
     slice_sizes = dense<[1, 4]> : tensor<2xi64>
@@ -4914,8 +4936,8 @@ func.func @torch_index_select(%arg0: tensor<5x1x5xi32>,
 // CHECK-SAME:   indexing_maps
 // CHECK-SAME:   #[[MAP0]], #[[MAP1]], #[[MAP2]]
 // CHECK-SAME:   iterator_types = ["parallel", "parallel", "parallel"]
-// CHECK-SAME: ins(%[[INDEX]], %[[INIT1]] : 
-// CHECK-SAME: outs(%[[INIT2]] : 
+// CHECK-SAME: ins(%[[INDEX]], %[[INIT1]] :
+// CHECK-SAME: outs(%[[INIT2]] :
 // CHECK-SAME: {someattr}
 //      CHECK: ^{{.+}}(%[[VAL:.+]]: i32, %{{.+}}: i32, %{{.+}}: i32):
 //      CHECK:   %[[CAST:.+]] = arith.index_cast %[[VAL]] : i32 to index
@@ -5726,4 +5748,85 @@ func.func @convolution_without_reversing_and_stride(%arg0: tensor<2x14x12x2xf64>
     {batch_group_count = 1 : i64, feature_group_count = 2 : i64, precision_config = [#mhlo<precision HIGHEST>, #mhlo<precision HIGHEST>]}
     : (tensor<2x14x12x2xf64>, tensor<7x7x1x2xf64>) -> tensor<2x12x16x2xf64>
   return %0 : tensor<2x12x16x2xf64>
+}
+
+// -----
+
+// CHECK-DAG: affine_map<(d0, d1, d2, d3) -> (-d0 + 2, -d1 + 2, d2, d3)>
+// CHECK-LABEL: @normal_convolution_with_reversal
+func.func @normal_convolution_with_reversal(%arg0: tensor<1x3x3x3xf32>,
+    %arg1: tensor<3x3x3x1xf32>) -> tensor<1x1x1x1xf32> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+      dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+      window = {
+        stride = [1, 1],
+        pad = [[0, 0], [0, 0]],
+        lhs_dilate = [1, 1],
+        rhs_dilate = [1, 1],
+        reverse = [1, 1]
+      } {
+        batch_group_count = 1 : i64,
+        feature_group_count = 1 : i64, precision_config = [
+          #mhlo<precision DEFAULT>,
+          #mhlo<precision DEFAULT>]
+      } : (tensor<1x3x3x3xf32>, tensor<3x3x3x1xf32>) -> tensor<1x1x1x1xf32>
+  return %0 : tensor<1x1x1x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: set_dimension_size
+// CHECK-SAME: %[[VALUE:.*]]: tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>
+func.func @set_dimension_size(
+  %value: tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>,
+  %dimension: tensor<i32>)
+  -> tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>> {
+  // CHECK: tensor.extract_slice %[[VALUE]][0, 0] [2, %{{.*}}] [1, 1] : tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>> to tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
+  %0 = "mhlo.set_dimension_size"(%value, %dimension) { dimension = 1 }
+    : (tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>, tensor<i32>)
+    -> tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
+  func.return %0 : tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>
+}
+
+// -----
+// The following test checks that an EmptyOp is emitted for mhlo.convolution
+// when the output shape has a zero-sized dimension. This goes through
+// ConvolutionOpGeneralConversion rewrite pattern.
+
+// CHECK-LABEL: @general_convolution_with_zero_sized_dimension_in_output
+//  CHECK-SAME: %[[LHS:.*]]: tensor<2x4x9x0xi64>
+//  CHECK-SAME: %[[RHS:.*]]: tensor<4x5x2x4xi64>
+//  CHECK-SAME: -> tensor<2x5x0x4xi64>
+//  CHECK-NEXT: %[[RES:.*]] = tensor.empty
+//  CHECK-NEXT: return %[[RES]]
+
+func.func @general_convolution_with_zero_sized_dimension_in_output(%arg0: tensor<2x4x9x0xi64> {bufferization.writable = false, xla_framework.input_mapping = 2 : i32},
+%arg1: tensor<4x5x2x4xi64> {bufferization.writable = false, xla_framework.input_mapping = 0 : i32})
+-> tensor<2x5x0x4xi64> attributes {xla_framework.result_mapping = 1 : i32} {
+  %0 = mhlo.convolution(%arg0, %arg1) dim_numbers = [b, f, 0, 1]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {stride = [2, 1], pad = [[1, 2], [2, 0]], lhs_dilate = [1, 4], rhs_dilate = [1, 1], reverse = [0, 0]}
+    {batch_group_count = 1 : i64, feature_group_count = 2 : i64, precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}
+    : (tensor<2x4x9x0xi64>, tensor<4x5x2x4xi64>) -> tensor<2x5x0x4xi64>
+  return %0 : tensor<2x5x0x4xi64>
+}
+
+// -----
+// This test is similar to the previous one, but runs through a different
+// rewrite pattern (NormalConvolutionOpConversion).
+
+// CHECK-LABEL: @normal_convolution_with_zero_sized_dimension_in_output
+//  CHECK-SAME: %[[LHS:.*]]: tensor<3x9x0x2xi16>
+//  CHECK-SAME: %[[RHS:.*]]: tensor<4x5x2x2xi16>
+//  CHECK-SAME: -> tensor<3x9x0x2xi16>
+//  CHECK-NEXT: %[[RES:.*]] = tensor.empty
+//  CHECK-NEXT: return %[[RES]]
+
+func.func @normal_convolution_with_zero_sized_dimension_in_output(%arg0: tensor<3x9x0x2xi16> {bufferization.writable = false, xla_framework.input_mapping = 2 : i16},
+%arg1: tensor<4x5x2x2xi16> {bufferization.writable = false, xla_framework.input_mapping = 0 : i16})
+-> tensor<3x9x0x2xi16> attributes {xla_framework.result_mapping = 1 : i16} {
+  %0 = mhlo.convolution(%arg0, %arg1) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {stride = [1, 1], pad = [[1, 2], [2, 0]], lhs_dilate = [1, 2], rhs_dilate = [1, 4], reverse = [0, 0]}
+    {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}
+    : (tensor<3x9x0x2xi16>, tensor<4x5x2x2xi16>) -> tensor<3x9x0x2xi16>
+  return %0 : tensor<3x9x0x2xi16>
 }

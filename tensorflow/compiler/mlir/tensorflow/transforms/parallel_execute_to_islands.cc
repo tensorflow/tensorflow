@@ -65,6 +65,8 @@ limitations under the License.
 //  then this pass will run following `replicate-to-island` pass and
 //  `tf-executor-break-up-islands` pass.
 
+#include <memory>
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -74,6 +76,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -85,6 +88,9 @@ namespace {
 struct ParallelExecuteToIslandsPass
     : public impl::ParallelExecuteToIslandsPassBase<
           ParallelExecuteToIslandsPass> {
+  explicit ParallelExecuteToIslandsPass(bool legacy_graph_export) {
+    legacy_graph_export_ = legacy_graph_export;
+  }
   void runOnOperation() override;
 };
 
@@ -123,7 +129,8 @@ void ExpandParallelExecuteToIslands(
 
 void CreateIslandsFromParallelExecute(
     tf_executor::IslandOp island_op,
-    tf_device::ParallelExecuteOp parallel_execute_op) {
+    tf_device::ParallelExecuteOp parallel_execute_op,
+    bool legacy_graph_export) {
   OpBuilder builder(island_op);
 
   // Create islands for each region of the parallel_execute op.
@@ -200,14 +207,15 @@ void ParallelExecuteToIslandsPass::runOnOperation() {
   for (tf_executor::IslandOp island_op : parallel_execute_op_islands) {
     auto parallel_execute_op =
         cast<tf_device::ParallelExecuteOp>(island_op.GetBody().front());
-    CreateIslandsFromParallelExecute(island_op, parallel_execute_op);
+    CreateIslandsFromParallelExecute(island_op, parallel_execute_op,
+                                     legacy_graph_export_);
   }
 }
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>>
-CreateParallelExecuteToIslandsPass() {
-  return std::make_unique<ParallelExecuteToIslandsPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateParallelExecuteToIslandsPass(
+    bool legacy_graph_export) {
+  return std::make_unique<ParallelExecuteToIslandsPass>(legacy_graph_export);
 }
 
 }  // namespace TFDevice

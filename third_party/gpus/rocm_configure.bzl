@@ -572,12 +572,6 @@ def _create_local_rocm_repository(repository_ctx):
             out_dir = "rocm/include",
             exceptions = ["gtest", "gmock"],
         ),
-        make_copy_dir_rule(
-            repository_ctx,
-            name = "rocblas-hsaco",
-            src_dir = rocm_toolkit_path + "/rocblas/lib/library",
-            out_dir = "rocm/lib/rocblas/lib/library",
-        ),
     ]
 
     # explicitly copy (into the local_config_rocm repo) the $ROCM_PATH/hiprand/include and

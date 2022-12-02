@@ -68,7 +68,70 @@ typedef enum {
 } XLA_FFI_Error_Code;
 
 //===----------------------------------------------------------------------===//
-// Execution context passed to FFI targets.
+// XLA FFI registry for exporting FFI functions to runtime.
+//===----------------------------------------------------------------------===//
+
+typedef struct XLA_FFI_Registry XLA_FFI_Registry;
+
+//===----------------------------------------------------------------------===//
+// XLA FFI module defines a set of exported FFI functions and their state.
+//===----------------------------------------------------------------------===//
+
+// XLA FFI module is a way to structure FFI functions together with a state
+// required for calling them. XLA runtime executable can be linked with multiple
+// of such modules at run time.
+typedef struct XLA_FFI_Module XLA_FFI_Module;
+
+// When a module is instantiated for each executable it can optionally create a
+// state object that can be used to implement stateful functions, to keep
+// state between FFI functions invocations. State can be accessed from different
+// executable invocations running concurrently.
+typedef struct XLA_FFI_Module_State XLA_FFI_Module_State;
+
+// Creates a new per-executable module state.
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  XLA_FFI_Module* module;
+  XLA_FFI_Module_State* state;  // out
+} XLA_FFI_Module_CreateState_Args;
+
+const size_t XLA_FFI_Module_CreateState_Args_STRUCT_SIZE =
+    XLA_FFI_STRUCT_SIZE(XLA_FFI_Module_CreateState_Args, state);
+
+typedef XLA_FFI_Error* XLA_FFI_Module_CreateState(
+    XLA_FFI_Module_CreateState_Args* args);
+
+// Destroys a module state.
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  XLA_FFI_Module* module;
+  XLA_FFI_Module_State* state;
+} XLA_FFI_Module_DestroyState_Args;
+
+const size_t XLA_FFI_Module_DestroyState_Args_STRUCT_SIZE =
+    XLA_FFI_STRUCT_SIZE(XLA_FFI_Module_DestroyState_Args, state);
+
+typedef void XLA_FFI_Module_DestroyState(
+    XLA_FFI_Module_DestroyState_Args* args);
+
+// Exports module functions to the given FFI registry.
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  XLA_FFI_Module* module;
+  XLA_FFI_Registry* registry;
+} XLA_FFI_Module_ExportFunctions_Args;
+
+const size_t XLA_FFI_Module_ExportFunctions_Args_STRUCT_SIZE =
+    XLA_FFI_STRUCT_SIZE(XLA_FFI_Module_ExportFunctions_Args, registry);
+
+typedef void XLA_FFI_Module_ExportFunctions(
+    XLA_FFI_Module_ExportFunctions_Args* args);
+
+//===----------------------------------------------------------------------===//
+// Execution context passed to FFI functions.
 //===----------------------------------------------------------------------===//
 
 typedef struct {
@@ -107,10 +170,12 @@ typedef struct {
 // XLA FFI Api.
 //===----------------------------------------------------------------------===//
 
+// Arguments passed to an FFI function.
 typedef struct {
   size_t struct_size;
   void* priv;
   XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_Module_State* state;
   void** args;
   void** attrs;
   void** rets;
@@ -119,25 +184,44 @@ typedef struct {
 const size_t XLA_FFI_Function_Args_STRUCT_SIZE =
     XLA_FFI_STRUCT_SIZE(XLA_FFI_Function_Args, rets);
 
-// XLA FFI function type that can be registered with a runtime.
-typedef XLA_FFI_Error* (*XLA_FFI_Function)(XLA_FFI_Function_Args* args);
+// XLA FFI function type that can be exported to a runtime.
+typedef XLA_FFI_Error* XLA_FFI_Function(XLA_FFI_Function_Args* args);
 
+// Register FFI module with an XLA runtime.
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  const char* name;
+  XLA_FFI_Module* module;
+  XLA_FFI_Module_CreateState* create_state;
+  XLA_FFI_Module_DestroyState* destroy_state;
+  XLA_FFI_Module_ExportFunctions* export_functions;
+} XLA_FFI_RegisterModule_Args;
+
+const size_t XLA_FFI_RegisterModule_Args_STRUCT_SIZE =
+    XLA_FFI_STRUCT_SIZE(XLA_FFI_RegisterModule_Args, export_functions);
+
+typedef void XLA_FFI_RegisterModule(XLA_FFI_RegisterModule_Args* args);
+
+// Export FFI function from the module to an XLA runtime.
 typedef struct {
   size_t struct_size;
   void* priv;
   const char* target;
-  XLA_FFI_Function function;
-} XLA_FFI_Register_Args;
+  XLA_FFI_Function* function;
+  XLA_FFI_Registry* registry;
+} XLA_FFI_ExportFunction_Args;
 
-const size_t XLA_FFI_Register_Args_STRUCT_SIZE =
-    XLA_FFI_STRUCT_SIZE(XLA_FFI_Register_Args, function);
+const size_t XLA_FFI_ExportFunction_Args_STRUCT_SIZE =
+    XLA_FFI_STRUCT_SIZE(XLA_FFI_ExportFunction_Args, registry);
 
-typedef void XLA_FFI_Register(XLA_FFI_Register_Args* args);
+typedef void XLA_FFI_ExportFunction(XLA_FFI_ExportFunction_Args* args);
 
 #define XLA_FFI_API_STRUCT_FIELD(fn_type) fn_type* fn_type
 
 typedef struct {
-  XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Register);
+  XLA_FFI_API_STRUCT_FIELD(XLA_FFI_RegisterModule);
+  XLA_FFI_API_STRUCT_FIELD(XLA_FFI_ExportFunction);
 } XLA_FFI_Api;
 
 #undef XLA_FFI_API_STRUCT_FIELD

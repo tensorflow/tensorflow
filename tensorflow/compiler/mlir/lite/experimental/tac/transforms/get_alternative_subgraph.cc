@@ -167,11 +167,10 @@ void AlternativeSubgraphPass::GetAlternativeGraphForFunc(
   }
 
   const InferenceDeviceType current_device_type(
-      {current_device.getValue(), current_inference_type.getValue()});
+      {*current_device, *current_inference_type});
 
   const std::vector<InferenceDeviceType>& all_inference_device_type =
-      GetAllAlternativeInferenceDeviceType(current_inference_type.getValue(),
-                                           devices);
+      GetAllAlternativeInferenceDeviceType(*current_inference_type, devices);
 
   for (const auto& device_inference_type : all_inference_device_type) {
     if (device_inference_type != current_device_type) {
@@ -194,7 +193,7 @@ void AlternativeSubgraphPass::GetAlternativeGraphForFunc(
   // We need to run the optimization for the current device last because we
   // need to avoid any changes made the current graph polluting other
   // alternative graph views.
-  Optimize(func, current_device.getValue());
+  Optimize(func, *current_device);
 }
 
 bool AlternativeSubgraphPass::IsAllSupportedbySpec(
@@ -238,8 +237,8 @@ func::FuncOp AlternativeSubgraphPass::GetAlternativeViewForSpec(
   cloned_func->setAttr(kInferenceType,
                        builder->getStringAttr(GetInferenceString(
                            target_device_inference_type.inference_type)));
-  std::string new_function_name = GetFunctionImplName(
-      interface_name.getValue(), target_device_inference_type);
+  std::string new_function_name =
+      GetFunctionImplName(*interface_name, target_device_inference_type);
   cloned_func.setName(new_function_name);
 
   // If it's quantized -> float, we need to wrap all the ops around with dequant

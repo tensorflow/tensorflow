@@ -65,10 +65,10 @@ class Validator {
     int delegate_error = 0;
     // Number of delegated kernels.
     int delegated_kernels = 0;
-    // Model output with the delegate.
-    // key: output tensor name;
-    // value: output tensor data in byte format.
-    std::map<std::string, std::vector<char>> actual_inference_output;
+    // Model output with the delegate, in byte format. It is ordered the same as
+    // tflite::Interpreter::output_tensor(), i.e. the value of output_tensor(i)
+    // is stored in actual_inference_output[i].
+    std::vector<std::vector<char>> actual_inference_output;
   };
 
   // Run the validation graph and return validation results.

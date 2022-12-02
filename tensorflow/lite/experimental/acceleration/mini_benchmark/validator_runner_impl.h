@@ -45,7 +45,8 @@ class ValidatorRunnerImpl {
       const std::string& data_directory_path, int timeout_ms,
       std::unique_ptr<CustomValidationEmbedder> custom_validation_embedder,
       ErrorReporter* error_reporter, const NnApiSLDriverImplFL5* nnapi_sl,
-      const std::string& validation_entrypoint_name)
+      const std::string& validation_entrypoint_name,
+      AbstractBenchmarkResultEvaluator* benchmark_evaluator)
       : fd_or_model_path_(fd_or_model_path),
         storage_path_(storage_path),
         data_directory_path_(data_directory_path),
@@ -55,13 +56,8 @@ class ValidatorRunnerImpl {
         storage_(storage_path_, error_reporter_),
         nnapi_helper_(nnapi_sl),
         validation_entrypoint_helper_(validation_entrypoint_name,
-                                      error_reporter_) {
-    if (custom_validation_embedder_) {
-      benchmark_evaluator_ = std::make_unique<CustomResultEvaluator>();
-    } else {
-      benchmark_evaluator_ = std::make_unique<EmbeddedResultEvaluator>();
-    }
-  }
+                                      error_reporter_),
+        benchmark_evaluator_(benchmark_evaluator) {}
 
   MinibenchmarkStatus Init();
 
@@ -132,7 +128,7 @@ class ValidatorRunnerImpl {
   FlatbufferStorage<BenchmarkEvent> storage_;
   NnapiHelper nnapi_helper_;
   ValidationEntrypointHelper validation_entrypoint_helper_;
-  std::unique_ptr<BenchmarkResultEvaluator> benchmark_evaluator_ = nullptr;
+  AbstractBenchmarkResultEvaluator* benchmark_evaluator_ = nullptr;
 };
 
 }  // namespace acceleration

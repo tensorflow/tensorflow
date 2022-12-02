@@ -748,10 +748,12 @@ void CustomCallOp::build(
     ::mlir::mhlo::CustomCallApiVersionAttr apiVersion,
     ::mlir::ArrayAttr calledComputations, ::mlir::ArrayAttr operandLayouts,
     ::mlir::ArrayAttr resultLayouts) {
-  return CustomCallOp::build(odsBuilder, odsState, resultType, operands,
-                             callTargetName, hasSideEffect, backendConfig,
-                             apiVersion, calledComputations, operandLayouts,
-                             resultLayouts, nullptr);
+  return CustomCallOp::build(
+      odsBuilder, odsState, resultType, operands, callTargetName, hasSideEffect,
+      backendConfig, apiVersion, calledComputations,
+      CustomCallScheduleAttr::get(odsBuilder.getContext(),
+                                  CustomCallSchedule::NONE),
+      operandLayouts, resultLayouts, nullptr);
 }
 
 LogicalResult CustomCallOp::verify() {
@@ -888,6 +890,24 @@ LogicalResult CustomCallOp::verify() {
              << "operand part has type " << operandPart
              << " and output part has type " << outputPart;
   }
+
+  // Check backend_config attribute.
+  if (auto backendConfig = getBackendConfig()) {
+    if (getApiVersion() == CustomCallApiVersion::API_VERSION_TYPED_FFI) {
+      // Typed FFI custom calls require `backend_config` to be a DictionaryAttr.
+      if (backendConfig->isa<mlir::StringAttr>())
+        return emitOpError()
+               << "unsupported user-encoded backend config,"
+                  " backend config must be a dictionary attribute.";
+    } else {
+      // Older API versions require user-encoded `backend_config` string.
+      if (backendConfig->isa<mlir::DictionaryAttr>())
+        return emitOpError()
+               << "unsupported dictionary attribute backend config, backend"
+                  " config must be a user-encoded string attribute.";
+    }
+  }
+
   return success();
 }
 
@@ -991,25 +1011,6 @@ LogicalResult DotOp::inferReturnTypes(
   auto lhsType = op.getLhs().getType().cast<ShapedType>();
   auto rhsType = op.getRhs().getType().cast<ShapedType>();
   inferredReturnTypes.push_back(inferDotReturnType(lhsType, rhsType));
-  return success();
-}
-
-LogicalResult DotOp::verify() {
-  auto lhsType = getLhs().getType().cast<ShapedType>();
-  auto rhsType = getRhs().getType().cast<ShapedType>();
-  auto resultType = getType().cast<ShapedType>();
-  auto expectReturnType = inferDotReturnType(lhsType, rhsType);
-  if (!expectReturnType) {
-    return emitError() << "Unexpected operands type: " << lhsType << " and "
-                       << rhsType;
-  }
-  if (resultType.hasRank() && expectReturnType.hasRank()) {
-    if (resultType.getShape() != expectReturnType.getShape()) {
-      return emitError() << "Unexpected result type: has " << resultType
-                         << " but inferred " << expectReturnType
-                         << " from operands " << lhsType << " and " << rhsType;
-    }
-  }
   return success();
 }
 
@@ -1694,7 +1695,7 @@ LogicalResult reifyGatherShape(Op* op, OpBuilder& builder, ValueRange operands,
 
   Location loc = op->getLoc();
   int resultRank = resultTy.getRank();
-  Type shapeElTy = startIndices.getType().cast<ShapedType>().getElementType();
+  Type shapeElTy = builder.getIndexType();
   auto toShapeElType = [&](Value v) {
     return maybeCastTo(builder, loc, v, shapeElTy);
   };
@@ -2756,7 +2757,33 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   AllToAllOp::Adaptor adaptor(operands, attributes, regions);
-  Type operandType = adaptor.getOperand().getType();
+
+  bool isArrayAllToAll = adaptor.getSplitDimension() &&
+                         adaptor.getConcatDimension() &&
+                         adaptor.getSplitCount();
+  if (!isArrayAllToAll) {
+    if (adaptor.getSplitDimension() || adaptor.getConcatDimension() ||
+        adaptor.getSplitCount()) {
+      return emitOptionalError(location,
+                               "TupleAllToAll should not have split_dimension, "
+                               "concat_dimension or split_count attributes");
+    }
+
+    // TupleAllToAll has identical result and operand shapes.
+    for (int64_t i = 0; i < operands.size(); ++i) {
+      inferredReturnShapes.emplace_back(
+          operands[i].getType().cast<ShapedType>());
+    }
+
+    return success();
+  }
+
+  if (adaptor.getOperand().size() != 1) {
+    return emitOptionalError(location,
+                             "ArrayAllToAll should have exactly one operand");
+  }
+
+  Type operandType = adaptor.getOperand()[0].getType();
   RankedTensorType operandRankedType = operandType.dyn_cast<RankedTensorType>();
   if (!operandRankedType) {
     inferredReturnShapes.emplace_back(
@@ -2765,8 +2792,8 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
   }
 
   int64_t inputRank = operandRankedType.getRank();
-  int64_t splitDimension = static_cast<int64_t>(adaptor.getSplitDimension());
-  int64_t concatDimension = static_cast<int64_t>(adaptor.getConcatDimension());
+  int64_t splitDimension = static_cast<int64_t>(*adaptor.getSplitDimension());
+  int64_t concatDimension = static_cast<int64_t>(*adaptor.getConcatDimension());
   if (splitDimension >= inputRank || splitDimension < 0) {
     return emitOptionalError(location, "AllToAll split_dimension ",
                              splitDimension,
@@ -2780,7 +2807,7 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
 
   // If operand is ranked, size of split dimension should be a multiple of split
   // count.
-  int64_t splitCount = adaptor.getSplitCount();
+  int64_t splitCount = *adaptor.getSplitCount();
   auto splitDimSize = operandRankedType.getDimSize(splitDimension);
   if (splitDimSize != ShapedType::kDynamic &&
       (splitDimSize % splitCount != 0)) {
@@ -5920,6 +5947,18 @@ LogicalResult ReplicaIdOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// PartitionId Op
+//===----------------------------------------------------------------------===//
+
+LogicalResult PartitionIdOp::inferReturnTypes(
+    MLIRContext* context, Optional<Location>, ValueRange /*operands*/,
+    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(RankedTensorType::get(
+      /*shape=*/{}, IntegerType::get(context, 32, IntegerType::Unsigned)));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // AddDependency Op
 //===----------------------------------------------------------------------===//
 
@@ -8045,6 +8084,8 @@ using mlir::hlo::printSelectOpType;
 using mlir::hlo::parseSelectOpType;
 using mlir::hlo::printTupleOpType;
 using mlir::hlo::parseTupleOpType;
+using mlir::hlo::printCustomCallTarget;
+using mlir::hlo::parseCustomCallTarget;
 using mlir::hlo::printExponentMantissa;
 using mlir::hlo::parseExponentMantissa;
 // clang-format on

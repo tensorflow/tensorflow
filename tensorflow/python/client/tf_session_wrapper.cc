@@ -23,6 +23,12 @@ limitations under the License.
 // clang-format on
 
 #include "Python.h"
+
+// Must be included first
+// clang-format off
+#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+// clang-format on
+
 #include "absl/types/optional.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/c/c_api.h"
@@ -35,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/version_info.h"
 #include "tensorflow/python/client/tf_session_helper.h"
-#include "tensorflow/python/lib/core/numpy.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
@@ -104,7 +109,7 @@ PYBIND11_MAKE_OPAQUE(TF_Status);
 
 PYBIND11_MODULE(_pywrap_tf_session, m) {
   // Numpy initialization code for array checks.
-  tensorflow::ImportNumpy();
+  tsl::ImportNumpy();
 
   py::class_<TF_Graph> TF_Graph_class(m, "TF_Graph");
   py::class_<TF_Operation> TF_Operation_class(m, "TF_Operation");

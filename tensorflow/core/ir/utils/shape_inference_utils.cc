@@ -180,7 +180,7 @@ TensorType CreateTensorType(InferenceContext& context, const ShapeHandle& sh,
                             Type element_type) {
   auto shape = GetShapeFromHandle(context, sh);
   if (shape.has_value())
-    return GetTypeFromTFTensorShape(shape.getValue(), element_type, {});
+    return GetTypeFromTFTensorShape(shape.value(), element_type, {});
   return UnrankedTensorType::get(element_type);
 }
 

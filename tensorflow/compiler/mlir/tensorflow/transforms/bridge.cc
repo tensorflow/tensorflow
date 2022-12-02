@@ -255,10 +255,12 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
   };
 
   add_pass(CreateFunctionalToExecutorDialectConversionPass());
-  add_pass(TFDevice::CreateReplicateToIslandPass());
+  add_pass(TFDevice::CreateReplicateToIslandPass(/*legacy_graph_export=*/true));
   add_pass(TFDevice::CreateReplicaIDToDeviceOrdinalPass());
-  add_pass(TFDevice::CreateParallelExecuteToIslandsPass());
-  add_pass(TFDevice::CreateLaunchToDeviceAttributePass());
+  add_pass(TFDevice::CreateParallelExecuteToIslandsPass(
+      /*legacy_graph_export=*/true));
+  add_pass(TFDevice::CreateLaunchToDeviceAttributePass(
+      /*legacy_graph_export=*/true));
   pm.addNestedPass<func::FuncOp>(TFTPU::CreateTPUDevicePropagationPass());
   pm.addPass(createSymbolDCEPass());
   if (tensorflow::GetMlirCommonFlags()

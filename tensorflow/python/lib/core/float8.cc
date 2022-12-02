@@ -12,13 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// Must be included first
+// clang-format off
+#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+// clang-format on
 
 #include "tensorflow/python/lib/core/float8.h"
 
-#include <array>
-#include <cmath>
-#include <limits>
-#include <locale>
+#include <array>   // NOLINT
+#include <cmath>   // NOLINT
+#include <limits>  // NOLINT
+#include <locale>  // NOLINT
 
 // Place `<locale>` before <Python.h> to avoid a build failure in macOS.
 #include <Python.h>
@@ -28,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/custom_float.h"
-#include "tensorflow/python/lib/core/numpy.h"
 
 namespace tensorflow {
 namespace custom_float_internal {
@@ -47,7 +50,7 @@ struct CopySignFloat8 {
 };
 
 template <>
-struct CopySign<float8_e4m3> : CopySignFloat8<float8_e4m3> {};
+struct CopySign<float8_e4m3fn> : CopySignFloat8<float8_e4m3fn> {};
 
 template <>
 struct CopySign<float8_e5m2> : CopySignFloat8<float8_e5m2> {};
@@ -88,33 +91,33 @@ struct NextAfterFloat8 {
 };
 
 template <>
-struct NextAfter<float8_e4m3> : NextAfterFloat8<float8_e4m3> {};
+struct NextAfter<float8_e4m3fn> : NextAfterFloat8<float8_e4m3fn> {};
 
 template <>
 struct NextAfter<float8_e5m2> : NextAfterFloat8<float8_e5m2> {};
 
-// Since float8_e4m3 doesn't have `inf`, we need to modify to use `max`.
+// Since float8_e4m3fn doesn't have `inf`, we need to modify to use `max`.
 template <>
-struct Spacing<float8_e4m3> {
-  float8_e4m3 operator()(float8_e4m3 x) {
-    CopySign<float8_e4m3> copysign;
-    if (Eigen::numext::abs(x) == std::numeric_limits<float8_e4m3>::max()) {
-      return copysign(std::numeric_limits<float8_e4m3>::quiet_NaN(), x);
+struct Spacing<float8_e4m3fn> {
+  float8_e4m3fn operator()(float8_e4m3fn x) {
+    CopySign<float8_e4m3fn> copysign;
+    if (Eigen::numext::abs(x) == std::numeric_limits<float8_e4m3fn>::max()) {
+      return copysign(std::numeric_limits<float8_e4m3fn>::quiet_NaN(), x);
     }
-    float8_e4m3 away = copysign(std::numeric_limits<float8_e4m3>::max(), x);
-    return NextAfter<float8_e4m3>()(x, away) - x;
+    float8_e4m3fn away = copysign(std::numeric_limits<float8_e4m3fn>::max(), x);
+    return NextAfter<float8_e4m3fn>()(x, away) - x;
   }
 };
 
 }  // namespace ufuncs
 
 template <>
-struct TypeDescriptor<float8_e4m3>
-    : custom_float_internal::CustomFloatTypeDescriptor<float8_e4m3> {
-  typedef float8_e4m3 T;
-  static constexpr const char* kTypeName = "float8_e4m3";
-  static constexpr const char* kTpDoc = "float8_e4m3 floating-point values";
-  // We must register float8_e4m3 with a unique kind, because numpy
+struct TypeDescriptor<float8_e4m3fn>
+    : custom_float_internal::CustomFloatTypeDescriptor<float8_e4m3fn> {
+  typedef float8_e4m3fn T;
+  static constexpr const char* kTypeName = "float8_e4m3fn";
+  static constexpr const char* kTpDoc = "float8_e4m3fn floating-point values";
+  // We must register float8_e4m3fn with a unique kind, because numpy
   // considers two types with the same kind and size to be equal.
   // The downside of this is that NumPy scalar promotion does not work with
   // float8 values.  Using 'V' to mirror bfloat16 vs float16.
@@ -145,7 +148,7 @@ namespace {
 
 // Initializes the module.
 bool Initialize() {
-  ImportNumpy();
+  tsl::ImportNumpy();
   import_umath1(false);
 
   custom_float_internal::Safe_PyObjectPtr numpy_str =
@@ -159,7 +162,7 @@ bool Initialize() {
     return false;
   }
 
-  if (!custom_float_internal::RegisterNumpyDtype<float8_e4m3>(numpy.get())) {
+  if (!custom_float_internal::RegisterNumpyDtype<float8_e4m3fn>(numpy.get())) {
     return false;
   }
   if (!custom_float_internal::RegisterNumpyDtype<float8_e5m2>(numpy.get())) {
@@ -170,15 +173,15 @@ bool Initialize() {
 
 }  // namespace
 
-bool RegisterNumpyFloat8e4m3() {
-  if (custom_float_internal::TypeDescriptor<float8_e4m3>::Dtype() !=
+bool RegisterNumpyFloat8e4m3fn() {
+  if (custom_float_internal::TypeDescriptor<float8_e4m3fn>::Dtype() !=
       NPY_NOTYPE) {
     // Already initialized.
     return true;
   }
   if (!Initialize()) {
     if (!PyErr_Occurred()) {
-      PyErr_SetString(PyExc_RuntimeError, "cannot load float8_e4m3 module.");
+      PyErr_SetString(PyExc_RuntimeError, "cannot load float8_e4m3fn module.");
     }
     PyErr_Print();
     return false;
@@ -186,13 +189,13 @@ bool RegisterNumpyFloat8e4m3() {
   return true;
 }
 
-PyObject* Float8e4m3Dtype() {
+PyObject* Float8e4m3fnDtype() {
   return reinterpret_cast<PyObject*>(
-      custom_float_internal::TypeDescriptor<float8_e4m3>::type_ptr);
+      custom_float_internal::TypeDescriptor<float8_e4m3fn>::type_ptr);
 }
 
-int Float8e4m3NumpyType() {
-  return custom_float_internal::TypeDescriptor<float8_e4m3>::Dtype();
+int Float8e4m3fnNumpyType() {
+  return custom_float_internal::TypeDescriptor<float8_e4m3fn>::Dtype();
 }
 
 bool RegisterNumpyFloat8e5m2() {

@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 
+#include <algorithm>
+#include <optional>
+#include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/types/optional.h"
@@ -23,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
@@ -40,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
@@ -823,6 +830,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             builder_->getNamedAttr("result_layouts", result_layouts));
       }
 
+      attributes.push_back(
+          ConvertCustomCallSchedule(custom_call->custom_call_schedule()));
       TF_ASSIGN_OR_RETURN(
           auto mlir_api_version,
           ConvertCustomCallApiVersion(custom_call->api_version()));
@@ -832,9 +841,30 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "has_side_effect",
           builder_->getBoolAttr(custom_call->custom_call_has_side_effect())));
-      attributes.push_back(builder_->getNamedAttr(
-          "backend_config",
-          builder_->getStringAttr(custom_call->raw_backend_config_string())));
+
+      // For typed FFI API version we need to parse raw backend config string
+      // into a dictionary attribute.
+      auto& raw_backend_config = custom_call->raw_backend_config_string();
+
+      if (custom_call->api_version() ==
+          CustomCallApiVersion::API_VERSION_TYPED_FFI) {
+        if (raw_backend_config.empty()) {
+          attributes.push_back(builder_->getNamedAttr(
+              "backend_config", builder_->getDictionaryAttr({})));
+        } else {
+          mlir::Attribute attr =
+              mlir::parseAttribute(raw_backend_config, builder_->getContext());
+          if (!attr.isa<mlir::DictionaryAttr>())
+            return Internal(
+                "Couldn't parse backend config into a dictionary attribute");
+
+          attributes.push_back(builder_->getNamedAttr("backend_config", attr));
+        }
+      } else {
+        attributes.push_back(builder_->getNamedAttr(
+            "backend_config", builder_->getStringAttr(raw_backend_config)));
+      }
+
       attributes.push_back(builder_->getNamedAttr(
           "api_version", mlir::mhlo::CustomCallApiVersionAttr::get(
                              builder_->getContext(), mlir_api_version)));
@@ -1299,37 +1329,49 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                                      func_builder);
     }
     case HloOpcode::kAllToAll: {
-      // TODO(b/207152612): all-to-all HLO can either have pre-split operands
-      // (and returns a tuple) or a single operand that is split across
-      // `split_dimension` into the number of replicas in a group. Only the
-      // latter case (array all-to-all) is supported in importer right now and
-      // the former (tuple all-to-all) is not supported yet.
       auto all_to_all = Cast<HloAllToAllInstruction>(instruction);
-      if (all_to_all->shape().IsTuple())
-        return Unimplemented(
-            "Importing tuple all-to-all HLO is not supported yet");
+      auto result_tuple_ty = result_type.dyn_cast<mlir::TupleType>();
 
       // Check invariants of array all-to-all. This is a sanity check and is
       // verified by the HLO verifier.
-      if (!all_to_all->split_dimension().has_value() || operands.size() != 1 ||
-          all_to_all->replica_groups().empty())
-        return InvalidArgument(
-            "Array all-to-all should have a split dimension, one operand and "
-            "non-empty replica groups");
+      if (result_tuple_ty) {
+        if (all_to_all->split_dimension().has_value()) {
+          return InvalidArgument(
+              "Tuple all-to-all should not have a split dimension");
+        }
+      } else {
+        if (!all_to_all->split_dimension().has_value() ||
+            operands.size() != 1 || all_to_all->replica_groups().empty()) {
+          return InvalidArgument(
+              "Array all-to-all should have a split dimension, one operand and "
+              "non-empty replica groups");
+        }
+      }
 
       auto replica_groups_attr =
           ConvertReplicaGroups(all_to_all->replica_groups(), builder_)
               .getValue()
               .cast<DenseIntElementsAttr>();
-      uint64_t split_dim = all_to_all->split_dimension().value();
-      uint64_t concat_dim = split_dim;
-      uint64_t split_count = all_to_all->replica_groups()[0].replica_ids_size();
 
-      return func_builder
-          ->create<mlir::mhlo::AllToAllOp>(loc, result_type, operands[0],
-                                           split_dim, concat_dim, split_count,
-                                           replica_groups_attr)
-          .getOperation();
+      llvm::SmallVector<Type, 4> return_types = {result_type};
+      if (result_tuple_ty) {
+        return_types = llvm::to_vector<4>(result_tuple_ty.getTypes());
+      }
+
+      auto result = func_builder->create<mlir::mhlo::AllToAllOp>(
+          loc, return_types, operands, nullptr, nullptr, nullptr,
+          replica_groups_attr);
+
+      if (result_tuple_ty) {
+        return func_builder
+            ->create<mlir::mhlo::TupleOp>(loc, result_type, result.getResults())
+            .getOperation();
+      }
+
+      result.setSplitDimension(all_to_all->split_dimension().value());
+      result.setConcatDimension(all_to_all->split_dimension().value());
+      result.setSplitCount(all_to_all->replica_groups()[0].replica_ids_size());
+      return result.getOperation();
     }
     case HloOpcode::kReduce: {
       // Operands in the first half are reduction inputs and the remaining
@@ -1474,7 +1516,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           mlir::mhlo::symbolizeTranspose(
               TriangularSolveOptions::Transpose_Name(
                   instruction->triangular_solve_options().transpose_a()))
-              .getValue());
+              .value());
 
       attributes.push_back(builder_->getNamedAttr("transpose_a", transpose_a));
       return func_builder
@@ -1598,7 +1640,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto fft_type = mlir::mhlo::FftTypeAttr::get(
           builder_->getContext(),
           mlir::mhlo::symbolizeFftType(FftType_Name(instruction->fft_type()))
-              .getValue());
+              .value());
 
       std::vector<int64_t> fft_length(instruction->fft_length().begin(),
                                       instruction->fft_length().end());
@@ -1800,7 +1842,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto fusion = func_builder->create<mlir::mhlo::FusionOp>(
           loc, flattened_ret_types, flattened_operands,
           mlir::mhlo::FusionKindAttr::get(func_builder->getContext(),
-                                          fusion_kind.getValue()));
+                                          fusion_kind.value()));
       TF_RETURN_IF_ERROR(ImportAsRegion(
           *instruction->fused_instructions_computation(),
           &fusion.getFusedComputation(), /*flatten_region_arg_tuple=*/true));
@@ -1914,7 +1956,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertComparisonDirection(
       mlir::mhlo::ComparisonDirectionAttr::get(
           builder_->getContext(), mlir::mhlo::symbolizeComparisonDirection(
                                       ComparisonDirectionToString(direction))
-                                      .getValue()));
+                                      .value()));
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertComparisonType(
@@ -1924,7 +1966,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertComparisonType(
       mlir::mhlo::ComparisonTypeAttr::get(
           builder_->getContext(),
           mlir::mhlo::symbolizeComparisonType(ComparisonTypeToString(type))
-              .getValue()));
+              .value()));
 }
 
 mlir::DenseIntElementsAttr HloFunctionImporter::ConvertDimensions(
@@ -1949,6 +1991,27 @@ mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
     llvm::ArrayRef<bool> elements) {
   return DenseIntElementsAttr::get(
       RankedTensorType::get(elements.size(), builder_->getI1Type()), elements);
+}
+
+mlir::NamedAttribute HloFunctionImporter::ConvertCustomCallSchedule(
+    CustomCallSchedule schedule) {
+  auto converted_schedule = ::mlir::mhlo::CustomCallSchedule::NONE;
+  switch (schedule) {
+    case SCHEDULE_LATEST:
+      converted_schedule = ::mlir::mhlo::CustomCallSchedule::LATEST;
+      break;
+    case SCHEDULE_EARLIEST:
+      converted_schedule = ::mlir::mhlo::CustomCallSchedule::EARLIEST;
+      break;
+    case SCHEDULE_NONE:
+      converted_schedule = ::mlir::mhlo::CustomCallSchedule::NONE;
+      break;
+    default:
+      assert(false && "Unrecognized custom call schedule hint");
+  }
+  return builder_->getNamedAttr(
+      "custom_call_schedule", ::mlir::mhlo::CustomCallScheduleAttr::get(
+                                  builder_->getContext(), converted_schedule));
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertPadding(

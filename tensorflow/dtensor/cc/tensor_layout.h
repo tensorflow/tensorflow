@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
@@ -101,13 +102,17 @@ class Mesh {
   Mesh() = default;
 
   // Creates fully defined mesh.
+  //
+  // When `use_xla_spmd` is true, all ops running on this mesh will use XLA SPMD
+  // instead of DTensor SPMD.
   static Mesh CreateMesh(
       const std::string& mesh_name, const std::vector<std::string>& dim_names,
       const std::vector<std::int64_t>& global_device_ids_shape,
       const std::vector<std::int64_t>& global_device_ids_flatten,
       const std::vector<std::string>& global_devices_str,
       const std::vector<std::int64_t>& local_device_ids,
-      const std::vector<std::string>& local_devices_str);
+      const std::vector<std::string>& local_devices_str,
+      bool use_xla_spmd = false);
 
   // Parses from MeshProto.
   static StatusOr<Mesh> ParseFromProto(const MeshProto& proto);
@@ -196,6 +201,7 @@ class Mesh {
 
   int64 rank() const;
   int64 size() const;
+  bool use_xla_spmd() const { return use_xla_spmd_; }
   const std::string& name() const { return name_; }
 
   // Global unique fingerprint. Same on different workers.
@@ -233,7 +239,16 @@ class Mesh {
   std::vector<int64_t> local_device_ids_;
   std::vector<int64_t> global_device_ids_;
   std::vector<std::string> global_devices_;
+  bool use_xla_spmd_ = false;
 };
+
+// Obtain all possible forms of indexing a mesh.
+//
+// e.g. given a mesh with dimensions [x=2, y=3], returns {
+//   [0, 0], [0, 1], [0, 2],
+//   [1, 0], [1, 1], [1, 2]
+// }
+std::vector<DeviceLocation> ComputeDeviceLocations(const Mesh& mesh);
 
 class Layout {
  public:

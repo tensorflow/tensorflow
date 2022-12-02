@@ -959,42 +959,49 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     tasks.length = task_len;
     TFE_GetTaskStates(tensorflow::InputTFE_Context(ctx), tasks, state.get(),
                       status.get());
-    PyObject* output = PyList_New(task_len);
+    py::list output(task_len);
     for (size_t i = 0; i < task_len; ++i) {
       auto code = TF_GetCode(&state[i]);
       if (code != TF_Code::TF_OK) {
-        PyObject* payloads = PyDict_New();
+        py::dict payloads;
         for (const auto& payload :
              tensorflow::errors::GetPayloads(state[i].status)) {
-          PyDict_SetItemString(payloads, payload.first.c_str(),
-                               PyUnicode_FromString(payload.second.c_str()));
+          payloads[payload.first.c_str()] = payload.second;
         }
-        PyObject* exception_class =
-            tensorflow::PyExceptionRegistry::Lookup(code);
-        if (exception_class == nullptr) {
+        auto exception_class = py::reinterpret_steal<py::object>(
+            tensorflow::PyExceptionRegistry::Lookup(code));
+        if (!exception_class) {
           status->status = tensorflow::errors::Internal(absl::StrCat(
               "Fail to find the corresponding exception class for ", code));
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         }
-        // If `Py_BuildValue` returns NULL, it would raise an exception.
-        // So we may not raise another exception here when `value` is NULL.
-        PyObject* value = Py_BuildValue("sssO", nullptr, nullptr,
-                                        TF_Message(&state[i]), payloads);
-        PyObject* instance = PyObject_CallObject(exception_class, value);
-        PyList_SetItem(output, i, instance);
+        output[i] = exception_class(py::none(), py::none(),
+                                    TF_Message(&state[i]), payloads);
       } else {
-        PyList_SetItem(output, i, Py_None);
+        output[i] = py::none();
       }
     }
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-    return tensorflow::PyoOrThrow(output);
+    return tensorflow::PyoOrThrow(output.release().ptr());
   });
+
+  m.def("TFE_WaitAtBarrier",
+        [](py::handle& ctx, const char* barrier_id, int64_t timeout_in_ms) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+
+          TFE_WaitAtBarrier(tensorflow::InputTFE_Context(ctx), barrier_id,
+                            timeout_in_ms, status.get());
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        });
 
   // TFE_Executor logic
   m.def(
       "TFE_NewExecutor",
-      [](const bool is_async, const bool enable_streaming_enqueue) {
-        TFE_Executor* exc = TFE_NewExecutor(is_async, enable_streaming_enqueue);
+      [](const bool is_async, const bool enable_streaming_enqueue,
+         const int in_flight_nodes_limit) {
+        TFE_Executor* exc = TFE_NewExecutor(is_async, enable_streaming_enqueue,
+                                            in_flight_nodes_limit);
         return exc;
       },
       py::return_value_policy::reference);

@@ -221,7 +221,7 @@ class TypeSpec(
     return nested_structure_coder.encode_structure(self).type_spec_value
 
   # TODO(b/223659753): Return the actual Tensor-based value instead of spec.
-  def _placeholder_value(self) -> "TypeSpec":
+  def _placeholder_value(self, placeholder_context) -> "TypeSpec":
     """Value used for tracing a function signature with this TraceType."""
     return self
 

@@ -3,7 +3,7 @@
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_DOT_ORDER_OPTIMIZER_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_DOT_ORDER_OPTIMIZER_
 
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {

@@ -20,15 +20,13 @@ load("//tensorflow:tensorflow.bzl", "clean_dep")
 load("build_defs.bzl", "embedded_binary")
 load("special_rules.bzl", "jpeg_copts", "libjpeg_deps", "minibenchmark_visibility_allowlist")
 
-default_visibility_group = [
-    "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
-    "//tensorflow/lite/tools/benchmark:__subpackages__",
-    "@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__",
-] + minibenchmark_visibility_allowlist()
-
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = default_visibility_group,
+    default_visibility = [
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
+        "//tensorflow/lite/tools/benchmark:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__",
+    ] + minibenchmark_visibility_allowlist(),
     licenses = ["notice"],
 )
 
@@ -41,7 +39,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "@flatbuffers",
@@ -57,8 +55,8 @@ cc_test(
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:interpreter_test_util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/testing:util",
@@ -81,9 +79,9 @@ cc_library(
     deps = [
         ":status_codes",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
@@ -97,8 +95,8 @@ cc_test(
     deps = [
         ":fb_storage",
         ":status_codes",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
@@ -281,8 +279,8 @@ cc_library(
         ":libjpeg_decoder",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:tensor",
         "@flatbuffers",
@@ -338,8 +336,8 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
     ],
 )
@@ -423,11 +421,11 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/configuration:delegate_registry",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:constants",
@@ -441,6 +439,7 @@ cc_library(
     srcs = ["validator_runner_options.cc"],
     hdrs = ["validator_runner_options.h"],
     deps = [
+        ":benchmark_result_evaluator",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
@@ -986,6 +985,7 @@ cc_test(
     name = "validator_runner_impl_test",
     srcs = ["validator_runner_impl_test.cc"],
     deps = [
+        ":benchmark_result_evaluator",
         ":embedded_mobilenet_model",
         ":embedded_mobilenet_validation_model",
         ":embedded_nnapi_sl_fake_impl",
@@ -1013,6 +1013,7 @@ cc_test(
     name = "blocking_validator_runner_test",
     srcs = ["blocking_validator_runner_test.cc"],
     deps = [
+        ":benchmark_result_evaluator",
         ":blocking_validator_runner",
         ":embedded_mobilenet_model",
         ":embedded_mobilenet_validation_model",

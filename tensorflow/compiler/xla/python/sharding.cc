@@ -55,6 +55,13 @@ bool ShardingEqual(const pybind11::object& a, const pybind11::object& b) {
            a_mesh_sharding->spec().equal(b_mesh_sharding->spec());
   }
 
+  if (a_type.is(OpShardingSharding::type())) {
+    auto* a_op_sharding_sharding = py::cast<const OpShardingSharding*>(a);
+    auto* b_op_sharding_sharding = py::cast<const OpShardingSharding*>(b);
+
+    return a_op_sharding_sharding == b_op_sharding_sharding;
+  }
+
   return a.equal(b);
 }
 

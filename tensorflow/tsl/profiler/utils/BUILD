@@ -14,7 +14,6 @@ package(
 package_group(
     name = "friends",
     includes = [
-        "//tensorflow/core/profiler:friends",
         "//tensorflow/tsl/profiler:friends",
     ],
 )
@@ -44,7 +43,7 @@ cc_library(
     ],
     copts = tf_profiler_copts(),
     visibility = [
-        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
+        "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/tsl/platform/cloud:__pkg__",
         "//tensorflow/tsl/profiler:internal",
     ],

@@ -65,6 +65,7 @@ cc_library(
         "//tensorflow/lite/core/experimental/acceleration/configuration/c:stable_delegate",
         "//tensorflow/lite/core/shims:delegate_plugin",
         "//tensorflow/lite/delegates/utils:simple_opaque_delegate",
+        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:stable_delegate_inferface",
         "//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate",
     ],
 )
@@ -76,12 +77,12 @@ tflite_cc_shared_object(
         "//tensorflow:windows": [],
         "//conditions:default": [
             # Expose necessary symbols only.
-            "-Wl,--version-script,$(location //tensorflow/lite/delegates/utils/experimental/sample_stable_delegate:version_script.lds)",
+            "-Wl,--version-script,$(location //tensorflow/lite/delegates/utils/experimental/stable_delegate:version_script.lds)",
         ],
     }),
     per_os_targets = True,
     deps = [
         ":sample_stable_delegate_external",
-        ":version_script.lds",
+        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:version_script.lds",
     ],
 )

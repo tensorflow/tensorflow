@@ -67,19 +67,21 @@ class ConvertLmhloToCpuRuntimePass
 
 // Copies memrefs with non-identity layouts (e.g. results of memref.subviews)
 // to newly allocated memrefs, ensuring all outputs have flat layouts.
-SmallVector<Value> EnsureFlatMemrefs(OperandRange memrefs,
+// TODO(jreiffers): If the memref just as an offset, but its layout is otherwise
+// default, the copy is overkill.
+SmallVector<Value> EnsureFlatMemrefs(ValueRange values,
                                      ImplicitLocOpBuilder& b) {
   SmallVector<Value> out;
-  for (Value memref : memrefs) {
-    auto ty = memref.getType().cast<MemRefType>();
-    if (ty.getLayout().isIdentity()) {
-      out.push_back(memref);
+  for (Value value : values) {
+    auto ty = value.getType().dyn_cast<MemRefType>();
+    if (!ty || ty.getLayout().isIdentity()) {
+      out.push_back(value);
     } else {
       auto default_layout_ty =
           MemRefType::get(ty.getShape(), ty.getElementType());
       auto alloc =
           out.emplace_back(b.create<memref::AllocOp>(default_layout_ty));
-      b.create<memref::CopyOp>(memref, alloc);
+      b.create<memref::CopyOp>(value, alloc);
     }
   }
   return out;
@@ -161,6 +163,8 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
         operands[num_args + indexed.value()] = op.getOutput()[indexed.index()];
     }
 
+    // TODO(jreiffers): This will break if an output has a non-default layout.
+    operands = EnsureFlatMemrefs(operands, b);
     // Create a custom call function declaration.
     func::FuncOp callee = custom_calls_.GetOrCreate(
         b, kCustomCallTarget, TypeRange(ValueRange(operands)), TypeRange());
@@ -312,6 +316,30 @@ class AllReduceLowering : public OpRewritePattern<xla_cpu::AllReduceOp> {
 
 //===----------------------------------------------------------------------===//
 
+class AllToAllLowering : public OpRewritePattern<xla_cpu::AllToAllOp> {
+ public:
+  AllToAllLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(xla_cpu::AllToAllOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getSplitDimensionAttr()) {
+      op.emitOpError("ArrayAllToAll is not supported");
+      return failure();
+    }
+    CreateCallForDpsCollectiveOp(op.getOperation(), custom_calls_, kCallTarget,
+                                 rewriter);
+    return success();
+  }
+
+ private:
+  static constexpr const char kCallTarget[] = "xla.cpu.tuple_all_to_all";
+
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
 class CollectivePermuteLowering
     : public OpRewritePattern<xla_cpu::CollectivePermuteOp> {
  public:
@@ -338,6 +366,26 @@ class CollectivePermuteLowering
 
 //===----------------------------------------------------------------------===//
 
+class FftLowering : public OpRewritePattern<xla_cpu::FftOp> {
+ public:
+  FftLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(xla_cpu::FftOp op,
+                                PatternRewriter& rewriter) const override {
+    CreateCallForDpsCollectiveOp(op.getOperation(), custom_calls_, kCallTarget,
+                                 rewriter);
+    return success();
+  }
+
+ private:
+  static constexpr const char kCallTarget[] = "xla.cpu.fft";
+
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
 void ConvertLmhloToCpuRuntimePass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext* ctx = module.getContext();
@@ -349,8 +397,8 @@ void ConvertLmhloToCpuRuntimePass::runOnOperation() {
   // Convert lmhlo operations to XLA cpu runtime custom calls.
   RewritePatternSet patterns(ctx);
   patterns.insert<InfeedOpLowering, OutfeedOpLowering, CustomCallOpLowering,
-                  AllReduceLowering, CollectivePermuteLowering>(ctx,
-                                                                custom_calls);
+                  AllReduceLowering, AllToAllLowering,
+                  CollectivePermuteLowering, FftLowering>(ctx, custom_calls);
   patterns.insert<IdOpLowering<PartitionIdOp>>(ctx, "xla.cpu.partition_id",
                                                custom_calls);
   patterns.insert<IdOpLowering<ReplicaIdOp>>(ctx, "xla.cpu.replica_id",

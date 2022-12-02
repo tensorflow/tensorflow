@@ -61,7 +61,7 @@ class MergeInitializerFunctionOpsToMainPass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
       MergeInitializerFunctionOpsToMainPass)
 
-  explicit MergeInitializerFunctionOpsToMainPass() {}
+  explicit MergeInitializerFunctionOpsToMainPass() = default;
 
   StringRef getArgument() const override {
     return "quant-merge-initializer-function-ops-to-main";

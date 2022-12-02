@@ -20,12 +20,10 @@ package_group(
 cc_library(
     name = "llvm_gpu_backend",
     srcs = [
-        "dump_ir_pass.cc",
         "gpu_backend_lib.cc",
         "utils.cc",
     ],
     hdrs = [
-        "dump_ir_pass.h",
         "gpu_backend_lib.h",
         "utils.h",
     ],
@@ -45,6 +43,7 @@ cc_library(
         "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Linker",
+        "@llvm-project//llvm:Passes",
         "@llvm-project//llvm:NVPTXCodeGen",  # buildcleaner: keep
         "@llvm-project//llvm:ObjCARC",  # buildcleaner: keep
         "@llvm-project//llvm:Scalar",
