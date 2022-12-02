@@ -1,1 +1,32 @@
+diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/dialect/CMakeLists.txt
+--- stablehlo/stablehlo/dialect/CMakeLists.txt
++++ stablehlo/stablehlo/dialect/CMakeLists.txt
+@@ -106,6 +106,7 @@
+   LINK_LIBS PUBLIC
+   MLIRInferTypeOpInterface
+   MLIRIR
++  StablehloAssemblyFormat
+   StablehloBase
+ )
+ 
+diff --ruN a/stablehlo/stablehlo/tests/CMakeLists.txt b/stablehlo/stablehlo/tests/CMakeLists.txt
+--- stablehlo/stablehlo/tests/CMakeLists.txt
++++ stablehlo/stablehlo/tests/CMakeLists.txt
+@@ -53,4 +53,5 @@
+   MLIRShapeDialect
+   MLIRSupport
+   MLIRTransformUtils
++  StablehloAssemblyFormat
+ )
+diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests/TestUtils.cpp
+--- stablehlo/stablehlo/tests/TestUtils.cpp
++++ stablehlo/stablehlo/tests/TestUtils.cpp
+@@ -36,7 +36,6 @@
+ #include "mlir/Support/TypeID.h"
+ #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+ #include "stablehlo/dialect/AssemblyFormat.h"
+-#include "stablehlo/dialect/Base.h"
+ 
+ namespace mlir {
+ namespace hlo {
 
