@@ -666,15 +666,6 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       py::is_method(type));
   type.attr("delete") = py::cpp_function(
       [](PyBuffer::object self) { self.buf()->Delete(); }, py::is_method(type));
-  type.attr("block_host_until_ready") = py::cpp_function(
-      [](PyBuffer::object self) {
-        // TODO(phawkins): remove 3 months after the release of jaxlib >= 0.3.2.
-        PythonDeprecationWarning(
-            "block_host_until_ready() on a JAX array object is deprecated, use "
-            "block_until_ready() instead.");
-        return self.buf()->BlockHostUntilReady();
-      },
-      py::is_method(type));
   type.attr("is_ready") = py::cpp_function(
       [](PyBuffer::object self) { return self.buf()->IsReady(); },
       py::is_method(type));
