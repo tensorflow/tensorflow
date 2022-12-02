@@ -2883,7 +2883,6 @@ def pybind_extension_opensource(
                 ],
             }),
             visibility = visibility,
-            win_def_file = if_windows(win_def_file, otherwise = None),
         )
 
         # cc_shared_library can generate more than one file.
