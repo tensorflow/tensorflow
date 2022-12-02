@@ -63,12 +63,12 @@ std::unique_ptr<tflite::delegates::DelegatePluginInterface> LoadDelegatePlugin(
       name + "Plugin", tflite_settings);
 }
 
-void AddTensorDataToMap(TfLiteTensor* tensor,
-                        std::map<std::string, std::vector<char>>& output_map) {
+void AppendTensorDataToVector(const TfLiteTensor* tensor,
+                              std::vector<std::vector<char>>& output_vector) {
   std::vector<char> char_output(TfLiteTensorByteSize(tensor));
   memcpy(char_output.data(), TfLiteTensorData(tensor),
          TfLiteTensorByteSize(tensor));
-  output_map.emplace(TfLiteTensorName(tensor), std::move(char_output));
+  output_vector.emplace_back(std::move(char_output));
 }
 
 // Returns whether the tensor is embedded with data.
@@ -419,13 +419,15 @@ MinibenchmarkStatus Validator::RunValidation(Results* results_out) {
 
     TFLITE_LOG_PROD(TFLITE_LOG_INFO, "  accuracy: %s",
                     results_out->ok ? "ok" : "not ok");
-  }
-
-  // Model output.
-  for (int i = 0; i < model_output_size; i++) {
-    AddTensorDataToMap(
-        validation_entrypoint_->tensor(validation_entrypoint_->outputs()[i]),
-        results_out->actual_inference_output);
+  } else {
+    // Model output.
+    results_out->actual_inference_output.clear();
+    results_out->actual_inference_output.reserve(model_output_size);
+    for (int i = 0; i < model_output_size; i++) {
+      AppendTensorDataToVector(
+          validation_entrypoint_->tensor(validation_entrypoint_->outputs()[i]),
+          results_out->actual_inference_output);
+    }
   }
   // Performance metrics.
   results_out->delegate_prep_time_us =

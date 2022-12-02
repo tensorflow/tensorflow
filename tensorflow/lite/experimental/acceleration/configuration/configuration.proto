@@ -600,6 +600,7 @@ message BenchmarkMetric {
 // well as sent to server for monitoring.
 //
 // Used with event type END.
+// Next ID: 7
 message BenchmarkResult {
   // Time to load model and apply acceleration. Initialization may get run
   // multiple times to get information on variance.
@@ -616,6 +617,16 @@ message BenchmarkResult {
   optional bool ok = 4;
   // Metrics that were used to determine the 'ok' status.
   repeated BenchmarkMetric metrics = 5;
+
+  message InferenceOutput {
+    // The matching Flatbuffer type is ubyte.
+    optional bytes value = 1;
+  }
+  // Model output in byte format. Each InferenceOutput comes from one output
+  // tensor. It is ordered the same as tflite::Interpreter::output_tensor(),
+  // i.e. the value of output_tensor(i) is stored in actual_output[i]. Only
+  // populated in custom validation case.
+  repeated InferenceOutput actual_output = 6;
 }
 
 // A handled error.

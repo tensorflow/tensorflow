@@ -439,6 +439,7 @@ cc_library(
     srcs = ["validator_runner_options.cc"],
     hdrs = ["validator_runner_options.h"],
     deps = [
+        ":benchmark_result_evaluator",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
@@ -984,6 +985,7 @@ cc_test(
     name = "validator_runner_impl_test",
     srcs = ["validator_runner_impl_test.cc"],
     deps = [
+        ":benchmark_result_evaluator",
         ":embedded_mobilenet_model",
         ":embedded_mobilenet_validation_model",
         ":embedded_nnapi_sl_fake_impl",
@@ -1011,6 +1013,7 @@ cc_test(
     name = "blocking_validator_runner_test",
     srcs = ["blocking_validator_runner_test.cc"],
     deps = [
+        ":benchmark_result_evaluator",
         ":blocking_validator_runner",
         ":embedded_mobilenet_model",
         ":embedded_mobilenet_validation_model",
