@@ -70,7 +70,7 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:tensor",
-        "//third_party/FP16",
+        "@FP16",
     ],
 )
 
