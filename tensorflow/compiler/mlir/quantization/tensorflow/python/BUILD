@@ -27,7 +27,7 @@ cc_library(
     hdrs = ["quantize_model.h"],
     compatible_with = get_compatible_with_cloud(),
     visibility = [
-        # Directly linked to `libtensorflow_cc.so` or 
+        # Directly linked to `libtensorflow_cc.so` or
         # `_pywrap_tensorflow_internal.so` if static build.
         "//tensorflow:__pkg__",
         "//tensorflow/python:__pkg__",

@@ -1317,7 +1317,6 @@ tf_cc_shared_library(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
-        "//tensorflow/core/profiler/convert:hlo_to_tools_data_impl",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",
