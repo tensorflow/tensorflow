@@ -19,8 +19,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/resource/resource_variable.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
