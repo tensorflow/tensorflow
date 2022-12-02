@@ -751,12 +751,16 @@ __device__ inline double GpuAtomicAdd(double* ptr, double value) {
 }
 #endif
 
-#if __gfx908__ || __gfx90a__
+#if __gfx908__ || __gfx90a__ || __gfx940__
 
 #define ADDRSP1 __attribute__((address_space(1)))
 __device__ float
+#if __clang_major__ < 16
 __llvm_amdgcn_global_atomic_add_f32(ADDRSP1 float* dst, float val) __asm("llvm.amdgcn.global.atomic.fadd.f32.p1f32.f32");
-#endif
+#else
+__llvm_amdgcn_global_atomic_add_f32(ADDRSP1 float* dst, float val) __asm("llvm.amdgcn.global.atomic.fadd.f32.p1.f32");
+#endif  // clang_major
+#endif  // gfx
 
 
 
@@ -948,7 +952,7 @@ __device__ inline int64_t GpuAtomicMin(int64_t* ptr, int64_t value) {
 }
 #endif
 
-#if __gfx908__ || __gfx90a__
+#if __gfx908__ || __gfx90a__ || __gfx940__
 // Low level instructions don't return. For now, assume that return value
 // is always unused.
 __device__ float GpuAtomicAdd(float* dst, float val) {
@@ -963,7 +967,7 @@ __device__ inline T GpuAtomicAddShared(T* ptr, T value) {
   return GpuAtomicAdd(ptr, value);
 }
 
-#if __gfx908__ || __gfx90a__
+#if __gfx908__ || __gfx90a__ || __gfx940__
 __device__ float GpuAtomicAddShared(float* dst, float val) {
   atomicAdd(dst, val);
   return val;
