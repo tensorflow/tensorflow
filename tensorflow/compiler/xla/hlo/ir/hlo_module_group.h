@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_GROUP_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_GROUP_H_
+#ifndef TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_MODULE_GROUP_H_
+#define TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_MODULE_GROUP_H_
 
 #include <iosfwd>
 #include <string>
@@ -113,4 +113,4 @@ std::ostream& operator<<(std::ostream& out, const HloModuleGroup& group);
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_GROUP_H_
+#endif  // TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_MODULE_GROUP_H_
