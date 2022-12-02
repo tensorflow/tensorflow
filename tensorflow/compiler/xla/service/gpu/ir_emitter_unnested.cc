@@ -1094,8 +1094,11 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
                       GetAllocationSlice(matmul.getCScale()));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d_scale,
                       GetAllocationSlice(matmul.getDScale()));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d_amax,
-                      GetAllocationSlice(matmul.getDAmax()));
+  BufferAllocation::Slice d_amax;
+  if (matmul.getDAmax() != nullptr) {
+    TF_ASSIGN_OR_RETURN(d_amax, GetAllocationSlice(matmul.getDAmax()));
+  }
+
   BufferAllocation::Slice bias;  // Not used.
 
   TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,

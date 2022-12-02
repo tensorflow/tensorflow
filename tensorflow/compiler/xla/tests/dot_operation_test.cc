@@ -751,7 +751,162 @@ class DotOperationTestWithCublasLt_F8 : public DotOperationTest {
 };
 TYPED_TEST_CASE(DotOperationTestWithCublasLt_F8, TypesF8);
 
-XLA_TYPED_TEST(DotOperationTestWithCublasLt_F8, ScaledF8) {
+XLA_TYPED_TEST(DotOperationTestWithCublasLt_F8, ScaledABUnscaledDF8) {
+  using T = TypeParam;
+
+  XlaBuilder builder(this->TestName());
+  XlaOp a =
+      Parameter(&builder, 0, ShapeUtil::MakeShapeWithType<T>({16, 16}), "A");
+  XlaOp b =
+      Parameter(&builder, 1, ShapeUtil::MakeShapeWithType<T>({16, 16}), "B");
+  XlaOp a_scale = Parameter(&builder, 2,
+                            ShapeUtil::MakeShapeWithType<float>({}), "A scale");
+  XlaOp b_scale = Parameter(&builder, 3,
+                            ShapeUtil::MakeShapeWithType<float>({}), "B scale");
+
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(1);
+  dnums.add_rhs_contracting_dimensions(0);
+
+  XlaOp a_f32 = ConvertElementType(a, F32);
+  XlaOp b_f32 = ConvertElementType(b, F32);
+
+  XlaOp a_scale_bcast = Broadcast(a_scale, {16, 16});
+  XlaOp a_scaled_f32 = Mul(a_f32, a_scale_bcast);
+  XlaOp b_scale_bcast = Broadcast(b_scale, {16, 16});
+  XlaOp b_scaled_f32 = Mul(b_f32, b_scale_bcast);
+
+  XlaOp d_f32 = DotGeneral(a_scaled_f32, b_scaled_f32, dnums);
+
+  auto a_data = this->client_
+                    ->TransferToServer(LiteralUtil::CreateR2FromArray2D<T>(
+                        {{1.0f, 0.0f, 3.0f, 0.0f, 5.0f, 0.0f, 7.0f, 0.0f, 9.0f,
+                          0.0f, 11.0f, 0.0f, 13.0f, 0.0f, 15.0f, 0.0f},
+                         {0.0f, 15.0f, 0.0f, 13.0f, 0.0f, 11.0f, 0.0f, 9.0f,
+                          0.0f, 7.0f, 0.0f, 5.0f, 0.0f, 3.0f, 0.0f, 1.0f},
+                         {1.0f, 0.0f, 3.0f, 0.0f, 5.0f, 0.0f, 7.0f, 0.0f, 9.0f,
+                          0.0f, 11.0f, 0.0f, 13.0f, 0.0f, 15.0f, 0.0f},
+                         {0.0f, 15.0f, 0.0f, 13.0f, 0.0f, 11.0f, 0.0f, 9.0f,
+                          0.0f, 7.0f, 0.0f, 5.0f, 0.0f, 3.0f, 0.0f, 1.0f},
+                         {1.0f, 0.0f, 3.0f, 0.0f, 5.0f, 0.0f, 7.0f, 0.0f, 9.0f,
+                          0.0f, 11.0f, 0.0f, 13.0f, 0.0f, 15.0f, 0.0f},
+                         {0.0f, 15.0f, 0.0f, 13.0f, 0.0f, 11.0f, 0.0f, 9.0f,
+                          0.0f, 7.0f, 0.0f, 5.0f, 0.0f, 3.0f, 0.0f, 1.0f},
+                         {1.0f, 0.0f, 3.0f, 0.0f, 5.0f, 0.0f, 7.0f, 0.0f, 9.0f,
+                          0.0f, 11.0f, 0.0f, 13.0f, 0.0f, 15.0f, 0.0f},
+                         {0.0f, 15.0f, 0.0f, 13.0f, 0.0f, 11.0f, 0.0f, 9.0f,
+                          0.0f, 7.0f, 0.0f, 5.0f, 0.0f, 3.0f, 0.0f, 1.0f},
+                         {1.0f, 0.0f, 3.0f, 0.0f, 5.0f, 0.0f, 7.0f, 0.0f, 9.0f,
+                          0.0f, 11.0f, 0.0f, 13.0f, 0.0f, 15.0f, 0.0f},
+                         {0.0f, 15.0f, 0.0f, 13.0f, 0.0f, 11.0f, 0.0f, 9.0f,
+                          0.0f, 7.0f, 0.0f, 5.0f, 0.0f, 3.0f, 0.0f, 1.0f},
+                         {1.0f, 0.0f, 3.0f, 0.0f, 5.0f, 0.0f, 7.0f, 0.0f, 9.0f,
+                          0.0f, 11.0f, 0.0f, 13.0f, 0.0f, 15.0f, 0.0f},
+                         {0.0f, 15.0f, 0.0f, 13.0f, 0.0f, 11.0f, 0.0f, 9.0f,
+                          0.0f, 7.0f, 0.0f, 5.0f, 0.0f, 3.0f, 0.0f, 1.0f},
+                         {1.0f, 0.0f, 3.0f, 0.0f, 5.0f, 0.0f, 7.0f, 0.0f, 9.0f,
+                          0.0f, 11.0f, 0.0f, 13.0f, 0.0f, 15.0f, 0.0f},
+                         {0.0f, 15.0f, 0.0f, 13.0f, 0.0f, 11.0f, 0.0f, 9.0f,
+                          0.0f, 7.0f, 0.0f, 5.0f, 0.0f, 3.0f, 0.0f, 1.0f},
+                         {1.0f, 0.0f, 3.0f, 0.0f, 5.0f, 0.0f, 7.0f, 0.0f, 9.0f,
+                          0.0f, 11.0f, 0.0f, 13.0f, 0.0f, 15.0f, 0.0f},
+                         {0.0f, 15.0f, 0.0f, 13.0f, 0.0f, 11.0f, 0.0f, 9.0f,
+                          0.0f, 7.0f, 0.0f, 5.0f, 0.0f, 3.0f, 0.0f, 1.0f}}))
+                    .value();
+  auto b_data = this->client_
+                    ->TransferToServer(LiteralUtil::CreateR2FromArray2D<T>(
+                        {{2.0f, 0.0f, 4.0f, 0.0f, 6.0f, 0.0f, 8.0f, 0.0f, 10.0f,
+                          0.0f, 12.0f, 0.0f, 14.0f, 0.0f, 16.0f, 0.0f},
+                         {0.0f, 16.0f, 0.0f, 14.0f, 0.0f, 12.0f, 0.0f, 10.0f,
+                          0.0f, 8.0f, 0.0f, 6.0f, 0.0f, 4.0f, 0.0f, 2.0f},
+                         {2.0f, 0.0f, 4.0f, 0.0f, 6.0f, 0.0f, 8.0f, 0.0f, 10.0f,
+                          0.0f, 12.0f, 0.0f, 14.0f, 0.0f, 16.0f, 0.0f},
+                         {0.0f, 16.0f, 0.0f, 14.0f, 0.0f, 12.0f, 0.0f, 10.0f,
+                          0.0f, 8.0f, 0.0f, 6.0f, 0.0f, 4.0f, 0.0f, 2.0f},
+                         {2.0f, 0.0f, 4.0f, 0.0f, 6.0f, 0.0f, 8.0f, 0.0f, 10.0f,
+                          0.0f, 12.0f, 0.0f, 14.0f, 0.0f, 16.0f, 0.0f},
+                         {0.0f, 16.0f, 0.0f, 14.0f, 0.0f, 12.0f, 0.0f, 10.0f,
+                          0.0f, 8.0f, 0.0f, 6.0f, 0.0f, 4.0f, 0.0f, 2.0f},
+                         {2.0f, 0.0f, 4.0f, 0.0f, 6.0f, 0.0f, 8.0f, 0.0f, 10.0f,
+                          0.0f, 12.0f, 0.0f, 14.0f, 0.0f, 16.0f, 0.0f},
+                         {0.0f, 16.0f, 0.0f, 14.0f, 0.0f, 12.0f, 0.0f, 10.0f,
+                          0.0f, 8.0f, 0.0f, 6.0f, 0.0f, 4.0f, 0.0f, 2.0f},
+                         {2.0f, 0.0f, 4.0f, 0.0f, 6.0f, 0.0f, 8.0f, 0.0f, 10.0f,
+                          0.0f, 12.0f, 0.0f, 14.0f, 0.0f, 16.0f, 0.0f},
+                         {0.0f, 16.0f, 0.0f, 14.0f, 0.0f, 12.0f, 0.0f, 10.0f,
+                          0.0f, 8.0f, 0.0f, 6.0f, 0.0f, 4.0f, 0.0f, 2.0f},
+                         {2.0f, 0.0f, 4.0f, 0.0f, 6.0f, 0.0f, 8.0f, 0.0f, 10.0f,
+                          0.0f, 12.0f, 0.0f, 14.0f, 0.0f, 16.0f, 0.0f},
+                         {0.0f, 16.0f, 0.0f, 14.0f, 0.0f, 12.0f, 0.0f, 10.0f,
+                          0.0f, 8.0f, 0.0f, 6.0f, 0.0f, 4.0f, 0.0f, 2.0f},
+                         {2.0f, 0.0f, 4.0f, 0.0f, 6.0f, 0.0f, 8.0f, 0.0f, 10.0f,
+                          0.0f, 12.0f, 0.0f, 14.0f, 0.0f, 16.0f, 0.0f},
+                         {0.0f, 16.0f, 0.0f, 14.0f, 0.0f, 12.0f, 0.0f, 10.0f,
+                          0.0f, 8.0f, 0.0f, 6.0f, 0.0f, 4.0f, 0.0f, 2.0f},
+                         {2.0f, 0.0f, 4.0f, 0.0f, 6.0f, 0.0f, 8.0f, 0.0f, 10.0f,
+                          0.0f, 12.0f, 0.0f, 14.0f, 0.0f, 16.0f, 0.0f},
+                         {0.0f, 16.0f, 0.0f, 14.0f, 0.0f, 12.0f, 0.0f, 10.0f,
+                          0.0f, 8.0f, 0.0f, 6.0f, 0.0f, 4.0f, 0.0f, 2.0f}}))
+                    .value();
+  auto a_scale_data =
+      this->client_->TransferToServer(LiteralUtil::CreateR0<float>(0.8f))
+          .value();
+  auto b_scale_data =
+      this->client_->TransferToServer(LiteralUtil::CreateR0<float>(0.8f))
+          .value();
+  auto d_scale_data =
+      this->client_->TransferToServer(LiteralUtil::CreateR0<float>(1.3f))
+          .value();
+
+  Literal expected_d = LiteralUtil::CreateR2FromArray2D<float>(
+      {{81.92f, 0.0f, 163.84f, 0.0f, 245.76001f, 0.0f, 327.68f, 0.0f, 409.6f,
+        0.0f, 491.52002f, 0.0f, 573.44f, 0.0f, 655.36f, 0.0f},
+       {0.0f, 655.360046f, 0.0f, 573.440063f, 0.0f, 491.52002f, 0.0f, 409.6f,
+        0.0f, 327.680023f, 0.0f, 245.76001f, 0.0f, 163.840012f, 0.0f,
+        81.9200058f},
+       {81.92f, 0.0f, 163.84f, 0.0f, 245.76001f, 0.0f, 327.68f, 0.0f, 409.6f,
+        0.0f, 491.52002f, 0.0f, 573.44f, 0.0f, 655.36f, 0.0f},
+       {0.0f, 655.360046f, 0.0f, 573.440063f, 0.0f, 491.52002f, 0.0f, 409.6f,
+        0.0f, 327.680023f, 0.0f, 245.76001f, 0.0f, 163.840012f, 0.0f,
+        81.9200058f},
+       {81.92f, 0.0f, 163.84f, 0.0f, 245.76001f, 0.0f, 327.68f, 0.0f, 409.6f,
+        0.0f, 491.52002f, 0.0f, 573.44f, 0.0f, 655.36f, 0.0f},
+       {0.0f, 655.360046f, 0.0f, 573.440063f, 0.0f, 491.52002f, 0.0f, 409.6f,
+        0.0f, 327.680023f, 0.0f, 245.76001f, 0.0f, 163.840012f, 0.0f,
+        81.9200058f},
+       {81.92f, 0.0f, 163.84f, 0.0f, 245.76001f, 0.0f, 327.68f, 0.0f, 409.6f,
+        0.0f, 491.52002f, 0.0f, 573.44f, 0.0f, 655.36f, 0.0f},
+       {0.0f, 655.360046f, 0.0f, 573.440063f, 0.0f, 491.52002f, 0.0f, 409.6f,
+        0.0f, 327.680023f, 0.0f, 245.76001f, 0.0f, 163.840012f, 0.0f,
+        81.9200058f},
+       {81.92f, 0.0f, 163.84f, 0.0f, 245.76001f, 0.0f, 327.68f, 0.0f, 409.6f,
+        0.0f, 491.52002f, 0.0f, 573.44f, 0.0f, 655.36f, 0.0f},
+       {0.0f, 655.360046f, 0.0f, 573.440063f, 0.0f, 491.52002f, 0.0f, 409.6f,
+        0.0f, 327.680023f, 0.0f, 245.76001f, 0.0f, 163.840012f, 0.0f,
+        81.9200058f},
+       {81.92f, 0.0f, 163.84f, 0.0f, 245.76001f, 0.0f, 327.68f, 0.0f, 409.6f,
+        0.0f, 491.52002f, 0.0f, 573.44f, 0.0f, 655.36f, 0.0f},
+       {0.0f, 655.360046f, 0.0f, 573.440063f, 0.0f, 491.52002f, 0.0f, 409.6f,
+        0.0f, 327.680023f, 0.0f, 245.76001f, 0.0f, 163.840012f, 0.0f,
+        81.9200058f},
+       {81.92f, 0.0f, 163.84f, 0.0f, 245.76001f, 0.0f, 327.68f, 0.0f, 409.6f,
+        0.0f, 491.52002f, 0.0f, 573.44f, 0.0f, 655.36f, 0.0f},
+       {0.0f, 655.360046f, 0.0f, 573.440063f, 0.0f, 491.52002f, 0.0f, 409.6f,
+        0.0f, 327.680023f, 0.0f, 245.76001f, 0.0f, 163.840012f, 0.0f,
+        81.9200058f},
+       {81.92f, 0.0f, 163.84f, 0.0f, 245.76001f, 0.0f, 327.68f, 0.0f, 409.6f,
+        0.0f, 491.52002f, 0.0f, 573.44f, 0.0f, 655.36f, 0.0f},
+       {0.0f, 655.360046f, 0.0f, 573.440063f, 0.0f, 491.52002f, 0.0f, 409.6f,
+        0.0f, 327.680023f, 0.0f, 245.76001f, 0.0f, 163.840012f, 0.0f,
+        81.9200058f}});
+
+  this->template ComputeAndCompareTuple(
+      &builder, expected_d,
+      {a_data.get(), b_data.get(), a_scale_data.get(), b_scale_data.get()},
+      this->error_spec_);
+}
+
+XLA_TYPED_TEST(DotOperationTestWithCublasLt_F8, ScaledABScaledDWithDAmaxF8) {
   using T = TypeParam;
 
   XlaBuilder builder(this->TestName());

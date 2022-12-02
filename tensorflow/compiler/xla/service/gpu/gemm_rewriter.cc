@@ -190,6 +190,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       se::CudaComputeCapability cuda_compute_capability)
       : cuda_compute_capability_(cuda_compute_capability) {}
   Status HandleDot(HloInstruction *instr) override {
+    HloInstruction *a, *b, *a_scale, *b_scale;
     if (IsMatrixMultiplication(*instr)) {
       CHECK(!instr->IsRank2Transpose());
       HloInstruction *lhs = instr->mutable_operand(0);
@@ -208,61 +209,49 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
       TF_ASSIGN_OR_RETURN(absl::string_view gemm_custom_call_target,
                           GetGemmCustomCallTarget(instr, gemm_config));
-      std::unique_ptr<HloInstruction> gemm_call =
-          HloInstruction::CreateCustomCall(output_shape, {lhs, rhs},
-                                           gemm_custom_call_target);
-
+      HloInstruction *gemm_call =
+          instr->AddInstruction(HloInstruction::CreateCustomCall(
+              output_shape, {lhs, rhs}, gemm_custom_call_target));
       TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gemm_config));
-      TF_RETURN_IF_ERROR(SetName(instr->GetModule(), gemm_call.get()));
-      TF_RETURN_IF_ERROR(
-          ReplaceWithNewInstruction(instr, std::move(gemm_call)));
+      TF_RETURN_IF_ERROR(ReplaceInstruction(instr, gemm_call));
+      // Enable further rewriting below.
+      instr = gemm_call;
     }
 
+    // Attempt to elide FP8 GEMMs with scaled inputs as described by steps 1
+    // through 3 of RFC #22 (https://github.com/openxla/xla/discussions/22) and
+    // rewrite into a Custom Call.
+    if (Match(
+            instr,
+            m::CustomCall(
+                kCublasLtMatmulCallTarget,
+                m::MultiplyAnyOrder(m::Convert(m::Op(&a)).WithOneUser(),
+                                    m::Broadcast(m::Op(&a_scale)).WithOneUser())
+                    .WithOneUser(),
+                m::MultiplyAnyOrder(m::Convert(m::Op(&b)).WithOneUser(),
+                                    m::Broadcast(m::Op(&b_scale)).WithOneUser())
+                    .WithOneUser()))) {
+      return F8Scaled(instr, a, b, a_scale, b_scale);
+    }
     return OkStatus();
   }
 
   Status HandleTuple(HloInstruction *instr) override {
-    HloInstruction *existing_gemm, *a, *b, *c, *d, *a_scale, *b_scale, *d_scale;
-    // Attempt to elide scaled FP8 GEMMs as described by steps 1 through 6 of
-    // RFC #22 (https://github.com/openxla/xla/discussions/22) and rewrite them
-    // into a Custom Call.
+    HloInstruction *existing_gemm;
+    // Attempt to elide the calculation of the maximum absolute value of an FP8
+    // GEMM, including when the result is type converted, and adapt the Custom
+    // Call.
     if (Match(
             instr,
-            m::Tuple(
-                m::Convert(
-                    &d,
-                    m::Clamp(
-                        m::Broadcast().WithOneUser(),
-                        m::Divide(
-                            m::CustomCall(
-                                &existing_gemm, kCublasLtMatmulCallTarget,
-                                m::MultiplyAnyOrder(
-                                    m::Convert(m::Op(&a)).WithOneUser(),
-                                    m::Broadcast(m::Op(&a_scale)).WithOneUser())
-                                    .WithOneUser(),
-                                m::MultiplyAnyOrder(
-                                    m::Convert(m::Op(&b)).WithOneUser(),
-                                    m::Broadcast(m::Op(&b_scale)).WithOneUser())
-                                    .WithOneUser()),
-                            m::Broadcast(m::Op(&d_scale)).WithOneUser())
-                            .WithOneUser(),
-                        m::Broadcast().WithOneUser())
-                        .WithOneUser())
-                    .WithOneUser(),
-                m::Reduce(m::CustomCall(
-                              &existing_gemm, kCublasLtMatmulCallTarget,
-                              m::MultiplyAnyOrder(m::Convert(m::Op()),
-                                                  m::Broadcast().WithOneUser())
-                                  .WithOneUser(),
-                              m::MultiplyAnyOrder(m::Convert(m::Op()),
-                                                  m::Broadcast().WithOneUser())
-                                  .WithOneUser()),
-                          m::ConstantScalar())
-                    .WithOneUser()))) {
-      return ScaledF8(instr, existing_gemm, a, b, c, d, a_scale, b_scale,
-                      d_scale);
+            m::Tuple(m::CustomCall(&existing_gemm, kCublasLtMatmulF8CallTarget),
+                     m::OptionalUnaryOp(
+                         {HloOpcode::kConvert},
+                         m::Reduce(m::CustomCall(kCublasLtMatmulF8CallTarget),
+                                   m::ConstantScalar())
+                             .WithOneUser())
+                         .WithOneUser()))) {
+      TF_RETURN_IF_ERROR(F8AddDAmax(instr, existing_gemm));
     }
-
     return OkStatus();
   }
 
@@ -442,13 +431,25 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                   .WithElementType(BF16))) {
       return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
+    // Attempt to elide the scaling and conversion of the return value of an FP8
+    // GEMM and adapt the Custom Call.
+    if (Match(
+            instr,
+            m::Convert(
+                m::Clamp(m::Broadcast().WithOneUser(),
+                         m::Divide(m::CustomCall(&existing_gemm,
+                                                 kCublasLtMatmulF8CallTarget),
+                                   m::Broadcast(m::Op(&d_scale)).WithOneUser())
+                             .WithOneUser(),
+                         m::Broadcast().WithOneUser())
+                    .WithOneUser()))) {
+      return F8ConvertD(instr, existing_gemm, d_scale);
+    }
     return OkStatus();
   }
 
-  Status ScaledF8(HloInstruction *instr, HloInstruction *existing_gemm,
-                  HloInstruction *a, HloInstruction *b, HloInstruction *c,
-                  HloInstruction *d, HloInstruction *a_scale,
-                  HloInstruction *b_scale, HloInstruction *d_scale) {
+  Status F8Scaled(HloInstruction *instr, HloInstruction *a, HloInstruction *b,
+                  HloInstruction *a_scale, HloInstruction *b_scale) {
     // cuBLASLt FP8 GEMM kernels require one of the two operands to be in
     // F8E4M3FN format.
     if (!((a->shape().element_type() == F8E4M3FN &&
@@ -477,25 +478,37 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // format.
     HloInstruction *a_scale_f32 =
         instr->AddInstruction(HloInstruction::CreateConvert(
-            ShapeUtil::MakeShape(F32, a_scale->shape().dimensions()), a_scale));
+            ShapeUtil::MakeScalarShape(F32), a_scale));
     HloInstruction *b_scale_f32 =
         instr->AddInstruction(HloInstruction::CreateConvert(
-            ShapeUtil::MakeShape(F32, b_scale->shape().dimensions()), b_scale));
-    HloInstruction *d_scale_f32 =
-        instr->AddInstruction(HloInstruction::CreateConvert(
-            ShapeUtil::MakeShape(F32, d_scale->shape().dimensions()), d_scale));
+            ShapeUtil::MakeScalarShape(F32), b_scale));
 
-    Literal c_literal(ShapeUtil::MakeShape(F16, d->shape().dimensions()));
-    c = instr->AddInstruction(
+    PrimitiveType c_type;
+    switch (instr->shape().element_type()) {
+      case F8E4M3FN:
+      case F8E5M2:
+      case BF16:
+        c_type = BF16;
+        break;
+      case F16:
+        c_type = F16;
+        break;
+      case F32:
+        c_type = F32;
+        break;
+      default:
+        return OkStatus();
+    }
+    Literal c_literal(ShapeUtil::MakeScalarShape(c_type));
+    HloInstruction *c = instr->AddInstruction(
         HloInstruction::CreateConstant(c_literal.Clone()));
+    HloInstruction *c_bcast = instr->AddInstruction(
+        HloInstruction::CreateBroadcast(instr->shape(), c, {}));
 
-    Literal one_literal(d_scale_f32->shape());
+    Literal one_literal(ShapeUtil::MakeScalarShape(F32));
     one_literal.PopulateWithValue<float>(1.);
     HloInstruction *one = instr->AddInstruction(
         HloInstruction::CreateConstant(one_literal.Clone()));
-    HloInstruction *d_scale_inv =
-        instr->AddInstruction(HloInstruction::CreateBinary(
-            d_scale_f32->shape(), HloOpcode::kDivide, one, d_scale_f32));
 
     // cuBLASLt FP8 GEMM kernels require A, which is later exchanged with B, to
     // be transposed.
@@ -508,15 +521,79 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     std::unique_ptr<HloInstruction> new_custom_call =
         HloInstruction::CreateCustomCall(
-            instr->shape(),
-            {a, b_transp, c, a_scale, b_scale, one, d_scale_inv},
+            instr->shape(), {a, b_transp, c_bcast, a_scale, b_scale, one, one},
             kCublasLtMatmulF8CallTarget);
     TF_ASSIGN_OR_RETURN(auto gemm_config,
-                        existing_gemm->backend_config<GemmBackendConfig>());
+                        instr->backend_config<GemmBackendConfig>());
     TF_RETURN_IF_ERROR(new_custom_call->set_backend_config(gemm_config));
     TF_RETURN_IF_ERROR(SetName(instr->GetModule(), new_custom_call.get()));
     TF_RETURN_IF_ERROR(
         ReplaceWithNewInstruction(instr, std::move(new_custom_call)));
+
+    return OkStatus();
+  }
+
+  // Scales and converts the return value of an FP8 GEMM to FP8.
+  Status F8ConvertD(HloInstruction *instr, HloInstruction *existing_gemm,
+                    HloInstruction *d_scale) {
+    if (instr->shape().element_type() != F8E4M3FN &&
+        instr->shape().element_type() != F8E5M2) {
+      return OkStatus();
+    }
+
+    // Change the data type of C to BF16.
+    Literal c_literal(ShapeUtil::MakeScalarShape(BF16));
+    HloInstruction *c = instr->AddInstruction(
+        HloInstruction::CreateConstant(c_literal.Clone()));
+    HloInstruction *c_bcast =
+        instr->AddInstruction(HloInstruction::CreateBroadcast(
+            ShapeUtil::ChangeElementType(instr->shape(), BF16), c, {}));
+    TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(2, c_bcast));
+
+    // Convert the scaling factor of D to F32 and invert it.
+    HloInstruction *d_scale_f32 =
+        instr->AddInstruction(HloInstruction::CreateConvert(
+            ShapeUtil::MakeScalarShape(F32), d_scale));
+    Literal one_literal(ShapeUtil::MakeScalarShape(F32));
+    one_literal.PopulateWithValue<float>(1.);
+    HloInstruction *one = instr->AddInstruction(
+        HloInstruction::CreateConstant(one_literal.Clone()));
+    HloInstruction *d_scale_inv =
+        instr->AddInstruction(HloInstruction::CreateBinary(
+            d_scale->shape(), HloOpcode::kDivide, one, d_scale_f32));
+
+    TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(6, d_scale_inv));
+    std::unique_ptr<HloInstruction> new_gemm =
+        existing_gemm->CloneWithNewShape(instr->shape());
+    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(new_gemm)));
+    return OkStatus();
+  }
+
+  // Adds a scalar DAmax return value to an FP8 GEMM.
+  Status F8AddDAmax(HloInstruction *instr, HloInstruction *existing_gemm) {
+    // cuBLASLt requires D to be FP8 for DAMax to be calculated.
+    if (instr->operand(0)->shape().element_type() != F8E4M3FN &&
+        instr->operand(0)->shape().element_type() != F8E5M2) {
+      return OkStatus();
+    }
+    Shape damax_shape = ShapeUtil::MakeScalarShape(F32);
+    Shape tuple_shape =
+        ShapeUtil::MakeTupleShape({existing_gemm->shape(), damax_shape});
+    HloInstruction *gemm_and_damax =
+        instr->AddInstruction(existing_gemm->CloneWithNewShape(tuple_shape));
+
+    // Convert DAmax from FP32 to the requested type.
+    HloInstruction *d =
+        instr->AddInstruction(HloInstruction::CreateGetTupleElement(
+            existing_gemm->shape(), gemm_and_damax, 0));
+    HloInstruction *damax = instr->AddInstruction(
+        HloInstruction::CreateGetTupleElement(damax_shape, gemm_and_damax, 1));
+    HloInstruction *damax_converted = instr->AddInstruction(
+        HloInstruction::CreateConvert(instr->operand(1)->shape(), damax));
+    std::unique_ptr<HloInstruction> gemm_and_damax_converted =
+        HloInstruction::CreateTuple({d, damax_converted});
+    TF_RETURN_IF_ERROR(
+        ReplaceWithNewInstruction(instr, std::move(gemm_and_damax_converted)));
 
     return OkStatus();
   }

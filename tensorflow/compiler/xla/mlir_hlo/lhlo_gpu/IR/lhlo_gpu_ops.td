@@ -166,7 +166,7 @@ def LHLOGPU_CublasLtMatmulF8Op : LHLOGPU_Op<"cublas.lt.matmul.f8"> {
     Arg<LHLO_Buffer, "", [MemRead]>:$c_scale,
     Arg<LHLO_Buffer, "", [MemRead]>:$d_scale,
     Arg<LHLO_Buffer, "", [MemWrite]>:$d,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$d_amax,
+    Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$d_amax,
     MHLO_DotDimensionNumbers:$dot_dimension_numbers,
     MHLO_PrecisionConfigAttr:$precision_config,
     F64Attr:$alpha_real,

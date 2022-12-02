@@ -720,6 +720,30 @@ StatusOr<se::cuda::BlasLt::MatrixLayout> AsBlasLtMatrixLayout(
       layout.leading_dim_stride, layout.batch_stride);
 }
 
+template <cudaDataType_t CudaT>
+struct CudaToNativeT;
+
+template <>
+struct CudaToNativeT<CUDA_R_8F_E4M3> {
+  using type = tsl::float8_e4m3;
+};
+template <>
+struct CudaToNativeT<CUDA_R_8F_E5M2> {
+  using type = tsl::float8_e5m2;
+};
+template <>
+struct CudaToNativeT<CUDA_R_16BF> {
+  using type = Eigen::bfloat16;
+};
+template <>
+struct CudaToNativeT<CUDA_R_16F> {
+  using type = Eigen::half;
+};
+template <>
+struct CudaToNativeT<CUDA_R_32F> {
+  using type = float;
+};
+
 }  // namespace
 
 namespace cublas_lt {
@@ -855,45 +879,42 @@ Status MatmulPlan::ExecuteOnStream(
       operand_types{plan_.a_desc.type(), plan_.b_desc.type(),
                     plan_.c_desc.type(), plan_.d_desc.type()};
 
-  // FP8 allowed type combinations:
-  if (operand_types == std::make_tuple(CUDA_R_8F_E4M3, CUDA_R_8F_E4M3,
-                                       CUDA_R_16F, CUDA_R_8F_E4M3)) {
-    return DoMatmul<float, tsl::float8_e4m3, tsl::float8_e4m3, Eigen::half,
-                    tsl::float8_e4m3>(
-        stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,
-        a_scale_buffer, b_scale_buffer, c_scale_buffer, d_scale_buffer,
-        d_amax_buffer, algorithm, scratch_allocator, profile_result);
-  } else if (operand_types == std::make_tuple(CUDA_R_8F_E4M3, CUDA_R_8F_E5M2,
-                                              CUDA_R_16F, CUDA_R_8F_E4M3)) {
-    return DoMatmul<float, tsl::float8_e4m3, tsl::float8_e5m2, Eigen::half,
-                    tsl::float8_e4m3>(
-        stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,
-        a_scale_buffer, b_scale_buffer, c_scale_buffer, d_scale_buffer,
-        d_amax_buffer, algorithm, scratch_allocator, profile_result);
-  } else if (operand_types == std::make_tuple(CUDA_R_8F_E5M2, CUDA_R_8F_E4M3,
-                                              CUDA_R_16F, CUDA_R_8F_E4M3)) {
-    return DoMatmul<float, tsl::float8_e5m2, tsl::float8_e4m3, Eigen::half,
-                    tsl::float8_e4m3>(
-        stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,
-        a_scale_buffer, b_scale_buffer, c_scale_buffer, d_scale_buffer,
-        d_amax_buffer, algorithm, scratch_allocator, profile_result);
-  } else if (operand_types == std::make_tuple(CUDA_R_8F_E4M3, CUDA_R_8F_E5M2,
-                                              CUDA_R_16F, CUDA_R_8F_E5M2)) {
-    return DoMatmul<float, tsl::float8_e4m3, tsl::float8_e5m2, Eigen::half,
-                    tsl::float8_e5m2>(
-        stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,
-        a_scale_buffer, b_scale_buffer, c_scale_buffer, d_scale_buffer,
-        d_amax_buffer, algorithm, scratch_allocator, profile_result);
-  } else if (operand_types == std::make_tuple(CUDA_R_8F_E5M2, CUDA_R_8F_E4M3,
-                                              CUDA_R_16F, CUDA_R_8F_E5M2)) {
-    return DoMatmul<float, tsl::float8_e5m2, tsl::float8_e4m3, Eigen::half,
-                    tsl::float8_e5m2>(
-        stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,
-        a_scale_buffer, b_scale_buffer, c_scale_buffer, d_scale_buffer,
-        d_amax_buffer, algorithm, scratch_allocator, profile_result);
-    // Other types:
-  } else if (operand_types ==
-             std::make_tuple(CUDA_R_16F, CUDA_R_16F, CUDA_R_16F, CUDA_R_16F)) {
+#define TYPED_MATMUL_F8(ATYPE, BTYPE, CTYPE, DTYPE)                         \
+  if (operand_types == std::make_tuple(ATYPE, BTYPE, CTYPE, DTYPE)) {       \
+    return DoMatmul<float, CudaToNativeT<ATYPE>::type,                      \
+                    CudaToNativeT<BTYPE>::type, CudaToNativeT<CTYPE>::type, \
+                    CudaToNativeT<DTYPE>::type>(                            \
+        stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,        \
+        a_scale_buffer, b_scale_buffer, c_scale_buffer, d_scale_buffer,     \
+        d_amax_buffer, algorithm, scratch_allocator, profile_result);       \
+  }
+
+  // FP8 compatible type combinations (see cuBLASLt documentation):
+  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_16BF);
+  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_8F_E4M3);
+  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_8F_E4M3);
+  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_16F);
+  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_32F, CUDA_R_32F);
+
+  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16BF, CUDA_R_16BF);
+  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16BF, CUDA_R_8F_E4M3);
+  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16BF, CUDA_R_8F_E5M2);
+  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16F, CUDA_R_8F_E4M3);
+  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16F, CUDA_R_8F_E5M2);
+  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16F, CUDA_R_16F);
+  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_32F, CUDA_R_32F);
+
+  TYPED_MATMUL_F8(CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_16BF);
+  TYPED_MATMUL_F8(CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_8F_E4M3);
+  TYPED_MATMUL_F8(CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_8F_E5M2);
+  TYPED_MATMUL_F8(CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_8F_E4M3);
+  TYPED_MATMUL_F8(CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_8F_E5M2);
+  TYPED_MATMUL_F8(CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_16F);
+  TYPED_MATMUL_F8(CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_32F, CUDA_R_32F);
+
+  // Other data types:
+  if (operand_types ==
+      std::make_tuple(CUDA_R_16F, CUDA_R_16F, CUDA_R_16F, CUDA_R_16F)) {
     return DoMatmul<float, Eigen::half>(
         stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,
         a_scale_buffer, b_scale_buffer, c_scale_buffer, d_scale_buffer,

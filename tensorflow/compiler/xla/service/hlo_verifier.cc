@@ -2701,15 +2701,17 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         });
     // TODO(b/259609697): Support FP8 operands in all instructions that support
     // inputs of other floating-point dtypes. Currently the CPU and GPU backends
-    // only support FP8 operands in the convert instruction.
+    // only support FP8 operands in the convert, tuple, get-tuple-element and
+    // transpose instructions and FP8 Custom Calls.
     if (has_fp8_operand && instruction->opcode() != HloOpcode::kConvert &&
         instruction->opcode() != HloOpcode::kTuple &&
+        instruction->opcode() != HloOpcode::kGetTupleElement &&
         instruction->opcode() != HloOpcode::kTranspose &&
         !(instruction->opcode() == HloOpcode::kCustomCall &&
           instruction->custom_call_target() == "__cublas$lt$matmul$f8")) {
       return InvalidArgument(
           "FP8 is currently only supported in convert, tuple and transpose "
-          "instructions as well as FP8 GEMM custom calls, but got "
+          "instructions as well as FP8 GEMM Custom Calls, but got "
           "instruction with FP8 input: %s",
           instruction->ToString());
     }
