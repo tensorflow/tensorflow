@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tpu_embedding_ops_registry.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
@@ -154,6 +155,14 @@ void AddRewrittenEmbeddingOps(MLIRContext* context,
       TF::RecvTPUEmbeddingActivationsOp::getOperationName(), context));
   supported_ops->insert(OperationName(
       TF::SendTPUEmbeddingGradientsOp::getOperationName(), context));
+}
+
+// These TPU embedding ops are legalized during second phase of the bridge.
+void AddOpsFromTPUEmbeddingOpsRegistry(
+    MLIRContext* context, llvm::DenseSet<OperationName>* supported_ops) {
+  for (auto op_name : TF::TPUEmbeddingOpsRegistry::Global().GetOpsNames()) {
+    supported_ops->insert(OperationName(op_name, context));
+  }
 }
 
 // Stack, TensorList and TensorArray ops are rewritten during the second phase
@@ -420,6 +429,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   AddSupportedOpsUsingDynamicPadder(module.getContext(), &supported_ops);
   AddRewrittenEmbeddingOps(module.getContext(), &supported_ops);
   AddRewrittenCompositeOps(module.getContext(), &supported_ops);
+  AddOpsFromTPUEmbeddingOpsRegistry(module.getContext(), &supported_ops);
 
   auto result = module.walk([&](tf_device::ClusterOp cluster) {
     // Only if `allow_soft_placement` attribute is true should we mark ops
