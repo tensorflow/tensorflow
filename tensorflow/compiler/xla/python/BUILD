@@ -12,7 +12,7 @@ load(
     "tf_cc_test",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
+load("//tensorflow/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//tensorflow:pytype.default.bzl", "pytype_library")
 
 package(
@@ -825,7 +825,7 @@ cc_library(
     ]),
 )
 
-pybind_extension(
+tsl_pybind_extension(
     name = "xla_extension",
     srcs = [
         "xla.cc",
