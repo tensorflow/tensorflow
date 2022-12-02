@@ -70,78 +70,62 @@ TEST_F(AccuracyBenchmarkTest, FailedWithInvalidModelFileDescriptor) {
   }
   std::vector<std::string> args;
 
-  AccuracyBenchmarkStatus status =
-      Benchmark(args, 0, 0, 0, result_path_.c_str());
-
-  EXPECT_EQ(status, kAccuracyBenchmarkRunnerInitializationFailed);
+  EXPECT_EQ(Benchmark(args, 0, 0, 0, result_path_.c_str()),
+            kAccuracyBenchmarkRunnerInitializationFailed);
 }
 
-TEST_F(AccuracyBenchmarkTest, FailedWithInvalidDelegateArguments) {
+TEST_F(AccuracyBenchmarkTest, FailedWithMissingArguments) {
   if (!should_perform_test_) {
     std::cerr << "Skipping test";
     return;
   }
-  std::vector<std::string> args = {"--use_xnnpack=wrong_value"};
+  std::vector<std::string> args = {"--other_arguments=other"};
 
-  AccuracyBenchmarkStatus status =
-      Benchmark(args, fileno(model_fp_), 0, model_size_, result_path_.c_str());
-
-  EXPECT_EQ(status, kAccuracyBenchmarkArgumentParsingFailed);
+  EXPECT_EQ(
+      Benchmark(args, fileno(model_fp_), 0, model_size_, result_path_.c_str()),
+      kAccuracyBenchmarkArgumentParsingFailed);
 }
 
-TEST_F(AccuracyBenchmarkTest, WithMoreThanOneDelegateArguments) {
+TEST_F(AccuracyBenchmarkTest, FailedWithInvalidTFliteSettings) {
   if (!should_perform_test_) {
     std::cerr << "Skipping test";
     return;
   }
-  std::vector<std::string> args = {"--use_xnnpack=true", "--use_nnapi=true"};
-  AccuracyBenchmarkStatus status =
-      Benchmark(args, fileno(model_fp_), 0, model_size_, result_path_.c_str());
-  EXPECT_EQ(status, kAccuracyBenchmarkPass);
+  std::vector<std::string> args = {
+      "--stable_delegate_settings_file=third_party/tensorflow/lite/tools/"
+      "delegates/experimental/stable_delegate/"
+      "test_invalid_settings.json"};
 
-  args = {"--use_gpu=true", "--use_nnapi=true"};
-  status =
-      Benchmark(args, fileno(model_fp_), 0, model_size_, result_path_.c_str());
-  EXPECT_EQ(status, kAccuracyBenchmarkMoreThanOneDelegateProvided);
+  EXPECT_EQ(
+      Benchmark(args, fileno(model_fp_), 0, model_size_, result_path_.c_str()),
+      kAccuracyBenchmarkTfLiteSettingsParsingFailed);
 }
 
-TEST_F(AccuracyBenchmarkTest, SucceedWithEmbeddedValidationWithoutXnnpack) {
+TEST_F(AccuracyBenchmarkTest, SucceedWithSampleStableDelegate) {
   if (!should_perform_test_) {
     std::cerr << "Skipping test";
     return;
   }
-  std::vector<std::string> args;
+  std::vector<std::string> args = {
+      "--stable_delegate_settings_file=third_party/tensorflow/lite/tools/"
+      "delegates/experimental/stable_delegate/"
+      "test_sample_stable_delegate_settings.json"};
 
   AccuracyBenchmarkStatus status =
       Benchmark(args, fileno(model_fp_), 0, model_size_, result_path_.c_str());
 
-  // TODO(b/253442685): verify that XNNPack was not used.
-  EXPECT_EQ(status, kAccuracyBenchmarkPass);
-}
-
-#ifdef __ANDROID__
-TEST_F(AccuracyBenchmarkTest, SucceedWithEmbeddedValidationOnGpu) {
-#else   // __ANDROID__
-TEST_F(AccuracyBenchmarkTest, DISABLED_SucceedWithEmbeddedValidationOnGpu) {
-#endif  // __ANDROID__
-  if (!should_perform_test_) {
-    std::cerr << "Skipping test";
-    return;
-  }
-  std::vector<std::string> args = {"--use_gpu=true"};
-
-  AccuracyBenchmarkStatus status =
-      Benchmark(args, fileno(model_fp_), 0, model_size_, result_path_.c_str());
-
+  // TODO(b/253442685): verify that stable delegate was used.
   EXPECT_EQ(status, kAccuracyBenchmarkPass);
 }
 
-TEST_F(AccuracyBenchmarkTest, SucceedWithEmbeddedValidationWithXNNPack) {
+TEST_F(AccuracyBenchmarkTest, SucceedWithEmbeddedValidationAndXNNPack) {
   if (!should_perform_test_) {
     std::cerr << "Skipping test";
     return;
   }
-  std::vector<std::string> args = {"--use_xnnpack=true"};
+  std::vector<std::string> args = {
+      "--stable_delegate_settings_file=third_party/tensorflow/lite/delegates/"
+      "utils/experimental/stable_delegate/test_xnnpack_settings.json"};
 
   AccuracyBenchmarkStatus status =
       Benchmark(args, fileno(model_fp_), 0, model_size_, result_path_.c_str());
