@@ -39,7 +39,7 @@ namespace xla {
 // device in terms of padding, leading dimension, etc.
 class TransferManager {
  public:
-  virtual ~TransferManager() = default;
+  virtual ~TransferManager() {}
 
   // Returns the ID of the platform that this transfer manager acts on.
   virtual se::Platform::Id PlatformId() const = 0;
@@ -62,7 +62,7 @@ class TransferManager {
   // subclass this class.
   class TransferMetadata {
    public:
-    virtual ~TransferMetadata() = default;
+    virtual ~TransferMetadata() = 0;
   };
   // Returns a literal containing the data held in the given ShapedBuffer
   // using the provided executor. This operation is performed synchronously
@@ -72,14 +72,22 @@ class TransferManager {
   //
   // Optionally caller can specify platform-specific transfer metadata that
   // tells the actual implementation to do something special.
-  StatusOr<Literal> TransferLiteralFromDevice(
+  virtual StatusOr<Literal> TransferLiteralFromDevice(
       se::Stream* stream, const ShapedBuffer& device_buffer,
-      const TransferMetadata* transfer_metadata = nullptr);
-
-  Status TransferLiteralFromDevice(
+      const TransferMetadata* transfer_metadata);
+  StatusOr<Literal> TransferLiteralFromDevice(
+      se::Stream* stream, const ShapedBuffer& device_buffer) {
+    return TransferLiteralFromDevice(stream, device_buffer, nullptr);
+  }
+  virtual Status TransferLiteralFromDevice(
       se::Stream* stream, const ShapedBuffer& device_buffer,
       const MutableBorrowingLiteral& literal,
-      const TransferMetadata* transfer_metadata = nullptr);
+      const TransferMetadata* transfer_metadata);
+  Status TransferLiteralFromDevice(se::Stream* stream,
+                                   const ShapedBuffer& device_buffer,
+                                   const MutableBorrowingLiteral& literal) {
+    return TransferLiteralFromDevice(stream, device_buffer, literal, nullptr);
+  }
 
   // Begins transferring a literal containing the data held in the given
   // ShapedBuffer using the provided executor.
@@ -97,7 +105,6 @@ class TransferManager {
       se::Stream* stream, const ShapedBuffer& device_buffer,
       MutableBorrowingLiteral literal, std::function<void(Status)> done,
       const TransferMetadata* transfer_metadata) = 0;
-
   void TransferLiteralFromDevice(se::Stream* stream,
                                  const ShapedBuffer& device_buffer,
                                  MutableBorrowingLiteral literal,
@@ -117,10 +124,15 @@ class TransferManager {
   //
   // Optionally caller can specify platform-specific transfer metadata that
   // tells the actual implementation to do something special.
-  Status TransferLiteralToDevice(
+  virtual Status TransferLiteralToDevice(
       se::Stream* stream, const LiteralSlice& literal,
       const ShapedBuffer& device_buffer,
-      const TransferMetadata* transfer_metadata = nullptr);
+      const TransferMetadata* transfer_metadata);
+  Status TransferLiteralToDevice(se::Stream* stream,
+                                 const LiteralSlice& literal,
+                                 const ShapedBuffer& device_buffer) {
+    return TransferLiteralToDevice(stream, literal, device_buffer, nullptr);
+  }
 
   // Transfers the given literal into the previously allocated device memory
   // represented by the given ShapedBuffer using the given executor. The shape
@@ -142,7 +154,6 @@ class TransferManager {
       se::Stream* stream, const LiteralSlice& literal,
       const ShapedBuffer& device_buffer,
       const TransferMetadata* transfer_metadata) = 0;
-
   Status TransferLiteralToDeviceAsync(se::Stream* stream,
                                       const LiteralSlice& literal,
                                       const ShapedBuffer& device_buffer) {
@@ -160,12 +171,16 @@ class TransferManager {
       se::Stream* stream, const LiteralSlice& literal,
       const se::DeviceMemoryBase& dest,
       const TransferMetadata* transfer_metadata = nullptr);
+  void TransferArrayFromDevice(
+      se::Stream* stream, const Shape& shape,
+      const se::DeviceMemoryBase& source,
+      const MutableBorrowingLiteral& literal, std::function<void(Status)> done,
+      const TransferMetadata* transfer_metadata = nullptr);
 
   Status TransferArrayToDeviceAsync(
       se::Stream* stream, const LiteralSlice& literal,
       const se::DeviceMemoryBase& dest,
       const TransferMetadata* transfer_metadata = nullptr);
-
   StatusOr<Literal> TransferArrayFromDevice(
       se::Stream* stream, const Shape& shape,
       const se::DeviceMemoryBase& source,
