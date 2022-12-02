@@ -144,7 +144,7 @@ def expint(x, name=None):
 
   Args:
     x: A `Tensor` or `SparseTensor`. Must be one of the following types:
-      `float32`, `float64`.
+      `bfloat16`, `half`, `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -175,7 +175,7 @@ def fresnel_cos(x, name=None):
 
   Args:
     x: A `Tensor` or `SparseTensor`. Must be one of the following types:
-      `float32`, `float64`.
+      `bfloat16`, `half`, `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -205,7 +205,7 @@ def fresnel_sin(x, name=None):
 
   Args:
     x: A `Tensor` or `SparseTensor`. Must be one of the following types:
-      `float32`, `float64`.
+      `bfloat16`, `half`, `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -235,7 +235,7 @@ def spence(x, name=None):
 
   Args:
     x: A `Tensor` or `SparseTensor`. Must be one of the following types:
-      `float32`, `float64`.
+      `bfloat16`, `half`, `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -263,8 +263,7 @@ def bessel_i0(x, name=None):
   array([1.26606588, 1.06348337, 1.06348337, 1.26606588], dtype=float32)
 
   Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `bfloat16`, `half`, `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -290,8 +289,7 @@ def bessel_i0e(x, name=None):
   array([0.46575961, 0.64503527, 0.64503527, 0.46575961], dtype=float32)
 
   Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `bfloat16`, `half`, `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -319,8 +317,7 @@ def bessel_i1(x, name=None):
   array([-0.5651591 , -0.25789431,  0.25789431,  0.5651591 ], dtype=float32)
 
   Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `bfloat16`, `half`, `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -346,8 +343,7 @@ def bessel_i1e(x, name=None):
   array([-0.20791042, -0.15642083,  0.15642083,  0.20791042], dtype=float32)
 
   Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `bfloat16`, `half`, `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -375,8 +371,7 @@ def bessel_k0(x, name=None):
   array([0.92441907, 0.42102444, 0.11389387, 0.01115968], dtype=float32)
 
   Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `bfloat16`, `half`, `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -402,8 +397,7 @@ def bessel_k0e(x, name=None):
   array([1.52410939, 1.14446308, 0.84156822, 0.60929767], dtype=float32)
 
   Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `bfloat16`, `half`, `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -431,8 +425,7 @@ def bessel_k1(x, name=None):
   array([1.65644112, 0.60190723, 0.13986588, 0.0124835 ], dtype=float32)
 
   Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `bfloat16`, `half`, `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -458,8 +451,7 @@ def bessel_k1e(x, name=None):
   array([2.73100971, 1.63615349, 1.03347685, 0.68157595], dtype=float32)
 
   Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `bfloat16`, `half`, `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -485,8 +477,7 @@ def bessel_j0(x, name=None):
   array([ 0.93846981,  0.76519769,  0.22389078, -0.39714981], dtype=float32)
 
   Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `bfloat16`, `half`, `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -512,8 +503,7 @@ def bessel_j1(x, name=None):
   array([ 0.24226846,  0.44005059,  0.57672481, -0.06604333], dtype=float32)
 
   Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `bfloat16`, `half`, `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -539,8 +529,7 @@ def bessel_y0(x, name=None):
   array([-0.44451873,  0.08825696,  0.51037567, -0.01694074], dtype=float32)
 
   Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `bfloat16`, `half`, `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -566,8 +555,7 @@ def bessel_y1(x, name=None):
   array([-1.47147239, -0.78121282, -0.10703243,  0.39792571], dtype=float32)
 
   Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `bfloat16`, `half`, `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:

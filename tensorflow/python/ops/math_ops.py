@@ -396,8 +396,8 @@ def abs(x, name=None):  # pylint: disable=redefined-builtin
          [6.60492241]])>
 
   Args:
-    x: A `Tensor` or `SparseTensor` of type `float16`, `float32`, `float64`,
-      `int32`, `int64`, `complex64` or `complex128`.
+    x: A `Tensor` or `SparseTensor` of type `bfloat16`, `half`, `float32`, `float64`,
+      `int8`,`int16`,`int32` or `int64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -770,8 +770,7 @@ def sign(x, name=None):
   numpy=array([0.70710678+0.70710678j, 0.        +0.j        ])>
 
   Args:
-   x: A Tensor. Must be one of the following types: bfloat16, half, float32,
-     float64, int32, int64, complex64, complex128.
+   x: A Tensor. Must be one of the following types: bfloat16, half, float, double, int8, int16, int32, int64, complex64, complex128.
    name: A name for the operation (optional).
 
   Returns:
@@ -924,7 +923,7 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
   ```
 
   Args:
-    x: A `Tensor` of type `float16`, `float32`, `float64`, `int32`, or `int64`.
+    x: A `Tensor` of type : `bfloat16`, `half`, `float32`, `float64`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -4041,8 +4040,7 @@ def add(x, y, name=None):
 
   Args:
     x: A `tf.Tensor`. Must be one of the following types: bfloat16, half,
-      float32, float64, uint8, int8, int16, int32, int64, complex64, complex128,
-      string.
+      float32, float64, uint8, uint16, int8, int16, int32, int64, complex64, complex128.
     y: A `tf.Tensor`. Must have the same type as x.
     name: A name for the operation (optional)
   """
@@ -4239,8 +4237,7 @@ def sigmoid(x, name=None):
         dtype=float32)>
 
   Args:
-    x: A Tensor with type `float16`, `float32`, `float64`, `complex64`, or
-      `complex128`.
+    x: A Tensor with type `bfloat16`, `half`, `float32`, `float64`, `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -4273,7 +4270,7 @@ def log_sigmoid(x, name=None):
   we use `y = -tf.nn.softplus(-x)`.
 
   Args:
-    x: A Tensor with type `float32` or `float64`.
+    x: A Tensor with type :`bfloat16`, `half`, `float32`, `float64`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -4361,9 +4358,9 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   numpy=array([18, 14,  8,  0], dtype=int32)>
 
   Args:
-    x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
-      `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
-      `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+    x: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`,
+    `uint8`, `int16`, `int8`, `complex64`, `int64`, `qint8`, `quint8`, `qint32`, `bfloat16`,
+    `uint16`, `complex128`, `half`, `uint32`, `uint64`.
     axis: A `Tensor` of type `int32` (default: 0). Must be in the range
       `[-rank(x), rank(x))`.
     exclusive: If `True`, perform exclusive cumsum.
@@ -5370,9 +5367,8 @@ def xlog1py(x, y, name=None):
   <tf.Tensor: shape=(), dtype=float32, numpy=0.>
 
   Args:
-    x: A `tf.Tensor` of type `half`, `float32`, `float64`, `complex64`,
-      `complex128`
-    y: A `tf.Tensor` of type `half`, `float32`, `float64`, `complex64`,
+    x: A `tf.Tensor` of type `half`, `float32`, `float64`, `complex64`, `complex128`.
+    y: A `tf.Tensor` of type `half`, `float32`, `float64`, `complex64`, `complex128`.
       `complex128`
     name: A name for the operation (optional).
 
@@ -5467,7 +5463,7 @@ def ceil(x, name=None):
 
   Args:
     x: A `tf.Tensor`. Must be one of the following types: `bfloat16`, `half`,
-      `float32`, `float64`. `int32`
+      `float32`, `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -5612,8 +5608,7 @@ def rsqrt(x, name=None):
   numpy=array([0.707, inf, nan], dtype=float32)>
 
   Args:
-    x: A `tf.Tensor`. Must be one of the following types: `bfloat16`, `half`,
-      `float32`, `float64`.
+    x: A `tf.Tensor`. Must be one of the following types: `bfloat16`, `half`, `float`, `double`, `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -5644,7 +5639,7 @@ def acos(x, name=None):
 
   Args:
     x: A `Tensor`. Must be one of the following types: `bfloat16`, `half`,
-      `float32`, `float64`, `complex64`, `complex128`.
+      `float32`, `float64`,`int8`,`int16`,`int32`, `int64`, `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:
