@@ -870,7 +870,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
       GetTFLiteType(tensor_type.getElementType()).value();
   Optional<std::vector<BufferOffset<tflite::VariantSubType>>> variant_params =
       BuildTFVariantType(element_type);
-  if (!variant_params.hasValue()) {
+  if (!variant_params.has_value()) {
     return llvm::None;
   }
   BufferOffset<tflite::QuantizationParameters> q_params = 0;
@@ -945,10 +945,10 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
     for (auto& dim : shape_ref) {
       // translate dynamic shapes from mlir to tfl values
       shape.push_back(
-          dim == mlir::ShapedType::kDynamicSize ? 1 : static_cast<int>(dim));
+          dim == mlir::ShapedType::kDynamic ? 1 : static_cast<int>(dim));
       shape_signature.push_back(static_cast<int>(
-          dim == mlir::ShapedType::kDynamicSize ? tensorflow::kTFDynamicSize
-                                                : dim));
+          dim == mlir::ShapedType::kDynamic ? tensorflow::kTFDynamicSize
+                                            : dim));
     }
   }
 
@@ -967,7 +967,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
 
   Optional<std::vector<BufferOffset<tflite::VariantSubType>>> variant_params =
       BuildTFVariantType(element_type);
-  if (!variant_params.hasValue()) {
+  if (!variant_params.has_value()) {
     return llvm::None;
   }
 
@@ -993,7 +993,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
         tflite::QuantizationDetails_NONE, /*details=*/0,
         qtype.getQuantizedDimension());
   } else if (quant_parameters.has_value()) {
-    q_params = quant_parameters.getValue();
+    q_params = quant_parameters.value();
   } else {
     q_params = tflite::CreateQuantizationParameters(builder_);
   }
@@ -1462,7 +1462,7 @@ Translator::GetQuantizationForQuantStatsOpOutput(
   std::vector<float> mins, maxs;
   mlir::DenseFPElementsAttr min_max_attr =
       axis_stats.has_value()
-          ? axis_stats.getValue().cast<mlir::DenseFPElementsAttr>()
+          ? axis_stats.value().cast<mlir::DenseFPElementsAttr>()
           : layer_stats;
 
   for (const auto& index_and_value :
@@ -1479,7 +1479,7 @@ Translator::GetQuantizationForQuantStatsOpOutput(
       builder_, builder_.CreateVector<float>(mins),
       builder_.CreateVector<float>(maxs), /*scale=*/0, /*zero_point=*/0,
       tflite::QuantizationDetails_NONE, /*details=*/0,
-      /*quantized_dimension=*/axis.has_value() ? axis.getValue() : 0);
+      /*quantized_dimension=*/axis.has_value() ? axis.value() : 0);
 }
 
 Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
@@ -1579,7 +1579,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
             continue;
           } else {
             intermediates.push_back(tensors.size());
-            tensors.push_back(tensor_or.getValue());
+            tensors.push_back(tensor_or.value());
           }
         }
       }

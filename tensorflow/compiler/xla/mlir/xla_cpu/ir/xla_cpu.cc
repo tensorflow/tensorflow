@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu.h"
 
 #include "llvm/ADT/TypeSwitch.h"
+#include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_dialect.cc.inc"
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_enums.cc.inc"
 #define GET_ATTRDEF_CLASSES
@@ -32,6 +34,83 @@ void XlaCpuDialect::initialize() {
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu.cc.inc"
 #undef GET_OP_LIST
       >();
+}
+
+template <typename Op>
+LogicalResult BufferizeOp(Op op, RewriterBase &rewriter,
+                          const bufferization::BufferizationOptions &options,
+                          int64_t num_inputs) {
+  if (op.getOperands().front().getType().template isa<MemRefType>()) {
+    return success();
+  }
+  SmallVector<Value> new_operands;
+  for (auto operand : op.getOperands()) {
+    FailureOr<Value> maybe_buffer = getBuffer(rewriter, operand, options);
+    if (failed(maybe_buffer)) {
+      return failure();
+    }
+    new_operands.push_back(*maybe_buffer);
+  }
+  rewriter.create<Op>(op.getLoc(), TypeRange{}, new_operands,
+                      op.getOperation()->getAttrs());
+  bufferization::replaceOpWithBufferizedValues(
+      rewriter, op.getOperation(),
+      llvm::makeArrayRef(new_operands).drop_front(num_inputs));
+  return success();
+}
+
+bool AllReduceOp::bufferizesToMemoryRead(OpOperand &opOperand,
+                                         const bufferization::AnalysisState &) {
+  return opOperand.getOperandNumber() < getNumOperands() / 2;
+}
+
+bool AllReduceOp::bufferizesToMemoryWrite(
+    OpOperand &opOperand, const bufferization::AnalysisState &state) {
+  return !bufferizesToMemoryRead(opOperand, state);
+}
+
+SmallVector<OpResult> AllReduceOp::getAliasingOpResult(
+    OpOperand &opOperand, const bufferization::AnalysisState &) {
+  if (opOperand.getOperandNumber() < getNumOperands() / 2) {
+    return {};
+  }
+  return {getOperation()->getOpResult(opOperand.getOperandNumber() -
+                                      getNumOperands() / 2)};
+}
+
+LogicalResult AllReduceOp::bufferize(
+    RewriterBase &rewriter,
+    const bufferization::BufferizationOptions &options) {
+  return BufferizeOp(*this, rewriter, options, this->getNumOperands() / 2);
+}
+
+bufferization::BufferRelation AllReduceOp::bufferRelation(
+    OpResult, const bufferization::AnalysisState &) {
+  return bufferization::BufferRelation::Equivalent;
+}
+
+LogicalResult CollectivePermuteOp::bufferize(
+    RewriterBase &rewriter,
+    const bufferization::BufferizationOptions &options) {
+  return BufferizeOp(*this, rewriter, options, this->getNumOperands() / 2);
+}
+
+LogicalResult AllToAllOp::bufferize(
+    RewriterBase &rewriter,
+    const bufferization::BufferizationOptions &options) {
+  return BufferizeOp(*this, rewriter, options, this->getNumOperands() / 2);
+}
+
+LogicalResult FftOp::bufferize(
+    RewriterBase &rewriter,
+    const bufferization::BufferizationOptions &options) {
+  return BufferizeOp(*this, rewriter, options, this->getNumOperands() / 2);
+}
+
+LogicalResult OutfeedOp::bufferize(
+    RewriterBase &rewriter,
+    const bufferization::BufferizationOptions &options) {
+  return BufferizeOp(*this, rewriter, options, this->getNumOperands());
 }
 
 }  // namespace xla_cpu

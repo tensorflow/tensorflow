@@ -1269,6 +1269,10 @@ bool AlternateMemoryBestFitHeap::IsUseAllowedInAlternateMemory(
       if (other_use.hlo_use.instruction != use.instruction) {
         continue;
       }
+      // Operand 0 is not passed into the computation.
+      if (other_use.hlo_use.operand_number == 0) {
+        continue;
+      }
       HloComputation* called_computation =
           use.instruction->called_computations().at(
               other_use.hlo_use.operand_number - 1);

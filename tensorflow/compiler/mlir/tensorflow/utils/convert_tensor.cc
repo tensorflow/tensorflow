@@ -266,12 +266,7 @@ mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type) {
   }
 
   if (auto tensor_type = type.dyn_cast<mlir::RankedTensorType>()) {
-    llvm::SmallVector<int64_t, 4> shape;
-    for (int64_t d : tensor_type.getShape()) {
-      shape.push_back(ShapedType::isDynamic(d) ? kTFDynamicSize : d);
-    }
-    return mlir::TF::ShapeAttr::get(type.getContext(),
-                                    llvm::makeArrayRef(shape));
+    return mlir::TF::ShapeAttr::get(type.getContext(), tensor_type.getShape());
   }
 
   // If type is not a RankedTensor or UnrankedTensor, it must be a scalar.
@@ -288,7 +283,7 @@ StatusOr<mlir::Attribute> ConvertTensorShapeProto(const TensorShapeProto& shape,
   llvm::SmallVector<int64_t, 4> dims;
   dims.reserve(shape.dim().size());
   for (const auto& dim : shape.dim()) {
-    dims.push_back(dim.size() == kTFDynamicSize ? ShapedType::kDynamicSize
+    dims.push_back(dim.size() == kTFDynamicSize ? ShapedType::kDynamic
                                                 : dim.size());
   }
   return mlir::TF::ShapeAttr::get(context, llvm::makeArrayRef(dims));

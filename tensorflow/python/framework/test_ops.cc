@@ -197,6 +197,7 @@ class GetDeadlineOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     if (!ctx->deadline()) {
       ctx->SetStatus(errors::InvalidArgument("Deadline has not ben set."));
+      return;
     }
     Tensor* output;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));

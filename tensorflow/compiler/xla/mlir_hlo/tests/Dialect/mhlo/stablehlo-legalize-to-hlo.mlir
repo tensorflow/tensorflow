@@ -4,6 +4,7 @@
 
 // ArgResultAlias aka #stablehlo.result_alias is unused at the moment.
 // ChannelHandle aka #stablehlo.channel_handle is covered below.
+// CustomCallSchedule aka #mhlo.custom_call_schdeule isn't in stablehlo yet.
 
 func.func @attr_comparison_direction_eq(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<i1> {
   %0 = "stablehlo.compare"(%arg0, %arg1) {
@@ -307,10 +308,13 @@ func.func @attr_transpose_adjoint(%arg0: tensor<16x16xf32>, %arg1: tensor<16x16x
 
 // TypeExtensionsAttr aka #stablehlo.type_extensions is covered below.
 
-func.func @attr_type_extensions_bounds(%arg0: tensor<?xf32, #stablehlo.type_extensions<bounds = [16]>>) -> tensor<?xf32, #stablehlo.type_extensions<bounds = [16]>> {
-  // CHECK: "func.return"(%arg0) : (tensor<?xf32, #mhlo.type_extensions<bounds = [16]>>) -> ()
-  func.return %arg0 : tensor<?xf32, #stablehlo.type_extensions<bounds = [16]>>
+func.func @attr_type_extensions_bounds(
+    %arg0: tensor<?x?xf32, #stablehlo.type_extensions<bounds = [16, ?]>>)
+    -> tensor<?x?xf32, #stablehlo.type_extensions<bounds = [16, ?]>> {
+  // CHECK: "func.return"(%arg0) : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [16, ?]>>) -> ()
+  func.return %arg0 : tensor<?x?xf32, #stablehlo.type_extensions<bounds = [16, ?]>>
 }
+
 // CHECK-LABEL: "attr_type_extensions_bounds"
 
 // ============ OPS ============

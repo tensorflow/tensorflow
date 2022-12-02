@@ -15,16 +15,23 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
 
+#include <algorithm>
+#include <array>
 #include <climits>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <string>
 #include <tuple>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/types/optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -766,10 +773,27 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
       ConvertCustomCallApiVersion(custom_call_instr->api_version()));
   custom_call.setCallTargetNameAttr(
       builder_.getStringAttr(custom_call_instr->custom_call_target()));
-  custom_call.setBackendConfigAttr(
-      builder_.getStringAttr(custom_call_instr->opaque()));
   custom_call.setApiVersionAttr(mhlo::CustomCallApiVersionAttr::get(
       builder_.getContext(), mlir_api_version));
+
+  // For typed custom calls we need to parse user-defined attributes back to the
+  // dictionary attribute, and then add them back to the custom call op.
+  if (mlir_api_version == mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI) {
+    if (custom_call_instr->opaque().empty()) {
+      auto empty = mlir::DictionaryAttr::get(builder_.getContext());
+      custom_call.setBackendConfigAttr(empty);
+    } else {
+      mlir::Attribute attr = mlir::parseAttribute(custom_call_instr->opaque(),
+                                                  builder_.getContext());
+      TF_RET_CHECK(attr.isa<mlir::DictionaryAttr>())
+          << "Couldn't parse backend config into a dictionary attribute";
+      custom_call.setBackendConfigAttr(attr);
+    }
+  } else {
+    custom_call.setBackendConfigAttr(
+        builder_.getStringAttr(custom_call_instr->opaque()));
+  }
+
   const int32_t segments[2] = {static_cast<int32_t>(num_arguments),
                                static_cast<int32_t>(num_results)};
   custom_call->setAttr(lmhlo::CustomCallOp::getOperandSegmentSizeAttr(),

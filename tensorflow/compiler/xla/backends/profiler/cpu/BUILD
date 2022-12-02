@@ -1,10 +1,13 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 cc_library(
     name = "host_tracer",
     srcs = ["host_tracer_factory.cc"],
     visibility = [
+        "//tensorflow/compiler/xla/backends/profiler:__pkg__",
         "//tensorflow/core/profiler:internal",
         "//third_party/car/onboard/gpu:__subpackages__",
     ],
@@ -42,6 +45,7 @@ cc_library(
     name = "python_tracer",
     srcs = ["python_tracer_factory.cc"],
     visibility = [
+        "//tensorflow/compiler/xla/python:__pkg__",
         "//tensorflow/core/profiler:internal",
     ],
     deps = [
@@ -76,7 +80,10 @@ cc_library(
     name = "metadata_collector",
     srcs = ["metadata_collector.cc"],
     copts = tf_profiler_copts(),
-    visibility = ["//tensorflow/core/profiler:internal"],
+    visibility = [
+        "//tensorflow/compiler/xla/backends/profiler:__pkg__",
+        "//tensorflow/core/profiler:internal",
+    ],
     deps = [
         ":metadata_utils",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",

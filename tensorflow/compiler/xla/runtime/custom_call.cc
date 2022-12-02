@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <string_view>
 
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace xla {

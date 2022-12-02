@@ -43,6 +43,7 @@ typedef Eigen::GpuDevice GPUDevice;
   DEFINE_GPU_SPECS_INDEX(T, int64);
 
 DEFINE_GPU_SPECS(Eigen::half);
+DEFINE_GPU_SPECS(Eigen::bfloat16);
 DEFINE_GPU_SPECS(float);
 DEFINE_GPU_SPECS(double);
 

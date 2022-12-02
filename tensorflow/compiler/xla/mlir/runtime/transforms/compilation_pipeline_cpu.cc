@@ -76,6 +76,8 @@ void RegisterDefaultXlaCpuRuntimeDialects(DialectRegistry& dialects) {
 
 static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
     mlir::OpPassManager& pm, const CpuPipelineOptions& opts) {
+  pm.addPass(mlir::createAsyncFuncToAsyncRuntimePass());
+
   // Convert entry function to the XLA entrypoint.
   pm.addPass(CreateExportRuntimeFunctionsPass());
   pm.addPass(cpu::createConvertLmhloToCpuRuntimePass());
@@ -88,8 +90,10 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
 
   // Optimize operations from the math dialect before outlining compute regions
   // into functions to see all constant operands.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      xla::CreateMathOptimizationPass(opts.math_avx2));
+  if (!opts.disable_math_optimizations) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        xla::CreateMathOptimizationPass(opts.math_avx2));
+  }
 
   // Convert all linalg operations to parallel loops.
   pm.addNestedPass<mlir::func::FuncOp>(

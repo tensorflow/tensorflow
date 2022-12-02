@@ -9,6 +9,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
@@ -107,17 +108,6 @@ cc_library(
 )
 
 cc_library(
-    name = "profiler_collection",
-    srcs = ["profiler_collection.cc"],
-    hdrs = ["profiler_collection.h"],
-    deps = [
-        ":profiler_interface",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-    ],
-)
-
-cc_library(
     name = "profiler_controller",
     hdrs = ["profiler_controller.h"],
     deps = [
@@ -130,14 +120,9 @@ cc_library(
 
 tf_cuda_library(
     name = "profiler_backends",
-    cuda_deps = [
-        "//tensorflow/core/profiler/backends/gpu:device_tracer",
-    ],
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/compiler/xla/backends/profiler:profiler_backends",
-        "//tensorflow/core/profiler/backends/cpu:host_tracer",
-        "//tensorflow/core/profiler/backends/cpu:metadata_collector",
     ],
     alwayslink = True,
 )
@@ -214,10 +199,10 @@ cc_library(
 
 cc_library(
     name = "scoped_memory_debug_annotation",
-    srcs = ["scoped_memory_debug_annotation.cc"],
     hdrs = ["scoped_memory_debug_annotation.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/tsl/profiler/lib:scoped_memory_debug_annotation",
     ],
 )
 
@@ -276,7 +261,6 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "scoped_annotation.h",
-        "scoped_memory_debug_annotation.cc",
         "scoped_memory_debug_annotation.h",
         "traceme.h",
         "traceme_encode.h",

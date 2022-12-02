@@ -175,8 +175,5 @@ add_subdirectory(tosa)
 add_subdirectory(tests)
 add_subdirectory(utils)
 
-if(MHLO_ENABLE_BINDINGS_PYTHON)
-  add_subdirectory(python)
-endif()
 
 add_subdirectory(cmake/modules)

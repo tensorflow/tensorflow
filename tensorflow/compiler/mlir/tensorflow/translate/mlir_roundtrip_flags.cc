@@ -208,7 +208,7 @@ Status ParseInputArrayInfo(
         info.shape.set_unknown_rank(true);
         continue;
       }
-      for (auto& dim : node_shapes[i].getValue()) {
+      for (auto& dim : node_shapes[i].value()) {
         info.shape.add_dim()->set_size(dim);
       }
     }

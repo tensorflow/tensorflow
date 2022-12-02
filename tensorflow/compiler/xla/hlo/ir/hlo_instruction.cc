@@ -424,6 +424,19 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << "No fusion computation with id " << fusion_id;
       instruction =
           CreateFusion(shape, fusion_kind, all_operands(), fused_computation);
+      std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+          output_to_operand_aliasing;
+      for (const auto& aliasing : proto.output_operand_aliasing()) {
+        output_to_operand_aliasing.emplace_back(
+            ShapeIndex(aliasing.output_shape_index().begin(),
+                       aliasing.output_shape_index().end()),
+            std::make_pair(aliasing.operand_index(),
+                           ShapeIndex(aliasing.operand_shape_index().begin(),
+                                      aliasing.operand_shape_index().end())));
+      }
+      auto fusion_instr = DynCast<HloFusionInstruction>(instruction.get());
+      fusion_instr->set_output_to_operand_aliasing(
+          std::move(output_to_operand_aliasing));
       break;
     }
     case HloOpcode::kRng:
@@ -782,14 +795,13 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       *custom_call_instr->mutable_precision_config() = precision_config;
       std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
           output_to_operand_aliasing;
-      for (const auto& aliasing : proto.custom_call_output_operand_aliasing()) {
+      for (const auto& aliasing : proto.output_operand_aliasing()) {
         output_to_operand_aliasing.emplace_back(
             ShapeIndex(aliasing.output_shape_index().begin(),
                        aliasing.output_shape_index().end()),
-            std::pair<int64_t, ShapeIndex>{
-                aliasing.operand_index(),
-                ShapeIndex(aliasing.operand_shape_index().begin(),
-                           aliasing.operand_shape_index().end())});
+            std::make_pair(aliasing.operand_index(),
+                           ShapeIndex(aliasing.operand_shape_index().begin(),
+                                      aliasing.operand_shape_index().end())));
       }
       custom_call_instr->set_output_to_operand_aliasing(
           std::move(output_to_operand_aliasing));
@@ -3061,6 +3073,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kStochasticConvert:
       return true;
 
     // Ternary elementwise operations.

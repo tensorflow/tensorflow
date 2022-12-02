@@ -134,19 +134,20 @@ func.func @custom_call_multiple_inputs_outputs(%x: tensor<2xf32>,
 func.func @custom_call_side_effect(%x: tensor<2xf32>,
                                    %y: tensor<5xi32>) -> !mhlo.token {
   %token = mhlo.create_token : !mhlo.token
-  %0 = "mhlo.custom_call"(%x, %y, %token) {
+  %0:2 = "mhlo.custom_call"(%x, %y, %token) {
     backend_config = "",
     call_target_name = "bar",
     has_side_effect = true
   } : (tensor<2xf32>, tensor<5xi32>, !mhlo.token)
-    -> !mhlo.token
-  func.return %0 : !mhlo.token
+    -> (!mhlo.token, tensor<2xi32>)
+  func.return %0#0 : !mhlo.token
 }
 
 // CHECK-DAG: %[[TOKEN:.*]] = mhlo.create_token
 // CHECK-DAG: %[[I0:.+]] = bufferization.to_memref %[[ARG0]] : memref<2xf32>
 // CHECK-DAG: %[[I1:.+]] = bufferization.to_memref %[[ARG1]] : memref<5xi32>
-// CHECK: "lmhlo.custom_call"(%[[I0]], %[[I1]]) {backend_config = "", call_target_name = "bar", has_side_effect = true, operand_segment_sizes = array<i32: 2, 0>, target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<num_args = 3, num_results = 1, args_to_target_args = [0, 1], results_to_target_results = []>} : (memref<2xf32>, memref<5xi32>) -> ()
+// CHECK-DAG: %[[ALLOC:.+]] = memref.alloc
+// CHECK: "lmhlo.custom_call"(%[[I0]], %[[I1]], %[[ALLOC]]) {backend_config = "", call_target_name = "bar", has_side_effect = true, operand_segment_sizes = array<i32: 2, 1>, target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<num_args = 3, num_results = 2, args_to_target_args = [0, 1], results_to_target_results = [1]>} : (memref<2xf32>, memref<5xi32>, memref<2xi32>)
 // CHECK: return %[[TOKEN]] : !mhlo.token
 
 // -----

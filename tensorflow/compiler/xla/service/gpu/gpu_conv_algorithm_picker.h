@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/time/time.h"
+#include "tensorflow/compiler/xla/autotune_results.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
@@ -39,6 +40,10 @@ namespace gpu {
 // each and adding explicit scratch space to the CustomCalls.
 class GpuConvAlgorithmPicker : public HloModulePass {
  public:
+  static void ClearAutotuneResults();
+  static Status WriteAutotuneResults(AutotuneResults* results);
+  static Status LoadAutotuneResults(const AutotuneResults& results);
+
   // If the `allocator` parameter is not null, we will use it to allocate temp
   // memory while timing the various convolution algorithms.  If it's null,
   // we'll use the default allocator on the StreamExecutor.

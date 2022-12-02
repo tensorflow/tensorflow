@@ -78,6 +78,11 @@ FusionDecision GpuInstructionFusion::ShouldFuseInexpensiveChecks(
           !IsProducerConsumerFusible(*producer, *consumer)) {
     return !fusible;
   }
+
+  if (CreatesHeavyComputation(*producer, *consumer)) {
+    return "the fusion would create a heavy computation";
+  }
+
   if (NoFusionPossible fusible =
           !InstructionFusion::ShouldFuse(consumer, operand_index)) {
     return !fusible;

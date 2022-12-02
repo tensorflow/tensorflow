@@ -143,7 +143,7 @@ static bool OperatorWritersMain(raw_ostream& os, RecordKeeper& records) {
   emitSourceFileHeader("MLIR XLA Builders", os);
 
   // Emit all the helper functions.
-  for (const auto* def : records.getAllDerivedDefinitions("HLO_Op")) {
+  for (const auto* def : records.getAllDerivedDefinitions("MHLO_Op")) {
     Operator op(def);
 
     // Skip operations that have a custom exporter.
@@ -172,8 +172,8 @@ static bool OperatorWritersMain(raw_ostream& os, RecordKeeper& records) {
         "op_metadata(lowering_context.builder, "
         "mlir::mhlo::CreateOpMetadataFromLocation(op));\n\n";
 
-  // Retrieve all the definitions derived from HLO_Op and sort by record name.
-  for (const auto* def : records.getAllDerivedDefinitions("HLO_Op")) {
+  // Retrieve all the definitions derived from MHLO_Op and sort by record name.
+  for (const auto* def : records.getAllDerivedDefinitions("MHLO_Op")) {
     // Skip operations that have a custom exporter.
     Operator op(def);
 

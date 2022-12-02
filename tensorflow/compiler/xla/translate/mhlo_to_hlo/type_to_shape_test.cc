@@ -128,10 +128,10 @@ TEST(TypeToShapeTest, ConvertTensorTypeToTypes) {
       EqualsProto(
           ShapeUtil::MakeShape(PrimitiveType::F32, {8, 128}).ToProto()));
 
-  llvm::SmallVector<int64_t, 4> bounds = {8, mlir::ShapedType::kDynamicSize};
+  llvm::SmallVector<int64_t, 4> bounds = {8, mlir::ShapedType::kDynamic};
   auto extensions = mlir::mhlo::TypeExtensionsAttr::get(&context, bounds);
   EXPECT_THAT(
-      TypeToShape(RankedTensorType::get({mlir::ShapedType::kDynamicSize, 128},
+      TypeToShape(RankedTensorType::get({mlir::ShapedType::kDynamic, 128},
                                         b.getF32Type(), extensions))
           .ToProto(),
       EqualsProto(

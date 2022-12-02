@@ -16,14 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_LIB_CORE_CUSTOM_FLOAT_H_
 #define TENSORFLOW_PYTHON_LIB_CORE_CUSTOM_FLOAT_H_
 
+// Must be included first
+// clang-format off
+#include "tensorflow/tsl/python/lib/core/numpy.h" // NOLINT
+// clang-format on
+
 // Support utilities for adding custom floating-point dtypes to TensorFlow,
 // such as bfloat16, and float8_*.
 
-#include <array>
-#include <cmath>
-#include <limits>
-#include <locale>
-#include <memory>
+#include <array>   // NOLINT
+#include <cmath>   // NOLINT
+#include <limits>  // NOLINT
+#include <locale>  // NOLINT
+#include <memory>  // NOLINT
 
 // Place `<locale>` before <Python.h> to avoid a build failure in macOS.
 #include <Python.h>
@@ -32,7 +37,10 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/python/lib/core/numpy.h"
+
+#undef copysign  // TODO(ddunleavy): temporary fix for Windows bazel build
+                 // Possible this has to do with numpy.h being included before
+                 // system headers and in bfloat16.{cc,h}?
 
 namespace tensorflow {
 namespace custom_float_internal {

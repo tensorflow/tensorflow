@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
   tsl::port::InitMain(argv[0], &dummyArgc, &argv);
 
   // Add flags for all the registered translations.
-  llvm::cl::opt<const mlir::TranslateFunction*, false, mlir::TranslationParser>
+  llvm::cl::opt<const mlir::Translation*, false, mlir::TranslationParser>
       requested_translation("", llvm::cl::desc("Translation to perform"));
   mlir::registerAsmPrinterCLOptions();
   llvm::cl::ParseCommandLineOptions(argc, argv, "XLA translation driver\n");

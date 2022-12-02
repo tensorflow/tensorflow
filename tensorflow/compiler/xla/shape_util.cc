@@ -46,25 +46,27 @@ namespace {
 // the size of each element of that primitive type, or 0
 // if the PrimitiveType is not a primitive type
 constexpr uint8_t primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
-    0,                  // PRIMITIVE_TYPE_INVALID = 0,
-    sizeof(int8_t),     // PRED = 1
-    sizeof(int8_t),     // S8 = 2
-    sizeof(int16_t),    // S16 = 3
-    sizeof(int32_t),    // S32 = 4
-    sizeof(int64_t),    // S64 = 5
-    sizeof(uint8_t),    // U8 = 6
-    sizeof(uint16_t),   // U16 = 7
-    sizeof(uint32_t),   // U32 = 8
-    sizeof(uint64_t),   // U64 = 9
-    sizeof(float) / 2,  // F16 = 10
-    sizeof(float),      // F32 = 11
-    sizeof(double),     // F64 = 12
-    0,                  // TUPLE = 13
-    0,                  // OPAQUE_TYPE = 14
-    sizeof(complex64),  // C64 = 15
-    sizeof(float) / 2,  // BF16 = 16
-    0,                  // TOKEN = 17
-    sizeof(complex128)  // C128 = 18
+    0,                   // PRIMITIVE_TYPE_INVALID = 0,
+    sizeof(int8_t),      // PRED = 1
+    sizeof(int8_t),      // S8 = 2
+    sizeof(int16_t),     // S16 = 3
+    sizeof(int32_t),     // S32 = 4
+    sizeof(int64_t),     // S64 = 5
+    sizeof(uint8_t),     // U8 = 6
+    sizeof(uint16_t),    // U16 = 7
+    sizeof(uint32_t),    // U32 = 8
+    sizeof(uint64_t),    // U64 = 9
+    sizeof(float) / 2,   // F16 = 10
+    sizeof(float),       // F32 = 11
+    sizeof(double),      // F64 = 12
+    0,                   // TUPLE = 13
+    0,                   // OPAQUE_TYPE = 14
+    sizeof(complex64),   // C64 = 15
+    sizeof(float) / 2,   // BF16 = 16
+    0,                   // TOKEN = 17
+    sizeof(complex128),  // C128 = 18
+    sizeof(float) / 4,   // F8E5M2 = 19
+    sizeof(float) / 4,   // F8E4M3FN = 20
 };
 constexpr int64_t kAnnotationPrintInterval = 5;
 }  // namespace
@@ -515,6 +517,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     case S16:
     case S32:
     case S64:
+    case F8E5M2:
+    case F8E4M3FN:
     case F16:
     case BF16:
     case F32:
@@ -798,6 +802,10 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       return sizeof(uint32_t);
     case U64:
       return sizeof(uint64_t);
+    case F8E5M2:
+      return sizeof(float) / 4;
+    case F8E4M3FN:
+      return sizeof(float) / 4;
     case BF16:
       return sizeof(float) / 2;
     case F16:

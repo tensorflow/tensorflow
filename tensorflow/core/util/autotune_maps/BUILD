@@ -15,6 +15,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:__subpackages__"],
     features = ["-layering_check"],
     licenses = ["notice"],
@@ -127,8 +128,8 @@ tf_cuda_library(
         "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
         "//tensorflow/compiler/xla/stream_executor:lazy_op_runner",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core:framework",
-        "//tensorflow/core/common_runtime/gpu:gpu_init",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stream_executor",
     ],
@@ -145,9 +146,9 @@ tf_cuda_only_cc_test(
         ":conv_parameters",
         ":conv_parameters_proto_cc",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_driver_header",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/common_runtime/gpu:gpu_init",
         "//tensorflow/core/platform:status_matchers",
     ],
 )

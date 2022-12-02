@@ -30,6 +30,7 @@ from tensorflow.python.util.tf_export import tf_export
 # UNSHARDED indicates a tensor dimension is not sharded over any mesh dimension.
 UNSHARDED = 'unsharded'
 MATCH = 'match'
+USE_XLA_SPMD = False
 
 tf_export(
     'experimental.dtensor.UNSHARDED',
@@ -76,6 +77,7 @@ class Mesh(_pywrap_dtensor_device.Mesh):
   _local_devices = List[tf_device.DeviceSpec]
   _global_devices = Optional[List[tf_device.DeviceSpec]]
   _device_type: str
+  _use_xla_spmd: bool
 
   def __init__(self,
                dim_names: List[str],
@@ -83,7 +85,8 @@ class Mesh(_pywrap_dtensor_device.Mesh):
                local_device_ids: List[int],
                local_devices: List[tf_device.DeviceSpec],
                mesh_name: str = '',
-               global_devices: Optional[List[tf_device.DeviceSpec]] = None):
+               global_devices: Optional[List[tf_device.DeviceSpec]] = None,
+               use_xla_spmd: bool = USE_XLA_SPMD):
     """Builds a Mesh.
 
     The `dim_names` and `global_device_ids` arguments describe the dimension
@@ -123,6 +126,8 @@ class Mesh(_pywrap_dtensor_device.Mesh):
         mostly used to indicate whether it is a CPU, GPU, or TPU-based mesh.
       global_devices (optional): The list of global devices. Set when multiple
         device meshes are in use.
+      use_xla_spmd (optional): Boolean when True, will use XLA SPMD instead of
+        DTensor SPMD.
     """
     # Check if input args are valid.
     if not isinstance(global_device_ids, np.ndarray):
@@ -154,7 +159,7 @@ class Mesh(_pywrap_dtensor_device.Mesh):
 
     super().__init__(mesh_name, dim_names, global_device_ids_shape,
                      global_device_ids_flatten, global_devices_str,
-                     local_device_ids, local_devices_str)
+                     local_device_ids, local_devices_str, use_xla_spmd)
 
     if len(dim_names) != global_device_ids.ndim:
       raise ValueError(
@@ -196,9 +201,12 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     if len(device_types) > 1:
       raise ValueError('Devices containing multiple device_types : %s' %
                        device_types)
-
+    device_type = device_types.pop()
+    if use_xla_spmd and device_type != 'TPU':
+      raise ValueError('XLA SPMD is not currently not supported for %s mesh.' %
+                       device_type)
     # Set object's state.
-    self._device_type = device_types.pop()
+    self._device_type = device_type
     self._dim_names = dim_names
     self._dim_dict = {
         dim_name: MeshDimension(dim_name, global_device_ids.shape[i])
@@ -211,6 +219,7 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     self._name = mesh_name
     self._strides = _compute_mesh_strides(
         [self._dim_dict[dim] for dim in self._dim_names])
+    self._use_xla_spmd = use_xla_spmd
 
   def __eq__(self, other):
     if not isinstance(other, type(self)) and not isinstance(self, type(other)):

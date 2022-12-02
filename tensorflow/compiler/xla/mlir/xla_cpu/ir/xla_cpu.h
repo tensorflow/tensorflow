@@ -18,12 +18,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_MLIR_XLA_CPU_IR_XLA_CPU_H_
 #define TENSORFLOW_COMPILER_XLA_MLIR_XLA_CPU_IR_XLA_CPU_H_
 
+#include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu.h.inc"

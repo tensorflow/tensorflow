@@ -241,6 +241,7 @@ add_mlir_library(MhloToLinalg
   MLIRBufferizationDialect
   MLIRComplexDialect
   MLIRIR
+  MLIRLinalgTransforms
   MLIRLinalgUtils
   MLIRPass
   MLIRRewrite

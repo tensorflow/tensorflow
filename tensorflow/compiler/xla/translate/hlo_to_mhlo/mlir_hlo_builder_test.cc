@@ -247,7 +247,7 @@ TEST_F(XlaBuilderTest, CustomCallWithComputation) {
 
   ExpectHasSubstr(
       GetMlirOpString(custom_call),
-      R"("mhlo.custom_call"() {api_version = 1 : i32, backend_config = "{\22option1\22: foo, \22option2\22: bar, \22option3\22: \22baz\22}", call_target_name = "test_call_target", called_computations = [@test_comparator.4], has_side_effect = false} : () -> tensor<i1>)");
+      R"(%0 = mhlo.custom_call @test_call_target() {backend_config = "{\22option1\22: foo, \22option2\22: bar, \22option3\22: \22baz\22}", called_computations = [@test_comparator.4]} : () -> tensor<i1>)");
 
   // We should also expect there to be a new function added for the comparator.
   auto actual_func_op = module_->lookupSymbol<mlir::func::FuncOp>(

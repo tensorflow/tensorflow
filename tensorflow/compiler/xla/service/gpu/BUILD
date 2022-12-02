@@ -13,9 +13,8 @@ load(
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
-    "tf_cuda_library",
 )
-load("//tensorflow/tsl:tsl.bzl", "if_google", "tsl_copts")
+load("//tensorflow/tsl:tsl.bzl", "if_google", "if_nccl", "tsl_copts", "tsl_gpu_library")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
@@ -28,9 +27,10 @@ load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_cloud", "if_nccl")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_cloud")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -213,7 +213,10 @@ cc_library(
     srcs = ["gpu_device_info.cc"],
     hdrs = ["gpu_device_info.h"],
     compatible_with = get_compatible_with_cloud(),
-    deps = ["//tensorflow/compiler/xla/stream_executor:stream_executor_headers"],
+    deps = [
+        "//tensorflow/compiler/xla/stream_executor:device_description_proto_cc",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
+    ],
 )
 
 cc_library(
@@ -445,7 +448,7 @@ cc_library(
     ],
 )
 
-tf_cuda_library(
+tsl_gpu_library(
     name = "nccl_collective_thunks",
     srcs = [
         "nccl_all_gather_thunk.cc",
@@ -461,7 +464,7 @@ tf_cuda_library(
         "nccl_collective_permute_thunk.h",
         "nccl_collective_thunk.h",
     ],
-    # Override tf_cuda_library()'s internal default value of ["//buildenv/target:gce"].
+    # Override tsl_gpu_library()'s internal default value of ["//buildenv/target:gce"].
     compatible_with = [],
     deps = [
         ":buffer_allocations",
@@ -505,11 +508,11 @@ alias(
 )
 
 # Do not depend on this target, but rather depend on :nccl_utils.
-tf_cuda_library(
+tsl_gpu_library(
     name = "_nccl_utils",
     srcs = if_gpu_is_configured(["nccl_utils.cc"]),
     hdrs = if_gpu_is_configured(["nccl_utils.h"]),
-    # Override tf_cuda_library()'s internal default value of ["//buildenv/target:gce"].
+    # Override tsl_gpu_library()'s internal default value of ["//buildenv/target:gce"].
     compatible_with = [],
     defines = if_gpu_is_configured(["XLA_ENABLE_XCCL"]),
     tags = ["manual"],  # Only builds with if_nccl().
@@ -571,6 +574,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu/runtime:cholesky",
         "//tensorflow/compiler/xla/service/gpu/runtime:collectives",
         "//tensorflow/compiler/xla/service/gpu/runtime:conv",
+        "//tensorflow/compiler/xla/service/gpu/runtime:custom_call",
         "//tensorflow/compiler/xla/service/gpu/runtime:io_feed",
         "//tensorflow/compiler/xla/service/gpu/runtime:memcpy",
         "//tensorflow/compiler/xla/service/gpu/runtime:memset",
@@ -929,24 +933,50 @@ cc_library(
         ":ir_emission_utils",
         ":matmul_utils",
         ":stream_executor_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:autotune_results_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/tsl/util/proto:proto_utils",
         "//tensorflow/compiler/xla/stream_executor:blas",
-        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
-        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/tsl/platform:logger",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:autotuning_proto_cc",
+        "//tensorflow/tsl/util/proto:proto_utils",
     ]),
+)
+
+tf_cc_test(
+    name = "gemm_algorithm_picker_test",
+    srcs = ["gemm_algorithm_picker_test.cc"],
+    tags = [
+        "gpu",
+        "no_oss",
+        "noasan",
+        "nomsan",
+        "requires-gpu-sm70",
+    ],
+    deps = [
+        ":gemm_algorithm_picker",
+        ":gemm_rewriter",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc",
+    ],
 )
 
 cc_library(
@@ -1010,6 +1040,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
+        "//tensorflow/compiler/xla:autotune_results_proto_cc",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -1032,6 +1063,31 @@ cc_library(
         "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
     ]),
+)
+
+tf_cc_test(
+    name = "gpu_conv_algorithm_picker_test",
+    srcs = ["gpu_conv_algorithm_picker_test.cc"],
+    tags = [
+        "gpu",
+        "no_oss",
+        "noasan",
+        "nomsan",
+        "requires-gpu-sm70",
+    ],
+    deps = [
+        ":gpu_conv_algorithm_picker",
+        ":gpu_conv_rewriter",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
+        "//tensorflow/compiler/xla/service:tuple_simplifier",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+    ],
 )
 
 cc_library(
@@ -1144,6 +1200,8 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/tsl/platform:status",
@@ -1799,6 +1857,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/spmd:collective_permute_motion",
         "//tensorflow/compiler/xla/service/spmd:stateful_rng_spmd_partitioner",
         "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:device_description_proto_cc",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_platform_id",
@@ -1923,6 +1982,7 @@ cc_library(
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/util:env_var",
         ":triangular_solve_rewriter",
     ]),
 )
@@ -1950,30 +2010,27 @@ tf_cc_test(
     ],
 )
 
-# TODO(ezhulenev): This test breaks MacOS build, try to re-enable it later.
-# copybara:uncomment_begin
-# tf_cc_test(
-#     name = "gpu_aot_compilation_test",
-#     srcs = [
-#         "gpu_aot_compilation_test.cc",
-#     ],
-#     env = {
-#         "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
-#     },
-#     tags = [
-#         "gpu",
-#         "no_oss",
-#         "no_rocm",
-#         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
-#         "requires-gpu-nvidia",
-#     ],
-#     deps = [
-#         ":nvptx_compiler_impl",
-#         "//tensorflow/compiler/xla/tests:hlo_test_base",
-#         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
-#     ],
-# )
-# copybara:uncomment_end
+tf_cc_test(
+    name = "gpu_aot_compilation_test",
+    srcs = if_cuda_is_configured([
+        "gpu_aot_compilation_test.cc",
+    ]),
+    env = {
+        "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
+    },
+    tags = [
+        "gpu",
+        "no_oss",
+        "no_rocm",
+        "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
+        "requires-gpu-nvidia",
+    ],
+    deps = if_cuda_is_configured([
+        ":nvptx_compiler_impl",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+    ]),
+)
 
 cc_library(
     name = "amdgpu_compiler",
@@ -2394,6 +2451,7 @@ cc_library(
         ":cublas_cudnn",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_creation_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
@@ -2435,9 +2493,11 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -2895,11 +2955,6 @@ test_suite(
         "//tensorflow/compiler/xla/tests:dynamic_ops_test_gpu",
         "//tensorflow/compiler/xla/tests:execution_profile_test_gpu",
         "//tensorflow/compiler/xla/tests:execution_profile_test_with_xla_hlo_profile_gpu",
-        "//tensorflow/compiler/xla/tests:exhaustive_binary_16_bit_test_gpu",
-        "//tensorflow/compiler/xla/tests:exhaustive_binary_test_f32_f64_gpu",
-        "//tensorflow/compiler/xla/tests:exhaustive_unary_test_complex_gpu",
-        "//tensorflow/compiler/xla/tests:exhaustive_unary_test_f32_or_smaller_gpu",
-        "//tensorflow/compiler/xla/tests:exhaustive_unary_test_f64_gpu",
         "//tensorflow/compiler/xla/tests:floor_ceil_test_gpu",
         "//tensorflow/compiler/xla/tests:fmax_fmin_test_gpu",
         "//tensorflow/compiler/xla/tests:gather_operation_test_gpu",
@@ -2999,7 +3054,7 @@ cc_library(
     ],
 )
 
-tf_cuda_library(
+tsl_gpu_library(
     name = "runtime_intrinsics",
     srcs = ["runtime_intrinsics.cc"],
     hdrs = ["runtime_intrinsics.h"],

@@ -2432,9 +2432,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, CosF32s) {
   auto kInf = std::numeric_limits<float>::infinity();
   auto kQNaN = std::numeric_limits<float>::quiet_NaN();
   auto a = ConstantR1<float>(
-      &builder, {-1.9938988e-28, 1.9938988e-28, -1e20f, 1e20f, -2.3564024f,
-                 -3.14159f, 3.14159f, -0.0f, 0.0f, -1.570796f, 1.570796f,
-                 -0.78539f, 0.78539f, -2.19993846e+10, -kInf, kInf, kQNaN});
+      &builder,
+      {-1.9938988e-28, 1.9938988e-28, -1e20f, 1e20f, -2.3564024f, -3.14159f,
+       3.14159f, -0.0f, 0.0f, -1.570796f, 1.570796f, -0.78539f, 0.78539f,
+       -2.19993846e+10, -1.70141183e+38, -kInf, kInf, kQNaN});
   Cos(a);
 
   // This error spec corresponds to 1 ULP max relative error.
@@ -2456,9 +2457,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, SinF32s) {
   auto kInf = std::numeric_limits<float>::infinity();
   auto kQNaN = std::numeric_limits<float>::quiet_NaN();
   auto a = ConstantR1<float>(
-      &builder, {-1.9938988e-28, 1.9938988e-28, -1e20f, 1e20f, -2.3564024f,
-                 -3.14159f, 3.14159f, -0.0f, 0.0f, -1.570796f, 1.570796f,
-                 -0.78539f, 0.78539f, -2.19993846e+10, -kInf, kInf, kQNaN});
+      &builder,
+      {-1.9938988e-28, 1.9938988e-28, -1e20f, 1e20f, -2.3564024f, -3.14159f,
+       3.14159f, -0.0f, 0.0f, -1.570796f, 1.570796f, -0.78539f, 0.78539f,
+       -2.19993846e+10, -1.70141183e+38, -kInf, kInf, kQNaN});
   Sin(a);
 
   // This error spec corresponds to 1 ULP max relative error.

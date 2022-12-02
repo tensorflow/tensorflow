@@ -279,10 +279,6 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
     return "the producer is not fusible as it is a multi-output fusion";
   }
 
-  if (CreatesHeavyComputation(producer, consumer)) {
-    return "the fusion would create a heavy computation";
-  }
-
   // Fuse scalar constants into loop fusion nodes. This reduces the number of
   // parameters and makes matching scalar broadcasts easier.
   //
@@ -340,8 +336,6 @@ FusionDecision IsProducerConsumerMultiOutputFusible(
     return "producer is not loop-fusible";
   } else if (!IsFusibleAsMultiOutputFusionRoot(consumer)) {
     return "consumer is not fusible as multi-output-fusion-root";
-  } else if (CreatesHeavyComputation(producer, consumer)) {
-    return "fusion creates heavy computation";
   } else if (NoFusionPossible fusible =
                  !ShapesCompatibleForMultiOutputFusion(producer, consumer)) {
     return !fusible;

@@ -1903,6 +1903,24 @@ func.func @fold_logistic() -> tensor<4xf32> {
   func.return %1 : tensor<4xf32>
 }
 
+// CHECK-LABEL: func @fold_log
+func.func @fold_log() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<2.0> : tensor<4xf32>
+  %1 = "mhlo.log"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  //     CHECK: mhlo.constant dense<0.693147182> : tensor<4xf32>
+  // CHECK-NOT: mhlo.log
+  func.return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @not_fold_log_neg_constants
+func.func @not_fold_log_neg_constants() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<-1.0> : tensor<4xf32>
+  %1 = "mhlo.log"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  // CHECK: mhlo.constant dense<-1.000000e+00> : tensor<4xf32>
+  // CHECK: mhlo.log
+  func.return %1 : tensor<4xf32>
+}
+
 // CHECK-LABEL: func @fold_if_true(
 //  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]+]]
 //  CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]+]]

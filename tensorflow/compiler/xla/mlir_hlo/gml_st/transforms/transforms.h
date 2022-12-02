@@ -30,10 +30,15 @@ struct LinalgTilingOptions;
 namespace mlir {
 namespace gml_st {
 
-constexpr llvm::StringRef kTransformedMarker =
-    "__internal_transformed_marker__";
 
 bool isZero(Value v);
+bool isOne(Value v);
+
+/// Returns true if `candidate`'s offsets are all 0s and strides are all 1s.
+bool isIdentityTileOp(TileOp candidate);
+
+/// Returns true if `lhs` and `rhs` are of same static shape.
+bool haveSameStaticShape(Value lhs, Value rhs);
 
 /// Perform standalone tiling of a single LinalgOp by `tileSizes`.
 /// An empty vector is interpreted as the identity permutation and the
@@ -46,15 +51,13 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOp(
     const linalg::LinalgTilingOptions &options);
 
 // Sets the attribute to the `op` that indicates that the op was transformed.
-void setTransformationAttr(OpBuilder &b, Operation *op,
-                           StringRef name = kTransformedMarker);
+void setLabel(Operation *op, StringRef name);
 
 // Removes the attribute that indicates that it was transformed.
-void removeTransformationAttr(Operation *op,
-                              StringRef name = kTransformedMarker);
+void removeLabel(Operation *op, StringRef name);
 
 // Checks if `op` has the attribute that indicates that it was transformed.
-bool hasTransformationAttr(Operation *op, StringRef name = kTransformedMarker);
+bool hasLabel(Operation *op, StringRef name);
 
 // Checks if `op` has the matching label attribute.
 bool hasMatchingLabel(Operation *op, StringRef label);

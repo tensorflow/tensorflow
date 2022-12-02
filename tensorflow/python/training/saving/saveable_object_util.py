@@ -237,6 +237,10 @@ def saveable_objects_for_op(op, name):
 def op_list_to_dict(op_list, convert_variable_to_tensor=True):
   """Create a dictionary of names to operation lists.
 
+  This method is only used when the variable name matters (e.g. when saving
+  or restoring from a TF1 name-based checkpoint). In TF2, this can be called
+  from `tf.train.Checkpoint.restore` when loading from a name-based checkpoint.
+
   Args:
     op_list: A (nested) list, tuple, or set of Variables or SaveableObjects.
     convert_variable_to_tensor: Whether or not to convert single Variables
@@ -360,9 +364,6 @@ def validate_and_slice_inputs(names_to_saveables):
     ValueError: If the same operation is given in more than one value
       (this also applies to slices of SlicedVariables).
   """
-  if not isinstance(names_to_saveables, dict):
-    names_to_saveables = op_list_to_dict(names_to_saveables)
-
   saveables = []
   seen_ops = object_identity.ObjectIdentitySet()
   for name, op in sorted(names_to_saveables.items(),

@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
 
 #include <algorithm>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -35,7 +37,6 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/semaphore.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_tfrt_cpu_device_buffer.h"
 #include "tensorflow/compiler/xla/pjrt/utils.h"
-#include "tensorflow/compiler/xla/pjrt/worker_thread.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -324,7 +324,12 @@ StatusOr<std::string> TfrtCpuClient::SerializeExecutable(
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
-                                     CompileOptions options) {
+                                     std::optional<CompileOptions> options) {
+  if (!options.has_value()) {
+    return InvalidArgument(
+        "TfrtCpuClient requires `CompileOptions` for "
+        "`DeserializeExecutable()`");
+  }
   // Load a CpuExecutable
   cpu::CpuCompiler compiler;
   std::string str(serialized);
@@ -332,7 +337,7 @@ TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
                       compiler.LoadAotCompilationResult(str));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      aot_result->LoadExecutable(&compiler, /*stream_exec=*/nullptr));
+      aot_result->LoadExecutable(&compiler, /*executor=*/nullptr));
 
   // Set up other arguments for TfrtCpuExecutable
   // TODO(b/232263665): Remove duplicated code in DeserializeExecutable and
@@ -341,7 +346,7 @@ TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
   int num_partitions;
   std::shared_ptr<DeviceAssignment> device_assignment;
   TF_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
-      options.compile_portable_executable, &options.executable_build_options,
+      options->compile_portable_executable, &options->executable_build_options,
       [this](int num_replicas, int num_partitions) {
         return this->GetDefaultDeviceAssignment(num_replicas, num_partitions);
       },
@@ -367,7 +372,7 @@ TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
   std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
       addressable_device_logical_ids;
   std::vector<PjRtDevice*> addressable_devices;
-  ExecutableBuildOptions& build_options = options.executable_build_options;
+  ExecutableBuildOptions& build_options = options->executable_build_options;
   if (device_assignment != nullptr) {
     addressable_device_logical_ids.reserve(num_replicas * num_partitions);
     addressable_devices.reserve(num_replicas * num_partitions);
@@ -400,12 +405,12 @@ TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
 
   auto tfrt_cpu_executable = std::make_unique<TfrtCpuExecutable>(
       num_replicas, num_partitions, std::move(device_assignment),
-      options.parameter_is_tupled_arguments, std::move(executable),
+      options->parameter_is_tupled_arguments, std::move(executable),
       result_slice.index(), std::move(result_buffer_indices),
       std::move(addressable_device_logical_ids), std::move(addressable_devices),
       this);
   TF_RETURN_IF_ERROR(tfrt_cpu_executable->SetUpDonation(
-      options.parameter_is_tupled_arguments));
+      options->parameter_is_tupled_arguments));
 
   return std::unique_ptr<PjRtLoadedExecutable>(std::move(tfrt_cpu_executable));
 }
@@ -1414,6 +1419,18 @@ Status TfrtCpuExecutable::CheckBufferCompatibilities(
   return OkStatus();
 }
 
+// Create a descriptor table for XLA Runtime from a buffer table.
+static std::vector<xla::cpu::BufferDesc> MakeXLARuntimeDescriptorTable(
+    absl::Span<const std::shared_ptr<MaybeOwningCpuMemory>> buffer_table) {
+  std::vector<xla::cpu::BufferDesc> descriptor_table;
+  descriptor_table.reserve(descriptor_table.size());
+  for (const auto& buf : buffer_table) {
+    descriptor_table.emplace_back(
+        xla::cpu::BufferDesc{buf->data(), buf->size()});
+  }
+  return descriptor_table;
+}
+
 StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     const RunId& run_id, const ExecuteOptions& options,
@@ -1611,14 +1628,8 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
     // Call generated function.
     if (cpu_executable->IsXlaRuntime()) {
-      std::vector<xla::cpu::BufferDesc> descriptor_table;
-      descriptor_table.reserve(descriptor_table.size());
-      for (const auto& buf : buffer_table) {
-        descriptor_table.emplace_back(
-            xla::cpu::BufferDesc{buf->data(), buf->size()});
-      }
-      Status status =
-          cpu_executable->ExecuteXlaRuntime(descriptor_table, &run_options);
+      Status status = cpu_executable->ExecuteXlaRuntime(
+          MakeXLARuntimeDescriptorTable(buffer_table), &run_options);
       if (!status.ok()) return status;
     } else {
       cpu_executable->compute_function()(result_buffer, &run_options, nullptr,
@@ -1675,15 +1686,22 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           tsl::port::ScopedFlushDenormal flush;
           tsl::port::ScopedSetRound round(FE_TONEAREST);
 
-          XlaCustomCallStatus status;
-
           // Call generated function.
-          cpu_executable->compute_function()(result_buffer, &run_options,
-                                             nullptr, buffer_pointers.data(),
-                                             &status, nullptr);
-
-          std::optional<absl::string_view> error_message =
-              xla::CustomCallStatusGetMessage(&status);
+          std::optional<absl::string_view> error_message;
+          if (cpu_executable->IsXlaRuntime()) {
+            Status s = cpu_executable->ExecuteXlaRuntime(
+                MakeXLARuntimeDescriptorTable(buffer_table), &run_options);
+            if (!s.ok()) {
+              // TODO(kramerb): Propagate custom call error messages.
+              error_message = "XLA Runtime execution failed";
+            }
+          } else {
+            XlaCustomCallStatus status;
+            cpu_executable->compute_function()(result_buffer, &run_options,
+                                               nullptr, buffer_pointers.data(),
+                                               &status, nullptr);
+            error_message = xla::CustomCallStatusGetMessage(&status);
+          }
 
           for (auto& donation_transaction : donation_transactions) {
             std::move(donation_transaction).Commit();

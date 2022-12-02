@@ -1879,6 +1879,16 @@ std::string HloFusionInstruction::ToCategory() const {
 HloInstructionProto HloFusionInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   proto.set_fusion_kind(xla::ToString(fusion_kind()));
+  for (const auto& pair : output_to_operand_aliasing()) {
+    auto aliasing = proto.add_output_operand_aliasing();
+    aliasing->set_operand_index(pair.second.first);
+    for (int64_t index : pair.first) {
+      aliasing->add_output_shape_index(index);
+    }
+    for (int64_t index : pair.second.second) {
+      aliasing->add_operand_shape_index(index);
+    }
+  }
   proto.add_called_computation_ids(
       fused_instructions_computation()->unique_id());
   return proto;
@@ -2103,7 +2113,20 @@ int64_t HloFusionInstruction::fused_instruction_count() const {
 
 std::vector<std::string> HloFusionInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {StrCat("kind=", xla::ToString(fusion_kind()))};
+  std::vector<std::string> extra = {
+      StrCat("kind=", xla::ToString(fusion_kind()))};
+  if (!output_to_operand_aliasing().empty()) {
+    std::vector<std::string> pair_strings;
+    pair_strings.reserve(output_to_operand_aliasing().size());
+    for (const auto& pair : output_to_operand_aliasing()) {
+      pair_strings.push_back(StrCat(pair.first.ToString(), ": (",
+                                    pair.second.first, ", ",
+                                    pair.second.second.ToString(), ")"));
+    }
+    extra.push_back(StrCat("output_to_operand_aliasing={",
+                           StrJoin(pair_strings, ", "), "}"));
+  }
+  return extra;
 }
 
 bool HloFusionInstruction::IdenticalSlowPath(
@@ -2111,6 +2134,9 @@ bool HloFusionInstruction::IdenticalSlowPath(
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
   return fusion_kind() == other.fusion_kind() &&
+         output_to_operand_aliasing() ==
+             static_cast<const HloFusionInstruction&>(other)
+                 .output_to_operand_aliasing() &&
          eq_computations(fused_instructions_computation(),
                          other.fused_instructions_computation());
 }
@@ -2742,8 +2768,8 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
   if (literal_.has_value()) {
     *proto.mutable_literal() = literal_->ToProto();
   }
-  for (const auto& pair : output_to_operand_aliasing_) {
-    auto aliasing = proto.add_custom_call_output_operand_aliasing();
+  for (const auto& pair : output_to_operand_aliasing()) {
+    auto aliasing = proto.add_output_operand_aliasing();
     aliasing->set_operand_index(pair.second.first);
     for (int64_t index : pair.first) {
       aliasing->add_output_shape_index(index);
@@ -2803,10 +2829,10 @@ std::vector<std::string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
   if (literal_.has_value()) {
     extra.push_back(StrCat("literal=", literal_->ToStringWithLayoutOneline()));
   }
-  if (!output_to_operand_aliasing_.empty()) {
+  if (!output_to_operand_aliasing().empty()) {
     std::vector<std::string> pair_strings;
-    pair_strings.reserve(output_to_operand_aliasing_.size());
-    for (const auto& pair : output_to_operand_aliasing_) {
+    pair_strings.reserve(output_to_operand_aliasing().size());
+    for (const auto& pair : output_to_operand_aliasing()) {
       pair_strings.push_back(StrCat(pair.first.ToString(), ": (",
                                     pair.second.first, ", ",
                                     pair.second.second.ToString(), ")"));
@@ -2870,7 +2896,7 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
       casted_other.custom_call_has_side_effect()) {
     return false;
   }
-  if (output_to_operand_aliasing_ !=
+  if (output_to_operand_aliasing() !=
       casted_other.output_to_operand_aliasing()) {
     return false;
   }
@@ -2931,7 +2957,7 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
   cloned->set_feature_group_count(feature_group_count_);
   cloned->set_batch_group_count(batch_group_count_);
   cloned->set_custom_call_has_side_effect(custom_call_has_side_effect_);
-  cloned->set_output_to_operand_aliasing(output_to_operand_aliasing_);
+  cloned->set_output_to_operand_aliasing(output_to_operand_aliasing());
   cloned->set_padding_type(padding_type_);
   *cloned->mutable_precision_config() = precision_config();
   cloned->set_custom_call_schedule(custom_call_schedule_);

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/signature_runner.h"
 
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 
 namespace tflite {
 
