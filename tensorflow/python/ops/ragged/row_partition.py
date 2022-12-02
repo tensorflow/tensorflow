@@ -746,11 +746,15 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     return self._row_splits
 
-  def value_rowids(self):
+  def value_rowids(self, allow_persist=True):
     """Returns the row indices for this row partition.
 
     `value_rowids` specifies the row index fo reach value.  In particular,
     `value_rowids[i]` is the row index for `values[i]`.
+
+    Args:
+      allow_persist: If True, the generated value_rowids tensor will be 
+      stored internally and reused if needed again. Defaults to True.
 
     Returns:
       A 1-D integer `Tensor` with shape `[self.nvals()]`.
@@ -758,7 +762,10 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     if self._value_rowids is not None:
       return self._value_rowids
-    return segment_id_ops.row_splits_to_segment_ids(self._row_splits)
+    result = segment_id_ops.row_splits_to_segment_ids(self._row_splits)
+    if allow_persist:
+      self._value_rowids = result
+    return result
 
   def nvals(self):
     """Returns the number of values partitioned by this `RowPartition`.
@@ -827,8 +834,12 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     return self._row_splits[1:]
 
-  def row_lengths(self):
+  def row_lengths(self, allow_persist=True):
     """Returns the lengths of rows in this `RowPartition`.
+
+    Args:
+      allow_persist: If True, the generated value_rowids tensor will be 
+      stored internally and reused if needed again. Defaults to True.
 
     Returns:
       A 1-D integer Tensor with shape `[self.nrows]`.
@@ -838,7 +849,10 @@ class RowPartition(composite_tensor.CompositeTensor):
     if self._row_lengths is not None:
       return self._row_lengths
     splits = self._row_splits
-    return splits[1:] - splits[:-1]
+    result = splits[1:] - splits[:-1]
+    if allow_persist:
+      self._row_lengths = result
+    return result
 
   @property
   def static_nrows(self):
