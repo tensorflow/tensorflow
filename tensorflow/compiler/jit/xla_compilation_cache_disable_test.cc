@@ -13,9 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <utility>
+
 #include "tensorflow/compiler/jit/device_compilation_profiler.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_compilation_cache.h"
+#include "tensorflow/compiler/jit/xla_device_compiler_client.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -47,8 +51,13 @@ TEST(XlaCompilationCacheTest, TestDisabledXlaCompilation) {
   const XlaCompiler::CompilationResult* compilation_result;
   xla::LocalExecutable* executable;
 
-  auto cache = new XlaCompilationCache(XlaCompilationCache::Config(), client,
-                                       device_type);
+  using XlaDeviceExecutablePersistor =
+      DeviceExecutablePersistor<xla::LocalExecutable, xla::LocalClient>;
+  auto persistor = std::make_unique<XlaDeviceExecutablePersistor>(
+      XlaDeviceExecutablePersistor::Config(), device_type);
+  auto compiler_client = std::make_unique<XlaDeviceCompilerClient>(client);
+  auto cache =
+      new XlaCompilationCache(std::move(persistor), std::move(compiler_client));
   core::ScopedUnref cache_ref(cache);
 
   auto profiler = new DeviceCompilationProfiler();

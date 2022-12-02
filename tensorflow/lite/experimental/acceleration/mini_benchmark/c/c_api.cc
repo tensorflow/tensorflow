@@ -23,8 +23,8 @@ limitations under the License.
 
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/verifier.h"  // from @flatbuffers
-#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/blocking_validator_runner.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_options.h"
@@ -50,6 +50,32 @@ class CErrorReporter : public tflite::ErrorReporter {
  private:
   void* user_data_;
   ErrorReporterFunc* error_reporter_func_;
+};
+
+class CResultEvaluator
+    : public tflite::acceleration::AbstractBenchmarkResultEvaluator {
+ public:
+  using ValidatorFunc = bool(void* user_data, uint8_t* benchmark_result_data,
+                             int benchmark_result_data_size);
+  explicit CResultEvaluator(
+      const TfLiteMiniBenchmarkCustomValidationInfo& custom_validation_info)
+      : user_data_(custom_validation_info.accuracy_validator_user_data),
+        validator_func_(custom_validation_info.accuracy_validator_func) {}
+
+  ~CResultEvaluator() override = default;
+
+  bool HasPassedAccuracyCheck(
+      const tflite::BenchmarkResult& benchmark_result) override {
+    flatbuffers::FlatBufferBuilder fbb;
+    tflite::BenchmarkResultT result_obj;
+    benchmark_result.UnPackTo(&result_obj);
+    fbb.Finish(tflite::CreateBenchmarkResult(fbb, &result_obj));
+    return validator_func_(user_data_, fbb.GetBufferPointer(), fbb.GetSize());
+  }
+
+ private:
+  void* user_data_;
+  ValidatorFunc* validator_func_;
 };
 
 // Allocate memory in minibenchmark_result and serialize benchmark_events to it.
@@ -103,11 +129,18 @@ void TfLiteBlockingValidatorRunnerTriggerValidationImpl(
       tflite::acceleration::CreateValidatorRunnerOptionsFrom(
           *minibenchmark_settings);
 
+  std::unique_ptr<tflite::acceleration::AbstractBenchmarkResultEvaluator>
+      result_evaluator;
   if (settings.custom_validation_info.buffer) {
     options.custom_input_batch_size =
         settings.custom_validation_info.batch_size;
     options.custom_input_data =
         ToCustomInputData(settings.custom_validation_info);
+    if (settings.custom_validation_info.accuracy_validator_func != nullptr) {
+      result_evaluator =
+          std::make_unique<CResultEvaluator>(settings.custom_validation_info);
+      options.benchmark_result_evaluator = result_evaluator.get();
+    }
   }
   if (error_reporter) {
     options.error_reporter = error_reporter;

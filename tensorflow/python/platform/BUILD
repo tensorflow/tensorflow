@@ -35,6 +35,7 @@ py_library(
             "benchmark.py",  # In platform_benchmark.
             "analytics.py",  # In platform_analytics.
             "device_context.py",  # In platform_device_context.
+            "self_check.py",  # In self_check
         ],
     ) + ["build_info.py"],
     srcs_version = "PY3",
@@ -50,6 +51,16 @@ py_library(
         "@absl_py//absl/flags",
         "@absl_py//absl/logging",
         "@rules_python//python/runfiles",
+    ],
+)
+
+py_library(
+    name = "self_check",
+    srcs = ["self_check.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":_pywrap_cpu_feature_guard",
+        ":build_info",
     ],
 )
 

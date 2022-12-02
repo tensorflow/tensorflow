@@ -35,10 +35,14 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
+using mlir::linalg::BroadcastOp;
 using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
+using mlir::linalg::LinalgOp;
+using mlir::linalg::MapOp;
 using mlir::linalg::MatmulOp;
 using mlir::linalg::Mmt4DOp;
+using mlir::linalg::ReduceOp;
 using mlir::tensor::ExpandShapeOp;
 using mlir::vector::TransferReadOp;
 using mlir::vector::TransferWriteOp;
@@ -443,6 +447,28 @@ struct MaterializeOpVectorizationPattern
   llvm::function_ref<bool(MaterializeOp)> filterFn;
 };
 
+struct IdentityMaterializeOpFoldingPattern
+    : public OpRewritePattern<MaterializeOp> {
+  explicit IdentityMaterializeOpFoldingPattern(MLIRContext *context,
+                                               PatternBenefit benefit = 1)
+      : OpRewritePattern(context, benefit) {}
+
+  LogicalResult matchAndRewrite(MaterializeOp op,
+                                PatternRewriter &rewriter) const override {
+    auto src = op.getSource();
+    auto set = op.getSet().getDefiningOp<TileOp>();
+    // Only fold identity materialize of ForOp's block argument.
+    // Set has to be an identity tile op and source and result are static and
+    // have the same shapes.
+    if (!op->getParentOfType<ForOp>() || !src.isa<BlockArgument>() || !set ||
+        !isIdentityTileOp(set) || !haveSameStaticShape(src, op.getResult()))
+      return rewriter.notifyMatchFailure(op, "did not match filter");
+
+    op.replaceAllUsesWith(src);
+    return success();
+  }
+};
+
 // Converts static tensors among `types` to their equivalent vectors.
 SmallVector<Type, 1> convertToVectorTypes(TypeRange types) {
   return llvm::to_vector<1>(llvm::map_range(types, [&](Type type) -> Type {
@@ -591,6 +617,13 @@ bool isFillTiledOrSmall(FillOp fill) {
          outputType.getNumElements() < kNumElementsThreshold;
 }
 
+bool isLinalgOpTiledOrOneDimReduction(LinalgOp op) {
+  if (isInsideGmlStLoop(op)) return true;
+
+  // Allow vectorization of 1D reductions.
+  return op.getNumLoops() == 1 && op.getNumReductionLoops() == 1;
+}
+
 bool isGenericOpTiledOrOneDimReduction(GenericOp generic) {
   if (isInsideGmlStLoop(generic)) return true;
 
@@ -627,6 +660,9 @@ struct VectorizeGmlStLoopsPass
     // survive beyond patterns.add() and applyPatternsAndFoldGreedily() calls.
     auto fillOpFilter = [&](FillOp op) {
       return isValidDistribution(op) && isFillTiledOrSmall(op);
+    };
+    auto linalgOpFilter = [&](LinalgOp op) {
+      return isValidDistribution(op) && isLinalgOpTiledOrOneDimReduction(op);
     };
     auto genericOpFilter = [&](GenericOp op) {
       return isValidDistribution(op) && isGenericOpTiledOrOneDimReduction(op);
@@ -672,6 +708,9 @@ struct VectorizeGmlStLoopsPass
                    SetYieldOfScalarToVectorPattern>(ctx);
       patterns.add<VectorizationPattern<FillOp>>(ctx, fillOpFilter);
       patterns.add<VectorizationPattern<GenericOp>>(ctx, genericOpFilter);
+      patterns.add<VectorizationPattern<BroadcastOp>,
+                   VectorizationPattern<MapOp>, VectorizationPattern<ReduceOp>>(
+          ctx, linalgOpFilter);
       patterns.add<VectorizationPattern<MatmulOp>>(ctx, matmulOpFilter);
       patterns.add<VectorizationPattern<Mmt4DOp>>(ctx, mmt4dOpFilter);
       patterns.add<TensorToElementVectorizationPattern,
@@ -690,6 +729,13 @@ struct VectorizeGmlStLoopsPass
       RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
       patterns.add<MaterializeUpdateTransferWriteTensorOperand,
                    SetYieldUpdateTransferWriteTensorOperand>(ctx);
+      (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+    }
+
+    // Hoisting transfer_read/transfer_write.
+    {
+      RewritePatternSet patterns(ctx);
+      patterns.add<IdentityMaterializeOpFoldingPattern>(ctx);
       (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
   }

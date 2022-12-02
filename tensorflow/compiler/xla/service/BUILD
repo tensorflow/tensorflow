@@ -3,12 +3,12 @@
 
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
-load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library", "xla_py_test_deps")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary", "xla_py_proto_library", "xla_py_test_deps")
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/tsl:tsl.bzl", "if_libtpu")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable", "internal_hlo_deps")
 load(
@@ -1052,7 +1052,6 @@ cc_library(
         ":hlo_cost_analysis",
         ":hlo_execution_profile",
         ":hlo_module_config",
-        ":hlo_module_group",
         ":hlo_module_util",
         ":hlo_proto_util",
         ":platform_util",
@@ -1073,6 +1072,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/hlo/evaluator:hlo_evaluator",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo_module_group",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/tsl/platform:env",
@@ -1339,13 +1339,13 @@ cc_library(
         ":computation_placer",
         ":executable",
         ":hlo_module_config",
-        ":hlo_module_group",
         ":logical_buffer",
         ":metrics_hook_interface",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo_module_group",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
@@ -1655,18 +1655,6 @@ tf_cc_test(
     ],
 )
 
-cc_library(
-    name = "hlo_module_group",
-    srcs = ["hlo_module_group.cc"],
-    hdrs = ["hlo_module_group.h"],
-    deps = [
-        ":hlo_proto_cc",
-        "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
 tf_cc_test(
     name = "hlo_module_group_test",
     srcs = ["hlo_module_group_test.cc"],
@@ -1674,12 +1662,12 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":hlo_matchers",
-        ":hlo_module_group",
         ":hlo_module_group_metadata",
         ":hlo_proto_cc",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo_module_group",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
@@ -4933,11 +4921,11 @@ cc_library(
         "hlo_pass_interface.h",
     ],
     deps = [
-        ":hlo_module_group",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo_module_group",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
@@ -5526,7 +5514,6 @@ cc_library(
         ":compiler",
         ":computation_placer",
         ":executable",
-        ":hlo_module_group",
         ":hlo_module_util",
         ":hlo_parser",
         ":hlo_runner_interface",
@@ -5538,6 +5525,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo_module_group",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/tsl/platform:blocking_counter",
         "//tensorflow/tsl/platform:logging",
@@ -6937,100 +6925,103 @@ tf_cc_test(
     ],
 )
 
-# TODO(b/248362914): xla_compile breaks MacOS build (b/260357152), try to re-enable it later.
-# copybara:uncomment_begin
-# tf_cc_binary(
-#     name = "xla_compile",
-#     srcs = ["xla_compile_main.cc"],
-#     visibility = ["//visibility:public"],
-#     deps = [
-#         ":compiler",
-#         "//tensorflow/compiler/xla:statusor",
-#         "//tensorflow/compiler/xla/mlir_hlo",
-#         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
-#         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
-#         "//tensorflow/compiler/xla/service/cpu:cpu_executable",
-#         "//tensorflow/compiler/xla/service/gpu:executable_proto_cc",
-#         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
-#         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
-#         "//tensorflow/tsl/platform:env",
-#         "//tensorflow/tsl/platform:platform_port",
-#         "//tensorflow/tsl/platform:protobuf",
-#         "//tensorflow/tsl/util:command_line_flags",
-#         "@llvm-project//mlir:ArithDialect",
-#         "@llvm-project//mlir:FuncDialect",
-#         "@llvm-project//mlir:IR",
-#         "@llvm-project//mlir:Parser",
-#     ],
-# )
-#
-# # A simple test of xla_aot_compile which generates an output file from an mhlo file.
-# xla_aot_compile_cpu(
-#     name = "xla_aot_compile_test_cpu_executable",
-#     mhlo = "xla_aot_compile_test.mlir",
-# )
-#
-# xla_aot_compile_gpu(
-#     name = "xla_aot_compile_test_gpu_executable",
-#     gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
-#     mhlo = "xla_aot_compile_test.mlir",
-# )
-#
-# xla_test(
-#     name = "xla_aot_compile_cpu_test",
-#     srcs = ["xla_aot_compile_cpu_test.cc"],
-#     backends = [
-#         "cpu",
-#     ],
-#     data = [
-#         ":xla_aot_compile_test_cpu_executable",
-#     ],
-#     deps = [
-#         ":platform_util",
-#         "//tensorflow/compiler/xla:executable_run_options",
-#         "//tensorflow/compiler/xla:literal_util",
-#         "//tensorflow/compiler/xla/client:client_library",
-#         "//tensorflow/compiler/xla/client:local_client",
-#         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
-#         "//tensorflow/tsl/lib/core:status_test_util",
-#         "//tensorflow/tsl/platform:env",
-#         "//tensorflow/tsl/platform:resource_loader",
-#         "//tensorflow/tsl/platform:statusor",
-#         "//tensorflow/tsl/platform:test",
-#         "@com_google_googletest//:gtest_main",
-#     ],
-# )
-#
-# xla_test(
-#     name = "xla_aot_compile_gpu_test",
-#     srcs = ["xla_aot_compile_gpu_test.cc"],
-#     backends = ["gpu"],
-#     data = [
-#         ":xla_aot_compile_test_gpu_executable",
-#     ],
-#     env = {
-#         "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
-#     },
-#     tags = [
-#         "gpu",
-#         "no_oss",
-#         "no_rocm",
-#         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
-#         "requires-gpu-nvidia",
-#     ],
-#     deps = [
-#         ":platform_util",
-#         "//tensorflow/compiler/xla:executable_run_options",
-#         "//tensorflow/compiler/xla:literal_util",
-#         "//tensorflow/compiler/xla/client:client_library",
-#         "//tensorflow/compiler/xla/client:local_client",
-#         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
-#         "//tensorflow/tsl/lib/core:status_test_util",
-#         "//tensorflow/tsl/platform:env",
-#         "//tensorflow/tsl/platform:resource_loader",
-#         "//tensorflow/tsl/platform:statusor",
-#         "//tensorflow/tsl/platform:test",
-#         "@com_google_googletest//:gtest_main",
-#     ],
-# )
-# copybara:uncomment_end
+xla_cc_binary(
+    name = "xla_compile",
+    srcs = if_cuda_is_configured(["xla_compile_main.cc"]),
+    visibility = ["//visibility:public"],
+    deps = if_cuda_is_configured([
+        ":compiler",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
+        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu:cpu_executable",
+        "//tensorflow/compiler/xla/service/gpu:executable_proto_cc",
+        "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
+        "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:platform_port",
+        "//tensorflow/tsl/platform:protobuf",
+        "//tensorflow/tsl/util:command_line_flags",
+    ]),
+)
+
+# A simple test of xla_aot_compile which generates an output file from an mhlo file.
+xla_aot_compile_cpu(
+    name = "xla_aot_compile_test_cpu_executable",
+    mhlo = "xla_aot_compile_test.mlir",
+)
+
+xla_aot_compile_gpu(
+    name = "xla_aot_compile_test_gpu_executable",
+    gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
+    mhlo = "xla_aot_compile_test.mlir",
+)
+
+xla_aot_compile_gpu(
+    name = "xla_aot_compile_test_gpu_executable_constant",
+    gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
+    mhlo = "xla_aot_compile_test_constant.mlir",
+)
+
+tf_cc_test(
+    name = "xla_aot_compile_cpu_test",
+    srcs = if_cuda_is_configured(["xla_aot_compile_cpu_test.cc"]),
+    data = if_cuda_is_configured([
+        ":xla_aot_compile_test_cpu_executable",
+    ]),
+    tags = ["no_oss"],
+    deps = if_cuda_is_configured([
+        ":cpu_plugin",
+        ":platform_util",
+        "@com_google_googletest//:gtest_main",
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:resource_loader",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:test",
+    ]),
+)
+
+tf_cc_test(
+    name = "xla_aot_compile_gpu_test",
+    srcs = if_cuda_is_configured(["xla_aot_compile_gpu_test.cc"]),
+    data = if_cuda_is_configured([
+        ":xla_aot_compile_test_gpu_executable",
+        ":xla_aot_compile_test_gpu_executable_constant",
+    ]),
+    env = {
+        "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
+    },
+    tags = [
+        "gpu",
+        "no_oss",
+        "no_rocm",
+        "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
+        "requires-gpu-nvidia",
+    ],
+    deps = if_cuda_is_configured([
+        ":gpu_plugin_impl",
+        ":platform_util",
+        "@com_google_googletest//:gtest_main",
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:resource_loader",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:test",
+    ]),
+)

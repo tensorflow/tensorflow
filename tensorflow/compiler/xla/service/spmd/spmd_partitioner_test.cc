@@ -2147,6 +2147,29 @@ ENTRY entry {
                           op::Shape("f32[128,17,129]")));
 }
 
+TEST_F(SpmdPartitioningTest, PadAlongNonPartitionedDimensionReshard) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[128,14,257] parameter(0), sharding={replicated}
+  %const = f32[] constant(0)
+  ROOT %pad = f32[128,17,257] pad(%param0, %const), padding=0_0x1_2x0_0,
+    sharding={devices=[1,1,2]0,1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto param0 = AllOf(op::Parameter(), op::Shape("f32[128,14,257]"));
+  auto operand = op::DynamicSlice(op::Pad(param0, _), op::Constant(),
+                                  op::Constant(), op::Multiply());
+  EXPECT_THAT(root, AllOf(op::Pad(operand, op::Constant()),
+                          op::Shape("f32[128,17,129]")));
+}
+
 TEST_F(SpmdPartitioningTest, PadAlongPartitionedDimension) {
   absl::string_view hlo_string = R"(
 HloModule module

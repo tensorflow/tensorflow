@@ -748,10 +748,12 @@ void CustomCallOp::build(
     ::mlir::mhlo::CustomCallApiVersionAttr apiVersion,
     ::mlir::ArrayAttr calledComputations, ::mlir::ArrayAttr operandLayouts,
     ::mlir::ArrayAttr resultLayouts) {
-  return CustomCallOp::build(odsBuilder, odsState, resultType, operands,
-                             callTargetName, hasSideEffect, backendConfig,
-                             apiVersion, calledComputations, operandLayouts,
-                             resultLayouts, nullptr);
+  return CustomCallOp::build(
+      odsBuilder, odsState, resultType, operands, callTargetName, hasSideEffect,
+      backendConfig, apiVersion, calledComputations,
+      CustomCallScheduleAttr::get(odsBuilder.getContext(),
+                                  CustomCallSchedule::NONE),
+      operandLayouts, resultLayouts, nullptr);
 }
 
 LogicalResult CustomCallOp::verify() {
@@ -1009,25 +1011,6 @@ LogicalResult DotOp::inferReturnTypes(
   auto lhsType = op.getLhs().getType().cast<ShapedType>();
   auto rhsType = op.getRhs().getType().cast<ShapedType>();
   inferredReturnTypes.push_back(inferDotReturnType(lhsType, rhsType));
-  return success();
-}
-
-LogicalResult DotOp::verify() {
-  auto lhsType = getLhs().getType().cast<ShapedType>();
-  auto rhsType = getRhs().getType().cast<ShapedType>();
-  auto resultType = getType().cast<ShapedType>();
-  auto expectReturnType = inferDotReturnType(lhsType, rhsType);
-  if (!expectReturnType) {
-    return emitError() << "Unexpected operands type: " << lhsType << " and "
-                       << rhsType;
-  }
-  if (resultType.hasRank() && expectReturnType.hasRank()) {
-    if (resultType.getShape() != expectReturnType.getShape()) {
-      return emitError() << "Unexpected result type: has " << resultType
-                         << " but inferred " << expectReturnType
-                         << " from operands " << lhsType << " and " << rhsType;
-    }
-  }
   return success();
 }
 
@@ -5964,6 +5947,18 @@ LogicalResult ReplicaIdOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// PartitionId Op
+//===----------------------------------------------------------------------===//
+
+LogicalResult PartitionIdOp::inferReturnTypes(
+    MLIRContext* context, Optional<Location>, ValueRange /*operands*/,
+    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(RankedTensorType::get(
+      /*shape=*/{}, IntegerType::get(context, 32, IntegerType::Unsigned)));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // AddDependency Op
 //===----------------------------------------------------------------------===//
 
@@ -8089,6 +8084,8 @@ using mlir::hlo::printSelectOpType;
 using mlir::hlo::parseSelectOpType;
 using mlir::hlo::printTupleOpType;
 using mlir::hlo::parseTupleOpType;
+using mlir::hlo::printCustomCallTarget;
+using mlir::hlo::parseCustomCallTarget;
 using mlir::hlo::printExponentMantissa;
 using mlir::hlo::parseExponentMantissa;
 // clang-format on

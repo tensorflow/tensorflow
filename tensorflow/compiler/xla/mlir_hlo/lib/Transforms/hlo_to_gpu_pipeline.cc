@@ -58,10 +58,11 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
   // HLO -> Linalg
   pm.addNestedPass<FuncOp>(mhlo::createChloLegalizeToHloPass());
   pm.addPass(createCanonicalizerPass());  // Clean up shape.assuming ops.
-  pm.addNestedPass<FuncOp>(mhlo::createLegalizeHloToLinalgPass());
-
   // Tiling either for softmax or for elementwise
   if (experimentalSoftmax) {
+    pm.addNestedPass<FuncOp>(
+        mhlo::createLegalizeHloToLinalgPass(/*enablePrimitiveOps=*/true));
+
     // Simplify unit dimension.
     pm.addPass(mlir::createLinalgFoldUnitExtentDimsPass());
 
@@ -91,6 +92,9 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
         /*vectorizeGmlStOps=*/true, /*distributionLabels=*/{
             kWarpDistributionLabel, kThreadDistributionLabel}));
   } else {
+    pm.addNestedPass<FuncOp>(
+        mhlo::createLegalizeHloToLinalgPass(/*enablePrimitiveOps=*/false));
+
     pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
         /*distribute=*/true, blockTileDim, kBlockDistributionLabel));
     pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(

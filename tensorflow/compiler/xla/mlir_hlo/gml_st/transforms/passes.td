@@ -224,6 +224,7 @@ def TransformReduceForCpuPass :
 
   let options = [
     ListOption<"tileSizes", "tile-sizes", "int64_t",
-               "Tile sizes for a `linalg.reduce`">,
+               "Tile sizes for a `linalg.reduce`. tileSizes[0] is the parallel "
+               "dimension and tileSizes[1] is the reduction dimension.">,
   ];
 }

@@ -77,7 +77,8 @@ def TilingInterface : OpInterface<"TilingInterface"> {
         /*args=*/(ins
             "OpBuilder &":$b,
             "ArrayRef<OpFoldResult>":$offsets,
-            "ArrayRef<OpFoldResult>":$sizes)
+            "ArrayRef<OpFoldResult>":$sizes,
+            "bool":$useExtractSlice)
       >,
       InterfaceMethod<
         /*desc=*/[{

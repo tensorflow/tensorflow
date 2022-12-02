@@ -7,7 +7,8 @@ load(
     "tf_cuda_tests_tags",
 )
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -216,7 +217,7 @@ cc_library(
     ],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "local_client_aot_test_helper",
     srcs = ["local_client_aot_test_helper.cc"],
     deps = [
@@ -229,6 +230,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
         "@llvm-project//llvm:Support",
     ],
 )

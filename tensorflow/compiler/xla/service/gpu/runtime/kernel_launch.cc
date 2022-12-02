@@ -34,7 +34,6 @@ namespace xla {
 namespace gpu {
 
 using xla::runtime::CustomCall;
-using xla::runtime::Executable;
 using xla::runtime::State;
 using xla::runtime::StridedMemrefView;
 
@@ -119,27 +118,22 @@ absl::Status KernelLaunch::operator()(
 
 //===----------------------------------------------------------------------===//
 
-static bool Launch(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                   void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.func.launch")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const std::string*>()
-                             .UserData<const std::vector<uint8_t>*>()
-                             .UserData<se::DeviceMemoryBase*>()
-                             .State<std::unique_ptr<se::KernelBase>>("uid")
-                             .Arg<int32_t>()   // grid_size_x
-                             .Arg<int32_t>()   // grid_size_y
-                             .Arg<int32_t>()   // grid_size_z
-                             .Arg<int32_t>()   // block_size_x
-                             .Arg<int32_t>()   // block_size_y
-                             .Arg<int32_t>()   // block_size_x
-                             .RemainingArgs()  // args
-                             .Attr<std::string_view>("kernel")
-                             .To<checks>(KernelLaunch::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL_WITH_CHECKS(
+    Launch, KernelLaunch::Handler(), checks,
+    CustomCall::Bind("xla.gpu.func.launch")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .UserData<const std::string*>()
+        .UserData<const std::vector<uint8_t>*>()
+        .UserData<se::DeviceMemoryBase*>()
+        .State<std::unique_ptr<se::KernelBase>>("uid")
+        .Arg<int32_t>()   // grid_size_x
+        .Arg<int32_t>()   // grid_size_y
+        .Arg<int32_t>()   // grid_size_z
+        .Arg<int32_t>()   // block_size_x
+        .Arg<int32_t>()   // block_size_y
+        .Arg<int32_t>()   // block_size_x
+        .RemainingArgs()  // args
+        .Attr<std::string_view>("kernel"));
 
 void RegisterKernelLaunchCustomCalls(
     runtime::DirectCustomCallRegistry& registry) {

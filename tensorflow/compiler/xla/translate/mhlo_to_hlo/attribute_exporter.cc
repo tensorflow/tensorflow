@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -165,6 +166,21 @@ StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
       return TriangularSolveOptions::TRANSPOSE_INVALID;
     default:
       return InvalidArgument("Unknown transpose enum value #%d", *transpose);
+  }
+}
+
+StatusOr<xla::CustomCallSchedule> ConvertCustomCallSchedule(
+    mlir::mhlo::CustomCallSchedule schedule) {
+  switch (schedule) {
+    case mlir::mhlo::CustomCallSchedule::NONE:
+      return xla::CustomCallSchedule::SCHEDULE_NONE;
+    case mlir::mhlo::CustomCallSchedule::LATEST:
+      return xla::CustomCallSchedule::SCHEDULE_LATEST;
+    case mlir::mhlo::CustomCallSchedule::EARLIEST:
+      return xla::CustomCallSchedule::SCHEDULE_EARLIEST;
+    default:
+      return InvalidArgument("Unknown CustomCallSchedule enum value #%d",
+                             schedule);
   }
 }
 

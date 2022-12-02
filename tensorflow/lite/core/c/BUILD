@@ -5,6 +5,7 @@ load(
 )
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite/core/c:special_rules.bzl", "common_header_visibility_allowlist")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -22,6 +23,12 @@ exports_files(
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ],
+)
+
+bzl_library(
+    name = "special_rules_bzl",
+    srcs = ["special_rules.bzl"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
 )
 
 filegroup(

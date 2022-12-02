@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -98,6 +99,7 @@ Value LookThroughIdentity(Value result) {
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
 }  // namespace
 
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NcclAllReduceOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NegOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(OnesLikeOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(PreventGradientOp);
@@ -135,6 +137,21 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(TanhOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(TanhGradOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ZerosLikeOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(_UnaryOpsCompositionOp);
+
+//===----------------------------------------------------------------------===//
+// NcclAllReduceOp
+//===----------------------------------------------------------------------===//
+
+// For `NcclAllReduceOp` ops the `device` attribute corresponds to the resource
+// instance.
+std::optional<std::string> NcclAllReduceOp::GetResourceInstanceStr() {
+  auto device_attr = (*this)->getAttrOfType<StringAttr>("device");
+  // Treat missing device attribute like unspecified (= empty string) attribute.
+  // Note that different op instances with the same string (including empty
+  // string) are seen as dependent (same resource instance).
+  if (!device_attr) return "";
+  return device_attr.str();
+}
 
 //===----------------------------------------------------------------------===//
 // NotEqualOp

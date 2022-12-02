@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
@@ -829,6 +830,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             builder_->getNamedAttr("result_layouts", result_layouts));
       }
 
+      attributes.push_back(
+          ConvertCustomCallSchedule(custom_call->custom_call_schedule()));
       TF_ASSIGN_OR_RETURN(
           auto mlir_api_version,
           ConvertCustomCallApiVersion(custom_call->api_version()));
@@ -1988,6 +1991,27 @@ mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
     llvm::ArrayRef<bool> elements) {
   return DenseIntElementsAttr::get(
       RankedTensorType::get(elements.size(), builder_->getI1Type()), elements);
+}
+
+mlir::NamedAttribute HloFunctionImporter::ConvertCustomCallSchedule(
+    CustomCallSchedule schedule) {
+  auto converted_schedule = ::mlir::mhlo::CustomCallSchedule::NONE;
+  switch (schedule) {
+    case SCHEDULE_LATEST:
+      converted_schedule = ::mlir::mhlo::CustomCallSchedule::LATEST;
+      break;
+    case SCHEDULE_EARLIEST:
+      converted_schedule = ::mlir::mhlo::CustomCallSchedule::EARLIEST;
+      break;
+    case SCHEDULE_NONE:
+      converted_schedule = ::mlir::mhlo::CustomCallSchedule::NONE;
+      break;
+    default:
+      assert(false && "Unrecognized custom call schedule hint");
+  }
+  return builder_->getNamedAttr(
+      "custom_call_schedule", ::mlir::mhlo::CustomCallScheduleAttr::get(
+                                  builder_->getContext(), converted_schedule));
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertPadding(

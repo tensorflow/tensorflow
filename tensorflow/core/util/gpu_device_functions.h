@@ -803,6 +803,13 @@ __device__ inline Eigen::half GpuAtomicSub(Eigen::half* ptr,
   return detail::GpuAtomicCasHelper(
       ptr, [value](Eigen::half a) { return a - value; });
 }
+
+__device__ inline Eigen::bfloat16 GpuAtomicSub(Eigen::bfloat16* ptr,
+                                               Eigen::bfloat16 value) {
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](Eigen::bfloat16 a) { return a - value; });
+}
+
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicSub, CudaAtomicSub);
 
 // GpuAtomicMax
@@ -854,6 +861,12 @@ __device__ inline Eigen::half GpuAtomicMax(Eigen::half* ptr,
                                            Eigen::half value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](Eigen::half a) { return max(a, value); });
+}
+
+__device__ inline Eigen::bfloat16 GpuAtomicMax(Eigen::bfloat16* ptr,
+                                               Eigen::bfloat16 value) {
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](Eigen::bfloat16 a) { return max(a, value); });
 }
 
 #if TENSORFLOW_USE_ROCM || (__CUDA_ARCH__ < 320)
@@ -921,6 +934,12 @@ __device__ inline Eigen::half GpuAtomicMin(Eigen::half* ptr,
                                            Eigen::half value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](Eigen::half a) { return min(a, value); });
+}
+
+__device__ inline Eigen::bfloat16 GpuAtomicMin(Eigen::bfloat16* ptr,
+                                               Eigen::bfloat16 value) {
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](Eigen::bfloat16 a) { return min(a, value); });
 }
 
 #if TENSORFLOW_USE_ROCM || (__CUDA_ARCH__ < 320)

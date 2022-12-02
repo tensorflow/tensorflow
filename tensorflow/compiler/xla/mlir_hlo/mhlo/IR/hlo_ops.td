@@ -2194,6 +2194,13 @@ def MHLO_CustomCallOp: MHLO_Op<"custom_call",
        result tuple.
 
     See https://www.tensorflow.org/xla/operation_semantics#customcall.
+
+    Example:
+
+    ```mlir
+    %1 = mhlo.custom_call @foo(%arg0, %arg1) {backend_config = "bar", has_side_effect = true}
+          : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
+    ```
   }];
   let arguments = (ins
     Variadic<MHLO_TensorOrTokenOrTuple>:$inputs,
@@ -2207,6 +2214,7 @@ def MHLO_CustomCallOp: MHLO_Op<"custom_call",
         "::mlir::mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL">:
         $api_version,
     DefaultValuedOptionalAttr<MHLO_FlatSymbolRefArrayAttr, "{}">:$called_computations,
+    DefaultValuedOptionalAttr<MHLO_CustomCallScheduleAttr, "::mlir::mhlo::CustomCallSchedule::NONE">:$custom_call_schedule,
     OptionalAttr<MHLO_ArrayOfLayoutAttr>:$operand_layouts,
     OptionalAttr<MHLO_ArrayOfLayoutAttr>:$result_layouts,
     DefaultValuedOptionalAttr<
@@ -2231,6 +2239,11 @@ def MHLO_CustomCallOp: MHLO_Op<"custom_call",
       "::mlir::ArrayAttr":$called_computations,
       "::mlir::ArrayAttr":$operand_layouts,
       "::mlir::ArrayAttr":$result_layouts)>];
+
+  let assemblyFormat = [{
+    custom<CustomCallTarget>($call_target_name) `(` $inputs `)`
+      attr-dict `:` functional-type(operands, results)
+  }];
 }
 
 def MHLO_DotOp: MHLO_Op<"dot",
@@ -2251,7 +2264,6 @@ def MHLO_DotOp: MHLO_Op<"dot",
   // Dot op required custom exporter to pass the preferred element type
   // to Xla builder.
   let hasCustomHLOConverter = 1;
-  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
@@ -2630,7 +2642,8 @@ def MHLO_ReverseOp: MHLO_Op<"reverse",
   let hasFolder = 1;
 }
 
-def MHLO_PartitionIdOp : MHLO_Op<"partition_id", []> {
+def MHLO_PartitionIdOp : MHLO_Op<"partition_id", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "PartitionId operator";
   let description = [{
     Returns the value of the partition id of the currently executing device.
@@ -2860,6 +2873,28 @@ def MHLO_ReturnOp : MHLO_Op<"return", [Pure, Terminator]> {
 }
 
 def MHLO_TorchIndexSelectOp : MHLO_Op<"torch_index_select", [Pure]> {
+  let summary = "Torch Index Select operator";
+  let description = [{
+    Returns a new tensor which indexes the input tensor along dimension `dim`
+    using the entries in `index`.
+
+    The returned tensor has the same dimensions as `operand`, except for the
+    `dim`th dimension which is replaced by the shape of `index` without the
+    leading `batch_dims` dimensions;
+
+    The `batch_dims` attribute specifies the number of major batch dimensions
+    (0 or more) that act like a multidimensional loop over both the input and
+    the index.
+
+    Example:
+
+    ```mlir
+    %0 = "mhlo.torch_index_select"(%arg0, %arg1) {
+      batch_dims = 1 : i64, dim = 2 : i64
+    } : (tensor<8x128x3072x64xf32>, tensor<8x16x1024xi32>) -> tensor<8x128x16x1024x64xf32>
+    ```
+  }];
+
   let arguments = (ins
     MHLO_Tensor:$operand,
     MHLO_Tensor:$index,

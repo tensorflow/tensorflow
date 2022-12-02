@@ -36,7 +36,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/compiler/xla/pjrt/gpu/nccl_id_store.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_cudamallocasync_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_ROCM
@@ -92,7 +92,7 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateCudaAsyncAllocator(
                 << " for BFCAllocator.";
     }
 
-    auto allocator = std::make_unique<tensorflow::GpuCudaMallocAsyncAllocator>(
+    auto allocator = std::make_unique<se::GpuCudaMallocAsyncAllocator>(
         tsl::PlatformDeviceId(device_ordinal), allocator_memory, preallocate);
     allocator->SetStreamAndPreallocateMemory(
         ordinal_and_device.second->compute_stream()

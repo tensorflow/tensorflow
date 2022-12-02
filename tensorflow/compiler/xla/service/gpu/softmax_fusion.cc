@@ -45,6 +45,18 @@ bool HasDefaultLayout(const Shape& shape) {
          LayoutUtil::IsMonotonicWithDim0Major(shape.layout());
 }
 
+bool ShapeInvolvesComplexNumbers(const Shape& shape) {
+  if (shape.IsArray() &&
+      (shape.element_type() == C64 || shape.element_type() == C128)) {
+    return true;
+  } else if (shape.IsTuple()) {
+    for (auto& tuple_shape : shape.tuple_shapes())
+      if (ShapeInvolvesComplexNumbers(tuple_shape)) return true;
+  }
+
+  return false;
+}
+
 bool MatchesSoftmaxPattern(HloInstruction* instr) {
   // Match the following pattern:
   //
@@ -61,6 +73,9 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
   // elementwise ops. The operand of the broadcast can be a reshape that removes
   // 1-sized dimensions. Around the reduce can be a convert op. Also, initially
   // we only support major-to-minor layouts.
+  //
+  // If any op between the producer and the root (both included) involves arrays
+  // of complex numbers, the pattern does not match.
 
   HloInstruction* root;
   HloInstruction* broadcast;
@@ -74,6 +89,8 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
                  // The root operation should be an elementwise binary op of
                  // rank 2.
                  .WithPredicate([](const HloInstruction* instr) {
+                   if (!instr->shape().IsArray()) return false;
+
                    int64_t rank = instr->shape().rank();
                    return instr->IsElementwiseBinary() &&
                           // If the product of the first dimensions is 1, it
@@ -164,6 +181,19 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
     has_major_to_minor_layout = false;
   }
 
+  if (ShapeInvolvesComplexNumbers(root->shape()) ||
+      ShapeInvolvesComplexNumbers(broadcast->shape()) ||
+      ShapeInvolvesComplexNumbers(reduce_or_unary->shape()) ||
+      ShapeInvolvesComplexNumbers(producer->shape())) {
+    return false;
+  }
+
+  for (HloInstruction* operand : producer->operands()) {
+    if (ShapeInvolvesComplexNumbers(operand->shape())) {
+      return false;
+    }
+  }
+
   // Check whether 'producer' is a direct or indirect operand of 'root'.
   const HloInstruction* maybe_common_operand = producer;
   const HloInstruction* current_operand = root->operand(0);
@@ -172,7 +202,8 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
     // to be an unary elementwise op with a single user.
     if (current_operand->operand_count() != 1 ||
         !current_operand->IsElementwise() ||
-        current_operand->user_count() > 1) {
+        current_operand->user_count() > 1 ||
+        ShapeInvolvesComplexNumbers(current_operand->shape())) {
       return false;
     }
     if (!HasDefaultLayout(current_operand->shape())) {
@@ -260,11 +291,18 @@ Status ReplaceSoftmaxWithCustomCall(HloInstruction* root,
     // constants in. This results in an error like:
     // 'memref.get_global' op '__constant_150xf32' does not reference a valid
     // global memref
+    // TODO(bchetioui): We currently do not have reliable support for complex
+    // numbers. Since the producer is only matched if it does not involve
+    // complex numbers, all that is left is to check the operands of the
+    // potentially fuseable preceding operations.
     if ((current->user_count() == 1 ||
          (current == producer && current->user_count() == 2)) &&
         ((current->IsElementwise() &&
           current->opcode() != HloOpcode::kConstant) ||
-         IsSupportedBroadcast(current))) {
+         IsSupportedBroadcast(current)) &&
+        llvm::none_of(current->operands(), [](HloInstruction* operand) {
+          return ShapeInvolvesComplexNumbers(operand->shape());
+        })) {
       for (HloInstruction* operand : current->operands()) {
         if (!visited.contains(operand)) {
           visited.insert(operand);

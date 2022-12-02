@@ -222,7 +222,7 @@ func.func @outfeed_1_input(%data: tensor<2xui32>, %token: !mhlo.token)
     %res = "mhlo.outfeed"(%data, %token) {
       outfeed_config = "", xla_shape = "token[]"
       } : (tensor<2xui32>, !mhlo.token) -> !mhlo.token
-    return %res : !mhlo.token
+    func.return %res : !mhlo.token
 }
 
 // CHECK-LABEL: @outfeed_1_input

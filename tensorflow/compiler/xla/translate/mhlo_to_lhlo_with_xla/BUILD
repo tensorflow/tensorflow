@@ -1,5 +1,5 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -65,7 +65,7 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "xla-translate-opt",
     testonly = True,
     srcs = ["xla_translate_opt_main.cc"],
@@ -77,6 +77,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service/cpu:hlo_xla_runtime_pipeline",  # buildcleaner: keep
         "//tensorflow/tsl/platform:platform_port",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
@@ -84,7 +85,7 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "xla-translate-gpu-opt",
     testonly = True,
     srcs = ["xla_translate_opt_main.cc"],
@@ -95,7 +96,9 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
         "//tensorflow/tsl/platform:platform_port",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",

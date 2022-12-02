@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -699,7 +700,7 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
         auto tileOp = set.template getDefiningOp<TileOp>();
 
         if (!tileOp) {
-          return op.emitOpError(
+          return terminator.emitOpError(
               "expected the SetYieldOp terminator of gml_st loop to have a "
               "TileOp set");
         }
@@ -708,12 +709,26 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
             return mapping.lookupOrDefault(value);
           }));
         };
-        results.push_back(rewriter.create<tensor::InsertSliceOp>(
-            op.getLoc(), dst.getType(), mapping.lookupOrDefault(src),
-            mapping.lookupOrDefault(dst), getMappedValues(tileOp.getOffsets()),
-            getMappedValues(tileOp.getSizes()),
-            getMappedValues(tileOp.getStrides()), tileOp.getStaticOffsets(),
-            tileOp.getStaticSizes(), tileOp.getStaticStrides()));
+
+        if (dst.getType().template isa<TensorType>()) {
+          results.push_back(rewriter.create<tensor::InsertSliceOp>(
+              op.getLoc(), dst.getType(), mapping.lookupOrDefault(src),
+              mapping.lookupOrDefault(dst),
+              getMappedValues(tileOp.getOffsets()),
+              getMappedValues(tileOp.getSizes()),
+              getMappedValues(tileOp.getStrides()), tileOp.getStaticOffsets(),
+              tileOp.getStaticSizes(), tileOp.getStaticStrides()));
+        } else if (dst.getType().template isa<VectorType>()) {
+          results.push_back(rewriter.create<vector::InsertStridedSliceOp>(
+              op.getLoc(), dst.getType(), mapping.lookupOrDefault(src),
+              mapping.lookupOrDefault(dst),
+              rewriter.getI64ArrayAttr(tileOp.getStaticSizes()),
+              rewriter.getI64ArrayAttr(tileOp.getStaticStrides())));
+        } else {
+          return op.emitOpError(
+              "expected output of gml_st loop to be either a tensor or a "
+              "vector");
+        }
       }
       rewriter.replaceOp(op, results);
       return success();
@@ -1005,11 +1020,143 @@ struct RefineForOpShape : public OpRewritePattern<ForOp> {
     return success();
   }
 };
+
+// Fold away ForOp iter arguments when:
+// 1) The op yields the iter arguments.
+// 2) The iter arguments have no use and the corresponding outer region
+// iterators (inputs) are yielded.
+// 3) The iter arguments have no use and the corresponding (operation) results
+// have no use.
+//
+// These arguments must be defined outside of the ForOp region and can just be
+// forwarded after simplifying the op inits, yields and returns.
+//
+// The implementation uses `mergeBlockBefore` to steal the content of the
+// original ForOp and avoid cloning.
+struct ForOpIterArgsFolder : public OpRewritePattern<ForOp> {
+  using OpRewritePattern<ForOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ForOp forOp,
+                                PatternRewriter &rewriter) const final {
+    bool canonicalize = false;
+    auto yieldOp = forOp.getTerminator();
+
+    // An internal flat vector of block transfer
+    // arguments `newBlockTransferArgs` keeps the 1-1 mapping of original to
+    // transformed block argument mappings. This plays the role of a
+    // BlockAndValueMapping for the particular use case of calling into
+    // `mergeBlockBefore`.
+    SmallVector<bool, 4> keepMask;
+    keepMask.reserve(yieldOp.getNumUpdates());
+    SmallVector<Value, 4> newBlockTransferArgs, newOutputArgs, newResultValues;
+    newBlockTransferArgs.reserve(1 + forOp.getNumOutputs());
+    newBlockTransferArgs.push_back(Value());  // iv placeholder with null value
+    newOutputArgs.reserve(forOp.getNumOutputs());
+    newResultValues.reserve(forOp.getNumResults());
+    // [iter from outside, iter inside region, op results, yield sources]
+    for (auto [out, arg, res, yieldSrc] :
+         llvm::zip(forOp.getOutputs(), forOp.getRegionOutputArgs(),
+                   forOp.getResults(), yieldOp.getSrcs())) {
+      // Forwarded is `true` when:
+      // 1) The region `iter` argument is yielded.
+      // 2) The region `iter` argument has no use, and the corresponding iter
+      // operand (input) is yielded.
+      // 3) The region `iter` argument has no use, and the corresponding op
+      // result has no use.
+      bool forwarded =
+          ((arg == yieldSrc) ||
+           (arg.use_empty() && (out == yieldSrc || res.use_empty())));
+      keepMask.push_back(!forwarded);
+      canonicalize |= forwarded;
+      if (forwarded) {
+        newBlockTransferArgs.push_back(out);
+        newResultValues.push_back(out);
+        continue;
+      }
+      newOutputArgs.push_back(out);
+      newBlockTransferArgs.push_back(Value());  // placeholder with null value
+      newResultValues.push_back(Value());       // placeholder with null value
+    }
+
+    if (!canonicalize) return failure();
+
+    auto newForOp = rewriter.create<ForOp>(
+        forOp.getLoc(),
+        llvm::to_vector<1>(llvm::map_range(
+            newOutputArgs, [&](Value v) -> Type { return v.getType(); })),
+        forOp.getLowerBound(), forOp.getUpperBound(), forOp.getStep(),
+        newOutputArgs, nullptr);
+    // The new loop needs to keep all attributes from the old one, except for
+    // "operand_segment_sizes" which captures the outdated information of the
+    // old iteration domain.
+    for (const auto &namedAttr : forOp->getAttrs()) {
+      if (namedAttr.getName() == ForOp::getOperandSegmentSizeAttr()) continue;
+      newForOp->setAttr(namedAttr.getName(), namedAttr.getValue());
+    }
+    Block &newBlock = newForOp.getRegion().front();
+
+    // Replace the null placeholders with newly constructed values.
+    newBlockTransferArgs[0] = newBlock.getArgument(0);  // iv
+    for (unsigned idx = 0, collapsedIdx = 0, e = newResultValues.size();
+         idx != e; ++idx) {
+      Value &blockTransferArg = newBlockTransferArgs[1 + idx];
+      Value &newResultVal = newResultValues[idx];
+      assert((blockTransferArg && newResultVal) ||
+             (!blockTransferArg && !newResultVal));
+      if (!blockTransferArg) {
+        blockTransferArg = newForOp.getRegionOutputArgs()[collapsedIdx];
+        newResultVal = newForOp.getResult(collapsedIdx++);
+      }
+    }
+
+    Block &oldBlock = forOp.getRegion().front();
+    assert(oldBlock.getNumArguments() == newBlockTransferArgs.size() &&
+           "unexpected argument size mismatch");
+
+    // No results case: the ForOp builder already created a zero
+    // result terminator. Merge before this terminator and just get rid of the
+    // original terminator that has been merged in.
+    if (newOutputArgs.empty()) {
+      auto newYieldOp = newForOp.getTerminator();
+      rewriter.mergeBlockBefore(&oldBlock, newYieldOp, newBlockTransferArgs);
+      rewriter.eraseOp(newBlock.getTerminator()->getPrevNode());
+      rewriter.replaceOp(forOp, newResultValues);
+      return success();
+    }
+
+    // No terminator case: merge and rewrite the merged terminator.
+    auto cloneFilteredTerminator = [&](SetYieldOp mergedTerminator) {
+      OpBuilder::InsertionGuard g(rewriter);
+      rewriter.setInsertionPoint(mergedTerminator);
+      SmallVector<Value, 4> filteredSrcs, filteredDsts, filteredSets;
+      filteredSrcs.reserve(newResultValues.size());
+      filteredDsts.reserve(newResultValues.size());
+      filteredSets.reserve(newResultValues.size());
+      for (unsigned idx = 0, e = keepMask.size(); idx < e; ++idx) {
+        if (keepMask[idx]) {
+          filteredSrcs.push_back(mergedTerminator.getSrcs()[idx]);
+          filteredDsts.push_back(mergedTerminator.getDsts()[idx]);
+          filteredSets.push_back(mergedTerminator.getSets()[idx]);
+        }
+      }
+      rewriter.create<SetYieldOp>(mergedTerminator.getLoc(), filteredSrcs,
+                                  filteredDsts, filteredSets);
+    };
+
+    rewriter.mergeBlocks(&oldBlock, &newBlock, newBlockTransferArgs);
+    auto mergedYieldOp = newForOp.getTerminator();
+    cloneFilteredTerminator(mergedYieldOp);
+    rewriter.eraseOp(mergedYieldOp);
+    rewriter.replaceOp(forOp, newResultValues);
+    return success();
+  }
+};
 }  // namespace
 
 void ForOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                         MLIRContext *context) {
-  results.add<CollapseSingleIterationLoops<ForOp>, RefineForOpShape>(context);
+  results.add<CollapseSingleIterationLoops<ForOp>, RefineForOpShape,
+              ForOpIterArgsFolder>(context);
 }
 
 namespace {

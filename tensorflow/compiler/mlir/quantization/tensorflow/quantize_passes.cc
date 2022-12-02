@@ -123,6 +123,7 @@ void AddQuantizePtqPreCalibrationPasses(
 void AddQuantizePtqPostCalibrationPasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options) {
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(

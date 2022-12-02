@@ -76,6 +76,48 @@ TEST(XlaCompileTest, LoadGpuExecutable) {
   EXPECT_EQ(expected, output);
 }
 
+TEST(XlaCompileTest, LoadGpuExecutableWithConstant) {
+  std::string path = tsl::GetDataDependencyFilepath(
+      "tensorflow/compiler/xla/service/"
+      "xla_aot_compile_test_gpu_executable_constant");
+  std::string serialized_aot_result;
+  TF_ASSERT_OK(
+      tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
+
+  // Get a LocalClient
+  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                          PlatformUtil::GetPlatform("CUDA"));
+  ASSERT_GT(platform->VisibleDeviceCount(), 0);
+
+  LocalClientOptions local_client_options;
+  local_client_options.set_platform(platform);
+  TF_ASSERT_OK_AND_ASSIGN(
+      LocalClient * client,
+      ClientLibrary::GetOrCreateLocalClient(local_client_options));
+
+  // Load from AOT result.
+  ExecutableBuildOptions executable_build_options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<LocalExecutable> local_executable,
+      client->Load(serialized_aot_result, executable_build_options));
+
+  // Run loaded excutable.
+  Literal input = LiteralUtil::CreateR1<double>({3.0f, 3.0f, 3.0f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      ScopedShapedBuffer array,
+      client->LiteralToShapedBuffer(input, client->default_device_ordinal()));
+  ExecutableRunOptions executable_run_options;
+  executable_run_options.set_allocator(client->backend().memory_allocator());
+  TF_ASSERT_OK_AND_ASSIGN(
+      ScopedShapedBuffer result,
+      local_executable->Run({&array}, executable_run_options));
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal output,
+                          client->ShapedBufferToLiteral(result));
+  Literal expected = LiteralUtil::CreateR1<double>({4.0f, 5.0f, 6.0f});
+  EXPECT_EQ(expected, output);
+}
+
 }  // namespace
 }  // namespace xla_compile
 }  // namespace xla

@@ -72,10 +72,9 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 
 // VECTORIZED:         %[[MAIN_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]]) to (%[[IUB:.*]], %[[JUB:.*]]) step
 // VECTORIZED:           %[[MAIN_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) to (%[[KUB:.*]]) {{.*}} outs (%[[ARG:.*]] = %[[CST]]:
-// VECTORIZED:             %[[MAIN_FOR_SLICE:.*]] = gml_st.materialize %[[ARG]]
 // VECTORIZED:             %[[LHS_READ:.*]] = vector.transfer_read {{.*}} vector<8x2xf32>
 // VECTORIZED:             %[[RHS_READ:.*]] = vector.transfer_read {{.*}} vector<2x4xf32>
-// VECTORIZED:             %[[CONTRACT:.*]] = vector.contract {{.*}} %[[LHS_READ]], %[[RHS_READ]], %[[MAIN_FOR_SLICE]]
+// VECTORIZED:             %[[CONTRACT:.*]] = vector.contract {{.*}} %[[LHS_READ]], %[[RHS_READ]], %[[ARG]]
 // VECTORIZED-NEXT:        gml_st.set_yield %[[CONTRACT]]
 // VECTORIZED:           %[[WRITE:.*]] = vector.transfer_write %[[MAIN_FOR]], %[[INIT]]
 // VECTORIZED:           %[[EXTRACT:.*]] = tensor.extract_slice %[[WRITE]]

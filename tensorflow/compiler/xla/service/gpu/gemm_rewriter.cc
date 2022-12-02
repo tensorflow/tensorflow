@@ -136,6 +136,18 @@ HloInstruction *MaybeConstantFoldBias(HloInstruction *bias) {
   return bias;
 }
 
+auto Gemm(HloInstruction **instr) {
+  return m::CustomCall(instr, kGemmCallTarget);
+}
+
+auto CublasLtMatmul(HloInstruction **instr) {
+  return m::CustomCall(instr, kCublasLtMatmulCallTarget);
+}
+
+auto GemmOrCublasLtMatmul(HloInstruction **instr) {
+  return m::CustomCall(instr, {kGemmCallTarget, kCublasLtMatmulCallTarget});
+}
+
 // The rewriting proceeds in a bottom-up way:
 //
 // (kDot A B) is rewritten into a (kCustomCall:gemm A B)
@@ -188,9 +200,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     HloInstruction *alpha, *existing_gemm;
     if (Match(instr,
               m::MultiplyAnyOrder(
-                  m::CustomCall(&existing_gemm,
-                                {kGemmCallTarget, kCublasLtMatmulCallTarget})
-                      .WithOneUser(),
+                  GemmOrCublasLtMatmul(&existing_gemm).WithOneUser(),
                   m::Broadcast(m::ConstantScalar(&alpha)).WithOneUser()))) {
       TF_ASSIGN_OR_RETURN(auto config,
                           existing_gemm->backend_config<GemmBackendConfig>());
@@ -219,13 +229,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // Attempt to elide broadcast and fuse addition of a vector bias into GEMM,
     // including when slicing is applied to the result.
     if (Match(instr,
-              m::AddAnyOrder(
-                  m::OptionalUnaryOp(
-                      &optional_slice, {HloOpcode::kSlice},
-                      m::CustomCall(&existing_gemm, kCublasLtMatmulCallTarget)
-                          .WithOneUser())
-                      .WithOneUser(),
-                  m::Broadcast(&bias, m::Op()).WithOneUser()))) {
+              m::AddAnyOrder(m::OptionalUnaryOp(
+                                 &optional_slice, {HloOpcode::kSlice},
+                                 CublasLtMatmul(&existing_gemm).WithOneUser())
+                                 .WithOneUser(),
+                             m::Broadcast(&bias, m::Op()).WithOneUser()))) {
       TF_ASSIGN_OR_RETURN(
           bool was_fused,
           FuseVectorBiasAdd(
@@ -245,11 +253,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     //   bitcast(gemm(a, b, bitcast(broadcast(bias)))) (FuseMatrixBiasAdd)
     //
     if (Match(instr,
-              m::AddAnyOrder(m::Bitcast(m::CustomCall(&existing_gemm,
-                                                      kCublasLtMatmulCallTarget)
-                                            .WithOneUser())
-                                 .WithOneUser(),
-                             m::Broadcast(&bias, m::Op()).WithOneUser()))) {
+              m::AddAnyOrder(
+                  m::Bitcast(CublasLtMatmul(&existing_gemm).WithOneUser())
+                      .WithOneUser(),
+                  m::Broadcast(&bias, m::Op()).WithOneUser()))) {
       TF_ASSIGN_OR_RETURN(
           HloInstruction * new_add,
           MakeBinaryHlo(HloOpcode::kAdd, existing_gemm,
@@ -272,11 +279,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // The last stage of the transform may fail (because of any of the checks in
     // FuseMatrixBiasAdd), but if so that's okay -- we'll have done a useless
     // transformation, but it doesn't hurt anything.
-    if (Match(instr, m::AddAnyOrder(m::Bitcast(m::CustomCall(&existing_gemm,
-                                                             kGemmCallTarget)
-                                                   .WithOneUser())
-                                        .WithOneUser(),
-                                    m::Op(&bias)))) {
+    if (Match(instr,
+              m::AddAnyOrder(
+                  m::Bitcast(Gemm(&existing_gemm).WithOneUser()).WithOneUser(),
+                  m::Op(&bias)))) {
       HloInstruction *new_bitcast =
           MakeBitcastHlo(bias, existing_gemm->shape(), &bias->metadata());
       TF_ASSIGN_OR_RETURN(HloInstruction * new_add,
@@ -290,12 +296,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     if (Match(instr,
-              m::AddAnyOrder(
-                  m::Op(&existing_gemm)
-                      .WithCustomCallTarget(absl::Span<const absl::string_view>{
-                          kGemmCallTarget, kCublasLtMatmulCallTarget})
-                      .WithOneUser(),
-                  m::Op(&bias)))) {
+              m::AddAnyOrder(GemmOrCublasLtMatmul(&existing_gemm).WithOneUser(),
+                             m::Op(&bias)))) {
       return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
 
@@ -306,15 +308,14 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     HloInstruction *existing_gemm, *optional_slice_or_bitcast, *zeros;
     // Attempt to elide maximum and fuse ReLU activation into GEMM, including
     // when slicing or bitcasting is applied to the result.
-    if (Match(instr,
-              m::MaximumAnyOrder(
-                  m::OptionalUnaryOp(
-                      &optional_slice_or_bitcast,
-                      {HloOpcode::kBitcast, HloOpcode::kSlice},
-                      m::CustomCall(&existing_gemm, kCublasLtMatmulCallTarget)
-                          .WithOneUser())
-                      .WithOneUser(),
-                  m::Broadcast(&zeros, m::ConstantScalar(0)).WithOneUser()))) {
+    if (Match(
+            instr,
+            m::MaximumAnyOrder(
+                m::OptionalUnaryOp(&optional_slice_or_bitcast,
+                                   {HloOpcode::kBitcast, HloOpcode::kSlice},
+                                   CublasLtMatmul(&existing_gemm).WithOneUser())
+                    .WithOneUser(),
+                m::Broadcast(&zeros, m::ConstantScalar(0)).WithOneUser()))) {
       TF_RETURN_IF_ERROR(FuseReluActivation(
           instr, zeros, existing_gemm,
           (optional_slice_or_bitcast->opcode() == HloOpcode::kSlice ||
@@ -327,19 +328,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
   Status HandleConvert(HloInstruction *instr) override {
     HloInstruction *bias, *existing_gemm;
-    if (Match(
-            instr,
-            m::Convert(m::AddAnyOrder(
-                           m::Convert(m::CustomCall(&existing_gemm,
-                                                    {kGemmCallTarget,
-                                                     kCublasLtMatmulCallTarget})
-                                          .WithOneUser()
-                                          .WithElementType(BF16))
-                               .WithOneUser(),
-                           m::Convert(m::Op(&bias).WithElementType(BF16))
-                               .WithOneUser())
-                           .WithOneUser())
-                .WithElementType(BF16))) {
+    if (Match(instr,
+              m::Convert(
+                  m::AddAnyOrder(m::Convert(GemmOrCublasLtMatmul(&existing_gemm)
+                                                .WithOneUser()
+                                                .WithElementType(BF16))
+                                     .WithOneUser(),
+                                 m::Convert(m::Op(&bias).WithElementType(BF16))
+                                     .WithOneUser())
+                      .WithOneUser())
+                  .WithElementType(BF16))) {
       return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
     return OkStatus();

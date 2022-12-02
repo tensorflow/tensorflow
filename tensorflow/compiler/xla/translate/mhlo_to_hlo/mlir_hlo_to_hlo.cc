@@ -1532,6 +1532,9 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   auto aliasInfo =
       xla::ConvertCustomCallOutputOperandAliasing(op.getOutputOperandAliases());
   auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
+  auto custom_call_schedule =
+      xla::ConvertCustomCallSchedule(op.getCustomCallSchedule());
+  if (!custom_call_schedule.ok()) return failure();
   if (op.getCalledComputations().size() == 1) {
     mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
         op.getCalledComputations()[0].cast<FlatSymbolRefAttr>());
@@ -1543,7 +1546,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
         xla::TypeToShape(result.getType()), backend_config,
         op.getHasSideEffect(), output_operand_aliasing,
         /*literal=*/nullptr,
-        /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
+        /*schedule=*/*custom_call_schedule,
         /*api_version=*/*xla_api_version);
     return success();
   }
@@ -1558,7 +1561,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
         result_shape_with_layout, operand_shapes_with_layout, backend_config,
         op.getHasSideEffect(), output_operand_aliasing,
         /*literal=*/nullptr,
-        /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
+        /*schedule=*/*custom_call_schedule,
         /*api_version=*/*xla_api_version);
     return success();
   }
@@ -1568,7 +1571,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
                       xla::TypeToShape(result.getType()), backend_config,
                       op.getHasSideEffect(), output_operand_aliasing,
                       /*literal=*/nullptr,
-                      /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
+                      /*schedule=*/*custom_call_schedule,
                       /*api_version=*/*xla_api_version);
   return success();
 }

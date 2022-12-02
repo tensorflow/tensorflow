@@ -17,11 +17,11 @@ limitations under the License.
 #include "tensorflow/python/lib/core/float8.h"
 
 PYBIND11_MODULE(_pywrap_float8, m) {
-  tensorflow::RegisterNumpyFloat8e4m3();
+  tensorflow::RegisterNumpyFloat8e4m3fn();
   tensorflow::RegisterNumpyFloat8e5m2();
 
-  m.def("TF_float8_e4m3_type",
-        [] { return pybind11::handle(tensorflow::Float8e4m3Dtype()); });
+  m.def("TF_float8_e4m3fn_type",
+        [] { return pybind11::handle(tensorflow::Float8e4m3fnDtype()); });
 
   m.def("TF_float8_e5m2_type",
         [] { return pybind11::handle(tensorflow::Float8e5m2Dtype()); });
