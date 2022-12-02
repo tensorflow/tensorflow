@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 
 namespace tflite {
 namespace ops {
@@ -41,6 +42,12 @@ struct OpData {
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* op_data = new OpData();
   const auto* params = reinterpret_cast<const TfLiteBucketizeParams*>(buffer);
+
+  if(!FLATBUFFERS_LITTLEENDIAN){
+    int32_t *p = reinterpret_cast<int32_t*>(const_cast<float*>(params->boundaries));
+    for (size_t i = 0; i < params->num_boundaries; i++, p++)
+      *p = flatbuffers::EndianSwap(*p);
+  }
 
   op_data->boundaries = params->boundaries;
   op_data->num_boundaries = params->num_boundaries;
