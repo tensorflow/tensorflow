@@ -14,6 +14,7 @@ build --action_env=CACHEBUSTER=482629424
 
 # Use Python 3.X as installed in container image
 build --action_env PYTHON_BIN_PATH="/usr/bin/python3"
+build --action_env PYTHON_LIB_PATH="/usr/lib/tf_python"
 build --python_path="/usr/bin/python3"
 
 # Build TensorFlow v2
