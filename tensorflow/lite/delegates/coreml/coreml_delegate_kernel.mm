@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/coreml/coreml_delegate_kernel.h"
 
-#include "third_party/FP16/include/fp16.h"
+#include "fp16.h"  // from @FP16
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/types.h"
