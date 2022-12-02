@@ -22,11 +22,15 @@ limitations under the License.
 
 #include "rocm/include/roctracer/roctracer.h"
 #include "rocm/include/roctracer/roctracer_hip.h"
+#include "rocm/rocm_config.h"
+#if TF_ROCM_VERSION >= 50300
 #include "rocm/include/roctracer/roctracer_roctx.h"
+#else
+#include "rocm/include/roctracer/roctracer_hcc.h"
+#endif
 #include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
-#include "rocm/rocm_config.h"
 
 namespace stream_executor {
 namespace wrap {
