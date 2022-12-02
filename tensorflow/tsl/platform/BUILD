@@ -9,6 +9,10 @@ load(
     "cuda_cc_test",
     "cuda_library",
 )
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "rocm_copts",
+)
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/tsl:tsl.bzl",
@@ -1026,6 +1030,7 @@ cuda_library(
     name = "float8_test_lib",
     testonly = 1,
     srcs = ["float8_test.cu.cc"],
+    copts = rocm_copts(),
     deps = [
         ":float8",
         ":test",

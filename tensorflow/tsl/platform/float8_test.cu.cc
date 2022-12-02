@@ -14,8 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // Enable CPU or GPU device, depending on build configuration.
-// TODO(cantonios): configure test to also work for ROCm.
-#if GOOGLE_CUDA  // || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #else
 #define EIGEN_USE_THREADS
@@ -448,7 +447,7 @@ void synchronize(Device& device) {
   // Nothing.
 }
 
-#if GOOGLE_CUDA  // || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <>
 void synchronize<Eigen::GpuDevice>(Eigen::GpuDevice& device) {
   device.synchronize();
