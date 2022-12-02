@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -699,7 +700,7 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
         auto tileOp = set.template getDefiningOp<TileOp>();
 
         if (!tileOp) {
-          return op.emitOpError(
+          return terminator.emitOpError(
               "expected the SetYieldOp terminator of gml_st loop to have a "
               "TileOp set");
         }
@@ -708,12 +709,26 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
             return mapping.lookupOrDefault(value);
           }));
         };
-        results.push_back(rewriter.create<tensor::InsertSliceOp>(
-            op.getLoc(), dst.getType(), mapping.lookupOrDefault(src),
-            mapping.lookupOrDefault(dst), getMappedValues(tileOp.getOffsets()),
-            getMappedValues(tileOp.getSizes()),
-            getMappedValues(tileOp.getStrides()), tileOp.getStaticOffsets(),
-            tileOp.getStaticSizes(), tileOp.getStaticStrides()));
+
+        if (dst.getType().template isa<TensorType>()) {
+          results.push_back(rewriter.create<tensor::InsertSliceOp>(
+              op.getLoc(), dst.getType(), mapping.lookupOrDefault(src),
+              mapping.lookupOrDefault(dst),
+              getMappedValues(tileOp.getOffsets()),
+              getMappedValues(tileOp.getSizes()),
+              getMappedValues(tileOp.getStrides()), tileOp.getStaticOffsets(),
+              tileOp.getStaticSizes(), tileOp.getStaticStrides()));
+        } else if (dst.getType().template isa<VectorType>()) {
+          results.push_back(rewriter.create<vector::InsertStridedSliceOp>(
+              op.getLoc(), dst.getType(), mapping.lookupOrDefault(src),
+              mapping.lookupOrDefault(dst),
+              rewriter.getI64ArrayAttr(tileOp.getStaticSizes()),
+              rewriter.getI64ArrayAttr(tileOp.getStaticStrides())));
+        } else {
+          return op.emitOpError(
+              "expected output of gml_st loop to be either a tensor or a "
+              "vector");
+        }
       }
       rewriter.replaceOp(op, results);
       return success();
