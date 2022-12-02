@@ -288,7 +288,10 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
   <tf.Tensor: shape=(), dtype=int64, numpy=0>
 
   Args:
-    input: A `Tensor`.
+    input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+      `int32`, `uint8`, `int16`, `int8`, `complex64`, `int64`, `qint8`,
+      `quint8`, `qint32`, `bfloat16`, `uint16`, `complex128`, `half`, `uint32`,
+      `uint64`,`bool`.
     axis: An integer, the axis to reduce across. Default to 0.
     output_type: An optional output dtype (`tf.int32` or `tf.int64`). Defaults
       to `tf.int64`.
@@ -330,7 +333,7 @@ def argmin_v2(input, axis=None, output_type=dtypes.int64, name=None):
     input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
       `int32`, `uint8`, `int16`, `int8`, `complex64`, `int64`, `qint8`,
       `quint8`, `qint32`, `bfloat16`, `uint16`, `complex128`, `half`, `uint32`,
-      `uint64`.
+      `uint64`,`bool`.
     axis: A `Tensor`. Must be one of the following types: `int32`, `int64`.
       int32 or int64, must be in the range `-rank(input), rank(input))`.
       Describes which axis of the input Tensor to reduce across. For vectors,
