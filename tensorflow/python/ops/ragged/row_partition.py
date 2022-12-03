@@ -762,10 +762,10 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     if self._value_rowids is not None:
       return self._value_rowids
-    result = segment_id_ops.row_splits_to_segment_ids(self._row_splits)
+    value_rowids = segment_id_ops.row_splits_to_segment_ids(self._row_splits)
     if allow_persist:
-      self._value_rowids = result
-    return result
+      self._value_rowids = value_rowids
+    return value_rowids
 
   def nvals(self):
     """Returns the number of values partitioned by this `RowPartition`.
@@ -849,10 +849,10 @@ class RowPartition(composite_tensor.CompositeTensor):
     if self._row_lengths is not None:
       return self._row_lengths
     splits = self._row_splits
-    result = splits[1:] - splits[:-1]
+    row_lengths = splits[1:] - splits[:-1]
     if allow_persist:
-      self._row_lengths = result
-    return result
+      self._row_lengths = row_lengths
+    return row_lengths
 
   @property
   def static_nrows(self):
