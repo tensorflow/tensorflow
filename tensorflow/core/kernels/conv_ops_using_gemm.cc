@@ -526,10 +526,8 @@ class Conv2DUsingGemmOp : public BinaryOp<T> {
     OP_REQUIRES_OK(context,
                    GetWindowedOutputSize(input_cols, filter_cols, stride_cols,
                                          padding_, &out_cols, &pad_cols));
-    TensorShape out_shape;
-    OP_REQUIRES_OK(context,
-                   ShapeFromFormatWithStatus(data_format_, batch, out_rows,
-                                             out_cols, out_depth, &out_shape));
+    TensorShape out_shape =
+        ShapeFromFormat(data_format_, batch, out_rows, out_cols, out_depth);
 
     // Output tensor is of the following dimensions:
     // [ in_batch, out_rows, out_cols, out_depth ]

@@ -745,10 +745,8 @@ class FusedConv2DOpTest : public OpsTestBase {
 
     if (v > 1) {
       {
-        TensorShape shape;
-        TF_EXPECT_OK(
-            ShapeFromFormatWithStatus(FORMAT_NCHW_VECT_C, n, h, w, ic, &shape));
-        Tensor input_data_nchwv(dtype, shape);
+        Tensor input_data_nchwv(
+            dtype, ShapeFromFormat(FORMAT_NCHW_VECT_C, n, h, w, ic));
         input_data_nchwv.tensor<T, 5>() =
             input_data.shaped<T, 5>({n, h, w, ic / v, v})
                 .shuffle(Eigen::array<int, 5>{0, 3, 1, 2, 4});
@@ -812,10 +810,8 @@ class FusedConv2DOpTest : public OpsTestBase {
       ASSERT_TRUE(
           GetWindowedOutputSize(w, kw, stride, padding_type, &ow, &ow_padding)
               .ok());
-      TensorShape shape;
-      TF_EXPECT_OK(
-          ShapeFromFormatWithStatus(FORMAT_NCHW_VECT_C, n, oh, ow, oc, &shape));
-      side_input = Tensor(dtype, shape);
+      side_input =
+          Tensor(dtype, ShapeFromFormat(FORMAT_NCHW_VECT_C, n, oh, ow, oc));
       side_input.flat<T>() = side_input.flat<T>().setConstant(0);
     }
 
@@ -867,10 +863,7 @@ class FusedConv2DOpTest : public OpsTestBase {
       // Convert the output from NCHW_VECT_C to NHWC
       const int oh = GetTensorDim(*output, FORMAT_NCHW_VECT_C, 'H');
       const int ow = GetTensorDim(*output, FORMAT_NCHW_VECT_C, 'W');
-      TensorShape shape;
-      TF_EXPECT_OK(
-          ShapeFromFormatWithStatus(FORMAT_NHWC, n, oh, ow, oc, &shape));
-      Tensor output_nhwc(dtype, shape);
+      Tensor output_nhwc(dtype, ShapeFromFormat(FORMAT_NHWC, n, oh, ow, oc));
       output_nhwc.tensor<T, 4>() =
           output->tensor<T, 5>()
               .shuffle(Eigen::array<int, 5>{0, 2, 3, 1, 4})

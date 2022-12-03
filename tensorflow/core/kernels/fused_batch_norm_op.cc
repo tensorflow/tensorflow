@@ -133,20 +133,16 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ true> {
       const int64_t in_rows = GetTensorDim(x_input, tensor_format, 'H');
       const int64_t in_cols = GetTensorDim(x_input, tensor_format, 'W');
       const int64_t in_depths = GetTensorDim(x_input, tensor_format, 'C');
-      TensorShape transformed_x_shape;
-      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
-                                  FORMAT_NHWC, in_batch, in_rows, in_cols,
-                                  in_depths, &transformed_x_shape));
-      OP_REQUIRES_OK(
-          context, context->allocate_temp(DataTypeToEnum<T>::value,
-                                          transformed_x_shape, &transformed_x));
-      TensorShape transformed_y_shape;
-      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
-                                  FORMAT_NHWC, in_batch, in_rows, in_cols,
-                                  in_depths, &transformed_y_shape));
-      OP_REQUIRES_OK(
-          context, context->allocate_temp(DataTypeToEnum<T>::value,
-                                          transformed_y_shape, &transformed_y));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_x));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_y));
       // Perform NCHW to NHWC
       std::vector<int32> perm = {0, 2, 3, 1};
       OP_REQUIRES_OK(
@@ -278,20 +274,16 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ false> {
       const int64_t in_rows = GetTensorDim(x_input, tensor_format, 'H');
       const int64_t in_cols = GetTensorDim(x_input, tensor_format, 'W');
       const int64_t in_depths = GetTensorDim(x_input, tensor_format, 'C');
-      TensorShape transformed_x_shape;
-      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
-                                  FORMAT_NHWC, in_batch, in_rows, in_cols,
-                                  in_depths, &transformed_x_shape));
-      OP_REQUIRES_OK(
-          context, context->allocate_temp(DataTypeToEnum<T>::value,
-                                          transformed_x_shape, &transformed_x));
-      TensorShape transformed_y_shape;
-      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
-                                  FORMAT_NHWC, in_batch, in_rows, in_cols,
-                                  in_depths, &transformed_y_shape));
-      OP_REQUIRES_OK(
-          context, context->allocate_temp(DataTypeToEnum<T>::value,
-                                          transformed_y_shape, &transformed_y));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_x));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_y));
       // Perform NCHW to NHWC
       std::vector<int32> perm = {0, 2, 3, 1};
       OP_REQUIRES_OK(
@@ -383,31 +375,21 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
       const int64_t in_rows = GetTensorDim(x_input, tensor_format, 'H');
       const int64_t in_cols = GetTensorDim(x_input, tensor_format, 'W');
       const int64_t in_depths = GetTensorDim(x_input, tensor_format, 'C');
-      TensorShape transformed_y_backprop_input_shape;
-      OP_REQUIRES_OK(context,
-                     ShapeFromFormatWithStatus(
-                         FORMAT_NHWC, in_batch, in_rows, in_cols, in_depths,
-                         &transformed_y_backprop_input_shape));
-      OP_REQUIRES_OK(context,
-                     context->allocate_temp(DataTypeToEnum<T>::value,
-                                            transformed_y_backprop_input_shape,
-                                            &transformed_y_backprop_input));
-      TensorShape transformed_x_input_shape;
-      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
-                                  FORMAT_NHWC, in_batch, in_rows, in_cols,
-                                  in_depths, &transformed_x_input_shape));
-      OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
-                                                     transformed_x_input_shape,
-                                                     &transformed_x_input));
-      TensorShape transformed_x_backprop_output_shape;
-      OP_REQUIRES_OK(context,
-                     ShapeFromFormatWithStatus(
-                         FORMAT_NHWC, in_batch, in_rows, in_cols, in_depths,
-                         &transformed_x_backprop_output_shape));
-      OP_REQUIRES_OK(context,
-                     context->allocate_temp(DataTypeToEnum<T>::value,
-                                            transformed_x_backprop_output_shape,
-                                            &transformed_x_backprop_output));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_y_backprop_input));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_x_input));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_x_backprop_output));
       // Perform NCHW to NHWC
       std::vector<int32> perm = {0, 2, 3, 1};
       OP_REQUIRES_OK(
@@ -889,26 +871,22 @@ struct FusedBatchNormImplGPU {
     if (tensor_format == compute_format) {
       y_ptr = StreamExecutorUtil::AsDeviceMemory<T>(*y);
     } else if (tensor_format == FORMAT_NHWC && compute_format == FORMAT_NCHW) {
-      TensorShape x_transformed_shape;
-      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
-                                  compute_format, batch_size, height, width,
-                                  channels, &x_transformed_shape));
-      OP_REQUIRES_OK(
-          context, context->allocate_temp(DataTypeToEnum<T>::value,
-                                          x_transformed_shape, &x_transformed));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(compute_format, batch_size,
+                                                  height, width, channels),
+                                  &x_transformed));
       functor::NHWCToNCHW<GPUDevice, T, 4>()(
           context->eigen_device<GPUDevice>(),
           const_cast<const Tensor&>(x_maybe_transformed).tensor<T, 4>(),
           x_transformed.tensor<T, 4>());
       x_maybe_transformed = x_transformed;
 
-      TensorShape y_transformed_shape;
-      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
-                                  compute_format, batch_size, height, width,
-                                  channels, &y_transformed_shape));
-      OP_REQUIRES_OK(
-          context, context->allocate_temp(DataTypeToEnum<T>::value,
-                                          y_transformed_shape, &y_transformed));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(compute_format, batch_size,
+                                                  height, width, channels),
+                                  &y_transformed));
       y_ptr = StreamExecutorUtil::AsDeviceMemory<T>(y_transformed);
     } else {
       context->SetStatus(errors::Internal(
@@ -1153,14 +1131,11 @@ struct FusedBatchNormGradImplGPU {
       x_backprop_ptr = StreamExecutorUtil::AsDeviceMemory<T>(*x_backprop);
     } else if (tensor_format == FORMAT_NHWC && compute_format == FORMAT_NCHW) {
       // Transform inputs from 'NHWC' to 'NCHW'
-      TensorShape y_backprop_transformed_shape;
-      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
-                                  FORMAT_NCHW, batch_size, height, width,
-                                  channels, &y_backprop_transformed_shape));
-      OP_REQUIRES_OK(context,
-                     context->allocate_temp(DataTypeToEnum<T>::value,
-                                            y_backprop_transformed_shape,
-                                            &y_backprop_transformed));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NCHW, batch_size,
+                                                  height, width, channels),
+                                  &y_backprop_transformed));
       functor::NHWCToNCHW<GPUDevice, T, 4>()(
           context->eigen_device<GPUDevice>(),
           const_cast<const Tensor&>(y_backprop_maybe_transformed)
@@ -1168,13 +1143,11 @@ struct FusedBatchNormGradImplGPU {
           y_backprop_transformed.tensor<T, 4>());
       y_backprop_maybe_transformed = y_backprop_transformed;
 
-      TensorShape x_transformed_shape;
-      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(FORMAT_NCHW, batch_size,
-                                                        height, width, channels,
-                                                        &x_transformed_shape));
-      OP_REQUIRES_OK(
-          context, context->allocate_temp(DataTypeToEnum<T>::value,
-                                          x_transformed_shape, &x_transformed));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NCHW, batch_size,
+                                                  height, width, channels),
+                                  &x_transformed));
       functor::NHWCToNCHW<GPUDevice, T, 4>()(
           context->eigen_device<GPUDevice>(),
           const_cast<const Tensor&>(x_maybe_transformed).tensor<T, 4>(),
@@ -1182,14 +1155,11 @@ struct FusedBatchNormGradImplGPU {
       x_maybe_transformed = x_transformed;
 
       // Allocate memory for transformed outputs in 'NCHW'
-      TensorShape x_backprop_transformed_shape;
-      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
-                                  FORMAT_NCHW, batch_size, height, width,
-                                  channels, &x_backprop_transformed_shape));
-      OP_REQUIRES_OK(context,
-                     context->allocate_temp(DataTypeToEnum<T>::value,
-                                            x_backprop_transformed_shape,
-                                            &x_backprop_transformed));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NCHW, batch_size,
+                                                  height, width, channels),
+                                  &x_backprop_transformed));
       x_backprop_ptr =
           StreamExecutorUtil::AsDeviceMemory<T>(x_backprop_transformed);
     } else {
@@ -1505,10 +1475,8 @@ class FusedBatchNormOpBase : public OpKernel {
       int64_t in_rows = GetTensorDim(x, tensor_format_, '1');
       int64_t in_cols = GetTensorDim(x, tensor_format_, '2');
       const int64_t in_depth = GetTensorDim(x, tensor_format_, 'C');
-      OP_REQUIRES_OK(context,
-                     ShapeFromFormatWithStatus(tensor_format_, in_batch,
-                                               {{in_planes, in_rows * in_cols}},
-                                               in_depth, &dest_shape));
+      dest_shape = ShapeFromFormat(tensor_format_, in_batch,
+                                   {{in_planes, in_rows * in_cols}}, in_depth);
       OP_REQUIRES(context, x.CopyFrom(x, dest_shape),
                   errors::InvalidArgument("Error during tensor copy."));
     }
@@ -1752,10 +1720,8 @@ class FusedBatchNormGradOpBase : public OpKernel {
       int64_t in_rows = GetTensorDim(x, tensor_format_, '1');
       int64_t in_cols = GetTensorDim(x, tensor_format_, '2');
       const int64_t in_depth = GetTensorDim(x, tensor_format_, 'C');
-      OP_REQUIRES_OK(context,
-                     ShapeFromFormatWithStatus(tensor_format_, in_batch,
-                                               {{in_planes, in_rows * in_cols}},
-                                               in_depth, &dest_shape));
+      dest_shape = ShapeFromFormat(tensor_format_, in_batch,
+                                   {{in_planes, in_rows * in_cols}}, in_depth);
       OP_REQUIRES(context, x.CopyFrom(x, dest_shape),
                   errors::InvalidArgument("Error during tensor copy."));
       OP_REQUIRES(context, y_backprop.CopyFrom(y_backprop, dest_shape),
