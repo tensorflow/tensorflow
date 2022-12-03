@@ -27,6 +27,7 @@ from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
+from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_gradient
@@ -2638,11 +2639,27 @@ class VariableSpec(tensor_spec.DenseSpec):
 
   # TraceType method
   def _placeholder_value(self, placeholder_context):
-    if self.alias_id is None:
-      raise NotImplementedError(f"VariableSpec._placeholder_value doesn't "
-                                f"support alias_id=None, got self: {self}.")
+    if placeholder_context.use_default_placeholder:
+      return super()._placeholder_value(placeholder_context)
 
-    return super()._placeholder_value(placeholder_context)
+    default_graph = ops.get_default_graph()
+    with default_graph.outer_graph.as_default():
+      if placeholder_context.has_placeholder(self.alias_id):
+        # Get reference to the existing variable if alias_id already
+        # exists in the PlaceholderContext
+        variable = placeholder_context.get_placeholder(self.alias_id)
+      else:
+        placeholder = graph_placeholder(dtypes.resource, [], name=self.name)
+        variable = self._from_components([placeholder])
+        if self.alias_id is not None:
+          placeholder_context.add_placeholder(self.alias_id, variable)
+    # Capture the Variable's placeholder within the default graph of
+    # the current thread.
+    placeholder = default_graph.capture(variable.handle, name=self.name)
+    placeholder.op._set_attr(  # pylint: disable=protected-access
+        "_user_specified_name",
+        attr_value_pb2.AttrValue(s=compat.as_bytes(self.name)))
+    return variable
 
   def _get_structure(self):
     # shape, dtype, trainable, and alias_id are all leaves.
