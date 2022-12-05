@@ -123,7 +123,7 @@ void TraceOp::build(OpBuilder &builder, OperationState &result,
 
 MutableOperandRange YieldOp::getMutableSuccessorOperands(
     Optional<unsigned> index) {
-  return operandsMutable();
+  return getArgumentsMutable();
 }
 
 }  // namespace runtime
