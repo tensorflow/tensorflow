@@ -23,7 +23,7 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime

@@ -19,11 +19,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/float8.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -223,6 +225,28 @@ TEST(Tensor_Bfloat16, Simple) {
     }
   }
   TestCopies<bfloat16>(t);
+}
+
+TEST(Tensor_Float8_E5m2, Simple) {
+  Tensor t(DT_FLOAT8_E5M2, TensorShape({5, 7}));
+  EXPECT_TRUE(t.shape().IsSameSize(TensorShape({5, 7})));
+  for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
+      t.matrix<float8_e5m2>()(a, b) = static_cast<float8_e5m2>(a * b);
+    }
+  }
+  TestCopies<float8_e5m2>(t);
+}
+
+TEST(Tensor_Float8_E4m3fn, Simple) {
+  Tensor t(DT_FLOAT8_E4M3FN, TensorShape({5, 7}));
+  EXPECT_TRUE(t.shape().IsSameSize(TensorShape({5, 7})));
+  for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
+      t.matrix<float8_e4m3fn>()(a, b) = static_cast<float8_e4m3fn>(a * b);
+    }
+  }
+  TestCopies<float8_e4m3fn>(t);
 }
 
 TEST(Tensor_Float, Simple) {

@@ -167,11 +167,12 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentOutputLayouts) {
       LiteralUtil::CreateR2<float>({{10.0f, 20.0f}, {30.0f, 40.0f}}));
 
   // Run with col-major result layout.
-  ScopedShapedBuffer result_colmaj = ExecuteLocallyOrDie(
-      computation, {&x_array, &y_array},
-      DefaultExecutableBuildOptions().set_result_layout(
-          ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{2, 2}, {0, 1})),
-      DefaultExecutableRunOptions());
+  ScopedShapedBuffer result_colmaj =
+      ExecuteLocallyOrDie(computation, {&x_array, &y_array},
+                          DefaultExecutableBuildOptions().set_result_layout(
+                              ShapeUtil::MakeShapeWithDenseLayout(
+                                  F32, /*dimensions=*/{2, 2}, {0, 1})),
+                          DefaultExecutableRunOptions());
   EXPECT_TRUE(Layout::Equal().MinorToMajorOnly()(
       result_colmaj.on_device_shape().layout(),
       LayoutUtil::MakeLayout({0, 1})));
@@ -180,11 +181,12 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentOutputLayouts) {
                                        error_spec_);
 
   // Run with row-major result layout.
-  ScopedShapedBuffer result_rowmaj = ExecuteLocallyOrDie(
-      computation, {&x_array, &y_array},
-      DefaultExecutableBuildOptions().set_result_layout(
-          ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{2, 2}, {1, 0})),
-      DefaultExecutableRunOptions());
+  ScopedShapedBuffer result_rowmaj =
+      ExecuteLocallyOrDie(computation, {&x_array, &y_array},
+                          DefaultExecutableBuildOptions().set_result_layout(
+                              ShapeUtil::MakeShapeWithDenseLayout(
+                                  F32, /*dimensions=*/{2, 2}, {1, 0})),
+                          DefaultExecutableRunOptions());
   EXPECT_TRUE(Layout::Equal().MinorToMajorOnly()(
       result_rowmaj.on_device_shape().layout(),
       LayoutUtil::MakeLayout({1, 0})));
@@ -262,10 +264,10 @@ XLA_TEST_F(LocalClientExecuteTest, TupleResultWithLayout) {
 
   ExecutableBuildOptions options = DefaultExecutableBuildOptions();
   Shape shape_with_layout = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{2, 2},
-                                      /*minor_to_major=*/{0, 1}),
-       ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{2, 2},
-                                      /*minor_to_major=*/{1, 0})});
+      {ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{2, 2},
+                                           /*minor_to_major=*/{0, 1}),
+       ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{2, 2},
+                                           /*minor_to_major=*/{1, 0})});
   options.set_result_layout(shape_with_layout);
   ScopedShapedBuffer result =
       ExecuteLocallyOrDie(builder.Build().value(), {&array, &array}, options,
@@ -594,9 +596,9 @@ XLA_TEST_F(LocalClientExecuteTest, InvalidResultLayout) {
   auto execute_status = ExecuteLocally(
       builder.Build().value(), {&x_array},
       DefaultExecutableBuildOptions().set_result_layout(
-          ShapeUtil::MakeShapeWithLayout(F32,
-                                         /*dimensions=*/{1, 2, 3, 4},
-                                         /*minor_to_major=*/{0, 1, 2, 3})),
+          ShapeUtil::MakeShapeWithDenseLayout(F32,
+                                              /*dimensions=*/{1, 2, 3, 4},
+                                              /*minor_to_major=*/{0, 1, 2, 3})),
       DefaultExecutableRunOptions());
 
   EXPECT_FALSE(execute_status.ok());
@@ -744,7 +746,7 @@ XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
 
   Shape argument_layout =
       local_client_->backend().compiler()->DefaultDeviceShapeRepresentation(
-          ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{3}, {0}));
+          ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{3}, {0}));
   TF_ASSERT_OK_AND_ASSIGN(
       auto executables,
       local_client_->Compile(builder.Build().value(), {&argument_layout},
@@ -779,7 +781,7 @@ XLA_TEST_F(LocalClientExecuteTest, CompilePartitionedExecutable) {
   builder.ClearSharding();
 
   Shape argument_layout =
-      ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{3}, {0});
+      ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{3}, {0});
   ExecutableBuildOptions build_options;
   build_options.set_num_partitions(2);
   TF_ASSERT_OK_AND_ASSIGN(
@@ -791,6 +793,11 @@ XLA_TEST_F(LocalClientExecuteTest, CompilePartitionedExecutable) {
 
 XLA_TEST_F(LocalClientExecuteTest,
            DISABLED_ON_INTERPRETER(SizeOfGeneratedCodeInBytes)) {
+  if (IsMlirLoweringEnabled()) {
+    // SizeOfGeneratedCodeInBytes is not supported by the MLIR pipeline.
+    GTEST_SKIP();
+  }
+
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
   constexpr int size = 100000;
@@ -801,7 +808,7 @@ XLA_TEST_F(LocalClientExecuteTest,
   Add(x, y);
 
   Shape argument_layout =
-      ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{}, {});
+      ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{}, {});
   TF_ASSERT_OK_AND_ASSIGN(
       auto executables,
       local_client_->Compile(builder.Build().value(), {&argument_layout},

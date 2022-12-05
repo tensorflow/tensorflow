@@ -17,16 +17,20 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_H_
 
 #include <cstdint>
+#include <memory>
 #include <numeric>
 #include <string>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_solver_option.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/cluster_environment.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
-
+#include "tensorflow/tsl/platform/errors.h"
 namespace xla {
 
 class DummyAutoSharding : public HloModulePass {
@@ -72,7 +76,13 @@ struct AutoShardingOption {
   bool simplify_graph = true;
 
   // Memory budget (bytes) per device. Default value -1 means no memory budget.
+  // Value 0 means setting it to the memory lower bound estimation.
   int64_t memory_budget_per_device = -1;
+
+  // Memory budget =
+  //     memory_budget_ratio * (memory lower bound estimation).
+  // Enabled when memory_budget_per_device == 0;
+  float memory_budget_ratio = 1.1;
 
   // Overwrite the all gather cost with the input all reduce cost.
   bool force_all_gather_cost = false;
@@ -224,11 +234,11 @@ struct AutoShardingOption {
 
   Status CheckAndSetup() {
     if (device_mesh_shape.empty()) {
-      return tensorflow::errors::OutOfRange(
+      return tsl::errors::OutOfRange(
           "device_mesh_shape is empty and it needs to be specified.");
     }
     if (device_mesh_shape.size() > 3) {
-      return tensorflow::errors::OutOfRange(
+      return tsl::errors::OutOfRange(
           absl::StrCat("Not supported: the length of device_mesh_shape is "
                        "greater than 3, actual length: ",
                        device_mesh_shape.size()));
@@ -236,7 +246,7 @@ struct AutoShardingOption {
     // All values in device_mesh_shape must be greater than 0.
     if (absl::c_any_of(device_mesh_shape,
                        [](const int64_t i) { return i <= 0; })) {
-      return tensorflow::errors::OutOfRange(
+      return tsl::errors::OutOfRange(
           absl::StrCat("device_mesh_shape values need to be larger than 0: "
                        "device_mesh_shape=",
                        absl::StrJoin(device_mesh_shape, ",")));
@@ -266,7 +276,7 @@ struct AutoShardingOption {
 
     if (device_mesh_shape.size() != device_mesh_alpha.size() ||
         device_mesh_shape.size() != device_mesh_beta.size()) {
-      return tensorflow::errors::OutOfRange(absl::StrCat(
+      return tsl::errors::OutOfRange(absl::StrCat(
           "Sizes do not match: length of device_mesh_shape is ",
           device_mesh_shape.size(), ", length of device_mesh_alpha is ",
           device_mesh_alpha.size(), ", length of device_mesh_beta is ",
@@ -288,7 +298,7 @@ struct AutoShardingOption {
     } else {
       // Checks whether device_mesh_shape and device_mesh_ids are compatible.
       if (total_devices != device_mesh_ids.size()) {
-        return tensorflow::errors::OutOfRange(absl::StrCat(
+        return tsl::errors::OutOfRange(absl::StrCat(
             "Expect the product of device_mesh_shape to be the same as the "
             "size of device_mesh_ids, but we have total devices = ",
             total_devices,
@@ -328,6 +338,91 @@ class AutoSharding : public HloModulePass {
   AutoShardingOption option_;
 };
 
+namespace spmd {
+// Function declarations
+// Their comments can be found in their definitions in *.cc files.
+HloSharding Tile(const Shape& shape, absl::Span<const int64_t> tensor_dims,
+                 absl::Span<const int64_t> mesh_dims,
+                 const Array<int64_t>& device_mesh);
+
+std::vector<double> ReshardingCostVector(const StrategyVector* strategies,
+                                         const Shape& shape,
+                                         const HloSharding& required_sharding,
+                                         const ClusterEnvironment& cluster_env);
+
+std::vector<double> FollowInsCostVector(int64_t source_len, int64_t index);
+
+std::unique_ptr<StrategyVector> CreateLeafStrategyVector(
+    size_t instruction_id, const HloInstruction* ins,
+    const StrategyMap& strategy_map, LeafStrategies& leaf_strategies);
+
+void SetInNodesWithInstruction(std::unique_ptr<StrategyVector>& strategies,
+                               const HloInstruction* ins,
+                               const StrategyMap& strategy_map);
+
+void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies);
+
+Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
+                      std::unique_ptr<StrategyVector>& strategies,
+                      const ClusterEnvironment& cluster_env,
+                      const InstructionBatchDimMap& batch_map,
+                      const AutoShardingSolverOption& solver_option);
+
+Status HandleDot(std::unique_ptr<StrategyVector>& strategies,
+                 LeafStrategies& leaf_strategies, StrategyMap& strategy_map,
+                 const HloInstruction* ins, size_t instruction_id,
+                 const ClusterEnvironment& cluster_env,
+                 const InstructionBatchDimMap& batch_map,
+                 const AutoShardingSolverOption& solver_option);
+
+Status HandleConv(std::unique_ptr<StrategyVector>& strategies,
+                  LeafStrategies& leaf_strategies, StrategyMap& strategy_map,
+                  const HloInstruction* ins, size_t instruction_id,
+                  const ClusterEnvironment& cluster_env,
+                  const InstructionBatchDimMap& batch_map,
+                  const AutoShardingSolverOption& solver_option);
+
+void AnnotateShardingWithSimpleHeuristic(HloModule* module,
+                                         const std::string& heuristic,
+                                         const AliasMap& alias_map,
+                                         const ClusterEnvironment& cluster_env);
+
+// Handle alias: alias pairs must have the same HloSharding.
+// To deal with alias, we do special process both before and after
+// BuildStrategyAndCost. Because it is easier to handle elementwise
+// instructions before BuildStrategyAndCost and it is easier to handle
+// dot/conv instructions after BuildStrategyAndCost. Before
+// BuildStrategyAndCost, we build an AliasMap to guide the generation of
+// strategies. After BuildStrategyAndCost, we use AliasSet to add alias
+// constraints in the ILP problem.
+AliasMap BuildAliasMap(const HloModule* module);
+
+AliasSet BuildAliasSet(const HloModule* module,
+                       const StrategyMap& strategy_map);
+
+void CheckAliasSetCompatibility(const AliasSet& alias_set,
+                                const LeafStrategies& leaf_strategies,
+                                const HloInstructionSequence& sequence);
+
+void GenerateReduceScatter(const HloInstructionSequence& sequence,
+                           const AliasMap& alias_map,
+                           const InstructionDepthMap& depth_map,
+                           const StrategyMap& strategy_map,
+                           const CostGraph& cost_graph,
+                           absl::Span<const int64_t> s_val,
+                           const ClusterEnvironment& cluster_env,
+                           const AutoShardingSolverOption& solver_option);
+
+bool HasReduceScatterOpportunity(
+    const HloInstruction* inst, const StrategyMap& strategy_map,
+    const CostGraph& cost_graph, absl::Span<const int64_t> s_val,
+    const StableHashSet<const HloInstruction*>& modified);
+
+HloSharding GetReduceScatterOutput(const HloInstruction* ins,
+                                   const ShardingStrategy& strategy,
+                                   const ClusterEnvironment& cluster_env);
+
+}  // namespace spmd
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_H_

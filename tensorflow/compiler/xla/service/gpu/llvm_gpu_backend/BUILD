@@ -5,6 +5,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -19,12 +20,10 @@ package_group(
 cc_library(
     name = "llvm_gpu_backend",
     srcs = [
-        "dump_ir_pass.cc",
         "gpu_backend_lib.cc",
         "utils.cc",
     ],
     hdrs = [
-        "dump_ir_pass.h",
         "gpu_backend_lib.h",
         "utils.h",
     ],
@@ -33,6 +32,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:BitReader",
@@ -43,6 +43,7 @@ cc_library(
         "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Linker",
+        "@llvm-project//llvm:Passes",
         "@llvm-project//llvm:NVPTXCodeGen",  # buildcleaner: keep
         "@llvm-project//llvm:ObjCARC",  # buildcleaner: keep
         "@llvm-project//llvm:Scalar",
@@ -57,8 +58,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:gpu_types",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_command_line_options",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_type_conversion_util",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/tsl/platform:random",
         "//tensorflow/tsl/profiler/lib:traceme",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/util:env_var",
@@ -79,7 +79,6 @@ tf_cc_test(
         ":llvm_gpu_backend",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:resource_loader",

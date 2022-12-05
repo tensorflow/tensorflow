@@ -67,7 +67,7 @@ struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
 
   LogicalResult matchAndRewrite(ReluOp relu_op,
                                 PatternRewriter &rewriter) const override {
-    Operation *relu_input = relu_op.features().getDefiningOp();
+    Operation *relu_input = relu_op.getFeatures().getDefiningOp();
     if (!relu_input) return failure();
     auto batch_norm = dyn_cast_or_null<FusedBatchNormV3Op>(relu_input);
     AddV2Op add_op;
@@ -79,20 +79,20 @@ struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
       if (!add_op) return failure();
 
       batch_norm =
-          dyn_cast_or_null<FusedBatchNormV3Op>(add_op.x().getDefiningOp());
+          dyn_cast_or_null<FusedBatchNormV3Op>(add_op.getX().getDefiningOp());
       if (batch_norm) {
-        side_input = add_op.y();
+        side_input = add_op.getY();
       } else {
         // Didn't get a FusedBatchNorm on the LHS of the AddV2, try the RHS.
         batch_norm =
-            dyn_cast_or_null<FusedBatchNormV3Op>(add_op.y().getDefiningOp());
+            dyn_cast_or_null<FusedBatchNormV3Op>(add_op.getY().getDefiningOp());
         if (!batch_norm) return failure();
-        side_input = add_op.x();
+        side_input = add_op.getX();
       }
     }
     assert(batch_norm);
-    if (batch_norm.is_training()) return failure();
-    if (!batch_norm.y().hasOneUse()) return failure();
+    if (batch_norm.getIsTraining()) return failure();
+    if (!batch_norm.getY().hasOneUse()) return failure();
 
     // Build the newly fused operation to replace the batch norm
     OperationState state(batch_norm.getLoc(),
@@ -105,7 +105,7 @@ struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
     rewriter.replaceOp(batch_norm, op->getResults());
 
     // Depending on the case, we may fuse the add, the relu, or both.
-    if (!add_op || add_op.z().hasOneUse()) {
+    if (!add_op || add_op.getZ().hasOneUse()) {
       // We fuse the Relu only if the add has a single use, otherwise we only
       // fuse the add itself.
       op->setAttr("activation_mode", rewriter.getStringAttr("Relu"));

@@ -25,7 +25,7 @@ from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -343,7 +343,7 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testShuffleV2InFunction(self):
     counter_var = variables.Variable(0)
 
-    @function.defun
+    @def_function.function
     def consume():
       ds = dataset_ops.Dataset.range(10)
       ds = ds.shuffle(1)

@@ -25,12 +25,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/noncopyable_buffer.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_id.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -345,7 +346,7 @@ Status TpuTransferManager::ReadDynamicShapes(se::Stream* stream,
   }
   *device_shape = ApiConverter::FromC(&c_updated_shape);
   ApiConverter::Destroy(&c_updated_shape);
-  return OkStatus();
+  return tsl::OkStatus();
 }
 
 }  // namespace tpu

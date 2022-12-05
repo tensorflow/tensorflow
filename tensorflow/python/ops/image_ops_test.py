@@ -4722,7 +4722,7 @@ class PngTest(test_util.TensorFlowTestCase):
 
       # Smooth ramps compress well, but not too well
       self.assertGreaterEqual(len(png0), 400)
-      self.assertLessEqual(len(png0), 750)
+      self.assertLessEqual(len(png0), 1150)
 
   def testSyntheticUint16(self):
     with self.cached_session():
@@ -4737,7 +4737,7 @@ class PngTest(test_util.TensorFlowTestCase):
 
       # Smooth ramps compress well, but not too well
       self.assertGreaterEqual(len(png0), 800)
-      self.assertLessEqual(len(png0), 1500)
+      self.assertLessEqual(len(png0), 2100)
 
   def testSyntheticTwoChannel(self):
     with self.cached_session():
@@ -6329,6 +6329,16 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
             box_indices=np.ones((11)),
             crop_size=[2065374891, 1145309325])
         self.evaluate(op)
+
+  def testImageCropAndResizeWithNon1DBoxes(self):
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                "must be rank 1"):
+      op = image_ops_impl.crop_and_resize_v2(
+          image=np.ones((2, 2, 2, 2)),
+          boxes=np.ones((0, 4)),
+          box_indices=np.ones((0, 1)),
+          crop_size=[1, 1])
+      self.evaluate(op)
 
   @parameterized.named_parameters(
       ("_jpeg", "JPEG", "jpeg_merge_test1.jpg"),

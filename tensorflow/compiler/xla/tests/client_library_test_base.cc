@@ -195,7 +195,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
   std::vector<int64_t> minor_to_major(expected.shape().rank());
   std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
   do {
-    auto layout = ShapeUtil::MakeShapeWithLayout(
+    auto layout = ShapeUtil::MakeShapeWithDenseLayout(
         expected.shape().element_type(), expected.shape().dimensions(),
         minor_to_major);
     TF_ASSIGN_OR_RETURN(auto actual,

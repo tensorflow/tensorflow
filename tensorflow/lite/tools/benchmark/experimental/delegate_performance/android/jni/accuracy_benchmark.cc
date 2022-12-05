@@ -27,8 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "flatbuffers/buffer.h"  // from @flatbuffers
-#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/lite/delegates/utils/experimental/stable_delegate/tflite_settings_json_parser.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/blocking_validator_runner.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
@@ -51,18 +50,15 @@ Flag CreateFlag(const char* name, tools::ToolParams* params,
       [params, name](const T& val, int argv_position) {
         params->Set<T>(name, val, argv_position);
       },
-      params->Get<T>(name), usage, Flag::kOptional);
+      params->Get<T>(name), usage, Flag::kRequired);
 }
 
-AccuracyBenchmarkStatus ConfigureTFLiteSettingsFromArgs(
-    const std::vector<std::string>& args, flatbuffers::FlatBufferBuilder& fbb) {
-  // TODO(b/241781387): Improve argument parsing for TFLite settings parameters
-  // and validator runner options.
+AccuracyBenchmarkStatus ParseTfLiteSettingsFilePathFromArgs(
+    const std::vector<std::string>& args,
+    std::string& tflite_settings_file_path) {
   tools::ToolParams params;
-  // Apply XNNPack delegate by default.
-  params.AddParam("use_xnnpack", tools::ToolParam::Create<bool>(true));
-  params.AddParam("use_nnapi", tools::ToolParam::Create<bool>(false));
-  params.AddParam("use_gpu", tools::ToolParam::Create<bool>(false));
+  params.AddParam("stable_delegate_settings_file",
+                  tools::ToolParam::Create<std::string>(""));
 
   std::vector<const char*> argv;
   std::string arg0 = "(MiniBenchmarkAndroid)";
@@ -73,37 +69,13 @@ AccuracyBenchmarkStatus ConfigureTFLiteSettingsFromArgs(
   int argc = argv.size();
   if (!Flags::Parse(
           &argc, argv.data(),
-          {
-              CreateFlag<bool>("use_gpu", &params,
-                               "Apply GPU delegate for benchmarking."),
-              CreateFlag<bool>("use_nnapi", &params,
-                               "Apply NNAPI delegate for benchmarking."),
-              CreateFlag<bool>("use_xnnpack", &params,
-                               "Apply XNNPack delegate for benchmarking."),
-          })) {
+          {CreateFlag<std::string>("stable_delegate_settings_file", &params,
+                                   "Path to the JSON-formatted stable delegate "
+                                   "TFLiteSettings file.")})) {
     return kAccuracyBenchmarkArgumentParsingFailed;
   }
-  bool use_xnnpack = params.Get<bool>("use_xnnpack");
-  bool use_gpu = params.Get<bool>("use_gpu");
-  bool use_nnapi = params.Get<bool>("use_nnapi");
-  // Use Delegate_NONE as the default value here for delegate because XNNPack
-  // delegate will still be applied as the default delegate unless it is
-  // specified as disabled.
-  Delegate delegate = Delegate_NONE;
-  if (use_gpu && use_nnapi) {
-    return kAccuracyBenchmarkMoreThanOneDelegateProvided;
-  } else if (use_gpu) {
-    delegate = Delegate_GPU;
-  } else if (use_nnapi) {
-    delegate = Delegate_NNAPI;
-  }
-
-  TFLiteSettingsBuilder tflite_settings_builder(fbb);
-  tflite_settings_builder.add_delegate(delegate);
-  tflite_settings_builder.add_disable_default_delegates(!use_xnnpack);
-  flatbuffers::Offset<TFLiteSettings> tflite_settings =
-      tflite_settings_builder.Finish();
-  fbb.Finish(tflite_settings);
+  tflite_settings_file_path =
+      params.Get<std::string>("stable_delegate_settings_file");
   return kAccuracyBenchmarkSuccess;
 }
 
@@ -139,17 +111,27 @@ AccuracyBenchmarkStatus Benchmark(const std::vector<std::string>& args,
     return kAccuracyBenchmarkRunnerInitializationFailed;
   }
 
-  flatbuffers::FlatBufferBuilder fbb;
+  std::string tflite_settings_file_path;
   AccuracyBenchmarkStatus parse_status =
-      ConfigureTFLiteSettingsFromArgs(args, fbb);
+      ParseTfLiteSettingsFilePathFromArgs(args, tflite_settings_file_path);
+  delegates::utils::TfLiteSettingsJsonParser parser;
+
   if (parse_status != kAccuracyBenchmarkSuccess) {
     TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
                     "Failed to parse arguments with error code %d",
                     parse_status);
     return parse_status;
   }
-  std::vector<const TFLiteSettings*> settings = {
-      flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer())};
+  const TFLiteSettings* tflite_settings =
+      parser.Parse(tflite_settings_file_path);
+  if (tflite_settings == nullptr) {
+    TFLITE_LOG_PROD(
+        TFLITE_LOG_ERROR,
+        "Failed to parse TFLiteSettings from the input JSON file %s",
+        tflite_settings_file_path.c_str());
+    return kAccuracyBenchmarkTfLiteSettingsParsingFailed;
+  }
+  std::vector<const TFLiteSettings*> settings = {tflite_settings};
   std::vector<const BenchmarkEvent*> results =
       runner.TriggerValidation(settings);
   if (results.size() != settings.size()) {

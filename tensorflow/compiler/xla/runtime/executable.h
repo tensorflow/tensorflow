@@ -285,7 +285,7 @@ class Executable {
                             void** args, void** attrs, void** rets);
 
  private:
-  friend class JitCompiler;  // see `mlir/transforms/runtime/jit_compiler.h`
+  friend class JitCompiler;  // see `mlir/runtime/transforms/jit_compiler.h`
 
   // Executable exports multiple functions available for users to call into. At
   // run time they are referenced by their ordinal, so that we don't depend on
@@ -293,6 +293,16 @@ class Executable {
   // debugging. Function ordinal is defined by its index in the `functions_`
   // vector.
   struct Function {
+    Function(std::string_view name, ExecutionEngine::ExportedFunctionPtr fptr,
+             FunctionType signature, FunctionType runtime_signature,
+             ArgumentsMemoryLayout arguments_memory_layout,
+             ResultsMemoryLayout results_memory_layout)
+        : name(name),
+          fptr(std::move(fptr)),
+          signature(std::move(signature)),
+          runtime_signature(std::move(runtime_signature)),
+          arguments_memory_layout(std::move(arguments_memory_layout)),
+          results_memory_layout(std::move(results_memory_layout)) {}
     Function(const Function&) = delete;
     Function(Function&&) = default;
 

@@ -42,7 +42,7 @@ StatusOr<Layout> GetSuggestedLayout(const Layout& input_layout) {
 
 StatusOr<mlir::Operation*> TopKSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto top_k_op = mlir::cast<mlir::TF::TopKV2Op>(op);
-  mlir::Value input = top_k_op.input();
+  mlir::Value input = top_k_op.getInput();
   TF_ASSIGN_OR_RETURN(auto input_layout, ExtractLayoutFromOperand(input));
 
   if (!input_layout)

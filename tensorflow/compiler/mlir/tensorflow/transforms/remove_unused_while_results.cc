@@ -50,8 +50,8 @@ bool TryPruneResultDefiningOp(TF::WhileRegionOp while_op, OpResult result) {
   // Don't prune if result is used.
   if (!result.use_empty()) return false;
 
-  Block& body_block = while_op.body().front();
-  Block& cond_block = while_op.cond().front();
+  Block& body_block = while_op.getBody().front();
+  Block& cond_block = while_op.getCond().front();
   Operation* body_yield_op = body_block.getTerminator();
 
   // The body yield operand, body block argument, condition block argument, and
@@ -69,7 +69,7 @@ bool TryPruneResultDefiningOp(TF::WhileRegionOp while_op, OpResult result) {
     if (TF::TensorFlowDialect::CanHaveSideEffects(candidate_op)) {
       return false;
     }
-  } else if (!MemoryEffectOpInterface::hasNoEffect(candidate_op)) {
+  } else if (!isMemoryEffectFree(candidate_op)) {
     return false;
   }
 

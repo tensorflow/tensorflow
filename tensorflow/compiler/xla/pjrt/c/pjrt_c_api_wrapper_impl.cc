@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -214,47 +215,23 @@ static void PopulatePjrtExecutableAddressableDevices(
   }
 }
 
-static xla::StatusOr<xla::CompileOptions>
-ConvertCCompileOptionstoCppCompileOptions(PJRT_CompileOptions* c_option) {
-  xla::CompileOptions ret;
-  ret.parameter_is_tupled_arguments = c_option->parameter_is_tupled_arguments;
-  if (c_option->device_ordinal != -1) {
-    ret.executable_build_options.set_device_ordinal(c_option->device_ordinal);
-  }
-  ret.executable_build_options.set_num_replicas(c_option->num_replicas);
-  ret.executable_build_options.set_num_partitions(c_option->num_partitions);
-  ret.executable_build_options.set_use_spmd_partitioning(
-      c_option->use_spmd_partitioning);
-  ret.executable_build_options.set_allow_spmd_sharding_propagation_to_output(
-      c_option->allow_spmd_sharding_propagation_to_output);
-  if (c_option->device_assignment_size > 0) {
-    xla::DeviceAssignmentProto proto;
-    // Using ParseFromArray from input directly, instead of ParseFromString from
-    // a string_view or std::string, as open source ParseFromString doesn't
-    // support string_view, and copying to a std::string adds cost.
-    proto.ParseFromArray(c_option->device_assignment,
-                         c_option->device_assignment_size);
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<xla::DeviceAssignment> device_assignment,
-        xla::DeviceAssignment::Deserialize(proto));
-    ret.executable_build_options.set_device_assignment(*device_assignment);
-  }
-  return ret;
-}
-
 PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Client_Compile_Args", PJRT_Client_Compile_Args_STRUCT_SIZE,
       args->struct_size));
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes("PJRT_CompileOptions",
-                                                PJRT_CompileOptions_STRUCT_SIZE,
-                                                args->options->struct_size));
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Program", PJRT_Program_STRUCT_SIZE, args->program->struct_size));
 
-  PJRT_ASSIGN_OR_RETURN(
-      xla::CompileOptions options,
-      ConvertCCompileOptionstoCppCompileOptions(args->options));
+  absl::string_view options_str(args->compile_options,
+                                args->compile_options_size);
+  xla::CompileOptionsProto options_proto;
+  // Open source ParseFromString doesn't support string_view.
+  if (!options_proto.ParseFromArray(options_str.data(), options_str.size())) {
+    PJRT_RETURN_IF_ERROR(tsl::errors::InvalidArgument(
+        "PJRT_Client_Compile: failed to deserialize CompileOptionsProto"));
+  }
+  PJRT_ASSIGN_OR_RETURN(xla::CompileOptions options,
+                        xla::CompileOptions::FromProto(options_proto));
 
   absl::string_view format_str(args->program->format,
                                args->program->format_size);
@@ -270,9 +247,11 @@ PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
                           args->client->client->Compile(*module, options));
   } else if (format_str == pjrt::kHloFormat) {
     xla::HloModuleProto module_proto;
-    // Using ParseFromArray instead of ParseFromString, as open source
-    // ParseFromString doesn't support string_view.
-    module_proto.ParseFromArray(module_str.data(), module_str.size());
+    // Open source ParseFromString doesn't support string_view.
+    if (!module_proto.ParseFromArray(module_str.data(), module_str.size())) {
+      PJRT_RETURN_IF_ERROR(tsl::errors::InvalidArgument(
+          "PJRT_Client_Compile: failed to deserialize HloModuleProto"));
+    }
     xla::XlaComputation computation(module_proto);
     PJRT_ASSIGN_OR_RETURN(executable,
                           args->client->client->Compile(computation, options));

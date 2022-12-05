@@ -635,7 +635,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return 1.0
 
     with self.assertRaisesRegex(
-        TypeError, r'could not be represented through the generic tracing'):
+        TypeError, r'Could not generate a generic TraceType'):
       f(set([]))
 
   def testBasicGraphMode(self):
@@ -2890,21 +2890,21 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     foo = Foo()
     with self.assertRaisesRegex(
-        TypeError, 'missing 1 required positional argument: \'y\''):
+        TypeError, 'missing a required argument: \'y\''):
       foo.add1(2)  # pylint: disable=no-value-for-parameter
 
     with self.assertRaisesRegex(TypeError, 'missing 1 required argument: x'):
       foo.add1(y=2)  # pylint: disable=no-value-for-parameter
 
     with self.assertRaisesRegex(
-        TypeError, 'missing 1 required positional argument: \'y\''):
+        TypeError, 'missing a required argument: \'y\''):
       foo.add2(2)  # pylint: disable=no-value-for-parameter
 
     with self.assertRaisesRegex(TypeError, 'missing 1 required argument: x'):
       foo.add2(y=2)  # pylint: disable=no-value-for-parameter
 
     with self.assertRaisesRegex(
-        TypeError, 'missing 1 required positional argument: \'y\''):
+        TypeError, 'missing a required argument: \'y\''):
       foo.add3(2)  # pylint: disable=no-value-for-parameter
 
     with self.assertRaisesRegex(TypeError, 'missing 1 required argument: x'):
@@ -3860,6 +3860,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return a + b
 
     self.assertAllEqual(add(v, v), 2.0)
+
+  def testSameVariableTwiceWithReducedRetracing(self):
+    v = variables.Variable(2.0)
+
+    @polymorphic_function.function(reduce_retracing=True)
+    def add(a, b):
+      return a + b
+
+    self.assertAllEqual(add(v, v), 4.0)
 
   def testVariableUpdate(self):
     v1 = variables.Variable(1.0)

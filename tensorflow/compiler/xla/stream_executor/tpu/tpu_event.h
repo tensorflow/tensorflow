@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 
 namespace tensorflow {
 namespace tpu {

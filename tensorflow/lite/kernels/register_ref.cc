@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/register_ref.h"
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"

@@ -1,17 +1,3 @@
-// Copyright 2022 The TensorFlow Runtime Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 // RUN: tf-quant-opt %s -split-input-file -quant-lift-quantizable-spots-as-functions -quant-quantize -verify-each=false | FileCheck %s
 
 func.func private @conv(%input: tensor<1x3x4x3xf32> {tf._user_specified_name = "input_tensor"}) -> tensor<*xf32> attributes {tf._construction_context = "kEagerRuntime", tf._input_shapes = [#tf_type.shape<1x3x4x3>]} {
@@ -81,15 +67,13 @@ func.func @avgpool_test(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   func.return %4 : tensor<*xf32>
 }
 
-// CHECK-DAG: %[[cst:.*]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<f32>} : () -> tensor<f32>
 // CHECK: %[[q:.*]] = "quantfork.qcast"(%arg0)
 // CHECK: %[[sc1:.*]] = "quantfork.scast"(%[[q]]) : (tensor<*x!quant.uniform<i8:f32, 5.000000e-02:-10>>)
 // CHECK: %[[fcast:.*]] = "tf.Cast"(%[[sc1]]) {Truncate = false} : (tensor<*xi8>) -> tensor<*xf32>
 // CHECK: %[[avgpool_f32:.*]] = "tf.AvgPool"(%[[fcast]])
 // CHECK-SAME: (tensor<*xf32>) -> tensor<*xf32>
-// CHECK: %[[add:.*]] = "tf.AddV2"(%[[avgpool_f32]], %[[cst]]) : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
-// CHECK: %[[floor:.*]] = "tf.Floor"(%[[add]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK: %[[icast:.*]] = "tf.Cast"(%[[floor]]) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi8>
+// CHECK: %[[round:.*]] = "tf.Round"(%[[avgpool_f32]])
+// CHECK: %[[icast:.*]] = "tf.Cast"(%[[round]]) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi8>
 // CHECK: %[[sc2:.*]] = "quantfork.scast"(%[[icast]])
 // CHECK: %[[dq:.*]] = "quantfork.dcast"(%[[sc2]]) : (tensor<*x!quant.uniform<i8:f32, 5.000000e-02:-10>>)
 // CHECK: return %[[dq]]

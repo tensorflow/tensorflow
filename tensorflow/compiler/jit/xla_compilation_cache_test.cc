@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_compilation_cache.h"
 
+#include <vector>
+
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/client_library.h"

@@ -35,7 +35,7 @@ llvm::SmallVector<mlir::OpOperand*> FindBufferForwardingCandidates(
     mlir::linalg::GenericOp op) {
   llvm::SmallVector<mlir::OpOperand*> candidates;
 
-  for (mlir::OpOperand* input_buffer : op.getInputOperands()) {
+  for (mlir::OpOperand* input_buffer : op.getDpsInputOperands()) {
     // Input must be a contiguous memref ...
     if (!IsContiguousMemref(input_buffer->get())) continue;
 
@@ -92,7 +92,7 @@ struct LinalgTrivialBufferForwardingPattern
     llvm::DenseSet<mlir::OpOperand*> reused_inputs;
 
     // Try to match output buffers to forwarding candidates.
-    for (mlir::OpOperand* output_buffer : op.getOutputOperands()) {
+    for (mlir::OpOperand* output_buffer : op.getDpsInitOperands()) {
       // Output must be allocated in the same function.
       auto* alloc = output_buffer->get().getDefiningOp();
       if (!alloc || !mlir::isa<mlir::memref::AllocOp>(alloc)) continue;

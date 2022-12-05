@@ -5,6 +5,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         # TODO(jpienaar): Make the visibility more restrictive.
         ":friends",
@@ -19,7 +20,6 @@ package_group(
     packages = [
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/mlir/...",
-        "//third_party/auroraml/...",
         "//third_party/iree/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/lite/python/...",
@@ -1237,6 +1237,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/stablehlo:mhlo_tfl",
         "//tensorflow/compiler/mlir/lite/stablehlo:op_stat_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:transforms",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
         "//tensorflow/compiler/mlir/tensorflow",

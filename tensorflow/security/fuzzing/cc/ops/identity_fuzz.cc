@@ -16,10 +16,10 @@
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "testing/fuzzing/fuzztest.h"
+#include "fuzztest/fuzztest.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/security/fuzzing/cc/ops/fuzz_session.h"
+#include "tensorflow/security/fuzzing/cc/fuzz_session.h"
 
 namespace tensorflow {
 namespace fuzzing {

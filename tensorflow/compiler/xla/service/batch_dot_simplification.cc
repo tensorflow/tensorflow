@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batch_dot_simplification.h"
 
 #include "absl/algorithm/container.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 
 namespace xla {

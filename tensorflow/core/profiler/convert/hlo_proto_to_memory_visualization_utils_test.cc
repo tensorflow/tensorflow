@@ -84,8 +84,7 @@ TEST(MemoryViewerTest, TestHeapSimulatorTraceShareWith_1) {
       proto_utils::ParseTextFormatFromString(hlo_string, &hlo_proto).ok());
   TF_ASSERT_OK_AND_ASSIGN(
       PreprocessResult preprocess_result,
-      ConvertHloProtoToPreprocessResult(hlo_proto, /*small_buffer_size=*/0,
-                                        /*heap_simulator_trace_id=*/0));
+      ConvertHloProtoToPreprocessResult(hlo_proto, /*small_buffer_size=*/0));
   EXPECT_EQ(preprocess_result.peak_heap_mib(), 0.5);
 }
 
@@ -103,8 +102,7 @@ TEST(MemoryViewerTest, TestHeapSimulatorTraceShareWith_2) {
       proto_utils::ParseTextFormatFromString(hlo_string, &hlo_proto).ok());
   TF_ASSERT_OK_AND_ASSIGN(
       PreprocessResult preprocess_result,
-      ConvertHloProtoToPreprocessResult(hlo_proto, /*small_buffer_size=*/0,
-                                        /*heap_simulator_trace_id=*/0));
+      ConvertHloProtoToPreprocessResult(hlo_proto, /*small_buffer_size=*/0));
   EXPECT_EQ(preprocess_result.peak_heap_mib(), 0.5);
 }
 

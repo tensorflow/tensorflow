@@ -60,10 +60,10 @@ StatusOr<Layout> MatchBatchDim(const Layout& layout,
 StatusOr<mlir::Operation*> InTopKSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto in_top_k_op = mlir::cast<mlir::TF::InTopKV2Op>(op);
 
-  mlir::Value predictions = in_top_k_op.predictions();
+  mlir::Value predictions = in_top_k_op.getPredictions();
   TF_ASSIGN_OR_RETURN(const Layout predictions_layout,
                       ExtractRequiredLayoutFromOperand(predictions));
-  mlir::Value targets = in_top_k_op.targets();
+  mlir::Value targets = in_top_k_op.getTargets();
   TF_ASSIGN_OR_RETURN(const Layout targets_layout,
                       ExtractRequiredLayoutFromOperand(targets));
 

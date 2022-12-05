@@ -31,13 +31,13 @@ limitations under the License.
 
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/c/common_internal.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
@@ -202,27 +202,41 @@ class InterpreterInfo : public GraphInfo {
   explicit InterpreterInfo(Subgraph* subgraph) : subgraph_(subgraph) {}
 
   size_t num_tensors() const override { return subgraph_->tensors_size(); }
+
   TfLiteTensor* tensors() override { return subgraph_->tensors(); }
+
   TfLiteTensor* tensor(size_t index) override {
     return subgraph_->tensor(index);
   }
+
   size_t num_execution_nodes() const override {
     return subgraph_->execution_plan().size();
   }
+
   size_t num_total_nodes() const override { return subgraph_->nodes_size(); }
+
   const TfLiteNode& node(size_t index) const override {
     int node_index = subgraph_->execution_plan()[index];
     return subgraph_->nodes_and_registration()[node_index].first;
   }
+
+  const TfLiteRegistration& registration(size_t index) const override {
+    const int node_index = subgraph_->execution_plan()[index];
+    return subgraph_->nodes_and_registration()[node_index].second;
+  }
+
   size_t node_index(size_t index) const override {
     return subgraph_->execution_plan()[index];
   }
+
   const std::vector<int>& inputs() const override {
     return subgraph_->inputs();
   }
+
   const std::vector<int>& outputs() const override {
     return subgraph_->outputs();
   }
+
   const std::vector<int>& variables() const override {
     return subgraph_->variables();
   }
@@ -319,7 +333,7 @@ void CopyVectorToTfLiteIntArray(const std::vector<int>& vec,
   memcpy(arr->data, vec.data(), sizeof(int) * arr->size);
 }
 
-// This function allocates a continuous memory space that contains a
+// This function template allocates a continuous memory space that contains a
 // TfLiteDelegateParams followed by a several TfLiteIntArray.
 // When calling `free` at TfLiteDelegateParams*, all the allocated space
 // will be freed together.
@@ -337,10 +351,36 @@ void CopyVectorToTfLiteIntArray(const std::vector<int>& vec,
 // +-----------------------------------+        |
 // | TfLiteIntArray (variable size)    |<-------/
 // +-----------------------------------+
-TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
-                                           const NodeSubset& node_subset) {
+//
+// Note that the 'delegate' field has to be set by the caller of this function
+// template.
+//
+// This function can also be used with TfLiteOpaqueDelegateParams as a template
+// parameter instead of TfLiteDelegateParams, in which case the layout looks
+// as follows:
+//
+// +----------------------------------------------+
+// | TfLiteOpaqueDelegateParams                   |
+// | struct TfLiteOpaqueDelegateStruct* delegate; |
+// | void* delegate_data;                         |
+// | TfLiteIntArray* nodes_to_replace;            |--\
+// | TfLiteIntArray* input_tensors;               |--+--\
+// | TfLiteIntArray* output_tensors;              |--+--+--\
+// +----------------------------------------------+  |  |  |
+// | TfLiteIntArray (variable size)               |<-/  |  |
+// +----------------------------------------------+     |  |
+// | TfLiteIntArray (variable size)               |<----/  |
+// +----------------------------------------------+        |
+// | TfLiteIntArray (variable size)               |<-------/
+// +----------------------------------------------+
+//
+// Note that the 'delegate' and delegate_data field has to be set by the caller
+// of this function template.
+template <typename Params>
+Params* CreateDelegateParamsImpl(TfLiteDelegate* delegate,
+                                 const NodeSubset& node_subset) {
   // Step 1: Calculate the allocation size.
-  int allocation_size = sizeof(TfLiteDelegateParams);
+  int allocation_size = sizeof(Params);
 
   int nodes_to_replace_size =
       TfLiteIntArrayGetSizeInBytes(node_subset.nodes.size());
@@ -359,10 +399,10 @@ TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
   char* allocation = static_cast<char*>(malloc(allocation_size));
 
   // Step 3: Fill all data structures.
-  TfLiteDelegateParams* params =
-      reinterpret_cast<TfLiteDelegateParams*>(allocation);
-  params->delegate = delegate;
-  allocation += sizeof(TfLiteDelegateParams);
+  Params* params = reinterpret_cast<Params*>(allocation);
+  // Callers are expected to fill any fields that sit before the
+  // 'nodes_to_replace' field.
+  allocation += sizeof(Params);
 
   params->nodes_to_replace = reinterpret_cast<TfLiteIntArray*>(allocation);
   CopyVectorToTfLiteIntArray(node_subset.nodes, params->nodes_to_replace);
@@ -377,6 +417,27 @@ TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
                              params->output_tensors);
   allocation += output_tensors_size;
 
+  return params;
+}
+
+TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
+                                           const NodeSubset& node_subset) {
+  TfLiteDelegateParams* params =
+      CreateDelegateParamsImpl<TfLiteDelegateParams>(delegate, node_subset);
+  params->delegate = delegate;
+  return params;
+}
+
+TfLiteOpaqueDelegateParams* CreateOpaqueDelegateParams(
+    TfLiteDelegate* delegate, const NodeSubset& node_subset) {
+  TfLiteOpaqueDelegateParams* params =
+      CreateDelegateParamsImpl<TfLiteOpaqueDelegateParams>(delegate,
+                                                           node_subset);
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
+  params->delegate = reinterpret_cast<TfLiteOpaqueDelegateStruct*>(delegate);
+  params->delegate_data = delegate->opaque_delegate_builder->data;
   return params;
 }
 
@@ -413,6 +474,13 @@ TfLiteStatus Subgraph::PartitionGraph(const TfLiteIntArray* nodes_to_replace,
 TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
     TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
     TfLiteDelegate* delegate) {
+  // The subgraph is taking ownership of the external registration, in case the
+  // user has supplied an opaque delegate.
+  if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
+    registration_externals_.insert(std::unique_ptr<TfLiteRegistrationExternal>(
+        registration.registration_external));
+  }
+
   // Ignore empty node replacement sets.
   if (!nodes_to_replace->size) {
     return kTfLiteOk;
@@ -433,19 +501,13 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   // off in production builds on other platforms.
   TFLITE_LOG_PROD(
       tflite::TFLITE_LOG_VERBOSE,
-      "Replacing %d node(s) with delegate (%s) node, yielding %zu partitions.",
+      "Replacing %d node(s) with delegate (%s) node, yielding %zu partitions "
+      "for the whole graph.",
       nodes_to_replace->size,
       registration.custom_name ? registration.custom_name : "unknown",
       node_subsets.size());
 
   execution_plan_.clear();
-
-  // The subgraph is taking ownership of the external registration, in case the
-  // user has supplied an opaque delegate.
-  if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
-    registration_externals_.insert(std::unique_ptr<TfLiteRegistrationExternal>(
-        registration.registration_external));
-  }
 
   for (auto& node_subset : node_subsets) {
     // Subsets claimed by the delegate should have a "macro" op created, the
@@ -461,11 +523,19 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
       case NodeSubset::kTfPartition: {
         int node_index;
 
-        TfLiteDelegateParams* params =
-            CreateDelegateParams(delegate, node_subset);
+        void* delegate_params = nullptr;
+        if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
+          TfLiteOpaqueDelegateParams* opaque_params =
+              CreateOpaqueDelegateParams(delegate, node_subset);
+          delegate_params = opaque_params;
+        } else {
+          TfLiteDelegateParams* params =
+              CreateDelegateParams(delegate, node_subset);
+          delegate_params = params;
+        }
         TF_LITE_ENSURE_STATUS(AddNodeWithParameters(
             node_subset.input_tensors, node_subset.output_tensors, {}, nullptr,
-            0, params, &registration, &node_index));
+            0, delegate_params, &registration, &node_index));
 
         // Initialize the output tensors's delegate-related fields.
         for (int tensor_index : node_subset.output_tensors) {
@@ -941,7 +1011,7 @@ bool Subgraph::OpMightHaveSideEffect(
 
 TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
                                          const std::vector<int>& dims) {
-  const bool delegates_applied = !pre_delegation_execution_plan_.empty();
+  const bool delegates_applied = !delegates_applied_.empty();
   const bool graph_is_immutable = state_ == kStateInvokableAndImmutable;
   if (graph_is_immutable && !delegates_applied) {
     ReportError("ResizeInputTensor is disallowed when graph is immutable.");

@@ -4,6 +4,6 @@ tf_class {
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'termination_watcher_fn\', \'exit_fn\', \'grace_period\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'termination_watcher_fn\', \'exit_fn\', \'grace_period\', \'save_fn\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
 }

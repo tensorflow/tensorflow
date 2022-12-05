@@ -39,7 +39,7 @@ mlir::ArrayAttr ConvertPrecisionConfig(const PrecisionConfig* config,
     operand_precision_attrs.push_back(mlir::mhlo::PrecisionAttr::get(
         builder->getContext(),
         mlir::mhlo::symbolizePrecision(PrecisionConfig_Precision_Name(prec))
-            .getValue()));
+            .value()));
   }
   return builder->getArrayAttr(operand_precision_attrs);
 }
@@ -169,6 +169,8 @@ StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
     case xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
       return mlir::mhlo::CustomCallApiVersion::
           API_VERSION_STATUS_RETURNING_UNIFIED;
+    case xla::CustomCallApiVersion::API_VERSION_TYPED_FFI:
+      return mlir::mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI;
     default:
       return InvalidArgument("Unknown CustomCallApiVersion enum value #%d (%s)",
                              api_version,

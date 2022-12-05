@@ -99,9 +99,9 @@ class ConvertSelectBase : public OpConverterBase<ConvertSelectBase> {
 
     for (int i = 0; i < tensor_.size(); i++) {
       // This will also convert constants to tensors.
-      TF_RETURN_IF_ERROR(PrepareTensorForShape(
-          params.converter, inputs.at(i), broadcasted_dims[i],
-          params.validation_only, &tensor_[i], node, i));
+      tensor_[i] = std::make_unique<TRT_TensorOrWeights>(inputs.at(i));
+      TF_RETURN_IF_ERROR(
+          ApplyBroadcast(tensor_[i], broadcasted_dims[i], this->params_, 0));
     }
 
     return OkStatus();
@@ -112,9 +112,9 @@ class ConvertSelectBase : public OpConverterBase<ConvertSelectBase> {
     auto* converter = params.converter;
 
     nvinfer1::ISelectLayer* select_layer = converter->network()->addSelect(
-        *tensor_[0]->trt_tensor(),  // cond_tensor
-        *tensor_[1]->trt_tensor(),  // then_tensor
-        *tensor_[2]->trt_tensor()   // else_tensor
+        *tensor_[0].get()->as_tensor(params_)->trt_tensor(),  // cond_tensor
+        *tensor_[1].get()->as_tensor(params_)->trt_tensor(),  // then_tensor
+        *tensor_[2].get()->as_tensor(params_)->trt_tensor()   // else_tensor
     );
 
     converter->SetLayerName(select_layer, params.node_def.name(), layer_name_);
@@ -151,17 +151,14 @@ class ConvertSelectBase : public OpConverterBase<ConvertSelectBase> {
     const int idx = then_vs_else ? 1 : 0;
     for (int i = 0; i < 2; ++i) {
       const auto& input = inputs.at(i + idx);
-      if (input.is_tensor()) {
-        const auto* dims = input.GetTrtDims().d;
-        for (int j = input.GetTrtDims().nbDims; --j >= 0;) {
-          if (*(dims + j) < 0) return true;
-        }
+      if (input.is_tensor() && !HasStaticShape(input.GetTrtDims())) {
+        return true;
       }
     }
     return false;
   }
 
-  std::array<ITensorProxyPtr, 3> tensor_{nullptr, nullptr, nullptr};
+  std::array<std::unique_ptr<TRT_TensorOrWeights>, 3> tensor_;
   const std::string layer_name_;
 };
 

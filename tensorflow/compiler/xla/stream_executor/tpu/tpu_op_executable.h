@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -51,7 +51,7 @@ class TpuOpExecutable : public xla::TpuExecutableInterface {
   absl::string_view fingerprint() const override;
 
  private:
-  Status LoadProgramAndEnqueueToStream(
+  xla::Status LoadProgramAndEnqueueToStream(
       const xla::ServiceExecutableRunOptions& run_options,
       absl::Span<const stream_executor::DeviceMemoryBase> arguments,
       stream_executor::DeviceMemoryBase result,

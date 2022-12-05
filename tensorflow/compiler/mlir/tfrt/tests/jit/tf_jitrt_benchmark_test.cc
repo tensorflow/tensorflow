@@ -19,7 +19,7 @@
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/core/platform/test_benchmark.h"
