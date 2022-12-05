@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -pass-pipeline='func.func(canonicalize)' | FileCheck %s
+// RUN: tf-opt %s -pass-pipeline='builtin.module(func.func(canonicalize))' | FileCheck %s
 
 // Test that a constant stays inside an island after canonicalization
 

@@ -19,7 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/lite/arena_planner.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/eigen_spatial_convolutions.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 

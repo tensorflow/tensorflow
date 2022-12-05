@@ -106,6 +106,13 @@ Compiler::GetPlatformCompilers() {
   return compilers->at(platform->id()).get();
 }
 
+// Default implementation
+// TODO(b/256849421) Replace with non-null instantiation of MetricsHookInterface
+// with empty implementations.
+std::unique_ptr<MetricsHookInterface> Compiler::CreateMetricsHook() const {
+  return nullptr;
+}
+
 AotCompilationOptions::AotCompilationOptions()
     : debug_options_(GetDebugOptionsFromFlags()) {}
 

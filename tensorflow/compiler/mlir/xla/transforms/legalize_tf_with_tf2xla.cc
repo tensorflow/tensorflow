@@ -52,7 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/mlir_hlo_builder.h"
@@ -123,6 +123,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::ConjugateTransposeOp>(),
     TypeID::get<TF::CoshOp>(),
     TypeID::get<TF::CrossOp>(),
+    TypeID::get<TF::CumulativeLogsumexpOp>(),
     TypeID::get<TF::DataFormatDimMapOp>(),
     TypeID::get<TF::DataFormatVecPermuteOp>(),
     TypeID::get<TF::DepthToSpaceOp>(),
@@ -221,6 +222,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::RintOp>(),
     TypeID::get<TF::RollOp>(),
     TypeID::get<TF::RoundOp>(),
+    TypeID::get<TF::SegmentSumV2Op>(),
     TypeID::get<TF::SelectV2Op>(),
     TypeID::get<TF::SelfAdjointEigV2Op>(),
     TypeID::get<TF::SeluGradOp>(),
@@ -420,6 +422,12 @@ bool IsOpAllowedTf2XlaFallbackAndCreateFunctions(Operation* op) {
   auto abstractOp = op->getRegisteredInfo();
   if (!abstractOp) return false;
   return ops->count(abstractOp->getTypeID());
+}
+
+bool HasTf2XlaFallback(Operation* op) {
+  return IsOpAllowedTf2XlaFallback(op) ||
+         IsOpAllowedTf2XlaFallbackAndCreateFunctions(op) ||
+         IsOpAllowedTf2XlaPreferred(op);
 }
 
 namespace {

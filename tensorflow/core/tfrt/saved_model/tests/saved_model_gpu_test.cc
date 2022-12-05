@@ -39,18 +39,17 @@ TEST(SavedModelTest, MatmulGpu) {
   options.graph_execution_options.enable_grappler_function_optimizer = true;
   options.graph_execution_options.compile_options.enable_grappler = true;
 
-  tensorflow::Status status;
-  auto saved_model =
-      SavedModelImpl::LoadSavedModel(options, saved_model_dir,
-                                     /*tags=*/{"serve"}, &status);
-  TF_CHECK_OK(status);
+  auto saved_model = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
+                                                    /*tags=*/{"serve"});
+  TF_CHECK_OK(saved_model.status());
 
   std::vector<tensorflow::Tensor> inputs = {
       CreateTfTensor<float>({1, 3}, {1.0, 1.0, 1.0})};
 
   std::vector<tensorflow::Tensor> outputs;
-  TF_ASSERT_OK(saved_model->Run(/*run_options=*/{}, "serving_default", inputs,
-                                &outputs));
+  TF_ASSERT_OK(
+      (*saved_model)
+          ->Run(/*run_options=*/{}, "serving_default", inputs, &outputs));
 
   ASSERT_EQ(outputs.size(), 1);
   EXPECT_THAT(GetTfTensorData<float>(outputs[0]),

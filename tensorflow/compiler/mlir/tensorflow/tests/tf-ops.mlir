@@ -4679,3 +4679,59 @@ func.func @testSetStaticDimensionBounds(%arg0: tensor<?x?xi32>, %arg1: tensor<4x
   %dyn_arg0 = "tf.SetStaticDimensionBounds" (%arg0, %arg1) :(tensor<?x?xi32>, tensor<4xi32>) -> tensor<?x?xi32>
   func.return %dyn_arg0 : tensor<?x?xi32>
 }
+
+// Following tests are for LegacyCall symbol use verifier.
+
+// -----
+
+// Tests that valid symbol use does not produce any error.
+func.func @valid_symbol_use(%arg0: tensor<i32>) -> () {
+  "tf.LegacyCall"(%arg0) {f = @call_func} : (tensor<i32>) -> (tensor<i32>)
+  func.return
+}
+
+func.func @call_func(%arg0: tensor<i32>) -> tensor<i32> {
+  func.return %arg0 : tensor<i32>
+}
+
+// -----
+
+// Tests that undefined call function produces error.
+func.func @test_undefined_function() -> () {
+  // expected-error @below {{'f' attribute refers to an undefined function: undefined_func}}
+  "tf.LegacyCall"() {f = @undefined_func} : () -> ()
+  func.return
+}
+
+// -----
+
+// Tests that argument count mismatch produces error.
+func.func @test_arg_count_mismatch(%arg0: tensor<i32>) -> () {
+  // expected-error @below {{argument count mismatch: 'args' has 1 argument(s), but 'call_func' expects 2}}
+  "tf.LegacyCall"(%arg0) {f = @call_func} : (tensor<i32>) -> tensor<i32>
+  func.return
+}
+
+func.func @call_func(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+  func.return %arg0 : tensor<f32>
+}
+
+// -----
+
+func.func @test_batch_function_with_valid_symbol(%arg0: tensor<1x3xf32>, %arg1: tensor<!tf_type.resource<tensor<1x3xf32>>>) -> () {
+  "tf.BatchFunction"(%arg0, %arg1) {batch_timeout_micros = 100000 : i64, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operand_segment_sizes = array<i32: 1, 1>} : (tensor<1x3xf32>, tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
+  func.return
+}
+
+func.func private @batched_function(%arg0: tensor<1x3xf32>, %arg1: tensor<*x!tf_type.resource>) -> tensor<1x3xf32> {
+  %0 = "tf.Identity"(%arg0) : (tensor<1x3xf32>) -> tensor<1x3xf32>
+  func.return %0 : tensor<1x3xf32>
+}
+
+// -----
+
+func.func @test_batch_function_with_invalid_symbol(%arg0: tensor<1x3xf32>, %arg1: tensor<!tf_type.resource<tensor<1x3xf32>>>) -> () {
+  // expected-error @below {{'f' attribute refers to an undefined function: undefined_function}}
+  "tf.BatchFunction"(%arg0, %arg1) {batch_timeout_micros = 100000 : i64, f = @undefined_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operand_segment_sizes = array<i32: 1, 1>} : (tensor<1x3xf32>, tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
+  func.return
+}

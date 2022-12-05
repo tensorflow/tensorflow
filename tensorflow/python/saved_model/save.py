@@ -25,6 +25,7 @@ from absl import logging
 from tensorflow.core.config import flags
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import versions_pb2
+from tensorflow.core.protobuf import fingerprint_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.core.protobuf import saved_object_graph_pb2
@@ -1302,9 +1303,15 @@ def save_and_return_nodes(obj,
     fingerprint_path = file_io.join(
         compat.as_str(export_dir),
         compat.as_str(constants.FINGERPRINT_FILENAME))
-    fingerprint_proto = fingerprinting.CreateFingerprintDef(
+    fingerprint_serialized = fingerprinting.CreateFingerprintDef(
         saved_model_serialized, export_dir)
-    file_io.atomic_write_string_to_file(fingerprint_path, fingerprint_proto)
+    file_io.atomic_write_string_to_file(fingerprint_path,
+                                        fingerprint_serialized)
+    # We need to deserialize the fingerprint in order to send its values.
+    fingerprint_proto = fingerprint_pb2.FingerprintDef()
+    fingerprint_proto.ParseFromString(fingerprint_serialized)
+    metrics.SetWriteFingerprint(
+        saved_model_checksum=str(fingerprint_proto.saved_model_checksum))
 
   path = file_io.join(
       compat.as_str(export_dir),

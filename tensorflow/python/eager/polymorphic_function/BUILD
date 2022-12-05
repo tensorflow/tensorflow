@@ -2,6 +2,7 @@ load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -229,12 +230,13 @@ py_library(
     ],
 )
 
-cuda_py_test(
+tf_py_test(
     name = "quarantine_test",
     size = "medium",
     srcs = ["quarantine_test.py"],
     python_version = "PY3",
     deps = [
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:data_flow_ops",

@@ -20,15 +20,12 @@ from typing import List, Optional, Dict
 
 import numpy as np
 
-from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import gen_dtensor_ops
-from tensorflow.dtensor.python import heartbeat
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -86,9 +83,9 @@ class _CoreLocation:
 
 def _create_device_array(shape, device_type, host_id, local_device_ids=None):
   """Returns ID and device lists that can be used to create a mesh."""
-  num_global_devices = api.num_global_devices(device_type)
+  num_global_devices = config.num_global_devices(device_type)
   global_device_ids = np.arange(num_global_devices).reshape(shape)
-  local_device_list = api.local_devices(device_type)
+  local_device_list = config.local_devices(device_type)
 
   # User can specify local_device_ids or use default list for multi host.
   num_local_devices = len(local_device_list)
@@ -148,7 +145,7 @@ def tpu_system_init_helper(task_id,
                            use_tfrt_host_runtime=True):
   """A helper function to initialize multi-client tpu system."""
 
-  @function.defun
+  @def_function.function
   def _tpu_init_fn():
     return gen_dtensor_ops.configure_and_initialize_global_tpu(
         use_tfrt_host_runtime=use_tfrt_host_runtime)
@@ -248,13 +245,18 @@ def initialize_tpu_system():
   context.async_wait()
   context.context()._clear_caches()  # pylint: disable=protected-access
 
+  use_tfrt_host_runtime = context.context().use_tfrt
+  logging.info("Using TFRT host runtime is set to %s", use_tfrt_host_runtime)
   try:
     task_id = config.client_id()
     num_tasks = config.num_clients()
-    num_devices = api.num_global_devices(_TPU_DEVICE_TYPE)
+    num_devices = config.num_global_devices(_TPU_DEVICE_TYPE)
 
-    tpu_topology, device = tpu_system_init_helper(task_id, num_tasks,
-                                                  num_devices)
+    tpu_topology, device = tpu_system_init_helper(
+        task_id,
+        num_tasks,
+        num_devices,
+        use_tfrt_host_runtime=use_tfrt_host_runtime)
     global _tpu_topology
     _tpu_topology = tpu_topology
     logging.vlog(1, "TPU Topology: %s, %s", tpu_topology.mesh_shape,
@@ -276,13 +278,6 @@ def initialize_tpu_system():
                   + "messages above to see whether that's the case. \nIf so, "
                   + "consider to restart the job or try another machine.")
     raise e
-
-  # Optionally exchange heartbeats between workers every minute.
-  if config.num_clients() > 1 and config.heartbeat_enabled():
-    logging.info(
-        "Starting DTensor heartbeat service exchanging signals every 10 minutes"
-    )
-    heartbeat.start(period=180)
 
   # Clear out the eager context caches since the memory is invalid now.
   logging.info("Clearing out eager caches")
@@ -577,15 +572,17 @@ def _build_orthogonal_rings(
 
 
 @tf_export("experimental.dtensor.create_tpu_mesh", v1=[])
-def create_tpu_mesh(mesh_dim_names: List[str],
-                    mesh_shape: List[int],
-                    mesh_name: str,
-                    ring_dims: Optional[int] = None,
-                    ring_axes: Optional[List[str]] = None,
-                    ring_bounds: Optional[List[int]] = None,
-                    can_split_host_across_rings: bool = True,
-                    build_ring_across_rings: bool = False,
-                    rotate_ring_across_rings: bool = False) -> layout_lib.Mesh:
+def create_tpu_mesh(
+    mesh_dim_names: List[str],
+    mesh_shape: List[int],
+    mesh_name: str,
+    ring_dims: Optional[int] = None,
+    ring_axes: Optional[List[str]] = None,
+    ring_bounds: Optional[List[int]] = None,
+    can_split_host_across_rings: bool = True,
+    build_ring_across_rings: bool = False,
+    rotate_ring_across_rings: bool = False,
+    use_xla_spmd: bool = layout_lib.USE_XLA_SPMD) -> layout_lib.Mesh:
   """Returns a distributed TPU mesh optimized for AllReduce ring reductions.
 
   Only as many as leading axes specified by `ring_axes` as necessary will be
@@ -616,6 +613,8 @@ def create_tpu_mesh(mesh_dim_names: List[str],
       across model-parallel rings. This ring could be strided.
     rotate_ring_across_rings: Optional; If true, build the data-parallel ring in
       column-major instead of row-major order.
+    use_xla_spmd: Boolean when True, will use XLA SPMD instead of
+      DTensor SPMD.
   """
 
   logging.info("Building a TPU mesh %s of shape %s", mesh_name, mesh_shape)
@@ -716,7 +715,7 @@ def create_tpu_mesh(mesh_dim_names: List[str],
   global_device_ids, local_device_ids, local_device_list = _create_device_array(
       mesh_shape, _TPU_DEVICE_TYPE, None, local_device_ids=indexes)
   return layout_lib.Mesh(mesh_dim_names, global_device_ids, local_device_ids,
-                         local_device_list, mesh_name)
+                         local_device_list, mesh_name, use_xla_spmd)
 
 
 def get_device_ids(mesh: layout_lib.Mesh,

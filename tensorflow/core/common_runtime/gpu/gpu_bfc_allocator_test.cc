@@ -19,39 +19,41 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 
 #include <algorithm>
+#include <optional>
 #include <vector>
 
+#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
 #include "tensorflow/core/framework/typed_allocator.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/random/simple_philox.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/bfc_memory_map.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/tsl/framework/device_id.h"
+#include "tensorflow/tsl/lib/gtl/inlined_vector.h"
+#include "tensorflow/tsl/lib/random/simple_philox.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/strcat.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/threadpool.h"
+#include "tensorflow/tsl/platform/types.h"
 
 namespace tsl {
 namespace {
+using stream_executor::DeviceIdUtil;
+using stream_executor::GPUMachineManager;
 using tensorflow::BinSummary;
-using tensorflow::DeviceIdUtil;
 using tensorflow::DeviceMemAllocator;
 using tensorflow::GPUBFCAllocator;
-using tensorflow::GPUMachineManager;
 using tensorflow::GPUOptions;
 using tensorflow::TypedAllocator;
 
 void CheckStats(Allocator* a, int64_t num_allocs, int64_t bytes_in_use,
                 int64_t peak_bytes_in_use, int64_t largest_alloc_size) {
-  absl::optional<AllocatorStats> stats = a->GetStats();
+  std::optional<AllocatorStats> stats = a->GetStats();
   EXPECT_TRUE(stats);
   if (!stats) {
     return;
@@ -321,7 +323,7 @@ TEST_P(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
     a.DeallocateRaw(existing_ptrs[i]);
   }
 
-  absl::optional<AllocatorStats> stats = a.GetStats();
+  std::optional<AllocatorStats> stats = a.GetStats();
   if (stats) {
     LOG(INFO) << "Alloc stats: \n" << stats->DebugString();
   }

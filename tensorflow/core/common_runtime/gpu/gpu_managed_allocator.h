@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_MANAGED_ALLOCATOR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_MANAGED_ALLOCATOR_H_
 
-#include "tensorflow/core/framework/allocator.h"
+#include <string>
+
+#include "tensorflow/tsl/framework/allocator.h"
 
 namespace tensorflow {
 
@@ -24,7 +26,7 @@ namespace tensorflow {
 // can be accessed from both host and device. CUDA transparently migrates dirty
 // pages, which can be slow. Therefore, this allocator is intended for
 // convenience in functional tests only.
-class GpuManagedAllocator : public Allocator {
+class GpuManagedAllocator : public tsl::Allocator {
  public:
   std::string Name() override { return "GpuManagedAllocator"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;

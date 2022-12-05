@@ -786,6 +786,11 @@ const xla::XlaComputation* XlaOpKernelContext::GetOrCreateAdd(
   return xla_context()->GetOrCreateAdd(type);
 }
 
+const xla::XlaComputation* XlaOpKernelContext::GetOrCreateLogAddExp(
+    const DataType type) {
+  return xla_context()->GetOrCreateLogAddExp(type);
+}
+
 const xla::XlaComputation* XlaOpKernelContext::GetOrCreateMul(
     const DataType type) {
   return xla_context()->GetOrCreateMul(type);

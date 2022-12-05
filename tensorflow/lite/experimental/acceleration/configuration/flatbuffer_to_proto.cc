@@ -327,6 +327,16 @@ proto::EdgeTpuSettings ConvertEdgeTpuSettings(const EdgeTpuSettings& settings) {
   return proto_settings;
 }
 
+proto::StableDelegateLoaderSettings ConvertStableDelegateLoaderSettings(
+    const StableDelegateLoaderSettings& settings) {
+  proto::StableDelegateLoaderSettings proto_settings;
+  if (settings.delegate_path() != nullptr) {
+    proto_settings.set_delegate_path(settings.delegate_path()->str());
+  }
+
+  return proto_settings;
+}
+
 proto::CoralSettings ConvertCoralSettings(const CoralSettings& settings) {
   proto::CoralSettings proto_settings;
   if (settings.device() != nullptr) {
@@ -344,45 +354,51 @@ proto::TFLiteSettings ConvertTfliteSettings(const TFLiteSettings& settings) {
   proto::TFLiteSettings proto_settings;
   proto_settings.set_delegate(ConvertDelegate(settings.delegate()));
   if (settings.nnapi_settings() != nullptr) {
-    *(proto_settings.mutable_nnapi_settings()) =
+    *proto_settings.mutable_nnapi_settings() =
         ConvertNNAPISettings(*settings.nnapi_settings());
   }
   if (settings.gpu_settings() != nullptr) {
-    *(proto_settings.mutable_gpu_settings()) =
+    *proto_settings.mutable_gpu_settings() =
         ConvertGPUSettings(*settings.gpu_settings());
   }
   if (settings.hexagon_settings() != nullptr) {
-    *(proto_settings.mutable_hexagon_settings()) =
+    *proto_settings.mutable_hexagon_settings() =
         ConvertHexagonSettings(*settings.hexagon_settings());
   }
 
   if (settings.xnnpack_settings() != nullptr) {
-    *(proto_settings.mutable_xnnpack_settings()) =
+    *proto_settings.mutable_xnnpack_settings() =
         ConvertXNNPackSettings(*settings.xnnpack_settings());
   }
 
   if (settings.coreml_settings() != nullptr) {
-    *(proto_settings.mutable_coreml_settings()) =
+    *proto_settings.mutable_coreml_settings() =
         ConvertCoreMLSettings(*settings.coreml_settings());
   }
 
+  if (settings.stable_delegate_loader_settings() != nullptr) {
+    *proto_settings.mutable_stable_delegate_loader_settings() =
+        ConvertStableDelegateLoaderSettings(
+            *settings.stable_delegate_loader_settings());
+  }
+
   if (settings.cpu_settings() != nullptr) {
-    *(proto_settings.mutable_cpu_settings()) =
+    *proto_settings.mutable_cpu_settings() =
         ConvertCPUSettings(*settings.cpu_settings());
   }
 
   proto_settings.set_max_delegated_partitions(
       settings.max_delegated_partitions());
   if (settings.edgetpu_settings() != nullptr) {
-    *(proto_settings.mutable_edgetpu_settings()) =
+    *proto_settings.mutable_edgetpu_settings() =
         ConvertEdgeTpuSettings(*settings.edgetpu_settings());
   }
   if (settings.coral_settings() != nullptr) {
-    *(proto_settings.mutable_coral_settings()) =
+    *proto_settings.mutable_coral_settings() =
         ConvertCoralSettings(*settings.coral_settings());
   }
   if (settings.fallback_settings() != nullptr) {
-    *(proto_settings.mutable_fallback_settings()) =
+    *proto_settings.mutable_fallback_settings() =
         ConvertFallbackSettings(*settings.fallback_settings());
   }
   proto_settings.set_disable_default_delegates(

@@ -134,6 +134,7 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "MatMul",
         "Mha",
         "Tmlp",
+        "TmlpV2",
     };
 #if TENSORFLOW_USE_ROCM
     if (true) {

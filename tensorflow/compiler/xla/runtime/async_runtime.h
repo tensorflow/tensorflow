@@ -23,7 +23,8 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/tsl/platform/threadpool.h"
-#include "tfrt/host_context/async_value.h"  // from @tf_runtime
+#include "tfrt/concurrency/async_value.h"  // from @tf_runtime
+#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace mlir {
 namespace runtime {
@@ -159,13 +160,13 @@ class AsyncRuntime {
   static void* GetStorage(Value* value);
 
   // Extracts async value that holds a chain owned by the value.
-  static tfrt::AsyncValue* GetAsyncValue(Value* value);
+  static tsl::AsyncValue* GetAsyncValue(Value* value);
 
   // Extracts async value that is owned by the token.
-  static tfrt::AsyncValue* GetAsyncValue(Token* token);
+  static tsl::AsyncValue* GetAsyncValue(Token* token);
 
   // Extracts async value that signals group completion.
-  static tfrt::AsyncValue* GetAsyncValue(Group* group);
+  static tsl::AsyncValue* GetAsyncValue(Group* group);
 
   // Reference counting operations for the runtime objects.
   static void AddRef(AsyncRuntimeObject* obj, unsigned count = 1);
@@ -180,13 +181,13 @@ class AsyncRuntime {
 
  private:
   // Blocks the caller thread until awaitable async value becomes available.
-  static void Await(tfrt::AsyncValue* awaitable);
+  static void Await(tsl::AsyncValue* awaitable);
 
   AsyncTaskRunner* runner_;  // must outlive *this
 };
 
 // A base class for all Async dialect types reference counted at runtime.
-class AsyncRuntimeObject : public tfrt::ReferenceCounted<AsyncRuntimeObject> {
+class AsyncRuntimeObject : public tsl::ReferenceCounted<AsyncRuntimeObject> {
  public:
   using ReferenceCounted::ReferenceCounted;  // inherit constructors
   virtual ~AsyncRuntimeObject() = default;

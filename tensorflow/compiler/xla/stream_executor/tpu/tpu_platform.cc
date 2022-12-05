@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 
-#include "tensorflow/c/tf_status.h"
-#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_id.h"
-#include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/tsl/c/tsl_status.h"
+#include "tensorflow/tsl/c/tsl_status_helper.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -152,31 +152,34 @@ void TpuPlatform::EraseEvent(stream_executor::internal::EventInterface* key) {
 }
 
 Status TpuPlatform::TpusPerHost(int* tpus) {
-  TF_Status* status = TF_NewStatus();
+  TSL_Status* status = TSL_NewStatus();
 
-  if (tpu::OpsApiFn()->TpuConfigurationApi_TpusPerHostFn == nullptr) {
+  if (stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_TpusPerHostFn ==
+      nullptr) {
     *tpus = 0;
-    return OkStatus();
+    return tsl::OkStatus();
   }
 
-  tpu::OpsApiFn()->TpuConfigurationApi_TpusPerHostFn(tpus, status);
-  auto ret_status = StatusFromTF_Status(status);
-  TF_DeleteStatus(status);
+  stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_TpusPerHostFn(tpus,
+                                                                      status);
+  auto ret_status = tsl::StatusFromTSL_Status(status);
+  TSL_DeleteStatus(status);
   return ret_status;
 }
 
 Status TpuPlatform::TpuMemoryLimit(int64_t* memory_limit) {
-  TF_Status* status = TF_NewStatus();
+  TSL_Status* status = TSL_NewStatus();
 
-  if (tpu::OpsApiFn()->TpuConfigurationApi_TpuMemoryLimitFn == nullptr) {
+  if (stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_TpuMemoryLimitFn ==
+      nullptr) {
     *memory_limit = 0;
-    return OkStatus();
+    return tsl::OkStatus();
   }
 
-  tpu::OpsApiFn()->TpuConfigurationApi_TpuMemoryLimitFn(
+  stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_TpuMemoryLimitFn(
       reinterpret_cast<int64_t*>(memory_limit), status);
-  auto ret_status = StatusFromTF_Status(status);
-  TF_DeleteStatus(status);
+  auto ret_status = tsl::StatusFromTSL_Status(status);
+  TSL_DeleteStatus(status);
   return ret_status;
 }
 

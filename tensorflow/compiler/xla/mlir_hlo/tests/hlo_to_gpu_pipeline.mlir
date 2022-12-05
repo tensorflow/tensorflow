@@ -21,6 +21,12 @@ func.func @simple_op(%arg0: memref<2048xf32>, %arg1: memref<2048xf32>) {
 // CHECK: gpu.module @[[MODULE]] attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>}
 // CHECK: llvm.func @[[KERNEL]]({{.*}}) attributes {gpu.kernel, nvvm.kernel}
 // CHECK: llvm.call @__nv_logf
+// Make sure we successfully unrolled the loop 4 times
+// CHECK: llvm.call @__nv_logf
+// CHECK: llvm.call @__nv_logf
+// CHECK: llvm.call @__nv_logf
+// CHECK-NOT: llvm.call @__nv_logf
+
 
 // -----
 
@@ -46,6 +52,11 @@ func.func @fusion(%arg0: memref<2048xf32>, %arg1: memref<2048xf32>) {
 // CHECK:     %[[ABS:.*]] = llvm.call @__nv_fabsf
 // CHECK-NOT: llvm.return
 // CHECK:     %[[ADD:.*]] = llvm.fadd %[[ABS]], %[[ABS]]
+// Make sure we successfully unrolled the loop 4 times:
+// CHECK: llvm.call @__nv_fabsf
+// CHECK: llvm.call @__nv_fabsf
+// CHECK: llvm.call @__nv_fabsf
+// CHECK-NOT: llvm.call @__nv_fabsf
 
 
 // -----
@@ -69,3 +80,11 @@ func.func @imperfect_tiling(%arg0: memref<2051xf32>, %arg1: memref<2051xf32>) {
 // CHECK: gpu.module @[[MODULE]] attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>}
 // CHECK: llvm.func @[[KERNEL]]({{.*}}) attributes {gpu.kernel, nvvm.kernel}
 // CHECK: llvm.call @__nv_logf
+// Make sure we successfully unrolled the loop 4 times:
+// CHECK: llvm.call @__nv_logf
+// CHECK: llvm.call @__nv_logf
+// CHECK: llvm.call @__nv_logf
+// ... and that we have an imperfect-tile loop at the end:
+// CHECK: llvm.cond_br
+// CHECK: llvm.call @__nv_logf
+// CHECK-NOT: llvm.call @__nv_logf

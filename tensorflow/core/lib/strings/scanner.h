@@ -16,6 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_STRINGS_SCANNER_H_
 #define TENSORFLOW_CORE_LIB_STRINGS_SCANNER_H_
 
-#include "tensorflow/core/platform/scanner.h"
+#include "tensorflow/core/platform/scanner.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_LIB_STRINGS_SCANNER_H_

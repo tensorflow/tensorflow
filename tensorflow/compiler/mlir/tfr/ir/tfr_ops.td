@@ -41,8 +41,6 @@ def TFR_Dialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::TFR";
-
-  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 //===----------------------------------------------------------------------===//
@@ -473,9 +471,9 @@ def TFR_TFRReturnOp : TFR_Op<"return", [HasParent<"TFRFuncOp">, Pure,
     Note that only the tfr.tensor and tfr.tensor_list can be returned.
   }];
 
-  let arguments = (ins Variadic<TFR_allowedResultType>:$operands);
+  let arguments = (ins Variadic<TFR_allowedResultType>:$arguments);
 
-  let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
+  let assemblyFormat = "attr-dict ($arguments^ `:` type($arguments))?";
 }
 
 //===----------------------------------------------------------------------===//

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -23,6 +25,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -35,6 +38,11 @@ constexpr char kDeviceAttr[] = "device";
 struct LaunchToDeviceAttributePass
     : public impl::LaunchToDeviceAttributePassBase<
           LaunchToDeviceAttributePass> {
+ public:
+  explicit LaunchToDeviceAttributePass(bool legacy_graph_export) {
+    legacy_graph_export_ = legacy_graph_export;
+  }
+
   void runOnOperation() override;
 };
 
@@ -113,9 +121,9 @@ void LaunchToDeviceAttributePass::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>>
-CreateLaunchToDeviceAttributePass() {
-  return std::make_unique<LaunchToDeviceAttributePass>();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLaunchToDeviceAttributePass(
+    bool legacy_graph_export) {
+  return std::make_unique<LaunchToDeviceAttributePass>(legacy_graph_export);
 }
 
 }  // namespace TFDevice

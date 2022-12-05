@@ -40,6 +40,9 @@ std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateDTensorUndoMergeConstAcrossMesh();
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateDTensorElideIdentityBeforeCopyToMesh();
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateDTensorConstantFolding();
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>

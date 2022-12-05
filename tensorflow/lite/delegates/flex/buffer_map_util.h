@@ -56,6 +56,11 @@ class TfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
 
   inline size_t size() const override { return len_; }
 
+  // Indicates that `TfLiteTensorBuffer` is responsible for deallocating its
+  // underlying buffer. This buffer must have been allocated by
+  // `tensorflow::cpu_allocator`
+  inline void TakeOwnershipOfBuffer() { reused_buffer_from_tflite_ = false; }
+
   inline bool BufferReusedFromTfLiteTensor() const {
     return reused_buffer_from_tflite_;
   }

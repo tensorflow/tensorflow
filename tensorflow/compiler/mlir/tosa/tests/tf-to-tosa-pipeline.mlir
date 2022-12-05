@@ -944,3 +944,39 @@ func.func @test_fused_batch_norm_training(%arg0: tensor<8x8x8x8xf32>, %arg1: ten
   %0:6 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, exponential_avg_factor = 1.0 : f32, is_training = true} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>)
   func.return %0#0 : tensor<8x8x8x8xf32>
 }
+
+// -----
+
+// CHECK-LABEL: mirrorpad_symmetric
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<5x10xf32>
+// CHECK: %[[VAL_1:.*]] = "tosa.slice"(%[[VAL_0]]) {size = [1, 10], start = [0, 0]} : (tensor<5x10xf32>)
+// CHECK: %[[VAL_2:.*]] = "tosa.slice"(%[[VAL_0]]) {size = [2, 10], start = [3, 0]} : (tensor<5x10xf32>)
+// CHECK: %[[VAL_3:.*]] = "tosa.reverse"(%[[VAL_2]]) {axis = 0 : i64} : (tensor<2x10xf32>)
+// CHECK: %[[VAL_4:.*]] = "tosa.concat"(%[[VAL_1]], %[[VAL_0]], %[[VAL_3]]) {axis = 0 : i64} : (tensor<1x10xf32>, tensor<5x10xf32>, tensor<2x10xf32>)
+// CHECK: %[[VAL_5:.*]] = "tosa.slice"(%[[VAL_4]]) {size = [8, 1], start = [0, 0]} : (tensor<8x10xf32>)
+// CHECK: %[[VAL_6:.*]] = "tosa.slice"(%[[VAL_4]]) {size = [8, 2], start = [0, 8]} : (tensor<8x10xf32>)
+// CHECK: %[[VAL_7:.*]] = "tosa.reverse"(%[[VAL_6]]) {axis = 1 : i64} : (tensor<8x2xf32>)
+// CHECK: %[[VAL_8:.*]] = "tosa.concat"(%[[VAL_5]], %[[VAL_4]], %[[VAL_7]]) {axis = 1 : i64} : (tensor<8x1xf32>, tensor<8x10xf32>, tensor<8x2xf32>)
+func.func @mirrorpad_symmetric(%arg0: tensor<5x10xf32>) -> tensor<8x13xf32> {
+  %cst = "tf.Const"() {device = "", value = dense<[[1, 2], [1, 2]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+  %0 = "tf.MirrorPad"(%arg0, %cst) {device = "", mode = "SYMMETRIC"} : (tensor<5x10xf32>, tensor<2x2xi32>) -> tensor<8x13xf32>
+  %1 = "tf.Identity"(%0) {device = ""} : (tensor<8x13xf32>) -> tensor<8x13xf32>
+  return %0 : tensor<8x13xf32>
+}
+
+// -----
+
+// CHECK-LABEL: mirrorpad_reflect
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<13x21x3xf32>
+// CHECK: %[[VAL_1:.*]] = "tosa.slice"(%[[VAL_0]]) {size = [1, 21, 3], start = [1, 0, 0]} : (tensor<13x21x3xf32>)
+// CHECK: %[[VAL_2:.*]] = "tosa.concat"(%[[VAL_1]], %[[VAL_0]]) {axis = 0 : i64} : (tensor<1x21x3xf32>, tensor<13x21x3xf32>)
+// CHECK: %[[VAL_3:.*]] = "tosa.slice"(%[[VAL_2]]) {size = [14, 1, 3], start = [0, 1, 0]} : (tensor<14x21x3xf32>)
+// CHECK: %[[VAL_4:.*]] = "tosa.concat"(%[[VAL_3]], %[[VAL_2]]) {axis = 1 : i64} : (tensor<14x1x3xf32>, tensor<14x21x3xf32>)
+// CHECK: %[[VAL_5:.*]] = "tosa.slice"(%[[VAL_4]]) {size = [14, 22, 1], start = [0, 0, 1]} : (tensor<14x22x3xf32>)
+// CHECK: %[[VAL_6:.*]] = "tosa.concat"(%[[VAL_5]], %[[VAL_4]]) {axis = 2 : i64} : (tensor<14x22x1xf32>, tensor<14x22x3xf32>)
+func.func @mirrorpad_reflect(%arg0: tensor<13x21x3xf32>) -> tensor<14x22x4xf32> {
+  %cst = "tf.Const"() {device = "", value = dense<[[1, 0], [1, 0], [1, 0]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
+  %0 = "tf.MirrorPad"(%arg0, %cst) {device = "", mode = "REFLECT"} : (tensor<13x21x3xf32>, tensor<3x2xi32>) -> tensor<14x22x4xf32>
+  %1 = "tf.Identity"(%0) {device = ""} : (tensor<14x22x4xf32>) -> tensor<14x22x4xf32>
+  return %0 : tensor<14x22x4xf32>
+}

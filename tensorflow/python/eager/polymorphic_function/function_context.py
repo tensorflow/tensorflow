@@ -14,12 +14,9 @@
 # ==============================================================================
 """Context information for a tf.function."""
 
-import collections
-from typing import Any, NamedTuple, Tuple
+from typing import NamedTuple, Any
 
-from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_cache
-from tensorflow.core.function.polymorphism import function_type
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -120,26 +117,3 @@ def _enclosing_xla_context():
     # find the original graph with the XLAControlFlowContext.
     graph = getattr(graph, "outer_graph", None)
   return None
-
-
-def make_cache_key(
-    args: Any,
-    captures: Any = None,
-) -> Tuple[function_cache.FunctionContext, function_type.FunctionType,
-           trace_type.WeakrefDeletionObserver]:
-  """Computes the cache key given the function arguments."""
-  if captures is None:
-    captures = dict()
-  signature_context = trace_type.InternalTracingContext()
-  args_signature = trace_type.from_value(args, signature_context)
-  captures_dict_tracetype = trace_type.from_value(captures, signature_context)
-
-  # TODO(fmuham): Use the actual FunctionType
-  dummy_function_type = function_type.FunctionType([
-      function_type.Parameter("args_kwargs",
-                              function_type.Parameter.POSITIONAL_ONLY, False,
-                              args_signature)
-  ], collections.OrderedDict(captures_dict_tracetype.mapping))
-
-  return (make_function_context(), dummy_function_type,
-          signature_context.deletion_observer)

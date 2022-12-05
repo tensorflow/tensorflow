@@ -508,6 +508,33 @@ struct functor_traits<google_floor_mod<Scalar>> {
   };
 };
 
+template <typename T, typename Enable = void>
+struct google_truncate_div_real {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x,
+                                                     const T& y) const {
+    EIGEN_USING_STD(trunc)
+    return static_cast<T>(trunc(x / y));
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x,
+                                                        const Packet& y) const {
+    const Packet z = pdiv(x, y);
+    return pselect(pcmp_lt(z, pzero(z)), pceil(z), pfloor(z));
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<google_truncate_div_real<Scalar>> {
+  enum {
+    Cost = 2 * Eigen::internal::scalar_div_cost<
+                   Scalar, packet_traits<Scalar>::HasDiv>::value +
+           3 * NumTraits<Scalar>::AddCost,
+    PacketAccess =
+        packet_traits<Scalar>::HasDiv && packet_traits<Scalar>::HasFloor &&
+        packet_traits<Scalar>::HasCeil && packet_traits<Scalar>::HasCmp
+  };
+};
+
 #if EIGEN_COMP_GNUC && __cplusplus > 199711L
 #define DISABLE_FLOAT_EQUALITY_WARNING \
   _Pragma("GCC diagnostic push")       \
@@ -1053,6 +1080,10 @@ struct safe_floor_div : base<T, Eigen::internal::safe_div_or_mod_op<
 
 template <typename T>
 struct floor_div_real : base<T, Eigen::internal::google_floor_div_real<T>> {};
+
+template <typename T>
+struct truncate_div_real
+    : base<T, Eigen::internal::google_truncate_div_real<T>> {};
 
 template <typename T>
 struct pow : base<T, Eigen::internal::scalar_pow_op<T, T>> {};

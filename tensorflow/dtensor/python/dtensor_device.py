@@ -45,7 +45,10 @@ _next_device_number_lock = threading.Lock()
 class DTensorDevice(object):
   """Wraps a custom device which attempts to propagate tensor layouts."""
 
-  def __init__(self, meshes: List[layout_lib.Mesh], is_async=True):
+  def __init__(self,
+               meshes: List[layout_lib.Mesh],
+               is_async=True,
+               in_flight_nodes_limit=8):
     """Create a new DTensorDevice which executes ops on `underlying_device`.
 
     Args:
@@ -54,6 +57,9 @@ class DTensorDevice(object):
       is_async: Indicates whether DTensor operations on this client will return
         immediately (with "non-ready" handles) or block until executed. This is
         on by default and is exposed as an option for ease of debugging.
+      in_flight_nodes_limit: Indicates the limit of in-flight nodes before
+        enqueueing of async operations to DTensorDevice is blocked. This limit
+        is per mesh. 0 for no limits from DTensor. Default is 8.
     """
     if any(not isinstance(mesh, layout_lib.Mesh) for mesh in meshes):
       raise TypeError(
@@ -71,6 +77,7 @@ class DTensorDevice(object):
     self._current_output_layout = None
     self._current_default_mesh = None
     self._is_async = is_async
+    self._in_flight_nodes_limit = in_flight_nodes_limit
     self._meshes = set()
     self._mesh_lock = threading.Lock()
     for mesh in meshes:
@@ -128,7 +135,8 @@ class DTensorDevice(object):
     with self._mesh_lock:
       if mesh not in self._meshes:
         _pywrap_dtensor_device.AddMesh(self._device_info, mesh.to_string(),
-                                       self._is_async, False)
+                                       self._is_async, False,
+                                       self._in_flight_nodes_limit)
         self._meshes.add(mesh)
         if mesh.device_type().upper() == "TPU":
           logging.info(
@@ -136,7 +144,8 @@ class DTensorDevice(object):
               mesh.host_mesh().to_string(), mesh.to_string())
           _pywrap_dtensor_device.AddMesh(self._device_info,
                                          mesh.host_mesh().to_string(),
-                                         self._is_async, True)
+                                         self._is_async, True,
+                                         self._in_flight_nodes_limit)
           self._meshes.add(mesh.host_mesh())
           embedding_host_mesh = self._create_embedding_host_mesh(mesh)
           if embedding_host_mesh:
@@ -145,21 +154,19 @@ class DTensorDevice(object):
                 embedding_host_mesh.to_string(), mesh.to_string())
             _pywrap_dtensor_device.AddMesh(self._device_info,
                                            embedding_host_mesh.to_string(),
-                                           self._is_async, False)
+                                           self._is_async, False,
+                                           self._in_flight_nodes_limit)
             self._meshes.add(embedding_host_mesh)
 
   @property
   def meshes(self) -> Set[layout_lib.Mesh]:
     return self._meshes
 
-  def copy_to_mesh(self, tensor, new_layout, source_layout=None) -> ops.Tensor:
+  def copy_to_mesh(self, tensor, new_layout) -> ops.Tensor:
     """Copy `tensor` to `device` with the given layout."""
     self._register_mesh(new_layout.mesh)
     with ops.device(self.name):
-      return gen_dtensor_ops.copy_to_mesh(
-          tensor,
-          layout=new_layout.to_string(),
-          source_layout=source_layout.to_string() if source_layout else "")
+      return gen_dtensor_ops.copy_to_mesh(tensor, layout=new_layout.to_string())
 
   def pack(self, tensors: Sequence[Any], layout: layout_lib.Layout) -> Any:
     """Packs tensors into a DTensor handle on this DTensor device.

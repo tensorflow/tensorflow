@@ -8,24 +8,7 @@ load(
     "tf_cc_test",
 )
 
-# Since all ops need to have a graph created before being fuzzed, we define
-# this header-only library to handle the needed plumbing.
-cc_library(
-    name = "fuzz_session",
-    testonly = 1,
-    hdrs = ["fuzz_session.h"],
-    tags = ["no_oss"],
-    visibility = ["//tensorflow/cc/framework/fuzzing:__subpackages__"],
-    deps = [
-        "//tensorflow/cc:scope",
-        "//tensorflow/core:core_cpu_base",
-        "//tensorflow/core:session_options",
-        "//tensorflow/core/common_runtime:direct_session_internal",
-        "//tensorflow/core/framework:tensor",
-        "//tensorflow/core/platform:status",
-        "@com_google_fuzztest//fuzztest",
-    ],
-)
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 # A trivial fuzzer with no pre-specified corpus.
 tf_cc_test(
@@ -33,10 +16,10 @@ tf_cc_test(
     srcs = ["identity_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
-        ":fuzz_session",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:array",
+        "//tensorflow/security/fuzzing/cc:fuzz_session",
         "@com_google_fuzztest//fuzztest",
         "@com_google_googletest//:gtest_main",
     ],
@@ -47,10 +30,10 @@ tf_cc_test(
     srcs = ["concat_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
-        ":fuzz_session",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:array",
+        "//tensorflow/security/fuzzing/cc:fuzz_session",
         "@com_google_fuzztest//fuzztest",
         "@com_google_googletest//:gtest_main",
     ],
@@ -61,10 +44,10 @@ tf_cc_test(
     srcs = ["add_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
-        ":fuzz_session",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:array",
+        "//tensorflow/security/fuzzing/cc:fuzz_session",
         "@com_google_fuzztest//fuzztest",
         "@com_google_googletest//:gtest_main",
     ],
@@ -75,11 +58,11 @@ tf_cc_test(
     srcs = ["matmul_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
-        ":fuzz_session",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/security/fuzzing/cc:fuzz_session",
         "@com_google_fuzztest//fuzztest",
         "@com_google_googletest//:gtest_main",
     ],

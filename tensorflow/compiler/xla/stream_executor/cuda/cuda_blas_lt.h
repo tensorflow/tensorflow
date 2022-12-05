@@ -139,10 +139,6 @@ class BlasLt {
 
   port::Status Init();
 
-  // Returns the type for the alpha and beta scalars.
-  static blas::DataType GetScaleType(blas::DataType c_type,
-                                     blas::ComputationType computation_type);
-
   // Returns a list of supported algorithms for DoMatmul. The algorithms are
   // returned in the order of increasing estimated compute time according to an
   // internal heuristic.

@@ -47,23 +47,16 @@ func.func @cwise_expr(%a: tensor<?x1024x1024xf32>, %b: tensor<?x1024x1024xf32>,
 // CHECK-SAME:      to (%[[A_D0]], %[[C1024]], %[[C1024]])
 // CHECK-SAME:      step (%[[C1]], %[[C4]], %[[C8]])
 // CHECK-SAME:      distribution ("test")
-// CHECK-DAG:     %[[A_SPACE:.*]] = gml_st.space [%[[A_D0]], 1024, 1024]
-// CHECK-DAG:     %[[A_TILE:.*]] = gml_st.tile %[[A_SPACE]] [%[[I]], %[[J]], %[[K]]] [1, 4, 8] [1, 1, 1]
-// CHECK-DAG:     %[[A_SUB:.*]] = gml_st.materialize %[[A]][%[[A_TILE]]]
-// CHECK-DAG:     %[[B_D0:.*]] = tensor.dim %[[B]], %[[C0]]
-// CHECK-DAG:     %[[B_SPACE:.*]] = gml_st.space [%[[B_D0]], 1024, 1024]
-// CHECK-DAG:     %[[B_TILE:.*]] = gml_st.tile %[[B_SPACE]] [%[[I]], %[[J]], %[[K]]] [1, 4, 8] [1, 1, 1]
-// CHECK-DAG:     %[[B_SUB:.*]] = gml_st.materialize %[[B]][%[[B_TILE]]]
-// CHECK-DAG:     %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[A_TILE]]]
+// CHECK-DAG:     %[[TILE:.*]] = gml_st.tile [%[[I]], %[[J]], %[[K]]] [1, 4, 8] [1, 1, 1]
+// CHECK-DAG:     %[[A_SUB:.*]] = gml_st.materialize %[[A]][%[[TILE]]]
+// CHECK-DAG:     %[[B_SUB:.*]] = gml_st.materialize %[[B]][%[[TILE]]]
+// CHECK-DAG:     %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
 // CHECK-DAG:     %[[AB_SUB:.*]] = linalg.generic 
 // CHECK-SAME:        ins(%[[A_SUB]], %[[B_SUB]] : tensor<1x4x8xf32>, tensor<1x4x8xf32>) 
 // CHECK-SAME:        outs(%[[INIT_SUB]] : tensor<1x4x8xf32>)
-// CHECK-DAG:     %[[C_D0:.*]] = tensor.dim %[[C]], %[[C0]]
-// CHECK-DAG:     %[[C_SPACE:.*]] = gml_st.space [%[[C_D0]], 1024, 1024]
-// CHECK-DAG:     %[[C_TILE:.*]] = gml_st.tile %[[C_SPACE]] [%[[I]], %[[J]], %[[K]]] [1, 4, 8] [1, 1, 1]
-// CHECK-DAG:     %[[C_SUB:.*]] = gml_st.materialize %[[C]][%[[C_TILE]]]
+// CHECK-DAG:     %[[C_SUB:.*]] = gml_st.materialize %[[C]][%[[TILE]]]
 // CHECK-DAG:     %[[ABC_SUB:.*]] = linalg.generic
 // CHECK-SAME:        ins(%[[AB_SUB]], %[[C_SUB]] : tensor<1x4x8xf32>, tensor<1x4x8xf32>) 
 // CHECK-SAME:        outs(%[[INIT_SUB]] : tensor<1x4x8xf32>)
-// CHECK:         gml_st.set_yield %[[ABC_SUB]] into %[[INIT]][%[[A_TILE]]]
+// CHECK:         gml_st.set_yield %[[ABC_SUB]] into %[[INIT]][%[[TILE]]]
 // CHECK:       return %[[ABC]]
