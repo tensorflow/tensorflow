@@ -228,7 +228,6 @@ void AllocateAndParseFlags() {
   // bridge, on a per-graph basis).
   bool enable_mlir_bridge = false;
   bool enable_mlir_bridge_is_explicit = false;
-  bool mlir_bridge_safe_mode = false;
   bool enable_mlir_merge_control_flow_pass = true;
   bool enable_mlir_convert_control_to_data_outputs_pass = false;
   auto setter_for_jitter_tensor_names = [](string sequence) {
@@ -295,12 +294,6 @@ void AllocateAndParseFlags() {
             &enable_mlir_convert_control_to_data_outputs_pass,
             "Enables `tf-executor-convert-control-to-data-outputs` pass for "
             "MLIR-Based TensorFlow Compiler Bridge."),
-       Flag(
-           "tf_mlir_bridge_safe_mode", &mlir_bridge_safe_mode,
-           "When tf_mlir_enable_mlir_bridge is true, this field can enable "
-           "the MLIR bridge's safe mode. When the MLIR bridge is in safe mode, "
-           "it only runs for graphs that use features MLIR bridge currently "
-           "supports."),
        Flag("tf_dump_graphs_in_tfg", &use_tfg_graph_dumper,
             "When tf_dump_graphs_in_tfg is true, graphs after transformations "
             "are dumped in MLIR TFG dialect and not in GraphDef")});
@@ -311,15 +304,10 @@ void AllocateAndParseFlags() {
   mlir_flags = new MlirCommonFlags;
   if (!enable_mlir_bridge_is_explicit) {
     mlir_flags->tf_mlir_enable_mlir_bridge =
-        (mlir_bridge_safe_mode)
-            ? ConfigProto::Experimental::
-                  MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED
-            : ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
+        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
   } else if (enable_mlir_bridge) {
     mlir_flags->tf_mlir_enable_mlir_bridge =
-        (mlir_bridge_safe_mode)
-            ? ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED
-            : ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
+        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
   } else {
     mlir_flags->tf_mlir_enable_mlir_bridge =
         ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
@@ -434,6 +422,8 @@ void AppendMarkForCompilationPassFlags(std::vector<Flag>* flag_list) {
 static std::atomic<bool> xla_compilation_disabled(false);
 
 void DisableXlaCompilation() { xla_compilation_disabled = true; }
+
+void EnableXlaCompilation() { xla_compilation_disabled = false; }
 
 bool FailOnXlaCompilation() { return xla_compilation_disabled; }
 

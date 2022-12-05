@@ -16,13 +16,10 @@
 # Description:
 #   Keras saving and loading libraries.
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "py_strict_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],
 )

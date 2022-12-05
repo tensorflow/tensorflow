@@ -15,8 +15,8 @@ limitations under the License.
 
 #include <utility>
 
+#include "mhlo/IR/hlo_ops.h"
 #include "mhlo_tosa/Transforms/passes.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -70,6 +70,18 @@ struct ConvertMhloCompareOp : public OpRewritePattern<mhlo::CompareOp> {
             op, "comparison direction not yet implemented");
       }
     }
+    return success();
+  }
+};
+
+// TODO(jennik): Move this lowering to PDLL when variadic tensors are supported.
+struct ConvertMhloConcatenateOp : public OpRewritePattern<mhlo::ConcatenateOp> {
+  using OpRewritePattern<mhlo::ConcatenateOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::ConcatenateOp op,
+                                PatternRewriter& rewriter) const override {
+    rewriter.replaceOpWithNewOp<tosa::ConcatOp>(op, op.getResult().getType(),
+                                                op.getVal(), op.getDimension());
     return success();
   }
 };
@@ -165,6 +177,64 @@ struct ConvertMhloDotOp : public OpRewritePattern<mhlo::DotOp> {
   }
 };
 
+// TODO(jennik): Consider the case of a non-constant expansion.
+struct ConvertMhloIotaOp : public OpRewritePattern<mhlo::IotaOp> {
+  using OpRewritePattern<mhlo::IotaOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::IotaOp op,
+                                PatternRewriter& rewriter) const override {
+    auto resultType = op.getResult().getType();
+    auto elementType = resultType.cast<ShapedType>().getElementType();
+    auto resultRankedType = resultType.dyn_cast<RankedTensorType>();
+
+    if (!resultRankedType) {
+      return rewriter.notifyMatchFailure(op, "result tensor must be ranked");
+    }
+    if (!resultRankedType.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(op, "result tensor must be static");
+    }
+
+    auto resultShape = resultRankedType.getShape();
+    auto iotaDimension = op.getIotaDimension();
+    int64_t iotaArrayLength = resultShape[iotaDimension];
+
+    // Create a const op of [0, 1, 2...iotaArrayLength - 1] to be tiled.
+    llvm::SmallVector<mlir::Attribute, 4> constValues;
+    constValues.resize(iotaArrayLength);
+    for (int i = 0; i < iotaArrayLength; i++) {
+      if (elementType.isa<FloatType>()) {
+        constValues[i] = rewriter.getFloatAttr(elementType, i);
+      } else {
+        constValues[i] = rewriter.getIntegerAttr(elementType, i);
+      }
+    }
+
+    RankedTensorType constType =
+        RankedTensorType::get(iotaArrayLength, elementType);
+    auto constOp = rewriter.create<tosa::ConstOp>(
+        op.getLoc(), constType, DenseElementsAttr::get(constType, constValues));
+
+    // Create the multiples attr for the tile op, where all dimensions except
+    // the iota dimension are multiplied.
+    llvm::SmallVector<int64_t, 4> tileMultiples;
+    size_t tileMultiplesSize = resultShape.size();
+    tileMultiples.resize(tileMultiplesSize);
+
+    for (size_t i = 0; i < tileMultiplesSize; i++) {
+      if (i == iotaDimension) {
+        tileMultiples[i] = 1;
+      } else {
+        tileMultiples[i] = resultShape[i];
+      }
+    }
+
+    // Tile the const array to the result shape of the iota op.
+    rewriter.replaceOpWithNewOp<tosa::TileOp>(
+        op, resultType, constOp, rewriter.getI64ArrayAttr(tileMultiples));
+    return success();
+  }
+};
+
 struct ConvertMhloReduceOp : public OpRewritePattern<mhlo::ReduceOp> {
   using OpRewritePattern<mhlo::ReduceOp>::OpRewritePattern;
 
@@ -178,7 +248,7 @@ struct ConvertMhloReduceOp : public OpRewritePattern<mhlo::ReduceOp> {
       return rewriter.notifyMatchFailure(op, "body required to contain 2 ops");
     }
 
-    auto operands = op.operands().front();
+    auto operands = op.getInputs().front();
     ShapedType inputType = operands.getType().cast<ShapedType>();
     uint64_t dimension = op.getDimensions().getValues<uint64_t>().begin()[0];
     Operation& innerOp = bodyBlock.front();
@@ -226,6 +296,17 @@ struct ConvertMhloReduceOp : public OpRewritePattern<mhlo::ReduceOp> {
   }
 };
 
+struct ConvertMhloReturnOp : public OpRewritePattern<mhlo::ReturnOp> {
+  using OpRewritePattern<mhlo::ReturnOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::ReturnOp op,
+                                PatternRewriter& rewriter) const override {
+    rewriter.replaceOpWithNewOp<tosa::YieldOp>(op, op->getResultTypes(),
+                                               op.getResults());
+    return success();
+  }
+};
+
 struct ConvertMhloSliceOp : public OpRewritePattern<mhlo::SliceOp> {
   using OpRewritePattern<mhlo::SliceOp>::OpRewritePattern;
 
@@ -253,13 +334,13 @@ struct ConvertMhloSliceOp : public OpRewritePattern<mhlo::SliceOp> {
     llvm::SmallVector<int64_t, 2> startIndicesI64;
     startIndicesI64.resize(startIndices.size());
 
-    for (int64_t i = 0; i < startIndices.size(); i++) {
+    for (int64_t i = 0; i < static_cast<int64_t>(startIndices.size()); i++) {
       size[i] = endIndices[i] - startIndices[i];
       startIndicesI64[i] = startIndices[i];
     }
 
     rewriter.replaceOpWithNewOp<tosa::SliceOp>(
-        op, op.getResult().getType(), op.operand(),
+        op, op.getResult().getType(), op.getOperand(),
         rewriter.getI64ArrayAttr(startIndicesI64),
         rewriter.getI64ArrayAttr(size));
     return success();
@@ -277,7 +358,7 @@ struct ConvertMhloTransposeOp : public OpRewritePattern<mhlo::TransposeOp> {
           op, "tosa.transpose only supports 1D to 6D tensors");
     }
 
-    auto perms = op.permutation();
+    auto perms = op.getPermutation();
     auto constOp = rewriter.create<tosa::ConstOp>(
         op->getLoc(),
         RankedTensorType::get({perms.size()}, rewriter.getI64Type()), perms);
@@ -287,14 +368,43 @@ struct ConvertMhloTransposeOp : public OpRewritePattern<mhlo::TransposeOp> {
   }
 };
 
+struct ConvertMhloWhileOp : public OpRewritePattern<mhlo::WhileOp> {
+  using OpRewritePattern<mhlo::WhileOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::WhileOp op,
+                                PatternRewriter& rewriter) const override {
+    auto* cond = &op.getCond();
+    auto* body = &op.getBody();
+    auto newWhileOp = rewriter.create<tosa::WhileOp>(
+        op->getLoc(), op->getResultTypes(), op->getOperands());
+
+    auto* newCond = &newWhileOp->getRegion(0);
+    auto* newBody = &newWhileOp->getRegion(1);
+    rewriter.createBlock(newCond);
+    rewriter.createBlock(newBody);
+
+    rewriter.cloneRegionBefore(*cond, &newCond->back());
+    rewriter.eraseBlock(&newCond->back());
+    rewriter.cloneRegionBefore(*body, &newBody->back());
+    rewriter.eraseBlock(&newBody->back());
+
+    rewriter.replaceOp(op, newWhileOp.getResults());
+    return success();
+  }
+};
+
 LogicalResult LegalizeMhlo::initialize(MLIRContext* ctx) {
   RewritePatternSet patternList(ctx);
   populateGeneratedPDLLPatterns(patternList);
   patternList.addWithLabel<ConvertMhloCompareOp>({"MhloCompare"}, ctx);
+  patternList.addWithLabel<ConvertMhloConcatenateOp>({"MhloConcatenate"}, ctx);
   patternList.addWithLabel<ConvertMhloDotOp>({"MhloDot"}, ctx);
+  patternList.addWithLabel<ConvertMhloIotaOp>({"MhloIota"}, ctx);
   patternList.addWithLabel<ConvertMhloReduceOp>({"MhloReduce"}, ctx);
+  patternList.addWithLabel<ConvertMhloReturnOp>({"MhloReturn"}, ctx);
   patternList.addWithLabel<ConvertMhloSliceOp>({"MhloSlice"}, ctx);
   patternList.addWithLabel<ConvertMhloTransposeOp>({"MhloTranspose"}, ctx);
+  patternList.addWithLabel<ConvertMhloWhileOp>({"MhloWhile"}, ctx);
   patterns = std::move(patternList);
   return success();
 }

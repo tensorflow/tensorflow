@@ -48,8 +48,6 @@ namespace gpu {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kRocBlasPlugin);
 
-namespace wrap = tensorflow::wrap;
-
 template <class T>
 const typename RocBlasTypeConversionHelper<T>::mapped_type *complex_cast(
     const DeviceMemory<T> &a) {
@@ -878,6 +876,17 @@ bool ROCMBlas::DoBlasGemmBatched(
   }
 
   return status.ok();
+}
+
+bool ROCMBlas::DoBlasGemmBatched(
+    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
+    uint64_t n, uint64 k, float alpha,
+    const absl::Span<DeviceMemory<Eigen::bfloat16> *const> &a, int lda,
+    const absl::Span<DeviceMemory<Eigen::bfloat16> *const> &b, int ldb,
+    float beta, const absl::Span<DeviceMemory<Eigen::bfloat16> *const> &c,
+    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
+  LOG(ERROR) << "DoBlasGemmBatched not implemented for bfloat16";
+  return false;
 }
 
 bool ROCMBlas::DoBlasGemmBatched(

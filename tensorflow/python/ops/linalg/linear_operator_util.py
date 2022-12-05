@@ -479,6 +479,32 @@ def _reshape_for_efficiency(a,
 ################################################################################
 
 
+def is_adjoint_pair(x, y):
+  """True iff x and y are adjoints of each other (by id, not entries)."""
+  if x is y:  # Note that if x is y then all of their hints are the same!
+    if x.is_self_adjoint is False:  # pylint:disable=g-bool-id-comparison
+      return False
+    if x.is_self_adjoint:
+      return True
+  # Use the fact that if x = LinearOperatorAdjoint(y), then x.H is y.
+  return x.H is y or y.H is x
+
+
+def is_aat_form(operators):
+  """Returns True if operators is of the form A @ A.H, possibly recursively."""
+  operators = list(operators)
+  if not operators:
+    raise ValueError("AAT form is undefined for empty operators")
+
+  if len(operators) % 2:
+    return False
+
+  # Check for forms like (A1 @ A2) @ (A2.H @ A1.H)
+  return all(
+      is_adjoint_pair(operators[i], operators[-1 - i])
+      for i in range(len(operators) // 2))
+
+
 def use_operator_or_provided_hint_unless_contradicting(
     operator, hint_attr_name, provided_hint_value, message):
   """Get combined hint in the case where operator.hint should equal hint.

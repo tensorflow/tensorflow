@@ -1,7 +1,8 @@
-load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core/function:__subpackages__",
     ],
@@ -45,6 +46,7 @@ py_strict_test(
     deps = [
         ":transform",
         "//tensorflow/core/function/testing:test_pass_py",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:math_ops",
@@ -53,7 +55,10 @@ py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/module",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
         "@absl_py//absl/testing:parameterized",
     ],
 )

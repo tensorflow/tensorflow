@@ -1,5 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 licenses(["notice"])
 

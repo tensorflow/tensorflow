@@ -494,23 +494,13 @@ class MiniBenchmarkImpl : public MiniBenchmark {
   void CreateValidatorIfNececessary() {
     if (validator_) return;
 
-    ValidatorRunnerOptions options;
+    ValidatorRunnerOptions options =
+        CreateValidatorRunnerOptionsFrom(*settings_);
     MinibenchmarkStatus get_nnapi_sl_status =
         GetNnApiSlPointerIfPresent(&options.nnapi_sl);
     if (get_nnapi_sl_status != kMinibenchmarkSuccess) {
       LogInitializationFailure(get_nnapi_sl_status);
       return;
-    }
-    options.storage_path =
-        settings_->storage_paths()->storage_file_path()->str();
-    options.data_directory_path =
-        settings_->storage_paths()->data_directory_path()->str();
-    if (settings_->model_file()->fd() <= 0) {
-      options.model_path = settings_->model_file()->filename()->str();
-    } else {
-      options.model_fd = settings_->model_file()->fd();
-      options.model_offset = settings_->model_file()->offset();
-      options.model_size = settings_->model_file()->length();
     }
     validator_ = std::make_unique<ValidatorRunner>(options);
 

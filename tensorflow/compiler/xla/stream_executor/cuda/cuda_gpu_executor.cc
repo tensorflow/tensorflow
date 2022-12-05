@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.h"
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #if defined(__APPLE__)
@@ -147,6 +148,50 @@ port::Status GpuExecutor::Init(int device_ordinal,
   }
 
   return GpuDriver::GetComputeCapability(&cc_major_, &cc_minor_, device_);
+}
+
+std::optional<std::string> GpuExecutor::MakeDeviceDescriptionStr() const {
+  GpuDeviceHandle device;
+  auto status = GpuDriver::GetDevice(device_ordinal_, &device);
+  if (!status.ok()) {
+    return std::nullopt;
+  }
+
+  int cc_major = 0;
+  int cc_minor = 0;
+  GpuDriver::GetComputeCapability(&cc_major, &cc_minor, device).IgnoreError();
+
+  uint64_t device_memory_size = 0;
+  GpuDriver::GetDeviceTotalMemory(device, &device_memory_size);
+
+  auto value_or = [](const auto& status_or, auto default_val) {
+    if (status_or.ok()) return *status_or;
+    return default_val;
+  };
+
+  int core_count = value_or(GpuDriver::GetMultiprocessorCount(device), 0);
+  int sm_clock_khz = value_or(
+      GpuDriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_CLOCK_RATE, device), 0);
+  int mem_clock_khz =
+      value_or(GpuDriver::GetDeviceAttribute(
+                   CU_DEVICE_ATTRIBUTE_MEMORY_CLOCK_RATE, device),
+               0);
+  int l2_cache_bytes = value_or(
+      GpuDriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_L2_CACHE_SIZE, device),
+      0);
+
+  // It would be better to use the PCI device ID or some other truly unique
+  // identifier for the GPU model.  But getting this requires using NVML or
+  // other hacks, which we don't have access to in OSS TensorFlow.
+  //
+  // Alternatively you might be tempted to use GpuDriver::GetDeviceName as a
+  // unique identifier, but this is not stable across GPU VBIOS versions.
+  //
+  // For now, this identifier is good enough.
+  return absl::StrFormat(
+      "sm_%d.%d with %dB RAM, %d cores, %dKHz clock, %dKHz mem clock, %dB L2$",
+      cc_major, cc_minor, device_memory_size, core_count, sm_clock_khz,
+      mem_clock_khz, l2_cache_bytes);
 }
 
 bool GpuExecutor::FindOnDiskForComputeCapability(
@@ -369,6 +414,20 @@ absl::uint128 Fingerprint128(const absl::string_view s) {
   auto fp = tsl::Fingerprint128(s);
   return absl::MakeUint128(fp.high64, fp.low64);
 }
+
+int fpus_per_core(int cc_major, int cc_minor) {
+  // Source:
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions
+  int n = 128;          // 5.x, 6.1, 6.2, 8.6, 9.0 -> 128.
+  if (cc_major == 3) {  // 3.x -> 192.
+    n = 192;
+  } else if ((cc_major == 6 && cc_minor == 0) || (cc_major == 7) ||
+             (cc_major == 8 && cc_minor == 0)) {
+    n = 64;  // 6.0, 7.x, 8.0 -> 64.
+  }
+  return n;
+}
+
 }  // namespace
 
 port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
@@ -981,7 +1040,10 @@ static int TryToReadNumaNode(const std::string& pci_bus_id,
       LOG(INFO) << "successful NUMA node read from SysFS had negative value ("
                 << value
                 << "), but there must be at least one NUMA node"
-                   ", so returning NUMA node zero";
+                   ", so returning NUMA node zero."
+                   " See more at "
+                   "https://github.com/torvalds/linux/blob/v6.0/Documentation/"
+                   "ABI/testing/sysfs-bus-pci#L344-L355";
       fclose(file);
       return 0;
     }
@@ -1072,6 +1134,13 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
     builder.set_device_memory_size(device_memory_size);
   }
 
+  {
+    int64_t l2_cache_size =
+        GpuDriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_L2_CACHE_SIZE, device)
+            .value();
+    builder.set_l2_cache_size(l2_cache_size);
+  }
+
   port::StatusOr<int> mem_clock_khz = GpuDriver::GetDeviceAttribute(
       CU_DEVICE_ATTRIBUTE_MEMORY_CLOCK_RATE, device_ordinal);
   port::StatusOr<int> mem_bus_width_bits = GpuDriver::GetDeviceAttribute(
@@ -1109,6 +1178,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   builder.set_shared_memory_per_block(
       GpuDriver::GetMaxSharedMemoryPerBlock(device).value());
   builder.set_core_count(GpuDriver::GetMultiprocessorCount(device).value());
+  builder.set_fpus_per_core(fpus_per_core(cc_major, cc_minor));
   builder.set_threads_per_core_limit(
       GpuDriver::GetMaxThreadsPerMultiprocessor(device).value());
   builder.set_registers_per_block_limit(

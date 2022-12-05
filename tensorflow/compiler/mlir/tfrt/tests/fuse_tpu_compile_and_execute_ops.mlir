@@ -89,3 +89,21 @@ func.func private @test_fuse_dynamic_dimension_ops(%arg0: tensor<?x?xi32>, %arg1
 
 }
 
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+// CHECK-LABEL: func private @reorder_execute_arg_defining_ops
+// CHECK: tf.VarHandleOp
+// CHECK-NEXT: tf.ReadVariableOp
+// CHECK-NEXT: tf.TPUCompileMlirAndExecute
+func.func private @reorder_execute_arg_defining_ops(%arg0: tensor<1x3xf32> {tf.device = "/CPU:0"}) -> (tensor<1x1xf32> {tf.device = "/TPU:0"}) {
+  %compilation_status, %program = "tf._TPUCompileMlir"() {device = "/CPU:0", metadata = "metadata", mlir_module = "propgram"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+  "tf.TPUCompileSucceededAssert"(%compilation_status) {device = "/CPU:0"} : (tensor<!tf_type.string>) -> ()
+  %0 = "tf.VarHandleOp"() {_xla_inferred_shapes = [#tf_type.shape<>], allowed_devices = [], container = "", device = "/CPU:0", shared_name = "y"} : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+  %1 = "tf.ReadVariableOp"(%0) {device = "/CPU:0"} : (tensor<!tf_type.resource<tensor<3x1xf32>>>) -> tensor<3x1xf32>
+  %2 = "tf.TPUExecute"(%arg0, %1, %program) {_producer_name = "UNKNOWN", device = "/TPU:0"} : (tensor<1x3xf32>, tensor<3x1xf32>, tensor<3x!tf_type.string>) -> tensor<1x1xf32>
+  return %2 : tensor<1x1xf32>
+}
+
+}

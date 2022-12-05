@@ -27,7 +27,8 @@ limitations under the License.
 namespace mlir {
 
 TranslateToMLIRRegistration graphdef_to_mlir(
-    "graphdef-to-mlir", [](StringRef proto_txt, MLIRContext *context) {
+    "graphdef-to-mlir", "graphdef-to-mlir",
+    [](StringRef proto_txt, MLIRContext *context) {
       tensorflow::GraphDebugInfo debug_info;
       tensorflow::GraphDef graphdef;
       tensorflow::Status status = tensorflow::LoadProtoFromBuffer(
@@ -45,7 +46,7 @@ TranslateToMLIRRegistration graphdef_to_mlir(
     });
 
 TranslateFromMLIRRegistration mlir_to_graphdef(
-    "mlir-to-graphdef",
+    "mlir-to-graphdef", "mlir-to-graphdef",
     [](ModuleOp module, raw_ostream &output) {
       tensorflow::GraphDef graphdef;
       tensorflow::Status status =

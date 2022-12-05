@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -28,6 +30,8 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+namespace m = match;
 
 class HloCreationUtilsTest : public HloTestBase {
  protected:
@@ -405,6 +409,80 @@ TEST_F(HloCreationUtilsTest, DynamicUpdateSliceVectorStartIndices) {
   });
 
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloCreationUtilsTest, ExpandDegenerateReshape) {
+  const char* hlo_string = R"(
+    HloModule module
+    ENTRY test {
+      param = f32[12,1,10,32,8] parameter(0)
+      ROOT reshape = f32[1,12,10,1,32,1,8] reshape(param)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto expanded =
+      ExpandDegenerateReshape(module->entry_computation()->root_instruction());
+  EXPECT_THAT(expanded, GmockMatch(m::Reshape(m::Reshape(
+                            m::Reshape(m::Reshape(m::Parameter(0)))))));
+}
+
+TEST_F(HloCreationUtilsTest, ReduceWindow) {
+  const Shape scalar_shape = ShapeUtil::MakeShape(S32, {});
+  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
+
+  HloComputation* addition = [&] {
+    auto embedded_builder = HloComputation::Builder("add");
+    auto lhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
+        0, ShapeUtil::MakeShape(F32, {}), "lhs"));
+    auto rhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
+        1, ShapeUtil::MakeShape(F32, {}), "rhs"));
+    embedded_builder.AddInstruction(
+        HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kAdd, lhs, rhs));
+    return module->AddEmbeddedComputation(embedded_builder.Build());
+  }();
+
+  auto builder = HloComputation::Builder(TestName());
+  Shape input_shape = ShapeUtil::MakeShape(F32, {2, 4, 4});
+  Shape expected_output_shape = ShapeUtil::MakeShape(F32, {2, 2, 2});
+
+  Window window;
+  // First dimension is unchanged.
+  WindowDimension* batch_dim = window.add_dimensions();
+  batch_dim->set_size(1);
+  batch_dim->set_stride(1);
+  batch_dim->set_padding_low(0);
+  batch_dim->set_padding_high(0);
+  batch_dim->set_window_dilation(1);
+  batch_dim->set_base_dilation(1);
+
+  // Second and third dimension are reduced.
+  for (int64_t i = 0; i < 2; ++i) {
+    WindowDimension* dim = window.add_dimensions();
+    dim->set_size(2);
+    dim->set_stride(2);
+    dim->set_padding_low(0);
+    dim->set_padding_high(0);
+    dim->set_window_dilation(1);
+    dim->set_base_dilation(1);
+  }
+
+  auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, input_shape, "A"));
+
+  auto init = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0)));
+  module->AddEntryComputation(builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(HloInstruction * reduce_window,
+                          MakeReduceWindowHlo(a_param, init, window, addition));
+  module->entry_computation()->set_root_instruction(
+      reduce_window,
+      /*accept_different_shape=*/true);
+
+  *module->mutable_entry_computation_layout() =
+      module->compute_computation_layout();
+  EXPECT_EQ(module->entry_computation()->root_instruction()->shape(),
+            expected_output_shape);
 }
 
 }  // namespace

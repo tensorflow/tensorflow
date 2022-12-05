@@ -25,14 +25,16 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 
 namespace {
 
+#define GEN_PASS_DEF_EXECUTORDIALECTTOFUNCTIONALPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct ExecutorDialectToFunctionalConversion
-    : public TF::ExecutorDialectToFunctionalPassBase<
+    : public impl::ExecutorDialectToFunctionalPassBase<
           ExecutorDialectToFunctionalConversion> {
   void runOnOperation() override;
 };

@@ -6,10 +6,10 @@ load(
     "if_not_mobile",
     "tf_cc_test",
 )
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_kernel_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -81,7 +81,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:rewrite_utils",
@@ -180,7 +179,6 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:compression_utils",
-        "//tensorflow/core/data:dataset_proto_cc",
     ],
 )
 
@@ -226,29 +224,22 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:captured_function",
-        "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
-        "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/data/service:common",
         "//tensorflow/core/data/service:common_proto_cc",
-        "//tensorflow/core/data/service:dispatcher_client",
         "//tensorflow/core/data/service:dispatcher_proto_cc",
-        "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/data/service/client:common",
         "//tensorflow/core/data/service/client:data_service_client",
+        "//tensorflow/core/data/service/client:utils",
         "//tensorflow/core/kernels/data:parallel_map_dataset_op",
-        "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/core/profiler/lib:traceme_encode",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -633,7 +624,9 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:split_utils",
+        "//tensorflow/core/kernels/data:random_seed_ops",
     ],
 )
 
@@ -651,6 +644,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
+        "//tensorflow/core/kernels/data:random_seed_ops",
         "//third_party/eigen3",
     ],
 )

@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "clean_dep")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 
@@ -8,6 +8,7 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined
 # copybara:uncomment_end
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -241,6 +242,7 @@ cc_test(
         ":profiler",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/kernels:test_util",

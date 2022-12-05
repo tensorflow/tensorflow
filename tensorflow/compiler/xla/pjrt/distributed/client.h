@@ -27,9 +27,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/tsl/platform/env.h"
 
-namespace tensorflow {
+namespace tsl {
 class CoordinationServiceAgent;
-}  // namespace tensorflow
+}  // namespace tsl
 
 namespace xla {
 
@@ -53,7 +53,7 @@ class DistributedRuntimeClient {
 
     // How long to wait for all nodes to call Shutdown(). If the timeout
     // expires, then shutdown() reports an error and returns control.
-    absl::Duration shutdown_timeout = absl::Seconds(60);
+    absl::Duration shutdown_timeout = absl::Minutes(5);
 
     // Interval at which the client should send heartbeat RPCs to the
     // coordinator.
@@ -124,7 +124,7 @@ class DistributedRuntimeClient {
 
   // Returns pointer to coordination service agent, or InternalError if the
   // client does not use coordination service.
-  virtual StatusOr<tensorflow::CoordinationServiceAgent*>
+  virtual StatusOr<tsl::CoordinationServiceAgent*>
   GetCoordinationServiceAgent() = 0;
 };
 

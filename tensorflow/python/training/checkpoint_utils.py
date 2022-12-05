@@ -50,6 +50,18 @@ def load_checkpoint(ckpt_dir_or_file):
   If `ckpt_dir_or_file` resolves to a directory with multiple checkpoints,
   reader for the latest checkpoint is returned.
 
+  Example usage:
+
+  ```python
+  import tensorflow as tf
+  a = tf.Variable(1.0)
+  b = tf.Variable(2.0)
+  ckpt = tf.train.Checkpoint(var_list={'a': a, 'b': b})
+  ckpt_path = ckpt.save('tmp-ckpt')
+  reader= tf.train.load_checkpoint(ckpt_path)
+  print(reader.get_tensor('var_list/a/.ATTRIBUTES/VARIABLE_VALUE'))  # 1.0
+  ```
+
   Args:
     ckpt_dir_or_file: Directory with checkpoints file or path to checkpoint
       file.
@@ -71,6 +83,22 @@ def load_checkpoint(ckpt_dir_or_file):
 @tf_export("train.load_variable")
 def load_variable(ckpt_dir_or_file, name):
   """Returns the tensor value of the given variable in the checkpoint.
+
+  When the variable name is unknown, you can use `tf.train.list_variables` to
+  inspect all the variable names.
+
+  Example usage:
+
+  ```python
+  import tensorflow as tf
+  a = tf.Variable(1.0)
+  b = tf.Variable(2.0)
+  ckpt = tf.train.Checkpoint(var_list={'a': a, 'b': b})
+  ckpt_path = ckpt.save('tmp-ckpt')
+  var= tf.train.load_variable(
+      ckpt_path, 'var_list/a/.ATTRIBUTES/VARIABLE_VALUE')
+  print(var)  # 1.0
+  ```
 
   Args:
     ckpt_dir_or_file: Directory with checkpoints file or path to checkpoint.
@@ -94,7 +122,7 @@ def list_variables(ckpt_dir_or_file):
 
   Example usage:
 
-    ```python
+  ```python
   import tensorflow as tf
   import os
   ckpt_directory = "/tmp/training_checkpoints/ckpt"

@@ -1,6 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_cuda_cc_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load(
     "//tensorflow/compiler/tests:build_defs.bzl",
@@ -14,6 +13,7 @@ load(
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":internal"],
     licenses = ["notice"],
 )
@@ -1229,6 +1229,7 @@ tf_xla_py_test(
     srcs = ["scan_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
+    shard_count = 6,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
@@ -1351,8 +1352,8 @@ tf_xla_py_test(
     srcs = ["stateless_random_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
+    shard_count = 10,
     tags = [
-        "no_gpu",  # TODO(b/227775473)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
     ],
@@ -1445,6 +1446,7 @@ tf_xla_py_test(
     srcs = ["unary_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
+    shard_count = 4,
     tags = [
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip

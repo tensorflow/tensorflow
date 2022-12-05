@@ -1,16 +1,17 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 
 # Tensorflow windows-specific implementations of tensorflow/core/platform libraries.
 load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_copts",
+    "//tensorflow/tsl:tsl.bzl",
+    "tsl_copts",
 )
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core/platform:__pkg__",
         "//tensorflow/tsl/platform:__pkg__",
@@ -43,11 +44,6 @@ cc_library(
     deps = [
         ":error_windows",
         ":wide_char",
-        "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:optional",
-        "//third_party/eigen3",
-        # TODO(ddunleavy) move to TSL
-        "//tensorflow/core/lib/core:error_codes_proto_cc",
         "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:blocking_counter",
         "//tensorflow/tsl/platform:context",
@@ -74,6 +70,10 @@ cc_library(
         "//tensorflow/tsl/platform:threadpool_interface",
         "//tensorflow/tsl/platform:tracing",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -182,7 +182,7 @@ cc_library(
         "//tensorflow/tsl/platform:numa.h",
         "//tensorflow/tsl/platform:snappy.h",
     ],
-    copts = tf_copts(),
+    copts = tsl_copts(),
     defines = ["TF_USE_SNAPPY"],
     tags = [
         "manual",

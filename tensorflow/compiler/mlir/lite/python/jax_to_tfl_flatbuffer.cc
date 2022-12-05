@@ -40,10 +40,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -160,6 +160,7 @@ Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
   pass_config.unfold_large_splat_constant =
       toco_flags.unfold_large_splat_constant();
   pass_config.enable_hlo_to_tf_conversion = true;
+  pass_config.enable_stablehlo_conversion = toco_flags.convert_to_stablehlo();
 
   mlir::OwningOpRef<mlir::ModuleOp> module;
   if (model_flags.hlo_file_type() == toco::ModelFlags::HLO_TEXT) {

@@ -62,7 +62,7 @@ jobs:
         token: ${{ secrets.JENKINS_TOKEN }}
         base: ${{ github.event.inputs.release_branch }}
         branch: ${{ github.event.inputs.release_branch }}-${{ steps.cherrypick.outputs.SHORTSHA }}
-        reviewers: mihaimaruseac
+        reviewers: learning-to-play
         body: |
           Refer to the original commit: https://github.com/tensorflow/tensorflow/commit/${{ github.event.inputs.git_commit }}
 

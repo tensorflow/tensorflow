@@ -27,10 +27,13 @@ limitations under the License.
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
+#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
+#include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 
@@ -56,6 +59,19 @@ class GpuKernelToROCDLPass
 
 }  // namespace
 
+static void populateAllCommonVectorProgressiveLoweringPatterns(
+    RewritePatternSet& patterns) {
+  vector::populateVectorToVectorCanonicalizationPatterns(patterns);
+  vector::populateVectorBroadcastLoweringPatterns(patterns);
+  vector::populateVectorContractLoweringPatterns(patterns);
+  vector::populateVectorMaskOpLoweringPatterns(patterns);
+  vector::populateVectorShapeCastLoweringPatterns(patterns);
+  vector::populateVectorTransposeLoweringPatterns(patterns);
+  // Vector transfer ops with rank > 1 should be lowered with VectorToSCF.
+  vector::populateVectorTransferLoweringPatterns(patterns,
+                                                 /*maxTransferRank=*/1);
+}
+
 static void populateCommonPatterns(LLVMTypeConverter& converter,
                                    RewritePatternSet& patterns) {
   arith::populateArithToLLVMConversionPatterns(converter, patterns);
@@ -64,9 +80,16 @@ static void populateCommonPatterns(LLVMTypeConverter& converter,
   populateFuncToLLVMConversionPatterns(converter, patterns);
   cf::populateControlFlowToLLVMConversionPatterns(converter, patterns);
   populateComplexToLLVMConversionPatterns(converter, patterns);
+  populateVectorToLLVMConversionPatterns(converter, patterns);
 }
 
 void GpuKernelToNVVMPass::runOnOperation() {
+  {
+    RewritePatternSet patterns(&getContext());
+    populateAllCommonVectorProgressiveLoweringPatterns(patterns);
+    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+  }
+
   RewritePatternSet patterns(&getContext());
   LowerToLLVMOptions llvmOpts(&getContext(), DataLayout(getOperation()));
   LLVMTypeConverter converter(&getContext(), llvmOpts);

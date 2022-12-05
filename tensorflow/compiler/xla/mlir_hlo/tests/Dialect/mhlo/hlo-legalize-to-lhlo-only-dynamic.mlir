@@ -192,7 +192,7 @@ func.func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?x
 func.func @gather(%operand: tensor<?x?xf32>, %idxs: tensor<?xi32>)
     -> tensor<?x?xf32> {
   // CHECK: %[[ARG1_DIM0:.*]] = memref.dim %[[ARG1]], %c0 : memref<?xi32>
-  // CHECK: %[[TMP:.*]] = memref.alloc(%0) : memref<?x7xf32>
+  // CHECK: %[[TMP:.*]] = memref.alloc(%[[ARG1_DIM0]]) : memref<?x7xf32>
   // CHECK: %[[OUT:.*]] = memref.cast %[[TMP:.*]] : memref<?x7xf32> to memref<?x?xf32>
   // CHECK: "lmhlo.gather"(%[[ARG0]], %[[ARG1]], %[[OUT]])
   %result =

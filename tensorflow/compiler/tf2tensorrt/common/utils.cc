@@ -222,6 +222,11 @@ std::ostream& operator<<(std::ostream& os, const nvinfer1::DataType& v) {
     case nvinfer1::DataType::kBOOL:
       os << "kBOOL";
       break;
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    case nvinfer1::DataType::kUINT8:
+      os << "kUINT8";
+      break;
+#endif
   }
   return os;
 }

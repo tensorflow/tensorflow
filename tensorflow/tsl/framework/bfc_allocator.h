@@ -578,9 +578,6 @@ class BFCAllocator : public Allocator {
   // The size of the current region allocation.
   size_t curr_region_allocation_bytes_;
 
-  // The total number of allocated bytes by the allocator.
-  size_t total_region_allocated_bytes_ = 0;
-
   // An indicator that expansion of a region has hit the limits
   // of the available memory.
   bool started_backpedal_ = false;

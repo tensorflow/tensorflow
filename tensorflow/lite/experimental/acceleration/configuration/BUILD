@@ -13,23 +13,26 @@
 # limitations under the License.
 # ==============================================================================
 
-load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_cc_library", "flatbuffer_java_library", "flatc_path")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_android_library", "flatbuffer_cc_library", "flatbuffer_java_library", "flatc_path")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "nnapi_plugin_impl_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
+load(":build_defs.bzl", "flatbuffer_schema_compat_test")
 
 # copybara:comment_begin(oss-only)
 load("//tensorflow/tsl/platform/default:build_config.bzl", "tf_proto_library_py")
 # copybara:comment_end
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
     licenses = ["notice"],
 )
 
+# We generate a FlatBuffer schema from the Protobuf schema.
 genrule(
     name = "configuration_schema",
     srcs = ["configuration.proto"],
@@ -37,15 +40,51 @@ genrule(
     # We rename the namespace since otherwise the proto classes and flatbuffer
     # classes would have the same names.
     cmd = """
-    $(location {}) --proto -o $(@D) $(location :configuration.proto)
-    perl -p -i -e 's/tflite.proto/tflite/' $(@D)/configuration.fbs
+        $(location {}) --proto -o $(@D) $(location :configuration.proto)
+        perl -p -i -e 's/tflite.proto/tflite/' $@
     """.format(flatc_path),
     compatible_with = get_compatible_with_portable(),
-    tools = [
-        flatc_path,
+    tools = [flatc_path],
+)
+
+# We also do the same transformation for the _previous_
+# version of the schema -- this is used to test that changes
+# to the schema preserve binary backwards compatibility.
+genrule(
+    name = "configuration_prev_schema",
+    srcs = ["testdata/configuration.proto_prev"],  # Must NOT end in '.proto'.
+    outs = ["configuration.prev.fbs"],  # MUST end in '.fbs'.
+    # We rename the namespace since otherwise the proto classes and flatbuffer
+    # classes would have the same names.
+    cmd = """
+        cp $(location :testdata/configuration.proto_prev) $(@D)/configuration.prev.proto
+        $(location {}) --proto -o $(@D) $(@D)/configuration.prev.proto
+        perl -p -i -e 's/tflite.proto/tflite/' $@
+    """.format(flatc_path),
+    compatible_with = get_compatible_with_portable(),
+    tools = [flatc_path],
+)
+
+# Test that changes to the schema preserve binary backwards compatibility.
+flatbuffer_schema_compat_test(
+    name = "configuration_abi_stability_test",
+    ref_schema = ":configuration.prev.fbs",
+    schema = ":configuration.fbs",
+)
+
+# Test that the previous version of the proto is different than the current version.
+sh_test(
+    name = "prev_is_different_than_current_test",
+    srcs = ["prev_is_different_than_current_test.sh"],
+    data = [
+        "configuration.proto",
+        "testdata/configuration.proto_prev",
     ],
 )
 
+# Generate a C++ header containing the contents of the FlatBuffer schema
+# as a char array literal.  This is potentially useful for embedding in programs
+# (e.g. for JSON parsing using that schema).
 genrule(
     name = "configuration_fbs_contents_cc",
     srcs = ["configuration.fbs"],
@@ -95,6 +134,11 @@ flatbuffer_java_library(
     srcs = [":configuration.fbs"],
 )
 
+flatbuffer_android_library(
+    name = "configuration_fbs_android",
+    srcs = [":configuration.fbs"],
+)
+
 cc_library(
     name = "proto_to_flatbuffer",
     srcs = [
@@ -136,11 +180,11 @@ cc_test(
 
 cc_library(
     name = "delegate_registry",
-    srcs = ["delegate_registry.cc"],
     hdrs = ["delegate_registry.h"],
     deps = [
         ":configuration_fbs",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -169,14 +213,15 @@ cc_library(
     srcs = ["nnapi_plugin.cc"],
     hdrs = ["nnapi_plugin.h"],
     visibility = nnapi_plugin_impl_visibility_allowlist() + [
+        "//tensorflow/lite/core/experimental/acceleration/configuration/c:__pkg__",
         "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
     ],
     deps = [
         ":configuration_fbs",
         ":delegate_registry",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/experimental/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite/nnapi:nnapi_implementation_headers",
         "@com_google_absl//absl/memory",
     ],
@@ -196,8 +241,8 @@ cc_test(
         ":delegate_registry",
         ":nnapi_plugin",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate_mock_test",
         "//tensorflow/lite/kernels:test_util",
@@ -245,6 +290,7 @@ cc_library(
         "//conditions:default": [],
     }),
     visibility = [
+        "//tensorflow/lite/core/experimental/acceleration/configuration/c:__pkg__",
         "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
     ],
     deps = [
@@ -334,6 +380,43 @@ cc_library(
         "//conditions:default": [],
     }),
     alwayslink = 1,  # For registration to always run.
+)
+
+# TODO(b/260582614): Add support for TF Lite in Play Services.
+cc_library(
+    name = "stable_delegate_plugin",
+    srcs = ["stable_delegate_plugin.cc"],
+    hdrs = ["stable_delegate_plugin.h"],
+    deps = [
+        ":configuration_fbs",
+        ":delegate_registry",
+        "//tensorflow/lite/core/shims:common",
+        "//tensorflow/lite/core/shims:delegate_plugin",
+        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:delegate_loader",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate",
+        "//tensorflow/lite/tools:logging",
+        "@com_google_absl//absl/memory",
+    ],
+    alwayslink = 1,  # For registration to always run.
+)
+
+cc_test(
+    name = "stable_delegate_plugin_test",
+    srcs = ["stable_delegate_plugin_test.cc"],
+    data = ["//tensorflow/lite/delegates/utils/experimental/stable_delegate:libtensorflowlite_stable_xnnpack_delegate.so"],
+    tags = [
+        # TODO(b/259303511): Propagate build config to data correctly to enable the test on x86 platforms.
+        "no_test_android_x86",
+    ],
+    deps = [
+        ":configuration_fbs",
+        ":delegate_registry",
+        ":stable_delegate_plugin",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
+        "@pthreadpool",
+    ],
 )
 
 tflite_portable_test_suite()

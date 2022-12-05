@@ -33,6 +33,11 @@ enum TfLiteGpuInferenceUsage {
   // Prefer maximizing the throughput. Same delegate will be used repeatedly on
   // multiple inputs.
   TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED = 1,
+
+  // Balance init latency and throughput. This option will result in slightly
+  // higher init latency than FAST_SINGLE_ANSWER but should have inference
+  // latency closer to SUSTAINED_SPEED.
+  TFLITE_GPU_INFERENCE_PREFERENCE_BALANCED = 2,
 };
 
 enum TfLiteGpuInferencePriority {

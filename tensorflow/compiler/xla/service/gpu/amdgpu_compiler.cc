@@ -134,9 +134,7 @@ GpuVersion AMDGPUCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
 StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                     llvm::Module* llvm_module,
-                                    GpuVersion gpu_version,
-                                    se::StreamExecutor* stream_exec,
-                                    bool relocatable,
+                                    GpuVersion gpu_version, bool relocatable,
                                     const HloModule* debug_module) {
   if (rocdl_dir_.empty()) {
     // Compute rocdl_dir_ just once and cache it in this member.

@@ -2,7 +2,10 @@ load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow:tensorflow.bzl", "if_oss")
 load("@tf_runtime//:build_defs.bzl", "tfrt_cc_test")
 
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
 
 glob_lit_tests(
     data = [":test_utilities"],
@@ -29,6 +32,7 @@ tfrt_cc_test(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_pipeline",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:compiler",
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/runtime:jit_executable",
         "//tensorflow/core:test",

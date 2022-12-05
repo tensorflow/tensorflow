@@ -13,6 +13,7 @@ load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//tensorflow:tensorflow.bzl", "workspace_root")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -310,3 +311,24 @@ ios_unit_test(
 tflite_portable_test_suite()
 
 tflite_ios_per_kernel_test()
+
+cc_library(
+    name = "compute_task_cc",
+    srcs = ["compute_task.cc"],
+    hdrs = ["compute_task.h"],
+    deps = [
+        ":common",
+        ":metal_arguments",
+        ":metal_device",
+        ":metal_spatial_tensor",
+        "//tensorflow/lite/delegates/gpu/common:kernel_info",
+        "//tensorflow/lite/delegates/gpu/common:precision",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/task:tuning_type",
+        "@com_google_absl//absl/strings",
+    ],
+)

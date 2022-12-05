@@ -1650,7 +1650,13 @@ std::vector<int64_t> OpLevelCostEstimator::CalculateOutputTensorSize(
     auto output_shape = MaybeGetMinimumShape(original_output_shape, num_dims,
                                              found_unknown_shapes);
     for (const auto& dim : output_shape.dim()) {
-      output_size *= dim.size();
+      int64_t new_output_size =
+          MultiplyWithoutOverflow(output_size, dim.size());
+      if (new_output_size < 0) {
+        VLOG(1) << "Overflow encountered when estimating cost, multiplying "
+                << output_size << " with " << dim.size();
+      }
+      output_size = new_output_size;
     }
     output_tensor_size.push_back(output_size);
   }

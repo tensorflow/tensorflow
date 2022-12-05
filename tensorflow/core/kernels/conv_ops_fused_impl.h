@@ -585,9 +585,9 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     constexpr double kSideInputScale = 0.0;
     double leakyrelu_alpha = fusion_args.leakyrelu_alpha;
 
-    int device_id = stream->parent()->device_ordinal();
     DataType dtype = input.dtype();
     ConvParameters conv_parameters = {
+        stream->parent(),
         in_batch,                      // batch
         in_depths,                     // in_depths
         {{in_rows,                     // in_rows
@@ -604,7 +604,6 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
         {{common_padding_rows,         // padding_rows
           common_padding_cols}},       // padding_cols
         dtype,                         // tensor datatype
-        device_id,                     // device_id
         conv_desc.group_count(),
         ConvParameters::FusionInfo{kConvScale, kSideInputScale, leakyrelu_alpha,
                                    dnn_activation_mode,  // activation_mode

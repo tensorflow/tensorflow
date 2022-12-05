@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/shim/op_kernel.h"
 #include "tensorflow/lite/kernels/shim/shape.h"
@@ -111,10 +111,10 @@ Shape TfLiteShapeToShape(const TfLiteIntArray* tflite_shape);
 
 // An op kernel base class which is an adapter between an Op implementation
 // (OpKernelShim subclass) and TFLite runtime
-template <template <Runtime> typename Impl>
+template <template <Runtime, typename...> typename Impl, typename... Ts>
 class TfLiteOpKernel {
  public:
-  using ImplType = Impl<Runtime::kTfLite>;
+  using ImplType = Impl<Runtime::kTfLite, Ts...>;
 
   // Builds a TfLiteRegistration object to register this with the TfLite runtime
   static TfLiteRegistration* GetTfLiteRegistration() {

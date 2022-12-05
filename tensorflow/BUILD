@@ -8,27 +8,33 @@ load(
     "//tensorflow:tensorflow.bzl",
     "VERSION",
     "VERSION_MAJOR",
+    "check_deps",
     "if_google",
     "if_oss",
     "tf_cc_shared_object",
     "tf_custom_op_library_additional_deps_impl",
     "tf_native_cc_binary",
+    "tsl_async_value_deps",
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_binary_deps",
 )
 load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+)
+load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl_ml",
 )
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_shared_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "ADDITIONAL_API_INDEXABLE_SETTINGS")
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "ADDITIONAL_API_INDEXABLE_SETTINGS",
+    "tf_cc_shared_library",
+)
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 # copybara:uncomment_begin
 # load("//tools/build_defs/license:license.bzl", "license")
@@ -83,7 +89,6 @@ PACKAGE_STATIC_DEPS = [
     "@fft2d//:__subpackages__",
     "@gemmlowp//:__subpackages__",
     "@jsoncpp_git//:__subpackages__",
-    "@libxsmm_archive//:__subpackages__",
     "@llvm_openmp//:__subpackages__",
     "@llvm_terminfo//:__subpackages__",
     "@llvm_zlib//:__subpackages__",
@@ -102,7 +107,7 @@ PACKAGE_STATIC_DEPS = [
     "@snappy//:__subpackages__",
     "@upb//:__subpackages__",
     "@zlib//:__subpackages__",
-]
+] + tsl_async_value_deps()
 
 package(
     # copybara:uncomment default_applicable_licenses = [":license"],
@@ -809,7 +814,7 @@ selects.config_setting_group(
         ":emscripten",
         ":ios",
     ],
-    visibility = if_google(["//visibility:public"]),
+    visibility = ["//visibility:public"],
 )
 
 # This flag disables all google production dependencies, intended for
@@ -852,7 +857,7 @@ selects.config_setting_group(
 config_setting(
     name = "lite_protos_legacy",
     define_values = {"TENSORFLOW_PROTOS": "lite"},
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
 )
 
 config_setting(
@@ -873,7 +878,7 @@ selects.config_setting_group(
         ":lite_protos",
         ":mobile",
     ],
-    visibility = if_google(["//visibility:public"]),
+    visibility = ["//visibility:public"],
 )
 
 selects.config_setting_group(
@@ -882,7 +887,7 @@ selects.config_setting_group(
         ":full_protos",
         ":mobile",
     ],
-    visibility = if_google(["//visibility:public"]),
+    visibility = ["//visibility:public"],
 )
 
 # copybara:uncomment_begin(google-only)
@@ -993,6 +998,7 @@ bzl_library(
     deps = [
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
+        "//tensorflow/tsl:tsl_bzl",
         "//tensorflow/tsl/platform/default:cuda_build_defs_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//third_party/llvm_openmp:openmp_bzl",
@@ -1006,6 +1012,14 @@ bzl_library(
     ],
 )
 
+bzl_library(
+    name = "tensorflow_default_bzl",
+    srcs = ["tensorflow.default.bzl"],
+    visibility = ["//visibility:public"],
+    deps = [":tensorflow_bzl"],
+)
+
+# TODO(jakeharmon): Remove these in favor of tsl:grpc
 # copybara:comment_begin(oss-only)
 cc_library(
     name = "grpc",
@@ -1074,28 +1088,35 @@ tf_cc_shared_library(
     linkstatic = 1,
     per_os_targets = True,
     roots = [
-        "//tensorflow/c/experimental/filesystem:filesystem_interface",
-        "//tensorflow/c/experimental/stream_executor:stream_executor",
-        "//tensorflow/c:env",
-        "//tensorflow/c:kernels",
-        "//tensorflow/c:kernels_experimental",
-        "//tensorflow/c:logging",
-        "//tensorflow/c:ops",
-        "//tensorflow/cc/saved_model:fingerprinting_impl",
-        "//tensorflow/cc/saved_model:loader_lite_impl",
-        "//tensorflow/cc/saved_model:metrics_impl",
-        "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
-        "//tensorflow/core/common_runtime:core_cpu_impl",
-        "//tensorflow/core:framework_internal_impl",
-        "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
-        "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
-        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
-        "//tensorflow/core:lib_internal_impl",
-        "//tensorflow/core/profiler:profiler_impl",
-        "//tensorflow/core/util:determinism",  # Must be linked and exported to libtensorflow_framework.so.
-        "//tensorflow/lite/kernels/shim:tf_kernel_shim",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
-    ] + tf_additional_binary_deps(),
+                "//tensorflow/c/experimental/filesystem:filesystem_interface",
+                "//tensorflow/c/experimental/stream_executor:stream_executor",
+                "//tensorflow/c:env",
+                "//tensorflow/c:kernels",
+                "//tensorflow/c:kernels_experimental",
+                "//tensorflow/c:logging",
+                "//tensorflow/c:ops",
+                "//tensorflow/cc/saved_model:fingerprinting_impl",
+                "//tensorflow/cc/saved_model:loader_lite_impl",
+                "//tensorflow/cc/saved_model:metrics_impl",
+                "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
+                "//tensorflow/core/common_runtime:core_cpu_impl",
+                "//tensorflow/core:framework_internal_impl",
+                "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
+                "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
+                "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
+                "//tensorflow/core:lib_internal_impl",
+                "//tensorflow/core/profiler:profiler_impl",
+                "//tensorflow/core/util:determinism",  # Must be linked and exported to libtensorflow_framework.so.
+                "//tensorflow/lite/kernels/shim:tf_kernel_shim",
+                "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
+            ] + tf_additional_binary_deps() +
+            # TODO(b/259305727): Remove this select and include captured_function in macos builds.
+            select({
+                "//tensorflow:macos": [],
+                "//conditions:default": [
+                    "//tensorflow/core/data:captured_function",
+                ],
+            }),
     soversion = VERSION,
     static_deps = PACKAGE_STATIC_DEPS,
     visibility = ["//visibility:public"],
@@ -1169,7 +1190,10 @@ tf_cc_shared_object(
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/core:distributed_tensorflow_dependencies",
         "//tensorflow/core:tensorflow",
-    ],
+    ] + select({
+        "//tensorflow:windows": ["//tensorflow/c:kernels_experimental"],
+        "//conditions:default": [],
+    }),
 )
 
 tf_cc_shared_library(
@@ -1231,6 +1255,32 @@ tf_cc_shared_library(
         "//tensorflow/lite/kernels/shim:tf_kernel_shim",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
     ] + tf_additional_binary_deps(),
+)
+
+# To avoid duplication, check that the C++ or python library does not depend on
+# the stream executor cuda plugins. Targets that want to use cuda APIs should
+# instead depend on the dummy plugins in //tensorflow/tsl/platform/default/build_config
+# and use header only targets.
+# TODO(ddunleavy): This seems completely broken. :tensorflow_cc depends on
+# cuda_platform from tf_additional_binary_deps and this doesn't break.
+check_deps(
+    name = "cuda_plugins_check_deps",
+    disallowed_deps = if_static(
+        [],
+        otherwise = [
+            "//tensorflow/compiler/xla/stream_executor/cuda:all_runtime",
+            "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
+            "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
+            "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
+            "//tensorflow/compiler/xla/stream_executor/cuda:cufft_plugin",
+            "//tensorflow/compiler/xla/stream_executor/cuda:curand_plugin",
+            "//tensorflow/compiler/xla/stream_executor:cuda_platform",
+        ],
+    ),
+    deps = if_cuda([
+        "//tensorflow:tensorflow_cc",
+        "//tensorflow/python:pywrap_tensorflow_internal",
+    ]),
 )
 
 # ** Targets for Windows build (start) **

@@ -559,14 +559,15 @@ class PodTpuDriver : public TpuDriver {
 
   std::unique_ptr<CompiledProgramHandle> CompileProgram(
       const xla::HloProto& source, int32_t num_replicas,
-      absl::Span<Event* const> wait_for) override {
+      absl::Span<Event* const> wait_for,
+      const xla::DebugOptions& debug_options) override {
     int64_t operation_id = GetOperationId();
     auto deps = GetDependencyOperationIds(wait_for);
 
     ScheduleRequest(
         operation_id,
-        [this, operation_id, source,
-         num_replicas]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        [this, operation_id, source, num_replicas,
+         debug_options]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
           auto cph_iterator =
               underlying_cph_
                   .insert(
@@ -576,8 +577,8 @@ class PodTpuDriver : public TpuDriver {
 
           std::vector<std::shared_ptr<Event>> collected_events;
           for (int i = 0; i < drivers_.size(); ++i) {
-            auto current_cph =
-                drivers_[i]->CompileProgram(source, num_replicas, {});
+            auto current_cph = drivers_[i]->CompileProgram(source, num_replicas,
+                                                           {}, debug_options);
             cph_iterator->second.push_back(std::move(current_cph));
             collected_events.push_back(cph_iterator->second[i]->OnReady());
           }

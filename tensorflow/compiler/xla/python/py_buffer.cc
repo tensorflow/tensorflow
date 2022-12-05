@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -101,7 +102,8 @@ bool PyBuffer::IsPyBuffer(py::handle handle) {
 
 /*static*/ StatusOr<PyBuffer*> PyBuffer::AsPyBuffer(pybind11::handle handle) {
   if (!IsPyBuffer(handle)) {
-    return InvalidArgument("Expected a DeviceArray");
+    return InvalidArgument("Expected a DeviceArray, got object of type %s",
+                           py::cast<std::string>(py::str(handle.get_type())));
   }
   return AsPyBufferUnchecked(handle);
 }
@@ -216,7 +218,7 @@ std::pair<Status, bool> PyBuffer::CopyToRemoteDevice(
   Status status;
   bool sends_were_enqueued;
   buffer_->CopyToRemoteDevice(
-      serialized_descriptor,
+      PjRtFuture<StatusOr<std::string>>(std::string(serialized_descriptor)),
       [&done, &status, &sends_were_enqueued, &mu](Status s, bool dispatched) {
         absl::MutexLock l(&mu);
         done = true;
@@ -380,12 +382,7 @@ PyShardedBuffer PyShardedBuffer::CreateFromPyBuffers(
 Status PyShardedBuffer::BlockHostUntilReady() {
   GlobalPyRefManager()->CollectGarbage();
   py::gil_scoped_release gil_release;
-  Status status = OkStatus();
-  for (const auto& buffer : buffers_) {
-    auto s = buffer->GetReadyFuture().Await();
-    if (!s.ok()) status = std::move(s);
-  }
-  return status;
+  return AwaitBuffersReady(buffers_);
 }
 
 // PEP 3118 buffer protocol implementation.
@@ -669,15 +666,6 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       py::is_method(type));
   type.attr("delete") = py::cpp_function(
       [](PyBuffer::object self) { self.buf()->Delete(); }, py::is_method(type));
-  type.attr("block_host_until_ready") = py::cpp_function(
-      [](PyBuffer::object self) {
-        // TODO(phawkins): remove 3 months after the release of jaxlib >= 0.3.2.
-        PythonDeprecationWarning(
-            "block_host_until_ready() on a JAX array object is deprecated, use "
-            "block_until_ready() instead.");
-        return self.buf()->BlockHostUntilReady();
-      },
-      py::is_method(type));
   type.attr("is_ready") = py::cpp_function(
       [](PyBuffer::object self) { return self.buf()->IsReady(); },
       py::is_method(type));
@@ -728,6 +716,7 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       .def("get_device_buffer", &PyShardedBuffer::GetPyBuffer)
       .def("__len__", &PyShardedBuffer::num_devices)
       .def("block_until_ready", &PyShardedBuffer::BlockHostUntilReady)
+      .def("delete", &PyShardedBuffer::Delete)
       .def_static("create_sharded_buffer",
                   &PyShardedBuffer::CreateFromPyBuffers)
       .def_property_readonly("dtype", [](const PyShardedBuffer& self) {

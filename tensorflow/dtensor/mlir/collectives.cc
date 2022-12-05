@@ -99,7 +99,7 @@ StatusOr<mlir::Value> EmitAllGather(
 
   if (newly_created_ops != nullptr) newly_created_ops->insert(all_gather);
 
-  return all_gather.output();
+  return all_gather.getOutput();
 }
 
 StatusOr<const mlir::Value> EmitAllScatter(
@@ -143,7 +143,7 @@ StatusOr<const mlir::Value> EmitAllScatter(
 
   if (newly_created_ops != nullptr) newly_created_ops->insert(all_scatter);
 
-  return all_scatter.output();
+  return all_scatter.getOutput();
 }
 
 StatusOr<mlir::Value> EmitDenseToSparseToDense(
@@ -174,15 +174,15 @@ StatusOr<mlir::Value> EmitDenseToSparseToDense(
 
   // Emit a SparseToDenseOp and replace the SparseTensor with the result of
   // this new op.
-  auto zero_scalar = CreateZeroScalarConst(
-      builder, input.getLoc(),
-      input.getType().cast<mlir::TensorType>().getElementType());
-  if (!zero_scalar.has_value())
-    return errors::Internal("Failure in creating a zero scalar const");
+  TF_ASSIGN_OR_RETURN(
+      mlir::Value zero_scalar,
+      CreateZeroScalarConst(
+          builder, input.getLoc(),
+          input.getType().cast<mlir::TensorType>().getElementType()));
 
   auto dense = builder.create<mlir::TF::SparseToDenseOp>(
       input.getLoc(), input.getType(),
-      mlir::ValueRange({indices, shape, values, zero_scalar.value()}));
+      mlir::ValueRange({indices, shape, values, zero_scalar}));
 
   if (newly_created_ops != nullptr) {
     for (auto new_op : {dense.getOperation(), shape.getOperation(),

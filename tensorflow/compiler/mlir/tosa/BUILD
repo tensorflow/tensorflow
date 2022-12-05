@@ -3,11 +3,12 @@
 #   https://developer.mlplatform.org/w/tosa/
 #   https://github.com/llvm/llvm-project/blob/main/mlir/docs/Dialects/TOSA.md
 
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 # TODO: Tighten visibility once targets are at the right granularity.
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":internal"],
     licenses = ["notice"],
 )
@@ -193,6 +194,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_quantize",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineTransforms",
         "@llvm-project//mlir:Dialect",

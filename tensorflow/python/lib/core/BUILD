@@ -1,16 +1,6 @@
 # python/lib/core package
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_external_workspace_visible", "tf_py_test", "tf_python_pybind_extension")
 
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
@@ -32,17 +22,23 @@ visibility = [
 ]
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = visibility,
     licenses = ["notice"],
 )
 
 cc_library(
-    name = "numpy_lib",
-    srcs = ["numpy.cc"],
-    hdrs = ["numpy.h"],
+    name = "custom_float",
+    hdrs = [
+        "custom_float.h",
+    ],
     deps = [
-        "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/python/lib/core:numpy",
+        "//third_party/eigen3",
+        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -57,9 +53,10 @@ cc_library(
         "float8_e4m3b11.h",
     ],
     deps = [
-        ":numpy_lib",
+        ":custom_float",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/python/lib/core:numpy",
         "//third_party/eigen3",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
         "@com_google_absl//absl/strings",
@@ -77,6 +74,45 @@ tf_python_pybind_extension(
 )
 
 cc_library(
+    name = "float8_lib",
+    srcs = [
+        "float8.cc",
+    ],
+    hdrs = [
+        "float8.h",
+    ],
+    deps = [
+        ":custom_float",
+        "//tensorflow/core/platform:float8",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/python/lib/core:numpy",
+        "//third_party/eigen3",
+        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_float8",
+    srcs = ["float8_wrapper.cc"],
+    hdrs = ["float8.h"],
+    deps = [
+        ":float8_lib",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
+cc_library(
+    name = "custom_types_lib",
+    deps = [
+        ":bfloat16_lib",
+        ":float8_lib",
+    ],
+)
+
+cc_library(
     name = "ndarray_tensor_bridge",
     srcs = ["ndarray_tensor_bridge.cc"],
     hdrs = ["ndarray_tensor_bridge.h"],
@@ -87,11 +123,12 @@ cc_library(
     ),
     deps = [
         ":bfloat16_lib",
-        ":numpy_lib",
+        ":float8_lib",
         ":py_util",
         "//tensorflow/c:c_api_no_xla",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tsl/python/lib/core:numpy",
     ],
 )
 
@@ -185,11 +222,6 @@ filegroup(
 )
 
 filegroup(
-    name = "numpy_hdr",
-    srcs = ["numpy.h"],
-)
-
-filegroup(
     name = "safe_ptr_hdr",
     srcs = ["safe_ptr.h"],
 )
@@ -203,9 +235,9 @@ filegroup(
     name = "basic_hdrs",
     srcs = [
         "bfloat16.h",
+        "float8.h",
         "ndarray_tensor.h",
         "ndarray_tensor_bridge.h",
-        "numpy.h",
         "py_exception_registry.h",
         "pybind11_status.h",
         "safe_ptr.h",
@@ -220,7 +252,6 @@ cc_library(
     deps = [
         ":ndarray_tensor",
         ":ndarray_tensor_bridge",
-        ":numpy_lib",
         ":py_util",
         ":safe_ptr",
         "//tensorflow/c:tf_status_helper",
@@ -234,6 +265,7 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//tensorflow/tsl/python/lib/core:numpy",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
     ],
@@ -282,13 +314,14 @@ cc_library(
     name = "ndarray_tensor_headers",
     hdrs = [
         "bfloat16.h",
+        "float8.h",
         "ndarray_tensor.h",
         "ndarray_tensor_bridge.h",
-        "numpy.h",
         "safe_ptr.h",
         "safe_pyobject_ptr.h",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
+        "//tensorflow/tsl/python/lib/core:numpy_hdr",
     ],
     features = [
         "-parse_headers",
@@ -297,11 +330,11 @@ cc_library(
         "//tensorflow:ndarray_tensor_allow_list",
     ]),
     deps = [
-        ":numpy_lib",
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/core:framework_internal_headers_lib",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/tsl/python/lib/core:numpy",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
     ],
@@ -316,8 +349,8 @@ cc_library(
     ]),
     deps = [
         ":bfloat16_lib",
+        ":float8_lib",
         ":ndarray_tensor_bridge",
-        ":numpy_lib",
         ":safe_ptr",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_status_helper",
@@ -325,6 +358,7 @@ cc_library(
         "//tensorflow/c/eager:tfe_context_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/python/lib/core:numpy",
     ],
 )
 
@@ -336,7 +370,6 @@ cc_library(
     deps = [
         ":ndarray_tensor",
         ":ndarray_tensor_bridge",
-        ":numpy_lib",
         ":py_util",
         ":safe_ptr",
         "//tensorflow/c:tensor_interface",
@@ -346,6 +379,7 @@ cc_library(
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/python/lib/core:numpy",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
     ],
 )
@@ -363,9 +397,9 @@ cc_library(
 )
 
 tf_py_test(
-    name = "bfloat16_test",
+    name = "custom_float_test",
     size = "small",
-    srcs = ["bfloat16_test.py"],
+    srcs = ["custom_float_test.py"],
     python_version = "PY3",
     deps = [
         "//tensorflow/python:pywrap_tensorflow",

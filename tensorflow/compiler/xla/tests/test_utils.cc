@@ -20,12 +20,11 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "absl/base/casts.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 
@@ -296,7 +295,6 @@ StatusOr<Literal> MakeFakeLiteralInternal(
   // literal.
   Shape new_shape = shape;
   new_shape.mutable_layout()->clear_tiles();
-  new_shape.mutable_layout()->set_element_size_in_bits(0);
   Literal literal(new_shape);
 
   int64_t max = std::numeric_limits<int64_t>::max();
@@ -797,4 +795,17 @@ std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
   return std::make_unique<HloDotInstruction>(
       shape, lhs, rhs, dot_dimension_numbers, precision_config);
 }
+
+bool IsMlirLoweringEnabled() {
+  char* xla_flags = getenv("XLA_FLAGS");
+  if (!xla_flags) {
+    return false;
+  }
+  return !absl::StrContains(xla_flags, "--xla_cpu_use_xla_runtime=false") &&
+         !absl::StrContains(xla_flags,
+                            "--xla_cpu_enable_mlir_lowering=false") &&
+         (absl::StrContains(xla_flags, "--xla_cpu_use_xla_runtime") ||
+          absl::StrContains(xla_flags, "--xla_cpu_enable_mlir_lowering"));
+}
+
 }  // namespace xla

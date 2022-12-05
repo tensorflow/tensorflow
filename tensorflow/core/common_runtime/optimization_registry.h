@@ -78,6 +78,10 @@ struct GraphOptimizationPassOptions {
   // TODO(b/176491312): Remove this if shape inference on import flag is
   // removed. If True, allows mlir roundtrip to run shape inference on import.
   bool shape_inference_on_tfe_dialect_import = true;
+
+  // A unique filename prefix (using hostname, process ID, thread ID and
+  // timestamp) for graph dumps.
+  string debug_filename_prefix;
 };
 
 // Optimization passes are implemented by inheriting from

@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -90,7 +91,7 @@ Optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
     tensorflow::PartialTensorShape shape;
     const tensorflow::Status status =
         tensorflow::PartialTensorShape::BuildPartialTensorShape(
-            ranked_type.getShape(), &shape);
+            ConvertMlirShapeToTF(ranked_type.getShape()), &shape);
     if (status.ok()) return shape;
   }
   return None;
@@ -179,7 +180,7 @@ TensorType CreateTensorType(InferenceContext& context, const ShapeHandle& sh,
                             Type element_type) {
   auto shape = GetShapeFromHandle(context, sh);
   if (shape.has_value())
-    return RankedTensorType::get(shape.getValue(), element_type);
+    return GetTypeFromTFTensorShape(shape.value(), element_type, {});
   return UnrankedTensorType::get(element_type);
 }
 
@@ -189,7 +190,8 @@ ShapedTypeComponents CreateShapedTypeComponents(InferenceContext& context,
                                                 Type element_type) {
   auto shape = GetShapeFromHandle(context, sh);
   if (shape.has_value())
-    return ShapedTypeComponents(shape.getValue(), element_type);
+    return ShapedTypeComponents(ConvertTFShapeToMlir(shape.value()),
+                                element_type);
   return ShapedTypeComponents(element_type);
 }
 

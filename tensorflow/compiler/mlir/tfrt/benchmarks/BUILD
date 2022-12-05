@@ -5,7 +5,10 @@ load(
     "tf_cc_test",
 )
 
-package(default_visibility = ["//visibility:private"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//visibility:private"],
+)
 
 licenses(["notice"])
 
@@ -17,6 +20,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_pipeline",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:compiler",
         "//tensorflow/compiler/xla/runtime:arguments",
         "//tensorflow/compiler/xla/runtime:jit_executable",
         "//tensorflow/compiler/xla/runtime:types",
@@ -33,6 +37,7 @@ cc_library(
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
         "@tf_runtime//:tensor",
+        "@tf_runtime//backends/jitrt:async_task_runner",
         "@tf_runtime//backends/jitrt:jitrt_compiler",
         "@tf_runtime//backends/jitrt:results",
     ],

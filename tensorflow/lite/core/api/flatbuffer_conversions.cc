@@ -20,9 +20,9 @@ limitations under the License.
 #include <memory>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -948,6 +948,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
       return kTfLiteOk;
     case TensorType_VARIANT:
       *type = kTfLiteVariant;
+      return kTfLiteOk;
+    case TensorType_INT4:
+      *type = kTfLiteInt4;
       return kTfLiteOk;
     default:
       *type = kTfLiteNoType;

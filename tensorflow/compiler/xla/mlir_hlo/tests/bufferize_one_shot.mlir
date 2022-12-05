@@ -40,14 +40,13 @@ func.func @tensor.from_elements(%a : f32) -> f32 {
 // CHECK-LABEL: @tensor.generate
 // CHECK-SAME: (%[[ARG:.*]]: memref<*xf32>) -> index
 func.func @tensor.generate(%arg : tensor<*xf32>) -> index {
-  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-  // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
-  // CHECK-DAG: %[[SIZE:.*]] = memref.rank %[[ARG]] : memref<*xf32>
-  // CHECK: %[[MEM:.*]] = memref.alloc
-  // CHECK: scf.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[SIZE]]) step (%[[C1]]) {
-  // CHECK:   %[[ELEM:.*]] = memref.dim %[[ARG]], %[[I]] : memref<*xf32>
-  // CHECK:   memref.store %[[ELEM]], %[[MEM]][%[[I]]] : memref<?xindex>
-  // CHECK:   scf.yield
+  // CHECK: %[[SIZE:.*]] = memref.rank %[[ARG]] : memref<*xf32>
+  // CHECK: %[[MEM:.*]] = memref.alloc(%[[SIZE]]) {{.*}} : memref<?xindex>
+  // CHECK: linalg.map
+  // CHECK: outs(%[[MEM]] : memref<?xindex>)
+  // CHECK:   %[[INDEX:.*]] = linalg.index 0
+  // CHECK:   %[[ELEM:.*]] = memref.dim %[[ARG]], %[[INDEX]] : memref<*xf32>
+  // CHECK:   linalg.yield %[[ELEM]]
   // CHECK: }
   %size = tensor.rank %arg : tensor<*xf32>
   %tfe = tensor.generate %size {
@@ -170,7 +169,7 @@ func.func @tiled_dot(%A: tensor<10xf32>, %B: tensor<10xf32>,
   %dot = gml_st.loop (%i) = (%c0) to (%c10) step (%c2)
        ins (%A_ = %A: tensor<10xf32>, %B_ = %B: tensor<10xf32>)
        outs (%C_ = %C: tensor<f32>)
-       iterators["reduction"] {
+       iterators[#gml_st.iterator_type<reduction>] {
     %A_sub = tensor.extract_slice %A_[%i] [%c2] [1]
       : tensor<10xf32> to tensor<?xf32>
     %B_sub = tensor.extract_slice %B_[%i] [%c2] [1]
@@ -269,7 +268,7 @@ func.func @tiled_add_broadcast(%A: tensor<1x?x12xf32>, %B: tensor<?x?x12xf32>,
     gml_st.yield %v_out : tensor<?x?x12xf32>
   }
   // CHECK: gml_st.loop
-  // CHECK-SAME: ins (%[[A:arg[0-9]]] = %{{[0-9]+}}: memref<?x?x12xf32
+  // CHECK-SAME: ins (%[[A:arg[0-9]]] = %{{[0-9a-zA-Z_]+}}: memref<?x?x12xf32
   // CHECK-SAME: outs (%[[C:arg[0-9]]] = %{{arg[0-9]}}: memref<?x?x12xf32>)
   // CHECK: memref.copy
   func.return %sum : tensor<?x?x12xf32>

@@ -1,9 +1,10 @@
 # Description: Tests defined for Cloud TPUs
 
-load("//tensorflow:tensorflow.bzl", "pytype_library")  # buildifier: disable=same-origin-load
+load("//tensorflow:pytype.default.bzl", "pytype_library")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:__subpackages__",
     ],
@@ -280,6 +281,20 @@ tpu_py_test(
     name = "tpu_embedding_v2_correctness_sequence_feature_test",
     srcs = [
         "tpu_embedding_v2_correctness_sequence_feature_test.py",
+    ],
+    disable_experimental = True,
+    disable_mlir_bridge = False,
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":tpu_embedding_v2_correctness_base_test",
+    ],
+)
+
+tpu_py_test(
+    name = "tpu_embedding_v2_initialization_test",
+    srcs = [
+        "tpu_embedding_v2_initialization_test.py",
     ],
     disable_experimental = True,
     disable_mlir_bridge = False,

@@ -64,7 +64,7 @@ void UpdateTPUDeviceAssignment(mlir::func::FuncOp function,
     auto enclosing_launch = op->getParentOfType<mlir::tf_device::LaunchOp>();
     if (!enclosing_launch) return;
 
-    enclosing_launch.deviceAttr(builder->getStringAttr(""));
+    enclosing_launch.setDeviceAttr(builder->getStringAttr(""));
 
     // Remove placeholder device attributes of resource arguments to TPU
     // computation.
@@ -79,7 +79,7 @@ mlir::LogicalResult UpdateTPUCompileMetadata(const Mesh& mesh_config,
                                              mlir::func::FuncOp function,
                                              mlir::OpBuilder* builder) {
   auto result = function.walk([&](mlir::TF::_TPUCompileMlirOp compile) {
-    auto original_metadata = compile.metadata();
+    auto original_metadata = compile.getMetadata();
     tpu::TPUCompileMetadataProto metadata_proto;
     if (!metadata_proto.ParseFromString(original_metadata.str())) {
       compile.emitOpError("unable to parse TPUCompileMetadata");
@@ -137,7 +137,7 @@ mlir::LogicalResult UpdateTPUCompileMetadata(const Mesh& mesh_config,
       *metadata_proto.mutable_device_assignment() = device_assignment;
     }
 
-    compile.metadataAttr(
+    compile.setMetadataAttr(
         builder->getStringAttr(metadata_proto.SerializeAsString()));
     return mlir::WalkResult::advance();
   });
@@ -156,7 +156,7 @@ struct DTensorUpdateTPUMetadata
     if (!main_func) return;
 
     auto result = main_func.walk([&](mlir::TF::StatefulPartitionedCallOp op) {
-      auto call_config = op.config();
+      auto call_config = op.getConfig();
       auto mesh_or_status = Mesh::FromString(call_config.str());
       if (!mesh_or_status.ok()) return mlir::WalkResult::advance();
 

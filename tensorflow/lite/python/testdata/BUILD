@@ -1,5 +1,5 @@
 load("//tensorflow/lite:build_def.bzl", "tf_to_tflite", "tflite_copts")
-load("//tensorflow:tensorflow.bzl", "pybind_extension", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_custom_op_py_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_custom_op_library",
@@ -9,6 +9,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -81,7 +82,7 @@ cc_library(
     srcs = ["test_delegate.cc"],
     visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
     alwayslink = 1,
 )

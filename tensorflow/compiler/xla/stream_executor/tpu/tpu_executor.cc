@@ -18,12 +18,13 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/cleanup/cleanup.h"
-#include "tensorflow/c/tf_status.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_event.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_timer.h"
-#include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/tsl/c/tsl_status.h"
 
 using stream_executor::DeviceMemoryBase;
 
@@ -31,7 +32,7 @@ namespace tensorflow {
 namespace tpu {
 
 namespace {
-using ::stream_executor::port::Status;
+using xla::Status;
 }  // namespace
 
 TpuExecutor::~TpuExecutor() {
@@ -107,11 +108,11 @@ bool TpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
       get_stream(other->implementation()));
 }
 
-Status TpuExecutor::AllocateEvent(Event* event) { return OkStatus(); }
+Status TpuExecutor::AllocateEvent(Event* event) { return tsl::OkStatus(); }
 
 Status TpuExecutor::DeallocateEvent(Event* event) {
   tpu_platform().EraseEvent(event->implementation());
-  return OkStatus();
+  return tsl::OkStatus();
 }
 
 // AllocateTimer/DeallocateTimer have no specialization.
@@ -349,10 +350,10 @@ struct HostCallbackContext {
   std::function<Status()> callback;
 };
 
-TF_Status* HostCallbackTrampoline(void* ctx) {
+TSL_Status* HostCallbackTrampoline(void* ctx) {
   HostCallbackContext* host_ctx = reinterpret_cast<HostCallbackContext*>(ctx);
   Status status = host_ctx->callback();
-  TF_Status* c_status = tpu::ExecutorApiFn()->TpuStatus_CreateFn(
+  TSL_Status* c_status = tpu::ExecutorApiFn()->TpuStatus_CreateFn(
       status.code(), status.error_message().c_str());
   delete host_ctx;
   return c_status;

@@ -16,11 +16,11 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -53,9 +53,9 @@ using mlir::ValueRange;
 using mlir::gml_st::LoopOp;
 using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
-using mlir::linalg::InitTensorOp;
 using mlir::linalg::LinalgOp;
 using mlir::linalg::YieldOp;
+using mlir::tensor::EmptyOp;
 using mlir::tensor::ExtractSliceOp;
 using mlir::tensor::InsertSliceOp;
 
@@ -79,7 +79,7 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
 
   LogicalResult matchAndRewrite(GenericOp linalg_op,
                                 PatternRewriter &rewriter) const override {
-    if (linalg_op.getNumOutputs() != 1) return failure();
+    if (linalg_op.getNumDpsInits() != 1) return failure();
     if (linalg_op.getNumLoops() != 2) return failure();
 
     // Get immediate parent.
@@ -93,37 +93,37 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
 
  private:
   // Add a new output argument to the `tiled_loop`. It will be produced by
-  // `init_tensor` op with the same shape of the tiled output argument.
+  // `empty` op with the same shape of the tiled output argument.
   //
   // Rewrite
   //
-  //   %init = linalg.init_tensor
+  //   %init = tensor.empty
   //   %fill = linalg.fill(%cst, %init)
   //   linalg.tiled_loop outs(%fill)
   //
   // into
   //
-  //   %init = linalg.init_tensor
-  //** %init_tile = linalg.init_tensor [%stride]
+  //   %init = tensor.empty
+  //** %init_tile = tensor.empty [%stride]
   //   %fill = linalg.fill(%cst, %init)
   //** linalg.tiled_loop outs(%fill, %init_tile)
-  BlockArgument CloneAndAppendInitTensorToTiledLoop(PatternRewriter &rewriter,
-                                                    FillOp fill,
-                                                    LoopOp tiled_loop) const {
+  BlockArgument CloneAndAppendEmptyTensorToTiledLoop(PatternRewriter &rewriter,
+                                                     FillOp fill,
+                                                     LoopOp tiled_loop) const {
     OpBuilder::InsertionGuard guard(rewriter);
     rewriter.setInsertionPoint(fill);
 
-    auto init = fill.output().getDefiningOp<InitTensorOp>();
+    auto empty = fill.output().getDefiningOp<EmptyOp>();
 
-    Value init_clone = rewriter.create<InitTensorOp>(
-        init.getLoc(), GetParallelDimStep(tiled_loop),
-        init.getType().cast<mlir::RankedTensorType>().getElementType());
-    mlir::OpOperand *init_clone_output_operand;
+    Value empty_clone = rewriter.create<EmptyOp>(
+        empty.getLoc(), GetParallelDimStep(tiled_loop),
+        empty.getType().cast<mlir::RankedTensorType>().getElementType());
+    mlir::OpOperand *empty_clone_output_operand;
     rewriter.updateRootInPlace(tiled_loop, [&]() {
-      init_clone_output_operand =
-          &tiled_loop.appendOutputOperand(rewriter, init_clone);
+      empty_clone_output_operand =
+          &tiled_loop.appendOutputOperand(rewriter, empty_clone);
     });
-    return tiled_loop.getTiedBlockArgument(*init_clone_output_operand);
+    return tiled_loop.getTiedBlockArgument(*empty_clone_output_operand);
   }
 
   // Fuse `fill` operation into the `tiled_loop`, rewire the `linalg.generic` to
@@ -132,8 +132,8 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
   //
   // Rewrite
   //
-  // %init = linalg.init_tensor
-  // %init_tile = linalg.init_tensor [%stride]
+  // %init = tensor.empty
+  // %init_tile = tensor.empty [%stride]
   // %fill = linalg.fill(%cst, %init)
   // linalg.tiled_loop outs(%fill, %init_tile) {
   //   %extract_output_slice = tensor.extract_slice %fill
@@ -144,8 +144,8 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
   //
   // into
   //
-  // %init = linalg.init_tensor
-  // %init_tile = linalg.init_tensor
+  // %init = tensor.empty
+  // %init_tile = tensor.empty
   // %fill = linalg.fill(%cst, %init)
   // linalg.tiled_loop outs(%fill, %init_tile) {
   //   %extract_output_slice = tensor.extract_slice %fill
@@ -176,7 +176,7 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
     auto fused_fill =
         rewriter.create<FillOp>(loc, fill.value(), slice_of_output_tile);
     rewriter.updateRootInPlace(tiled_op, [&]() {
-      tiled_op.getOutputOperand(0)->set(fused_fill.result());
+      tiled_op.getDpsInitOperand(0)->set(fused_fill.result());
     });
 
     rewriter.setInsertionPointAfter(tiled_op);
@@ -194,8 +194,8 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
   //
   // Rewrite
   //
-  // %init = linalg.init_tensor
-  // %init_tile = linalg.init_tensor
+  // %init = tensor.empty
+  // %init_tile = tensor.empty
   // %fill = linalg.fill(%cst, %init)
   // linalg.tiled_loop outs(%fill, %init_tile) {
   //   %extract_output_slice = tensor.extract_slice %fill
@@ -211,8 +211,8 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
   //
   // into
   //
-  // %init = linalg.init_tensor
-  // %init_tile = linalg.init_tensor
+  // %init = tensor.empty
+  // %init_tile = tensor.empty
   // %fill = linalg.fill(%cst, %init)
   // linalg.tiled_loop outs(%fill, %init_tile) {
   //   %extract_output_slice = tensor.extract_slice %fill
@@ -233,13 +233,13 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
       InsertSliceOp insert_output_slice) const {
     rewriter.setInsertionPointAfter(tiled_op);
     auto num_parallel_loops = tiled_op.getNumParallelLoops();
-    SmallVector<mlir::StringRef, 3> parallel_iter_types(
-        num_parallel_loops, mlir::getParallelIteratorTypeName());
+    SmallVector<mlir::utils::IteratorType, 3> parallel_iter_types(
+        num_parallel_loops, mlir::utils::IteratorType::parallel);
     auto id_map = rewriter.getMultiDimIdentityMap(num_parallel_loops);
 
     auto combiner_or = DetectCombiner(tiled_op);
     if (failed(combiner_or)) return failure();
-    Operation *combiner = combiner_or.getValue();
+    Operation *combiner = combiner_or.value();
 
     auto accumulator = rewriter.create<GenericOp>(
         tiled_op.getLoc(), partial_result.getType(),
@@ -295,7 +295,7 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
 
     // Find extract_slice/insert_slice pair used to RMW output.
     auto extract_output_slice =
-        tiled_op.getOutputOperand(0)->get().getDefiningOp<ExtractSliceOp>();
+        tiled_op.getDpsInitOperand(0)->get().getDefiningOp<ExtractSliceOp>();
     if (!extract_output_slice) return failure();
 
     Value tiled_op_result = tiled_op->getResult(0);
@@ -305,7 +305,7 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
 
     // Fuse the output.
     BlockArgument output_tile_bb_arg =
-        CloneAndAppendInitTensorToTiledLoop(rewriter, fill, tiled_loop);
+        CloneAndAppendEmptyTensorToTiledLoop(rewriter, fill, tiled_loop);
     FuseFill(rewriter, tiled_op, fill, loop_output_bb_arg, output_tile_bb_arg,
              extract_output_slice, insert_output_slice);
     // We have already modified the loop above, so we need to update the

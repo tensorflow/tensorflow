@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -tf-jitrt-pipeline="vectorize reduction-2d-tile-sizes=4,4" \
+// RUN: tf-tfrt-opt -tf-jitrt-pipeline="vectorize" \
 // RUN: %s -split-input-file | FileCheck %s
 
 // CHECK-LABEL: @reduce_row_sum_2d_dynamic

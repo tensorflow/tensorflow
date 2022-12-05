@@ -46,7 +46,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.11.0'
+_VERSION = '2.12.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -58,6 +58,13 @@ if '--project_name' in sys.argv:
   project_name = sys.argv[project_name_idx + 1]
   sys.argv.remove('--project_name')
   sys.argv.pop(project_name_idx)
+
+
+collaborator_build = False
+if '--collaborator_build' in sys.argv:
+  sys.argv.remove('--collaborator_build')
+  collaborator_build = True
+
 
 # Returns standard if a tensorflow-* package is being built, and nightly if a
 # tf_nightly-* package is being built.
@@ -81,6 +88,9 @@ REQUIRED_PACKAGES = [
     'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
+    # TODO(b/239052279): replace with external dependency on JAX repo once JAX
+    # no longer relies on TF.
+    'jax >= 0.3.15',
     'libclang >= 13.0.0',
     'numpy >= 1.20',
     'opt_einsum >= 2.3.2',
@@ -111,14 +121,29 @@ REQUIRED_PACKAGES = [
     # current release version. These also usually have "alpha" or "dev" in their
     # version name.
     # These are all updated during the TF release process.
-    standard_or_nightly('tensorboard >= 2.10, < 2.11',
-                        'tb-nightly ~= 2.11.0.a'),
-    standard_or_nightly('tensorflow_estimator >= 2.10.0rc0, < 2.11',
-                        'tf-estimator-nightly ~= 2.11.0.dev'),
-    standard_or_nightly('keras >= 2.10.0rc0, < 2.11',
-                        'keras-nightly ~= 2.11.0.dev'),
+    standard_or_nightly('tensorboard >= 2.11, < 2.12',
+                        'tb-nightly ~= 2.12.0.a'),
+    standard_or_nightly('tensorflow_estimator >= 2.11.0rc0, < 2.12',
+                        'tf-estimator-nightly ~= 2.12.0.dev'),
+    standard_or_nightly('keras >= 2.11.0rc1, < 2.12',
+                        'keras-nightly ~= 2.12.0.dev'),
 ]
-REQUIRED_PACKAGES = [ p for p in REQUIRED_PACKAGES if p is not None ]
+REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
+
+if collaborator_build:
+  # If this is a collaborator build, then build an "installer" wheel and
+  # add the collaborator packages as the only dependencies.
+  REQUIRED_PACKAGES = [
+      # Install the TensorFlow package built by AWS if the user is running
+      # Linux on an Aarch64 machine.
+      standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws') + '==' +
+      _VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
+      'platform_machine=="aarch64")',
+      # Install the TensorFlow package built by Intel if the user is on a
+      # Windows machine.
+      standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
+      _VERSION + ';platform_system=="Windows"',
+  ]
 
 DOCLINES = __doc__.split('\n')
 if project_name.endswith('-gpu'):
@@ -147,7 +172,7 @@ CONSOLE_SCRIPTS = [
     'estimator_ckpt_converter = '
     'tensorflow_estimator.python.estimator.tools.checkpoint_converter:main',
 ]
-CONSOLE_SCRIPTS = [ s for s in CONSOLE_SCRIPTS if s is not None ]
+CONSOLE_SCRIPTS = [s for s in CONSOLE_SCRIPTS if s is not None]
 # pylint: enable=line-too-long
 
 
@@ -280,7 +305,7 @@ headers = (
     list(find_files('*', 'third_party/eigen3')) +
     list(find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
     list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +
-    list(find_files('*', 'tensorflow/include/external/eigen_archive'))) 
+    list(find_files('*', 'tensorflow/include/external/eigen_archive')))
 
 setup(
     name=project_name,
@@ -293,25 +318,22 @@ setup(
     author='Google Inc.',
     author_email='packages@tensorflow.org',
     # Contained modules and scripts.
-    packages=find_packages(),
+    packages=find_packages() if not collaborator_build else [],
     entry_points={
         'console_scripts': CONSOLE_SCRIPTS,
-    },
-    headers=headers,
+    } if not collaborator_build else {},
+    headers=headers if not collaborator_build else [],
     install_requires=REQUIRED_PACKAGES,
     # Add in any packaged data.
-    include_package_data=True,
+    include_package_data=True if not collaborator_build else False,
     package_data={
-        'tensorflow': [
-            EXTENSION_NAME,
-        ] + matches,
-    },
+        'tensorflow': [EXTENSION_NAME,] + matches,
+    } if not collaborator_build else {},
     zip_safe=False,
-    distclass=BinaryDistribution,
+    distclass=BinaryDistribution if not collaborator_build else None,
     cmdclass={
         'install_headers': InstallHeaders,
-        'install': InstallCommand,
-    },
+        'install': InstallCommand,} if not collaborator_build else {},
     # Supported Python versions
     python_requires='>=3.7',
     # PyPI package information.

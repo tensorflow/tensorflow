@@ -1,9 +1,9 @@
 # Build simple_hash_table custom ops example, which is similar to,
 # but simpler than, tf.lookup.experimental.MutableHashTable
 
-load("//tensorflow:tensorflow.bzl", "py_strict_library")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 licenses(["notice"])
 
@@ -42,7 +42,8 @@ py_strict_library(
 
 tf_py_test(
     name = "simple_hash_table_test",
-    size = "small",
+    size = "medium",  # This test blocks because it writes and reads a file,
+    timeout = "short",  # but it still runs quickly.
     srcs = ["simple_hash_table_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",

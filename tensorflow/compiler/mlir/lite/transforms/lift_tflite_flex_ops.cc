@@ -55,7 +55,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_LIFTTFLITEFLEXOPSPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 using ::tensorflow::StatusOr;
@@ -70,12 +70,12 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
 
   LogicalResult matchAndRewrite(TFL::CustomOp op,
                                 PatternRewriter& rewriter) const override {
-    if (!op.custom_code().startswith(kFlexOpNamePrefix)) {
+    if (!op.getCustomCode().startswith(kFlexOpNamePrefix)) {
       return failure();
     }
 
     llvm::StringRef tf_op_name =
-        op.custom_code().substr(kFlexOpNamePrefix.size());
+        op.getCustomCode().substr(kFlexOpNamePrefix.size());
     const std::string tf_op_full_name = llvm::Twine("tf.", tf_op_name).str();
 
     // Create the TF op
@@ -86,7 +86,7 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
     SmallVector<NamedAttribute, 2> attrs;
     std::string parsed_op_name;
     tensorflow::NodeDef node_def;
-    if (failed(ParseCustomOption(op.custom_option().getValue(), op.getLoc(),
+    if (failed(ParseCustomOption(op.getCustomOption().getValue(), op.getLoc(),
                                  parsed_op_name, attrs, node_def))) {
       return failure();
     }
@@ -110,11 +110,25 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
     Operation* tf_op = rewriter.create(op_state);
     rewriter.replaceOp(op, tf_op->getResults());
 
+    if (isa<TF::MapDatasetOp, TF::ReduceDatasetOp>(tf_op)) {
+      constexpr StringRef kFuncAttrName = "f";
+      tf_op->setAttr(
+          kFuncAttrName,
+          tf_op->getAttr(kFuncAttrName).cast<TF::FuncAttr>().getName());
+    }
+
+    if (isa<TF::TakeWhileDatasetOp>(tf_op)) {
+      constexpr StringRef kFuncAttrName = "predicate";
+      tf_op->setAttr(
+          kFuncAttrName,
+          tf_op->getAttr(kFuncAttrName).cast<TF::FuncAttr>().getName());
+    }
+
     // Special type fixes for TF Resource Tensors that are casted to
     // Int32 tensor during MLIR->TFLite flatbuffer conversion.
     // TODO(b/146131919): correct handling of resource type
     if (auto tensor_array_v3_op = dyn_cast<TF::TensorArrayV3Op>(tf_op)) {
-      Value handle = tensor_array_v3_op.handle();
+      Value handle = tensor_array_v3_op.getHandle();
       auto handle_type = handle.getType().cast<TensorType>();
       if (handle_type.getElementType().isInteger(/*width=*/32)) {
         Type resource_tensor_type =
@@ -132,7 +146,7 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
     if (auto tensor_array_v3_op = dyn_cast<TF::TensorArrayV3Op>(tf_op)) {
       // The "flow" in TensorArrayV3 is always a scalar float tensor.
       // https://www.tensorflow.org/api_docs/python/tf/raw_ops/TensorArrayWriteV3
-      Value flow = tensor_array_v3_op.flow();
+      Value flow = tensor_array_v3_op.getFlow();
       Type scalar_f32_tensor_type =
           RankedTensorType::get(/*shape=*/{}, rewriter.getF32Type());
       flow.setType(scalar_f32_tensor_type);
@@ -150,10 +164,10 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
           values.reserve(args.size());
           for (const auto& arg : args) {
             auto range = arg_ranges.at(arg.name());
-            values.push_back(
-                range.second - range.first);
+            values.push_back(range.second - range.first);
           }
-          auto attr_value = mlir::DenseI32ArrayAttr::get(tf_op->getContext(), values);
+          auto attr_value =
+              mlir::DenseI32ArrayAttr::get(tf_op->getContext(), values);
           tf_op->setAttr(attr_name, attr_value);
         };
     if (tf_op->hasTrait<mlir::OpTrait::AttrSizedOperandSegments>() ||
@@ -225,7 +239,7 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
 };
 
 class LiftTfliteFlexOpsPass
-    : public LiftTfliteFlexOpsPassBase<LiftTfliteFlexOpsPass> {
+    : public impl::LiftTfliteFlexOpsPassBase<LiftTfliteFlexOpsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect>();
   }

@@ -1,19 +1,12 @@
 # Description:
 # TensorFlow SavedModel.
 
-load("//tensorflow:tensorflow.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.bzl", "VERSION", "tf_python_pybind_static_deps")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # TODO(drpng): change that to //third_party/tensorflow:internal
     # when we have migrated all users.
     default_visibility = ["//visibility:public"],
@@ -85,8 +78,8 @@ py_strict_library(
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:saver",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -408,6 +401,9 @@ py_library(
         "load.py",
     ],
     srcs_version = "PY3",
+    tags = [
+        "ignore_for_dep=third_party.py.keras.optimizers.optimizer_v2",
+    ],
     deps = [
         ":function_deserialization",
         ":load_options",
@@ -437,6 +433,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager/polymorphic_function:saved_model_utils",
+        "//tensorflow/python/framework:config",
         "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:autotrackable",
@@ -531,6 +528,18 @@ tf_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "load_optimizer_test",
+    srcs = ["load_optimizer_test.py"],
+    data = ["//tensorflow/cc/saved_model:saved_model_test_files"],
+    tags = ["no_oss"],  # Due to the usage of keras component.
+    deps = [
+        ":load",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -712,7 +721,13 @@ tf_python_pybind_extension(
         "pywrap_saved_model_fingerprinting.h",
         "pywrap_saved_model_metrics.h",
     ],
+    dynamic_deps = ["//tensorflow/python:_pywrap_tensorflow_internal.so"] + select({
+        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        "//tensorflow:windows": [],
+    }),
     features = ["-layering_check"],
+    static_deps = tf_python_pybind_static_deps(),
     visibility = ["//tensorflow/python/training:__subpackages__"],
     deps = [
         ":pywrap_saved_model_headers",

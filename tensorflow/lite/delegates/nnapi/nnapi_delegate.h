@@ -173,6 +173,12 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // must provide max tensor size in the "tensor_max_size_hints" field for all
     // output tensors with dynamic shapes.
     NnapiDelegateVendorPlugin* vendor_plugin = nullptr;
+
+    // Controls disabling of the debugging diagnostics callbacks that only print
+    // debug logs, which are otherwise enabled by default.
+    // Use this in case different callbacks are being registered elsewhere, such
+    // as for example to send logs through some logger.
+    bool disable_debugging_diagnostics_callbacks = false;
   };
 
   // Uses default options.
@@ -357,6 +363,12 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // TFLite Serialization in case caching has been enabled by the user through
     // Options.
     std::unique_ptr<delegates::Serialization> cache;
+
+    // Controls disabling of the default diagnostics callbacks that only print
+    // debug logs, which are otherwise enabled by default.
+    // Use this in case different callbacks are being registered elsewhere, such
+    // as for example to send logs through some logger.
+    bool disable_debugging_diagnostics_callbacks = false;
 
     explicit Data(const NnApi* nnapi);
     explicit Data(std::unique_ptr<const NnApi> nnapi);

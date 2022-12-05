@@ -22,7 +22,7 @@ limitations under the License.
 #include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
 
 static mlir::TranslateFromMLIRRegistration registration(
-    "mlir-to-bef", tfrt::MLIRToBEFTranslate,
+    "mlir-to-bef", "translate MLIR to BEF", tfrt::MLIRToBEFTranslate,
     [](mlir::DialectRegistry& registry) {
       mlir::RegisterAllTensorFlowDialects(registry);
       tfrt::RegisterTFRTDialects(registry);

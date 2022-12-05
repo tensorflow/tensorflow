@@ -23,13 +23,22 @@ limitations under the License.
 
 struct TfLiteTensor;
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 class TraceMe;
+}  // namespace profiler
+}  // namespace tsl
+
+namespace tensorflow {
+namespace profiler {
+
+using tsl::profiler::TraceMe;
+
 }  // namespace profiler
 }  // namespace tensorflow
 
 namespace tflite {
+
 // Records an op preparation with `op_name` and `node_index`.
 TFLITE_ATTRIBUTE_WEAK void OnTfLiteOpPrepare(const char* op_name,
                                              int subgraph_index,
@@ -67,6 +76,12 @@ TFLITE_ATTRIBUTE_WEAK void OnTfLiteArenaAlloc(int subgraph_index, int arena_id,
 // Records an event of `num_bytes` of memory deallocated for arena.
 TFLITE_ATTRIBUTE_WEAK void OnTfLiteArenaDealloc(int subgraph_index,
                                                 int arena_id, size_t num_bytes);
+
+// Pause / resume heap monitoring via malloc/free hooks.
+TFLITE_ATTRIBUTE_WEAK void PauseHeapMonitoring(bool pause);
+
+// Records end of Interpreter so logger can report saved heap allocations.
+TFLITE_ATTRIBUTE_WEAK void OnTfLiteInterpreterEnd();
 
 }  // namespace tflite
 

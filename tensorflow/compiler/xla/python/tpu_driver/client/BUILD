@@ -1,12 +1,8 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "tsl_pybind_extension")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -37,10 +33,10 @@ cc_library(
         "//tensorflow/compiler/xla/python/tpu_driver:recording_tpu_driver",
         "//tensorflow/compiler/xla/python/tpu_driver:tpu_driver_proto_cc",
         "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/tsl/framework:allocator",
         "//tensorflow/tsl/platform:casts",
         "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -50,7 +46,7 @@ cc_library(
     ],
 )
 
-pybind_extension(
+tsl_pybind_extension(
     name = "tpu_client_extension",
     srcs = [
         "tpu_client_extension.cc",

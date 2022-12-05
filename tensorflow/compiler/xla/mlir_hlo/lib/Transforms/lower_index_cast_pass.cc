@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file contains the patterns to convert std.index_cast on tensors to
+// This file contains the patterns to convert arith.index_cast on tensors to
 // tensor ops and index_cast on scalars.
 
 #include <utility>
@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -38,21 +39,18 @@ struct IndexCastConverter : public OpRewritePattern<arith::IndexCastOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(arith::IndexCastOp op,
                                 PatternRewriter &rewriter) const final {
-    // Only rank 1 is supported for now.
-    auto resultTy = op.getType().dyn_cast<ShapedType>();
-    if (!resultTy || resultTy.getRank() != 1) return failure();
+    auto resultTy = op.getType().dyn_cast<RankedTensorType>();
+    if (!resultTy) return failure();
 
+    SmallVector<Value> dynamicExtents =
+        tensor::createDynamicDimValues(rewriter, op.getLoc(), op.getIn());
     rewriter.replaceOpWithNewOp<tensor::GenerateOp>(
-        op, op.getType(),
-        resultTy.hasStaticShape() ? ValueRange{}
-                                  : ValueRange{rewriter.create<tensor::DimOp>(
-                                        op.getLoc(), op.getIn(), 0)},
+        op, resultTy, dynamicExtents,
         [&](OpBuilder &b, Location loc, ValueRange args) {
-          Value dim = args.front();
-          Value extent = b.create<tensor::ExtractOp>(loc, op.getIn(), dim);
-          Value casted = b.create<arith::IndexCastOp>(
+          Value extent = b.create<tensor::ExtractOp>(loc, op.getIn(), args);
+          Value cast = b.create<arith::IndexCastOp>(
               loc, resultTy.getElementType(), extent);
-          b.create<tensor::YieldOp>(loc, casted);
+          b.create<tensor::YieldOp>(loc, cast);
         });
     return success();
   }
@@ -60,10 +58,6 @@ struct IndexCastConverter : public OpRewritePattern<arith::IndexCastOp> {
 
 struct LowerIndexCastPass
     : public impl::LowerIndexCastPassBase<LowerIndexCastPass> {
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<tensor::TensorDialect>();
-  }
-
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     patterns.add<IndexCastConverter>(patterns.getContext());

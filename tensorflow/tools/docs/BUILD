@@ -2,9 +2,7 @@
 #   Doc generator
 
 load("//tensorflow:tensorflow.bzl", "py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -12,6 +10,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],
 )
@@ -151,7 +150,6 @@ py_library(
 py_test(
     name = "fenced_doctest_test",
     srcs = ["fenced_doctest_test.py"],
-    data = glob(["**/create_model.md"]),
     tags = [
         "no_oss",
         "no_pip",

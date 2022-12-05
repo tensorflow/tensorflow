@@ -27,6 +27,7 @@ namespace tflite {
 namespace {
 
 using ::testing::ElementsAreArray;
+using ::testing::IsEmpty;
 
 template <typename input_type>
 class StridedSliceOpModel : public SingleOpModel {
@@ -36,7 +37,7 @@ class StridedSliceOpModel : public SingleOpModel {
                       std::initializer_list<int> end_shape,
                       std::initializer_list<int> strides_shape, int begin_mask,
                       int end_mask, int ellipsis_mask, int new_axis_mask,
-                      int shrink_axis_mask) {
+                      int shrink_axis_mask, bool use_simple_allocator = true) {
     input_ = AddInput(GetTensorType<input_type>());
     begin_ = AddInput(TensorType_INT32);
     end_ = AddInput(TensorType_INT32);
@@ -47,7 +48,8 @@ class StridedSliceOpModel : public SingleOpModel {
         CreateStridedSliceOptions(builder_, begin_mask, end_mask, ellipsis_mask,
                                   new_axis_mask, shrink_axis_mask)
             .Union());
-    BuildInterpreter({input_shape, begin_shape, end_shape, strides_shape});
+    BuildInterpreter({input_shape, begin_shape, end_shape, strides_shape},
+                     use_simple_allocator);
   }
 
   void SetInput(std::initializer_list<input_type> data) {
@@ -670,8 +672,18 @@ TYPED_TEST(StridedSliceOpTest, In3D_SmallBeginWithhrinkAxis1) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
 
-TYPED_TEST(StridedSliceOpTest, In3D_BackwardSmallBegin) {
+TYPED_TEST(StridedSliceOpTest, In3D_BackwardSmallBeginEndMask) {
   StridedSliceOpModel<TypeParam> m({1, 1, 2}, {1}, {1}, {1}, 0, 1, 0, 0, 0);
+  m.SetInput({1, 2});
+  m.SetBegin({1});
+  m.SetEnd({0});
+  m.SetStrides({1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0, 1, 2}));
+}
+
+TYPED_TEST(StridedSliceOpTest, In3D_BackwardSmallBegin) {
+  StridedSliceOpModel<TypeParam> m({1, 1, 2}, {1}, {1}, {1}, 0, 0, 0, 0, 0);
   m.SetInput({1, 2});
   m.SetBegin({1});
   m.SetEnd({0});
@@ -854,5 +866,86 @@ TYPED_TEST(StridedSliceOpTest, NoInfiniteLoop) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 }
 
+TYPED_TEST(StridedSliceOpTest, MinusThreeMinusFourMinusOne) {
+  StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, 0, 0, 0, 0, 0);
+  m.SetInput({1, 2, 3, 4});
+  m.SetBegin({-3});
+  m.SetEnd({-4});
+  m.SetStrides({-1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2}));
+}
+
+TYPED_TEST(StridedSliceOpTest, MinusFourMinusThreeOne) {
+  StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, 0, 0, 0, 0, 0);
+  m.SetInput({1, 2, 3, 4});
+  m.SetBegin({-4});
+  m.SetEnd({-3});
+  m.SetStrides({1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1}));
+}
+
+TYPED_TEST(StridedSliceOpTest, OneOneOne) {
+  StridedSliceOpModel<TypeParam> m({1}, {1}, {1}, {1}, 0, 0, 0, 0, 0);
+  m.SetInput({2});
+  m.SetBegin({1});
+  m.SetEnd({1});
+  m.SetStrides({1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0}));
+}
+
+TYPED_TEST(StridedSliceOpTest, OneOneOneShrinkAxis) {
+  StridedSliceOpModel<TypeParam> m({3}, {1}, {1}, {1}, 0, 0, 0, 0, 1);
+  m.SetInput({1, 2, 3});
+  m.SetBegin({1});
+  m.SetEnd({1});
+  m.SetStrides({1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2}));
+}
+
+TYPED_TEST(StridedSliceOpTest, OneOneOneShrinkAxisOOB) {
+  StridedSliceOpModel<TypeParam> m({1}, {1}, {1}, {1}, 0, 0, 0, 0, 1);
+  m.SetInput({2});
+  m.SetBegin({1});
+  m.SetEnd({1});
+  m.SetStrides({1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+}
+
+TYPED_TEST(StridedSliceOpTest, OutOfBounds) {
+  StridedSliceOpModel<TypeParam> m({1}, {1}, {1}, {1}, 0, 0, 0, 0, 1);
+  m.SetBegin({1});
+  m.SetEnd({2});
+  m.SetStrides({1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+}
+
+TYPED_TEST(StridedSliceOpTest, StrideOutOfBounds) {
+  StridedSliceOpModel<TypeParam> m({1}, {1}, {1}, {1}, 0, 0, 0, 0, 1);
+  m.SetBegin({1});
+  m.SetEnd({4});
+  m.SetStrides({7});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+}
+
+TYPED_TEST(StridedSliceOpTest, NegEndMask) {
+  StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, 0, 0b10, 0, 0, 0);
+  m.SetInput({1, 2, 3, 4, 5, 6});
+  m.SetBegin({0, -1});
+  m.SetEnd({2, -3});
+  m.SetStrides({1, -1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 2, 1, 6, 5, 4}));
+}
 }  // namespace
 }  // namespace tflite

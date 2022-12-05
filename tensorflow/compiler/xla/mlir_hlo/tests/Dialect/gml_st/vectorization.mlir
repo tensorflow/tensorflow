@@ -1,6 +1,10 @@
 // RUN: mlir-hlo-opt %s --vectorize-gml-st-loops --split-input-file |\
 // RUN: FileCheck %s
 
+// RUN: mlir-hlo-opt %s --split-input-file \
+// RUN:     --vectorize-gml-st-loops="vectorize-gml-st-ops=true" \
+// RUN: | FileCheck %s --check-prefix=VECTORIZE-LOOP-NO-LABEL
+
 #map0 = affine_map<(d0) -> (d0)>
 func.func @tiled_add(%A: tensor<8xf32>, %B: tensor<8xf32>,
                   %C: tensor<8xf32>) -> tensor<8xf32> {
@@ -16,15 +20,13 @@ func.func @tiled_add(%A: tensor<8xf32>, %B: tensor<8xf32>,
       : tensor<8xf32> to tensor<2xf32>
     %C_sub = tensor.extract_slice %C_[%i] [2] [1]
       : tensor<8xf32> to tensor<2xf32>
-    %sum_sub = linalg.generic {
-      indexing_maps = [#map0, #map0, #map0],
-      iterator_types = ["parallel"]
-    } ins(%A_sub, %B_sub : tensor<2xf32>, tensor<2xf32>)
-      outs(%C_sub : tensor<2xf32>) {
-      ^bb0(%a: f32, %b: f32, %c: f32):
+    %sum_sub = linalg.map
+      ins(%A_sub, %B_sub : tensor<2xf32>, tensor<2xf32>)
+      outs(%C_sub : tensor<2xf32>)
+      (%a: f32, %b: f32) {
         %0 = arith.addf %a, %b : f32
         linalg.yield %0 : f32
-    } -> tensor<2xf32>
+      }
     %update = tensor.insert_slice %sum_sub into %C_[%i] [2] [1]
       : tensor<2xf32> into tensor<8xf32>
     gml_st.yield %update : tensor<8xf32>
@@ -60,39 +62,38 @@ func.func @tiled_reduction_2d(%in: tensor<80x60xf32>) -> tensor<80xf32> {
   %c80 = arith.constant 80 : index
   %cst = arith.constant 0.000000e+00 : f32
 
-  %init = linalg.init_tensor [80] : tensor<80xf32>
+  %init = tensor.empty() : tensor<80xf32>
   %out = linalg.fill ins(%cst : f32) outs(%init : tensor<80xf32>) -> tensor<80xf32>
 
   %sum = gml_st.loop (%i, %j) = (%c0, %c0) to (%c80, %c60) step (%c4, %c4)
           ins (%in_ = %in: tensor<80x60xf32>, %cst_ = %cst: f32)
           outs (%out_ = %out: tensor<80xf32>)
-          iterators["parallel", "reduction"] {
+          iterators[#gml_st.iterator_type<parallel>,
+                    #gml_st.iterator_type<reduction>] {
     %in_sub = tensor.extract_slice %in_[%i, %j] [4, 4] [1, 1]
         : tensor<80x60xf32> to tensor<4x4xf32>
     %out_sub = tensor.extract_slice %out_[%i] [4] [1]
         : tensor<80xf32> to tensor<4xf32>
     %local_fill = linalg.fill ins(%cst_ : f32) outs(%out_sub : tensor<4xf32>) -> tensor<4xf32>
-    %reduced_tile = linalg.generic {
-        indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
-                         affine_map<(d0, d1) -> (d0)>],
-        iterator_types = ["parallel", "reduction"]}
+    %reduced_tile = linalg.reduce
         ins(%in_sub : tensor<4x4xf32>)
-        outs(%local_fill : tensor<4xf32>) {
-      ^bb0(%a: f32, %b: f32):
+        outs(%local_fill : tensor<4xf32>)
+        dimensions = [0]
+      (%a: f32, %b: f32) {
         %0 = arith.addf %a, %b : f32
         linalg.yield %0 : f32
-    } -> tensor<4xf32>
+      }
+    %expand = tensor.expand_shape %reduced_tile [[0, 1]]
+      : tensor<4xf32> into tensor<1x4xf32>
+    %acc = linalg.reduce
+          ins(%expand : tensor<1x4xf32>)
+          outs(%out_sub : tensor<4xf32>)
+          dimensions = [0]
+     (%arg4: f32, %arg5: f32) {
+      %9 = arith.addf %arg4, %arg5 : f32
+      linalg.yield %9 : f32
+    }
 
-    %acc = linalg.generic {
-        indexing_maps = [affine_map<(d0) -> (d0)>,
-                        affine_map<(d0) -> (d0)>],
-        iterator_types = ["parallel"]}
-        ins(%reduced_tile : tensor<4xf32>)
-        outs(%out_sub : tensor<4xf32>) {
-      ^bb0(%a: f32, %b: f32):
-        %1 = arith.addf %a, %b : f32
-        linalg.yield %1 : f32
-    } -> tensor<4xf32>
     %update = tensor.insert_slice %acc into %out_[%i] [4] [1]
         : tensor<4xf32> into tensor<80xf32>
     gml_st.yield %update : tensor<80xf32>
@@ -108,49 +109,45 @@ func.func @tiled_reduction_2d(%in: tensor<80x60xf32>) -> tensor<80xf32> {
 
 // CHECK: %[[BCAST:.*]] = vector.broadcast %[[CST]] : f32 to vector<4xf32>
 // CHECK-NOT: vector.transfer_write %[[BCAST]]
-// CHECK: vector.multi_reduction <add>, %{{.*}}, %[[BCAST]] [1] : vector<4x4xf32> to vector<4xf32>
+// CHECK: vector.multi_reduction <add>, %{{.*}}, %[[BCAST]] [0] : vector<4x4xf32> to vector<4xf32>
 
 // -----
 
-#map0 = affine_map<(d0, d1) -> (d0, d1)>
-#map1 = affine_map<(d0, d1) -> (d1)>
-#map2 = affine_map<(d0) -> (d0)>
-#map3 = affine_map<(d0) -> ()>
 func.func @reduction_1d(%arg0: tensor<16xf32>) -> tensor<f32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c16 = arith.constant 16 : index
   %c0 = arith.constant 0 : index
   %c8 = arith.constant 8 : index
-  %0 = linalg.init_tensor [] : tensor<f32>
+  %0 = tensor.empty() : tensor<f32>
   %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<f32>) -> tensor<f32>
-  %2 = linalg.init_tensor [8] : tensor<8xf32>
+  %2 = tensor.empty() : tensor<8xf32>
   %3 = linalg.fill ins(%cst : f32) outs(%2 : tensor<8xf32>) -> tensor<8xf32>
   %4 = gml_st.loop (%arg1) = (%c0) to (%c16) step (%c8)
       ins (%arg2 = %arg0: tensor<16xf32>)
       outs (%arg3 = %3: tensor<8xf32>)
-      iterators["reduction"] {
+      iterators[#gml_st.iterator_type<reduction>] {
     %6 = tensor.extract_slice %arg2[%arg1] [8] [1]
       : tensor<16xf32> to tensor<8xf32>
     %7 = tensor.expand_shape %6 [[0, 1]]
       : tensor<8xf32> into tensor<1x8xf32>
-    %8 = linalg.generic {indexing_maps = [#map0, #map1],
-                         iterator_types = ["reduction", "parallel"]}
-                         ins(%7 : tensor<1x8xf32>)
-                         outs(%arg3 : tensor<8xf32>) {
-    ^bb0(%arg4: f32, %arg5: f32):
+    %8 = linalg.reduce
+          ins(%7 : tensor<1x8xf32>)
+          outs(%arg3 : tensor<8xf32>)
+          dimensions = [0]
+     (%arg4: f32, %arg5: f32) {
       %9 = arith.addf %arg4, %arg5 : f32
       linalg.yield %9 : f32
-    } -> tensor<8xf32>
+    }
     gml_st.yield %8 : tensor<8xf32>
   }
-  %5 = linalg.generic {indexing_maps = [#map2, #map3],
-                       iterator_types = ["reduction"]}
-                       ins(%4 : tensor<8xf32>)
-                       outs(%1 : tensor<f32>) {
-  ^bb0(%arg1: f32, %arg2: f32):
+  %5 = linalg.reduce
+    ins(%4 : tensor<8xf32>)
+    outs(%1 : tensor<f32>)
+    dimensions = [0]
+    (%arg1: f32, %arg2: f32) {
     %6 = arith.addf %arg1, %arg2 : f32
     linalg.yield %6 : f32
-  } -> tensor<f32>
+  }
   func.return %5 : tensor<f32>
 }
 // CHECK-LABEL: func @reduction_1d
@@ -172,7 +169,7 @@ func.func @test_transfer_read_of_one_dim_expand_shape(
   %min_float = arith.constant dense<-3.402820e+38> : vector<5xf32>
   %zero_float = arith.constant 0.000000e+00 : f32
   %0 = tensor.expand_shape %in [[0, 1]] : tensor<10xf32> into tensor<2x5xf32>
-  %1 = linalg.init_tensor [5] : tensor<5xf32>
+  %1 = tensor.empty() : tensor<5xf32>
   %2 = vector.transfer_read %0[%c0, %c0], %zero_float
     {in_bounds = [true, true], permutation_map = #map0}
     : tensor<2x5xf32>, vector<2x5xf32>
@@ -187,12 +184,67 @@ func.func @test_transfer_read_of_one_dim_expand_shape(
 // CHECK-DAG: %[[MIN_FLOAT:.*]] = arith.constant dense<-3.402820e+38> : vector<5xf32>
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG: %[[ZERO_FLOAT:.*]] = arith.constant 0.000000e+00 : f32
-// CHECK: %[[INIT_TENSOR:.*]] = linalg.init_tensor [5] : tensor<5xf32>
+// CHECK: %[[INIT_TENSOR:.*]] = tensor.empty() : tensor<5xf32>
 // CHECK: %[[TRANSFER_READ:.*]] = vector.transfer_read %[[IN]][%[[C0]]], %[[ZERO_FLOAT]] {in_bounds = [true]} : tensor<10xf32>, vector<10xf32>
 // CHECK: %[[SHAPE_CAST:.*]] = vector.shape_cast %[[TRANSFER_READ]] : vector<10xf32> to vector<2x5xf32>
 // CHECK: %[[MULTI_REDUCTION:.*]] = vector.multi_reduction <maxf>, %[[SHAPE_CAST]], %[[MIN_FLOAT]] [0] : vector<2x5xf32> to vector<5xf32>
 // CHECK: %[[TRANSFER_WRITE:.*]] = vector.transfer_write %[[MULTI_REDUCTION]], %[[INIT_TENSOR]][%[[C0]]] {in_bounds = [true]} : vector<5xf32>, tensor<5xf32>
 // CHECK: return %[[TRANSFER_WRITE]] : tensor<5xf32>
+
+// -----
+
+func.func @tiled_matmul(%arg0: tensor<128x16xf32>, %arg1: tensor<16x64xf32>,
+                        %arg2: tensor<128x64xf32>) -> tensor<128x64xf32> {
+  %c2 = arith.constant 2 : index
+  %c16 = arith.constant 16 : index
+  %c8 = arith.constant 8 : index
+  %c4 = arith.constant 4 : index
+  %c0 = arith.constant 0 : index
+  %c128 = arith.constant 128 : index
+  %c64 = arith.constant 64 : index
+  %0 = gml_st.parallel (%arg3, %arg4) =
+        (%c0, %c0) to (%c128, %c64) step (%c8, %c4) {
+    %1 = gml_st.tile [%arg3, 0] [8, 16] [1, 1] : !gml_st.tile<8x16>
+    %2 = gml_st.materialize %arg0[%1] :
+            tensor<128x16xf32>[!gml_st.tile<8x16>] to tensor<8x16xf32>
+    %3 = gml_st.tile [0, %arg4] [16, 4] [1, 1] : !gml_st.tile<16x4>
+    %4 = gml_st.materialize %arg1[%3] :
+            tensor<16x64xf32>[!gml_st.tile<16x4>] to tensor<16x4xf32>
+    %5 = gml_st.tile [%arg3, %arg4] [8, 4] [1, 1] : !gml_st.tile<8x4>
+    %6 = gml_st.materialize %arg2[%5] :
+            tensor<128x64xf32>[!gml_st.tile<8x4>] to tensor<8x4xf32>
+    %7 = gml_st.for (%arg5) =
+                (%c0) to (%c16) step (%c2) outs (%arg6 = %6: tensor<8x4xf32>) {
+      %8 = gml_st.tile [0, %arg5] [8, 2] [1, 1] : !gml_st.tile<8x2>
+      %9 = gml_st.materialize %2[%8] :
+                tensor<8x16xf32>[!gml_st.tile<8x2>] to tensor<8x2xf32>
+      %10 = gml_st.tile [%arg5, 0] [2, 4] [1, 1] : !gml_st.tile<2x4>
+      %11 = gml_st.materialize %4[%10] :
+                tensor<16x4xf32>[!gml_st.tile<2x4>] to tensor<2x4xf32>
+      %12 = gml_st.tile [0, 0] [8, 4] [1, 1] : !gml_st.tile<8x4>
+      %13 = gml_st.materialize %arg6[%12] :
+                tensor<8x4xf32>[!gml_st.tile<8x4>] to tensor<8x4xf32>
+      %14 = linalg.matmul ins(%9, %11 : tensor<8x2xf32>, tensor<2x4xf32>)
+                          outs(%13 : tensor<8x4xf32>) -> tensor<8x4xf32>
+      gml_st.set_yield %14 into %arg6[%12] :
+                tensor<8x4xf32> into tensor<8x4xf32>[!gml_st.tile<8x4>]
+    } : tensor<8x4xf32>
+    gml_st.set_yield %7 into %arg2[%5] :
+            tensor<8x4xf32> into tensor<128x64xf32>[!gml_st.tile<8x4>]
+  } : tensor<128x64xf32>
+  return %0 : tensor<128x64xf32>
+}
+
+// CHECK-LABEL: func @tiled_matmul
+
+// CHECK: gml_st.for
+
+// CHECK: %[[LHS:.*]] = vector.transfer_read {{.*}} : tensor<8x2xf32>, vector<8x2xf32>
+// CHECK: %[[RHS:.*]] = vector.transfer_read {{.*}} : tensor<2x4xf32>, vector<2x4xf32>
+// CHECK: %[[OUT:.*]] = vector.transfer_read {{.*}} : tensor<8x4xf32>, vector<8x4xf32>
+// CHECK: vector.contract {{{.*}}} %[[LHS]], %[[RHS]], %[[OUT]]
+
+// CHECK-NOT: linalg.matmul
 
 // -----
 
@@ -203,7 +255,7 @@ func.func @test_transfer_read_of_one_dim_expand_shape_different_shape(
   %min_float = arith.constant dense<-3.402820e+38> : vector<18xf32>
   %zero_float = arith.constant 0.000000e+00 : f32
   %0 = tensor.expand_shape %in [[0, 1]] : tensor<1xf32> into tensor<1x1xf32>
-  %1 = linalg.init_tensor [18] : tensor<18xf32>
+  %1 = tensor.empty() : tensor<18xf32>
   %2 = vector.transfer_read %0[%c0, %c0], %zero_float
     {in_bounds = [true, true], permutation_map = #map0}
     : tensor<1x1xf32>, vector<1x18xf32>
@@ -220,7 +272,7 @@ func.func @test_transfer_read_of_one_dim_expand_shape_different_shape(
 
 func.func @do_not_vectorize_large_untiled_fill() -> tensor<2x1000xf32> {
   %cst = arith.constant 0.000000e+00 : f32
-  %init = linalg.init_tensor [2, 1000] : tensor<2x1000xf32>
+  %init = tensor.empty() : tensor<2x1000xf32>
   %out = linalg.fill ins(%cst : f32) outs(%init : tensor<2x1000xf32>) -> tensor<2x1000xf32>
   func.return %out : tensor<2x1000xf32>
 }
@@ -231,9 +283,36 @@ func.func @do_not_vectorize_large_untiled_fill() -> tensor<2x1000xf32> {
 
 func.func @vectorize_small_untiled_fill() -> tensor<128xf32> {
   %cst = arith.constant 0.000000e+00 : f32
-  %init = linalg.init_tensor [128] : tensor<128xf32>
+  %init = tensor.empty() : tensor<128xf32>
   %out = linalg.fill ins(%cst : f32) outs(%init : tensor<128xf32>) -> tensor<128xf32>
   func.return %out : tensor<128xf32>
 }
 // CHECK-LABEL: func @vectorize_small_untiled_fill
 // CHECK: vector.transfer_write
+
+// -----
+
+func.func @do_not_vectorize_materialize_outside_loop() -> tensor<8x1xf32> {
+  %cst = arith.constant 0.000000e+00 : f32
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : index
+  %c0 = arith.constant 0 : index
+  %0 = tensor.empty() : tensor<10x1xf32>
+  %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<10x1xf32>) -> tensor<10x1xf32>
+  %6 = gml_st.tile [0, 0] [8, 1] [1, 1] : !gml_st.tile<8x1>
+  %3 = gml_st.materialize %1[%6] : tensor<10x1xf32>[!gml_st.tile<8x1>] to tensor<8x1xf32>
+  %4 = gml_st.loop (%arg2, %arg3) = (%c0, %c0) to (%c8, %c1) step (%c1, %c8) ins (%arg4 = %cst: f32) outs (%arg5 = %3: tensor<8x1xf32>) {
+    %10 = affine.min affine_map<(d0) -> (-d0 + 1, 8)>(%arg3)
+    %extracted_slice = tensor.extract_slice %arg5[%arg2, %arg3] [1, %10] [1, 1] : tensor<8x1xf32> to tensor<1x?xf32>
+    %11 = linalg.fill ins(%arg4 : f32) outs(%extracted_slice : tensor<1x?xf32>) -> tensor<1x?xf32>
+    %inserted_slice_1 = tensor.insert_slice %11 into %arg5[%arg2, %arg3] [1, %10] [1, 1] : tensor<1x?xf32> into tensor<8x1xf32>
+    gml_st.yield %inserted_slice_1 : tensor<8x1xf32>
+  }
+  return %4 : tensor<8x1xf32>
+}
+// VECTORIZE-LOOP-NO-LABEL-LABEL: func @do_not_vectorize_materialize_outside_loop
+// VECTORIZE-LOOP-NO-LABEL:         %[[CST:.*]] = arith.constant dense<0.000000e+00> : vector<10x1xf32>
+// VECTORIZE-LOOP-NO-LABEL:         %[[INIT:.*]] = tensor.empty() : tensor<10x1xf32>
+// VECTORIZE-LOOP-NO-LABEL:         %[[WRITE:.*]] = vector.transfer_write %[[CST]], %[[INIT]]{{.*}} tensor<10x1xf32>
+// VECTORIZE-LOOP-NO-LABEL:         %[[TILE:.*]] = gml_st.tile [0, 0] [8, 1] [1, 1]
+// VECTORIZE-LOOP-NO-LABEL:         gml_st.materialize %[[WRITE]][%[[TILE]]] : {{.*}} to tensor<8x1xf32>

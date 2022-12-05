@@ -55,7 +55,7 @@ static OwningOpRef<mlir::ModuleOp> GraphdefToMlirTranslateFunction(
 }
 
 static TranslateToMLIRRegistration GraphdefToMlirTranslate(
-    "graphdef-to-mlir", GraphdefToMlirTranslateFunction);
+    "graphdef-to-mlir", "graphdef-to-mlir", GraphdefToMlirTranslateFunction);
 
 static OwningOpRef<mlir::ModuleOp> GraphdefToSplattedMlirTranslateFunction(
     llvm::StringRef input, MLIRContext* context) {
@@ -69,7 +69,8 @@ static OwningOpRef<mlir::ModuleOp> GraphdefToSplattedMlirTranslateFunction(
 }
 
 static TranslateToMLIRRegistration GraphdefToSplattedMlirTranslate(
-    "graphdef-to-splatted-mlir", GraphdefToSplattedMlirTranslateFunction);
+    "graphdef-to-splatted-mlir", "graphdef-to-splatted-mlir",
+    GraphdefToSplattedMlirTranslateFunction);
 
 static LogicalResult MlirToGraphdefTranslateFunction(
     ModuleOp module, llvm::raw_ostream& output) {
@@ -90,7 +91,7 @@ static LogicalResult MlirToGraphdefTranslateFunction(
 }
 
 static TranslateFromMLIRRegistration mlir_to_graphdef_translate(
-    "mlir-to-graphdef", MlirToGraphdefTranslateFunction,
+    "mlir-to-graphdef", "mlir-to-graphdef", MlirToGraphdefTranslateFunction,
     [](DialectRegistry& registry) {
       mlir::RegisterAllTensorFlowDialects(registry);
     });

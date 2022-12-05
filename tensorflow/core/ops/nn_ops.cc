@@ -63,6 +63,13 @@ Status FractionalPoolShapeFn(InferenceContext* c) {
     }
   }
 
+  for (std::size_t i = 0; i < pooling_ratio.size(); ++i) {
+    if (pooling_ratio[i] < 1) {
+      return errors::InvalidArgument(
+          "pooling_ratio cannot be smaller than 1, got: ", pooling_ratio[i]);
+    }
+  }
+
   c->set_output(0, c->MakeShape(output_dims));
   c->set_output(1, c->Vector(output_dims[1]));
   c->set_output(2, c->Vector(output_dims[2]));

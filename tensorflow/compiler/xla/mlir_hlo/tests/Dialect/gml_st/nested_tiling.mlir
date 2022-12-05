@@ -14,7 +14,7 @@ func.func @add(%lhs : tensor<?x?xf32>, %rhs : tensor<?x?xf32>)
   // CHECK-DAG:  %[[C4:.*]] = arith.constant 4
   // CHECK-DAG:  %[[C256:.*]] = arith.constant 256
   // CHECK-DAG:  %[[C512:.*]] = arith.constant 512
-  // CHECK:      %[[INIT:.*]] = linalg.init_tensor
+  // CHECK:      %[[INIT:.*]] = tensor.empty
   // CHECK:      %[[LOOP:.*]] = gml_st.parallel
   // CHECK:        %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]]
   // CHECK:        %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]]
@@ -32,7 +32,7 @@ func.func @add(%lhs : tensor<?x?xf32>, %rhs : tensor<?x?xf32>)
   %c1 = arith.constant 1 : index
   %d0 = tensor.dim %lhs, %c0 : tensor<?x?xf32>
   %d1 = tensor.dim %lhs, %c1 : tensor<?x?xf32>
-  %init = linalg.init_tensor [%d0, %d1] : tensor<?x?xf32>
+  %init = tensor.empty(%d0, %d1) : tensor<?x?xf32>
   %add = linalg.generic {
       indexing_maps = [#id2d, #id2d, #id2d],
       iterator_types = ["parallel", "parallel"],

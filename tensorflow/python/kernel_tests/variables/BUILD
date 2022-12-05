@@ -1,11 +1,11 @@
 # Tests of TensorFlow variables kernels written using the Python API.
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
 
 cuda_py_test(
     name = "dense_update_ops_no_tsan_test",
@@ -65,6 +65,7 @@ cuda_py_test(
     # TODO(b/128347673): Re-enable.
     tags = ["no_windows"],
     deps = [
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",

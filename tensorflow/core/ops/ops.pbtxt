@@ -76,6 +76,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -123,6 +125,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -188,6 +192,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -216,10 +222,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT8
-        type: DT_INT16
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -358,6 +360,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -689,6 +693,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -1125,6 +1131,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -1196,6 +1204,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -1254,6 +1264,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -1336,6 +1348,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -1398,6 +1412,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -1488,6 +1504,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -1565,6 +1583,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -1645,6 +1665,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -1720,6 +1742,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -1806,6 +1830,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -1866,6 +1892,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -1928,6 +1956,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -2005,6 +2035,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -2071,6 +2103,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -2132,6 +2166,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -2207,6 +2243,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -2320,6 +2358,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -2362,17 +2402,17 @@ op {
         type: DT_UINT8
         type: DT_INT16
         type: DT_INT8
-        type: DT_COMPLEX64
         type: DT_INT64
-        type: DT_QINT8
-        type: DT_QUINT8
-        type: DT_QINT32
         type: DT_BFLOAT16
         type: DT_UINT16
-        type: DT_COMPLEX128
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_BOOL
       }
     }
@@ -2432,17 +2472,17 @@ op {
         type: DT_UINT8
         type: DT_INT16
         type: DT_INT8
-        type: DT_COMPLEX64
         type: DT_INT64
-        type: DT_QINT8
-        type: DT_QUINT8
-        type: DT_QINT32
         type: DT_BFLOAT16
         type: DT_UINT16
-        type: DT_COMPLEX128
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_BOOL
       }
     }
@@ -2563,10 +2603,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT8
-        type: DT_INT16
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -2833,6 +2869,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -2898,6 +2936,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -3007,10 +3047,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT8
-        type: DT_INT16
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -4578,6 +4614,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -4658,6 +4696,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -5212,6 +5252,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -5261,6 +5303,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -5314,6 +5358,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -8048,6 +8094,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -8567,6 +8615,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -9223,6 +9273,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -9269,6 +9321,13 @@ op {
   output_arg {
     name: "output"
     type: DT_INT32
+  }
+  attr {
+    name: "use_tfrt_host_runtime"
+    type: "bool"
+    default_value {
+      b: true
+    }
   }
   is_stateful: true
 }
@@ -10147,7 +10206,26 @@ op {
     type: "string"
   }
   attr {
-    name: "source_layout"
+    name: "T"
+    type: "type"
+  }
+}
+op {
+  name: "CopyToMeshGrad"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "forward_input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "reference_layout"
     type: "string"
     default_value {
       s: ""
@@ -11940,6 +12018,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -12007,6 +12087,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -16094,6 +16176,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -22598,6 +22682,48 @@ op {
   }
 }
 op {
+  name: "InterleaveTensorsToXLATuple"
+  input_arg {
+    name: "indices"
+    type_attr: "indices_type"
+  }
+  input_arg {
+    name: "values"
+    type_attr: "values_type"
+  }
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "indices_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "values_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_INT32
+        type: DT_UINT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "Inv"
   input_arg {
     name: "x"
@@ -27597,6 +27723,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -33047,6 +33175,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -38410,6 +38540,72 @@ op {
   is_stateful: true
 }
 op {
+  name: "RandomDatasetV2"
+  input_arg {
+    name: "seed"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed2"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed_generator"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
+      }
+    }
+  }
+  attr {
+    name: "rerandomize_each_iteration"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "RandomGamma"
   input_arg {
     name: "shape"
@@ -40900,6 +41096,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -40965,6 +41163,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -41030,6 +41230,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -41094,6 +41296,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -41146,6 +41350,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -41221,6 +41427,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -41277,6 +41485,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -41360,6 +41570,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -41447,6 +41659,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -41511,6 +41725,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -41583,6 +41799,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -41651,6 +41869,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -41730,6 +41950,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -41785,6 +42007,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -41841,6 +42065,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -41904,6 +42130,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -41975,6 +42203,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -42035,6 +42265,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -42091,6 +42323,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -42159,6 +42393,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -42199,6 +42435,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -42371,6 +42609,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -42422,6 +42662,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -42473,6 +42715,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -42524,6 +42768,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -42575,6 +42821,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -42811,6 +43059,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -42912,6 +43162,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -42978,6 +43230,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -43067,6 +43321,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -43137,6 +43393,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -43230,6 +43488,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -43312,6 +43572,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -43405,6 +43667,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -43482,6 +43746,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -43559,6 +43825,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -43640,6 +43908,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -43710,6 +43980,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -43792,6 +44064,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -47251,6 +47525,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -47314,6 +47590,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -47481,6 +47759,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -47578,6 +47858,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -47641,6 +47923,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -47704,6 +47988,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -47765,6 +48051,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -47822,6 +48110,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -47927,6 +48217,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -48342,6 +48634,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -48437,6 +48731,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -48487,6 +48783,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -48498,6 +48796,75 @@ op {
   attr {
     name: "Tindices"
     type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "SegmentSumV2"
+  input_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "segment_ids"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "num_segments"
+    type_attr: "Tnumsegments"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tnumsegments"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
     allowed_values {
       list {
         type: DT_INT32
@@ -48942,6 +49309,13 @@ op {
   output_arg {
     name: "output"
     type_attr: "out_type"
+    experimental_full_type {
+      type_id: TFT_SHAPE_TENSOR
+      args {
+        type_id: TFT_VAR
+        s: "out_type"
+      }
+    }
   }
   attr {
     name: "T"
@@ -50614,6 +50988,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -50667,6 +51043,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -50735,6 +51113,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -50807,6 +51187,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -50875,6 +51257,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -50947,6 +51331,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -51043,6 +51429,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -51119,6 +51507,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -51220,6 +51610,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -51309,6 +51701,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -51409,6 +51803,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -51492,6 +51888,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -51579,6 +51977,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -51654,6 +52054,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -51743,6 +52145,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -51893,6 +52297,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -52277,6 +52683,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -52325,6 +52733,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -52373,6 +52783,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -52985,6 +53397,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -53048,6 +53462,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -53777,6 +54193,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -53966,6 +54384,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -54058,6 +54478,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -54396,6 +54818,52 @@ op {
         type: DT_INT64
       }
     }
+  }
+}
+op {
+  name: "SplitXLATupleToTensors"
+  input_arg {
+    name: "input"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "indices"
+    type_attr: "indices_type"
+  }
+  output_arg {
+    name: "values"
+    type_attr: "values_type"
+  }
+  attr {
+    name: "indices_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "values_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_INT32
+        type: DT_UINT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "output_shape"
+    type: "shape"
   }
 }
 op {
@@ -55576,6 +56044,57 @@ op {
     type: "type"
     default_value {
       type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "StatelessRandomGammaV3"
+  input_arg {
+    name: "shape"
+    type_attr: "shape_dtype"
+  }
+  input_arg {
+    name: "key"
+    type: DT_UINT64
+  }
+  input_arg {
+    name: "counter"
+    type: DT_UINT64
+  }
+  input_arg {
+    name: "alg"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "alpha"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "shape_dtype"
+    type: "type"
+    default_value {
+      type: DT_INT32
     }
     allowed_values {
       list {
@@ -57216,6 +57735,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -58069,10 +58590,6 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT8
-        type: DT_INT16
-        type: DT_INT32
-        type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -61484,6 +62001,99 @@ op {
   }
 }
 op {
+  name: "UniformQuantizedAdd"
+  input_arg {
+    name: "lhs"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lhs_scales"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "lhs_zero_points"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "rhs_scales"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "rhs_zero_points"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "output_scales"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "output_zero_points"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "lhs_quantization_axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "lhs_quantization_min_val"
+    type: "int"
+  }
+  attr {
+    name: "lhs_quantization_max_val"
+    type: "int"
+  }
+  attr {
+    name: "rhs_quantization_axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "rhs_quantization_min_val"
+    type: "int"
+  }
+  attr {
+    name: "rhs_quantization_max_val"
+    type: "int"
+  }
+  attr {
+    name: "output_quantization_axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "output_quantization_min_val"
+    type: "int"
+  }
+  attr {
+    name: "output_quantization_max_val"
+    type: "int"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT32
+      }
+    }
+  }
+}
+op {
   name: "UniformQuantizedClipByValue"
   input_arg {
     name: "operand"
@@ -61531,6 +62141,287 @@ op {
   }
   attr {
     name: "quantization_max_val"
+    type: "int"
+  }
+}
+op {
+  name: "UniformQuantizedConvolution"
+  input_arg {
+    name: "lhs"
+    type_attr: "Tin"
+  }
+  input_arg {
+    name: "rhs"
+    type_attr: "Tin"
+  }
+  input_arg {
+    name: "lhs_scales"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "lhs_zero_points"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "rhs_scales"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "rhs_zero_points"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "output_scales"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "output_zero_points"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+      }
+    }
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "window_strides"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "padding"
+    type: "string"
+  }
+  attr {
+    name: "explicit_padding"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "lhs_dilation"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "rhs_dilation"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "batch_group_count"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "feature_group_count"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "dimension_numbers"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "lhs_quantization_axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "lhs_quantization_min_val"
+    type: "int"
+  }
+  attr {
+    name: "lhs_quantization_max_val"
+    type: "int"
+  }
+  attr {
+    name: "rhs_quantization_axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "rhs_quantization_min_val"
+    type: "int"
+  }
+  attr {
+    name: "rhs_quantization_max_val"
+    type: "int"
+  }
+  attr {
+    name: "output_quantization_axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "output_quantization_min_val"
+    type: "int"
+  }
+  attr {
+    name: "output_quantization_max_val"
+    type: "int"
+  }
+}
+op {
+  name: "UniformQuantizedConvolutionHybrid"
+  input_arg {
+    name: "lhs"
+    type_attr: "Tlhs"
+  }
+  input_arg {
+    name: "rhs"
+    type_attr: "Trhs"
+  }
+  input_arg {
+    name: "rhs_scales"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "rhs_zero_points"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tout"
+  }
+  attr {
+    name: "Tlhs"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    name: "Trhs"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+      }
+    }
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    name: "window_strides"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "padding"
+    type: "string"
+  }
+  attr {
+    name: "explicit_padding"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "lhs_dilation"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "rhs_dilation"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "batch_group_count"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "feature_group_count"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "dimension_numbers"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "rhs_quantization_axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "rhs_quantization_min_val"
+    type: "int"
+  }
+  attr {
+    name: "rhs_quantization_max_val"
     type: "int"
   }
 }
@@ -62262,6 +63153,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -62329,6 +63222,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF
@@ -62615,6 +63510,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_BFLOAT16
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_UINT16
         type: DT_COMPLEX128
         type: DT_HALF

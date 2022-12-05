@@ -267,6 +267,8 @@ REGISTER_SPMD(PadV2, TF::PadV2Op, PadSPMDExpander);
 // Scatter/Gather
 REGISTER_SPMD(GatherV2, TF::GatherV2Op, GatherV2SPMDExpander);
 REGISTER_SPMD(GatherNd, TF::GatherNdOp, GatherNdSPMDExpander);
+REGISTER_SPMD(ResourceGather, TF::ResourceGatherOp, ResourceGatherSPMDExpander);
+REGISTER_SPMD(ScatterNd, TF::ScatterNdOp, ScatterNdOpSPMDExpander);
 REGISTER_SPMD(TensorScatterUpdate, TF::TensorScatterUpdateOp,
               TensorScatterOpSPMDExpander);
 REGISTER_SPMD(TensorScatterAdd, TF::TensorScatterAddOp,
@@ -496,6 +498,8 @@ REGISTER_SPMD(SparseToDense, TF::SparseToDenseOp, SparseToDenseSPMDExpander);
 // StringFormat
 REGISTER_SPMD(StringFormat, TF::StringFormatOp, ReplicatedOpSPMDExpander,
               /*relayout_when_sharded=*/true);
+REGISTER_SPMD(StringToHashBucketFast, TF::StringToHashBucketFastOp,
+              ElementwiseSPMDExpander);
 
 // TensorList ops
 REGISTER_SPMD(TensorListReserve, TF::TensorListReserveOp,
