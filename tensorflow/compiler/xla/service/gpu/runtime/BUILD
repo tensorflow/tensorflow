@@ -1,3 +1,5 @@
+load("//tensorflow/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
@@ -93,13 +95,22 @@ cc_library(
     name = "executable",
     srcs = ["executable.cc"],
     hdrs = ["executable.h"],
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
+        ":cholesky",
         ":collectives",
         ":conv",
         ":cublas_lt_matmul",
+        ":custom_call",
+        ":fft",
         ":gemm",
         ":graph_launch",
+        ":io_feed",
         ":kernel_launch",
+        ":memcpy",
+        ":memset",
+        ":support",
+        ":tracing",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
         "//tensorflow/compiler/xla/runtime:executable",
@@ -108,7 +119,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:module_registry",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu:buffer_allocations",
-        "//tensorflow/compiler/xla/service/gpu:jitrt_custom_calls",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/strings",
     ],
 )

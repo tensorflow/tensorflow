@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
-#include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/collectives.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/executable.h"
@@ -871,8 +870,8 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   runtime::FunctionType signature(std::move(args), /*results=*/{});
   runtime::FunctionType rt_signature(std::move(rt_args), /*results=*/{});
 
-  auto symbol_map = runtime::ToSymbolsBinding(PopulateXlaGpuCustomCalls,
-                                              PopulateXlaGpuTypeIdNames);
+  auto symbol_map = runtime::ToSymbolsBinding(RegisterXlaGpuRuntimeCustomCalls,
+                                              RegisterXlaGpuTypeIdNames);
 
   // Gpu executable has a single exported function.
   std::vector<runtime::Executable::LoadFunction> functions;

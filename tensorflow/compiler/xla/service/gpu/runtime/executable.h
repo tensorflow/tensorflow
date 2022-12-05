@@ -40,6 +40,16 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Register custom calls implementing Xla Gpu runtime.
+void RegisterXlaGpuRuntimeCustomCalls(
+    runtime::DirectCustomCallRegistry& registry);
+
+// Register mapping from XLA (SE) enums/structs type ids to symbol names.
+void RegisterXlaGpuTypeIdNames(runtime::TypeIDNameRegistry& registry);
+
+// Register encoding for (L)MHLO attributes required by the runtime functions.
+void RegisterXlaGpuAttrEncoding(runtime::CustomCallAttrEncodingSet& encoding);
+
 // Xla Gpu program lowered to the Xla runtime dialects. Gpu runtime executable
 // jit-compiles this program to an executable artifact (via lowering to LLVM).
 //

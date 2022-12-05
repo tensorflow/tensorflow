@@ -27,19 +27,86 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/ffi.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/cholesky.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/custom_call.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/io_feed.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/memcpy.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/memset.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/tracing.h"
+#include "tensorflow/tsl/protobuf/dnn.pb.h"
 
 namespace xla {
 namespace gpu {
 
+using ::xla::runtime::CustomCallAttrEncodingSet;
+using ::xla::runtime::DirectCustomCallRegistry;
 using ::xla::runtime::Executable;
 using ::xla::runtime::JitExecutable;
 using ::xla::runtime::success;
+using ::xla::runtime::Tagged;
+using ::xla::runtime::TypeIDNameRegistry;
 
 using ::xla::runtime::ExportModules;
 using ::xla::runtime::ffi::ExportFfiModules;
 using ::xla::runtime::ffi::FfiStateVector;
+
+void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
+  RegisterKernelLaunchCustomCalls(registry);
+  RegisterTracingCustomCalls(registry);
+  RegisterFftCustomCalls(registry);
+  RegisterCholeskyCustomCalls(registry);
+  RegisterCollectiveCustomCalls(registry);
+  RegisterGemmCustomCalls(registry);
+  RegisterConvCustomCalls(registry);
+  RegisterMemcpyCustomCalls(registry);
+  RegisterIoFeedCustomCalls(registry);
+  RegisterMemsetCustomCalls(registry);
+
+#if GOOGLE_CUDA
+  // Graph launch kernels depend on Cuda Graph API.
+  RegisterGraphLaunchCustomCalls(registry);
+  RegisterMatmulCustomCalls(registry);
+#endif  // GOOGLE_CUDA
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  RegisterCustomCall(registry);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+}
+
+void RegisterXlaGpuTypeIdNames(TypeIDNameRegistry& registry) {
+  registry.Register<Tagged<se::dnn::ActivationMode>>(
+      "__type_id_se_dnn_activation");
+  registry.Register<Tagged<DotDimensionNumbers>>(
+      "__type_id_dot_dimension_numbers");
+  registry.Register<Tagged<ConvDimensionNumbers>>(
+      "__type_id_conv_dimension_numbers");
+  registry.Register<Tagged<se::fft::Type>>("__type_id_se_fft_type");
+  registry.Register<Tagged<ConvBackendConfig>>("__type_id_conv_backend_config");
+
+  RegisterTracingTypeIdNames(registry);
+
+#if GOOGLE_CUDA
+  registry.Register<Tagged<se::cuda::BlasLt::Epilogue>>(
+      "__type_id_se_cublas_lt_epilogue");
+#endif  // GOOGLE_CUDA
+}
+
+void RegisterXlaGpuAttrEncoding(CustomCallAttrEncodingSet& encoding) {
+  PopulateConvAttrEncoding(encoding);
+  PopulateFftAttrEncoding(encoding);
+  PopulateDotDimsAttrEncoding(encoding);
+
+#if GOOGLE_CUDA
+  PopulateCublasLtMatmulAttrEncoding(encoding);
+#endif  // GOOGLE_CUDA
+}
+
+//===----------------------------------------------------------------------===//
 
 GpuRuntimeExecutable::GpuRuntimeExecutable(
     std::vector<int64_t> buffer_sizes,
@@ -67,9 +134,9 @@ GpuRuntimeExecutable::GpuRuntimeExecutable(
   ExportFfiModules(dynamic_custom_calls_);  // export FFI modules
 }
 
-//===---------------------------------------------------------------------===///
+//===----------------------------------------------------------------------===//
 // Compile Xla program lowered to runtime dialects to Gpu runtime executable.
-//===---------------------------------------------------------------------===///
+//===----------------------------------------------------------------------===//
 
 /*static*/ StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
 GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
@@ -77,10 +144,10 @@ GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
   runtime::CompilationPipelineOptions copts;
 
   // Populate mapping from XLA (SE) enums/structs type id to symbol names.
-  copts.populate_type_id_names = PopulateXlaGpuTypeIdNames;
+  copts.populate_type_id_names = RegisterXlaGpuTypeIdNames;
 
   // For passing LMHLO attributes as XLA (SE) enums/structs to custom calls.
-  copts.populate_attr_encodings = PopulateLmhloToXlaAttrEncoding;
+  copts.populate_attr_encodings = RegisterXlaGpuAttrEncoding;
 
   // Options for constructing XLA runtime JitExecutable.
   JitExecutable::Options opts;
@@ -90,7 +157,7 @@ GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
 
   // Register XLA Gpu runtime custom calls with the linker.
   opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
-      PopulateXlaGpuCustomCalls, PopulateXlaGpuTypeIdNames);
+      RegisterXlaGpuRuntimeCustomCalls, RegisterXlaGpuTypeIdNames);
 
   // We just use the default compilation pipeline provided by the XLA runtime.
   // Alternatively instead of having a separate Xla Runtime program (LMHLO
@@ -134,9 +201,9 @@ GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
       std::move(*ffi_modules_state)));
 }
 
-//===---------------------------------------------------------------------===///
+//===----------------------------------------------------------------------===//
 // Constructs Gpu runtime executable from AOT compiled runtime artifact.
-//===---------------------------------------------------------------------===///
+//===----------------------------------------------------------------------===//
 
 /*static*/ StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
 GpuRuntimeExecutable::Create(absl::Span<const int64_t> buffer_sizes,
@@ -161,9 +228,9 @@ GpuRuntimeExecutable::Create(absl::Span<const int64_t> buffer_sizes,
       std::move(*ffi_modules_state)));
 }
 
-//===---------------------------------------------------------------------===///
+//===----------------------------------------------------------------------===//
 // Executes with the given buffer arguments.
-//===---------------------------------------------------------------------===///
+//===----------------------------------------------------------------------===//
 
 static runtime::AsyncTaskRunner* NoAsyncTaskRunner() {
   return reinterpret_cast<runtime::AsyncTaskRunner*>(0XDEADBEEF);
@@ -302,7 +369,7 @@ Status GpuRuntimeExecutable::Execute(
   return OkStatus();
 }
 
-//===---------------------------------------------------------------------===///
+//===----------------------------------------------------------------------===//
 
 Executable& GpuRuntimeExecutable::executable() {
   if (auto* jit = std::get_if<std::unique_ptr<JitExecutable>>(&executable_)) {

@@ -108,7 +108,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
-#include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
 #include "tensorflow/compiler/xla/service/gpu/move_copy_to_users.h"
@@ -1601,10 +1600,10 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     runtime::CompilationPipelineOptions copts;
 
     // Populate mapping from XLA (SE) enums/structs type id to symbol names.
-    copts.populate_type_id_names = PopulateXlaGpuTypeIdNames;
+    copts.populate_type_id_names = RegisterXlaGpuTypeIdNames;
 
     // For passing LMHLO attributes as XLA (SE) enums/structs to custom calls.
-    copts.populate_attr_encodings = PopulateLmhloToXlaAttrEncoding;
+    copts.populate_attr_encodings = RegisterXlaGpuAttrEncoding;
 
     // Options for constructing XLA runtime JitExecutable.
     runtime::JitExecutable::Options opts;
@@ -1614,7 +1613,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
     // Register XLA Gpu runtime custom calls with the linker.
     opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
-        PopulateXlaGpuCustomCalls, PopulateXlaGpuTypeIdNames);
+        RegisterXlaGpuRuntimeCustomCalls, RegisterXlaGpuTypeIdNames);
 
     opts.compiler.create_compilation_pipeline =
         [copts](xla::runtime::PassManager& passes) {
