@@ -1397,6 +1397,67 @@ def tf_cc_test(
         **kwargs
     )
 
+def tf_cc_test_noshared(
+        name,
+        srcs,
+        deps,
+        data = [],
+        extra_copts = [],
+        suffix = "",
+        linkopts = lrt_if_needed(),
+        kernels = [],
+        **kwargs):
+    cc_test(
+        name = "%s%s" % (name, suffix),
+        srcs = srcs,
+        copts = tf_copts() + extra_copts,
+        linkopts = select({
+            clean_dep("//tensorflow:android"): [
+                "-pie",
+            ],
+            clean_dep("//tensorflow:windows"): [],
+            clean_dep("//tensorflow:macos"): [
+                "-lm",
+            ],
+            "//conditions:default": [
+                "-lpthread",
+                "-lm",
+            ],
+            clean_dep("//third_party/compute_library:build_with_acl"): ["-fopenmp"],
+        }) + linkopts + _rpath_linkopts(name),
+        deps = deps + [
+            "//tensorflow/c/experimental/filesystem:filesystem_interface",
+            "//tensorflow/c/experimental/stream_executor:stream_executor",
+            "//tensorflow/c:env",
+            "//tensorflow/c:kernels",
+            "//tensorflow/c:kernels_experimental",
+            "//tensorflow/c:logging",
+            "//tensorflow/c:ops",
+            "//tensorflow/cc/saved_model:fingerprinting_impl",
+            "//tensorflow/cc/saved_model:loader_lite_impl",
+            "//tensorflow/cc/saved_model:metrics_impl",
+            "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
+            "//tensorflow/core/common_runtime:core_cpu_impl",
+            "//tensorflow/core:framework_internal_impl",
+            "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
+            "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
+            "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
+            "//tensorflow/core:lib_internal_impl",
+            "//tensorflow/core/profiler:profiler_impl",
+            "//tensorflow/core/util:determinism",  # Must be linked and exported to libtensorflow_framework.so.
+            "//tensorflow/lite/kernels/shim:tf_kernel_shim",
+            "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
+        ] + select({
+            "//tensorflow:macos": [],
+            "//conditions:default": [
+                "//tensorflow/core/data:captured_function",
+            ],
+        }) + tf_binary_dynamic_kernel_deps(kernels),
+        data = data + tf_binary_dynamic_kernel_dsos(),
+        exec_properties = tf_exec_properties(kwargs),
+        **kwargs
+    )
+
 register_extension_info(
     extension = tf_cc_test,
     label_regex_for_dep = "{extension_name}",
