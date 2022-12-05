@@ -851,6 +851,8 @@ void EvalQuantizedPerChannel16x8(TfLiteContext* context, TfLiteNode* node,
     }
   } else {
     TFLITE_DCHECK(!has_non_zero_point);
+    // Fallback to reference kernel when bias_type is int64 as
+    // there is no optimized kernel for int64 bias yet.
     reference_integer_ops::ConvPerChannel(
         op_params, data->per_channel_output_multiplier.data(),
         data->per_channel_output_shift.data(), GetTensorShape(input),
