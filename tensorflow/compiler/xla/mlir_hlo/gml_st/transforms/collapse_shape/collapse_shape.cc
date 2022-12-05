@@ -250,6 +250,28 @@ struct CollapseReductionPattern : OpRewritePattern<linalg::ReduceOp> {
   int64_t retainTrailingDims;
 };
 
+linalg::MapOp createCollapsedMapOp(
+    linalg::MapOp mapOp, PatternRewriter& rewriter,
+    const SmallVector<ReassociationIndices>& reassociation) {
+  // Collapsed operands and init tensor.
+  Location loc = mapOp.getLoc();
+  SmallVector<Value> collapsedOperands = llvm::to_vector(
+      llvm::map_range(mapOp.getInputs(), [&](Value it) -> Value {
+        return rewriter.create<tensor::CollapseShapeOp>(loc, it, reassociation);
+      }));
+  Value init = mapOp.getInit();
+  Value collapsedInit =
+      rewriter.create<tensor::CollapseShapeOp>(loc, init, reassociation);
+
+  // Create collapsed map op.
+  auto collapsedInitTy = collapsedInit.getType().cast<RankedTensorType>();
+  auto collapsedMapOp = rewriter.create<linalg::MapOp>(
+      loc, collapsedInitTy, collapsedOperands, collapsedInit);
+  BlockAndValueMapping bvm;
+  mapOp.getBodyRegion().cloneInto(&collapsedMapOp.getRegion(), bvm);
+  return collapsedMapOp;
+}
+
 struct CollapseMapPattern : OpRewritePattern<linalg::MapOp> {
   using OpRewritePattern<linalg::MapOp>::OpRewritePattern;
 
@@ -267,41 +289,37 @@ struct CollapseMapPattern : OpRewritePattern<linalg::MapOp> {
       return rewriter.notifyMatchFailure(op, "no dimension to collapse");
     }
 
-    // Collapsed operands and init tensor.
-    Location loc = op.getLoc();
     SmallVector<ReassociationIndices> reassociation =
         getCollapsingReassociationIndices(rank, retainTrailingDims);
-    SmallVector<Value> collapsedOperands =
-        llvm::to_vector(llvm::map_range(op.getInputs(), [&](Value it) -> Value {
-          return rewriter.create<tensor::CollapseShapeOp>(loc, it,
-                                                          reassociation);
-        }));
-    Value collapsedInit =
-        rewriter.create<tensor::CollapseShapeOp>(loc, init, reassociation);
-
-    auto collapsedInitTy = collapsedInit.getType().cast<RankedTensorType>();
-    int64_t collapsedRank = collapsedInitTy.getRank();
-
-    // Create collapsed map op.
-    AffineMap collapsedIdentityMap =
-        AffineMap::getMultiDimIdentityMap(collapsedRank, getContext());
-    SmallVector<AffineMap> collapsedMaps(collapsedOperands.size() + 1,
-                                         collapsedIdentityMap);
-    SmallVector<utils::IteratorType> collapsedIteratorTypes(
-        collapsedRank, utils::IteratorType::parallel);
-    auto collapsedMapOp = rewriter.create<linalg::MapOp>(
-        loc, collapsedInitTy, collapsedOperands, collapsedInit);
-    collapsedMapOp.getRegion().takeBody(op.getBodyRegion());
+    auto collapsedMapOp = createCollapsedMapOp(op, rewriter, reassociation);
 
     // Re-expand map op and replace the original.
     auto reexpandedMapOp = rewriter.create<tensor::ExpandShapeOp>(
-        loc, initTy, collapsedMapOp.getResult().front(), reassociation);
+        op.getLoc(), initTy, collapsedMapOp.getResult().front(), reassociation);
     rewriter.replaceOp(op, reexpandedMapOp.getResult());
     return success();
   }
 
  private:
   int64_t retainTrailingDims;
+};
+
+struct MoveCollapseBeforeMapPattern
+    : OpRewritePattern<tensor::CollapseShapeOp> {
+  using OpRewritePattern<tensor::CollapseShapeOp>::OpRewritePattern;
+
+  explicit MoveCollapseBeforeMapPattern(MLIRContext* ctx)
+      : OpRewritePattern<tensor::CollapseShapeOp>(ctx) {}
+
+  LogicalResult matchAndRewrite(tensor::CollapseShapeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto mapOp = op.getSrc().getDefiningOp<linalg::MapOp>();
+    if (!mapOp) return failure();
+    auto collapsedMapOp =
+        createCollapsedMapOp(mapOp, rewriter, op.getReassociationIndices());
+    rewriter.replaceOp(op, collapsedMapOp.getResult());
+    return success();
+  }
 };
 
 struct CollapseShapePass
@@ -325,6 +343,9 @@ struct CollapseShapePass
     RewritePatternSet patterns(ctx);
     patterns.add<CollapseBcastPattern, CollapseMapPattern,
                  CollapseReductionPattern>(ctx, retainTrailingDims);
+    // By moving CollapseShapeOp before MapOp, we can potentially remove it if
+    // it cancels out with an ExpandShapeOp.
+    patterns.add<MoveCollapseBeforeMapPattern>(ctx);
 
     // Collect some related canonicalization patterns.
     linalg::BroadcastOp::getCanonicalizationPatterns(patterns, ctx);

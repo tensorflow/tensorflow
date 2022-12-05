@@ -108,6 +108,35 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(std::move(initial_module), ErrorSpec(1e-6, 1e-6)));
 }
 
+TEST_F(SoftmaxFusionTest, SingleSoftmaxPatternF16HigherRank) {
+  const std::string& hlo_string = R"(
+
+HloModule softmax
+
+add_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg_0, arg_1)
+}
+
+ENTRY main {
+  param_0 = f16[2,3,128,127]{3,2,1,0} parameter(0)
+  constant_zero = f32[] constant(0.0)
+  convert_up = f32[2,3,128,127]{3,2,1,0} convert(param_0)
+  reduce = f32[2,3,128]{2,1,0} reduce(convert_up, constant_zero), dimensions={3}, to_apply=add_computation
+  convert_down = f16[2,3,128]{2,1,0} convert(reduce)
+  broadcast = f16[2,3,128,127]{3,2,1,0} broadcast(convert_down), dimensions={0,1,2}
+  ROOT subtract = f16[2,3,128,127]{3,2,1,0} subtract(param_0, broadcast)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  auto initial_module = module->Clone();
+  SoftmaxFusion fusion;
+  EXPECT_TRUE(fusion.Run(module.get()).value());
+
+  EXPECT_TRUE(RunAndCompare(std::move(initial_module), ErrorSpec(1e-6, 1e-6)));
+}
+
 TEST_F(SoftmaxFusionTest, SingleSoftmaxPatternRowsNotLargerThanColumns) {
   const std::string& hlo_string = R"(
 
