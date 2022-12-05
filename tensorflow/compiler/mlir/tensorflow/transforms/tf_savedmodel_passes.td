@@ -132,3 +132,19 @@ def StripSavedModuleMetadataPass : Pass<"tf-strip-saved-module-metadata", "Modul
   }];
   let constructor = "::mlir::tf_saved_model::CreateStripSavedModuleMetadataPass()";
 }
+
+def ConvertSessionInitializerToFunctionPass : Pass<"tf-saved-model-convert-session-initializer-to-function", "ModuleOp"> {
+  let summary = "Converts the session initializer to a function.";
+  let description = [{
+      This converts
+        "tf_saved_model.session_initializer"() {initializers = [@a, @b, @c]} : () -> ()
+      to
+	func.func @session_initializer() {
+	  call @a() : () -> ()
+	  call @b() : () -> ()
+	  call @c() : () -> ()
+	  return
+	}
+  }];
+  let constructor = "::mlir::tf_saved_model::CreateConvertSessionInitializerToFunctionPass()";
+}

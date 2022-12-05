@@ -143,9 +143,25 @@ def TF_CopyToMeshOp : TF_Op<"CopyToMesh", [Pure]> {
   let arguments = (ins
     TF_Tensor:$input,
 
-    StrAttr:$layout,
+    StrAttr:$layout
+  );
 
-    StrAttr:$source_layout
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_CopyToMeshGradOp : TF_Op<"CopyToMeshGrad", [Pure]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_Tensor:$input,
+
+    TF_Tensor:$forward_input,
+
+    StrAttr:$reference_layout
   );
 
   let results = (outs

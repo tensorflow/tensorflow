@@ -81,6 +81,13 @@ Status ConvertMlirHloToHloViaBuilder(mlir::ModuleOp module,
   TF_ASSIGN_OR_RETURN(
       xla::XlaComputation computation,
       return_value.valid() ? builder.Build(return_value) : builder.Build());
+
+  if (auto execution_thread =
+          main->getAttrOfType<mlir::StringAttr>("execution_thread")) {
+    computation.mutable_proto()->mutable_computations(0)->set_execution_thread(
+        execution_thread.str());
+  }
+
   auto hlo_module = computation.proto();
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
 
@@ -89,14 +96,13 @@ Status ConvertMlirHloToHloViaBuilder(mlir::ModuleOp module,
 
 mlir::LogicalResult MlirHloToHloTextTranslateFunction(
     mlir::ModuleOp module, llvm::raw_ostream& output, bool emit_return_tuple,
-    bool emit_use_tuple_arg, bool legalize_node_names, bool print_layouts,
-    bool via_builder, bool with_layouts) {
+    bool emit_use_tuple_arg, bool print_layouts, bool print_large_constants,
+    bool print_sugar, bool via_builder, bool with_layouts) {
   if (!module) return mlir::failure();
 
   HloProto hloProto;
   mlir::MlirToHloConversionOptions options;
   options.propagate_layouts = with_layouts;
-  options.legalize_node_names = legalize_node_names;
   Status status =
       via_builder
           ? ConvertMlirHloToHloViaBuilder(module, &hloProto, options)
@@ -118,7 +124,10 @@ mlir::LogicalResult MlirHloToHloTextTranslateFunction(
   HloModule* hlo_module = statusOrHloModule.value().get();
 
   output << hlo_module->ToString(
-      HloPrintOptions().set_include_layout_in_shapes(print_layouts));
+      HloPrintOptions()
+          .set_include_layout_in_shapes(print_layouts)
+          .set_syntax_sugar_async_ops(print_sugar)
+          .set_print_large_constants(print_large_constants));
 
   // Output alias information as comments in the HLO text.
   hlo_module->input_output_alias_config().ForEachAlias(

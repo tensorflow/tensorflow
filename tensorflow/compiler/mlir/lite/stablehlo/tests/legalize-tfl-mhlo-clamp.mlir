@@ -9,7 +9,7 @@ func.func @main(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>
 
 // CHECK:       module {
 // CHECK-NEXT:  func @main(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>) -> tensor<2xi32> {
-// CHECK-NEXT:    %0 = mhlo.clamp %arg0, %arg1, %arg2 : (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+// CHECK-NEXT:    %0 = mhlo.clamp %arg0, %arg1, %arg2 : tensor<2xi32>
 // CHECK-NEXT:    return %0 : tensor<2xi32>
 // CHECK-NEXT:  }
 // CHECK-NEXT:  }

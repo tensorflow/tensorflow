@@ -1,4 +1,4 @@
-﻿/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ using TfLiteModel = System.IntPtr;
 using TfLiteTensor = System.IntPtr;
 
 // TODO(b/218796582): Update TFLite Experimental Unity Plugin to support the SignatureRunner C APIs
+// TODO(b/194915839): Update TFLite Experimental Unity Plugin to support the cancel C APIs
 
 namespace TensorFlowLite
 {

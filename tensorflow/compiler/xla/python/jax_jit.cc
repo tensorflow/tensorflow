@@ -183,11 +183,11 @@ bool CallSignature::operator==(const CallSignature& other) const {
   // TODO(chky): Consider implementing hashing and equality for sharding in cpp
   // instead of hashing and checking sharding's pointer values.
   return std::tie(dynamic_arg_treedefs, dynamic_arg_names,
-                  dynamic_arg_signatures, dynamic_arg_shardings, device,
-                  jax_enable_x64, jax_array, static_arg_names) ==
+                  dynamic_arg_signatures, device, jax_enable_x64, jax_array,
+                  static_arg_names) ==
              std::tie(other.dynamic_arg_treedefs, other.dynamic_arg_names,
-                      other.dynamic_arg_signatures, other.dynamic_arg_shardings,
-                      other.device, other.jax_enable_x64, other.jax_array,
+                      other.dynamic_arg_signatures, other.device,
+                      other.jax_enable_x64, other.jax_array,
                       other.static_arg_names) &&
          // `==` on py:objects is the Python `is`. We need equal.
          std::equal(dynamic_arg_shardings.begin(), dynamic_arg_shardings.end(),
@@ -649,16 +649,17 @@ static xla::StatusOr<xla::PjRtDevice*> GetJitArgumentStickyDevice(
 
   if (arg.get_type() == xla::PyArray::type()) {
     auto py_array = py::reinterpret_borrow<xla::PyArray>(arg);
+    if (py_array.fastpath_enabled()) {
+      if (py_array.num_shards() != 1) {
+        return xla::InvalidArgument(
+            "Only single-sharded Array is expected in C++ JIT.");
+      }
 
-    if (py_array.num_shards() != 1) {
-      return xla::InvalidArgument(
-          "Only single-sharded Array is expected in C++ JIT.");
+      if (!py_array.committed()) {
+        return nullptr;
+      }
+      return py_array.GetBuffer(0)->device();
     }
-
-    if (!py_array.committed()) {
-      return nullptr;
-    }
-    return py_array.GetBuffer(0)->device();
   }
 
   // We specically only deal with DeviceArray (not ShardedDeviceArray).

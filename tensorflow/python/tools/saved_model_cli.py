@@ -73,6 +73,40 @@ def _show_tag_sets(saved_model_dir):
     print('%r' % ', '.join(sorted(tag_set)))
 
 
+def _get_ops_in_metagraph(meta_graph_def):
+  """Returns a set of the ops in the MetaGraph.
+
+  Returns the set of all the ops used in the MetaGraphDef indicated by the
+  tag_set stored in SavedModel directory.
+
+  Args:
+    meta_graph_def: MetaGraphDef to list the ops of.
+
+  Returns:
+    A set of ops.
+  """
+  return set(meta_graph_lib.ops_used_by_graph_def(meta_graph_def.graph_def))
+
+
+def _show_ops_in_metagraph(saved_model_dir, tag_set):
+  """Prints the ops in the MetaGraph.
+
+  Prints all the ops used in the MetaGraphDef indicated by the tag_set stored in
+  SavedModel directory.
+
+  Args:
+    saved_model_dir: Directory containing the SavedModel to inspect.
+    tag_set: Group of tag(s) of the MetaGraphDef in string format, separated by
+      ','. For tag-set contains multiple tags, all tags must be passed in.
+  """
+  meta_graph_def = saved_model_utils.get_meta_graph_def(saved_model_dir,
+                                                        tag_set)
+  all_ops_set = _get_ops_in_metagraph(meta_graph_def)
+  print(
+      'The MetaGraph with tag set %s contains the following ops:' %
+      meta_graph_def.meta_info_def.tags, all_ops_set)
+
+
 def _show_signature_def_map_keys(saved_model_dir, tag_set):
   """Prints the keys for each SignatureDef in the SignatureDef map.
 
@@ -291,9 +325,9 @@ def _print_tensor_info(tensor_info, indent=0):
 
 
 def _show_all(saved_model_dir):
-  """Prints tag-set, SignatureDef and Inputs/Outputs information in SavedModel.
+  """Prints tag-set, ops, SignatureDef, and Inputs/Outputs of SavedModel.
 
-  Prints all tag-set, SignatureDef and Inputs/Outputs information stored in
+  Prints all tag-set, ops, SignatureDef and Inputs/Outputs information stored in
   SavedModel directory.
 
   Args:
@@ -310,6 +344,7 @@ def _show_all(saved_model_dir):
       print('\nsignature_def[\'' + signature_def_key + '\']:')
       _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key,
                            indent=1)
+    _show_ops_in_metagraph(saved_model_dir, tag_set)
   _show_defined_functions(saved_model_dir)
 
 
@@ -753,12 +788,19 @@ def show(args):
   if args.all:
     _show_all(args.dir)
   else:
-    # If no tag is specified, display all tag_set, if no signature_def key is
-    # specified, display all SignatureDef keys, else show input output tensor
-    # information corresponding to the given SignatureDef key
+    # If no tag is specified, display all tag_sets.
+    # If a tag set is specified:
+    # # If list_ops is set, display all ops in the specified MetaGraphDef.
+    # # If no signature_def key is specified, display all SignatureDef keys.
+    # # If a signature_def is specified, show its corresponding input output
+    # # tensor information.
     if args.tag_set is None:
+      if args.list_ops:
+        print('--list_ops must be paired with a tag-set or with --all.')
       _show_tag_sets(args.dir)
     else:
+      if args.list_ops:
+        _show_ops_in_metagraph(args.dir, args.tag_set)
       if args.signature_def is None:
         _show_signature_def_map_keys(args.dir, args.tag_set)
       else:
@@ -929,6 +971,9 @@ def add_show_subparser(subparsers):
       ' MetaGraph.\n'
       '$saved_model_cli show --dir /tmp/saved_model --tag_set serve'
       ' --signature_def serving_default\n\n'
+      'To show all ops in a MetaGraph.\n'
+      '$saved_model_cli show --dir /tmp/saved_model --tag_set serve'
+      ' --list_ops\n\n'
       'To show all available information in the SavedModel:\n'
       '$saved_model_cli show --dir /tmp/saved_model --all')
   parser_show = subparsers.add_parser(
@@ -955,6 +1000,12 @@ def add_show_subparser(subparsers):
       default=None,
       metavar='SIGNATURE_DEF_KEY',
       help='key of SignatureDef to display input(s) and output(s) for')
+  parser_show.add_argument(
+      '--list_ops',
+      action='store_true',
+      help=(
+          'if set, will output ops used by a MetaGraphDef specified by tag_set'
+      ))
   parser_show.set_defaults(func=show)
 
 

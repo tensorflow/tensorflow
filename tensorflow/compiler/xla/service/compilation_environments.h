@@ -79,10 +79,14 @@ class CompilationEnvironments {
   // environment has not been added, ProcessNewEnv<T>(nullptr) will be added
   // and returned.
   //
-  // GetEnv() is not const because it can perform lazy initialization, thereby
-  // modifying the CompilationEnvironments's data members.
+  // GetMutableEnv()/GetEnv() are not const because they can perform lazy
+  // initialization, thereby modifying the CompilationEnvironments's data
+  // members.
   //
-  // GetEnv<T> will not compile for type T, unless ProcessNewEnv<T> is defined.
+  // GetMutableEnv<T>/GetEnv<T> will not compile for type T, unless
+  // ProcessNewEnv<T> is defined.
+  template <typename T>
+  T& GetMutableEnv();
   template <typename T>
   const T& GetEnv();
 
@@ -123,7 +127,7 @@ void CompilationEnvironments::AddEnv(std::unique_ptr<T> env) {
 }
 
 template <typename T>
-const T& CompilationEnvironments::GetEnv() {
+T& CompilationEnvironments::GetMutableEnv() {
   auto descriptor = T::descriptor();
   auto it = environments_.find(descriptor);
   if (it == environments_.end()) {
@@ -131,7 +135,12 @@ const T& CompilationEnvironments::GetEnv() {
     DefaultEnvCreatedByCompilationEnvironments(descriptor->full_name());
     it = environments_.find(descriptor);
   }
-  return tensorflow::down_cast<const T&>(*it->second);
+  return tensorflow::down_cast<T&>(*it->second);
+}
+
+template <typename T>
+const T& CompilationEnvironments::GetEnv() {
+  return GetMutableEnv<T>();
 }
 
 }  // namespace xla

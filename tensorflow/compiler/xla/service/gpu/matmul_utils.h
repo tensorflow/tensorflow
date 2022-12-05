@@ -22,8 +22,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
@@ -107,6 +108,16 @@ struct GemmConfig {
   int64_t compute_precision;
 };
 
+StatusOr<se::blas::ComputationType> GetBlasComputationType(PrimitiveType dtype);
+
+namespace cublas_lt {
+
+// Returns the type for the alpha and beta scalars.
+se::blas::DataType GetScaleType(se::blas::DataType c_type,
+                                se::blas::ComputationType computation_type);
+
+}  // namespace cublas_lt
+
 // Run the given GEMM instruction `gemm` subject to the configuration
 // in `gemm_config` and the passed buffers.
 //
@@ -116,6 +127,14 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
                se::DeviceMemoryBase output_buffer, se::Stream* stream,
                std::optional<se::blas::AlgorithmType> algorithm = std::nullopt,
                se::blas::ProfileResult* profile_result = nullptr);
+
+namespace cublas_lt {
+
+StatusOr<bool> EpilogueAddsVectorBias(GemmBackendConfig_Epilogue epilogue);
+
+}  // namespace cublas_lt
+
+StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype);
 
 #if GOOGLE_CUDA
 
@@ -130,14 +149,14 @@ class MatmulPlan {
   static StatusOr<MatmulPlan> From(const GemmConfig& config,
                                    se::cuda::BlasLt::Epilogue epilogue);
 
-  Status ExecuteOnStream(se::Stream* stream, se::DeviceMemoryBase a_buffer,
-                         se::DeviceMemoryBase b_buffer,
-                         se::DeviceMemoryBase c_buffer,
-                         se::DeviceMemoryBase d_buffer,
-                         se::DeviceMemoryBase bias_buffer,  // may be null
-                         const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
-                         se::ScratchAllocator& scratch_allocator,
-                         se::blas::ProfileResult* profile_result = nullptr);
+  Status ExecuteOnStream(
+      se::Stream* stream, se::DeviceMemoryBase a_buffer,
+      se::DeviceMemoryBase b_buffer, se::DeviceMemoryBase c_buffer,
+      se::DeviceMemoryBase d_buffer,
+      se::DeviceMemoryBase bias_buffer,  // may be null
+      const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
+      se::ScratchAllocator& scratch_allocator,
+      se::blas::ProfileResult* profile_result = nullptr) const;
 
   StatusOr<std::vector<se::cuda::BlasLt::MatmulAlgorithm>> GetAlgorithms(
       se::Stream* stream) const;
@@ -157,7 +176,7 @@ class MatmulPlan {
                   se::DeviceMemoryBase bias_buffer,  // may be null
                   const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
                   se::ScratchAllocator& scratch_allocator,
-                  se::blas::ProfileResult* profile_result);
+                  se::blas::ProfileResult* profile_result) const;
 
   se::cuda::BlasLt::MatmulPlan plan_;
   complex128 alpha_;

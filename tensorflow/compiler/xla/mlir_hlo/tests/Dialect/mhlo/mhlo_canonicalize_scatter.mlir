@@ -201,3 +201,34 @@ func.func @zero_dim_scatter_indices(%dst: tensor<4x4xf32>,
 // CHECK:           update_window_dims = [1, 2],
 // CHECK-SAME:      scatter_dims_to_operand_dims = [0, 1]
 // CHECK-SAME:      index_vector_dim = 1
+
+// -----
+
+func.func @multiple_window_and_scatter_dims(
+    %dst: tensor<1x2x3x4x5xf32>, %indices: tensor<6x7x2xi32>,
+    %updates: tensor<2x6x4x7xf32>) -> tensor<1x2x3x4x5xf32> {
+  %0 = "mhlo.scatter"(%dst, %indices, %updates) ({
+  ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
+    mhlo.return %arg3 : tensor<f32>
+  }) {
+    indices_are_sorted = false,
+    scatter_dimension_numbers = #mhlo.scatter<
+      inserted_window_dims = [0, 2, 4],
+      update_window_dims = [0, 2],
+      scatter_dims_to_operand_dims = [0, 1],
+      index_vector_dim = 2
+    >, unique_indices = false
+  } : (tensor<1x2x3x4x5xf32>, tensor<6x7x2xi32>, tensor<2x6x4x7xf32>) ->
+      tensor<1x2x3x4x5xf32>
+  return %0 : tensor<1x2x3x4x5xf32>
+}
+
+// CHECK-LABEL: @multiple_window_and_scatter_dims(
+// CHECK-SAME:      %[[DST:.*]]: tensor<1x2x3x4x5xf32>,
+// CHECK-SAME:      %[[IND:.*]]: tensor<6x7x2xi32>,
+// CHECK-SAME:      %[[UPD:.*]]: tensor<2x6x4x7xf32>
+// CHECK:         %[[IND0:.*]] = tensor.collapse_shape %[[IND]] {{.*}} into tensor<42x2xi32>
+// CHECK:         %[[UPD0:.*]] = "mhlo.transpose"(%[[UPD]]) {{.*}} -> tensor<6x7x2x4xf32>
+// CHECK:         %[[UPD1:.*]] = tensor.collapse_shape %[[UPD0]] {{.*}} into tensor<42x2x4xf32>
+// CHECK:         %[[UPD2:.*]] = tensor.expand_shape %[[UPD1]] {{.*}} into tensor<42x1x2x1x4x1xf32>
+// CHECK:         "mhlo.scatter"(%[[DST]], %[[IND0]], %[[UPD2]])

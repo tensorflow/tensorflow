@@ -3,7 +3,7 @@ load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 # Tensorflow windows-specific implementations of tensorflow/core/platform libraries.
 load(
     "//tensorflow/tsl:tsl.bzl",
-    "tf_copts",
+    "tsl_copts",
 )
 load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
@@ -11,6 +11,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core/platform:__pkg__",
         "//tensorflow/tsl/platform:__pkg__",
@@ -181,7 +182,7 @@ cc_library(
         "//tensorflow/tsl/platform:numa.h",
         "//tensorflow/tsl/platform:snappy.h",
     ],
-    copts = tf_copts(),
+    copts = tsl_copts(),
     defines = ["TF_USE_SNAPPY"],
     tags = [
         "manual",

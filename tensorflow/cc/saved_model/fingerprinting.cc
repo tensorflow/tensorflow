@@ -36,12 +36,19 @@ limitations under the License.
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
+#include "tensorflow/tsl/lib/strings/proto_serialization.h"
 
 namespace tensorflow::saved_model::fingerprinting {
 
 // Version of the code that produced the fingerprint.
-const int kFingerprintProducer = 0;
+const int kFingerprintProducer = 1;
 namespace {
+
+uint64 HashSavedModel(const SavedModel& saved_model) {
+  std::string saved_model_string;
+  SerializeToStringDeterministic(saved_model, &saved_model_string);
+  return tensorflow::Fingerprint64(saved_model_string);
+}
 
 uint64 RegularizeAndHashSignatureDefs(
     const google::protobuf::Map<std::string, SignatureDef>& signature_def_map) {
@@ -113,15 +120,14 @@ uint64 HashCheckpointIndexFile(absl::string_view model_dir) {
 
 }  // namespace
 
-FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph,
+FingerprintDef CreateFingerprintDef(const SavedModel& saved_model,
                                     absl::string_view export_dir) {
   // Create a copy of `metagraph` which will be used and mutated for fingerprint
   // computation.
-  MetaGraphDef metagraph_copy = metagraph;
+  MetaGraphDef metagraph_copy = saved_model.meta_graphs(0);
   FingerprintDef fingerprint_def;
   // Set fingerprint field #1.
-  fingerprint_def.set_graph_def_checksum(
-      graph_regularization::ComputeHash(metagraph_copy.graph_def()));
+  fingerprint_def.set_saved_model_checksum(HashSavedModel(saved_model));
   // Set fingerprint field #2.
   graph_regularization::SimpleDelete(*metagraph_copy.mutable_graph_def());
   fingerprint_def.set_graph_def_program_hash(
@@ -141,6 +147,23 @@ FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph,
   version->set_producer(kFingerprintProducer);
 
   return fingerprint_def;
+}
+
+StatusOr<FingerprintDef> ReadSavedModelFingerprint(
+    absl::string_view export_dir) {
+  const string fingerprint_pb_path =
+      io::JoinPath(export_dir, kFingerprintFilenamePb);
+  Status found_pb = Env::Default()->FileExists(fingerprint_pb_path);
+  if (found_pb.ok()) {
+    FingerprintDef fingerprint_proto;
+    Status result = ReadBinaryProto(Env::Default(), fingerprint_pb_path,
+                                    &fingerprint_proto);
+    if (result.ok()) {
+      return fingerprint_proto;
+    }
+    return result;
+  }
+  return found_pb;
 }
 
 }  // namespace tensorflow::saved_model::fingerprinting

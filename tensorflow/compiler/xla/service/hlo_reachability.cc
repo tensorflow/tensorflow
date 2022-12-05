@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <queue>
 
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 
 namespace xla {
 

@@ -46,9 +46,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
 
 namespace mlir {
 namespace TFL {
@@ -83,8 +83,7 @@ inline void PopulateTFToMhloPatterns(
     // Adding fallback Tf2XlaPatterns is needed to make the patterns work.
     // Add TF->HLO legalization patterns via TF2XLA fallback.
     ::mlir::mhlo::PopulateLegalizeTfWithTf2XlaPatterns(
-        tf2xla_fallback_device_type.getValue(), *patterns, context,
-        prefer_tf2xla);
+        tf2xla_fallback_device_type.value(), *patterns, context, prefer_tf2xla);
   }
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to

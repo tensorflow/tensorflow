@@ -135,8 +135,8 @@ inline llvm::Optional<InferenceDeviceType> GetInferenceDeviceTypeForOp(
   if (!inference_type.has_value()) return llvm::None;
 
   InferenceDeviceType inference_device_type;
-  inference_device_type.hardware = hardware.getValue();
-  inference_device_type.inference_type = inference_type.getValue();
+  inference_device_type.hardware = hardware.value();
+  inference_device_type.inference_type = inference_type.value();
   return inference_device_type;
 }
 

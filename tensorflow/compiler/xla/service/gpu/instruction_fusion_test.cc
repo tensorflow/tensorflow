@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -600,9 +600,45 @@ TEST_F(InstructionFusionTest, GpuIsExpensiveF32) {
       HloInstruction::CreateBinary(r0f32, HloOpcode::kDivide, param0, one));
   HloInstruction* rem = builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32, HloOpcode::kRemainder, param0, one));
+  HloInstruction* sqrt = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32, HloOpcode::kSqrt, param0));
+  HloInstruction* rsqrt = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32, HloOpcode::kRsqrt, param0));
+  HloInstruction* exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32, HloOpcode::kExp, param0));
 
   EXPECT_FALSE(GpuInstructionFusion::IsExpensive(*div));
   EXPECT_TRUE(GpuInstructionFusion::IsExpensive(*rem));
+  EXPECT_FALSE(GpuInstructionFusion::IsExpensive(*sqrt));
+  EXPECT_FALSE(GpuInstructionFusion::IsExpensive(*rsqrt));
+  EXPECT_FALSE(GpuInstructionFusion::IsExpensive(*exp));
+}
+
+TEST_F(InstructionFusionTest, GpuIsExpensiveF64) {
+  auto m = CreateNewVerifiedModule();
+  Shape r0f64 = ShapeUtil::MakeShape(F64, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f64, "param0"));
+
+  HloInstruction* one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+  HloInstruction* div = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f64, HloOpcode::kDivide, param0, one));
+  HloInstruction* rem = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f64, HloOpcode::kRemainder, param0, one));
+  HloInstruction* sqrt = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f64, HloOpcode::kSqrt, param0));
+  HloInstruction* rsqrt = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f64, HloOpcode::kRsqrt, param0));
+  HloInstruction* exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f64, HloOpcode::kExp, param0));
+
+  EXPECT_TRUE(GpuInstructionFusion::IsExpensive(*div));
+  EXPECT_TRUE(GpuInstructionFusion::IsExpensive(*rem));
+  EXPECT_TRUE(GpuInstructionFusion::IsExpensive(*sqrt));
+  EXPECT_TRUE(GpuInstructionFusion::IsExpensive(*rsqrt));
+  EXPECT_TRUE(GpuInstructionFusion::IsExpensive(*exp));
 }
 
 TEST_F(InstructionFusionTest, GpuIsExpensiveS32) {
@@ -695,6 +731,44 @@ TEST_F(InstructionFusionTest, SmallReducedDimensionIsNotLoweredToLoop) {
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_THAT(root, op::Fusion());
   EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kInput);
+}
+
+TEST_F(InstructionFusionTest, DontTouchSoftmaxCustomCall) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule softmax, entry_computation_layout={(f32[554112,10]{1,0})->f32[554112,10]{1,0}}
+
+    %max_computation (arg_0: f32[], arg_1: f32[]) -> f32[] {
+      %arg_0 = f32[] parameter(0)
+      %arg_1 = f32[] parameter(1)
+      ROOT %maximum = f32[] maximum(f32[] %arg_0, f32[] %arg_1)
+    }
+
+    %add_computation (arg_0.1: f32[], arg_1.1: f32[]) -> f32[] {
+      %arg_0.1 = f32[] parameter(0)
+      %arg_1.1 = f32[] parameter(1)
+      ROOT %maximum.1 = f32[] add(f32[] %arg_0.1, f32[] %arg_1.1)
+    }
+
+    %softmax_computation (parameter_0: f32[554112,10]) -> f32[554112,10] {
+      %parameter_0 = f32[554112,10]{1,0} parameter(0)
+      %constant_neg_inf.1 = f32[] constant(-inf)
+      %reduce.1 = f32[554112]{0} reduce(f32[554112,10]{1,0} %parameter_0, f32[] %constant_neg_inf.1), dimensions={1}, to_apply=%max_computation
+      %broadcast.1 = f32[554112,10]{1,0} broadcast(f32[554112]{0} %reduce.1), dimensions={0}
+      %subtract.1 = f32[554112,10]{1,0} subtract(f32[554112,10]{1,0} %parameter_0, f32[554112,10]{1,0} %broadcast.1)
+      %exponential.1 = f32[554112,10]{1,0} exponential(f32[554112,10]{1,0} %subtract.1)
+      %constant_zero.1 = f32[] constant(0)
+      %second_reduce.1 = f32[554112]{0} reduce(f32[554112,10]{1,0} %exponential.1, f32[] %constant_zero.1), dimensions={1}, to_apply=%add_computation
+      %second_broadcast.1 = f32[554112,10]{1,0} broadcast(f32[554112]{0} %second_reduce.1), dimensions={0}
+      ROOT %divide.1 = f32[554112,10]{1,0} divide(f32[554112,10]{1,0} %exponential.1, f32[554112,10]{1,0} %second_broadcast.1)
+    }
+
+    ENTRY %main (param_0: f32[554112,10]) -> f32[554112,10] {
+      %param_0 = f32[554112,10]{1,0} parameter(0)
+      ROOT %custom-call = f32[554112,10]{1,0} custom-call(f32[554112,10]{1,0} %param_0), custom_call_target="__softmax_fusion", called_computations={%softmax_computation}
+    })")
+                    .value();
+  EXPECT_FALSE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 }
 
 }  // namespace gpu

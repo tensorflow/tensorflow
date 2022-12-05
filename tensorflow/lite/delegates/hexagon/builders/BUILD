@@ -1,4 +1,5 @@
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -81,6 +82,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/hexagon:hexagon_implementation",
         "//tensorflow/lite/delegates/hexagon/hexagon_nn:hexagon_nn_header",
         "//tensorflow/lite/kernels:kernel_util",
@@ -100,5 +102,8 @@ cc_library(
         "manual",
         "nobuilder",
     ],
-    deps = ["//tensorflow/lite/c:common"],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+    ],
 )

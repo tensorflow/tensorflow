@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/service/service.h"
@@ -1370,6 +1370,72 @@ ENTRY e {
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 1);
   EXPECT_EQ(analysis.bytes_accessed(*root), 10000 + 1);
   EXPECT_EQ(analysis.bytes_accessed(), 10000 + 1);
+}
+
+TEST_F(FusionCostAnalysis, RevisitModifiedFusion) {
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* c1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
+          /*from=*/0.0f, /*to=*/1.0f, /*rows=*/2, /*cols=*/2)));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(r2f32, HloOpcode::kAdd, c1, c1));
+  HloInstruction* mul = builder.AddInstruction(
+      HloInstruction::CreateBinary(r2f32, HloOpcode::kMultiply, add, add));
+  HloInstruction* neg = builder.AddInstruction(
+      HloInstruction::CreateUnary(r2f32, HloOpcode::kNegate, mul));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* fusion = computation->CreateFusionInstruction(
+      {neg, mul, add}, HloInstruction::FusionKind::kLoop);
+
+  HloCostAnalysis::Options options{ShapeSize};
+  HloCostAnalysis analysis(options);
+  ASSERT_IS_OK(fusion->Accept(&analysis));
+
+  constexpr int64_t bytes_accessed = sizeof(float) * 2 * 2 * 2;
+  static_assert(bytes_accessed == 32, "");
+
+  EXPECT_EQ(analysis.flop_count(), 4 * 3);
+  EXPECT_EQ(analysis.transcendental_count(), 0);
+  EXPECT_EQ(analysis.bytes_accessed(), bytes_accessed);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*fusion, 0), sizeof(float) * 2 * 2);
+  EXPECT_EQ(analysis.output_bytes_accessed(*fusion), sizeof(float) * 2 * 2);
+
+  // Revisit the root (fusion) instruction and expect no changes.
+
+  ASSERT_IS_OK(analysis.RevisitInstruction(fusion));
+
+  EXPECT_EQ(analysis.flop_count(), 4 * 3);
+  EXPECT_EQ(analysis.transcendental_count(), 0);
+  EXPECT_EQ(analysis.bytes_accessed(), bytes_accessed);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*fusion, 0), sizeof(float) * 2 * 2);
+  EXPECT_EQ(analysis.output_bytes_accessed(*fusion), sizeof(float) * 2 * 2);
+
+  // Now modify the fusion and verify that the partially updated analysis is
+  // correct.
+
+  HloComputation* fused_computation = fusion->fused_instructions_computation();
+  HloInstruction* to_replace = fused_computation->root_instruction();
+
+  // Replace negate(multiply(...)) with exp(multiply(...)) at the fusion root.
+  HloInstruction* exp =
+      fused_computation->AddInstruction(HloInstruction::CreateUnary(
+          r2f32, HloOpcode::kExp, to_replace->mutable_operand(0)));
+  ASSERT_IS_OK(fused_computation->ReplaceInstruction(to_replace, exp));
+  ASSERT_IS_OK(module->Verify());
+
+  ASSERT_IS_OK(analysis.RevisitInstruction(fusion));
+
+  // One floating point instruction (kNegate) removed.
+  EXPECT_EQ(analysis.flop_count(), 4 * 2);
+  // One transcendental instruction (kExp) added.
+  EXPECT_EQ(analysis.transcendental_count(), 4);
+  // The rest remains unchanged.
+  EXPECT_EQ(analysis.bytes_accessed(), bytes_accessed);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*fusion, 0), sizeof(float) * 2 * 2);
+  EXPECT_EQ(analysis.output_bytes_accessed(*fusion), sizeof(float) * 2 * 2);
 }
 
 }  // namespace

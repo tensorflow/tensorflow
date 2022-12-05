@@ -41,12 +41,12 @@ void GetTransposeSettings(mlir::Operation* op, bool* left_transposed,
   if (mlir::isa<mlir::TF::BatchMatMulV2Op>(op)) {
     mlir::TF::BatchMatMulV2Op mm = mlir::cast<mlir::TF::BatchMatMulV2Op>(op);
     // Adjoint is just conjugate transpose.
-    *left_transposed = mm.adj_x();
-    *right_transposed = mm.adj_y();
+    *left_transposed = mm.getAdjX();
+    *right_transposed = mm.getAdjY();
   } else if (mlir::isa<mlir::TF::MatMulOp>(op)) {
     mlir::TF::MatMulOp mm = mlir::cast<mlir::TF::MatMulOp>(op);
-    *left_transposed = mm.transpose_a();
-    *right_transposed = mm.transpose_b();
+    *left_transposed = mm.getTransposeA();
+    *right_transposed = mm.getTransposeB();
   }
 }
 
@@ -124,8 +124,8 @@ StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
 
     // Note that it doesn't matter if we pass the global or local shape to
     // GetBroadcastLayoutForElementWise, it will return the same result.
-    TF_ASSIGN_OR_RETURN(const auto left_shape, GetShapeOfValue(mm.x()));
-    TF_ASSIGN_OR_RETURN(const auto right_shape, GetShapeOfValue(mm.y()));
+    TF_ASSIGN_OR_RETURN(const auto left_shape, GetShapeOfValue(mm.getX()));
+    TF_ASSIGN_OR_RETURN(const auto right_shape, GetShapeOfValue(mm.getY()));
     std::vector<std::string> left_splits;
     std::vector<std::string> right_splits;
     TF_ASSIGN_OR_RETURN(

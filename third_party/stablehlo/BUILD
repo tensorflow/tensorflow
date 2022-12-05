@@ -382,6 +382,7 @@ cc_library(
         ":chlo_ops",
         ":stablehlo_ops",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SparseTensorDialect",
     ],
 )
 
@@ -569,6 +570,7 @@ cc_library(
     includes = ["."],
     deps = [
         ":base",
+        ":stablehlo_assembly_format",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
@@ -678,6 +680,7 @@ cc_library(
     ],
     includes = ["."],
     deps = [
+        ":stablehlo_assembly_format",
         ":test_utils_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",

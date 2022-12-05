@@ -25,6 +25,7 @@ limitations under the License.
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/python/python_utils.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
+#include "tensorflow/compiler/xla/python/util.h"
 
 namespace xla {
 namespace {
@@ -83,6 +84,9 @@ extern "C" void PyArray_tp_dealloc(PyObject* self) {
   }
 
   GetPyArrayStorageFromObject(obj)->~PyArray_Storage();
+
+  PyObject*& dict = *_PyObject_GetDictPtr(self);
+  Py_CLEAR(dict);
 
   tp->tp_free(self);
   Py_DECREF(tp);
@@ -166,6 +170,11 @@ void PyArray::PyInit(py::object self, py::object aval, py::object sharding,
   if (!skip_checks) {
     py_array.CheckAndRearrange();
   }
+}
+
+void PyArray::PyInit(py::object self, DisableFastpath) {
+  Construct(reinterpret_cast<PyArrayObject*>(self.ptr()),
+            PyArray_Storage::DisableFastpath());
 }
 
 PyArray::PyArray(py::object aval, bool weak_type, py::dtype dtype,
@@ -254,14 +263,18 @@ Status PyArray::set_arrays(py::object obj) {
 
 Status PyArray::BlockUntilReady() const {
   pybind11::gil_scoped_release gil_release;
-  Status status;
-  for (const auto& pjrt_buffer : pjrt_buffers()) {
-    // PjRtBuffer::BlockHostUntilReady() fix up the error message because some
-    // clients rely on it.
-    auto s = pjrt_buffer->BlockHostUntilReady();
-    if (!s.ok()) status = std::move(s);
+  return AwaitBuffersReady(pjrt_buffers());
+}
+
+bool PyArray::IsDeleted() const {
+  if (pjrt_buffers().empty()) {
+    return true;
   }
-  return status;
+
+  for (const auto& pjrt_buffer : pjrt_buffers()) {
+    if (pjrt_buffer->IsDeleted()) return true;
+  }
+  return false;
 }
 
 py::handle PyArray::Storage::AsHandle() {
@@ -271,6 +284,9 @@ py::handle PyArray::Storage::AsHandle() {
 
 PyArray::Storage::~PyArray_Storage() {
   CHECK(PyGILState_Check());
+  if (!fastpath_enabled) {
+    return;
+  }
   if (py_client->arrays_ == this) {
     py_client->arrays_ = next;
   }
@@ -361,6 +377,12 @@ Status PyArray::RegisterTypes(py::module& m) {
       },
       py::is_method(type), py::arg("aval"), py::arg("sharding"),
       py::arg("arrays"), py::arg("committed"), py::arg("_skip_checks") = false);
+  // TODO(yashkatariya): remove this once the transition completes.
+  type.attr("_init_with_fastpath_disabled") = py::cpp_function(
+      [](py::object self) {
+        PyArray::PyInit(self, PyArray::DisableFastpath());
+      },
+      py::is_method(type));
   type.attr("_sharding") = jax::property_readonly(&PyArray::sharding);
   type.attr("aval") = jax::property(&PyArray::aval, &PyArray::set_aval);
   type.attr("_arrays") = jax::property(&PyArray::arrays, &PyArray::set_arrays);
@@ -373,6 +395,8 @@ Status PyArray::RegisterTypes(py::module& m) {
         return self;
       },
       py::is_method(type));
+  type.attr("is_deleted") =
+      py::cpp_function(&PyArray::IsDeleted, py::is_method(type));
   type.attr("traceback") = jax::property_readonly(&PyArray::traceback);
   type.attr("__module__") = m.attr("__name__");
 

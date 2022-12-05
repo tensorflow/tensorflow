@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_STATELESS_RANDOM_OPS_V2_H_
 #define TENSORFLOW_CORE_KERNELS_STATELESS_RANDOM_OPS_V2_H_
 
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
@@ -39,6 +40,21 @@ inline Status CheckKeyCounterShape(int minimum_counter_size,
   }
   return OkStatus();
 }
+
+// A base class for kernels of stateless RNG ops that take shape, key, counter
+// and algorithm as the first 4 inputs.
+class StatelessRandomOpBaseWithKeyCounter : public OpKernel {
+ public:
+  explicit StatelessRandomOpBaseWithKeyCounter(OpKernelConstruction* ctx);
+
+  void Compute(OpKernelContext* ctx) override;
+
+ protected:
+  // The part of Compute that depends on device, type, and distribution.
+  // Must be a tail call because it doesn't report error via return value.
+  virtual void Fill(OpKernelContext* ctx, Algorithm alg, const Tensor& key,
+                    const Tensor& counter, Tensor* output) = 0;
+};
 
 }  // end namespace tensorflow
 

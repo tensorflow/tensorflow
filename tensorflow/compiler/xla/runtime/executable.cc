@@ -30,8 +30,8 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/Support/ErrorOr.h"
-#include "tensorflow/compiler/xla/mlir/utils/runtime/async_runtime_api.h"
-#include "tensorflow/compiler/xla/mlir/utils/runtime/c_runner_utils.h"
+#include "tensorflow/compiler/xla/mlir/runtime/utils/async_runtime_api.h"
+#include "tensorflow/compiler/xla/mlir/runtime/utils/c_runner_utils.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
@@ -438,14 +438,10 @@ Status Executable::ReturnResults(unsigned ordinal,
     auto results_memory_layout = GetResultsMemoryLayout(fn.runtime_signature);
     if (!results_memory_layout.ok()) return results_memory_layout.status();
 
-    Executable::Function function{std::move(fn.name),
-                                  (*engine)->exported(indexed.index()),
-                                  std::move(fn.signature),
-                                  std::move(fn.runtime_signature),
-                                  std::move(*args_memory_layout),
-                                  std::move(*results_memory_layout)};
-
-    functions.push_back(std::move(function));
+    functions.push_back(Executable::Function(
+        std::move(fn.name), (*engine)->exported(indexed.index()),
+        std::move(fn.signature), std::move(fn.runtime_signature),
+        std::move(*args_memory_layout), std::move(*results_memory_layout)));
   }
 
   return Executable(name, std::move(memory_mapper), std::move(*engine),

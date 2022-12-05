@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mhlo/IR/register.h"
 #include "mhlo_tosa/Transforms/passes.h"
-#include "mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "mlir/Dialect/Tosa/Transforms/Passes.h"
 #include "mlir/InitAllDialects.h"

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/core/shims/c/shims_test_util.h"
 #include "tensorflow/lite/tools/tool_params.h"
 
 namespace tflite {
@@ -26,9 +27,14 @@ TEST(ProvidedDelegateListTest, AddAllDelegateParams) {
   ProvidedDelegateList providers(&params);
   providers.AddAllDelegateParams();
   // As we link the test with XNNPACK and nnapi delegate providers, we should
-  // expect to havethese two knob parameters.
+  // expect to have these two knob parameters.
   EXPECT_TRUE(params.HasParam("use_xnnpack"));
+
+// TODO(b/249485631): Enable the check after NNAPI Delegate Provider supports
+// stable TFLite ABI.
+#if !TFLITE_WITH_STABLE_ABI
   EXPECT_TRUE(params.HasParam("use_nnapi"));
+#endif  // !TFLITE_WITH_STABLE_ABI
 }
 
 TEST(ProvidedDelegateListTest, AppendCmdlineFlags) {
@@ -49,6 +55,19 @@ TEST(KernelTestDelegateProvidersTest, CreateAllRankedDelegates) {
   ProvidedDelegateList providers(&params);
   providers.AddAllDelegateParams();
 
+// TODO(b/249054271): Dummy delegate hasn't been migrated to use TFLite with
+// stable ABI yet. The check here can be removed after the extension.
+#if TFLITE_WITH_STABLE_ABI
+  ASSERT_EQ(TfLiteInitializeShimsForTest(), 0);
+  params.Set<bool>("use_xnnpack", true, 1);
+
+  auto delegates = providers.CreateAllRankedDelegates();
+  EXPECT_EQ(1, delegates.size());
+
+  EXPECT_EQ("XNNPACK", delegates.front().provider->GetName());
+  EXPECT_NE(nullptr, delegates.front().delegate.get());
+  EXPECT_EQ(1, delegates.front().rank);
+#else   // TFLITE_WITH_STABLE_ABI
   // We set the position of "use_xnnpack" to be smaller than that of
   // "use_dummy_delegate" so that the Dummy delegate will be ahead of the
   // XNNPACK delegate in the returned list.
@@ -65,6 +84,7 @@ TEST(KernelTestDelegateProvidersTest, CreateAllRankedDelegates) {
   EXPECT_EQ("XNNPACK", delegates.back().provider->GetName());
   EXPECT_NE(nullptr, delegates.back().delegate.get());
   EXPECT_EQ(2, delegates.back().rank);
+#endif  // TFLITE_WITH_STABLE_ABI
 #endif
 }
 }  // namespace

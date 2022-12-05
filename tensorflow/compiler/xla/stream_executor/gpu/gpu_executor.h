@@ -24,7 +24,9 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <set>
+#include <string>
 #include <type_traits>
 #include <unordered_map>
 
@@ -106,6 +108,8 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   ~GpuExecutor() override;
 
   port::Status Init(int device_ordinal, DeviceOptions device_options) override;
+
+  std::optional<std::string> MakeDeviceDescriptionStr() const override;
 
   port::Status GetKernel(const MultiKernelLoaderSpec& spec,
                          KernelBase* kernel) override;
