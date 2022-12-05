@@ -73,15 +73,15 @@ struct SideInputAttrs {
 }  // namespace
 
 absl::StatusOr<ConvRunnerCache::Entry> ConvRunnerCache::GetOrCreate(
-    int64_t uid, absl::FunctionRef<absl::StatusOr<GpuConvConfig>()> config) {
+    Key key, absl::FunctionRef<absl::StatusOr<GpuConvConfig>()> config) {
   absl::MutexLock lock(&mutex_);
-  auto it = runners_.find(uid);
+  auto it = runners_.find(key);
   if (it != runners_.end()) return Entry{&it->second.first, &it->second.second};
 
   absl::StatusOr<GpuConvConfig> cfg = config();
   if (!cfg.ok()) return cfg.status();
 
-  auto emplaced = runners_.try_emplace(uid, *cfg, *cfg);
+  auto emplaced = runners_.try_emplace(key, *cfg, *cfg);
   return Entry{&emplaced.first->second.first, &emplaced.first->second.second};
 }
 
@@ -204,8 +204,8 @@ struct Conv {
     if (side_input_scale.has_value()) side_input_attrs = {*side_input_scale};
 
     // Get the convolution runner from the cache.
-    absl::StatusOr<ConvRunnerCache::Entry> runner =
-        runners->GetOrCreate(uid, [&]() -> absl::StatusOr<GpuConvConfig> {
+    absl::StatusOr<ConvRunnerCache::Entry> runner = runners->GetOrCreate(
+        {run_options->stream(), uid}, [&]() -> absl::StatusOr<GpuConvConfig> {
           GpuConvDescriptor descriptor = GetConvDescriptor(
               kind, operand0, operand1, output, scratch, conv_dims,
               {window_strides, padding, lhs_dilation, rhs_dilation,
