@@ -74,9 +74,8 @@ class BlasLt {
     kReLU = 2,                      // Apply point-wise ReLU function
     kBias = 4,                      // Add broadcasted bias vector
     kBiasThenReLU = kBias | kReLU,  // Apply bias and then ReLU transform
-    kGeLU = 32,  // Apply GELU point-wise transform to the results
-    kBiasThenGeLUApproximate =
-        kBias | kGeLU,  // Apply bias and then GeLU Tanh transform
+    kGELU = 32,  // Apply GELU point-wise transform to the results
+    kBiasThenGELU = kBias | kGELU,  // Apply bias and then GELU transform
   };
 
   // Describes the location of pointers for the scaling factors alpha and beta.

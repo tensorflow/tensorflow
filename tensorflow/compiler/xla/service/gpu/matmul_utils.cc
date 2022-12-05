@@ -645,15 +645,18 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
   switch (epilogue) {
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Default:
       return se::cuda::BlasLt::Epilogue::kDefault;
-    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Bias:
-      return se::cuda::BlasLt::Epilogue::kBias;
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Relu:
       return se::cuda::BlasLt::Epilogue::kReLU;
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Gelu:
+      return se::cuda::BlasLt::Epilogue::kGELU;
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Bias:
+      return se::cuda::BlasLt::Epilogue::kBias;
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::BiasRelu:
       return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
-    default:
-      return InternalError("unknown epilogue");
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::BiasGelu:
+      return se::cuda::BlasLt::Epilogue::kBiasThenGELU;
   }
+  return InternalError("unexpected epilogue value");
 }
 
 /*static*/ StatusOr<MatmulPlan> MatmulPlan::For(
