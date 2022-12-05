@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/ffi.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
+#include "tensorflow/compiler/xla/runtime/module_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/collectives.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
@@ -74,6 +75,7 @@ struct GpuRuntimeProgram {
 // executable provides a lower level API exposing some of the implementation
 // details.
 class GpuRuntimeExecutable {
+  using ModulesState = ::xla::runtime::ModulesState;
   using FfiModulesState = ::xla::runtime::ffi::FfiModulesState;
 
  public:
@@ -103,12 +105,12 @@ class GpuRuntimeExecutable {
  private:
   GpuRuntimeExecutable(std::vector<int64_t> buffer_sizes,
                        std::unique_ptr<runtime::JitExecutable> jit_executable,
-                       DebugOptions debug_options,
+                       DebugOptions debug_options, ModulesState modules_state,
                        FfiModulesState ffi_modules_state);
 
   GpuRuntimeExecutable(std::vector<int64_t> buffer_sizes,
                        std::unique_ptr<runtime::Executable> aot_executable,
-                       DebugOptions debug_options,
+                       DebugOptions debug_options, ModulesState modules_state,
                        FfiModulesState ffi_modules_state);
 
   // Depending on the state of `executable_` returns a reference to active
@@ -144,6 +146,9 @@ class GpuRuntimeExecutable {
   // Keep captured and instantiated CUDA graphs instances.
   GraphInstances graph_instances_;
 #endif  // GOOGLE_CUDA
+
+  // Keep an executable state for all registered runtime modules.
+  ModulesState modules_state_;
 
   // Keeps an executable state for all registered FFI modules.
   FfiModulesState ffi_modules_state_;

@@ -105,6 +105,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/runtime:ffi",
         "//tensorflow/compiler/xla/runtime:jit_executable",
+        "//tensorflow/compiler/xla/runtime:module_registry",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu:buffer_allocations",
         "//tensorflow/compiler/xla/service/gpu:jitrt_custom_calls",

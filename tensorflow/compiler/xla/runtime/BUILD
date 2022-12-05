@@ -359,6 +359,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "module_registry",
+    srcs = ["module_registry.cc"],
+    hdrs = ["module_registry.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        ":module",
+    ],
+)
+
 tf_cc_test(
     name = "module_test",
     srcs = ["module_test.cc"],

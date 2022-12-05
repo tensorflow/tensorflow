@@ -561,11 +561,23 @@ bool CustomCall(ExecutionContext* ctx, const char* target, void** args,
                 void** attrs, void** rets) {
   assert(ctx && target && args && attrs && rets && "must be not null");
   assert(ctx->custom_call_registry && "custom call registry must be not null");
-  if (ctx->custom_call_registry == nullptr) return false;
+
+  const DiagnosticEngine* diagnostic = ctx->diagnostic_engine;
+
+  if (ctx->custom_call_registry == nullptr) {
+    if (diagnostic)
+      diagnostic->EmitError(
+          absl::InternalError("custom call registry is not available"));
+    return false;
+  }
 
   auto* custom_call = ctx->custom_call_registry->Find(target);
-  assert(custom_call && "custom call not found");
-  if (custom_call == nullptr) return false;
+  if (custom_call == nullptr) {
+    if (diagnostic)
+      diagnostic->EmitError(absl::InternalError(absl::StrFormat(
+          "custom call is not registered with runtime: %s", target)));
+    return false;
+  }
 
   return succeeded(custom_call->call(args, attrs, rets, ctx->custom_call_data,
                                      ctx->diagnostic_engine));

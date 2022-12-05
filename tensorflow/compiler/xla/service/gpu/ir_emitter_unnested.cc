@@ -1213,7 +1213,14 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
 
   void* call_target = CustomCallTargetRegistry::Global()->Lookup(
       call_target_name, std::string(platform_name()));
-  if (!call_target) {
+
+  // Typed custom calls only are supported by XLA runtime. It's ok to emit a
+  // thunk with an unresolved custom call target, as we'll never execute it.
+  bool is_typed_custom_call =
+      custom_call.getApiVersion() ==
+      mlir::mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI;
+
+  if (!call_target && !is_typed_custom_call) {
     return Unimplemented(
         "No registered implementation for custom call to \"%s\"",
         call_target_name);

@@ -37,29 +37,34 @@ using ::xla::runtime::Executable;
 using ::xla::runtime::JitExecutable;
 using ::xla::runtime::success;
 
+using ::xla::runtime::ExportModules;
 using ::xla::runtime::ffi::ExportFfiModules;
 using ::xla::runtime::ffi::FfiStateVector;
 
 GpuRuntimeExecutable::GpuRuntimeExecutable(
     std::vector<int64_t> buffer_sizes,
     std::unique_ptr<JitExecutable> jit_executable, DebugOptions debug_options,
-    FfiModulesState ffi_modules_state)
+    ModulesState modules_state, FfiModulesState ffi_modules_state)
     : buffer_sizes_(std::move(buffer_sizes)),
       executable_(std::move(jit_executable)),
       debug_options_(std::move(debug_options)),
+      modules_state_(std::move(modules_state)),
       ffi_modules_state_(std::move(ffi_modules_state)) {
-  ExportFfiModules(dynamic_custom_calls_);
+  ExportModules(dynamic_custom_calls_);     // export runtime modules
+  ExportFfiModules(dynamic_custom_calls_);  // export FFI modules
 }
 
 GpuRuntimeExecutable::GpuRuntimeExecutable(
     std::vector<int64_t> buffer_sizes,
     std::unique_ptr<Executable> aot_executable, DebugOptions debug_options,
-    FfiModulesState ffi_modules_state)
+    ModulesState modules_state, FfiModulesState ffi_modules_state)
     : buffer_sizes_(std::move(buffer_sizes)),
       executable_(std::move(aot_executable)),
       debug_options_(std::move(debug_options)),
+      modules_state_(std::move(modules_state)),
       ffi_modules_state_(std::move(ffi_modules_state)) {
-  ExportFfiModules(dynamic_custom_calls_);
+  ExportModules(dynamic_custom_calls_);     // export runtime modules
+  ExportFfiModules(dynamic_custom_calls_);  // export FFI modules
 }
 
 //===---------------------------------------------------------------------===///
@@ -110,14 +115,23 @@ GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
     return InternalError("Failed to compile XLA Runtime program: %s",
                          jit_executable.status().message());
 
+  // Instantiate state for all registered runtime modules.
+  auto modules_state = ModulesState::Instantiate();
+  if (!modules_state.ok())
+    return InternalError("Failed to instantiate modules state: %s",
+                         modules_state.status().message());
+
   // Instantiate state for all registered FFI modules.
   auto ffi_modules_state = FfiModulesState::Instantiate();
-  if (!ffi_modules_state.ok()) ffi_modules_state.status();
+  if (!ffi_modules_state.ok())
+    return InternalError("Failed to instantiate FFI modules state: %s",
+                         ffi_modules_state.status().message());
 
   return std::unique_ptr<GpuRuntimeExecutable>(new GpuRuntimeExecutable(
       std::move(program->buffer_sizes),
       std::make_unique<JitExecutable>(std::move(*jit_executable)),
-      std::move(program->debug_options), std::move(*ffi_modules_state)));
+      std::move(program->debug_options), std::move(*modules_state),
+      std::move(*ffi_modules_state)));
 }
 
 //===---------------------------------------------------------------------===///
@@ -128,14 +142,23 @@ GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
 GpuRuntimeExecutable::Create(absl::Span<const int64_t> buffer_sizes,
                              Executable executable,
                              DebugOptions debug_options) {
+  // Instantiate state for all registered runtime modules.
+  auto modules_state = ModulesState::Instantiate();
+  if (!modules_state.ok())
+    return InternalError("Failed to instantiate modules state: %s",
+                         modules_state.status().message());
+
   // Instantiate state for all registered FFI modules.
   auto ffi_modules_state = FfiModulesState::Instantiate();
-  if (!ffi_modules_state.ok()) ffi_modules_state.status();
+  if (!ffi_modules_state.ok())
+    return InternalError("Failed to instantiate FFI modules state: %s",
+                         ffi_modules_state.status().message());
 
   return std::unique_ptr<GpuRuntimeExecutable>(new GpuRuntimeExecutable(
       std::vector<int64_t>(buffer_sizes.begin(), buffer_sizes.end()),
       std::make_unique<Executable>(std::move(executable)),
-      std::move(debug_options), std::move(*ffi_modules_state)));
+      std::move(debug_options), std::move(*modules_state),
+      std::move(*ffi_modules_state)));
 }
 
 //===---------------------------------------------------------------------===///
@@ -238,6 +261,12 @@ Status GpuRuntimeExecutable::Execute(
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.
       async_collectives.async_comm_stream() ? &async_collectives : nullptr);
+
+  // Initialize state required for running functions from registered modules.
+  auto state_ref = modules_state_.InitializeUserData(user_data);
+  if (!state_ref.ok())
+    return InternalError("Failed to initialize runtime modules state: %s",
+                         state_ref.status().message());
 
 #if GOOGLE_CUDA
   // Add auxiliary data that is available only if compiled with CUDA support.

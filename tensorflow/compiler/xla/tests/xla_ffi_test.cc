@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/runtime/ffi/ffi_api.h"
-#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -86,12 +85,6 @@ FfiStatus TestModule::Impl(TestModuleState* state, StridedBufferArg input0,
   state->trace->push_back(out.ToString());
   return FfiStatus::Ok();
 }
-
-// TODO(ezhulenev): We have to register stubs in the XLA custom call registry to
-// suppress errors during Thunk emissions. This stub should never be called,
-// and instead XLA will call into registered FFI handlers. Remove this hack!
-static void Abort() { LOG(FATAL) << "Custom call stub must never be called"; }
-XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("test.ffi", Abort, "CUDA");
 
 XLA_TEST_F(FfiTest, Basic) {
   // Register XLA FFI module with the runtime.
