@@ -1774,10 +1774,13 @@ cc_library(
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithUtils",
         "@llvm-project//mlir:DialectUtils",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:SCFUtils",
         "@llvm-project//mlir:TensorUtils",
+        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:VectorDialect",
     ],
 )
 

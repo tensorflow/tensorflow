@@ -237,14 +237,15 @@ func.func @tiled_matmul(%arg0: tensor<128x16xf32>, %arg1: tensor<16x64xf32>,
 
 // CHECK-LABEL: func @tiled_matmul
 
-// CHECK: gml_st.for
-
-// CHECK: %[[LHS:.*]] = vector.transfer_read {{.*}} : tensor<8x2xf32>, vector<8x2xf32>
-// CHECK: %[[RHS:.*]] = vector.transfer_read {{.*}} : tensor<2x4xf32>, vector<2x4xf32>
-// CHECK: %[[OUT:.*]] = vector.transfer_read {{.*}} : tensor<8x4xf32>, vector<8x4xf32>
-// CHECK: vector.contract {{{.*}}} %[[LHS]], %[[RHS]], %[[OUT]]
-
-// CHECK-NOT: linalg.matmul
+// CHECK:         %[[OUT_READ:.*]] = vector.transfer_read {{.*}} : tensor<8x4xf32>, vector<8x4xf32>
+// CHECK:         %[[FOR:.*]] = gml_st.for {{.*}} outs (%[[ARG:.*]] = %[[OUT_READ]]
+// CHECK-NOT:       linalg.matmul
+// CHECK:           %[[LHS:.*]] = vector.transfer_read {{.*}} : tensor<8x2xf32>, vector<8x2xf32>
+// CHECK:           %[[RHS:.*]] = vector.transfer_read {{.*}} : tensor<2x4xf32>, vector<2x4xf32>
+// CHECK-NOT:       vector.transfer_read
+// CHECK:           %[[CONTRACT:.*]] = vector.contract {{{.*}}} %[[LHS]], %[[RHS]], %[[ARG]]
+// CHECK:           gml_st.set_yield %[[CONTRACT]] into %[[ARG]]
+// CHECK:         vector.transfer_write %[[FOR]]
 
 // -----
 
@@ -316,3 +317,100 @@ func.func @do_not_vectorize_materialize_outside_loop() -> tensor<8x1xf32> {
 // VECTORIZE-LOOP-NO-LABEL:         %[[WRITE:.*]] = vector.transfer_write %[[CST]], %[[INIT]]{{.*}} tensor<10x1xf32>
 // VECTORIZE-LOOP-NO-LABEL:         %[[TILE:.*]] = gml_st.tile [0, 0] [8, 1] [1, 1]
 // VECTORIZE-LOOP-NO-LABEL:         gml_st.materialize %[[WRITE]][%[[TILE]]] : {{.*}} to tensor<8x1xf32>
+
+// -----
+
+#map = affine_map<(d0, d1, d2) -> (d0, d2)>
+#map1 = affine_map<(d0, d1, d2) -> (d2, d1)>
+#map2 = affine_map<(d0, d1, d2) -> (d0, d1)>
+func.func @do_not_hoist_transfer_read_write(%arg0: tensor<8x16xf32>, %arg1: tensor<16x4xf32>,
+                        %arg2: tensor<8x4xf32>) -> tensor<8x4xf32> {
+  %cst = arith.constant dense<0.000000e+00> : vector<8x4xf32>
+  %cst_0 = arith.constant 0.000000e+00 : f32
+  %c2 = arith.constant 2 : index
+  %c16 = arith.constant 16 : index
+  %c0 = arith.constant 0 : index
+
+  %0 = tensor.empty() : tensor<8x4xf32>
+  %7 = gml_st.for (%arg5) =
+              (%c0) to (%c16) step (%c2) outs (%arg6 = %arg2: tensor<8x4xf32>) {
+    %8 = gml_st.tile [0, %arg5] [8, 2] [1, 1] : !gml_st.tile<8x2>
+    %9 = gml_st.materialize %arg0[%8] :
+              tensor<8x16xf32>[!gml_st.tile<8x2>] to tensor<8x2xf32>
+    %10 = gml_st.tile [%arg5, 0] [2, 4] [1, 1] : !gml_st.tile<2x4>
+    %11 = gml_st.materialize %arg1[%10] :
+              tensor<16x4xf32>[!gml_st.tile<2x4>] to tensor<2x4xf32>
+    %12 = gml_st.tile [0, 0] [8, 4] [1, 1] : !gml_st.tile<8x4>
+    %13 = gml_st.materialize %arg6[%12] :
+              tensor<8x4xf32>[!gml_st.tile<8x4>] to tensor<8x4xf32>
+    %14 = linalg.matmul ins(%9, %11 : tensor<8x2xf32>, tensor<2x4xf32>)
+                        outs(%13 : tensor<8x4xf32>) -> tensor<8x4xf32>
+    %18 = vector.transfer_read %14[%c0, %c0], %cst_0 {in_bounds = [true, true]} : tensor<8x4xf32>, vector<8x4xf32>
+    %19 = vector.transfer_read %arg6[%c0, %c2], %cst_0 {in_bounds = [true, true]} : tensor<8x4xf32>, vector<8x4xf32>
+    %21 = arith.addf %18, %19 : vector<8x4xf32>
+    %20 = vector.transfer_write %21, %0[%c0, %c0] {in_bounds = [true, true]} : vector<8x4xf32>, tensor<8x4xf32>
+    gml_st.set_yield %20 into %arg6[%12] :
+              tensor<8x4xf32> into tensor<8x4xf32>[!gml_st.tile<8x4>]
+  } : tensor<8x4xf32>
+  return %7 : tensor<8x4xf32>
+}
+
+// CHECK-LABEL: func @do_not_hoist_transfer_read_write
+
+// CHECK:         %[[FOR:.*]] = gml_st.for {{.*}} outs (%[[ARG:.*]] =
+// CHECK:           %[[LHS:.*]] = vector.transfer_read {{.*}} : tensor<8x2xf32>, vector<8x2xf32>
+// CHECK:           %[[RHS:.*]] = vector.transfer_read {{.*}} : tensor<2x4xf32>, vector<2x4xf32>
+// CHECK:           %[[OUT:.*]] = vector.transfer_read {{.*}} : tensor<8x4xf32>, vector<8x4xf32>
+// CHECK:           %[[CONTRACT:.*]] = vector.contract {{{.*}}} %[[LHS]], %[[RHS]], %[[OUT]]
+// CHECK:           %[[READ:.*]] = vector.transfer_read {{.*}} : tensor<8x4xf32>, vector<8x4xf32>
+// CHECK:           %[[ADD:.*]] = arith.addf %[[CONTRACT]], %[[READ]]
+// CHECK:           %[[WRITE:.*]] = vector.transfer_write %[[ADD]], %[[ARG]]
+
+// -----
+
+#map = affine_map<(d0, d1, d2) -> (d0, d2)>
+#map1 = affine_map<(d0, d1, d2) -> (d2, d1)>
+#map2 = affine_map<(d0, d1, d2) -> (d0, d1)>
+func.func @hoist_transfer_read_write(%arg0: tensor<8x16xf32>, %arg1: tensor<16x4xf32>,
+                        %arg2: tensor<8x4xf32>) -> tensor<8x4xf32> {
+  %cst = arith.constant dense<0.000000e+00> : vector<8x4xf32>
+  %cst_0 = arith.constant 0.000000e+00 : f32
+  %c2 = arith.constant 2 : index
+  %c16 = arith.constant 16 : index
+  %c0 = arith.constant 0 : index
+
+  %0 = tensor.empty() : tensor<8x4xf32>
+  %7 = gml_st.for (%arg5) =
+              (%c0) to (%c16) step (%c2) outs (%arg6 = %arg2: tensor<8x4xf32>) {
+    %8 = gml_st.tile [0, %arg5] [8, 2] [1, 1] : !gml_st.tile<8x2>
+    %9 = gml_st.materialize %arg0[%8] :
+              tensor<8x16xf32>[!gml_st.tile<8x2>] to tensor<8x2xf32>
+    %10 = gml_st.tile [%arg5, 0] [2, 4] [1, 1] : !gml_st.tile<2x4>
+    %11 = gml_st.materialize %arg1[%10] :
+              tensor<16x4xf32>[!gml_st.tile<2x4>] to tensor<2x4xf32>
+    %12 = gml_st.tile [0, 0] [8, 4] [1, 1] : !gml_st.tile<8x4>
+    %13 = gml_st.materialize %arg6[%12] :
+              tensor<8x4xf32>[!gml_st.tile<8x4>] to tensor<8x4xf32>
+    %14 = linalg.matmul ins(%9, %11 : tensor<8x2xf32>, tensor<2x4xf32>)
+                        outs(%13 : tensor<8x4xf32>) -> tensor<8x4xf32>
+    %18 = vector.transfer_read %14[%c0, %c0], %cst_0 {in_bounds = [true, true]} : tensor<8x4xf32>, vector<8x4xf32>
+    %19 = vector.transfer_read %arg6[%c16, %c16], %cst_0 {in_bounds = [true, true]} : tensor<8x4xf32>, vector<8x4xf32>
+    %21 = arith.addf %18, %19 : vector<8x4xf32>
+    %20 = vector.transfer_write %21, %0[%c0, %c0] {in_bounds = [true, true]} : vector<8x4xf32>, tensor<8x4xf32>
+    gml_st.set_yield %20 into %arg6[%12] :
+              tensor<8x4xf32> into tensor<8x4xf32>[!gml_st.tile<8x4>]
+  } : tensor<8x4xf32>
+  return %7 : tensor<8x4xf32>
+}
+
+// CHECK-LABEL: func @hoist_transfer_read_write
+
+// CHECK:         %[[OUT_READ:.*]] = vector.transfer_read %[[OUT:.*]][%c0, %c0]{{.*}} : tensor<8x4xf32>, vector<8x4xf32>
+// CHECK:         %[[FOR:.*]] = gml_st.for {{.*}} outs (%[[ARG:.*]] =
+// CHECK:           %[[LHS:.*]] = vector.transfer_read {{.*}} : tensor<8x2xf32>, vector<8x2xf32>
+// CHECK:           %[[RHS:.*]] = vector.transfer_read {{.*}} : tensor<2x4xf32>, vector<2x4xf32>
+// CHECK:           %[[CONTRACT:.*]] = vector.contract {{{.*}}} %[[LHS]], %[[RHS]], %[[ARG]]
+// CHECK:           %[[READ:.*]] = vector.transfer_read %[[OUT]][%c16, %c16]
+// CHECK:           %[[ADD:.*]] = arith.addf %[[CONTRACT]], %[[READ]]
+// CHECK:           gml_st.set_yield %[[ADD]] into %[[ARG]]
+// CHECK:         vector.transfer_write %[[FOR]]
